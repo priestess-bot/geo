@@ -61,7 +61,27 @@ class SchemaV2PostgresBehaviorTest(unittest.TestCase):
     def _drop_bootstrap_metadata(self, connection: psycopg.Connection[object]) -> None:
         with connection.cursor() as cursor:
             cursor.execute(
-                "DROP TABLE IF EXISTS auth_runtime_write_controls, "
+                "DROP TABLE IF EXISTS durable_job_dispatch_outbox, "
+                "review_assignments, retest_comparisons, "
+                "retest_run_queries, retest_runs, action_tasks, "
+                "action_competitor_benchmarks, action_score_contributions, "
+                "action_source_gaps, action_recommendations, "
+                "competitor_benchmark_contributions, competitor_benchmarks, "
+                "source_gap_score_contributions, source_gap_citations, source_gaps, "
+                "source_node_citations, source_graph_edges, source_nodes, source_graphs, "
+                "score_contribution_evidence_assets, score_contributions, "
+                "visibility_score_dimensions, visibility_score_snapshots, "
+                "visibility_score_run_analyses, visibility_score_runs, "
+                "visibility_weight_profile_components, visibility_weight_profiles, "
+                "model_call_logs, collection_costs, answer_analysis_evidence_assets, "
+                "answer_analysis_entity_mentions, answer_analyses, "
+                "answer_citation_evidence_assets, raw_answer_evidence_assets, "
+                "artifact_finalize_outbox, evidence_assets, answer_citations, "
+                "raw_answers, answer_runs, "
+                "collection_run_summaries, collection_jobs, collection_run_queries, "
+                "collection_runs, monitoring_query_entities, monitoring_queries, "
+                "product_entity_aliases, product_entities, "
+                "auth_runtime_write_controls, "
                 "runtime_session_reauth_queue, auth_preflight_rate_limits, "
                 "auth_invitation_redemption_attempts, runtime_sessions, "
                 "project_member_invitations, audit_events, "
@@ -69,6 +89,35 @@ class SchemaV2PostgresBehaviorTest(unittest.TestCase):
                 "projects, industry_profiles, market_profiles, tenants CASCADE"
             )
             for signature in (
+                "geno_v2_fail_durable_job_dispatch(uuid, text, uuid, text, text, boolean, integer)",
+                "geno_v2_complete_durable_job_dispatch(uuid, text, uuid)",
+                "geno_v2_heartbeat_durable_job_dispatch(uuid, text, uuid, integer)",
+                "geno_v2_claim_durable_job_dispatch(text, integer, uuid, uuid)",
+                "geno_v2_enqueue_durable_job_dispatch()",
+                "geno_v2_require_finalized_score_evidence()",
+                "geno_v2_record_job_command_audit(uuid, uuid, text, text, uuid, text, text, text, jsonb, jsonb)",
+                "geno_v2_fail_retest_run(uuid, text, uuid, text, text, boolean, integer)",
+                "geno_v2_complete_retest_run(uuid, text, uuid, uuid, jsonb)",
+                "geno_v2_heartbeat_retest_run(uuid, text, uuid, integer)",
+                "geno_v2_claim_retest_run(text, integer, uuid)",
+                "geno_v2_fail_visibility_score_run(uuid, text, uuid, text, text, boolean, integer)",
+                "geno_v2_complete_visibility_score_run(uuid, text, uuid, jsonb)",
+                "geno_v2_heartbeat_visibility_score_run(uuid, text, uuid, integer)",
+                "geno_v2_claim_visibility_score_run(text, integer, uuid)",
+                "geno_v2_fail_collection_job(uuid, text, uuid, text, text, boolean, integer)",
+                "geno_v2_complete_collection_job(uuid, text, uuid, jsonb)",
+                "geno_v2_heartbeat_collection_job(uuid, text, uuid, integer)",
+                "geno_v2_claim_collection_job(text, integer, uuid)",
+                "geno_v2_fail_artifact_finalize(uuid, text, uuid, text, text, boolean, integer)",
+                "geno_v2_complete_artifact_finalize(uuid, text, uuid, text)",
+                "geno_v2_heartbeat_artifact_finalize(uuid, text, uuid, integer)",
+                "geno_v2_claim_artifact_finalize(text, integer, uuid)",
+                "geno_v2_refresh_collection_run_summary(uuid, uuid)",
+                "geno_v2_guard_score_run_profile()",
+                "geno_v2_guard_used_weight_component_update()",
+                "geno_v2_guard_used_weight_profile_update()",
+                "geno_v2_guard_evidence_asset_finalize()",
+                "geno_v2_reject_immutable_domain_update()",
                 "geno_v2_session_can_read_audit(uuid, uuid, text)",
                 "geno_v2_session_can_read_project_member(uuid, uuid, text)",
                 "geno_v2_session_can_read_tenant_member(uuid, text)",
@@ -1132,12 +1181,56 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                     "SELECT has_schema_privilege('geno_v2_runtime', 'public', 'USAGE')"
                 )
                 self.assertTrue(cursor.fetchone()[0])
+                collection_scoring_functions = (
+                    "geno_v2_claim_durable_job_dispatch",
+                    "geno_v2_complete_durable_job_dispatch",
+                    "geno_v2_enqueue_durable_job_dispatch",
+                    "geno_v2_fail_durable_job_dispatch",
+                    "geno_v2_heartbeat_durable_job_dispatch",
+                    "geno_v2_ack_collection_job_cancel",
+                    "geno_v2_ack_retest_run_cancel",
+                    "geno_v2_ack_visibility_score_run_cancel",
+                    "geno_v2_claim_collection_job",
+                    "geno_v2_claim_artifact_finalize",
+                    "geno_v2_claim_retest_run",
+                    "geno_v2_claim_visibility_score_run",
+                    "geno_v2_complete_collection_job",
+                    "geno_v2_complete_artifact_finalize",
+                    "geno_v2_complete_retest_run",
+                    "geno_v2_complete_visibility_score_run",
+                    "geno_v2_fail_collection_job",
+                    "geno_v2_fail_artifact_finalize",
+                    "geno_v2_guard_evidence_asset_finalize",
+                    "geno_v2_require_finalized_score_evidence",
+                    "geno_v2_guard_score_run_profile",
+                    "geno_v2_fail_retest_run",
+                    "geno_v2_fail_visibility_score_run",
+                    "geno_v2_guard_used_weight_component_update",
+                    "geno_v2_guard_used_weight_profile_update",
+                    "geno_v2_heartbeat_collection_job",
+                    "geno_v2_heartbeat_artifact_finalize",
+                    "geno_v2_heartbeat_retest_run",
+                    "geno_v2_heartbeat_visibility_score_run",
+                    "geno_v2_persist_collection_result",
+                    "geno_v2_persist_retest_result",
+                    "geno_v2_persist_visibility_score_result",
+                    "geno_v2_record_job_command_audit",
+                    "geno_v2_refresh_collection_run_summary",
+                    "geno_v2_reject_immutable_domain_update",
+                    "geno_v2_replay_collection_job",
+                    "geno_v2_replay_retest_run",
+                    "geno_v2_replay_visibility_score_run",
+                    "geno_v2_request_collection_job_cancel",
+                    "geno_v2_request_retest_run_cancel",
+                    "geno_v2_request_visibility_score_run_cancel",
+                )
                 cursor.execute(
                     "SELECT proname, "
                     "has_function_privilege('geno_v2_runtime', pg_proc.oid, 'EXECUTE') "
                     "FROM pg_proc JOIN pg_namespace ON pg_namespace.oid = pronamespace "
-                    "WHERE nspname = 'public' AND proname LIKE 'geno_v2_%' "
-                    "ORDER BY proname"
+                    "WHERE nspname = 'public' AND proname LIKE 'geno_v2_%%' "
+                    "AND NOT (proname = ANY(%s)) ORDER BY proname",
+                    (list(collection_scoring_functions),),
                 )
                 function_acl_rows = cursor.fetchall()
                 runtime_function_names = {
@@ -1158,8 +1251,9 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                 cursor.execute(
                     "SELECT proname, pg_get_userbyid(proowner), prosecdef, proconfig "
                     "FROM pg_proc JOIN pg_namespace ON pg_namespace.oid = pronamespace "
-                    "WHERE nspname = 'public' AND proname LIKE 'geno_v2_%' "
-                    "ORDER BY proname"
+                    "WHERE nspname = 'public' AND proname LIKE 'geno_v2_%%' "
+                    "AND NOT (proname = ANY(%s)) ORDER BY proname",
+                    (list(collection_scoring_functions),),
                 )
                 function_rows = cursor.fetchall()
                 self.assertEqual(
