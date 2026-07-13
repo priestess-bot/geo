@@ -106,6 +106,7 @@ class SchemaV2ManifestContractsTest(unittest.TestCase):
                 "baseline/0013_auth_commands.sql",
                 "baseline/0014_auth_login_provision.sql",
                 "baseline/0020_collection_geo_scoring.sql",
+                "baseline/0021_worker_login_provision.sql",
             ],
         )
         self.assertEqual(manifest.migration_files, ())
@@ -890,8 +891,8 @@ class SchemaV2ComposeContractsTest(unittest.TestCase):
             "schema-v2-gate: schema-v2-contracts schema-v2-config schema-v2-fresh-install",
             makefile,
         )
-        self.assertEqual(makefile.count("run --rm schema-v2-install"), 4)
-        self.assertEqual(makefile.count("run --rm schema-v2-verify"), 4)
+        self.assertEqual(makefile.count("run --rm schema-v2-install"), 5)
+        self.assertEqual(makefile.count("run --rm schema-v2-verify"), 5)
         self.assertIn("run --rm schema-v2-behavior-test", makefile)
         self.assertIn("run --rm schema-v2-session-uow-behavior-test", makefile)
         self.assertIn("run --rm schema-v2-collection-scoring-behavior-test", makefile)
@@ -904,6 +905,12 @@ class SchemaV2ComposeContractsTest(unittest.TestCase):
         self.assertIn("schema-v2-login-provision-gate:", makefile)
         self.assertIn("run --rm schema-v2-login-provision-behavior-test", makefile)
         self.assertIn("geno-schema-v2-login-provision-pg", makefile)
+        self.assertIn("schema-v2-worker-login-provision-gate:", makefile)
+        self.assertIn(
+            "run --rm schema-v2-worker-login-provision-behavior-test",
+            makefile,
+        )
+        self.assertIn("geno-schema-v2-worker-login-provision-pg", makefile)
         self.assertIn("SCRAM-SHA-256$$", makefile)
         self.assertIn("appeared in PostgreSQL logs", makefile)
         self.assertIn("down --remove-orphans -v", makefile)

@@ -181,3 +181,63 @@ must contain only the structured endpoint fields and must not receive the
 installer `PGUSER` or `PGPASSWORD`. Every request transaction
 must still use `SET LOCAL ROLE geno_v2_runtime` and `SET LOCAL
 app.session_token_hash`; pooled connections must rollback/reset before reuse.
+
+## Worker LOGIN provisioning
+
+Baseline `0021_worker_login_provision.sql` extends the same immutable ledger for
+the `worker` login kind after 0020 has installed the capability role and narrow
+durable-job functions. The baseline always ends with
+`geno_v2_worker_login NOLOGIN PASSWORD NULL`. Its sole membership is
+`geno_v2_worker -> geno_v2_worker_login` with `ADMIN FALSE`, `INHERIT FALSE`,
+and `SET TRUE`; the LOGIN has no direct public-schema, table, sequence, or
+function privileges.
+
+Worker credentials use a separate secret file, credential-version sequence,
+latest-attempt projection, and pending recovery. API and worker operations keep
+the shared global provisioning advisory lock because they mutate one ledger and
+catalog boundary, while all state queries remain filtered by login kind. Role
+identifiers come only from the provisioner's fixed profile registry. The same
+external-file ownership, `0400`/`0600` mode, strength, installer-reuse,
+structured `PG*`, SCRAM redaction, fail-closed compensation, and drain rules as
+the API profile apply.
+
+```bash
+python scripts/schema_v2_provision_login.py \
+  --login-kind worker \
+  --initiated-by deployment-controller \
+  provision \
+  --credential-file /run/secrets/geno_v2_worker_login \
+  --credential-version worker-login-2026-07-13-01
+
+python scripts/schema_v2_provision_login.py \
+  --login-kind worker \
+  --initiated-by deployment-controller \
+  rotate \
+  --drain-confirmed \
+  --credential-file /run/secrets/geno_v2_worker_login_next \
+  --credential-version worker-login-2026-07-13-02
+
+python scripts/schema_v2_provision_login.py \
+  --login-kind worker \
+  --initiated-by incident-controller \
+  disable
+```
+
+Before a worker process starts, clear installer identity variables and run:
+
+```bash
+unset PGUSER PGPASSWORD
+python scripts/schema_v2_provision_login.py \
+  --login-kind worker \
+  check \
+  --credential-file /run/secrets/geno_v2_worker_login \
+  --credential-version worker-login-2026-07-13-02
+```
+
+The check creates a real worker-authenticated connection, proves the LOGIN has
+zero direct privileges, rejects access to the runtime role, switches with
+`SET LOCAL ROLE geno_v2_worker`, and evaluates the worker-only startup readiness
+function. The isolated PostgreSQL behavior gate, rather than an operational
+startup check, exercises a real durable dispatch claim/heartbeat/complete
+lifecycle. The check then verifies transaction cleanup restored the
+physical connection to `session_user=current_user=geno_v2_worker_login`.

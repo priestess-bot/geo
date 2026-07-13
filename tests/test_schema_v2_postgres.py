@@ -119,6 +119,7 @@ class SchemaV2PostgresBehaviorTest(unittest.TestCase):
                 "geno_v2_guard_used_weight_profile_update()",
                 "geno_v2_guard_evidence_asset_finalize()",
                 "geno_v2_reject_immutable_domain_update()",
+                "geno_v2_worker_login_startup_ready(text)",
                 "geno_v2_auth_login_startup_ready(text)",
                 "geno_v2_audit_auth_login_provision_receipt()",
                 "geno_v2_validate_auth_login_provision_lineage()",
@@ -1298,6 +1299,7 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                     {
                         "geno_v2_audit_auth_login_provision_receipt",
                         "geno_v2_auth_login_startup_ready",
+                        "geno_v2_worker_login_startup_ready",
                         "geno_v2_auth_context_has_project_permission",
                         "geno_v2_auth_redeem_request_hash",
                         "geno_v2_build_locked_auth_scope",
@@ -1364,6 +1366,7 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                     {
                         "geno_v2_audit_auth_login_provision_receipt",
                         "geno_v2_auth_login_startup_ready",
+                        "geno_v2_worker_login_startup_ready",
                         "geno_v2_auth_context_has_project_permission",
                         "geno_v2_auth_redeem_request_hash",
                         "geno_v2_build_locked_auth_scope",
