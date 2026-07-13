@@ -69,6 +69,26 @@ class SchemaV2PostgresBehaviorTest(unittest.TestCase):
                 "projects, industry_profiles, market_profiles, tenants CASCADE"
             )
             for signature in (
+                "geno_v2_resolve_current_reauth_queue()",
+                "geno_v2_logout_current_session()",
+                "geno_v2_erase_current_auth_delivery_secret()",
+                "geno_v2_confirm_current_auth_delivery()",
+                "geno_v2_redeem_auth_invitation(uuid, uuid, uuid, text, text, text, "
+                "text, timestamptz, bytea, text, bytea, timestamptz)",
+                "geno_v2_build_locked_auth_scope(uuid, text)",
+                "geno_v2_expire_project_member_invitation(uuid)",
+                "geno_v2_revoke_project_member_invitation(uuid, text)",
+                "geno_v2_create_project_member_invitation(uuid, uuid, text, text, text, "
+                "timestamptz)",
+                "geno_v2_preflight_auth_invitation(uuid, text, text, text)",
+                "geno_v2_write_auth_command_audit(text, uuid, uuid, text, text, text, "
+                "text, jsonb, jsonb, text)",
+                "geno_v2_auth_context_has_project_permission(jsonb, uuid, text)",
+                "geno_v2_lock_auth_command_project(uuid, uuid)",
+                "geno_v2_lock_auth_command_context(boolean, boolean)",
+                "geno_v2_consume_auth_preflight_bucket(text, integer, integer, "
+                "timestamptz)",
+                "geno_v2_auth_redeem_request_hash(uuid, text, text)",
                 "geno_v2_session_can_read_audit(uuid, uuid, text)",
                 "geno_v2_session_can_read_project_member(uuid, uuid, text)",
                 "geno_v2_session_can_read_tenant_member(uuid, text)",
@@ -84,6 +104,7 @@ class SchemaV2PostgresBehaviorTest(unittest.TestCase):
                 "geno_v2_lock_runtime_session_authz_sources()",
                 "geno_v2_revoke_affected_sessions(uuid, text, uuid, text)",
                 "geno_v2_require_auth_writes_enabled()",
+                "geno_v2_lock_auth_write_control()",
                 "geno_v2_guard_auth_write_control_state()",
                 "geno_v2_guard_auth_preflight_rate_limit_state()",
                 "geno_v2_guard_runtime_reauth_state()",
@@ -574,6 +595,7 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
             first_project_id = project_ids[0]
             current_time = datetime.now(UTC)
             invitation_created_at = min(issued_at, current_time) - timedelta(seconds=1)
+            attempt_created_at = min(issued_at, current_time)
             invitation_expires_at = max(
                 current_time + timedelta(days=2),
                 issued_at + timedelta(days=2),
@@ -639,7 +661,7 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                     digest(f"idempotency-{marker}"),
                     digest(f"request-{marker}"),
                     digest(f"invite-{marker}"),
-                    issued_at,
+                    attempt_created_at,
                 ),
             )
             cursor.execute(
@@ -665,10 +687,7 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                     psycopg.types.json.Jsonb({"marker": marker}),
                 ),
             )
-            delivery_expires_at = max(
-                datetime.now(UTC) + timedelta(days=1),
-                expires_at,
-            )
+            delivery_expires_at = datetime.now(UTC) + timedelta(minutes=30)
             cursor.execute(
                 "UPDATE auth_invitation_redemption_attempts SET "
                 "session_id = %s, status = 'succeeded', delivery_ciphertext = %s, "
@@ -944,7 +963,7 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                 invite_hash,
                 surface,
                 surface,
-                expires_at,
+                now + timedelta(minutes=30),
                 now - timedelta(seconds=2),
             ),
         )
@@ -998,7 +1017,7 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                 b"state-encrypted-delivery",
                 "state-test-key",
                 b"0123456789ab",
-                expires_at,
+                now + timedelta(minutes=30),
                 attempt_id,
             ),
         )
@@ -1141,6 +1160,15 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                 )
                 function_acl_rows = cursor.fetchall()
                 runtime_function_names = {
+                    "geno_v2_confirm_current_auth_delivery",
+                    "geno_v2_create_project_member_invitation",
+                    "geno_v2_erase_current_auth_delivery_secret",
+                    "geno_v2_expire_project_member_invitation",
+                    "geno_v2_logout_current_session",
+                    "geno_v2_preflight_auth_invitation",
+                    "geno_v2_redeem_auth_invitation",
+                    "geno_v2_resolve_current_reauth_queue",
+                    "geno_v2_revoke_project_member_invitation",
                     "geno_v2_resolve_session_context",
                     "geno_v2_session_can_access_tenant",
                     "geno_v2_session_can_read_audit",
@@ -1165,6 +1193,23 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                 self.assertEqual(
                     {row[0] for row in function_rows},
                     {
+                        "geno_v2_auth_context_has_project_permission",
+                        "geno_v2_auth_redeem_request_hash",
+                        "geno_v2_build_locked_auth_scope",
+                        "geno_v2_confirm_current_auth_delivery",
+                        "geno_v2_consume_auth_preflight_bucket",
+                        "geno_v2_create_project_member_invitation",
+                        "geno_v2_erase_current_auth_delivery_secret",
+                        "geno_v2_expire_project_member_invitation",
+                        "geno_v2_lock_auth_command_context",
+                        "geno_v2_lock_auth_command_project",
+                        "geno_v2_lock_auth_write_control",
+                        "geno_v2_logout_current_session",
+                        "geno_v2_preflight_auth_invitation",
+                        "geno_v2_redeem_auth_invitation",
+                        "geno_v2_resolve_current_reauth_queue",
+                        "geno_v2_revoke_project_member_invitation",
+                        "geno_v2_write_auth_command_audit",
                         "geno_v2_permissions_for_role",
                         "geno_v2_reject_audit_event_mutation",
                         "geno_v2_role_has_permission",
@@ -1209,6 +1254,23 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                 self.assertEqual(
                     security_definer_functions,
                     {
+                        "geno_v2_auth_context_has_project_permission",
+                        "geno_v2_auth_redeem_request_hash",
+                        "geno_v2_build_locked_auth_scope",
+                        "geno_v2_confirm_current_auth_delivery",
+                        "geno_v2_consume_auth_preflight_bucket",
+                        "geno_v2_create_project_member_invitation",
+                        "geno_v2_erase_current_auth_delivery_secret",
+                        "geno_v2_expire_project_member_invitation",
+                        "geno_v2_lock_auth_command_context",
+                        "geno_v2_lock_auth_command_project",
+                        "geno_v2_lock_auth_write_control",
+                        "geno_v2_logout_current_session",
+                        "geno_v2_preflight_auth_invitation",
+                        "geno_v2_redeem_auth_invitation",
+                        "geno_v2_resolve_current_reauth_queue",
+                        "geno_v2_revoke_project_member_invitation",
+                        "geno_v2_write_auth_command_audit",
                         "geno_v2_sync_project_tenant_grants",
                         "geno_v2_sync_tenant_member_project_grants",
                         "geno_v2_sync_tenant_status_grants",
@@ -2081,7 +2143,7 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                                     b"attack-encrypted-delivery",
                                     "attack-test-key",
                                     b"0123456789ab",
-                                    session_expires_at,
+                                    now + timedelta(minutes=30),
                                     attempt_id,
                                 ),
                             )
@@ -2103,11 +2165,22 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                 cursor.execute(
                     "SELECT writes_enabled FROM auth_runtime_write_controls WHERE singleton"
                 )
-                self.assertFalse(cursor.fetchone()[0])
+                self.assertTrue(cursor.fetchone()[0])
+                cursor.execute("SELECT geno_v2_require_auth_writes_enabled()")
+                cursor.execute(
+                    "UPDATE auth_runtime_write_controls SET writes_enabled = false, "
+                    "reason = 'behavior-test-disabled', updated_by = 'behavior-test', "
+                    "updated_at = clock_timestamp() WHERE singleton"
+                )
                 with self.assertRaises(psycopg.errors.InsufficientPrivilege) as raised:
                     cursor.execute("SELECT geno_v2_require_auth_writes_enabled()")
                 self.assertEqual(raised.exception.sqlstate, "42501")
                 self.assertIn("auth_writes_temporarily_disabled", str(raised.exception))
+                cursor.execute(
+                    "UPDATE auth_runtime_write_controls SET writes_enabled = true, "
+                    "reason = 'behavior-test-enabled', updated_by = 'behavior-test', "
+                    "updated_at = clock_timestamp() WHERE singleton"
+                )
 
                 direct_invitation_id = uuid4()
                 direct_attempt_id = uuid4()
@@ -2271,8 +2344,9 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                 )
                 cursor.execute(
                     "UPDATE runtime_session_reauth_queue SET status = 'resolved', "
-                    "resolved_at = clock_timestamp() WHERE session_id = %s",
-                    (self.revoked_session_id,),
+                    "resolved_at = clock_timestamp(), resolved_by_session_id = %s "
+                    "WHERE session_id = %s",
+                    (self.valid_session_id, self.revoked_session_id),
                 )
                 with self.assertRaises(psycopg.errors.ObjectNotInPrerequisiteState):
                     cursor.execute(
@@ -2668,7 +2742,7 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                 cursor.execute(
                     "SELECT writes_enabled FROM auth_runtime_write_controls WHERE singleton"
                 )
-                self.assertFalse(cursor.fetchone()[0])
+                self.assertTrue(cursor.fetchone()[0])
 
     def test_11_concurrent_lifecycle_triggers_are_idempotent(self) -> None:
         marker = uuid4().hex

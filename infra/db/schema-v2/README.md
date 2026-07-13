@@ -63,10 +63,22 @@ sources, so a concurrent stale session is either rejected or immediately
 revoked. Revocation atomically creates one reauth queue row and remains
 available while privilege-expanding auth writes are disabled.
 
-Invitation creation/redemption, preflight counter consumption, session command
-entry points, reauthentication resolution, write-control enablement, and LOGIN
-provisioning remain sealed for the next sensitive command slice. Gate 1 remains pending
-until that command boundary and its race/idempotency tests pass.
+Baseline `0013_auth_commands.sql` exposes the nine reviewed auth command entry
+points. It keeps runtime table DML sealed, consumes preflight buckets before
+token disclosure, creates immutable redemption attempts, snapshots every
+current project membership into a successful session, and allows delivery
+confirmation, secret erasure, logout, and reauthentication resolution while
+privilege-expanding writes are disabled. The final statement enables auth
+writes only after the function owner, fixed search path, ACL, passwordless
+`NOLOGIN` placeholder, and sealed write-control catalog checks pass.
+
+The fresh-install gate runs a dedicated real-PostgreSQL command suite in
+addition to the general schema and Session UoW suites. It verifies the 20/21
+preflight boundary, invalid-token non-mutation, natural expiry, invitation
+idempotency and `member.manage`, full multi-project session snapshots, exact
+replay, same-invitation concurrency, recovery expiry and replay-limit erasure
+with the write switch disabled, lifecycle idempotency, and the final runtime
+ACL surface.
 
 The baseline creates `geno_v2_api_login` as a `NOLOGIN`, passwordless,
 `NOINHERIT`, `NOBYPASSRLS` deployment placeholder. It is the only permitted
@@ -78,7 +90,7 @@ owner. The baseline clears global and database-specific role settings for the
 placeholder; connection-pool checkout must still clear settings on existing
 backends before beginning a request transaction.
 
-The next command boundary must provide secret provisioning and real
+The deployment boundary must still provide secret provisioning and real
 LOGIN/connection-pool tests. Provisioning must atomically set a newly rotated
 password and enable `LOGIN`; enabling `LOGIN` alone is forbidden because the
 baseline always clears any pre-existing password with `PASSWORD NULL`. Every API
