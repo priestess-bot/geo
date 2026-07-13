@@ -13,10 +13,11 @@ class SchemaV2GeoPlacementContractsTest(unittest.TestCase):
         self.assertIn("REFERENCES product_entities(id, project_id)", SQL)
         self.assertIn("UNIQUE (project_id, primary_product_entity_id, market_code)", SQL)
 
-    def test_observed_destinations_cannot_be_submission_destinations(self) -> None:
+    def test_unapproved_destinations_cannot_be_submission_destinations(self) -> None:
         self.assertIn("operation_mode IN ('observed_only', 'manual_submission')", SQL)
         self.assertIn("project_destinations_submission_requires_approval", SQL)
-        self.assertIn("operation_mode <> 'manual_submission'", SQL)
+        self.assertIn("'official_community_participation'", SQL)
+        self.assertIn("'business_profile'", SQL)
 
     def test_opportunities_link_to_exact_destination_and_existing_observation_origins(self) -> None:
         self.assertIn("REFERENCES project_destinations(id, project_id)", SQL)

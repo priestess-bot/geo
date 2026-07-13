@@ -3,7 +3,7 @@
   "schema_generation": 2,
   "database_name": "geno_v2",
   "baseline_version": "2.0.0-b2",
-  "baseline_hash": "e26e719799caf2ae55ca270f0ce949037878115551a9dd194d759ee2f18a0b80",
+  "baseline_hash": "928dccf081d86ddace5dab9d1c2e41f83f1507c2b84d061c54f8dfdcb95a03cd",
   "minimum_app_version": "0.1.0",
   "baseline_files": [
     {
@@ -48,11 +48,15 @@
     },
     {
       "path": "baseline/0050_geo_placement_foundation.sql",
-      "sha256": "f45b1ba29668dd6d93cbc89870a7108e48818e0a706605a89e8a7967e986b27d"
+      "sha256": "eeb6bd7f2f43313673d90bd6216d9a99944c44c7a25360db49c3c16ff5ac0261"
     },
     {
       "path": "baseline/0060_geo_submission_measurement.sql",
-      "sha256": "9adbca42ccb6e9ae3dfd7568db3036c88b902300686192f5ac3bbf1e81caf42a"
+      "sha256": "f2e0ed34ff1d1fd08f4adc81bd999463f7affa1a9495699c7cc784cf477d27cd"
+    },
+    {
+      "path": "baseline/0070_geo_placement_packages.sql",
+      "sha256": "2d33e92f06b2f7c4b6e6851fe931250406f5c6c9d71e7bc4b5ca1707cc9e18e2"
     }
   ],
   "migration_files": []

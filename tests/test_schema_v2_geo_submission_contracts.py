@@ -10,7 +10,7 @@ SQL = Path("infra/db/schema-v2/baseline/0060_geo_submission_measurement.sql").re
 class SchemaV2GeoSubmissionContractsTest(unittest.TestCase):
     def test_submission_is_manual_and_requires_qualified_destination(self) -> None:
         self.assertIn("submission_method = 'manual'", SQL)
-        self.assertIn("geno_v2_reject_observed_destination_submission", SQL)
+        self.assertIn("geno_v2_reject_unqualified_destination_submission", SQL)
         self.assertIn("operation_mode = 'manual_submission'", SQL)
         self.assertIn("qualification_status = 'approved'", SQL)
 

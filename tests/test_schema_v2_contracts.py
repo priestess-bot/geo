@@ -111,6 +111,7 @@ class SchemaV2ManifestContractsTest(unittest.TestCase):
                 "baseline/0040_reports_notifications_integrations.sql",
                 "baseline/0050_geo_placement_foundation.sql",
                 "baseline/0060_geo_submission_measurement.sql",
+                "baseline/0070_geo_placement_packages.sql",
             ],
         )
         self.assertEqual(manifest.migration_files, ())

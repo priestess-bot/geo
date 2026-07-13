@@ -5,7 +5,7 @@ CREATE TABLE publisher_catalog (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     canonical_domain text NOT NULL,
     publisher_type text NOT NULL,
-    default_operation_mode text NOT NULL DEFAULT 'observed_only',
+    default_operation_mode text NOT NULL DEFAULT 'manual_submission',
     rules_url text,
     policy_status text NOT NULL DEFAULT 'unreviewed',
     policy_checked_at timestamptz,
@@ -99,6 +99,8 @@ CREATE TABLE project_destinations (
     destination_url text NOT NULL,
     ownership_kind text NOT NULL,
     operation_mode text NOT NULL DEFAULT 'observed_only',
+    task_type text NOT NULL,
+    public_disclosure_required boolean NOT NULL DEFAULT true,
     qualification_status text NOT NULL DEFAULT 'candidate',
     policy_snapshot_hash text NOT NULL,
     policy_snapshot jsonb NOT NULL DEFAULT '{}'::jsonb,
@@ -116,12 +118,19 @@ CREATE TABLE project_destinations (
     CONSTRAINT project_destinations_url_unique UNIQUE (project_id, destination_url),
     CONSTRAINT project_destinations_name_url_nonempty CHECK (btrim(destination_name) <> '' AND btrim(destination_url) <> ''),
     CONSTRAINT project_destinations_ownership_canonical CHECK (ownership_kind IN (
-        'owned', 'marketplace_authorized', 'third_party_editorial', 'observed_external'
+        'owned', 'marketplace_authorized', 'third_party_editorial',
+        'review_platform_business', 'community_official', 'deal_platform',
+        'knowledge_contributor', 'observed_external'
     )),
     CONSTRAINT project_destinations_mode_canonical CHECK (operation_mode IN ('observed_only', 'manual_submission')),
     CONSTRAINT project_destinations_observation_only CHECK (
-        operation_mode <> 'manual_submission' OR ownership_kind IN ('owned', 'marketplace_authorized', 'third_party_editorial')
+        operation_mode <> 'manual_submission' OR ownership_kind <> 'observed_external'
     ),
+    CONSTRAINT project_destinations_task_type_canonical CHECK (task_type IN (
+        'owned_content', 'marketplace_listing', 'creator_outreach',
+        'editorial_submission', 'business_profile',
+        'official_community_participation', 'deal_submission', 'expert_answer'
+    )),
     CONSTRAINT project_destinations_qualification_canonical CHECK (qualification_status IN ('candidate', 'approved', 'rejected', 'suspended')),
     CONSTRAINT project_destinations_submission_requires_approval CHECK (
         operation_mode <> 'manual_submission' OR qualification_status = 'approved'
