@@ -8,6 +8,8 @@ SCHEMA_V2_COMPOSE_PROJECT ?= geno-schema-v2-fresh
 SCHEMA_V2_COMPOSE = docker compose -p $(SCHEMA_V2_COMPOSE_PROJECT) -f infra/docker-compose.schema-v2.yml
 SCHEMA_V2_ANONYMOUS_AUTH_COMPOSE_PROJECT ?= geno-schema-v2-anonymous-auth-pg
 SCHEMA_V2_ANONYMOUS_AUTH_COMPOSE = docker compose -p $(SCHEMA_V2_ANONYMOUS_AUTH_COMPOSE_PROJECT) -f infra/docker-compose.schema-v2.yml
+SCHEMA_V2_LOGIN_PROVISION_COMPOSE_PROJECT ?= geno-schema-v2-login-provision-pg
+SCHEMA_V2_LOGIN_PROVISION_COMPOSE = docker compose -p $(SCHEMA_V2_LOGIN_PROVISION_COMPOSE_PROJECT) -f infra/docker-compose.schema-v2.yml
 SCHEMA_V2_POSTGRES_USER ?= geno_v2_installer
 SCHEMA_V2_POSTGRES_PASSWORD ?= $(shell python3 -c 'import secrets; print(secrets.token_urlsafe(36))')
 export SCHEMA_V2_POSTGRES_USER SCHEMA_V2_POSTGRES_PASSWORD
@@ -315,6 +317,7 @@ schema-v2-fresh-install:
 	$(SCHEMA_V2_COMPOSE) run --rm schema-v2-session-uow-behavior-test; \
 	$(SCHEMA_V2_COMPOSE) run --rm schema-v2-auth-commands-behavior-test; \
 	$(SCHEMA_V2_COMPOSE) run --rm schema-v2-anonymous-auth-uow-behavior-test; \
+	$(SCHEMA_V2_COMPOSE) run --rm schema-v2-login-provision-behavior-test; \
 	$(SCHEMA_V2_COMPOSE) run --rm schema-v2-verify
 
 .PHONY: schema-v2-anonymous-auth-uow-gate
@@ -327,7 +330,21 @@ schema-v2-anonymous-auth-uow-gate:
 	$(SCHEMA_V2_ANONYMOUS_AUTH_COMPOSE) run --rm schema-v2-anonymous-auth-uow-behavior-test; \
 	$(SCHEMA_V2_ANONYMOUS_AUTH_COMPOSE) run --rm schema-v2-verify
 
-schema-v2-gate: schema-v2-contracts schema-v2-config schema-v2-fresh-install
+.PHONY: schema-v2-login-provision-gate
+schema-v2-login-provision-gate:
+	set -e; \
+	trap '$(SCHEMA_V2_LOGIN_PROVISION_COMPOSE) down --remove-orphans -v' EXIT; \
+	$(SCHEMA_V2_LOGIN_PROVISION_COMPOSE) build schema-v2-install; \
+	$(SCHEMA_V2_LOGIN_PROVISION_COMPOSE) up -d postgres-v2; \
+	$(SCHEMA_V2_LOGIN_PROVISION_COMPOSE) run --rm schema-v2-install; \
+	$(SCHEMA_V2_LOGIN_PROVISION_COMPOSE) run --rm schema-v2-login-provision-behavior-test; \
+	if $(SCHEMA_V2_LOGIN_PROVISION_COMPOSE) logs --no-color postgres-v2 | grep -F -e 'SCRAM-SHA-256$$' -e 'Login-V2_'; then \
+		echo 'Schema v2 login credential material appeared in PostgreSQL logs' >&2; \
+		exit 1; \
+	fi; \
+	$(SCHEMA_V2_LOGIN_PROVISION_COMPOSE) run --rm schema-v2-verify
+
+schema-v2-gate: schema-v2-contracts schema-v2-config schema-v2-fresh-install schema-v2-login-provision-gate
 
 api-image:
 	@if docker image inspect "$(GENO_API_IMAGE)" >/dev/null 2>&1; then \

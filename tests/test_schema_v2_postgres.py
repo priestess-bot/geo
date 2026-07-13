@@ -62,6 +62,7 @@ class SchemaV2PostgresBehaviorTest(unittest.TestCase):
         with connection.cursor() as cursor:
             cursor.execute(
                 "DROP TABLE IF EXISTS auth_runtime_write_controls, "
+                "auth_login_provision_receipts, auth_login_provision_attempts, "
                 "runtime_session_reauth_queue, auth_preflight_rate_limits, "
                 "auth_invitation_redemption_attempts, runtime_sessions, "
                 "project_member_invitations, audit_events, "
@@ -69,6 +70,11 @@ class SchemaV2PostgresBehaviorTest(unittest.TestCase):
                 "projects, industry_profiles, market_profiles, tenants CASCADE"
             )
             for signature in (
+                "geno_v2_auth_login_startup_ready(text)",
+                "geno_v2_audit_auth_login_provision_receipt()",
+                "geno_v2_validate_auth_login_provision_lineage()",
+                "geno_v2_reject_auth_login_receipt_mutation()",
+                "geno_v2_guard_auth_login_provision_attempt()",
                 "geno_v2_resolve_current_reauth_queue()",
                 "geno_v2_logout_current_session()",
                 "geno_v2_erase_current_auth_delivery_secret()",
@@ -1047,6 +1053,8 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
             "auth_preflight_rate_limits",
             "runtime_session_reauth_queue",
             "auth_runtime_write_controls",
+            "auth_login_provision_attempts",
+            "auth_login_provision_receipts",
         }
         expected_tables = readable_tables | sensitive_tables
         with psycopg.connect(autocommit=True) as connection:
@@ -1160,6 +1168,7 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                 )
                 function_acl_rows = cursor.fetchall()
                 runtime_function_names = {
+                    "geno_v2_auth_login_startup_ready",
                     "geno_v2_confirm_current_auth_delivery",
                     "geno_v2_create_project_member_invitation",
                     "geno_v2_erase_current_auth_delivery_secret",
@@ -1193,6 +1202,8 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                 self.assertEqual(
                     {row[0] for row in function_rows},
                     {
+                        "geno_v2_audit_auth_login_provision_receipt",
+                        "geno_v2_auth_login_startup_ready",
                         "geno_v2_auth_context_has_project_permission",
                         "geno_v2_auth_redeem_request_hash",
                         "geno_v2_build_locked_auth_scope",
@@ -1218,6 +1229,7 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                         "geno_v2_sync_tenant_status_grants",
                         "geno_v2_jsonb_text_set",
                         "geno_v2_validate_auth_redemption_lineage",
+                        "geno_v2_validate_auth_login_provision_lineage",
                         "geno_v2_validate_runtime_session_snapshot",
                         "geno_v2_guard_runtime_session_update",
                         "geno_v2_guard_project_member_invitation_state",
@@ -1225,7 +1237,9 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                         "geno_v2_guard_runtime_reauth_state",
                         "geno_v2_guard_auth_write_control_state",
                         "geno_v2_guard_auth_preflight_rate_limit_state",
+                        "geno_v2_guard_auth_login_provision_attempt",
                         "geno_v2_require_auth_writes_enabled",
+                        "geno_v2_reject_auth_login_receipt_mutation",
                         "geno_v2_revoke_affected_sessions",
                         "geno_v2_lock_runtime_session_authz_sources",
                         "geno_v2_revoke_sessions_for_authz_change",
@@ -1254,6 +1268,8 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                 self.assertEqual(
                     security_definer_functions,
                     {
+                        "geno_v2_audit_auth_login_provision_receipt",
+                        "geno_v2_auth_login_startup_ready",
                         "geno_v2_auth_context_has_project_permission",
                         "geno_v2_auth_redeem_request_hash",
                         "geno_v2_build_locked_auth_scope",

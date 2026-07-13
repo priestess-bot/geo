@@ -80,6 +80,16 @@ replay, same-invitation concurrency, recovery expiry and replay-limit erasure
 with the write switch disabled, lifecycle idempotency, and the final runtime
 ACL surface.
 
+Baseline `0014_auth_login_provision.sql` installs the immutable deployment
+attempt, terminal receipt, redacted audit, and startup-readiness contracts. It
+does not contain a credential and its final operation always seals
+`geno_v2_api_login` as `NOLOGIN` with `PASSWORD NULL`. The latest monotonic
+attempt per `login_kind` is the readiness truth; `api` is active in this slice
+and the reserved `worker` kind lets the later worker LOGIN reuse the same
+contract without sharing credentials or state. A pending, failed, or disable attempt makes the
+narrow runtime readiness function return false even if an older successful
+receipt exists. Runtime roles cannot read or write the provisioning tables.
+
 The Anonymous Auth UoW PostgreSQL gate additionally uses a real
 `AuthDeliveryKeyring` and AES-GCM envelope to exercise preflight, redemption,
 idempotent concurrency, delivery recovery, transaction cleanup, and immediate
@@ -98,9 +108,76 @@ owner. The baseline clears global and database-specific role settings for the
 placeholder; connection-pool checkout must still clear settings on existing
 backends before beginning a request transaction.
 
-The deployment boundary must still provide secret provisioning and real
-LOGIN/connection-pool tests. Provisioning must atomically set a newly rotated
-password and enable `LOGIN`; enabling `LOGIN` alone is forbidden because the
-baseline always clears any pre-existing password with `PASSWORD NULL`. Every API
-transaction must use `SET LOCAL ROLE geno_v2_runtime` and `SET LOCAL
-app.session_token_hash`.
+## API LOGIN provisioning
+
+Run `scripts/schema_v2_provision_login.py` only as a one-shot deployment job
+after baseline install and verification. Installer connectivity is accepted
+only from structured `PGHOST`, `PGPORT`, fixed `PGDATABASE=geno_v2`, `PGUSER`,
+and `PGPASSWORD` settings. Raw DSNs, service files, database URLs, plaintext API
+password environment variables, and password command-line arguments are
+rejected.
+
+The API credential must be supplied through `--credential-file`. The file must
+be external to the repository, owned by the process effective user, a regular
+non-symlink file with exact `0400` or `0600` mode, and contain one strong UTF-8
+line of at least 32 characters. The API credential must differ from the
+installer credential. The tool derives a SCRAM verifier client-side and never
+stores the secret value, verifier, DSN, or environment in a receipt, audit
+event, output, or command line. The non-secret mount path is passed as
+`--credential-file`.
+
+Example deployment sequence, where the file path is a secret mount and the
+version is the non-secret secret-manager version:
+
+```bash
+python scripts/schema_v2_provision_login.py \
+  --initiated-by deployment-controller \
+  provision \
+  --credential-file /run/secrets/geno_v2_api_login \
+  --credential-version api-login-2026-07-13-01
+
+unset PGUSER PGPASSWORD
+python scripts/schema_v2_provision_login.py \
+  check \
+  --credential-file /run/secrets/geno_v2_api_login \
+  --credential-version api-login-2026-07-13-01
+```
+
+Provisioning acquires the Schema install lock followed by the dedicated
+`geno:schema-v2:auth-login-provision` lock. It first fail-closes any interrupted
+`preparing` attempt by setting `NOLOGIN PASSWORD NULL` and writing a failed
+receipt. The new attempt and role update then commit atomically, followed by a
+real new-credential login and anonymous runtime smoke. A deterministic smoke
+failure is compensated with `NOLOGIN PASSWORD NULL` and a failed receipt.
+
+Rotation requires all API and worker pools to be drained or stopped before the
+command runs; PostgreSQL password changes and `NOLOGIN` do not terminate
+already-authenticated backends. The explicit acknowledgement is mandatory:
+
+```bash
+python scripts/schema_v2_provision_login.py \
+  --initiated-by deployment-controller \
+  rotate \
+  --drain-confirmed \
+  --credential-file /run/secrets/geno_v2_api_login_next \
+  --credential-version api-login-2026-07-13-02
+```
+
+To revoke future connections and erase the stored verifier, run:
+
+```bash
+python scripts/schema_v2_provision_login.py \
+  --initiated-by incident-controller \
+  disable
+```
+
+Every Schema v2 API and database worker deployment must run the `check` command
+with its configured credential version before process startup. This creates a
+fresh connection using the same secret, switches to `geno_v2_runtime`, verifies
+anonymous session resolution and sealed sensitive DML, and requires the latest
+attempt and matching receipt to be successful. A missing, pending, failed,
+disabled, or version-mismatched state fails closed. The startup environment
+must contain only the structured endpoint fields and must not receive the
+installer `PGUSER` or `PGPASSWORD`. Every request transaction
+must still use `SET LOCAL ROLE geno_v2_runtime` and `SET LOCAL
+app.session_token_hash`; pooled connections must rollback/reset before reuse.
