@@ -3,7 +3,7 @@
   "schema_generation": 2,
   "database_name": "geno_v2",
   "baseline_version": "2.0.0-b2",
-  "baseline_hash": "4e91eb18cba8120e3c41b97c606ebefd58f236b48d1832302d0843d93adc3dbf",
+  "baseline_hash": "fbe6badc49858da79766d737cfc04f5c3605344befe621bc13f59054c4a8287e",
   "minimum_app_version": "0.1.0",
   "baseline_files": [
     {
@@ -21,6 +21,10 @@
     {
       "path": "baseline/0012_auth_state_guards.sql",
       "sha256": "975d75d5658438d7fd1d9f8d9ba7d81674bda1cc97c0a73c5454395a08425a66"
+    },
+    {
+      "path": "baseline/0013_auth_commands.sql",
+      "sha256": "733632f47e2234ebc3475bb583913467508a228db20cb35d3ed0d0c19cbaa58a"
     }
   ],
   "migration_files": []

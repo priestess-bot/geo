@@ -311,6 +311,7 @@ schema-v2-fresh-install:
 	$(SCHEMA_V2_COMPOSE) run --rm schema-v2-verify; \
 	$(SCHEMA_V2_COMPOSE) run --rm schema-v2-behavior-test; \
 	$(SCHEMA_V2_COMPOSE) run --rm schema-v2-session-uow-behavior-test; \
+	$(SCHEMA_V2_COMPOSE) run --rm schema-v2-auth-commands-behavior-test; \
 	$(SCHEMA_V2_COMPOSE) run --rm schema-v2-verify
 
 schema-v2-gate: schema-v2-contracts schema-v2-config schema-v2-fresh-install
