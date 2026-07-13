@@ -1356,8 +1356,18 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                     "geno_v2_reject_report_immutable_update",
                     "geno_v2_require_finalized_report_artifact",
                 )
+                geo_command_functions = (
+                    "geno_v2_create_geo_campaign",
+                    "geno_v2_create_project_destination",
+                    "geno_v2_qualify_project_destination",
+                    "geno_v2_create_placement_opportunity",
+                    "geno_v2_read_geo_campaigns",
+                    "geno_v2_reject_unqualified_destination_submission",
+                    "geno_v2_reject_geo_placement_immutable_update",
+                )
                 non_auth_functions = (
                     collection_scoring_functions + knowledge_functions + report_functions
+                    + geo_command_functions
                 )
                 cursor.execute(
                     "SELECT proname, "

@@ -216,7 +216,11 @@ AS $permissions$
             'knowledge.review', 'knowledge.read_approved', 'content.read',
             'content.update', 'content.generate', 'content.review',
             'distribution.read', 'distribution.create', 'distribution.update',
-            'audit.read', 'cost.read', 'system.admin'
+            'audit.read', 'cost.read', 'system.admin',
+            'geo.campaign.manage', 'geo.query.approve', 'geo.observation.import',
+            'geo.destination.manage', 'geo.opportunity.manage', 'geo.package.create',
+            'geo.package.approve', 'geo.submission.record', 'geo.verification.run',
+            'geo.measurement.read'
         ]::text[]
         WHEN 'tenant_admin' THEN ARRAY[
             'tenant.read', 'tenant.update', 'member.invite', 'member.manage',
@@ -230,18 +234,23 @@ AS $permissions$
             'evidence.read_summary', 'analysis.read', 'analysis.review', 'score.read',
             'score.configure', 'report.read', 'report.generate', 'report.publish',
             'report.revoke', 'report.download', 'action.manage', 'action.read',
-            'retest.run', 'retest.read'
+            'retest.run', 'retest.read', 'geo.campaign.manage', 'geo.query.approve',
+            'geo.observation.import', 'geo.destination.manage', 'geo.opportunity.manage',
+            'geo.package.create', 'geo.package.approve', 'geo.submission.record',
+            'geo.verification.run', 'geo.measurement.read'
         ]::text[]
         WHEN 'analyst' THEN ARRAY[
             'project.read', 'prompt.import', 'collection.run', 'collection.read',
             'evidence.read_summary', 'evidence.read_raw', 'analysis.read',
             'analysis.review', 'score.read', 'report.read', 'report.generate',
-            'action.manage', 'action.read'
+            'action.manage', 'action.read', 'geo.observation.import',
+            'geo.opportunity.manage', 'geo.measurement.read'
         ]::text[]
         WHEN 'reviewer' THEN ARRAY[
             'project.read', 'evidence.read_summary', 'analysis.read',
             'analysis.review', 'score.read', 'report.read', 'report.approve',
-            'report.revoke', 'content.review'
+            'report.revoke', 'content.review', 'geo.package.approve',
+            'geo.measurement.read'
         ]::text[]
         WHEN 'knowledge_architect' THEN ARRAY[
             'project.read', 'knowledge.read', 'knowledge.import', 'knowledge.review',
@@ -250,11 +259,13 @@ AS $permissions$
         WHEN 'content_operator' THEN ARRAY[
             'project.read', 'knowledge.read_approved', 'content.read',
             'content.generate', 'content.update', 'distribution.read',
-            'distribution.create', 'distribution.update'
+            'distribution.create', 'distribution.update', 'geo.package.create',
+            'geo.submission.record', 'geo.verification.run', 'geo.measurement.read'
         ]::text[]
         WHEN 'client_viewer' THEN ARRAY[
             'project.read', 'score.read', 'report.read', 'report.download',
-            'action.read', 'retest.read', 'knowledge.read_approved'
+            'action.read', 'retest.read', 'knowledge.read_approved',
+            'geo.measurement.read'
         ]::text[]
         ELSE ARRAY[]::text[]
     END;
