@@ -716,6 +716,9 @@ class SchemaV2ComposeContractsTest(unittest.TestCase):
         auth_commands_behavior_test = services[
             "schema-v2-auth-commands-behavior-test"
         ]
+        anonymous_auth_uow_behavior_test = services[
+            "schema-v2-anonymous-auth-uow-behavior-test"
+        ]
 
         self.assertEqual(database["environment"]["POSTGRES_DB"], "geno_v2")
         self.assertEqual(database["environment"]["POSTGRES_USER"], COMPOSE_USER)
@@ -733,6 +736,7 @@ class SchemaV2ComposeContractsTest(unittest.TestCase):
             behavior_test,
             session_uow_behavior_test,
             auth_commands_behavior_test,
+            anonymous_auth_uow_behavior_test,
         ):
             for key, expected_value in expected_pg_environment.items():
                 self.assertEqual(service["environment"][key], expected_value)
@@ -779,6 +783,24 @@ class SchemaV2ComposeContractsTest(unittest.TestCase):
                 for volume in auth_commands_behavior_test["volumes"]
             )
         )
+        self.assertEqual(
+            anonymous_auth_uow_behavior_test["command"],
+            ["python", "/app/tests/test_schema_v2_anonymous_auth_uow_postgres.py"],
+        )
+        self.assertEqual(
+            anonymous_auth_uow_behavior_test["environment"][
+                "SCHEMA_V2_BEHAVIOR_TEST"
+            ],
+            "1",
+        )
+        self.assertTrue(
+            any(
+                volume["target"]
+                == "/app/tests/test_schema_v2_anonymous_auth_uow_postgres.py"
+                and volume["read_only"]
+                for volume in anonymous_auth_uow_behavior_test["volumes"]
+            )
+        )
         self.assertNotIn("infra/db/migrations/up", rendered)
         self.assertNotIn("/docker-entrypoint-initdb.d", rendered)
         self.assertNotIn("must_not_be_used", rendered)
@@ -795,11 +817,16 @@ class SchemaV2ComposeContractsTest(unittest.TestCase):
             "schema-v2-gate: schema-v2-contracts schema-v2-config schema-v2-fresh-install",
             makefile,
         )
-        self.assertEqual(makefile.count("run --rm schema-v2-install"), 2)
-        self.assertEqual(makefile.count("run --rm schema-v2-verify"), 2)
+        self.assertEqual(makefile.count("run --rm schema-v2-install"), 3)
+        self.assertEqual(makefile.count("run --rm schema-v2-verify"), 3)
         self.assertIn("run --rm schema-v2-behavior-test", makefile)
         self.assertIn("run --rm schema-v2-session-uow-behavior-test", makefile)
         self.assertIn("run --rm schema-v2-auth-commands-behavior-test", makefile)
+        self.assertIn("schema-v2-anonymous-auth-uow-gate:", makefile)
+        self.assertIn(
+            "run --rm schema-v2-anonymous-auth-uow-behavior-test", makefile
+        )
+        self.assertIn("geno-schema-v2-anonymous-auth-pg", makefile)
         self.assertIn("down --remove-orphans -v", makefile)
         ci_local = makefile.split("\nci-local:", 1)[1].split("\n", 1)[0]
         self.assertIn("schema-v2-gate", ci_local)
