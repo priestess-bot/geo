@@ -20,7 +20,7 @@ Session Cookie，两个信任域不可互换。
 docker compose --env-file infra/production.env -f infra/compose.prod.yml config -q
 ```
 
-确认输出中只有 `internal-api`、`customer-api`、`admin-web`、`customer-web`，不存在 Qdrant、LiteLLM、旧 Dashboard 或旧 Web。
+确认常驻业务服务包含 `internal-api`、`customer-api`、`task-worker`、`outbox-relay`、`admin-web`、`customer-web`、PostgreSQL、MinIO 和 Valkey，并且 `migrate`、`minio-bootstrap` 是受控一次性服务。不得出现 Qdrant、LiteLLM、旧 Dashboard、旧 Web 或历史 Worker。`initial-owner-provision`、观测、备份和恢复服务只应在对应 profile 被显式启用时出现。
 
 ## 3. 启动
 
@@ -30,7 +30,7 @@ docker compose --env-file infra/production.env -f infra/compose.prod.yml up -d
 docker compose --env-file infra/production.env -f infra/compose.prod.yml ps
 ```
 
-`migrate` 必须成功退出，API 和 Web 才能进入 healthy。Admin/Customer Web 只绑定本机回环地址，外部 TLS、域名和访问控制由受管反向代理提供。
+`migrate` 与 `minio-bootstrap` 必须成功退出，API、Worker 和 Web 才能进入可用状态。确认 `task-worker` 仅挂载 Worker 数据库凭据、对象存储应用凭据和 DeepSeek Key；`outbox-relay` 不需要 DeepSeek Key。Admin/Customer Web 只绑定本机回环地址，外部 TLS、域名和访问控制由受管反向代理提供。
 
 ## 4. 首次 Owner 初始化
 

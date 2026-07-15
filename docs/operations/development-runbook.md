@@ -7,7 +7,7 @@
 ```bash
 uv sync
 corepack pnpm install
-cp .env.example .env
+cp -n .env.example .env
 chmod 600 deepseek_api_key.txt
 ```
 
@@ -20,7 +20,7 @@ make dev-up
 docker compose -f infra/docker-compose.yml --profile workers ps
 ```
 
-`make dev-up` 会先检查 `deepseek_api_key.txt` 的存在性和权限，再启动基础设施、执行 Alembic、创建开发运行角色，并启动双 API、Worker 与双 Web。空库只通过 Alembic 建立；不要对旧测试库执行 stamp，旧测试数据可以删除并重新 seed。
+`make dev-up` 会先检查 `deepseek_api_key.txt` 的存在性和权限，再启动基础设施、执行 Alembic、创建开发运行角色，并启动双 API、PostgreSQL Durable `geo_worker`、Outbox Relay 与双 Web。Valkey/Dramatiq 只负责唤醒，Job 真源在 PostgreSQL。空库只通过 Alembic 建立；不要对旧测试库执行 stamp，旧测试数据可以删除并重新 seed。
 
 ## 3. 启动 API
 
@@ -41,6 +41,8 @@ curl -i http://localhost:8001/v1/engineering/status
 完整 Compose 已启动两个前端。只在调试前端热更新时，才分别使用 `make admin-web` 和 `make customer-web`。
 
 访问 Admin `http://localhost:3001` 和 Customer `http://localhost:3000`。Development Board 在工程适配器未连接时显示 unavailable/unknown，不应显示伪造完成率。
+
+实际文案生成由 Worker 异步调用 `deepseek-v4-flash`。API 返回 `202` 后通过 Job 状态等待结果；不得把同步 API 调用、手填正文或历史测试数据当成真实模型生成。
 
 ## 5. 停止
 
