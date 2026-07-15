@@ -383,7 +383,7 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
         version = application.list_package_versions(
             project_id=first["project"], opportunity_id=first["opportunity"].id
         )[0]
-        with pytest.raises(RuntimeError, match="outside the frozen pack"):
+        with pytest.raises(PlacementRuleViolation, match="outside the frozen pack"):
             application.edit_package_version(
                 project_id=first["project"],
                 package_id=version.package_id,
