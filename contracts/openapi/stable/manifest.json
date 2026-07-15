@@ -1,0 +1,25 @@
+{
+  "manifest_version": 1,
+  "surfaces": {
+    "customer": {
+      "api_title": "GEO Customer API",
+      "api_version": "1.0.0",
+      "document_version": "3.1.0",
+      "file": "customer.openapi.json",
+      "operation_count": 7,
+      "path_count": 7,
+      "sha256": "c3246757bfdd92b4be404d3bc67a29bdada2bfbfaa8d8ec7c665630afa03a215",
+      "size_bytes": 29343
+    },
+    "internal": {
+      "api_title": "GEO Internal API",
+      "api_version": "1.0.0",
+      "document_version": "3.1.0",
+      "file": "internal.openapi.json",
+      "operation_count": 13,
+      "path_count": 13,
+      "sha256": "b3603319c0e5af1394739c65d09f3d46892df11cf628d84e823fbcbd51a740c1",
+      "size_bytes": 62280
+    }
+  }
+}

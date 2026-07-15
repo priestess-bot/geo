@@ -1,12 +1,16 @@
-# OpenAPI contract
+# OpenAPI contracts
 
-`geo-api.openapi.json` is the canonical FastAPI contract shared by Admin Web
-and Customer Web. `manifest.json` pins its SHA-256 digest and structural counts.
+The current stable contracts are generated independently from the two deployed
+ASGI entrypoints:
 
-Update both generated files after an intentional API contract change:
+- `stable/internal.openapi.json` from `geo_api.internal_app:app`;
+- `stable/customer.openapi.json` from `geo_api.customer_app:app`;
+- `stable/manifest.json` pins both SHA-256 digests and structural counts.
+
+Update all stable generated files after an intentional API contract change:
 
 ```bash
-make openapi-snapshot
+make openapi-snapshots
 ```
 
 Verify that the checked-in files match the current application:
@@ -15,6 +19,10 @@ Verify that the checked-in files match the current application:
 make openapi-contracts
 ```
 
-The exporter clears the caller environment before importing the API. Snapshot
-generation must not depend on deployment configuration or include secret values.
+The exporter clears the caller environment and never imports `geo_api.main`.
+Generation must not depend on deployment configuration or include secret values.
+Customer validation also rejects internal routes and non-allowlisted writes.
 Generated JSON files must not be edited by hand.
+
+The root `geo-api.openapi.json` and `manifest.json` are retained only as a
+pre-remediation legacy reference. They are not the stable deployment contracts.

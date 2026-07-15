@@ -5,6 +5,7 @@ PROD_ENV ?= infra/production.env
 PROD_COMPOSE := docker compose --env-file $(PROD_ENV) -f infra/compose.prod.yml
 
 .PHONY: bootstrap install lint typecheck quality test test-migrated test-integration \
+	openapi-snapshots openapi-contracts \
 	web-build api-internal api-customer admin-web customer-web \
 	db-up db-down db-reset-dev db-migrate db-heads \
 	docker-config production-config production-up production-down \
@@ -19,7 +20,7 @@ install:
 	corepack pnpm install --frozen-lockfile
 
 lint:
-	uv run ruff check apps/api/geo_api packages/geo_core/geo_core
+	uv run ruff check apps/api/geo_api packages/geo_core/geo_core scripts/export_stable_openapi.py
 
 typecheck:
 	uv run mypy --follow-imports=skip \
@@ -27,6 +28,7 @@ typecheck:
 		apps/api/geo_api/contracts.py \
 		apps/api/geo_api/problems.py \
 		apps/api/geo_api/stable_routes.py \
+		scripts/export_stable_openapi.py \
 		packages/geo_core/geo_core/jobs \
 		packages/geo_core/geo_core/engineering \
 		packages/geo_core/geo_core/model_gateway \
@@ -49,6 +51,13 @@ test-migrated:
 		tests/test_geo_alembic_baseline.py \
 		tests/test_geo_job_lifecycle.py \
 		tests/test_geo_v3_qc_contracts.py
+
+openapi-snapshots:
+	uv run python scripts/export_stable_openapi.py export
+
+openapi-contracts:
+	uv run python scripts/export_stable_openapi.py verify
+	uv run pytest -q tests/test_stable_openapi_contracts.py
 
 test-integration:
 	@test -n "$$GEO_DATABASE_URL" -o -n "$$DATABASE_URL" || (echo "GEO_DATABASE_URL or DATABASE_URL is required" >&2; exit 2)
@@ -122,4 +131,4 @@ deepseek-live:
 	@test -n "$$GEO_DEEPSEEK_API_KEY_FILE" || (echo "GEO_DEEPSEEK_API_KEY_FILE is required" >&2; exit 2)
 	uv run pytest -q -m live tests/test_geo_deepseek_live_generation.py
 
-ci: quality test-migrated web-build docker-config
+ci: quality test-migrated openapi-contracts web-build docker-config

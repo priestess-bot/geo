@@ -18,7 +18,11 @@ jobs:
           enable-cache: true
       - run: uv sync --frozen
       - name: Ruff
-        run: uv run ruff check apps/api/geo_api packages/geo_core/geo_core
+        run: >-
+          uv run ruff check
+          apps/api/geo_api
+          packages/geo_core/geo_core
+          scripts/export_stable_openapi.py
       - name: Strict types for migrated modules
         run: >-
           uv run mypy --follow-imports=skip
@@ -26,6 +30,7 @@ jobs:
           apps/api/geo_api/contracts.py
           apps/api/geo_api/problems.py
           apps/api/geo_api/stable_routes.py
+          scripts/export_stable_openapi.py
           packages/geo_core/geo_core/jobs
           packages/geo_core/geo_core/model_gateway
           packages/geo_core/geo_core/prompts
@@ -38,6 +43,8 @@ jobs:
           tests/test_geo_alembic_baseline.py
           tests/test_geo_job_lifecycle.py
           tests/test_geo_v3_qc_contracts.py
+      - name: Stable internal and customer OpenAPI contracts
+        run: make openapi-contracts
 
   postgres-integration:
     runs-on: ubuntu-latest

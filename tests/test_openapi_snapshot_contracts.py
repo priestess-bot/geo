@@ -93,17 +93,16 @@ class OpenAPISnapshotContractTests(unittest.TestCase):
             self.assertNotIn(first_marker.encode(), combined)
             self.assertNotIn(second_marker.encode(), combined)
 
-    def test_openapi_contract_targets_are_wired_to_make_and_ci(self) -> None:
+    def test_stable_openapi_contract_targets_replace_legacy_build_wiring(self) -> None:
         makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
         workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
         requirements = (ROOT / "apps/api/requirements.txt").read_text(encoding="utf-8")
-        self.assertIn("openapi-snapshot:", makefile)
+        self.assertIn("openapi-snapshots:", makefile)
         self.assertIn("openapi-contracts:", makefile)
-        self.assertIn("scripts/export_openapi_snapshot.py export", makefile)
-        self.assertIn("scripts/export_openapi_snapshot.py verify", makefile)
-        self.assertIn("tests.test_openapi_snapshot_contracts", makefile)
-        ci_local = makefile.split("\nci-local:", 1)[1].split("\n", 1)[0]
-        self.assertIn("openapi-contracts", ci_local)
+        self.assertIn("scripts/export_stable_openapi.py export", makefile)
+        self.assertIn("scripts/export_stable_openapi.py verify", makefile)
+        self.assertIn("tests/test_stable_openapi_contracts.py", makefile)
+        self.assertIn("openapi-contracts", makefile.split("\nci:", 1)[1].split("\n", 1)[0])
         self.assertIn("run: make openapi-contracts", workflow)
         self.assertIn("pydantic==2.12.4", requirements.splitlines())
 
