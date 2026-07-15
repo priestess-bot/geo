@@ -394,8 +394,8 @@ export default async function CustomerHome({
     <main className="shell customerShell">
       <section className="topbar customerTopbar">
         <div>
-          <p className="eyebrow">GENO SaaS AU</p>
-          <h1>GENO 澳大利亚客户工作台</h1>
+          <p className="eyebrow">GEO SaaS AU</p>
+          <h1>GEO 澳大利亚客户工作台</h1>
           <p className="customerLead">面向客户交付查看项目进度、AI 可见度、报告状态和下一步行动。</p>
         </div>
         <div className="apiBox customerUtilityBox">

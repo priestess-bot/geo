@@ -6,13 +6,13 @@ export function middleware(request: NextRequest) {
     copySafeInvitationId(request.nextUrl.searchParams, login.searchParams);
     return withNoReferrer(NextResponse.redirect(login, 303));
   }
-  if ((process.env.GENO_RUNTIME_AUTH_MODE || "header") !== "session") {
+  if ((process.env.GEO_RUNTIME_AUTH_MODE || "header") !== "session") {
     return withNoReferrer(NextResponse.next());
   }
   if (request.nextUrl.pathname === "/login") {
     return withNoReferrer(NextResponse.next());
   }
-  if (request.cookies.get("GENO_RUNTIME_SESSION")?.value) {
+  if (request.cookies.get("GEO_RUNTIME_SESSION")?.value) {
     return withNoReferrer(NextResponse.next());
   }
   const login = new URL("/login", request.url);

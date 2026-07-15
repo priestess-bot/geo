@@ -1,6 +1,6 @@
 # OpenAPI contract
 
-`geno-api.openapi.json` is the canonical FastAPI contract shared by Admin Web
+`geo-api.openapi.json` is the canonical FastAPI contract shared by Admin Web
 and Customer Web. `manifest.json` pins its SHA-256 digest and structural counts.
 
 Update both generated files after an intentional API contract change:

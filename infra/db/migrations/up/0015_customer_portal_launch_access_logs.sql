@@ -1,9 +1,9 @@
-CREATE OR REPLACE FUNCTION geno_runtime_portal_token_hash()
+CREATE OR REPLACE FUNCTION geo_runtime_portal_token_hash()
 RETURNS text
 LANGUAGE sql
 STABLE
 AS $$
-  SELECT nullif(current_setting('geno.runtime_portal_token_hash', true), '');
+  SELECT nullif(current_setting('geo.runtime_portal_token_hash', true), '');
 $$;
 
 CREATE TABLE IF NOT EXISTS customer_portal_tokens (
@@ -108,42 +108,42 @@ ALTER TABLE runtime_http_access_logs ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS customer_portal_tokens_runtime_project_isolation ON customer_portal_tokens;
 CREATE POLICY customer_portal_tokens_runtime_project_isolation ON customer_portal_tokens
   USING (
-    NOT geno_runtime_rls_enabled()
-    OR geno_runtime_can_access_project(project_id)
+    NOT geo_runtime_rls_enabled()
+    OR geo_runtime_can_access_project(project_id)
     OR (
       status = 'active'
-      AND token_hash = geno_runtime_portal_token_hash()
+      AND token_hash = geo_runtime_portal_token_hash()
     )
   )
   WITH CHECK (
-    NOT geno_runtime_rls_enabled()
-    OR geno_runtime_can_access_project(project_id)
+    NOT geo_runtime_rls_enabled()
+    OR geo_runtime_can_access_project(project_id)
     OR (
       status = 'active'
-      AND token_hash = geno_runtime_portal_token_hash()
+      AND token_hash = geo_runtime_portal_token_hash()
     )
   );
 
 DROP POLICY IF EXISTS project_launch_configs_runtime_project_isolation ON project_launch_configs;
 CREATE POLICY project_launch_configs_runtime_project_isolation ON project_launch_configs
   USING (
-    NOT geno_runtime_rls_enabled()
-    OR geno_runtime_can_access_project(project_id)
+    NOT geo_runtime_rls_enabled()
+    OR geo_runtime_can_access_project(project_id)
   )
   WITH CHECK (
-    NOT geno_runtime_rls_enabled()
-    OR geno_runtime_can_access_project(project_id)
+    NOT geo_runtime_rls_enabled()
+    OR geo_runtime_can_access_project(project_id)
   );
 
 DROP POLICY IF EXISTS runtime_http_access_logs_runtime_project_isolation ON runtime_http_access_logs;
 CREATE POLICY runtime_http_access_logs_runtime_project_isolation ON runtime_http_access_logs
   USING (
-    NOT geno_runtime_rls_enabled()
+    NOT geo_runtime_rls_enabled()
     OR project_id IS NULL
-    OR geno_runtime_can_access_project(project_id)
+    OR geo_runtime_can_access_project(project_id)
   )
   WITH CHECK (
-    NOT geno_runtime_rls_enabled()
+    NOT geo_runtime_rls_enabled()
     OR project_id IS NULL
-    OR geno_runtime_can_access_project(project_id)
+    OR geo_runtime_can_access_project(project_id)
   );

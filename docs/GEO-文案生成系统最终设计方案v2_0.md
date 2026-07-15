@@ -13,7 +13,7 @@
 
 ## 1. 最终设计结论
 
-1. 使用独立 `geno_v2` 数据库并行建设 Schema v2；不在旧 `0001-0030` 迁移链上继续叠加 Content v2。
+1. 使用独立 `geo_v2` 数据库并行建设 Schema v2；不在旧 `0001-0030` 迁移链上继续叠加 Content v2。
 2. 保留 Auth、多项目、Collection、Knowledge、Scoring、Reports、Notifications、Portal 和 Audit 的有效能力，但不保留旧测试数据。
 3. Content v0 在 Schema v2 切换时直接移除，不建设 Legacy Adapter、隐式 Brief 或旧 Draft 回填。
 4. `content_assets/content_asset_versions` 是内容真源，不继续使用 `content_drafts` 过渡命名。
@@ -97,8 +97,8 @@ Opportunity / Retest  Brief / Evidence  Source / Chunk / Fact
 FastAPI 保持一个部署单元，但新增代码必须按模块组织：
 
 ```text
-apps/api/geno_api/routers/content/
-packages/geno_core/geno_core/content/
+apps/api/geo_api/routers/content/
+packages/geo_core/geo_core/content/
   contracts.py
   models.py
   repository.py
@@ -109,13 +109,13 @@ packages/geno_core/geno_core/content/
   qa/
 ```
 
-不得继续把 Content v2 写入巨型 `apps/api/geno_api/main.py`、主 `repository.py` 或 `ProjectActions.tsx`。
+不得继续把 Content v2 写入巨型 `apps/api/geo_api/main.py`、主 `repository.py` 或 `ProjectActions.tsx`。
 
 ---
 
 ## 4. Schema v2 基线
 
-使用独立数据库 `geno_v2`，不使用同库双 schema 或 `search_path` 切换。
+使用独立数据库 `geo_v2`，不使用同库双 schema 或 `search_path` 切换。
 
 ```text
 infra/db/schema-v2/
@@ -1019,7 +1019,7 @@ Golden Set 必须分别衡量：
 
 ```text
 B0  修复测试基线，冻结最终合同和审批模板
-B1  Schema v2 runner、manifest、geno_v2 Compose profile
+B1  Schema v2 runner、manifest、geo_v2 Compose profile
 B2  Auth/Project/Collection/Knowledge/Scoring/Report/Portal parity
 B3  Content Schema、RLS、composite FK、trigger
 B4  模块化 API、OpenAPI、Bootstrap、typed clients
@@ -1068,7 +1068,7 @@ git worktree add ../geo-content-web -b codex/content-v2-web main
 冻结 release
 -> maintenance mode，停止旧 API mutation
 -> drain dispatcher/workers/active leases
--> 从 manifest 创建并验证 geno_v2
+-> 从 manifest 创建并验证 geo_v2
 -> 部署同一 release manifest 的 image/schema/OpenAPI
 -> 启动 v2 workers/dispatcher/API
 -> 全能力 smoke、RLS、backup/restore

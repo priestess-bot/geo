@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import unittest
 
-from geno_core.runtime import validate_runtime_schema_compatibility
-from geno_core.schema_compatibility import (
+from geo_core.runtime import validate_runtime_schema_compatibility
+from geo_core.schema_compatibility import (
     SCHEMA_APP_VERSION_ENV,
     SCHEMA_COMPATIBILITY_ENABLED_ENV,
     SCHEMA_DATABASE_URL_ENV,
@@ -14,7 +14,7 @@ from geno_core.schema_compatibility import (
 
 
 BASELINE_HASH = "a" * 64
-DATABASE_URL = "postgresql://schema_user:SECRET_MARKER@db.internal:5432/geno_v2"
+DATABASE_URL = "postgresql://schema_user:SECRET_MARKER@db.internal:5432/geo_v2"
 
 
 def enabled_environment(**overrides: str) -> dict[str, str]:

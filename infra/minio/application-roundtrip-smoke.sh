@@ -1,29 +1,29 @@
 #!/bin/sh
 set -eu
 
-export MC_CONFIG_DIR="${MC_CONFIG_DIR:-/tmp/geno-application-roundtrip-mc}"
-trap 'rm -rf "$MC_CONFIG_DIR" /tmp/geno-application-roundtrip' EXIT
-mkdir -p /tmp/geno-application-roundtrip "${OBJECT_STORE_RECEIPT_DIR:-/receipts}"
+export MC_CONFIG_DIR="${MC_CONFIG_DIR:-/tmp/geo-application-roundtrip-mc}"
+trap 'rm -rf "$MC_CONFIG_DIR" /tmp/geo-application-roundtrip' EXIT
+mkdir -p /tmp/geo-application-roundtrip "${OBJECT_STORE_RECEIPT_DIR:-/receipts}"
 
 access_key="$(cat "${OBJECT_STORE_ACCESS_KEY_FILE:-/run/secrets/object_store_application_access_key}")"
 secret_key="$(cat "${OBJECT_STORE_SECRET_KEY_FILE:-/run/secrets/object_store_application_secret_key}")"
 endpoint="${OBJECT_STORE_ENDPOINT:-http://minio:9000}"
-bucket="${OBJECT_STORE_BUCKET:-geno-reports}"
+bucket="${OBJECT_STORE_BUCKET:-geo-reports}"
 run_id="${OBJECT_STORE_SMOKE_RUN_ID:?set OBJECT_STORE_SMOKE_RUN_ID}"
 
 until mc alias set application "$endpoint" "$access_key" "$secret_key" >/dev/null 2>&1; do
   sleep 1
 done
 
-fingerprint_file=/tmp/geno-application-roundtrip/access-key
+fingerprint_file=/tmp/geo-application-roundtrip/access-key
 printf '%s' "$access_key" > "$fingerprint_file"
 set -- $(sha256sum "$fingerprint_file")
 credential_fingerprint="$1"
 receipt="${OBJECT_STORE_RECEIPT_DIR:-/receipts}/shared-identity-roundtrip.json"
-payload=/tmp/geno-application-roundtrip/shared-identity.txt
-restored=/tmp/geno-application-roundtrip/shared-identity-restored.txt
+payload=/tmp/geo-application-roundtrip/shared-identity.txt
+restored=/tmp/geo-application-roundtrip/shared-identity-restored.txt
 key="production-readiness/$run_id/shared-identity.txt"
-printf 'geno shared application identity policy run=%s\n' "$run_id" > "$payload"
+printf 'geo shared application identity policy run=%s\n' "$run_id" > "$payload"
 set -- $(sha256sum "$payload")
 source_hash="$1"
 mc cp "$payload" "application/$bucket/$key" >/dev/null

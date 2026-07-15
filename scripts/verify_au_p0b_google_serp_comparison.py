@@ -196,7 +196,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "path",
         nargs="?",
-        default=os.environ.get("GENO_AU_P0B_GOOGLE_SERP_FIXTURE_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_P0B_GOOGLE_SERP_FIXTURE_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to the google-serp fixture/spike JSON payload.",
     )
     parser.add_argument(

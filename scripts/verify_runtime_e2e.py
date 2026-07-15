@@ -11,13 +11,13 @@ from zipfile import ZipFile
 
 import psycopg
 
-from geno_core.bootstrap import build_au_project_bootstrap
-from geno_core.collection import collect_prompt_once
-from geno_core.collectors import JsonHttpResponse, PerplexitySonarCollector
-from geno_core.models import RuntimeHumanReviewInput, RuntimeProjectBrandLogoUpload, RuntimePromptImportInput
-from geno_core.object_store import archive_project_brand_logo
-from geno_core.prompt_import import prompt_import_file_to_csv
-from geno_core.runtime import build_object_store_from_env, build_repository_from_env, close_repository_connection
+from geo_core.bootstrap import build_au_project_bootstrap
+from geo_core.collection import collect_prompt_once
+from geo_core.collectors import JsonHttpResponse, PerplexitySonarCollector
+from geo_core.models import RuntimeHumanReviewInput, RuntimeProjectBrandLogoUpload, RuntimePromptImportInput
+from geo_core.object_store import archive_project_brand_logo
+from geo_core.prompt_import import prompt_import_file_to_csv
+from geo_core.runtime import build_object_store_from_env, build_repository_from_env, close_repository_connection
 from workers.collector_worker import run_collection_slice as worker_module
 
 
@@ -443,11 +443,11 @@ def _assert_runtime_project_rls(fixture_project_id: str) -> dict[str, Any]:
                   set_config(%s, %s, true)
                 """,
                 (
-                    "geno.runtime_project_access_control",
+                    "geo.runtime_project_access_control",
                     "1",
-                    "geno.runtime_actor_id",
+                    "geo.runtime_actor_id",
                     actor_id,
-                    "geno.runtime_project_id",
+                    "geo.runtime_project_id",
                     fixture_project_id,
                 ),
             )

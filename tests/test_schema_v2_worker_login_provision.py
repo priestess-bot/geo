@@ -23,11 +23,11 @@ class SchemaV2WorkerLoginProvisionContractTest(unittest.TestCase):
 
     def test_worker_profile_is_a_fixed_registry_entry(self) -> None:
         profile = provisioner.LOGIN_PROFILES["worker"]
-        self.assertEqual(profile.login_role, "geno_v2_worker_login")
-        self.assertEqual(profile.execution_role, "geno_v2_worker")
+        self.assertEqual(profile.login_role, "geo_v2_worker_login")
+        self.assertEqual(profile.execution_role, "geo_v2_worker")
         self.assertEqual(
             profile.readiness_function,
-            "geno_v2_worker_login_startup_ready",
+            "geo_v2_worker_login_startup_ready",
         )
         self.assertEqual(
             profile.required_baseline_files,
@@ -46,15 +46,15 @@ class SchemaV2WorkerLoginProvisionContractTest(unittest.TestCase):
 
     def test_migration_seals_worker_and_exposes_only_narrow_readiness(self) -> None:
         sql = MIGRATION.read_text(encoding="utf-8")
-        self.assertIn("geno_v2_worker_login_startup_ready", sql)
+        self.assertIn("geo_v2_worker_login_startup_ready", sql)
         self.assertIn("WHERE attempt.login_kind = 'worker'", sql)
-        self.assertIn("session_user = 'geno_v2_worker_login'", sql)
-        self.assertIn("current_setting('role', true) = 'geno_v2_worker'", sql)
+        self.assertIn("session_user = 'geo_v2_worker_login'", sql)
+        self.assertIn("current_setting('role', true) = 'geo_v2_worker'", sql)
         self.assertIn("SECURITY DEFINER", sql)
         self.assertIn("SET search_path = pg_catalog", sql)
-        self.assertIn("OWNER TO geno_v2_authz_owner", sql)
-        self.assertIn("TO geno_v2_worker;", sql)
-        self.assertIn("FROM PUBLIC, geno_v2_runtime, geno_v2_worker_login", sql)
+        self.assertIn("OWNER TO geo_v2_authz_owner", sql)
+        self.assertIn("TO geo_v2_worker;", sql)
+        self.assertIn("FROM PUBLIC, geo_v2_runtime, geo_v2_worker_login", sql)
         self.assertIn("NOLOGIN NOSUPERUSER", sql)
         self.assertIn("NOBYPASSRLS PASSWORD NULL", sql)
         self.assertIn("worker_login_provision_catalog_verification_failed", sql)
@@ -75,20 +75,20 @@ class SchemaV2WorkerLoginProvisionContractTest(unittest.TestCase):
         self.assertEqual(args.login_kind, "worker")
         self.assertEqual(args.command, "check")
         with self.assertRaises(SystemExit):
-            parser.parse_args(["--login-kind", "geno_v2_job_owner", "disable"])
+            parser.parse_args(["--login-kind", "geo_v2_job_owner", "disable"])
 
     def test_worker_plaintext_environment_is_rejected(self) -> None:
         base = {
             "PGHOST": "localhost",
             "PGPORT": "5432",
-            "PGDATABASE": "geno_v2",
+            "PGDATABASE": "geo_v2",
             "PGUSER": "installer",
             "PGPASSWORD": "installer-secret",
         }
         for variable in (
-            "GENO_SCHEMA_V2_WORKER_LOGIN_PASSWORD",
+            "GEO_SCHEMA_V2_WORKER_LOGIN_PASSWORD",
             "SCHEMA_V2_WORKER_LOGIN_PASSWORD",
-            "GENO_V2_WORKER_LOGIN_PASSWORD",
+            "GEO_V2_WORKER_LOGIN_PASSWORD",
         ):
             with self.subTest(variable=variable):
                 with self.assertRaisesRegex(
@@ -114,7 +114,7 @@ class SchemaV2WorkerLoginProvisionContractTest(unittest.TestCase):
                     env={
                         "PGHOST": "localhost",
                         "PGPORT": "5432",
-                        "PGDATABASE": "geno_v2",
+                        "PGDATABASE": "geo_v2",
                         "PGUSER": "installer",
                         "PGPASSWORD": "installer-secret",
                     },

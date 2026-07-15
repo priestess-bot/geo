@@ -4,13 +4,13 @@ import argparse
 import json
 import time
 
-from geno_core.durable_jobs import collect_durable_job_metrics
-from geno_core.knowledge_pipeline import (
+from geo_core.durable_jobs import collect_durable_job_metrics
+from geo_core.knowledge_pipeline import (
     close_knowledge_repository,
     connect_knowledge_pipeline_repository,
 )
-from geno_core.runtime import validate_runtime_schema_compatibility
-from geno_core.task_queue import dispatch_background_task
+from geo_core.runtime import validate_runtime_schema_compatibility
+from geo_core.task_queue import dispatch_background_task
 
 
 def _queue_snapshot() -> dict[str, object]:

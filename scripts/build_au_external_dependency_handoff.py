@@ -488,8 +488,8 @@ def _build_clearance_sequence(
             "make verify-au-launch-status",
             "make verify-au-handoff-dossier",
             "make verify-au-external-dependency-handoff",
-            "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_external_dependency_handoff.py ${GENO_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH:-docs/runtime_preflight/au-external-dependency-handoff-latest.json} --require-ready",
-            "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_launch_status.py ${GENO_AU_LAUNCH_STATUS_OUTPUT_PATH:-docs/runtime_preflight/au-launch-status-latest.json} --require-ready",
+            "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_external_dependency_handoff.py ${GEO_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH:-docs/runtime_preflight/au-external-dependency-handoff-latest.json} --require-ready",
+            "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_launch_status.py ${GEO_AU_LAUNCH_STATUS_OUTPUT_PATH:-docs/runtime_preflight/au-launch-status-latest.json} --require-ready",
         ],
         "evidence_outputs": [
             DEFAULT_OUTPUT_PATH,
@@ -535,25 +535,25 @@ def _p0a_provider_credentials_group(
             "make au-p0a-credential-fulfillment",
             "make verify-au-p0a-credential-fulfillment",
             (
-                "PYTHONPATH=packages/geno_core:apps/api python3 "
+                "PYTHONPATH=packages/geo_core:apps/api python3 "
                 "scripts/verify_au_p0a_credential_fulfillment.py "
-                "${GENO_AU_P0A_CREDENTIAL_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-fulfillment-latest.json} "
+                "${GEO_AU_P0A_CREDENTIAL_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-fulfillment-latest.json} "
                 "--require-fulfilled"
             ),
             "make au-p0a-credential-clearance",
             "make verify-au-p0a-credential-clearance",
             (
-                "PYTHONPATH=packages/geno_core:apps/api python3 "
+                "PYTHONPATH=packages/geo_core:apps/api python3 "
                 "scripts/verify_au_p0a_credential_clearance.py "
-                "${GENO_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-clearance-latest.json} "
+                "${GEO_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-clearance-latest.json} "
                 "--require-cleared"
             ),
             "make au-p0a-credential-update-receipt",
             "make verify-au-p0a-credential-update-receipt",
             (
-                "PYTHONPATH=packages/geno_core:apps/api python3 "
+                "PYTHONPATH=packages/geo_core:apps/api python3 "
                 "scripts/verify_au_p0a_credential_update_receipt.py "
-                "${GENO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-update-receipt-latest.json} "
+                "${GEO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-update-receipt-latest.json} "
                 "--require-complete"
             ),
         ]
@@ -609,9 +609,9 @@ def _p0a_real_batches_group(p0a_execution_checklist: dict[str, Any], work_items:
             "make au-p0a-real-batch-fulfillment",
             "make verify-au-p0a-real-batch-fulfillment",
             (
-                "PYTHONPATH=packages/geno_core:apps/api python3 "
+                "PYTHONPATH=packages/geo_core:apps/api python3 "
                 "scripts/verify_au_p0a_real_batch_fulfillment.py "
-                "${GENO_AU_P0A_REAL_BATCH_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-real-batch-fulfillment-latest.json} "
+                "${GEO_AU_P0A_REAL_BATCH_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-real-batch-fulfillment-latest.json} "
                 "--require-fulfilled"
             ),
             "make au-p0a-status",
@@ -619,9 +619,9 @@ def _p0a_real_batches_group(p0a_execution_checklist: dict[str, Any], work_items:
             "make au-p0a-execution-checklist",
             "make verify-au-p0a-execution-checklist",
             (
-                "PYTHONPATH=packages/geno_core:apps/api python3 "
+                "PYTHONPATH=packages/geo_core:apps/api python3 "
                 "scripts/verify_au_p0a_execution_checklist.py "
-                "${GENO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-execution-checklist-latest.json} "
+                "${GEO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-execution-checklist-latest.json} "
                 "--require-design-partner-ready"
             ),
         ]
@@ -666,9 +666,9 @@ def _p0b_google_environment_group(p0b_google_execution_checklist: dict[str, Any]
             "make au-p0b-google-environment-fulfillment",
             "make verify-au-p0b-google-environment-fulfillment",
             (
-                "PYTHONPATH=packages/geno_core:apps/api python3 "
+                "PYTHONPATH=packages/geo_core:apps/api python3 "
                 "scripts/verify_au_p0b_google_environment_fulfillment.py "
-                "${GENO_AU_P0B_GOOGLE_ENVIRONMENT_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-environment-fulfillment-latest.json} "
+                "${GEO_AU_P0B_GOOGLE_ENVIRONMENT_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-environment-fulfillment-latest.json} "
                 "--require-fulfilled"
             ),
         ]
@@ -734,9 +734,9 @@ def _p0b_google_manual_backfill_group(
             "make au-p0b-google-manual-backfill-fulfillment",
             "make verify-au-p0b-google-manual-backfill-fulfillment",
             (
-                "PYTHONPATH=packages/geno_core:apps/api python3 "
+                "PYTHONPATH=packages/geo_core:apps/api python3 "
                 "scripts/verify_au_p0b_google_manual_backfill_fulfillment.py "
-                "${GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-manual-backfill-fulfillment-latest.json} "
+                "${GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-manual-backfill-fulfillment-latest.json} "
                 "--require-fulfilled"
             ),
         ]
@@ -819,9 +819,9 @@ def _p0b_google_phase_execution_group(
             "make au-p0b-google-phase-execution-fulfillment",
             "make verify-au-p0b-google-phase-execution-fulfillment",
             (
-                "PYTHONPATH=packages/geno_core:apps/api python3 "
+                "PYTHONPATH=packages/geo_core:apps/api python3 "
                 "scripts/verify_au_p0b_google_phase_execution_fulfillment.py "
-                "${GENO_AU_P0B_GOOGLE_PHASE_EXECUTION_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-phase-execution-fulfillment-latest.json} "
+                "${GEO_AU_P0B_GOOGLE_PHASE_EXECUTION_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-phase-execution-fulfillment-latest.json} "
                 "--require-fulfilled"
             ),
         ]
@@ -1194,28 +1194,28 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build an AU external dependency handoff JSON")
     parser.add_argument(
         "--launch-status-path",
-        default=os.environ.get("GENO_AU_LAUNCH_STATUS_OUTPUT_PATH", DEFAULT_LAUNCH_STATUS_PATH),
+        default=os.environ.get("GEO_AU_LAUNCH_STATUS_OUTPUT_PATH", DEFAULT_LAUNCH_STATUS_PATH),
         help="Path to the AU launch status JSON.",
     )
     parser.add_argument(
         "--remediation-plan-path",
-        default=os.environ.get("GENO_AU_LAUNCH_REMEDIATION_PLAN_OUTPUT_PATH", DEFAULT_REMEDIATION_PLAN_PATH),
+        default=os.environ.get("GEO_AU_LAUNCH_REMEDIATION_PLAN_OUTPUT_PATH", DEFAULT_REMEDIATION_PLAN_PATH),
         help="Path to the AU launch remediation plan JSON.",
     )
     parser.add_argument(
         "--p0a-environment-checklist-path",
-        default=os.environ.get("GENO_AU_P0A_ENVIRONMENT_CHECKLIST_OUTPUT_PATH", DEFAULT_P0A_ENVIRONMENT_CHECKLIST_PATH),
+        default=os.environ.get("GEO_AU_P0A_ENVIRONMENT_CHECKLIST_OUTPUT_PATH", DEFAULT_P0A_ENVIRONMENT_CHECKLIST_PATH),
         help="Path to the AU P0a environment checklist JSON.",
     )
     parser.add_argument(
         "--p0a-execution-checklist-path",
-        default=os.environ.get("GENO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH", DEFAULT_P0A_EXECUTION_CHECKLIST_PATH),
+        default=os.environ.get("GEO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH", DEFAULT_P0A_EXECUTION_CHECKLIST_PATH),
         help="Path to the AU P0a execution checklist JSON.",
     )
     parser.add_argument(
         "--p0b-google-execution-checklist-path",
         default=os.environ.get(
-            "GENO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH",
+            "GEO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH",
             DEFAULT_P0B_GOOGLE_EXECUTION_CHECKLIST_PATH,
         ),
         help="Path to the AU P0b Google execution checklist JSON.",
@@ -1223,14 +1223,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--p0b-google-manual-backfill-fulfillment-path",
         default=os.environ.get(
-            "GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH",
+            "GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH",
             DEFAULT_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_PATH,
         ),
         help="Optional path to the AU P0b Google manual backfill fulfillment JSON.",
     )
     parser.add_argument(
         "--output-path",
-        default=os.environ.get("GENO_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to write the AU external dependency handoff JSON.",
     )
     parser.add_argument("--generated-at", default=None, help="Override generated_at timestamp for deterministic tests.")

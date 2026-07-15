@@ -12,7 +12,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPORTER = ROOT / "scripts/export_openapi_snapshot.py"
-SNAPSHOT = ROOT / "contracts/openapi/geno-api.openapi.json"
+SNAPSHOT = ROOT / "contracts/openapi/geo-api.openapi.json"
 MANIFEST = ROOT / "contracts/openapi/manifest.json"
 REQUIRED_OPERATIONS = (
     ("/health", "get"),
@@ -26,10 +26,10 @@ REQUIRED_OPERATIONS = (
 def _run_export(snapshot: Path, manifest: Path, *, marker: str) -> None:
     environment = {
         **os.environ,
-        "DATABASE_URL": f"postgresql://contract:{marker}@database.invalid/geno",
-        "GENO_CONNECTOR_SECRET_MASTER_KEY": marker,
-        "GENO_DEPLOYMENT_ENVIRONMENT": "production",
-        "GENO_RUNTIME_JWT_SECRET": marker,
+        "DATABASE_URL": f"postgresql://contract:{marker}@database.invalid/geo",
+        "GEO_CONNECTOR_SECRET_MASTER_KEY": marker,
+        "GEO_DEPLOYMENT_ENVIRONMENT": "production",
+        "GEO_RUNTIME_JWT_SECRET": marker,
     }
     subprocess.run(
         [
@@ -77,8 +77,8 @@ class OpenAPISnapshotContractTests(unittest.TestCase):
             temp_path = Path(temp)
             first_dir = temp_path / "first"
             second_dir = temp_path / "second"
-            first_snapshot = first_dir / "geno-api.openapi.json"
-            second_snapshot = second_dir / "geno-api.openapi.json"
+            first_snapshot = first_dir / "geo-api.openapi.json"
+            second_snapshot = second_dir / "geo-api.openapi.json"
             first_manifest = first_dir / "manifest.json"
             second_manifest = second_dir / "manifest.json"
             first_marker = "OPENAPI_FIRST_SECRET_MARKER"

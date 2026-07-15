@@ -50,7 +50,7 @@ class GeoDeepSeekLiveGenerationTest(unittest.TestCase):
         request = Request(
             f"{api_url}/v1/geo/placement-opportunities/{opportunity_id}/packages",
             data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json", "X-GENO-Actor-Id": actor_id},
+            headers={"Content-Type": "application/json", "X-GEO-Actor-Id": actor_id},
             method="POST",
         )
         try:

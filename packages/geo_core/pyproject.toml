@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "geo-core"
+version = "0.1.0"
+description = "Domain and application core for the GEO platform"
+requires-python = ">=3.12,<3.13"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["geo_core*"]

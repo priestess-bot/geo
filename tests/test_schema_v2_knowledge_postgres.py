@@ -111,7 +111,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
             )
             cursor.execute(
                 "SELECT permission FROM unnest("
-                "geno_v2_permissions_for_role('knowledge_architect')) "
+                "geo_v2_permissions_for_role('knowledge_architect')) "
                 "AS item(permission) ORDER BY permission"
             )
             permissions = [row[0] for row in cursor.fetchall()]
@@ -225,7 +225,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
                     (cls.tenant_id, cls.project_a, actor_id, role),
                 )
                 cursor.execute(
-                    "SELECT permission FROM unnest(geno_v2_permissions_for_role(%s)) "
+                    "SELECT permission FROM unnest(geo_v2_permissions_for_role(%s)) "
                     "AS item(permission) ORDER BY permission",
                     (role,),
                 )
@@ -355,9 +355,9 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
         connection = psycopg.connect(autocommit=True)
         cursor = connection.cursor()
         try:
-            cursor.execute("SET ROLE geno_v2_api_login")
+            cursor.execute("SET ROLE geo_v2_api_login")
             cursor.execute("BEGIN")
-            cursor.execute("SET LOCAL ROLE geno_v2_runtime")
+            cursor.execute("SET LOCAL ROLE geo_v2_runtime")
             cursor.execute(
                 "SELECT set_config('app.session_token_hash', %s, true)",
                 (session_hash or self.session_hash,),
@@ -376,9 +376,9 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
         connection = psycopg.connect(autocommit=True)
         cursor = connection.cursor()
         try:
-            cursor.execute("SET ROLE geno_v2_worker_login")
+            cursor.execute("SET ROLE geo_v2_worker_login")
             cursor.execute("BEGIN")
-            cursor.execute("SET LOCAL ROLE geno_v2_worker")
+            cursor.execute("SET LOCAL ROLE geo_v2_worker")
             cursor.execute("SELECT set_config('app.session_token_hash', '', true)")
             yield cursor
             cursor.execute("COMMIT")
@@ -464,7 +464,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
         with self._runtime_transaction() as cursor:
             cursor.execute(
                 "SELECT id, input_hash, request_hash, status "
-                "FROM geno_v2_create_knowledge_job("
+                "FROM geo_v2_create_knowledge_job("
                 "%s, %s, %s, %s, %s, 'import', %s, %s, NULL)",
                 (
                     job_id,
@@ -497,14 +497,14 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
             with self._worker_transaction() as cursor:
                 cursor.execute(
                     "SELECT id, lease_token, expected_content_hash "
-                    "FROM geno_v2_claim_artifact_finalize(%s, 60, %s)",
+                    "FROM geo_v2_claim_artifact_finalize(%s, 60, %s)",
                     ("knowledge-artifact-finalizer", self.project_a),
                 )
                 claimed = cursor.fetchone()
                 if claimed is None:
                     self.fail(f"artifact finalize outbox {target_outbox_id} was not claimable")
                 cursor.execute(
-                    "SELECT id FROM geno_v2_complete_artifact_finalize(%s, %s, %s, %s)",
+                    "SELECT id FROM geo_v2_complete_artifact_finalize(%s, %s, %s, %s)",
                     (claimed[0], "knowledge-artifact-finalizer", claimed[1], claimed[2]),
                 )
             if claimed[0] == target_outbox_id:
@@ -516,7 +516,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
             with self._worker_transaction() as cursor:
                 cursor.execute(
                     "SELECT id, lease_token, expected_content_hash "
-                    "FROM geno_v2_claim_artifact_finalize(%s, 60, %s)",
+                    "FROM geo_v2_claim_artifact_finalize(%s, 60, %s)",
                     ("knowledge-artifact-failure", self.project_a),
                 )
                 claimed = cursor.fetchone()
@@ -525,7 +525,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
                 if claimed[0] == target_outbox_id:
                     return claimed[1], claimed[2]
                 cursor.execute(
-                    "SELECT id FROM geno_v2_complete_artifact_finalize(%s, %s, %s, %s)",
+                    "SELECT id FROM geo_v2_complete_artifact_finalize(%s, %s, %s, %s)",
                     (
                         claimed[0],
                         "knowledge-artifact-failure",
@@ -559,7 +559,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
         with self._worker_transaction() as cursor:
             cursor.execute(
                 "SELECT id, lease_token, status FROM "
-                "geno_v2_claim_knowledge_job(%s, 60, %s, 'import')",
+                "geo_v2_claim_knowledge_job(%s, 60, %s, 'import')",
                 (worker_id, self.project_a),
             )
             row = cursor.fetchone()
@@ -1137,7 +1137,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
 
     def test_runtime_and_worker_have_no_table_dml_and_cross_project_is_atomic(self) -> None:
         with psycopg.connect() as connection, connection.cursor() as cursor:
-            for role_name in ("geno_v2_runtime", "geno_v2_worker"):
+            for role_name in ("geo_v2_runtime", "geo_v2_worker"):
                 cursor.execute(
                     "SELECT has_table_privilege(%s, 'knowledge_pipeline_jobs', %s)",
                     (role_name, "INSERT,UPDATE,DELETE"),
@@ -1145,11 +1145,11 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
                 self.assertFalse(cursor.fetchone()[0])
             cursor.execute(
                 "SELECT has_function_privilege("
-                "'geno_v2_worker', "
-                "'geno_v2_claim_knowledge_job(text,integer,uuid,text)', 'EXECUTE'), "
+                "'geo_v2_worker', "
+                "'geo_v2_claim_knowledge_job(text,integer,uuid,text)', 'EXECUTE'), "
                 "has_function_privilege("
-                "'geno_v2_runtime', "
-                "'geno_v2_claim_knowledge_job(text,integer,uuid,text)', 'EXECUTE')"
+                "'geo_v2_runtime', "
+                "'geo_v2_claim_knowledge_job(text,integer,uuid,text)', 'EXECUTE')"
             )
             worker_can_claim, runtime_can_claim = cursor.fetchone()
             self.assertTrue(worker_can_claim)
@@ -1208,7 +1208,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
 
         with self._runtime_transaction() as cursor:
             cursor.execute(
-                "SELECT id, input_hash FROM geno_v2_create_knowledge_job("
+                "SELECT id, input_hash FROM geo_v2_create_knowledge_job("
                 "%s, %s, %s, %s, %s, 'import', %s, %s, NULL)",
                 (
                     ids["job_id"],
@@ -1228,7 +1228,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
         with self.assertRaises(psycopg.Error) as conflict:
             with self._runtime_transaction() as cursor:
                 cursor.execute(
-                    "SELECT id FROM geno_v2_create_knowledge_job("
+                    "SELECT id FROM geo_v2_create_knowledge_job("
                     "%s, %s, %s, %s, %s, 'import', %s, %s, NULL)",
                     (
                         ids["job_id"],
@@ -1252,7 +1252,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
         with self.assertRaises(psycopg.Error) as rejected:
             with self._runtime_transaction() as cursor:
                 cursor.execute(
-                    "SELECT id FROM geno_v2_create_knowledge_job("
+                    "SELECT id FROM geo_v2_create_knowledge_job("
                     "%s, %s, %s, %s, %s, 'import', %s, %s, NULL)",
                     (
                         uuid4(),
@@ -1270,7 +1270,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
         ids = self._create_import_job()
         with self._worker_transaction() as cursor:
             cursor.execute(
-                "SELECT id FROM geno_v2_claim_knowledge_job(%s, 60, %s, 'import')",
+                "SELECT id FROM geo_v2_claim_knowledge_job(%s, 60, %s, 'import')",
                 ("pre-finalize-worker", self.project_a),
             )
             self.assertIsNone(cursor.fetchone())
@@ -1281,7 +1281,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
         self.assertEqual(status, "running")
         with self._worker_transaction() as cursor:
             cursor.execute(
-                "SELECT geno_v2_read_knowledge_job_input(%s, %s, %s)",
+                "SELECT geo_v2_read_knowledge_job_input(%s, %s, %s)",
                 (job_id, "input-reader", lease_token),
             )
             payload = cursor.fetchone()[0]
@@ -1298,7 +1298,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
         with self.assertRaises(psycopg.Error) as stale:
             with self._worker_transaction() as cursor:
                 cursor.execute(
-                    "SELECT geno_v2_read_knowledge_job_input(%s, %s, %s)",
+                    "SELECT geo_v2_read_knowledge_job_input(%s, %s, %s)",
                     (job_id, "input-reader", uuid4()),
                 )
         self.assertEqual(stale.exception.sqlstate, "55000")
@@ -1319,28 +1319,28 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
         with self.assertRaises(psycopg.Error) as stale:
             with self._worker_transaction() as cursor:
                 cursor.execute(
-                    "SELECT id FROM geno_v2_heartbeat_knowledge_job(%s, %s, %s, 60)",
+                    "SELECT id FROM geo_v2_heartbeat_knowledge_job(%s, %s, %s, 60)",
                     (job_id, "crashed-worker", first_token),
                 )
         self.assertEqual(stale.exception.sqlstate, "55000")
 
         with self._runtime_transaction() as cursor:
             cursor.execute(
-                "SELECT status FROM geno_v2_request_knowledge_job_cancel(%s, %s)",
+                "SELECT status FROM geo_v2_request_knowledge_job_cancel(%s, %s)",
                 (job_id, "operator cancelled test job"),
             )
             self.assertEqual(cursor.fetchone()[0], "running")
         with self.assertRaises(psycopg.Error) as cancelled_heartbeat:
             with self._worker_transaction() as cursor:
                 cursor.execute(
-                    "SELECT id FROM geno_v2_heartbeat_knowledge_job(%s, %s, %s, 60)",
+                    "SELECT id FROM geo_v2_heartbeat_knowledge_job(%s, %s, %s, 60)",
                     (job_id, "recovery-worker", second_token),
                 )
         self.assertEqual(cancelled_heartbeat.exception.sqlstate, "55000")
         with self.assertRaises(psycopg.Error) as cancelled_fail:
             with self._worker_transaction() as cursor:
                 cursor.execute(
-                    "SELECT id FROM geno_v2_fail_knowledge_job("
+                    "SELECT id FROM geo_v2_fail_knowledge_job("
                     "%s, %s, %s, 'worker_error', 'must not replace cancel', "
                     "false, 0)",
                     (job_id, "recovery-worker", second_token),
@@ -1348,7 +1348,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
         self.assertEqual(cancelled_fail.exception.sqlstate, "55000")
         with self._worker_transaction() as cursor:
             cursor.execute(
-                "SELECT status FROM geno_v2_ack_knowledge_job_cancel(%s, %s, %s)",
+                "SELECT status FROM geo_v2_ack_knowledge_job_cancel(%s, %s, %s)",
                 (job_id, "recovery-worker", second_token),
             )
             self.assertEqual(cursor.fetchone()[0], "cancelled")
@@ -1358,7 +1358,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
         with self._runtime_transaction() as cursor:
             cursor.execute(
                 "SELECT id, parent_job_id, replay_nonce FROM "
-                "geno_v2_replay_knowledge_job(%s, %s, %s)",
+                "geo_v2_replay_knowledge_job(%s, %s, %s)",
                 (job_id, replay_id, replay_key),
             )
             replay = cursor.fetchone()
@@ -1366,7 +1366,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
             self.assertEqual(replay[1], job_id)
             self.assertEqual(replay[2], 1)
             cursor.execute(
-                "SELECT id FROM geno_v2_replay_knowledge_job(%s, %s, %s)",
+                "SELECT id FROM geo_v2_replay_knowledge_job(%s, %s, %s)",
                 (job_id, replay_id, replay_key),
             )
             self.assertEqual(cursor.fetchone()[0], replay_id)
@@ -1382,7 +1382,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
         with self.assertRaises(psycopg.Error) as bad_hash:
             with self._worker_transaction() as cursor:
                 cursor.execute(
-                    "SELECT id FROM geno_v2_begin_finalizing_knowledge_job("
+                    "SELECT id FROM geo_v2_begin_finalizing_knowledge_job("
                     "%s, %s, %s, %s, %s)",
                     (job_id, "result-worker", lease_token, _digest("wrong"), Jsonb(result)),
                 )
@@ -1391,14 +1391,14 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
         with self._worker_transaction() as cursor:
             cursor.execute(
                 "SELECT status, finalizing_result_hash FROM "
-                "geno_v2_begin_finalizing_knowledge_job(%s, %s, %s, %s, %s)",
+                "geo_v2_begin_finalizing_knowledge_job(%s, %s, %s, %s, %s)",
                 (job_id, "result-worker", lease_token, result_hash, Jsonb(result)),
             )
             self.assertEqual(cursor.fetchone(), ("finalizing", result_hash))
         with self.assertRaises(psycopg.Error) as pending:
             with self._worker_transaction() as cursor:
                 cursor.execute(
-                    "SELECT id FROM geno_v2_complete_knowledge_job(%s, %s, %s)",
+                    "SELECT id FROM geo_v2_complete_knowledge_job(%s, %s, %s)",
                     (job_id, "result-worker", lease_token),
                 )
         self.assertEqual(pending.exception.sqlstate, "55000")
@@ -1406,7 +1406,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
         self._finalize_artifact(UUID(test_ids["output_outbox_id"]))
         with self._worker_transaction() as cursor:
             cursor.execute(
-                "SELECT status, result_hash FROM geno_v2_complete_knowledge_job(%s, %s, %s)",
+                "SELECT status, result_hash FROM geo_v2_complete_knowledge_job(%s, %s, %s)",
                 (job_id, "result-worker", lease_token),
             )
             self.assertEqual(cursor.fetchone(), ("succeeded", result_hash))
@@ -1457,7 +1457,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
         result_hash = self._canonical_json_hash(result)
         with self._worker_transaction() as cursor:
             cursor.execute(
-                "SELECT status FROM geno_v2_begin_finalizing_knowledge_job("
+                "SELECT status FROM geo_v2_begin_finalizing_knowledge_job("
                 "%s, %s, %s, %s, %s)",
                 (job_id, "hard-block-worker", lease_token, result_hash, Jsonb(result)),
             )
@@ -1467,14 +1467,14 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
         with self.assertRaises(psycopg.Error) as incomplete:
             with self._worker_transaction() as cursor:
                 cursor.execute(
-                    "SELECT id FROM geno_v2_complete_knowledge_job(%s, %s, %s)",
+                    "SELECT id FROM geo_v2_complete_knowledge_job(%s, %s, %s)",
                     (job_id, "hard-block-worker", lease_token),
                 )
         self.assertEqual(incomplete.exception.sqlstate, "55000")
         with self.assertRaises(psycopg.Error) as non_overridable:
             with self._runtime_transaction() as cursor:
                 cursor.execute(
-                    "SELECT id FROM geno_v2_accept_knowledge_risk(%s, %s, %s)",
+                    "SELECT id FROM geo_v2_accept_knowledge_risk(%s, %s, %s)",
                     (uuid4(), finding_id, "must not override a hard block"),
                 )
         self.assertEqual(non_overridable.exception.sqlstate, "55000")
@@ -1498,7 +1498,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
         result_hash = self._canonical_json_hash(result)
         with self._worker_transaction() as cursor:
             cursor.execute(
-                "SELECT status FROM geno_v2_begin_finalizing_knowledge_job("
+                "SELECT status FROM geo_v2_begin_finalizing_knowledge_job("
                 "%s, %s, %s, %s, %s)",
                 (
                     job_id,
@@ -1513,7 +1513,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
         with self.assertRaises(psycopg.Error) as incomplete:
             with self._worker_transaction() as cursor:
                 cursor.execute(
-                    "SELECT id FROM geno_v2_complete_knowledge_job(%s, %s, %s)",
+                    "SELECT id FROM geo_v2_complete_knowledge_job(%s, %s, %s)",
                     (job_id, "missing-quality-worker", lease_token),
                 )
         self.assertEqual(incomplete.exception.sqlstate, "55000")
@@ -1526,7 +1526,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
 
         with psycopg.connect() as connection, connection.cursor() as cursor:
             cursor.execute(
-                "SELECT geno_v2_knowledge_quality_certificate_complete(%s)",
+                "SELECT geo_v2_knowledge_quality_certificate_complete(%s)",
                 (graph["fact_job_id"],),
             )
             self.assertTrue(cursor.fetchone()[0])
@@ -1562,7 +1562,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
 
         with psycopg.connect() as connection, connection.cursor() as cursor:
             cursor.execute(
-                "SELECT geno_v2_knowledge_quality_certificate_complete(%s)",
+                "SELECT geo_v2_knowledge_quality_certificate_complete(%s)",
                 (graph["fact_job_id"],),
             )
             self.assertFalse(cursor.fetchone()[0])
@@ -1584,7 +1584,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
 
         with psycopg.connect() as connection, connection.cursor() as cursor:
             cursor.execute(
-                "SELECT geno_v2_knowledge_quality_certificate_complete(%s)",
+                "SELECT geo_v2_knowledge_quality_certificate_complete(%s)",
                 (graph["fact_job_id"],),
             )
             self.assertTrue(cursor.fetchone()[0])
@@ -1622,7 +1622,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
 
         with psycopg.connect() as connection, connection.cursor() as cursor:
             cursor.execute(
-                "SELECT geno_v2_knowledge_quality_certificate_complete(%s)",
+                "SELECT geo_v2_knowledge_quality_certificate_complete(%s)",
                 (graph["fact_job_id"],),
             )
             self.assertFalse(cursor.fetchone()[0])
@@ -1644,7 +1644,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
         with self.assertRaises(psycopg.Error) as polluted:
             with self._worker_transaction() as cursor:
                 cursor.execute(
-                    "SELECT id FROM geno_v2_begin_finalizing_knowledge_job("
+                    "SELECT id FROM geo_v2_begin_finalizing_knowledge_job("
                     "%s, %s, %s, %s, %s)",
                     (job_id, "pollution-worker", lease_token, result_hash, Jsonb(result)),
                 )
@@ -1666,7 +1666,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
         lease_token, _ = self._claim_target_artifact(ids["artifact_outbox_id"])
         with self._worker_transaction() as cursor:
             cursor.execute(
-                "SELECT status FROM geno_v2_fail_artifact_finalize("
+                "SELECT status FROM geo_v2_fail_artifact_finalize("
                 "%s, %s, %s, 'object_missing', 'object did not exist', false, 0)",
                 (ids["artifact_outbox_id"], "knowledge-artifact-failure", lease_token),
             )
@@ -1681,7 +1681,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
             )
         with self._worker_transaction() as cursor:
             cursor.execute(
-                "SELECT id FROM geno_v2_claim_knowledge_job(%s, 60, %s, 'import')",
+                "SELECT id FROM geo_v2_claim_knowledge_job(%s, 60, %s, 'import')",
                 ("artifact-reconcile-worker", self.project_a),
             )
             cursor.fetchone()  # Claim is also the bounded artifact-failure reconciler.
@@ -1710,7 +1710,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
         result_hash = self._canonical_json_hash(result)
         with self._worker_transaction() as cursor:
             cursor.execute(
-                "SELECT status FROM geno_v2_begin_finalizing_knowledge_job("
+                "SELECT status FROM geo_v2_begin_finalizing_knowledge_job("
                 "%s, %s, %s, %s, %s)",
                 (
                     job_id,
@@ -1725,14 +1725,14 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
         artifact_lease, _ = self._claim_target_artifact(outbox_id)
         with self._worker_transaction() as cursor:
             cursor.execute(
-                "SELECT status FROM geno_v2_fail_artifact_finalize("
+                "SELECT status FROM geo_v2_fail_artifact_finalize("
                 "%s, %s, %s, 'hash_unavailable', 'output could not be verified', "
                 "false, 0)",
                 (outbox_id, "knowledge-artifact-failure", artifact_lease),
             )
             self.assertEqual(cursor.fetchone()[0], "failed")
             cursor.execute(
-                "SELECT id FROM geno_v2_claim_knowledge_job(%s, 60, %s, 'import')",
+                "SELECT id FROM geo_v2_claim_knowledge_job(%s, 60, %s, 'import')",
                 ("output-reconcile-worker", self.project_a),
             )
             cursor.fetchone()
@@ -1761,14 +1761,14 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
         first_hash = self._canonical_json_hash(first_result)
         with self._worker_transaction() as cursor:
             cursor.execute(
-                "SELECT status FROM geno_v2_begin_finalizing_knowledge_job("
+                "SELECT status FROM geo_v2_begin_finalizing_knowledge_job("
                 "%s, %s, %s, %s, %s)",
                 (first_job, "reuse-worker-1", first_lease, first_hash, Jsonb(first_result)),
             )
         self._finalize_artifact(UUID(first_test_ids["output_outbox_id"]))
         with self._worker_transaction() as cursor:
             cursor.execute(
-                "SELECT status FROM geno_v2_complete_knowledge_job(%s, %s, %s)",
+                "SELECT status FROM geo_v2_complete_knowledge_job(%s, %s, %s)",
                 (first_job, "reuse-worker-1", first_lease),
             )
             self.assertEqual(cursor.fetchone()[0], "succeeded")
@@ -1812,7 +1812,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
         with self._worker_transaction() as cursor:
             for _ in range(2):
                 cursor.execute(
-                    "SELECT status FROM geno_v2_begin_finalizing_knowledge_job("
+                    "SELECT status FROM geo_v2_begin_finalizing_knowledge_job("
                     "%s, %s, %s, %s, %s)",
                     (
                         second_job,
@@ -1824,7 +1824,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
                 )
                 self.assertEqual(cursor.fetchone()[0], "finalizing")
             cursor.execute(
-                "SELECT status FROM geno_v2_complete_knowledge_job(%s, %s, %s)",
+                "SELECT status FROM geo_v2_complete_knowledge_job(%s, %s, %s)",
                 (second_job, "reuse-worker-2", second_lease),
             )
             self.assertEqual(cursor.fetchone()[0], "succeeded")
@@ -1873,7 +1873,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
         with self.assertRaises(psycopg.Error) as producer_not_done:
             with self._runtime_transaction() as cursor:
                 cursor.execute(
-                    "SELECT status FROM geno_v2_review_knowledge_fact_candidate("
+                    "SELECT status FROM geo_v2_review_knowledge_fact_candidate("
                     "%s, %s, %s, %s, 'approved', %s, NULL, NULL)",
                     (
                         graph["valid_candidate_id"],
@@ -1898,7 +1898,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
         with self.assertRaises(psycopg.Error) as maker_checker:
             with self._runtime_transaction() as cursor:
                 cursor.execute(
-                    "SELECT status FROM geno_v2_review_knowledge_fact_candidate("
+                    "SELECT status FROM geo_v2_review_knowledge_fact_candidate("
                     "%s, %s, NULL, NULL, 'rejected', %s, NULL, NULL)",
                     (
                         graph["maker_candidate_id"],
@@ -1917,20 +1917,20 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
         )
         with self._runtime_transaction() as cursor:
             cursor.execute(
-                "SELECT status FROM geno_v2_review_knowledge_fact_candidate("
+                "SELECT status FROM geo_v2_review_knowledge_fact_candidate("
                 "%s, %s, %s, %s, 'approved', %s, NULL, NULL)",
                 review_args,
             )
             self.assertEqual(cursor.fetchone()[0], "approved")
             cursor.execute(
-                "SELECT status FROM geno_v2_review_knowledge_fact_candidate("
+                "SELECT status FROM geo_v2_review_knowledge_fact_candidate("
                 "%s, %s, %s, %s, 'approved', %s, NULL, NULL)",
                 review_args,
             )
             self.assertEqual(cursor.fetchone()[0], "approved")
             cursor.execute(
                 "SELECT fact_id, fact_version_id FROM "
-                "geno_v2_read_approved_knowledge(%s, NULL)",
+                "geo_v2_read_approved_knowledge(%s, NULL)",
                 (self.project_a,),
             )
             self.assertIn((fact_id, fact_v1_id), cursor.fetchall())
@@ -1938,7 +1938,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
         with self.assertRaises(psycopg.Error) as review_conflict:
             with self._runtime_transaction() as cursor:
                 cursor.execute(
-                    "SELECT status FROM geno_v2_review_knowledge_fact_candidate("
+                    "SELECT status FROM geo_v2_review_knowledge_fact_candidate("
                     "%s, %s, %s, %s, 'approved', %s, NULL, NULL)",
                     (
                         graph["valid_candidate_id"],
@@ -1965,7 +1965,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
         with self.assertRaises(psycopg.Error) as stale_base:
             with self._runtime_transaction() as cursor:
                 cursor.execute(
-                    "SELECT status FROM geno_v2_review_knowledge_fact_candidate("
+                    "SELECT status FROM geo_v2_review_knowledge_fact_candidate("
                     "%s, %s, %s, %s, 'approved', %s, %s, %s)",
                     (
                         candidate_v2_id,
@@ -1980,7 +1980,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
         self.assertEqual(stale_base.exception.sqlstate, "40001")
         with self._runtime_transaction() as cursor:
             cursor.execute(
-                "SELECT status FROM geno_v2_review_knowledge_fact_candidate("
+                "SELECT status FROM geo_v2_review_knowledge_fact_candidate("
                 "%s, %s, %s, %s, 'approved', %s, %s, %s)",
                 (
                     candidate_v2_id,
@@ -1994,7 +1994,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
             )
             self.assertEqual(cursor.fetchone()[0], "approved")
             cursor.execute(
-                "SELECT fact_version_id FROM geno_v2_read_approved_knowledge(%s, NULL) "
+                "SELECT fact_version_id FROM geo_v2_read_approved_knowledge(%s, NULL) "
                 "WHERE fact_id = %s",
                 (self.project_a, fact_id),
             )
@@ -2014,7 +2014,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
 
         with self._runtime_transaction(self.content_session_hash) as cursor:
             cursor.execute(
-                "SELECT fact_version_id FROM geno_v2_read_approved_knowledge(%s, NULL) "
+                "SELECT fact_version_id FROM geo_v2_read_approved_knowledge(%s, NULL) "
                 "WHERE fact_id = %s",
                 (self.project_a, fact_id),
             )
@@ -2022,7 +2022,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
         with self.assertRaises(psycopg.Error) as client_requires_channel:
             with self._runtime_transaction(self.client_session_hash) as cursor:
                 cursor.execute(
-                    "SELECT fact_id FROM geno_v2_read_approved_knowledge(%s, NULL)",
+                    "SELECT fact_id FROM geo_v2_read_approved_knowledge(%s, NULL)",
                     (self.project_a,),
                 )
         self.assertEqual(client_requires_channel.exception.sqlstate, "22023")
@@ -2030,7 +2030,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
             cursor.execute(
                 "SELECT fact_version_id, customer_visible, "
                 "public_disclosure_allowed, public_source_url "
-                "FROM geno_v2_read_approved_knowledge(%s, 'website') "
+                "FROM geo_v2_read_approved_knowledge(%s, 'website') "
                 "WHERE fact_id = %s",
                 (self.project_a, fact_id),
             )
@@ -2039,7 +2039,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
             self.assertEqual(client_row[1:3], (True, True))
             self.assertTrue(client_row[3].startswith("https://example.test/source/"))
             cursor.execute(
-                "SELECT count(*) FROM geno_v2_read_approved_knowledge(%s, 'email') "
+                "SELECT count(*) FROM geo_v2_read_approved_knowledge(%s, 'email') "
                 "WHERE fact_id = %s",
                 (self.project_a, fact_id),
             )
@@ -2048,7 +2048,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
         with self.assertRaises(psycopg.Error) as stale_governance:
             with self._runtime_transaction() as cursor:
                 cursor.execute(
-                    "SELECT id FROM geno_v2_create_knowledge_governance_version("
+                    "SELECT id FROM geo_v2_create_knowledge_governance_version("
                     "%s, %s, %s, %s, %s)",
                     (
                         graph["source_asset_id"],
@@ -2081,7 +2081,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
         }
         with self._runtime_transaction() as cursor:
             cursor.execute(
-                "SELECT id FROM geno_v2_create_knowledge_governance_version("
+                "SELECT id FROM geo_v2_create_knowledge_governance_version("
                 "%s, %s, %s, %s, %s)",
                 (
                     graph["source_asset_id"],
@@ -2093,7 +2093,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
             )
             self.assertEqual(cursor.fetchone()[0], governance_v2_id)
             cursor.execute(
-                "SELECT count(*) FROM geno_v2_read_approved_knowledge(%s, 'website') "
+                "SELECT count(*) FROM geo_v2_read_approved_knowledge(%s, 'website') "
                 "WHERE fact_id = %s",
                 (self.project_a, fact_id),
             )
@@ -2101,14 +2101,14 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
 
         with self._runtime_transaction(self.content_session_hash) as cursor:
             cursor.execute(
-                "SELECT count(*) FROM geno_v2_read_approved_knowledge(%s, NULL) "
+                "SELECT count(*) FROM geo_v2_read_approved_knowledge(%s, NULL) "
                 "WHERE fact_id = %s",
                 (self.project_a, fact_id),
             )
             self.assertEqual(cursor.fetchone()[0], 0)
         with self._runtime_transaction(self.client_session_hash) as cursor:
             cursor.execute(
-                "SELECT count(*) FROM geno_v2_read_approved_knowledge(%s, 'website') "
+                "SELECT count(*) FROM geo_v2_read_approved_knowledge(%s, 'website') "
                 "WHERE fact_id = %s",
                 (self.project_a, fact_id),
             )
@@ -2116,17 +2116,17 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
 
         with self._runtime_transaction() as cursor:
             cursor.execute(
-                "SELECT status FROM geno_v2_set_knowledge_source_status(%s, 'disabled', %s)",
+                "SELECT status FROM geo_v2_set_knowledge_source_status(%s, 'disabled', %s)",
                 (graph["source_asset_id"], "source is no longer approved"),
             )
             self.assertEqual(cursor.fetchone()[0], "disabled")
             cursor.execute(
-                "SELECT status FROM geno_v2_withdraw_knowledge_fact(%s, %s)",
+                "SELECT status FROM geo_v2_withdraw_knowledge_fact(%s, %s)",
                 (fact_id, "fact invalidated after source withdrawal"),
             )
             self.assertEqual(cursor.fetchone()[0], "withdrawn")
             cursor.execute(
-                "SELECT count(*) FROM geno_v2_read_approved_knowledge(%s, NULL) "
+                "SELECT count(*) FROM geo_v2_read_approved_knowledge(%s, NULL) "
                 "WHERE fact_id = %s",
                 (self.project_a, fact_id),
             )
@@ -2134,14 +2134,14 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
 
         with self._runtime_transaction() as cursor:
             cursor.execute(
-                "SELECT status FROM geno_v2_set_knowledge_source_status(%s, 'archived', %s)",
+                "SELECT status FROM geo_v2_set_knowledge_source_status(%s, 'archived', %s)",
                 (graph["source_asset_id"], "source retention lifecycle completed"),
             )
             self.assertEqual(cursor.fetchone()[0], "archived")
         with self.assertRaises(psycopg.Error) as archived_is_terminal:
             with self._runtime_transaction() as cursor:
                 cursor.execute(
-                    "SELECT id FROM geno_v2_create_knowledge_governance_version("
+                    "SELECT id FROM geo_v2_create_knowledge_governance_version("
                     "%s, %s, %s, %s, %s)",
                     (
                         graph["source_asset_id"],
@@ -2185,7 +2185,7 @@ class SchemaV2KnowledgePostgresTest(unittest.TestCase):
                 barrier.wait(timeout=5)
                 with self._runtime_transaction() as cursor:
                     cursor.execute(
-                        "SELECT id FROM geno_v2_create_knowledge_job("
+                        "SELECT id FROM geo_v2_create_knowledge_job("
                         "%s, %s, %s, %s, %s, 'import', %s, %s, NULL)",
                         (
                             job_id,

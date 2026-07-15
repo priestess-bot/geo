@@ -38,7 +38,7 @@ ALTER TABLE collection_jobs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE collection_jobs FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS collection_jobs_runtime_project_isolation ON collection_jobs;
 CREATE POLICY collection_jobs_runtime_project_isolation ON collection_jobs
-  USING (geno_runtime_can_access_project(project_id))
-  WITH CHECK (geno_runtime_can_access_project(project_id));
+  USING (geo_runtime_can_access_project(project_id))
+  WITH CHECK (geo_runtime_can_access_project(project_id));
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON collection_jobs TO geno_runtime_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON collection_jobs TO geo_runtime_app;

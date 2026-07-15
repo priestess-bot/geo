@@ -662,9 +662,9 @@ def build_au_p0b_google_manual_backfill_clearance(
                 "make verify-au-p0b-google-manual-backfill-fulfillment",
                 str(fulfillment_summary.get("request_strict_gate_command") or ""),
                 str(fulfillment_summary.get("strict_gate_command") or ""),
-                "PYTHONPATH=packages/geno_core:apps/api python3 "
+                "PYTHONPATH=packages/geo_core:apps/api python3 "
                 "scripts/verify_au_p0b_google_manual_backfill_clearance.py "
-                "${GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_CLEARANCE_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-manual-backfill-clearance-latest.json} "
+                "${GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_CLEARANCE_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-manual-backfill-clearance-latest.json} "
                 "--require-cleared",
             ]
         ),
@@ -700,7 +700,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--manual-backfill-request-path",
         default=os.environ.get(
-            "GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_REQUEST_OUTPUT_PATH",
+            "GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_REQUEST_OUTPUT_PATH",
             DEFAULT_MANUAL_BACKFILL_REQUEST_PATH,
         ),
         help="Path to the AU P0b Google manual backfill request packet JSON.",
@@ -708,7 +708,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--manual-backfill-verification-path",
         default=os.environ.get(
-            "GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_VERIFICATION_PATH",
+            "GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_VERIFICATION_PATH",
             DEFAULT_MANUAL_BACKFILL_VERIFICATION_PATH,
         ),
         help="Path to the AU P0b Google manual backfill verification JSON.",
@@ -716,7 +716,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--manual-backfill-fulfillment-path",
         default=os.environ.get(
-            "GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH",
+            "GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH",
             DEFAULT_MANUAL_BACKFILL_FULFILLMENT_PATH,
         ),
         help="Path to the AU P0b Google manual backfill fulfillment JSON.",
@@ -724,7 +724,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--external-dependency-clearance-path",
         default=os.environ.get(
-            "GENO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH",
+            "GEO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH",
             DEFAULT_EXTERNAL_DEPENDENCY_CLEARANCE_PATH,
         ),
         help="Path to the AU external dependency clearance JSON.",
@@ -736,7 +736,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--output-path",
-        default=os.environ.get("GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_CLEARANCE_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_CLEARANCE_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to write the AU P0b Google manual backfill clearance JSON.",
     )
     parser.add_argument("--generated-at", default=None, help="Override generated_at timestamp for deterministic tests.")

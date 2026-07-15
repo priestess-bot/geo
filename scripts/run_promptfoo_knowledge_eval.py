@@ -4,8 +4,8 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-from geno_core.knowledge import KNOWLEDGE_FACT_APPROVED_STATUS
-from geno_core.knowledge_application import build_knowledge_application_artifacts
+from geo_core.knowledge import KNOWLEDGE_FACT_APPROVED_STATUS
+from geo_core.knowledge_application import build_knowledge_application_artifacts
 
 
 ROOT = Path(__file__).resolve().parents[1]

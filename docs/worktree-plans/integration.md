@@ -51,7 +51,7 @@ tests/test_production_v1_gate_contracts.py
 ```text
 infra/docker-compose.yml
 infra/docker-compose.production.yml
-apps/api/geno_api/main.py
+apps/api/geo_api/main.py
 apps/*/app/runtime.ts
 ```
 
@@ -64,8 +64,8 @@ apps/*/app/runtime.ts
 以 storage 分支的 production overlay/root-app-backup 隔离为真源，在不破坏 external secret/_FILE 模型的前提下增加：
 
 - Knowledge/Collection lease duration、heartbeat interval、recovery interval/batch/slots、worker time limit；
-- `GENO_AUTH_DELIVERY_MASTER_KEY/GENO_AUTH_DELIVERY_KEY_ID`，只进 API/Auth cleanup consumer；
-- `GENO_AUTH_RECOVERY_COOKIE_SECRET`，只进 Admin/Customer BFF；
+- `GEO_AUTH_DELIVERY_MASTER_KEY/GEO_AUTH_DELIVERY_KEY_ID`，只进 API/Auth cleanup consumer；
+- `GEO_AUTH_RECOVERY_COOKIE_SECRET`，只进 Admin/Customer BFF；
 - Auth rollback write kill switch 和专用 DB role/privilege 路径；
 - `0029 -> 0030` migration 顺序；
 - Auth cleanup job 和逐表公平 recovery dispatcher。
@@ -123,7 +123,7 @@ tmp/auth-session-project-scope/latest.json
 基础：
 
 ```bash
-python3 -m compileall apps/api/geno_api packages/geno_core/geno_core workers scripts tests
+python3 -m compileall apps/api/geo_api packages/geo_core/geo_core workers scripts tests
 npm --prefix apps/admin-web run typecheck
 npm --prefix apps/customer-web run typecheck
 npm --prefix apps/admin-web run build
@@ -134,7 +134,7 @@ git diff --check
 Python 全量：
 
 ```bash
-PYTHONPATH=packages/geno_core:apps/api python3 -m unittest discover -s tests
+PYTHONPATH=packages/geo_core:apps/api python3 -m unittest discover -s tests
 ```
 
 按四份 handoff 运行专项 unit/PG/live 命令，然后运行：
@@ -145,7 +145,7 @@ docker compose --profile "*" \
   -f infra/docker-compose.production.yml \
   config --format json
 
-PYTHONPATH=packages/geno_core:apps/api \
+PYTHONPATH=packages/geo_core:apps/api \
   python3 scripts/verify_production_v1_gate.py checklist
 ```
 

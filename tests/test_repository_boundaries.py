@@ -5,17 +5,17 @@ from pathlib import Path
 import re
 import unittest
 
-from geno_core.repositories import (
+from geo_core.repositories import (
     assert_repository_boundary_compatibility,
     missing_repository_boundary_methods,
     repository_boundaries,
 )
-from geno_core.repository import PostgresEvidenceRepository
+from geo_core.repository import PostgresEvidenceRepository
 
 
 class RepositoryBoundaryTest(unittest.TestCase):
     def test_repository_sql_templates_do_not_leave_unformatted_placeholders(self) -> None:
-        repository_path = Path(__file__).resolve().parents[1] / "packages" / "geno_core" / "geno_core" / "repository.py"
+        repository_path = Path(__file__).resolve().parents[1] / "packages" / "geo_core" / "geo_core" / "repository.py"
         source = repository_path.read_text(encoding="utf-8")
         cursor_execute_template = re.compile(
             r"cursor\.execute\(\s*\n(?P<indent>\s*)(?P<f>f?)\"\"\"(?P<body>.*?)\"\"\"",
@@ -36,9 +36,9 @@ class RepositoryBoundaryTest(unittest.TestCase):
         boundaries = {boundary.boundary_id: boundary for boundary in repository_boundaries()}
 
         self.assertEqual(set(boundaries), {"access_control", "audit", "project"})
-        self.assertEqual(boundaries["audit"].module, "geno_core.repositories.audit_repository")
-        self.assertEqual(boundaries["project"].module, "geno_core.repositories.project_repository")
-        self.assertEqual(boundaries["access_control"].module, "geno_core.repositories.access_control_repository")
+        self.assertEqual(boundaries["audit"].module, "geo_core.repositories.audit_repository")
+        self.assertEqual(boundaries["project"].module, "geo_core.repositories.project_repository")
+        self.assertEqual(boundaries["access_control"].module, "geo_core.repositories.access_control_repository")
         self.assertTrue(all(boundary.scope_required for boundary in boundaries.values()))
 
     def test_repository_boundary_modules_are_importable(self) -> None:

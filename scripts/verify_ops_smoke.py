@@ -21,9 +21,9 @@ def build_ops_smoke_report() -> dict[str, object]:
     compose = _read("infra/docker-compose.yml")
     prometheus = _read("infra/prometheus/prometheus.yml")
     grafana = _read("infra/grafana/provisioning/datasources/prometheus.yml")
-    ops_routes = _read("apps/api/geno_api/ops_routes.py")
-    metrics = _read("apps/api/geno_api/runtime_metrics.py")
-    api_main = _read("apps/api/geno_api/main.py")
+    ops_routes = _read("apps/api/geo_api/ops_routes.py")
+    metrics = _read("apps/api/geo_api/runtime_metrics.py")
+    api_main = _read("apps/api/geo_api/main.py")
     makefile = _read("Makefile")
     runtime_smoke = _read("scripts/run_ops_runtime_smoke.py")
 
@@ -38,7 +38,7 @@ def build_ops_smoke_report() -> dict[str, object]:
         _require("alert_api", "/v1/runtime-alerts" in api_main, "Runtime alert API exists"),
         _require("alert_workers", "runtime-alert-notification-worker" in compose and "runtime-alert-escalation-worker" in compose, "Alert notification/escalation workers are configured"),
         _require("ops_make_target", "ops-smoke:" in makefile and "scripts/verify_ops_smoke.py" in makefile, "Makefile runs executable ops smoke"),
-        _require("metrics_pool_gauge", "geno_runtime_postgres_pool_snapshot_ok" in metrics, "Metrics expose runtime DB pool health"),
+        _require("metrics_pool_gauge", "geo_runtime_postgres_pool_snapshot_ok" in metrics, "Metrics expose runtime DB pool health"),
         _require("runtime_smoke_service", "ops-runtime-smoke:" in compose and "run_ops_runtime_smoke.py" in compose, "Compose can execute the runtime observability probe"),
         _require("runtime_smoke_endpoints", all(value in runtime_smoke for value in ("/health", "/ready", "/metrics", "/api/v1/targets", "/api/health")), "Runtime probe calls API, Prometheus and Grafana"),
         _require("runtime_smoke_make_target", "run --rm ops-runtime-smoke" in makefile, "Makefile requires the runtime observability probe"),

@@ -19,14 +19,14 @@
 ```text
 infra/db/migrations/up/0029_durable_job_lease_recovery.sql
 infra/db/migrations/down/0029_durable_job_lease_recovery.down.sql
-packages/geno_core/geno_core/durable_jobs.py                    # 新增
-packages/geno_core/geno_core/knowledge_pipeline.py
-packages/geno_core/geno_core/collection_jobs.py
+packages/geo_core/geo_core/durable_jobs.py                    # 新增
+packages/geo_core/geo_core/knowledge_pipeline.py
+packages/geo_core/geo_core/collection_jobs.py
 workers/knowledge_worker/run_knowledge_pipeline.py
 workers/collector_worker/run_collection_slice.py
 workers/task_queue/tasks.py
 workers/task_queue/run_recovery_dispatcher.py
-apps/api/geno_api/runtime_metrics.py                            # 按需新增
+apps/api/geo_api/runtime_metrics.py                            # 按需新增
 scripts/verify_durable_job_lease_recovery.py                    # 新增
 tests/test_durable_job_lease_contracts.py                       # 新增
 tests/test_durable_job_lease_postgres.py                        # 新增
@@ -201,7 +201,7 @@ Live：
 ## 7. 执行命令
 
 ```bash
-export PYTHONPATH="$PWD/packages/geno_core:$PWD/apps/api:$PWD"
+export PYTHONPATH="$PWD/packages/geo_core:$PWD/apps/api:$PWD"
 
 python3 -m pytest -q \
   tests/test_durable_job_lease_contracts.py \
@@ -213,14 +213,14 @@ python3 -m pytest -q \
 
 ```bash
 export COMPOSE_PROJECT_NAME=geo-durable-leases
-export GENO_POSTGRES_HOST_PORT=55432
+export GEO_POSTGRES_HOST_PORT=55432
 
 docker compose \
   -f infra/docker-compose.yml \
   -f infra/docker-compose.durable-leases.test.yml \
   up -d postgres valkey db-migrate
 
-GENO_DURABLE_JOB_TEST_DATABASE_URL=postgresql://geno:geno@127.0.0.1:55432/geno \
+GEO_DURABLE_JOB_TEST_DATABASE_URL=postgresql://geo:geo@127.0.0.1:55432/geo \
 python3 -m pytest -q tests/test_durable_job_lease_postgres.py
 ```
 
@@ -233,12 +233,12 @@ docker compose \
   up -d --build task-worker-runtime task-worker-knowledge task-recovery-dispatcher
 
 python3 scripts/verify_durable_job_lease_recovery.py \
-  --database-url postgresql://geno:geno@127.0.0.1:55432/geno \
+  --database-url postgresql://geo:geo@127.0.0.1:55432/geo \
   --compose-project geo-durable-leases \
   --artifact-path tmp/durable-job-lease-recovery/latest.json \
   --run-actor-kill-tests
 
-python3 -m compileall packages/geno_core/geno_core workers scripts tests
+python3 -m compileall packages/geo_core/geo_core workers scripts tests
 git diff --check
 ```
 

@@ -225,10 +225,10 @@ def build_au_p0a_real_batch_request_packet(
         "make verify-au-p0a-status",
         "make au-p0a-execution-checklist",
         "make verify-au-p0a-execution-checklist",
-        "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_real_batch_request_packet.py "
-        "${GENO_AU_P0A_REAL_BATCH_REQUEST_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-real-batch-request-latest.json} --require-real-batches-ready",
-        "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_execution_checklist.py "
-        "${GENO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-execution-checklist-latest.json} --require-design-partner-ready",
+        "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_p0a_real_batch_request_packet.py "
+        "${GEO_AU_P0A_REAL_BATCH_REQUEST_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-real-batch-request-latest.json} --require-real-batches-ready",
+        "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_p0a_execution_checklist.py "
+        "${GEO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-execution-checklist-latest.json} --require-design-partner-ready",
     ]
 
     payload: dict[str, Any] = {
@@ -310,12 +310,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build an AU P0a real batch request packet JSON")
     parser.add_argument(
         "--p0a-execution-checklist-path",
-        default=os.environ.get("GENO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH", DEFAULT_P0A_EXECUTION_CHECKLIST_PATH),
+        default=os.environ.get("GEO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH", DEFAULT_P0A_EXECUTION_CHECKLIST_PATH),
         help="Path to the AU P0a execution checklist JSON.",
     )
     parser.add_argument(
         "--output-path",
-        default=os.environ.get("GENO_AU_P0A_REAL_BATCH_REQUEST_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_P0A_REAL_BATCH_REQUEST_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to write the AU P0a real batch request packet JSON.",
     )
     parser.add_argument("--generated-at", default=None, help="Override generated_at timestamp for deterministic tests.")

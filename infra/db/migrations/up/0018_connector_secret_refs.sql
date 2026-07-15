@@ -34,5 +34,5 @@ ALTER TABLE connector_secret_refs FORCE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS connector_secret_refs_runtime_project_isolation ON connector_secret_refs;
 CREATE POLICY connector_secret_refs_runtime_project_isolation ON connector_secret_refs
-  USING (geno_runtime_can_access_project(project_id))
-  WITH CHECK (geno_runtime_can_access_project(project_id));
+  USING (geo_runtime_can_access_project(project_id))
+  WITH CHECK (geo_runtime_can_access_project(project_id));

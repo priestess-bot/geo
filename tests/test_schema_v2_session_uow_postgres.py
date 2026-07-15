@@ -9,7 +9,7 @@ from uuid import UUID, uuid4
 import psycopg
 from psycopg.pq import TransactionStatus
 
-from geno_core.schema_v2.session_uow import (
+from geo_core.schema_v2.session_uow import (
     SchemaV2ApiSessionUnitOfWork,
     SchemaV2RawSessionTokenError,
     SchemaV2SessionAuthorizationError,
@@ -100,7 +100,7 @@ class SchemaV2SessionUnitOfWorkPostgresBehaviorTest(unittest.TestCase):
                 ):
                     cursor.execute(
                         "SELECT permission FROM unnest("
-                        "geno_v2_permissions_for_role(%s)) AS item(permission) "
+                        "geo_v2_permissions_for_role(%s)) AS item(permission) "
                         "ORDER BY permission",
                         (role,),
                     )
@@ -145,10 +145,10 @@ class SchemaV2SessionUnitOfWorkPostgresBehaviorTest(unittest.TestCase):
                     f"CREATE TABLE {cls.probe_schema}.transaction_probe "
                     "(marker text PRIMARY KEY)"
                 )
-                cursor.execute(f"GRANT USAGE ON SCHEMA {cls.probe_schema} TO geno_v2_runtime")
+                cursor.execute(f"GRANT USAGE ON SCHEMA {cls.probe_schema} TO geo_v2_runtime")
                 cursor.execute(
                     f"GRANT SELECT, INSERT ON {cls.probe_schema}.transaction_probe "
-                    "TO geno_v2_runtime"
+                    "TO geo_v2_runtime"
                 )
 
     @classmethod
@@ -259,7 +259,7 @@ class SchemaV2SessionUnitOfWorkPostgresBehaviorTest(unittest.TestCase):
     def _connect_as_api_placeholder(self) -> psycopg.Connection[object]:
         connection = psycopg.connect(autocommit=True)
         with connection.cursor() as cursor:
-            cursor.execute("SET SESSION AUTHORIZATION geno_v2_api_login")
+            cursor.execute("SET SESSION AUTHORIZATION geo_v2_api_login")
         connection.autocommit = False
         self._assert_clean_connection(connection)
         return connection
@@ -273,8 +273,8 @@ class SchemaV2SessionUnitOfWorkPostgresBehaviorTest(unittest.TestCase):
             )
             current_user, session_user, token_setting = cursor.fetchone()
         connection.rollback()
-        self.assertEqual(current_user, "geno_v2_api_login")
-        self.assertEqual(session_user, "geno_v2_api_login")
+        self.assertEqual(current_user, "geo_v2_api_login")
+        self.assertEqual(session_user, "geo_v2_api_login")
         self.assertIn(token_setting, (None, ""))
         self.assertEqual(connection.info.transaction_status, TransactionStatus.IDLE)
 

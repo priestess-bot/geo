@@ -232,29 +232,29 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build an AU P0b Google SERP comparison status report")
     parser.add_argument(
         "--fixture-path",
-        default=os.environ.get("GENO_AU_P0B_GOOGLE_SERP_FIXTURE_OUTPUT_PATH", DEFAULT_FIXTURE_PATH),
+        default=os.environ.get("GEO_AU_P0B_GOOGLE_SERP_FIXTURE_OUTPUT_PATH", DEFAULT_FIXTURE_PATH),
     )
     parser.add_argument(
         "--fixture-manifest-path",
-        default=os.environ.get("GENO_AU_P0B_GOOGLE_SERP_FIXTURE_MANIFEST_PATH", DEFAULT_FIXTURE_MANIFEST_PATH),
+        default=os.environ.get("GEO_AU_P0B_GOOGLE_SERP_FIXTURE_MANIFEST_PATH", DEFAULT_FIXTURE_MANIFEST_PATH),
     )
     parser.add_argument(
         "--health-path",
-        default=os.environ.get("GENO_AU_P0B_GOOGLE_SERP_HEALTH_OUTPUT_PATH", DEFAULT_HEALTH_PATH),
+        default=os.environ.get("GEO_AU_P0B_GOOGLE_SERP_HEALTH_OUTPUT_PATH", DEFAULT_HEALTH_PATH),
     )
     parser.add_argument(
         "--health-manifest-path",
-        default=os.environ.get("GENO_AU_P0B_GOOGLE_SERP_HEALTH_MANIFEST_PATH", DEFAULT_HEALTH_MANIFEST_PATH),
+        default=os.environ.get("GEO_AU_P0B_GOOGLE_SERP_HEALTH_MANIFEST_PATH", DEFAULT_HEALTH_MANIFEST_PATH),
     )
     parser.add_argument(
         "--comparison-path",
-        default=os.environ.get("GENO_AU_P0B_GOOGLE_SERP_OUTPUT_PATH", DEFAULT_COMPARISON_PATH),
+        default=os.environ.get("GEO_AU_P0B_GOOGLE_SERP_OUTPUT_PATH", DEFAULT_COMPARISON_PATH),
     )
     parser.add_argument(
         "--comparison-manifest-path",
-        default=os.environ.get("GENO_AU_P0B_GOOGLE_SERP_MANIFEST_PATH", DEFAULT_COMPARISON_MANIFEST_PATH),
+        default=os.environ.get("GEO_AU_P0B_GOOGLE_SERP_MANIFEST_PATH", DEFAULT_COMPARISON_MANIFEST_PATH),
     )
-    parser.add_argument("--output-path", default=os.environ.get("GENO_AU_P0B_GOOGLE_SERP_STATUS_OUTPUT_PATH", DEFAULT_OUTPUT_PATH))
+    parser.add_argument("--output-path", default=os.environ.get("GEO_AU_P0B_GOOGLE_SERP_STATUS_OUTPUT_PATH", DEFAULT_OUTPUT_PATH))
     parser.add_argument("--generated-at", default=None, help="Override generated_at timestamp for deterministic tests.")
     return parser.parse_args()
 

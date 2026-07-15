@@ -47,7 +47,7 @@ class AuP0bGoogleSpikeRunbookTest(unittest.TestCase):
         )
         self.assertEqual(steps["google_spike_health_check"]["command"], ["make", "au-p0b-google-spike-health"])
         self.assertEqual(
-            steps["google_spike_health_check"]["env"]["GENO_AU_P0B_GOOGLE_SPIKE_HEALTH_OUTPUT_PATH"],
+            steps["google_spike_health_check"]["env"]["GEO_AU_P0B_GOOGLE_SPIKE_HEALTH_OUTPUT_PATH"],
             "docs/runtime_preflight/au-p0b-google-spike-health-latest.json",
         )
         self.assertIn("scripts/build_au_p0b_google_playwright_env_report.py", steps["google_playwright_env"]["command"])
@@ -63,7 +63,7 @@ class AuP0bGoogleSpikeRunbookTest(unittest.TestCase):
         self.assertEqual(steps["google_spike_health_manifest"]["command"], ["make", "au-p0b-google-spike-health-manifest"])
         self.assertEqual(steps["google_spike_collect"]["command"], ["make", "au-p0b-google-spike"])
         self.assertEqual(
-            steps["google_spike_collect"]["env"]["GENO_AU_P0B_GOOGLE_SPIKE_OUTPUT_PATH"],
+            steps["google_spike_collect"]["env"]["GEO_AU_P0B_GOOGLE_SPIKE_OUTPUT_PATH"],
             "docs/runtime_preflight/au-p0b-google-spike-latest.json",
         )
         self.assertEqual(steps["google_spike_manifest"]["command"], ["make", "au-p0b-google-spike-manifest"])
@@ -97,7 +97,7 @@ class AuP0bGoogleSpikeRunbookTest(unittest.TestCase):
     def test_runbook_can_disable_persistence(self) -> None:
         runbook = build_au_p0b_google_spike_runbook(persist=False, generated_at="2026-06-12T00:00:00Z")
         steps = {step["id"]: step for step in runbook["steps"]}
-        self.assertEqual(steps["google_spike_collect"]["env"]["GENO_AU_P0B_GOOGLE_SPIKE_PERSIST_ARGS"], "")
+        self.assertEqual(steps["google_spike_collect"]["env"]["GEO_AU_P0B_GOOGLE_SPIKE_PERSIST_ARGS"], "")
 
     def test_cli_writes_runbook_json(self) -> None:
         with TemporaryDirectory() as temp_dir:

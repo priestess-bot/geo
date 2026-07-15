@@ -696,7 +696,7 @@ export default async function TraceabilityPage({
     <main className="shell traceabilityPage">
       <header className="topbar">
         <div>
-          <p className="eyebrow">GENO AU Traceability</p>
+          <p className="eyebrow">GEO AU Traceability</p>
           <h1>Traceability Detail</h1>
           <p className="traceabilitySubtitle">
             {selectedProject

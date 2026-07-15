@@ -29,8 +29,8 @@ infra/docker-compose.production.yml
 infra/docker-compose.yml                       # 仅 MinIO/object-store/backup 相关段
 infra/minio/**                                 # 新增 bootstrap/policy
 infra/object-store.production.env.example      # 新增，不含真 secret
-packages/geno_core/geno_core/object_store.py
-packages/geno_core/geno_core/runtime.py         # 仅 object-store builder/diagnostic
+packages/geo_core/geo_core/object_store.py
+packages/geo_core/geo_core/runtime.py         # 仅 object-store builder/diagnostic
 scripts/verify_backup_smoke.py
 scripts/verify_production_object_store.py       # 新增
 scripts/run_production_object_store_smoke.py    # 按需新增
@@ -61,7 +61,7 @@ tests/test_infra_contracts.py                   # 仅 object-store/Compose 测�
 
 - root credential 只进入 `minio` 和一次性 `minio-bootstrap`。
 - 凭据使用 Compose external secrets/受控 secret file 和 `_FILE` 加载，不把原值展开进 `docker compose config` artifact。
-- bootstrap 幂等创建 `geno-reports/geno-backups`、application/backup principal 和版本化 policy。
+- bootstrap 幂等创建 `geo-reports/geo-backups`、application/backup principal 和版本化 policy。
 - 配置 versioning/lifecycle，输出不含 secret 的 receipt。
 - application/backup 都禁止 admin/CreateBucket。
 - restore/retention 是临时身份，完成后撤销。
@@ -89,10 +89,10 @@ runtime-e2e
 ### 4. Backup/restore smoke
 
 - 不再执行 `mc mb`。
-- source `geno-reports` 对 backup 身份只读。
+- source `geo-reports` 对 backup 身份只读。
 - 正式 `OBJECT_STORE_BACKUP_PREFIX=production/{environment}/` 只允许 put/list/get，禁止 delete。
 - `OBJECT_STORE_BACKUP_SMOKE_PREFIX=smoke/{run_id}/` 只允许本次 run put/list/get/delete，跨 run 删除必须拒绝。
-- restore 只能写 `geno-reports/restore-smoke/{run_id}/`。
+- restore 只能写 `geo-reports/restore-smoke/{run_id}/`。
 - 不删除原业务对象。
 - source、backup、restored 内容的 SHA-256 必须一致。
 - 负向测试覆盖 CreateBucket、application delete、backup 写 source、backup 删正式/跨 run prefix。
@@ -129,20 +129,20 @@ docker compose --profile "*" \
 ## 测试
 
 ```bash
-PYTHONPATH=packages/geno_core:apps/api \
+PYTHONPATH=packages/geo_core:apps/api \
   python3 -m unittest tests.test_production_object_store_contracts
 
-PYTHONPATH=packages/geno_core:apps/api \
+PYTHONPATH=packages/geo_core:apps/api \
   python3 -m unittest tests.test_infra_contracts
 
 python3 -m ruff check \
-  packages/geno_core/geno_core/object_store.py \
-  packages/geno_core/geno_core/runtime.py \
+  packages/geo_core/geo_core/object_store.py \
+  packages/geo_core/geo_core/runtime.py \
   scripts/verify_backup_smoke.py \
   scripts/verify_production_object_store.py \
   tests/test_production_object_store_contracts.py
 
-python3 -m compileall packages/geno_core/geno_core scripts tests
+python3 -m compileall packages/geo_core/geo_core scripts tests
 python3 scripts/verify_backup_smoke.py
 python3 scripts/verify_production_object_store.py --config-only
 git diff --check

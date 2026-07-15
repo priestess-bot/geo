@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from geno_core.market import build_au_broader_platform_registry, build_au_market_profile
+from geo_core.market import build_au_broader_platform_registry, build_au_market_profile
 from scripts.build_au_broader_platform_registry import (
     build_au_broader_platform_registry as build_registry_payload,
     compute_broader_platform_registry_hash,

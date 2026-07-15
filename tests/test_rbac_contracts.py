@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from geno_core.rbac import (
+from geo_core.rbac import (
     ANALYST_ROLE,
     CLIENT_VIEWER_ROLE,
     CONTENT_OPERATOR_ROLE,

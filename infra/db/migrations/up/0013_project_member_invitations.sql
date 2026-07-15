@@ -22,5 +22,5 @@ ALTER TABLE project_member_invitations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE project_member_invitations FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS project_member_invitations_runtime_project_isolation ON project_member_invitations;
 CREATE POLICY project_member_invitations_runtime_project_isolation ON project_member_invitations
-  USING (geno_runtime_can_access_project(project_id))
-  WITH CHECK (geno_runtime_can_access_project(project_id));
+  USING (geo_runtime_can_access_project(project_id))
+  WITH CHECK (geo_runtime_can_access_project(project_id));

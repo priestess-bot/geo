@@ -28,7 +28,7 @@ class AuP0aEnvTemplateVerifierTest(unittest.TestCase):
         self.assertTrue(result["summary"]["database_url_local_placeholder"])
         self.assertEqual(result["template_verification_hash"], compute_template_verification_hash(result))
         serialized = json.dumps(result)
-        self.assertNotIn("geno_runtime_app:geno_runtime_app", serialized)
+        self.assertNotIn("geo_runtime_app:geo_runtime_app", serialized)
         self.assertNotIn("minio123", serialized)
 
     def test_provider_secret_in_template_fails(self) -> None:
@@ -39,18 +39,18 @@ class AuP0aEnvTemplateVerifierTest(unittest.TestCase):
                     [
                         "PERPLEXITY_API_KEY=pplx-secret",
                         "OPENAI_API_KEY=",
-                        "DATABASE_URL=postgresql://geno_runtime_app:geno_runtime_app@localhost:5432/geno",
+                        "DATABASE_URL=postgresql://geo_runtime_app:geo_runtime_app@localhost:5432/geo",
                         "OBJECT_STORE_ENDPOINT=http://localhost:9000",
-                        "OBJECT_STORE_BUCKET=geno-reports",
+                        "OBJECT_STORE_BUCKET=geo-reports",
                         "OBJECT_STORE_ACCESS_KEY=minio",
                         "OBJECT_STORE_SECRET_KEY=minio123",
                         "OBJECT_STORE_REGION=us-east-1",
-                        "GENO_AU_P0A_ENV_OUTPUT_PATH=docs/runtime_preflight/au-p0a-env-latest.json",
-                        "GENO_AU_P0A_RUNBOOK_OUTPUT_PATH=docs/runtime_preflight/au-p0a-runbook-latest.json",
-                        "GENO_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH=docs/runtime_preflight/au-p0a-runbook-execution-latest.json",
-                        "GENO_AU_P0A_READINESS_OUTPUT_PATH=docs/runtime_preflight/au-p0a-readiness-latest.json",
-                        "GENO_AU_P0A_PACKAGE_OUTPUT_PATH=docs/runtime_preflight/au-p0a-evidence-package-latest.json",
-                        "GENO_AU_P0A_STATUS_OUTPUT_PATH=docs/runtime_preflight/au-p0a-status-latest.json",
+                        "GEO_AU_P0A_ENV_OUTPUT_PATH=docs/runtime_preflight/au-p0a-env-latest.json",
+                        "GEO_AU_P0A_RUNBOOK_OUTPUT_PATH=docs/runtime_preflight/au-p0a-runbook-latest.json",
+                        "GEO_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH=docs/runtime_preflight/au-p0a-runbook-execution-latest.json",
+                        "GEO_AU_P0A_READINESS_OUTPUT_PATH=docs/runtime_preflight/au-p0a-readiness-latest.json",
+                        "GEO_AU_P0A_PACKAGE_OUTPUT_PATH=docs/runtime_preflight/au-p0a-evidence-package-latest.json",
+                        "GEO_AU_P0A_STATUS_OUTPUT_PATH=docs/runtime_preflight/au-p0a-status-latest.json",
                     ]
                 ),
                 encoding="utf-8",
@@ -70,7 +70,7 @@ class AuP0aEnvTemplateVerifierTest(unittest.TestCase):
                     [
                         "PERPLEXITY_API_KEY=",
                         "OPENAI_API_KEY=",
-                        "DATABASE_URL=postgresql://geno_runtime_app:geno_runtime_app@localhost:5432/geno",
+                        "DATABASE_URL=postgresql://geo_runtime_app:geo_runtime_app@localhost:5432/geo",
                     ]
                 ),
                 encoding="utf-8",
@@ -78,7 +78,7 @@ class AuP0aEnvTemplateVerifierTest(unittest.TestCase):
             result = verify_au_p0a_env_template(template_path=path, generated_at="2026-06-12T00:00:00Z")
 
         self.assertEqual(result["status"], "fail")
-        self.assertIn("template_key_missing:GENO_AU_P0A_ENV_OUTPUT_PATH", result["errors"])
+        self.assertIn("template_key_missing:GEO_AU_P0A_ENV_OUTPUT_PATH", result["errors"])
 
     def test_cli_reads_template(self) -> None:
         result = subprocess.run(

@@ -11,24 +11,24 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from geno_core.audit import build_audit_event
-from geno_core.action_plan import (
+from geo_core.audit import build_audit_event
+from geo_core.action_plan import (
     build_action_plan_audit_event,
     build_action_recommendations,
     build_retest_comparison_audit_event,
     build_retest_schedule,
     compare_retest_windows,
 )
-from geno_core.analysis_pipeline import analyze_and_score_records, build_score_input_policy, select_score_input_records
-from geno_core.bootstrap import build_au_project_bootstrap
-from geno_core.collection import (
+from geo_core.analysis_pipeline import analyze_and_score_records, build_score_input_policy, select_score_input_records
+from geo_core.bootstrap import build_au_project_bootstrap
+from geo_core.collection import (
     CollectionExecutionPolicy,
     build_collection_run_audit_event,
     build_collection_run_summary,
     run_collection_slice,
     evaluate_p0a_collection_readiness,
 )
-from geno_core.collectors import (
+from geo_core.collectors import (
     DeepSeekChatCollector,
     FixtureChatGPTSearchBrowserCollector,
     FixtureGoogleAIModeCollector,
@@ -43,19 +43,19 @@ from geno_core.collectors import (
     PlaywrightGoogleAIOCollector,
     ThirdPartySerpCollector,
 )
-from geno_core.contracts import CollectorBackend
-from geno_core.durable_jobs import LeaseClaim, LeaseFencedConnection, lease_claim_from_internal_environment
-from geno_core.graph import build_citation_graph
-from geno_core.fidelity import build_runtime_fidelity_check_from_records
-from geno_core.fidelity_schedule import build_browser_fidelity_sampling_plan
-from geno_core.google_spike import (
+from geo_core.contracts import CollectorBackend
+from geo_core.durable_jobs import LeaseClaim, LeaseFencedConnection, lease_claim_from_internal_environment
+from geo_core.graph import build_citation_graph
+from geo_core.fidelity import build_runtime_fidelity_check_from_records
+from geo_core.fidelity_schedule import build_browser_fidelity_sampling_plan
+from geo_core.google_spike import (
     build_google_spike_plan,
     evaluate_google_spike_gate,
     evaluate_google_spike_readiness_gate,
     select_google_spike_prompts,
 )
-from geno_core.llm_gateway import LiteLLMGateway
-from geno_core.models import (
+from geo_core.llm_gateway import LiteLLMGateway
+from geo_core.models import (
     BrandEntity,
     CollectionFailureRecord,
     CompetitorEntity,
@@ -69,13 +69,13 @@ from geno_core.models import (
     RawEvidenceRecord,
     Tenant,
 )
-from geno_core.object_store import (
+from geo_core.object_store import (
     archive_api_snapshot_assets,
     archive_browser_capture_assets,
     archive_report_artifacts,
 )
-from geno_core.parser import ComparativeAnswerParser, LLMJudgeAnswerParser
-from geno_core.knowledge import (
+from geo_core.parser import ComparativeAnswerParser, LLMJudgeAnswerParser
+from geo_core.knowledge import (
     build_content_drafts,
     build_content_engine_audit_event,
     build_integration_connectors,
@@ -83,15 +83,15 @@ from geno_core.knowledge import (
     build_manual_distribution_records,
     search_knowledge_facts,
 )
-from geno_core.report import MarkdownCsvReportExporter
-from geno_core.runtime import (
+from geo_core.report import MarkdownCsvReportExporter
+from geo_core.runtime import (
     RuntimePersistenceError,
     build_object_store_from_env,
     build_repository_from_env,
     close_repository_connection,
     validate_runtime_schema_compatibility,
 )
-from geno_core.traceability import build_traceability_bundle
+from geo_core.traceability import build_traceability_bundle
 
 
 def _tuple_strings(value: object) -> tuple[str, ...]:
@@ -880,7 +880,7 @@ def _persist_records(
             f"worker-runtime-{collection_summary.created_at.strftime('%Y%m%dT%H%M%S%fZ')}"
             f"-{collection_summary.id[:8]}"
         )
-        durable_attempt = os.environ.get("GENO_INTERNAL_DURABLE_ATTEMPT_COUNT", "").strip()
+        durable_attempt = os.environ.get("GEO_INTERNAL_DURABLE_ATTEMPT_COUNT", "").strip()
         if durable_attempt:
             report_version = f"{report_version}-attempt-{int(durable_attempt)}"
         report = MarkdownCsvReportExporter().export(
@@ -1173,19 +1173,19 @@ def main() -> None:
     parser.add_argument(
         "--collection-max-retries",
         type=int,
-        default=int(os.environ.get("GENO_COLLECTION_MAX_RETRIES", "0")),
+        default=int(os.environ.get("GEO_COLLECTION_MAX_RETRIES", "0")),
         help="Retry each prompt/city/sample collector call this many times after the first failure.",
     )
     parser.add_argument(
         "--collection-retry-backoff-seconds",
         type=float,
-        default=float(os.environ.get("GENO_COLLECTION_RETRY_BACKOFF_SECONDS", "0")),
+        default=float(os.environ.get("GEO_COLLECTION_RETRY_BACKOFF_SECONDS", "0")),
         help="Base exponential backoff between collection retries.",
     )
     parser.add_argument(
         "--collection-rate-limit-delay-seconds",
         type=float,
-        default=float(os.environ.get("GENO_COLLECTION_RATE_LIMIT_DELAY_SECONDS", "0")),
+        default=float(os.environ.get("GEO_COLLECTION_RATE_LIMIT_DELAY_SECONDS", "0")),
         help="Sleep between planned collection attempts to respect provider/browser rate limits.",
     )
     parser.add_argument(

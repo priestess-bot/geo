@@ -160,7 +160,7 @@ CREATE TABLE geo_measurements (
     CONSTRAINT geo_measurements_actor_nonempty CHECK (btrim(computed_by) <> '')
 );
 
-CREATE FUNCTION geno_v2_reject_unqualified_destination_submission()
+CREATE FUNCTION geo_v2_reject_unqualified_destination_submission()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
 BEGIN
     IF NOT EXISTS (
@@ -189,7 +189,7 @@ $$;
 CREATE TRIGGER placement_submissions_destination_guard
     BEFORE INSERT OR UPDATE OF destination_id, placement_opportunity_id
     ON placement_submissions FOR EACH ROW
-    EXECUTE FUNCTION geno_v2_reject_unqualified_destination_submission();
+    EXECUTE FUNCTION geo_v2_reject_unqualified_destination_submission();
 
 DO $$
 DECLARE table_name text;
@@ -204,10 +204,10 @@ BEGIN
 END;
 $$;
 
-ALTER FUNCTION geno_v2_reject_unqualified_destination_submission() OWNER TO geno_v2_result_owner;
+ALTER FUNCTION geo_v2_reject_unqualified_destination_submission() OWNER TO geo_v2_result_owner;
 REVOKE ALL ON placement_submissions, placement_verification_runs,
-    geo_measurement_windows, geo_measurements FROM PUBLIC, geno_v2_runtime, geno_v2_worker;
-REVOKE ALL ON FUNCTION geno_v2_reject_unqualified_destination_submission() FROM PUBLIC;
+    geo_measurement_windows, geo_measurements FROM PUBLIC, geo_v2_runtime, geo_v2_worker;
+REVOKE ALL ON FUNCTION geo_v2_reject_unqualified_destination_submission() FROM PUBLIC;
 
 CREATE INDEX placement_submissions_destination_status_idx
     ON placement_submissions (destination_id, status, updated_at DESC);

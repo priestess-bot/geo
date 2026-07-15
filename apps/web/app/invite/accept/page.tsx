@@ -75,7 +75,7 @@ async function acceptProjectInvitation(formData: FormData) {
 }
 
 async function acceptPreview(invitationId: string, inviteToken: string): Promise<InviteAcceptResult> {
-  if (!invitationId || !inviteToken || process.env.GENO_WEB_INVITE_ACCEPT_AUTO_SUBMIT !== "1") {
+  if (!invitationId || !inviteToken || process.env.GEO_WEB_INVITE_ACCEPT_AUTO_SUBMIT !== "1") {
     return { status: "idle" };
   }
   const baseUrl =

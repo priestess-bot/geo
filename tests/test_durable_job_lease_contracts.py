@@ -11,7 +11,7 @@ from unittest.mock import patch
 from uuid import uuid4
 import unittest
 
-from geno_core.durable_jobs import (
+from geo_core.durable_jobs import (
     DURABLE_JOB_SPECS,
     KNOWLEDGE_JOB_TABLES,
     LeaseClaim,
@@ -163,9 +163,9 @@ class DurableJobLeaseContractsTest(unittest.TestCase):
         with patch.dict(os.environ, environment, clear=False):
             parsed = lease_claim_from_internal_environment()
             self.assertIsNotNone(parsed)
-            self.assertNotIn("GENO_INTERNAL_DURABLE_LEASE_TOKEN", os.environ)
+            self.assertNotIn("GEO_INTERNAL_DURABLE_LEASE_TOKEN", os.environ)
             self.assertFalse(
-                any(key.startswith("GENO_INTERNAL_DURABLE_") for key in os.environ)
+                any(key.startswith("GEO_INTERNAL_DURABLE_") for key in os.environ)
             )
         assert parsed is not None
         self.assertEqual(parsed[0].lease_token, claim.lease_token)
@@ -176,7 +176,7 @@ class DurableJobLeaseContractsTest(unittest.TestCase):
         ).read_text(encoding="utf-8")
         task_worker = (ROOT / "workers/task_queue/tasks.py").read_text(encoding="utf-8")
         repository = (
-            ROOT / "packages/geno_core/geno_core/knowledge_pipeline.py"
+            ROOT / "packages/geo_core/geo_core/knowledge_pipeline.py"
         ).read_text(encoding="utf-8")
         self.assertLess(
             knowledge_worker.index('queue_name="knowledge_recovery"'),
@@ -184,7 +184,7 @@ class DurableJobLeaseContractsTest(unittest.TestCase):
         )
         self.assertIn('mode="recovery"', knowledge_worker)
         self.assertIn("for table in recovery_order", knowledge_worker)
-        self.assertIn("FOR UPDATE SKIP LOCKED", (ROOT / "packages/geno_core/geno_core/durable_jobs.py").read_text(encoding="utf-8"))
+        self.assertIn("FOR UPDATE SKIP LOCKED", (ROOT / "packages/geo_core/geo_core/durable_jobs.py").read_text(encoding="utf-8"))
         self.assertIn("status = 'queued'", repository[repository.index("def run_ready_pipeline_once") :])
         self.assertIn("subprocess.Popen", task_worker)
         self.assertIn("process.terminate()", task_worker)
@@ -238,14 +238,14 @@ class DurableJobLeaseContractsTest(unittest.TestCase):
 
     def test_lease_token_is_not_selected_by_collection_public_contract(self) -> None:
         collection = (
-            ROOT / "packages/geno_core/geno_core/collection_jobs.py"
+            ROOT / "packages/geo_core/geo_core/collection_jobs.py"
         ).read_text(encoding="utf-8")
         columns = collection[
             collection.index("COLLECTION_JOB_COLUMNS") : collection.index("def _row")
         ]
         self.assertNotIn('"lease_token"', columns)
         self.assertIn('public.pop("lease_token", None)', (
-            ROOT / "packages/geno_core/geno_core/knowledge_pipeline.py"
+            ROOT / "packages/geo_core/geo_core/knowledge_pipeline.py"
         ).read_text(encoding="utf-8"))
 
     def test_verifier_classifies_configuration_only_runs_as_non_production_evidence(self) -> None:

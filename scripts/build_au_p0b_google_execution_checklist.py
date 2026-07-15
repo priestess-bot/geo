@@ -366,7 +366,7 @@ def _environment_handoff(
         "MANUAL_BACKFILL_PATH": "google_manual_backfill_operator",
         "DATABASE_URL": "runtime_database_admin",
         "GOOGLE_PLAYWRIGHT_STORAGE_STATE": "browser_automation_operator",
-        "GENO_BROWSER_ARTIFACT_DIR": "artifact_store_operator",
+        "GEO_BROWSER_ARTIFACT_DIR": "artifact_store_operator",
     }
     environment_items: list[dict[str, Any]] = []
     for task in [*required_environment, *full_run_required_environment]:
@@ -380,7 +380,7 @@ def _environment_handoff(
                 "truthy": task.get("truthy") if isinstance(task.get("truthy"), bool) else None,
                 "source": task.get("source", "missing"),
                 "owner_hint": owner_hints.get(name, "platform_operator"),
-                "accepted_injection_methods": ["process_environment", "GENO_AU_P0B_GOOGLE_ENV_FILE", ".env.au-p0b-google"],
+                "accepted_injection_methods": ["process_environment", "GEO_AU_P0B_GOOGLE_ENV_FILE", ".env.au-p0b-google"],
                 "env_file_key": name,
                 "value_length": task.get("value_length", 0),
                 "sha256_prefix": task.get("sha256_prefix", ""),
@@ -404,13 +404,13 @@ def _environment_handoff(
                 "selected_name": str(task.get("selected_name", "")),
                 "source": task.get("source", "missing"),
                 "owner_hint": "browser_automation_operator",
-                "accepted_injection_methods": ["process_environment", "GENO_AU_P0B_GOOGLE_ENV_FILE", ".env.au-p0b-google"],
+                "accepted_injection_methods": ["process_environment", "GEO_AU_P0B_GOOGLE_ENV_FILE", ".env.au-p0b-google"],
                 "value_length": task.get("value_length", 0),
                 "sha256_prefix": task.get("sha256_prefix", ""),
                 "secret_redacted": task.get("secret_redacted") is True,
                 "post_update_checks": [
                     "make au-p0b-google-playwright-env",
-                    "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_playwright_env_report.py ${GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-playwright-env-latest.json} --require-ready-smoke",
+                    "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_p0b_google_playwright_env_report.py ${GEO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-playwright-env-latest.json} --require-ready-smoke",
                 ],
             }
         )
@@ -427,7 +427,7 @@ def _environment_handoff(
                 "is_dir": task.get("is_dir") is True,
                 "source": task.get("source", "missing"),
                 "owner_hint": owner_hints.get(name, "platform_operator"),
-                "accepted_injection_methods": ["process_environment", "GENO_AU_P0B_GOOGLE_ENV_FILE", ".env.au-p0b-google"],
+                "accepted_injection_methods": ["process_environment", "GEO_AU_P0B_GOOGLE_ENV_FILE", ".env.au-p0b-google"],
                 "value_length": task.get("value_length", 0),
                 "sha256_prefix": task.get("sha256_prefix", ""),
                 "secret_redacted": task.get("secret_redacted") is True,
@@ -469,7 +469,7 @@ def _environment_handoff(
         "verification_commands": [
             "make au-p0b-google-playwright-env",
             "make verify-au-p0b-google-playwright-env",
-            "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_playwright_env_report.py ${GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-playwright-env-latest.json} --require-ready-smoke",
+            "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_p0b_google_playwright_env_report.py ${GEO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-playwright-env-latest.json} --require-ready-smoke",
             "make au-p0b-google-manual-template",
             "make verify-au-p0b-google-manual-backfill",
             "make au-p0b-google-execution-checklist",
@@ -957,9 +957,9 @@ def _execution_commands() -> list[dict[str, str]]:
         {
             "id": "verify_smoke_strict",
             "shell": (
-                "PYTHONPATH=packages/geno_core:apps/api "
+                "PYTHONPATH=packages/geo_core:apps/api "
                 "python3 scripts/verify_au_p0b_google_playwright_smoke.py "
-                "${GENO_AU_P0B_GOOGLE_PLAYWRIGHT_SMOKE_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-playwright-smoke-latest.json} "
+                "${GEO_AU_P0B_GOOGLE_PLAYWRIGHT_SMOKE_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-playwright-smoke-latest.json} "
                 "--require-success"
             ),
             "purpose": "Fail until the smoke capture has screenshot/html hashes and browser capture metadata.",
@@ -984,9 +984,9 @@ def _verification_commands() -> list[dict[str, str]]:
         {
             "id": "hard_playwright_env_gate",
             "shell": (
-                "PYTHONPATH=packages/geno_core:apps/api "
+                "PYTHONPATH=packages/geo_core:apps/api "
                 "python3 scripts/verify_au_p0b_google_playwright_env_report.py "
-                "${GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-playwright-env-latest.json} "
+                "${GEO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-playwright-env-latest.json} "
                 "--require-ready-smoke"
             ),
             "purpose": "Fail until Google Playwright is enabled, selectors and Playwright dependency are ready.",
@@ -994,9 +994,9 @@ def _verification_commands() -> list[dict[str, str]]:
         {
             "id": "hard_status_gate",
             "shell": (
-                "PYTHONPATH=packages/geno_core:apps/api "
+                "PYTHONPATH=packages/geo_core:apps/api "
                 "python3 scripts/verify_au_p0b_google_spike_status_report.py "
-                "${GENO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-spike-status-latest.json} "
+                "${GEO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-spike-status-latest.json} "
                 "--require-google-main-scoring-allowed"
             ),
             "purpose": "Fail until Google can enter the main scoring denominator.",
@@ -1004,9 +1004,9 @@ def _verification_commands() -> list[dict[str, str]]:
         {
             "id": "hard_package_gate",
             "shell": (
-                "PYTHONPATH=packages/geno_core:apps/api "
+                "PYTHONPATH=packages/geo_core:apps/api "
                 "python3 scripts/verify_au_p0b_google_evidence_package.py "
-                "${GENO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-evidence-package-latest.json} "
+                "${GEO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-evidence-package-latest.json} "
                 "--require-google-main-scoring-allowed"
             ),
             "purpose": "Fail until the package proves Google main scoring is allowed.",
@@ -1346,37 +1346,37 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build an AU P0b Google execution checklist JSON")
     parser.add_argument(
         "--runbook-path",
-        default=os.environ.get("GENO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH", DEFAULT_RUNBOOK_PATH),
+        default=os.environ.get("GEO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH", DEFAULT_RUNBOOK_PATH),
         help="Path to the generated AU P0b Google runbook JSON.",
     )
     parser.add_argument(
         "--execution-path",
-        default=os.environ.get("GENO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH", DEFAULT_EXECUTION_PATH),
+        default=os.environ.get("GEO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH", DEFAULT_EXECUTION_PATH),
         help="Path to the generated AU P0b Google runbook execution JSON.",
     )
     parser.add_argument(
         "--playwright-env-path",
-        default=os.environ.get("GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH", DEFAULT_PLAYWRIGHT_ENV_PATH),
+        default=os.environ.get("GEO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH", DEFAULT_PLAYWRIGHT_ENV_PATH),
         help="Path to the redacted Google Playwright environment report JSON.",
     )
     parser.add_argument(
         "--status-report-path",
-        default=os.environ.get("GENO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH", DEFAULT_STATUS_REPORT_PATH),
+        default=os.environ.get("GEO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH", DEFAULT_STATUS_REPORT_PATH),
         help="Path to the AU P0b Google status report JSON.",
     )
     parser.add_argument(
         "--package-path",
-        default=os.environ.get("GENO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH", DEFAULT_PACKAGE_PATH),
+        default=os.environ.get("GEO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH", DEFAULT_PACKAGE_PATH),
         help="Path to the AU P0b Google evidence package JSON.",
     )
     parser.add_argument(
         "--env-file",
-        default=os.environ.get("GENO_AU_P0B_GOOGLE_ENV_FILE", DEFAULT_ENV_FILE),
+        default=os.environ.get("GEO_AU_P0B_GOOGLE_ENV_FILE", DEFAULT_ENV_FILE),
         help="Optional env file to parse if the Playwright env report is missing.",
     )
     parser.add_argument(
         "--output-path",
-        default=os.environ.get("GENO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to write the AU P0b Google execution checklist JSON.",
     )
     parser.add_argument(

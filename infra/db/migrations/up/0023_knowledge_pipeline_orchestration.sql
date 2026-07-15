@@ -691,7 +691,7 @@ BEGIN
   LOOP
     EXECUTE format('DROP POLICY IF EXISTS %I ON %I', table_name || '_runtime_project_isolation', table_name);
     EXECUTE format(
-      'CREATE POLICY %I ON %I USING (geno_runtime_can_access_project(project_id)) WITH CHECK (geno_runtime_can_access_project(project_id))',
+      'CREATE POLICY %I ON %I USING (geo_runtime_can_access_project(project_id)) WITH CHECK (geo_runtime_can_access_project(project_id))',
       table_name || '_runtime_project_isolation',
       table_name
     );

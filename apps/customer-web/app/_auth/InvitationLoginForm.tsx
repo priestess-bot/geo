@@ -16,7 +16,7 @@ type InvitationFormBody = {
 
 function recommendedPortalHref(base: string, invitationId: string): string {
   const absolute = /^https?:\/\//i.test(base);
-  const url = new URL(base, "http://geno.local");
+  const url = new URL(base, "http://geo.local");
   url.searchParams.delete("invite_token");
   url.searchParams.set("invitation_id", invitationId.trim());
   return absolute ? url.toString() : `${url.pathname}${url.search}${url.hash}`;

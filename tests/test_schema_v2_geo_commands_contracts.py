@@ -8,10 +8,10 @@ SQL = Path("infra/db/schema-v2/baseline/0080_geo_commands.sql").read_text(encodi
 class SchemaV2GeoCommandsContractsTest(unittest.TestCase):
     def test_runtime_commands_are_capability_checked_and_public_is_revoked(self) -> None:
         for name in (
-            "geno_v2_create_geo_campaign",
-            "geno_v2_create_project_destination",
-            "geno_v2_qualify_project_destination",
-            "geno_v2_create_placement_opportunity",
+            "geo_v2_create_geo_campaign",
+            "geo_v2_create_project_destination",
+            "geo_v2_qualify_project_destination",
+            "geo_v2_create_placement_opportunity",
         ):
             self.assertIn(name, SQL)
         self.assertIn("geo.campaign.manage", SQL)
@@ -20,7 +20,7 @@ class SchemaV2GeoCommandsContractsTest(unittest.TestCase):
         self.assertIn("FROM PUBLIC", SQL)
 
     def test_campaign_reads_are_permission_scoped(self) -> None:
-        self.assertIn("geno_v2_read_geo_campaigns", SQL)
+        self.assertIn("geo_v2_read_geo_campaigns", SQL)
         self.assertIn("geo.measurement.read", SQL)
 
 

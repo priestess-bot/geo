@@ -62,7 +62,7 @@ def request(method: str, path: str, *, actor: str = OPERATOR, body: dict | None 
     if query:
         url = f"{url}?{urlencode(query)}"
     raw = json.dumps(body).encode("utf-8") if body is not None else None
-    req = Request(url, data=raw, method=method, headers={"X-GENO-Actor-Id": actor, **({"Content-Type": "application/json"} if raw else {})})
+    req = Request(url, data=raw, method=method, headers={"X-GEO-Actor-Id": actor, **({"Content-Type": "application/json"} if raw else {})})
     try:
         with urlopen(req, timeout=120) as response:  # nosec B310 - local configured runtime API.
             return json.loads(response.read().decode("utf-8"))

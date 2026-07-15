@@ -55,7 +55,7 @@ export function readRuntimeResponseMetadata(
   const payloadCorrelationId = nonEmptyString(record?.correlation_id)
     || nonEmptyString(errorRecord?.correlation_id);
   const headerCorrelationId = nonEmptyString(headers.get("X-Correlation-ID"));
-  const requestId = nonEmptyString(headers.get("X-GENO-Request-Id"))
+  const requestId = nonEmptyString(headers.get("X-GEO-Request-Id"))
     || nonEmptyString(headers.get("X-Request-Id"));
   return compactMetadata({
     etag: nonEmptyString(headers.get("ETag")),

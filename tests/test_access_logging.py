@@ -5,7 +5,7 @@ from uuid import uuid4
 
 from starlette.requests import Request
 
-from geno_api.access_logging import extract_project_id_from_request
+from geo_api.access_logging import extract_project_id_from_request
 
 
 def _request(path: str, query_string: str = "") -> Request:

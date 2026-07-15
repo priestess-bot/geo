@@ -10,10 +10,10 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from geno_api.auth_contracts import AuthInvitationPreflightRequest, AuthInvitationRedeemRequest
-from geno_api.auth_routes import _consume_preflight_rate_limit
-from geno_api.runtime_access_routes import register_runtime_access_routes
-from geno_core.auth import (
+from geo_api.auth_contracts import AuthInvitationPreflightRequest, AuthInvitationRedeemRequest
+from geo_api.auth_routes import _consume_preflight_rate_limit
+from geo_api.runtime_access_routes import register_runtime_access_routes
+from geo_core.auth import (
     AuthContractError,
     InvitationSurface,
     InvitationSurfaceCompatibility,
@@ -22,14 +22,14 @@ from geno_core.auth import (
     project_scope_for_surface,
     surface_for_role,
 )
-from geno_core.auth_delivery import (
+from geo_core.auth_delivery import (
     AuthDeliveryError,
     AuthDeliveryKeyring,
     FrozenAuthDelivery,
     auth_session_cookie_secure,
     build_frozen_auth_delivery,
 )
-from geno_core.models import RuntimeProject, RuntimeProjectPage
+from geo_core.models import RuntimeProject, RuntimeProjectPage
 
 
 def _encoded_key(value: bytes) -> str:
@@ -75,9 +75,9 @@ def test_session_scope_keeps_owner_and_viewer_roles_on_their_projects() -> None:
 def test_delivery_is_authenticated_stable_and_supports_key_rotation() -> None:
     expires_at = datetime.now(UTC) + timedelta(days=7)
     delivery = build_frozen_auth_delivery(
-        session_cookie_name="GENO_RUNTIME_SESSION",
+        session_cookie_name="GEO_RUNTIME_SESSION",
         session_token="session-secret",
-        csrf_cookie_name="GENO_CSRF_TOKEN",
+        csrf_cookie_name="GEO_CSRF_TOKEN",
         csrf_token="csrf-secret",
         session_expires_at=expires_at,
         secure=True,
@@ -112,9 +112,9 @@ def test_delivery_is_authenticated_stable_and_supports_key_rotation() -> None:
 def test_keyring_reads_active_and_previous_keys_from_environment() -> None:
     ring = AuthDeliveryKeyring.from_env(
         {
-            "GENO_AUTH_DELIVERY_MASTER_KEY": _encoded_key(b"a" * 32),
-            "GENO_AUTH_DELIVERY_KEY_ID": "active",
-            "GENO_AUTH_DELIVERY_PREVIOUS_KEYS": '{"previous":"' + _encoded_key(b"p" * 32) + '"}',
+            "GEO_AUTH_DELIVERY_MASTER_KEY": _encoded_key(b"a" * 32),
+            "GEO_AUTH_DELIVERY_KEY_ID": "active",
+            "GEO_AUTH_DELIVERY_PREVIOUS_KEYS": '{"previous":"' + _encoded_key(b"p" * 32) + '"}',
         }
     )
     delivery = FrozenAuthDelivery(
@@ -129,8 +129,8 @@ def test_keyring_reads_compose_secret_file_and_rejects_ambiguous_config(tmp_path
     secret_path.write_text(_encoded_key(b"s" * 32), encoding="utf-8")
     ring = AuthDeliveryKeyring.from_env(
         {
-            "GENO_AUTH_DELIVERY_MASTER_KEY_FILE": str(secret_path),
-            "GENO_AUTH_DELIVERY_KEY_ID": "file-key",
+            "GEO_AUTH_DELIVERY_MASTER_KEY_FILE": str(secret_path),
+            "GEO_AUTH_DELIVERY_KEY_ID": "file-key",
         }
     )
     delivery = FrozenAuthDelivery(
@@ -142,18 +142,18 @@ def test_keyring_reads_compose_secret_file_and_rejects_ambiguous_config(tmp_path
     with pytest.raises(AuthDeliveryError, match="cannot both be configured"):
         AuthDeliveryKeyring.from_env(
             {
-                "GENO_AUTH_DELIVERY_MASTER_KEY": _encoded_key(b"r" * 32),
-                "GENO_AUTH_DELIVERY_MASTER_KEY_FILE": str(secret_path),
-                "GENO_AUTH_DELIVERY_KEY_ID": "ambiguous",
+                "GEO_AUTH_DELIVERY_MASTER_KEY": _encoded_key(b"r" * 32),
+                "GEO_AUTH_DELIVERY_MASTER_KEY_FILE": str(secret_path),
+                "GEO_AUTH_DELIVERY_KEY_ID": "ambiguous",
             }
         )
 
 
 def test_cookie_secure_configuration_is_strict() -> None:
     assert auth_session_cookie_secure({}) is True
-    assert auth_session_cookie_secure({"GENO_RUNTIME_SESSION_COOKIE_SECURE": "false"}) is False
+    assert auth_session_cookie_secure({"GEO_RUNTIME_SESSION_COOKIE_SECURE": "false"}) is False
     with pytest.raises(AuthDeliveryError, match="explicit boolean"):
-        auth_session_cookie_secure({"GENO_RUNTIME_SESSION_COOKIE_SECURE": "sometimes"})
+        auth_session_cookie_secure({"GEO_RUNTIME_SESSION_COOKIE_SECURE": "sometimes"})
 
 
 def test_redeem_contract_rejects_client_supplied_actor() -> None:
@@ -181,9 +181,9 @@ def test_preflight_rate_limit_bucket_does_not_change_with_candidate_token(
 
     repository = RateRepository()
     request = SimpleNamespace(headers={})
-    monkeypatch.delenv("GENO_AUTH_PREFLIGHT_TRUSTED_SOURCE_HEADER", raising=False)
-    monkeypatch.delenv("GENO_AUTH_PREFLIGHT_SOURCE_RATE_LIMIT", raising=False)
-    monkeypatch.setenv("GENO_AUTH_PREFLIGHT_RATE_LIMIT", "20")
+    monkeypatch.delenv("GEO_AUTH_PREFLIGHT_TRUSTED_SOURCE_HEADER", raising=False)
+    monkeypatch.delenv("GEO_AUTH_PREFLIGHT_SOURCE_RATE_LIMIT", raising=False)
+    monkeypatch.setenv("GEO_AUTH_PREFLIGHT_RATE_LIMIT", "20")
     for token in ("wrong-token-one", "wrong-token-two"):
         _consume_preflight_rate_limit(
             repository,
@@ -209,9 +209,9 @@ def test_preflight_trusted_source_limit_above_one_thousand_still_blocks(
             self.calls += 1
             return 1 if self.calls == 1 else 1002
 
-    monkeypatch.setenv("GENO_AUTH_PREFLIGHT_RATE_LIMIT", "20")
-    monkeypatch.setenv("GENO_AUTH_PREFLIGHT_TRUSTED_SOURCE_HEADER", "X-Trusted-Client-Fingerprint")
-    monkeypatch.setenv("GENO_AUTH_PREFLIGHT_SOURCE_RATE_LIMIT", "1001")
+    monkeypatch.setenv("GEO_AUTH_PREFLIGHT_RATE_LIMIT", "20")
+    monkeypatch.setenv("GEO_AUTH_PREFLIGHT_TRUSTED_SOURCE_HEADER", "X-Trusted-Client-Fingerprint")
+    monkeypatch.setenv("GEO_AUTH_PREFLIGHT_SOURCE_RATE_LIMIT", "1001")
     with pytest.raises(AuthContractError) as caught:
         _consume_preflight_rate_limit(
             RateRepository(),
@@ -239,7 +239,7 @@ def _projection_app(context: object, repository: _ProjectionRepository) -> tuple
     closed: list[object] = []
     register_runtime_access_routes(
         app,
-        runtime_actor_header="X-GENO-Actor-Id",
+        runtime_actor_header="X-GEO-Actor-Id",
         project_manage_roles=("project_owner",),
         require_runtime_actor_id=lambda _actor: "viewer@example.com",
         assert_runtime_project_access=lambda *_args, **_kwargs: None,
@@ -339,7 +339,7 @@ def test_surface_projection_paginates_more_than_two_hundred_scopes_without_trunc
 
 
 def test_main_registers_one_authoritative_runtime_projects_get_with_surface_openapi() -> None:
-    from geno_api.main import _runtime_session_csrf_exempt_path, app
+    from geo_api.main import _runtime_session_csrf_exempt_path, app
 
     routes = [
         route

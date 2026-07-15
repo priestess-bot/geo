@@ -1,15 +1,15 @@
 {
   "artifact": {
-    "file": "geno-api.openapi.json",
-    "sha256": "b7b78669d120150287aaee9608197d4747e004e48a548833d5784a44c374775c",
-    "size_bytes": 616202
+    "file": "geo-api.openapi.json",
+    "sha256": "521077f7f3d93ef188aa52bff340b3ba0d1978f23f9a410aa1c9a476165c56cd",
+    "size_bytes": 691698
   },
   "manifest_version": 1,
   "openapi": {
     "api_title": "GEO Production API",
     "api_version": "1.0.0",
     "document_version": "3.1.0",
-    "operation_count": 248,
-    "path_count": 221
+    "operation_count": 280,
+    "path_count": 248
   }
 }

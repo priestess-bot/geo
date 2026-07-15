@@ -1,9 +1,9 @@
 #!/bin/sh
 set -eu
 
-export MC_CONFIG_DIR="${MC_CONFIG_DIR:-/tmp/geno-object-store-smoke-mc}"
-trap 'rm -rf "$MC_CONFIG_DIR" /tmp/geno-object-store-smoke' EXIT
-mkdir -p /tmp/geno-object-store-smoke "${OBJECT_STORE_RECEIPT_DIR:-/receipts}"
+export MC_CONFIG_DIR="${MC_CONFIG_DIR:-/tmp/geo-object-store-smoke-mc}"
+trap 'rm -rf "$MC_CONFIG_DIR" /tmp/geo-object-store-smoke' EXIT
+mkdir -p /tmp/geo-object-store-smoke "${OBJECT_STORE_RECEIPT_DIR:-/receipts}"
 
 read_secret() {
   value="$(printenv "$1" 2>/dev/null || true)"
@@ -26,8 +26,8 @@ file_sha256() {
 }
 
 endpoint="${OBJECT_STORE_ENDPOINT:-http://minio:9000}"
-source_bucket="${OBJECT_STORE_BUCKET:-geno-reports}"
-backup_bucket="${OBJECT_STORE_BACKUP_BUCKET:-geno-backups}"
+source_bucket="${OBJECT_STORE_BUCKET:-geo-reports}"
+backup_bucket="${OBJECT_STORE_BACKUP_BUCKET:-geo-backups}"
 backup_prefix="${OBJECT_STORE_BACKUP_PREFIX:-production/local/}"
 smoke_prefix="${OBJECT_STORE_BACKUP_SMOKE_PREFIX:-smoke/local/}"
 restore_prefix="${OBJECT_STORE_RESTORE_PREFIX:-restore-smoke/local/}"
@@ -48,21 +48,21 @@ until mc alias set backup "$endpoint" "$backup_user" "$backup_password" >/dev/nu
 done
 mc alias set restore "$endpoint" "$restore_user" "$restore_password" >/dev/null
 
-mc cp "backup/$source_bucket/$source_key" /tmp/geno-object-store-smoke/source.txt >/dev/null
-mc cp /tmp/geno-object-store-smoke/source.txt "backup/$backup_bucket/$backup_key" >/dev/null
+mc cp "backup/$source_bucket/$source_key" /tmp/geo-object-store-smoke/source.txt >/dev/null
+mc cp /tmp/geo-object-store-smoke/source.txt "backup/$backup_bucket/$backup_key" >/dev/null
 mc ls "backup/$backup_bucket/$smoke_prefix" >/dev/null
 mc stat "backup/$backup_bucket/$backup_key" >/dev/null
-mc cp "backup/$backup_bucket/$backup_key" /tmp/geno-object-store-smoke/backed-up.txt >/dev/null
-mc cp /tmp/geno-object-store-smoke/source.txt "backup/$backup_bucket/$formal_key" >/dev/null
+mc cp "backup/$backup_bucket/$backup_key" /tmp/geo-object-store-smoke/backed-up.txt >/dev/null
+mc cp /tmp/geo-object-store-smoke/source.txt "backup/$backup_bucket/$formal_key" >/dev/null
 mc ls "backup/$backup_bucket/$backup_prefix" >/dev/null
 mc stat "backup/$backup_bucket/$formal_key" >/dev/null
-mc cp "backup/$backup_bucket/$formal_key" /tmp/geno-object-store-smoke/formal-backup.txt >/dev/null
+mc cp "backup/$backup_bucket/$formal_key" /tmp/geo-object-store-smoke/formal-backup.txt >/dev/null
 
-if mc mb "backup/geno-forbidden-backup-smoke" >/dev/null 2>&1; then
+if mc mb "backup/geo-forbidden-backup-smoke" >/dev/null 2>&1; then
   echo "Backup principal unexpectedly created a bucket" >&2
   exit 1
 fi
-if mc cp /tmp/geno-object-store-smoke/source.txt "backup/$source_bucket/backup-write-must-be-denied.txt" >/dev/null 2>&1; then
+if mc cp /tmp/geo-object-store-smoke/source.txt "backup/$source_bucket/backup-write-must-be-denied.txt" >/dev/null 2>&1; then
   echo "Backup principal unexpectedly wrote the source bucket" >&2
   exit 1
 fi
@@ -74,20 +74,20 @@ if mc rm "backup/$backup_bucket/$cross_run_key" >/dev/null 2>&1; then
   echo "Backup principal unexpectedly deleted a cross-run smoke object" >&2
   exit 1
 fi
-if mc cp /tmp/geno-object-store-smoke/source.txt "restore/$source_bucket/$cross_run_restore_key" >/dev/null 2>&1; then
+if mc cp /tmp/geo-object-store-smoke/source.txt "restore/$source_bucket/$cross_run_restore_key" >/dev/null 2>&1; then
   echo "Restore principal unexpectedly wrote a cross-run prefix" >&2
   exit 1
 fi
 
-mc cp "restore/$backup_bucket/$backup_key" /tmp/geno-object-store-smoke/restore-input.txt >/dev/null
-mc cp /tmp/geno-object-store-smoke/restore-input.txt "restore/$source_bucket/$restored_key" >/dev/null
+mc cp "restore/$backup_bucket/$backup_key" /tmp/geo-object-store-smoke/restore-input.txt >/dev/null
+mc cp /tmp/geo-object-store-smoke/restore-input.txt "restore/$source_bucket/$restored_key" >/dev/null
 mc stat "restore/$source_bucket/$restored_key" >/dev/null
-mc cp "restore/$source_bucket/$restored_key" /tmp/geno-object-store-smoke/restored.txt >/dev/null
+mc cp "restore/$source_bucket/$restored_key" /tmp/geo-object-store-smoke/restored.txt >/dev/null
 
-source_hash="$(file_sha256 /tmp/geno-object-store-smoke/source.txt)"
-backup_hash="$(file_sha256 /tmp/geno-object-store-smoke/backed-up.txt)"
-formal_hash="$(file_sha256 /tmp/geno-object-store-smoke/formal-backup.txt)"
-restored_hash="$(file_sha256 /tmp/geno-object-store-smoke/restored.txt)"
+source_hash="$(file_sha256 /tmp/geo-object-store-smoke/source.txt)"
+backup_hash="$(file_sha256 /tmp/geo-object-store-smoke/backed-up.txt)"
+formal_hash="$(file_sha256 /tmp/geo-object-store-smoke/formal-backup.txt)"
+restored_hash="$(file_sha256 /tmp/geo-object-store-smoke/restored.txt)"
 test "$source_hash" = "$backup_hash"
 test "$source_hash" = "$formal_hash"
 test "$source_hash" = "$restored_hash"

@@ -42,7 +42,7 @@ class AuthWebContractTests(unittest.TestCase):
 
     def test_recovery_secret_sources_and_secure_cookie_boolean_fail_closed(self) -> None:
         recovery = source(ADMIN / "_auth/recovery.ts")
-        self.assertIn("GENO_AUTH_RECOVERY_COOKIE_SECRET_FILE", recovery)
+        self.assertIn("GEO_AUTH_RECOVERY_COOKIE_SECRET_FILE", recovery)
         self.assertIn("readFileSync(secretFile", recovery)
         self.assertIn("directSecret && secretFile", recovery)
         self.assertIn("must use exactly one source", recovery)
@@ -57,9 +57,9 @@ class AuthWebContractTests(unittest.TestCase):
 const recovery = require(process.argv[1]);
 const secretFile = process.argv[2];
 function clear() {
-  delete process.env.GENO_AUTH_RECOVERY_COOKIE_SECRET;
-  delete process.env.GENO_AUTH_RECOVERY_COOKIE_SECRET_FILE;
-  delete process.env.GENO_RUNTIME_SESSION_COOKIE_SECURE;
+  delete process.env.GEO_AUTH_RECOVERY_COOKIE_SECRET;
+  delete process.env.GEO_AUTH_RECOVERY_COOKIE_SECRET_FILE;
+  delete process.env.GEO_RUNTIME_SESSION_COOKIE_SECURE;
   process.env.NODE_ENV = "development";
 }
 function mustThrow(label, expected) {
@@ -72,8 +72,8 @@ function mustThrow(label, expected) {
   throw new Error(`${label}: expected rejection`);
 }
 clear();
-process.env.GENO_AUTH_RECOVERY_COOKIE_SECRET_FILE = secretFile;
-process.env.GENO_RUNTIME_SESSION_COOKIE_SECURE = "true";
+process.env.GEO_AUTH_RECOVERY_COOKIE_SECRET_FILE = secretFile;
+process.env.GEO_RUNTIME_SESSION_COOKIE_SECURE = "true";
 if (recovery.validateRecoveryConfiguration().secureCookies !== true) throw new Error("_FILE failed");
 const adminRequest = { invitation_id: "invite-a", invite_token: "token-a", requested_surface: "admin" };
 const adminFirst = recovery.createRedemptionRecovery(adminRequest, 1700000000000);
@@ -113,16 +113,16 @@ if (recovery.inspectSessionDeliveryRecovery(delivered.cookieValue, "admin", "ses
 if (recovery.safeRetryAfter("999999") !== "3600" || recovery.safeRetryAfter("date") !== undefined) {
   throw new Error("Retry-After sanitizer failed");
 }
-process.env.GENO_AUTH_RECOVERY_COOKIE_SECRET = "direct-secret-0123456789-0123456789";
+process.env.GEO_AUTH_RECOVERY_COOKIE_SECRET = "direct-secret-0123456789-0123456789";
 mustThrow("dual source", "exactly one source");
 clear();
-process.env.GENO_AUTH_RECOVERY_COOKIE_SECRET = "direct-secret-0123456789-0123456789";
-process.env.GENO_RUNTIME_SESSION_COOKIE_SECURE = "sometimes";
+process.env.GEO_AUTH_RECOVERY_COOKIE_SECRET = "direct-secret-0123456789-0123456789";
+process.env.GEO_RUNTIME_SESSION_COOKIE_SECURE = "sometimes";
 mustThrow("invalid boolean", "strict boolean");
-process.env.GENO_RUNTIME_SESSION_COOKIE_SECURE = "false";
+process.env.GEO_RUNTIME_SESSION_COOKIE_SECURE = "false";
 process.env.NODE_ENV = "production";
 mustThrow("production insecure", "cannot be disabled in production");
-delete process.env.GENO_RUNTIME_SESSION_COOKIE_SECURE;
+delete process.env.GEO_RUNTIME_SESSION_COOKIE_SECURE;
 if (recovery.validateRecoveryConfiguration().secureCookies !== true) throw new Error("production default failed");
 """
         with tempfile.TemporaryDirectory(prefix="auth-web-recovery-test-") as temp:
@@ -273,8 +273,8 @@ if (!resolve({ configuredValue: undefined, nodeEnv: "development" }).startsWith(
             self.assertIn("inspectSessionDeliveryRecovery", confirm)
             self.assertIn('recovery.status === "prepared"', confirm)
             self.assertNotIn('request.headers.get("cookie")', confirm)
-            self.assertIn("GENO_RUNTIME_SESSION=", confirm)
-            self.assertIn("GENO_CSRF_TOKEN=", confirm)
+            self.assertIn("GEO_RUNTIME_SESSION=", confirm)
+            self.assertIn("GEO_CSRF_TOKEN=", confirm)
             clear_index = confirm.index("clearRecoveryCookie(response")
             success_index = confirm.index("isRuntimeAuthMeResponse(payload)")
             self.assertGreater(clear_index, success_index)

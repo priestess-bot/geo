@@ -14,9 +14,9 @@ from typing import Any, Iterable, Sequence
 
 
 EXPECTED_SCHEMA_GENERATION = 2
-EXPECTED_DATABASE_NAME = "geno_v2"
+EXPECTED_DATABASE_NAME = "geo_v2"
 MANIFEST_VERSION = 1
-ADVISORY_LOCK_NAME = "geno:schema-v2:install"
+ADVISORY_LOCK_NAME = "geo:schema-v2:install"
 ADVISORY_LOCK_POLL_INTERVAL_SECONDS = 0.1
 LIBPQ_MIN_CONNECT_TIMEOUT_SECONDS = 2
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -213,7 +213,7 @@ def _validate_pg_environment(environment: dict[str, str]) -> None:
             "missing required PostgreSQL connection settings: " + ", ".join(missing)
         )
     if environment["PGDATABASE"] != EXPECTED_DATABASE_NAME:
-        raise SchemaV2Error("PGDATABASE must remain fixed at 'geno_v2'")
+        raise SchemaV2Error("PGDATABASE must remain fixed at 'geo_v2'")
     try:
         port = int(environment["PGPORT"])
     except ValueError as exc:
@@ -739,15 +739,15 @@ def run_database_command(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Install or verify the isolated Geno Schema v2")
+    parser = argparse.ArgumentParser(description="Install or verify the isolated Geo Schema v2")
     parser.add_argument("command", choices=("install", "verify"))
     parser.add_argument(
         "--schema-root",
         type=Path,
         default=Path("infra/db/schema-v2"),
     )
-    parser.add_argument("--app-version", default=os.getenv("GENO_APP_VERSION", "0.1.0"))
-    parser.add_argument("--app-commit", default=os.getenv("GENO_APP_COMMIT", "development"))
+    parser.add_argument("--app-version", default=os.getenv("GEO_APP_VERSION", "0.1.0"))
+    parser.add_argument("--app-commit", default=os.getenv("GEO_APP_COMMIT", "development"))
     parser.add_argument(
         "--connect-timeout-seconds",
         type=_connect_deadline_seconds,

@@ -27,7 +27,7 @@ import json
 import os
 import socket
 
-from geno_core.runtime import build_object_store_from_env
+from geo_core.runtime import build_object_store_from_env
 
 consumer = os.environ["OBJECT_STORE_CONSUMER_NAME"]
 run_id = os.environ["OBJECT_STORE_SMOKE_RUN_ID"]
@@ -38,7 +38,7 @@ if not os.environ.get("OBJECT_STORE_ACCESS_KEY_FILE") or not os.environ.get("OBJ
 store = build_object_store_from_env()
 if store.auto_create_bucket:
     raise RuntimeError("native consumer bucket auto-creation is enabled")
-payload = f"geno native consumer={consumer} run={run_id}\\n".encode("utf-8")
+payload = f"geo native consumer={consumer} run={run_id}\\n".encode("utf-8")
 content_hash = hashlib.sha256(payload).hexdigest()
 key = f"production-readiness/{run_id}/native/{consumer}.txt"
 stored = store.put_object(
@@ -56,7 +56,7 @@ print(json.dumps({
     "container_id": socket.gethostname(),
     "sha256": restored.content_hash,
     "credential_fingerprint": hashlib.sha256(store.access_key.encode("utf-8")).hexdigest(),
-    "execution_path": "geno_core.runtime.build_object_store_from_env",
+    "execution_path": "geo_core.runtime.build_object_store_from_env",
     "credential_source": "OBJECT_STORE_ACCESS_KEY_FILE",
     "auto_create_bucket": store.auto_create_bucket,
 }, sort_keys=True))
@@ -285,7 +285,7 @@ def main(argv: list[str] | None = None) -> int:
     started_at = _utc_now()
     artifact_dir = ROOT / "tmp/production-object-store-smoke" / run_id
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    secrets_dir = Path(tempfile.mkdtemp(prefix="geno-object-store-secrets-"))
+    secrets_dir = Path(tempfile.mkdtemp(prefix="geo-object-store-secrets-"))
 
     values = {
         "minio_root_user": f"root-{secrets.token_hex(8)}",
@@ -301,16 +301,16 @@ def main(argv: list[str] | None = None) -> int:
     }
     secret_values = tuple(values.values())
     host_variables = {
-        "minio_root_user": "GENO_MINIO_ROOT_USER_SECRET_FILE",
-        "minio_root_password": "GENO_MINIO_ROOT_PASSWORD_SECRET_FILE",
-        "object_store_application_access_key": "GENO_OBJECT_STORE_APPLICATION_ACCESS_KEY_SECRET_FILE",
-        "object_store_application_secret_key": "GENO_OBJECT_STORE_APPLICATION_SECRET_KEY_SECRET_FILE",
-        "object_store_backup_access_key": "GENO_OBJECT_STORE_BACKUP_ACCESS_KEY_SECRET_FILE",
-        "object_store_backup_secret_key": "GENO_OBJECT_STORE_BACKUP_SECRET_KEY_SECRET_FILE",
-        "object_store_restore_access_key": "GENO_OBJECT_STORE_RESTORE_ACCESS_KEY_SECRET_FILE",
-        "object_store_restore_secret_key": "GENO_OBJECT_STORE_RESTORE_SECRET_KEY_SECRET_FILE",
-        "object_store_retention_access_key": "GENO_OBJECT_STORE_RETENTION_ACCESS_KEY_SECRET_FILE",
-        "object_store_retention_secret_key": "GENO_OBJECT_STORE_RETENTION_SECRET_KEY_SECRET_FILE",
+        "minio_root_user": "GEO_MINIO_ROOT_USER_SECRET_FILE",
+        "minio_root_password": "GEO_MINIO_ROOT_PASSWORD_SECRET_FILE",
+        "object_store_application_access_key": "GEO_OBJECT_STORE_APPLICATION_ACCESS_KEY_SECRET_FILE",
+        "object_store_application_secret_key": "GEO_OBJECT_STORE_APPLICATION_SECRET_KEY_SECRET_FILE",
+        "object_store_backup_access_key": "GEO_OBJECT_STORE_BACKUP_ACCESS_KEY_SECRET_FILE",
+        "object_store_backup_secret_key": "GEO_OBJECT_STORE_BACKUP_SECRET_KEY_SECRET_FILE",
+        "object_store_restore_access_key": "GEO_OBJECT_STORE_RESTORE_ACCESS_KEY_SECRET_FILE",
+        "object_store_restore_secret_key": "GEO_OBJECT_STORE_RESTORE_SECRET_KEY_SECRET_FILE",
+        "object_store_retention_access_key": "GEO_OBJECT_STORE_RETENTION_ACCESS_KEY_SECRET_FILE",
+        "object_store_retention_secret_key": "GEO_OBJECT_STORE_RETENTION_SECRET_KEY_SECRET_FILE",
     }
     env = os.environ.copy()
     for name, value in values.items():
@@ -320,16 +320,16 @@ def main(argv: list[str] | None = None) -> int:
     env.update(
         {
             "COMPOSE_PROJECT_NAME": args.project_name,
-            "GENO_MINIO_ENCRYPTED_VOLUME_NAME": volume_name,
-            "GENO_MINIO_HOST_PORT": str(minio_port),
-            "GENO_MINIO_CONSOLE_HOST_PORT": str(console_port),
+            "GEO_MINIO_ENCRYPTED_VOLUME_NAME": volume_name,
+            "GEO_MINIO_HOST_PORT": str(minio_port),
+            "GEO_MINIO_CONSOLE_HOST_PORT": str(console_port),
             "OBJECT_STORE_BACKUP_PREFIX": "production/smoke-environment/",
             "OBJECT_STORE_BACKUP_SMOKE_PREFIX": f"smoke/{run_id}/",
             "OBJECT_STORE_RESTORE_PREFIX": f"restore-smoke/{run_id}/",
             "OBJECT_STORE_RETENTION_PREFIX": f"retention-approved/{run_id}/",
             "MINIO_BOOTSTRAP_ENABLE_EPHEMERAL": "1",
-            "GENO_CONNECTOR_SECRET_MASTER_KEY": secrets.token_urlsafe(32),
-            "GENO_REPORT_ARTIFACT_SIGNING_SECRET": secrets.token_urlsafe(32),
+            "GEO_CONNECTOR_SECRET_MASTER_KEY": secrets.token_urlsafe(32),
+            "GEO_REPORT_ARTIFACT_SIGNING_SECRET": secrets.token_urlsafe(32),
         }
     )
 

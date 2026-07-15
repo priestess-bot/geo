@@ -122,7 +122,7 @@ export function adminWebBaseUrl(): string {
 
 export async function hasRuntimeSession(): Promise<boolean> {
   const cookieStore = await cookies();
-  return Boolean(cookieStore.get("GENO_RUNTIME_SESSION")?.value);
+  return Boolean(cookieStore.get("GEO_RUNTIME_SESSION")?.value);
 }
 
 async function actorHeaders(
@@ -131,25 +131,25 @@ async function actorHeaders(
   includeCsrfProof = true
 ): Promise<HeadersInit> {
   const cookieStore = await cookies();
-  const sessionToken = cookieStore.get("GENO_RUNTIME_SESSION")?.value || "";
-  const csrfToken = cookieStore.get("GENO_CSRF_TOKEN")?.value || "";
+  const sessionToken = cookieStore.get("GEO_RUNTIME_SESSION")?.value || "";
+  const csrfToken = cookieStore.get("GEO_CSRF_TOKEN")?.value || "";
   if (sessionToken) {
     return {
-      "X-GENO-Session-Token": sessionToken,
+      "X-GEO-Session-Token": sessionToken,
       ...(csrfToken && includeCsrfProof
         ? {
-            "X-GENO-CSRF-Token": csrfToken,
-            Cookie: `GENO_CSRF_TOKEN=${encodeURIComponent(csrfToken)}`
+            "X-GEO-CSRF-Token": csrfToken,
+            Cookie: `GEO_CSRF_TOKEN=${encodeURIComponent(csrfToken)}`
           }
         : {}),
       ...(extra || {})
     };
   }
-  if ((process.env.GENO_RUNTIME_AUTH_MODE || "header") === "session") {
+  if ((process.env.GEO_RUNTIME_AUTH_MODE || "header") === "session") {
     return { ...(extra || {}) };
   }
   return {
-    "X-GENO-Actor-Id": actorId || process.env.GENO_CUSTOMER_RUNTIME_ACTOR_ID || process.env.GENO_ADMIN_ACTOR_ID || "runtime-console",
+    "X-GEO-Actor-Id": actorId || process.env.GEO_CUSTOMER_RUNTIME_ACTOR_ID || process.env.GEO_ADMIN_ACTOR_ID || "runtime-console",
     ...(extra || {})
   };
 }

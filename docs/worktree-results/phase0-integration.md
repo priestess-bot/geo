@@ -26,8 +26,8 @@
 
 ## Verification In This Integration Worktree
 
-- `PYTHONPATH=packages/geno_core:apps/api:. python3 -m compileall -q scripts/bootstrap_admin_session.py apps/api/geno_api packages/geno_core/geno_core tests/test_auth_postgres_integration.py tests/test_auth_session_v2_contracts.py tests/test_auth_web_contracts.py`: passed.
-- `PYTHONPATH=packages/geno_core:apps/api:. python3 -m ruff check ...`: passed.
+- `PYTHONPATH=packages/geo_core:apps/api:. python3 -m compileall -q scripts/bootstrap_admin_session.py apps/api/geo_api packages/geo_core/geo_core tests/test_auth_postgres_integration.py tests/test_auth_session_v2_contracts.py tests/test_auth_web_contracts.py`: passed.
+- `PYTHONPATH=packages/geo_core:apps/api:. python3 -m ruff check ...`: passed.
 - `git diff --check`: passed.
 - `make test-auth-core`: `38 passed`.
 - `make test-auth-web`: `15 passed`, plus Admin and Customer `tsc --noEmit` passed.
@@ -37,9 +37,9 @@
 - `docker compose -f infra/docker-compose.yml config --quiet`: passed.
 - `python3 scripts/verify_production_object_store.py --config-only`: passed.
 - Fresh integration migration chain `infra/db/migrations/up/*.sql` on a temporary PostgreSQL database, including `0029` and `0030`: passed.
-- `AUTH_TEST_DATABASE_URL=postgresql://geno:geno@localhost:55433/geno AUTH_TEST_APP_DATABASE_URL=postgresql://geno_runtime_app:geno_runtime_app@localhost:55433/geno PYTHONPATH=packages/geno_core:apps/api:. python3 -m pytest -q tests/test_auth_postgres_integration.py`: `21 passed`.
-- `GENO_AUTH_DELIVERY_MASTER_KEY=... GENO_AUTH_DELIVERY_KEY_ID=integration-test-key AUTH_E2E_DATABASE_URL=postgresql://geno:geno@localhost:55433/geno AUTH_E2E_APP_DATABASE_URL=postgresql://geno_runtime_app:geno_runtime_app@localhost:55433/geno PYTHONPATH=packages/geno_core:apps/api:. python3 scripts/run_auth_session_v2_e2e.py`: passed.
-- `PYTHONPATH=packages/geno_core:apps/api:. python3 scripts/bootstrap_admin_session.py --help`: passed.
+- `AUTH_TEST_DATABASE_URL=postgresql://geo:geo@localhost:55433/geo AUTH_TEST_APP_DATABASE_URL=postgresql://geo_runtime_app:geo_runtime_app@localhost:55433/geo PYTHONPATH=packages/geo_core:apps/api:. python3 -m pytest -q tests/test_auth_postgres_integration.py`: `21 passed`.
+- `GEO_AUTH_DELIVERY_MASTER_KEY=... GEO_AUTH_DELIVERY_KEY_ID=integration-test-key AUTH_E2E_DATABASE_URL=postgresql://geo:geo@localhost:55433/geo AUTH_E2E_APP_DATABASE_URL=postgresql://geo_runtime_app:geo_runtime_app@localhost:55433/geo PYTHONPATH=packages/geo_core:apps/api:. python3 scripts/run_auth_session_v2_e2e.py`: passed.
+- `PYTHONPATH=packages/geo_core:apps/api:. python3 scripts/bootstrap_admin_session.py --help`: passed.
 - Direct `bootstrap_admin_session()` call against a seeded tenant/project created a scope-v2 session with matching tenant/project IDs and one-time session token: passed.
 
 ## Known Remaining Blockers

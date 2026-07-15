@@ -282,8 +282,8 @@ class MockAuthApiHandler(BaseHTTPRequestHandler):
             session_token = f"session-{invitation.session_kind}-{len(STATE.sessions) + 1}"
             csrf_token = f"csrf-{invitation.session_kind}-{len(STATE.sessions) + 1}"
             cookies = (
-                f"GENO_RUNTIME_SESSION={session_token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800; Expires=Wed, 21 Oct 2037 07:28:00 GMT",
-                f"GENO_CSRF_TOKEN={csrf_token}; Path=/; SameSite=Lax; Max-Age=604800; Expires=Wed, 21 Oct 2037 07:28:00 GMT",
+                f"GEO_RUNTIME_SESSION={session_token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800; Expires=Wed, 21 Oct 2037 07:28:00 GMT",
+                f"GEO_CSRF_TOKEN={csrf_token}; Path=/; SameSite=Lax; Max-Age=604800; Expires=Wed, 21 Oct 2037 07:28:00 GMT",
             )
             session = scope_for(invitation.session_kind)
             STATE.sessions[session_token] = session
@@ -296,10 +296,10 @@ class MockAuthApiHandler(BaseHTTPRequestHandler):
         )
 
     def _auth_me(self) -> None:
-        session_token = str(self.headers.get("X-GENO-Session-Token") or "")
-        csrf_token = str(self.headers.get("X-GENO-CSRF-Token") or "")
+        session_token = str(self.headers.get("X-GEO-Session-Token") or "")
+        csrf_token = str(self.headers.get("X-GEO-CSRF-Token") or "")
         cookie_header = str(self.headers.get("Cookie") or "")
-        csrf_proof = bool(csrf_token and f"GENO_CSRF_TOKEN={csrf_token}" in cookie_header.split("; "))
+        csrf_proof = bool(csrf_token and f"GEO_CSRF_TOKEN={csrf_token}" in cookie_header.split("; "))
         with STATE.lock:
             session = STATE.sessions.get(session_token)
             STATE.auth_me_cookie_headers.append(cookie_header)
@@ -311,7 +311,7 @@ class MockAuthApiHandler(BaseHTTPRequestHandler):
         self._send_json(200, {"session": session})
 
     def _projects(self, query: dict[str, list[str]]) -> None:
-        session_token = str(self.headers.get("X-GENO-Session-Token") or "")
+        session_token = str(self.headers.get("X-GEO-Session-Token") or "")
         surface = (query.get("surface") or [""])[0]
         project_id = (query.get("project_id") or [""])[0]
         limit = max(1, min(200, int((query.get("limit") or ["50"])[0])))
@@ -480,7 +480,7 @@ def session_cookie_headers(headers: dict[str, list[str]]) -> tuple[str, ...]:
     return tuple(
         value
         for value in headers.get("set-cookie", [])
-        if value.startswith("GENO_RUNTIME_SESSION=") or value.startswith("GENO_CSRF_TOKEN=")
+        if value.startswith("GEO_RUNTIME_SESSION=") or value.startswith("GEO_CSRF_TOKEN=")
     )
 
 
@@ -525,8 +525,8 @@ def exercise_concurrent_prepare_recovery(
     with STATE.lock:
         STATE.sessions[old_session] = scope_for("mixed" if surface == "admin" else "viewer")
         auth_me_count = len(STATE.auth_me_cookie_headers)
-    second_tab.cookies["GENO_RUNTIME_SESSION"] = old_session
-    second_tab.cookies["GENO_CSRF_TOKEN"] = old_csrf
+    second_tab.cookies["GEO_RUNTIME_SESSION"] = old_session
+    second_tab.cookies["GEO_CSRF_TOKEN"] = old_csrf
 
     status, confirm_headers, body = second_tab.request("POST", "/api/auth/session-confirm")
     assert status == 202, (status, body)
@@ -614,7 +614,7 @@ def run_contract_checks() -> dict[str, Any]:
         surface="admin",
         invitation_id="race-admin-id",
         invite_token="race-admin-secret",
-        recovery_cookie_name="GENO_ADMIN_REDEEM_RECOVERY",
+        recovery_cookie_name="GEO_ADMIN_REDEEM_RECOVERY",
         landing_path="/projects",
     )
     customer_race_key = exercise_concurrent_prepare_recovery(
@@ -622,7 +622,7 @@ def run_contract_checks() -> dict[str, Any]:
         surface="customer",
         invitation_id="race-customer-id",
         invite_token="race-customer-secret",
-        recovery_cookie_name="GENO_CUSTOMER_REDEEM_RECOVERY",
+        recovery_cookie_name="GEO_CUSTOMER_REDEEM_RECOVERY",
         landing_path="/",
     )
     assert admin_race_key != customer_race_key
@@ -680,7 +680,7 @@ def run_contract_checks() -> dict[str, Any]:
     )
     assert status == 200, (status, body)
     assert json_body(body)["prepared"] is True
-    recovery_cookie = admin.cookies.get("GENO_ADMIN_REDEEM_RECOVERY")
+    recovery_cookie = admin.cookies.get("GEO_ADMIN_REDEEM_RECOVERY")
     assert recovery_cookie and "analyst-secret" not in recovery_cookie
     assert any(
         "httponly" in value.lower()
@@ -702,7 +702,7 @@ def run_contract_checks() -> dict[str, Any]:
 
     with STATE.lock:
         preflight_count = len(STATE.preflight_requests)
-    recovery_before_refresh = admin.cookies["GENO_ADMIN_REDEEM_RECOVERY"]
+    recovery_before_refresh = admin.cookies["GEO_ADMIN_REDEEM_RECOVERY"]
     status, refreshed_prepare_headers, body = admin.request(
         "POST",
         "/api/auth/redeem-prepare",
@@ -710,7 +710,7 @@ def run_contract_checks() -> dict[str, Any]:
     )
     assert status == 200, (status, body)
     assert json_body(body)["prepared"] is True
-    assert admin.cookies["GENO_ADMIN_REDEEM_RECOVERY"] == recovery_before_refresh
+    assert admin.cookies["GEO_ADMIN_REDEEM_RECOVERY"] == recovery_before_refresh
     assert not refreshed_prepare_headers.get("set-cookie")
     with STATE.lock:
         assert len(STATE.preflight_requests) == preflight_count
@@ -735,28 +735,28 @@ def run_contract_checks() -> dict[str, Any]:
         assert "admin" in STATE.project_surfaces
 
     partial_delivery = BrowserClient(ADMIN_PORT)
-    partial_delivery.cookies["GENO_ADMIN_REDEEM_RECOVERY"] = admin.cookies["GENO_ADMIN_REDEEM_RECOVERY"]
-    partial_delivery.cookies["GENO_RUNTIME_SESSION"] = admin.cookies["GENO_RUNTIME_SESSION"]
+    partial_delivery.cookies["GEO_ADMIN_REDEEM_RECOVERY"] = admin.cookies["GEO_ADMIN_REDEEM_RECOVERY"]
+    partial_delivery.cookies["GEO_RUNTIME_SESSION"] = admin.cookies["GEO_RUNTIME_SESSION"]
     with STATE.lock:
         auth_me_count = len(STATE.auth_me_cookie_headers)
     status, headers, body = partial_delivery.request("POST", "/api/auth/session-confirm")
     assert status == 409, (status, body)
     assert json_body(body)["code"] == "auth_session_delivery_invalid"
-    assert "GENO_ADMIN_REDEEM_RECOVERY" in partial_delivery.cookies
-    assert not any("GENO_ADMIN_REDEEM_RECOVERY=" in value for value in headers.get("set-cookie", []))
+    assert "GEO_ADMIN_REDEEM_RECOVERY" in partial_delivery.cookies
+    assert not any("GEO_ADMIN_REDEEM_RECOVERY=" in value for value in headers.get("set-cookie", []))
     with STATE.lock:
         assert len(STATE.auth_me_cookie_headers) == auth_me_count
 
     mismatched_delivery = BrowserClient(ADMIN_PORT)
-    mismatched_delivery.cookies["GENO_ADMIN_REDEEM_RECOVERY"] = admin.cookies["GENO_ADMIN_REDEEM_RECOVERY"]
-    mismatched_delivery.cookies["GENO_RUNTIME_SESSION"] = "old-admin-session"
-    mismatched_delivery.cookies["GENO_CSRF_TOKEN"] = "old-admin-csrf"
+    mismatched_delivery.cookies["GEO_ADMIN_REDEEM_RECOVERY"] = admin.cookies["GEO_ADMIN_REDEEM_RECOVERY"]
+    mismatched_delivery.cookies["GEO_RUNTIME_SESSION"] = "old-admin-session"
+    mismatched_delivery.cookies["GEO_CSRF_TOKEN"] = "old-admin-csrf"
     with STATE.lock:
         auth_me_count = len(STATE.auth_me_cookie_headers)
     status, headers, body = mismatched_delivery.request("POST", "/api/auth/session-confirm")
     assert status == 409, (status, body)
     assert json_body(body)["code"] == "auth_session_delivery_invalid"
-    assert "GENO_ADMIN_REDEEM_RECOVERY" in mismatched_delivery.cookies
+    assert "GEO_ADMIN_REDEEM_RECOVERY" in mismatched_delivery.cookies
     assert not headers.get("set-cookie")
     with STATE.lock:
         assert len(STATE.auth_me_cookie_headers) == auth_me_count
@@ -764,16 +764,16 @@ def run_contract_checks() -> dict[str, Any]:
     status, confirm_headers, body = admin.request("POST", "/api/auth/session-confirm")
     assert status == 200, (status, body)
     assert json_body(body)["session"]["scope_version"] == "runtime_session_scope_v2"
-    assert any("GENO_ADMIN_REDEEM_RECOVERY=" in value and "Max-Age=0" in value for value in confirm_headers["set-cookie"])
-    assert "GENO_ADMIN_REDEEM_RECOVERY" not in admin.cookies
+    assert any("GEO_ADMIN_REDEEM_RECOVERY=" in value and "Max-Age=0" in value for value in confirm_headers["set-cookie"])
+    assert "GEO_ADMIN_REDEEM_RECOVERY" not in admin.cookies
     with STATE.lock:
         confirm_cookie_header = STATE.auth_me_cookie_headers[-1]
-    assert "GENO_RUNTIME_SESSION=" in confirm_cookie_header
-    assert "GENO_CSRF_TOKEN=" in confirm_cookie_header
+    assert "GEO_RUNTIME_SESSION=" in confirm_cookie_header
+    assert "GEO_CSRF_TOKEN=" in confirm_cookie_header
     assert "REDEEM_RECOVERY" not in confirm_cookie_header
 
     invalid_session_client = BrowserClient(ADMIN_PORT)
-    invalid_session_client.cookies["GENO_RUNTIME_SESSION"] = "expired-or-invalid-session"
+    invalid_session_client.cookies["GEO_RUNTIME_SESSION"] = "expired-or-invalid-session"
     status, headers, _ = invalid_session_client.request("GET", "/projects/project-a")
     assert status in {303, 307, 308} and location_path(headers) == "/login", headers
 
@@ -805,14 +805,14 @@ def run_contract_checks() -> dict[str, Any]:
         {"invitation_id": "invalid-scope-id", "invite_token": "invalid-scope-secret"},
     )
     assert status == 303, (status, body)
-    invalid_scope_session = invalid_scope_client.cookies["GENO_RUNTIME_SESSION"]
+    invalid_scope_session = invalid_scope_client.cookies["GEO_RUNTIME_SESSION"]
     with STATE.lock:
         STATE.sessions[invalid_scope_session]["project_ids"] = []
     status, headers, body = invalid_scope_client.request("POST", "/api/auth/session-confirm")
     assert status == 502, (status, body)
     assert json_body(body)["code"] == "auth_session_delivery_invalid"
-    assert "GENO_ADMIN_REDEEM_RECOVERY" in invalid_scope_client.cookies
-    assert not any("GENO_ADMIN_REDEEM_RECOVERY=" in value for value in headers.get("set-cookie", []))
+    assert "GEO_ADMIN_REDEEM_RECOVERY" in invalid_scope_client.cookies
+    assert not any("GEO_ADMIN_REDEEM_RECOVERY=" in value for value in headers.get("set-cookie", []))
 
     status, _, body = customer.request(
         "POST",
@@ -843,8 +843,8 @@ def run_contract_checks() -> dict[str, Any]:
         assert "customer" in STATE.project_surfaces
         assert len(STATE.confirmed_sessions) == confirmed_before_customer_ssr
         assert len(STATE.auth_me_cookie_headers) == auth_me_before_customer_ssr + 1
-        assert "GENO_CSRF_TOKEN=" not in STATE.auth_me_cookie_headers[-1]
-    assert "GENO_CUSTOMER_REDEEM_RECOVERY" in customer.cookies
+        assert "GEO_CSRF_TOKEN=" not in STATE.auth_me_cookie_headers[-1]
+    assert "GEO_CUSTOMER_REDEEM_RECOVERY" in customer.cookies
 
     status, headers, _ = customer.request(
         "GET",
@@ -854,8 +854,8 @@ def run_contract_checks() -> dict[str, Any]:
     assert location_path(headers) == "/?invitation_id=legacy-customer&project_id=project-b"
 
     mixed_customer = BrowserClient(CUSTOMER_PORT)
-    mixed_customer.cookies["GENO_RUNTIME_SESSION"] = admin.cookies["GENO_RUNTIME_SESSION"]
-    mixed_customer.cookies["GENO_CSRF_TOKEN"] = admin.cookies["GENO_CSRF_TOKEN"]
+    mixed_customer.cookies["GEO_RUNTIME_SESSION"] = admin.cookies["GEO_RUNTIME_SESSION"]
+    mixed_customer.cookies["GEO_CSRF_TOKEN"] = admin.cookies["GEO_CSRF_TOKEN"]
     status, _, body = mixed_customer.request("GET", "/")
     text = body.decode("utf-8")
     assert status == 200
@@ -1000,8 +1000,8 @@ def main() -> int:
     mock_thread.start()
     common = {
         "API_INTERNAL_BASE_URL": f"http://127.0.0.1:{mock_port}",
-        "GENO_RUNTIME_AUTH_MODE": "session",
-        "GENO_RUNTIME_SESSION_COOKIE_SECURE": "0",
+        "GEO_RUNTIME_AUTH_MODE": "session",
+        "GEO_RUNTIME_SESSION_COOKIE_SECURE": "0",
         "NEXT_TELEMETRY_DISABLED": "1",
     }
     admin = start_next(
@@ -1010,7 +1010,7 @@ def main() -> int:
         ADMIN_PORT,
         {
             **common,
-            "GENO_AUTH_RECOVERY_COOKIE_SECRET_FILE": secret_file.name,
+            "GEO_AUTH_RECOVERY_COOKIE_SECRET_FILE": secret_file.name,
             "CUSTOMER_WEB_BASE_URL": f"http://127.0.0.1:{CUSTOMER_PORT}/",
         },
     )
@@ -1020,7 +1020,7 @@ def main() -> int:
         CUSTOMER_PORT,
         {
             **common,
-            "GENO_AUTH_RECOVERY_COOKIE_SECRET": RECOVERY_SECRET,
+            "GEO_AUTH_RECOVERY_COOKIE_SECRET": RECOVERY_SECRET,
             "ADMIN_WEB_BASE_URL": f"http://127.0.0.1:{ADMIN_PORT}/login",
         },
     )

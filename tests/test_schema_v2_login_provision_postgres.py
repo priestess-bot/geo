@@ -60,7 +60,7 @@ class SchemaV2LoginProvisionPostgresTest(unittest.TestCase):
             with connection.cursor() as cursor:
                 cursor.execute(
                     "SELECT rolcanlogin, rolpassword IS NULL FROM pg_authid "
-                    "WHERE rolname = 'geno_v2_api_login'"
+                    "WHERE rolname = 'geo_v2_api_login'"
                 )
                 self.assertEqual(cursor.fetchone(), (False, True))
                 cursor.execute("SELECT count(*) FROM auth_login_provision_attempts")
@@ -76,7 +76,7 @@ class SchemaV2LoginProvisionPostgresTest(unittest.TestCase):
             with self._installer() as connection:
                 with connection.cursor() as cursor:
                     cursor.execute(
-                        "ALTER ROLE geno_v2_api_login LOGIN PASSWORD "
+                        "ALTER ROLE geo_v2_api_login LOGIN PASSWORD "
                         "'Untracked-Test-Credential-Only-2026!'"
                     )
             with self.assertRaisesRegex(
@@ -96,7 +96,7 @@ class SchemaV2LoginProvisionPostgresTest(unittest.TestCase):
                 with connection.cursor() as cursor:
                     cursor.execute(
                         "SELECT rolcanlogin, rolpassword IS NULL FROM pg_authid "
-                        "WHERE rolname = 'geno_v2_api_login'"
+                        "WHERE rolname = 'geo_v2_api_login'"
                     )
                     self.assertEqual(cursor.fetchone(), (False, True))
                     cursor.execute("SELECT count(*) FROM auth_login_provision_attempts")
@@ -116,7 +116,7 @@ class SchemaV2LoginProvisionPostgresTest(unittest.TestCase):
                 with connection.cursor() as cursor:
                     cursor.execute(
                         "GRANT SELECT ON auth_login_provision_attempts "
-                        "TO geno_v2_api_login"
+                        "TO geo_v2_api_login"
                     )
             try:
                 with self.assertRaisesRegex(
@@ -129,7 +129,7 @@ class SchemaV2LoginProvisionPostgresTest(unittest.TestCase):
                     with connection.cursor() as cursor:
                         cursor.execute(
                             "REVOKE SELECT ON auth_login_provision_attempts "
-                            "FROM geno_v2_api_login"
+                            "FROM geo_v2_api_login"
                         )
             with self._installer() as connection:
                 with connection.cursor() as cursor:
@@ -190,7 +190,7 @@ class SchemaV2LoginProvisionPostgresTest(unittest.TestCase):
                 with connection.cursor() as cursor:
                     cursor.execute(
                         "SELECT rolcanlogin, rolpassword IS NULL FROM pg_authid "
-                        "WHERE rolname = 'geno_v2_api_login'"
+                        "WHERE rolname = 'geo_v2_api_login'"
                     )
                     self.assertEqual(cursor.fetchone(), (False, True))
                     cursor.execute(
@@ -222,7 +222,7 @@ class SchemaV2LoginProvisionPostgresTest(unittest.TestCase):
             ) as pooled:
                 with pooled.transaction():
                     with pooled.cursor() as cursor:
-                        cursor.execute("SET LOCAL ROLE geno_v2_runtime")
+                        cursor.execute("SET LOCAL ROLE geo_v2_runtime")
                         cursor.execute(
                             "SET LOCAL app.session_token_hash = "
                             "'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'"

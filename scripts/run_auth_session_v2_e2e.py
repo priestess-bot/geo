@@ -10,18 +10,18 @@ from uuid import uuid4
 import psycopg
 from psycopg.rows import dict_row
 
-from geno_core.auth import AuthContractError, AuthSessionV2Repository, InvitationSurface
-from geno_core.auth_delivery import AuthDeliveryKeyring
-from geno_core.repository import PostgresEvidenceRepository
+from geo_core.auth import AuthContractError, AuthSessionV2Repository, InvitationSurface
+from geo_core.auth_delivery import AuthDeliveryKeyring
+from geo_core.repository import PostgresEvidenceRepository
 
 
 def main() -> int:
     owner_url = os.getenv("AUTH_E2E_DATABASE_URL") or os.getenv("DATABASE_URL")
     if not owner_url:
-        owner_url = "postgresql://geno:geno@localhost:55433/geno"
+        owner_url = "postgresql://geo:geo@localhost:55433/geo"
     app_url = os.getenv(
         "AUTH_E2E_APP_DATABASE_URL",
-        "postgresql://geno_runtime_app:geno_runtime_app@localhost:55433/geno",
+        "postgresql://geo_runtime_app:geo_runtime_app@localhost:55433/geo",
     )
     keyring = AuthDeliveryKeyring.from_env()
     tenant_id = str(uuid4())

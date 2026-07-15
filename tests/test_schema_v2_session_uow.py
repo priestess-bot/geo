@@ -8,8 +8,8 @@ import unittest
 from types import SimpleNamespace
 from uuid import UUID
 
-from geno_core.runtime import RuntimePersistenceError, RuntimePostgresConnectionPool
-from geno_core.schema_v2.session_uow import (
+from geo_core.runtime import RuntimePersistenceError, RuntimePostgresConnectionPool
+from geo_core.schema_v2.session_uow import (
     SchemaV2ApiSessionUnitOfWork,
     SchemaV2RawSessionTokenError,
     SchemaV2SessionAuthorizationError,
@@ -161,10 +161,10 @@ class SchemaV2SessionUnitOfWorkTest(unittest.TestCase):
             connection.events,
             [
                 "SQL:BEGIN",
-                "SQL:SET LOCAL ROLE geno_v2_runtime",
+                "SQL:SET LOCAL ROLE geo_v2_runtime",
                 "SQL:SELECT set_config('app.session_token_hash', %s, true)",
                 "SQL:SELECT session_id, actor_id, tenant_id, project_ids, "
-                "tenant_roles, project_scopes FROM public.geno_v2_resolve_session_context()",
+                "tenant_roles, project_scopes FROM public.geo_v2_resolve_session_context()",
                 "COMMIT",
                 "SQL:RESET ALL",
                 "SQL:RESET ROLE",
@@ -189,7 +189,7 @@ class SchemaV2SessionUnitOfWorkTest(unittest.TestCase):
             "app.project_id",
             "app.project_ids",
             "app.roles",
-            "geno.runtime_",
+            "geo.runtime_",
             "runtime_sessions",
         ):
             self.assertNotIn(forbidden, sql)
@@ -271,7 +271,7 @@ class SchemaV2SessionUnitOfWorkTest(unittest.TestCase):
                 self.assertEqual(connection.close_count, 0)
 
     def test_database_setup_error_is_redacted_and_connection_is_cleaned(self) -> None:
-        connection = FakeConnection(fail_on_sql="geno_v2_resolve_session_context")
+        connection = FakeConnection(fail_on_sql="geo_v2_resolve_session_context")
 
         with self.assertRaises(SchemaV2SessionUnitOfWorkError) as raised:
             with SchemaV2ApiSessionUnitOfWork(

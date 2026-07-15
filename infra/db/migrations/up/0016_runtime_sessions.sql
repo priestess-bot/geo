@@ -37,10 +37,10 @@ ALTER TABLE runtime_sessions FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS runtime_sessions_runtime_actor_isolation ON runtime_sessions;
 CREATE POLICY runtime_sessions_runtime_actor_isolation ON runtime_sessions
   USING (
-    NOT geno_runtime_rls_enabled()
-    OR actor_id = nullif(current_setting('geno.runtime_actor_id', true), '')
+    NOT geo_runtime_rls_enabled()
+    OR actor_id = nullif(current_setting('geo.runtime_actor_id', true), '')
   )
   WITH CHECK (
-    NOT geno_runtime_rls_enabled()
-    OR actor_id = nullif(current_setting('geno.runtime_actor_id', true), '')
+    NOT geo_runtime_rls_enabled()
+    OR actor_id = nullif(current_setting('geo.runtime_actor_id', true), '')
   );

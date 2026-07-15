@@ -328,21 +328,21 @@ def build_au_p0a_real_batch_fulfillment(
         and bool(evidence_outputs)
     )
     strict_gate_command = (
-        "PYTHONPATH=packages/geno_core:apps/api python3 "
+        "PYTHONPATH=packages/geo_core:apps/api python3 "
         "scripts/verify_au_p0a_real_batch_fulfillment.py "
-        "${GENO_AU_P0A_REAL_BATCH_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-real-batch-fulfillment-latest.json} "
+        "${GEO_AU_P0A_REAL_BATCH_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-real-batch-fulfillment-latest.json} "
         "--require-fulfilled"
     )
     request_strict_gate_command = (
-        "PYTHONPATH=packages/geno_core:apps/api python3 "
+        "PYTHONPATH=packages/geo_core:apps/api python3 "
         "scripts/verify_au_p0a_real_batch_request_packet.py "
-        "${GENO_AU_P0A_REAL_BATCH_REQUEST_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-real-batch-request-latest.json} "
+        "${GEO_AU_P0A_REAL_BATCH_REQUEST_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-real-batch-request-latest.json} "
         "--require-real-batches-ready"
     )
     design_partner_strict_gate_command = (
-        "PYTHONPATH=packages/geno_core:apps/api python3 "
+        "PYTHONPATH=packages/geo_core:apps/api python3 "
         "scripts/verify_au_p0a_execution_checklist.py "
-        "${GENO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-execution-checklist-latest.json} "
+        "${GEO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-execution-checklist-latest.json} "
         "--require-design-partner-ready"
     )
     summary = {
@@ -483,17 +483,17 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build an AU P0a real batch fulfillment JSON")
     parser.add_argument(
         "--real-batch-request-path",
-        default=os.environ.get("GENO_AU_P0A_REAL_BATCH_REQUEST_OUTPUT_PATH", DEFAULT_REAL_BATCH_REQUEST_PATH),
+        default=os.environ.get("GEO_AU_P0A_REAL_BATCH_REQUEST_OUTPUT_PATH", DEFAULT_REAL_BATCH_REQUEST_PATH),
         help="Path to the AU P0a real batch request packet JSON.",
     )
     parser.add_argument(
         "--p0a-execution-checklist-path",
-        default=os.environ.get("GENO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH", DEFAULT_P0A_EXECUTION_CHECKLIST_PATH),
+        default=os.environ.get("GEO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH", DEFAULT_P0A_EXECUTION_CHECKLIST_PATH),
         help="Path to the AU P0a execution checklist JSON.",
     )
     parser.add_argument(
         "--output-path",
-        default=os.environ.get("GENO_AU_P0A_REAL_BATCH_FULFILLMENT_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_P0A_REAL_BATCH_FULFILLMENT_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to write the AU P0a real batch fulfillment JSON.",
     )
     parser.add_argument("--generated-at", default=None, help="Override generated_at timestamp for deterministic tests.")

@@ -14,7 +14,7 @@
 - Admin and Customer consume byte-identical typed Auth v2 contracts. Preflight is a discriminated union and accepts the backend's nullable `recommended_surface`/`invitation_role` only for the compatible states where null is valid.
 - Both surfaces use `redeem-prepare -> redeem -> session-confirm`. The idempotency key is HMAC-SHA256 over the canonical request hash, surface and recovery-contract version, so concurrent first prepares and a lost 303 converge on the same opaque backend replay while their encrypted recovery Cookie values remain independently randomized.
 - Recovery data is AES-256-GCM authenticated and binds phase (`prepared` or `delivered`), key, surface, token fingerprint, request hash, issued time and expiry. A delivered recovery additionally binds the fingerprint of the exact Session token returned in the 303. The 10-minute Cookie is HttpOnly, SameSite=Lax, Path=/ and Secure in production.
-- Recovery configuration supports exactly one of `GENO_AUTH_RECOVERY_COOKIE_SECRET` or `GENO_AUTH_RECOVERY_COOKIE_SECRET_FILE`; dual sources, secrets shorter than 32 bytes, invalid booleans and insecure production Cookies fail closed.
+- Recovery configuration supports exactly one of `GEO_AUTH_RECOVERY_COOKIE_SECRET` or `GEO_AUTH_RECOVERY_COOKIE_SECRET_FILE`; dual sources, secrets shorter than 32 bytes, invalid booleans and insecure production Cookies fail closed.
 - Login requires a valid recovery Cookie before any upstream mutation, sends no client `accepted_by/reason`, requires complete Session/CSRF delivery, upgrades recovery to `delivered` in the same 303, forwards every upstream `Set-Cookie`, and only returns fixed landings (`/projects` or `/`). Recovery is written before appending the upstream Cookies because the reverse order causes Next.js to overwrite the Session delivery.
 - Wrong-surface results are rejected before redeem, preserve stable code/detail/correlation/recommended surface, and link to the other portal with only the safe `invitation_id` query.
 - Session confirmation calls `/v1/auth/me` only when recovery is `delivered` and its Session fingerprint matches the current browser Session. A `prepared` recovery combined with an older Session is a non-mutating 202; mismatched delivery is a non-mutating 409. Valid confirmation checks the complete nested scope-v2 DTO and exact `project_ids` projection, forwards only allowlisted Session/CSRF values, and clears recovery only after success. Normal Customer SSR `/auth/me` reads omit CSRF proof and therefore cannot confirm or erase ciphertext.
@@ -30,17 +30,17 @@
 Production should mount one shared Docker/Compose secret into both web services and set:
 
 ```text
-GENO_AUTH_RECOVERY_COOKIE_SECRET_FILE=/run/secrets/geno_auth_recovery_cookie
-GENO_RUNTIME_SESSION_COOKIE_SECURE=true
+GEO_AUTH_RECOVERY_COOKIE_SECRET_FILE=/run/secrets/geo_auth_recovery_cookie
+GEO_RUNTIME_SESSION_COOKIE_SECURE=true
 CUSTOMER_WEB_BASE_URL=https://<customer-public-origin>/
 ADMIN_WEB_BASE_URL=https://<admin-public-origin>/login
 ```
 
-Do not also set `GENO_AUTH_RECOVERY_COOKIE_SECRET`. The secret file must contain at least 32 bytes and must not use a `NEXT_PUBLIC_` variable. `CUSTOMER_WEB_BASE_URL` and `ADMIN_WEB_BASE_URL` must be browser-reachable public origins, not Docker-internal service names. They are required in production and must use HTTPS without URL userinfo; `NEXT_PUBLIC_*` counterparts are development-only compatibility inputs.
+Do not also set `GEO_AUTH_RECOVERY_COOKIE_SECRET`. The secret file must contain at least 32 bytes and must not use a `NEXT_PUBLIC_` variable. `CUSTOMER_WEB_BASE_URL` and `ADMIN_WEB_BASE_URL` must be browser-reachable public origins, not Docker-internal service names. They are required in production and must use HTTPS without URL userinfo; `NEXT_PUBLIC_*` counterparts are development-only compatibility inputs.
 
 The application redirect removes sensitive query data only after the request reaches Next.js. Production ingress, CDN and reverse-proxy access logs must independently redact the `invite_token` query parameter so the original legacy request is not retained in infrastructure logs.
 
-The integration branch still owns Compose/secret mounting. It must propagate the recovery secret and public counterpart URL to both services. Existing `API_INTERNAL_BASE_URL`, runtime Session Cookie names and `GENO_RUNTIME_AUTH_MODE=session` remain required.
+The integration branch still owns Compose/secret mounting. It must propagate the recovery secret and public counterpart URL to both services. Existing `API_INTERNAL_BASE_URL`, runtime Session Cookie names and `GEO_RUNTIME_AUTH_MODE=session` remain required.
 
 Reconcile the committed DTO with the merged Auth OpenAPI snapshot/generated types. The worktree was manually checked against the in-progress auth-core response envelope (`session`) and also accepts the legacy wrapper key (`auth`) while requiring scope v2.
 

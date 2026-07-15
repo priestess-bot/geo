@@ -235,9 +235,9 @@ def _verification_commands() -> list[dict[str, str]]:
         {
             "id": "hard_environment_gate",
             "shell": (
-                "PYTHONPATH=packages/geno_core:apps/api "
+                "PYTHONPATH=packages/geo_core:apps/api "
                 "python3 scripts/verify_au_p0a_env_report.py "
-                "${GENO_AU_P0A_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-env-latest.json} "
+                "${GEO_AU_P0A_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-env-latest.json} "
                 "--require-ready-environment"
             ),
             "purpose": "Fail until PERPLEXITY_API_KEY, OPENAI_API_KEY and DATABASE_URL are present.",
@@ -245,9 +245,9 @@ def _verification_commands() -> list[dict[str, str]]:
         {
             "id": "hard_runbook_execution_gate",
             "shell": (
-                "PYTHONPATH=packages/geno_core:apps/api "
+                "PYTHONPATH=packages/geo_core:apps/api "
                 "python3 scripts/verify_au_p0a_runbook_execution.py "
-                "${GENO_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-runbook-execution-latest.json} "
+                "${GEO_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-runbook-execution-latest.json} "
                 "--require-ready-to-execute"
             ),
             "purpose": "Fail until dry-run proves the P0a command sequence can execute with required env.",
@@ -255,9 +255,9 @@ def _verification_commands() -> list[dict[str, str]]:
         {
             "id": "hard_preflight_gate",
             "shell": (
-                "PYTHONPATH=packages/geno_core:apps/api "
+                "PYTHONPATH=packages/geo_core:apps/api "
                 "python3 scripts/verify_preflight_payload.py "
-                "${GENO_API_PREFLIGHT_OUTPUT_PATH:-docs/runtime_preflight/api-preflight-latest.json} "
+                "${GEO_API_PREFLIGHT_OUTPUT_PATH:-docs/runtime_preflight/api-preflight-latest.json} "
                 "--require-design-partner-ready"
             ),
             "purpose": "Fail until the minimal provider preflight is design-partner ready.",
@@ -265,9 +265,9 @@ def _verification_commands() -> list[dict[str, str]]:
         {
             "id": "hard_package_gate",
             "shell": (
-                "PYTHONPATH=packages/geno_core:apps/api "
+                "PYTHONPATH=packages/geo_core:apps/api "
                 "python3 scripts/verify_au_p0a_evidence_package.py "
-                "${GENO_AU_P0A_PACKAGE_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-evidence-package-latest.json} "
+                "${GEO_AU_P0A_PACKAGE_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-evidence-package-latest.json} "
                 "--require-design-partner-ready"
             ),
             "purpose": "Fail until preflight, small batch and full batch payloads/manifests are ready.",
@@ -275,9 +275,9 @@ def _verification_commands() -> list[dict[str, str]]:
         {
             "id": "hard_status_gate",
             "shell": (
-                "PYTHONPATH=packages/geno_core:apps/api "
+                "PYTHONPATH=packages/geo_core:apps/api "
                 "python3 scripts/verify_au_p0a_status_report.py "
-                "${GENO_AU_P0A_STATUS_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-status-latest.json} "
+                "${GEO_AU_P0A_STATUS_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-status-latest.json} "
                 "--require-design-partner-ready"
             ),
             "purpose": "Fail until P0a status report is ready for design partner handoff.",
@@ -521,7 +521,7 @@ def _credential_handoff(
                 "present": check.get("present") is True,
                 "source": check.get("source", "missing"),
                 "owner_hint": owners.get(name, "platform_operator"),
-                "accepted_injection_methods": ["process_environment", "GENO_AU_P0A_ENV_FILE", ".env.au-p0a"],
+                "accepted_injection_methods": ["process_environment", "GEO_AU_P0A_ENV_FILE", ".env.au-p0a"],
                 "env_file_key": name,
                 "value_length": check.get("value_length", 0),
                 "sha256_prefix": check.get("sha256_prefix", ""),
@@ -786,42 +786,42 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build an AU P0a execution checklist JSON")
     parser.add_argument(
         "--runbook-path",
-        default=os.environ.get("GENO_AU_P0A_RUNBOOK_OUTPUT_PATH", DEFAULT_RUNBOOK_PATH),
+        default=os.environ.get("GEO_AU_P0A_RUNBOOK_OUTPUT_PATH", DEFAULT_RUNBOOK_PATH),
         help="Path to the AU P0a runbook JSON.",
     )
     parser.add_argument(
         "--environment-path",
-        default=os.environ.get("GENO_AU_P0A_ENV_OUTPUT_PATH", DEFAULT_ENV_REPORT_PATH),
+        default=os.environ.get("GEO_AU_P0A_ENV_OUTPUT_PATH", DEFAULT_ENV_REPORT_PATH),
         help="Path to the AU P0a environment report JSON.",
     )
     parser.add_argument(
         "--runbook-execution-path",
-        default=os.environ.get("GENO_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH", DEFAULT_RUNBOOK_EXECUTION_PATH),
+        default=os.environ.get("GEO_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH", DEFAULT_RUNBOOK_EXECUTION_PATH),
         help="Path to the AU P0a runbook execution JSON.",
     )
     parser.add_argument(
         "--readiness-path",
-        default=os.environ.get("GENO_AU_P0A_READINESS_OUTPUT_PATH", DEFAULT_READINESS_PATH),
+        default=os.environ.get("GEO_AU_P0A_READINESS_OUTPUT_PATH", DEFAULT_READINESS_PATH),
         help="Path to the AU P0a readiness JSON.",
     )
     parser.add_argument(
         "--package-path",
-        default=os.environ.get("GENO_AU_P0A_PACKAGE_OUTPUT_PATH", DEFAULT_PACKAGE_PATH),
+        default=os.environ.get("GEO_AU_P0A_PACKAGE_OUTPUT_PATH", DEFAULT_PACKAGE_PATH),
         help="Path to the AU P0a evidence package JSON.",
     )
     parser.add_argument(
         "--status-path",
-        default=os.environ.get("GENO_AU_P0A_STATUS_OUTPUT_PATH", DEFAULT_STATUS_PATH),
+        default=os.environ.get("GEO_AU_P0A_STATUS_OUTPUT_PATH", DEFAULT_STATUS_PATH),
         help="Path to the AU P0a status report JSON.",
     )
     parser.add_argument(
         "--env-file",
-        default=os.environ.get("GENO_AU_P0A_ENV_FILE", DEFAULT_ENV_FILE),
+        default=os.environ.get("GEO_AU_P0A_ENV_FILE", DEFAULT_ENV_FILE),
         help="Optional env file used when status needs in-memory rebuilding.",
     )
     parser.add_argument(
         "--output-path",
-        default=os.environ.get("GENO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to write the AU P0a execution checklist JSON.",
     )
     parser.add_argument(

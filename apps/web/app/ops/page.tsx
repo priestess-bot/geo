@@ -4127,7 +4127,7 @@ const endpoints = {
   notificationEmailFeedback: "/v1/runtime-notification-email-feedback-events",
   notificationEmailSuppressions: "/v1/runtime-notification-email-suppressions",
   notificationEmailSuppressionsExport: "/v1/runtime-notification-email-suppressions/export.csv",
-  notificationEmailFeedbackWebhook: "/v1/runtime-notification-email-feedback-webhooks/geno",
+  notificationEmailFeedbackWebhook: "/v1/runtime-notification-email-feedback-webhooks/geo",
   notificationEmailPreferenceStatus: "/v1/runtime-notification-email-preferences/status",
   notificationEmailPreferenceResubscribe: "/v1/runtime-notification-email-preferences/resubscribe",
   notificationEmailPreferenceUnsubscribe: "/v1/runtime-notification-email-preferences/unsubscribe",
@@ -4399,7 +4399,7 @@ async function saveProjectBrandKit(formData: FormData) {
   const payload = {
     project_id: projectId,
     client_name: clientName,
-    prepared_by: String(formData.get("prepared_by") || "GENO SaaS AU").trim(),
+    prepared_by: String(formData.get("prepared_by") || "GEO SaaS AU").trim(),
     logo_url: optionalText("logo_url"),
     primary_color: optionalText("primary_color"),
     secondary_color: optionalText("secondary_color"),
@@ -5091,7 +5091,7 @@ async function emailRuntimeProjectMemberInvitation(formData: FormData) {
     invite_token: inviteToken,
     accept_base_url: acceptBaseUrl,
     sent_by: String(formData.get("sent_by") || "runtime-console").trim(),
-    smtp_env_prefix: String(formData.get("smtp_env_prefix") || "GENO_NOTIFICATION_SMTP").trim(),
+    smtp_env_prefix: String(formData.get("smtp_env_prefix") || "GEO_NOTIFICATION_SMTP").trim(),
     subject: String(formData.get("subject") || "").trim() || undefined,
     message: String(formData.get("message") || "").trim() || undefined,
     reason: String(formData.get("reason") || "").trim() || undefined
@@ -7761,7 +7761,7 @@ export default async function Home({
   const reportSignedPdfUrl = reportArtifactSignedUrlPath(reportArtifactBase, "pdf", { ...filters, sort: evidenceSort });
   const whiteLabelClientName =
     projectBrandKit?.client_name || latestProject?.brand?.canonical_name || latestProject?.project.target_brand || "Client";
-  const whiteLabelPreparedBy = projectBrandKit?.prepared_by || "GENO SaaS AU";
+  const whiteLabelPreparedBy = projectBrandKit?.prepared_by || "GEO SaaS AU";
   const whiteLabelLogoUrl = projectBrandKit?.logo_url || "https://examplebrand.example/logo.png";
   const whiteLabelPrimaryColor = safeHexColor(projectBrandKit?.primary_color, "#0f766e");
   const whiteLabelSecondaryColor = safeHexColor(projectBrandKit?.secondary_color, "#111827");
@@ -7828,7 +7828,7 @@ export default async function Home({
     <main className="shell">
       <section className="topbar">
         <div>
-          <p className="eyebrow">GENO SaaS AU</p>
+          <p className="eyebrow">GEO SaaS AU</p>
           <h1>内部工程控制台</h1>
           <span>{activeTabMeta.label}：{activeTabMeta.description}</span>
         </div>
@@ -8448,7 +8448,7 @@ export default async function Home({
               {p0bGoogleEnvironmentRequest?.hard_gate_commands?.find((command) =>
                 command.endsWith("--require-ready-smoke")
               ) ||
-                "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_playwright_env_report.py docs/runtime_preflight/au-p0b-google-playwright-env-latest.json --require-ready-smoke"}
+                "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_p0b_google_playwright_env_report.py docs/runtime_preflight/au-p0b-google-playwright-env-latest.json --require-ready-smoke"}
             </span>
           </div>
           {p0bGoogleCrossStageReuseHints.length ? (
@@ -8590,7 +8590,7 @@ export default async function Home({
             <span>
               严格门禁：{" "}
               {p0bGoogleEnvironmentFulfillmentSummary?.strict_gate_command ||
-                "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_environment_fulfillment.py docs/runtime_preflight/au-p0b-google-environment-fulfillment-latest.json --require-fulfilled"}
+                "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_p0b_google_environment_fulfillment.py docs/runtime_preflight/au-p0b-google-environment-fulfillment-latest.json --require-fulfilled"}
             </span>
           </div>
           {p0bGoogleEnvironmentFulfillmentItems.length ? (
@@ -8705,7 +8705,7 @@ export default async function Home({
               {p0bGoogleEnvironmentClearance?.hard_gate_commands?.find((command) =>
                 command.endsWith("--require-cleared")
               ) ||
-                "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_environment_clearance.py docs/runtime_preflight/au-p0b-google-environment-clearance-latest.json --require-cleared"}
+                "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_p0b_google_environment_clearance.py docs/runtime_preflight/au-p0b-google-environment-clearance-latest.json --require-cleared"}
             </span>
           </div>
           {p0bGoogleEnvironmentClearanceItems.length ? (
@@ -8809,7 +8809,7 @@ export default async function Home({
               {p0bGoogleManualBackfillRequest?.hard_gate_commands?.find((command) =>
                 command.endsWith("--require-manual-backfill-ready")
               ) ||
-                "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_manual_backfill_request_packet.py docs/runtime_preflight/au-p0b-google-manual-backfill-request-latest.json --require-manual-backfill-ready"}
+                "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_p0b_google_manual_backfill_request_packet.py docs/runtime_preflight/au-p0b-google-manual-backfill-request-latest.json --require-manual-backfill-ready"}
             </span>
           </div>
           <div className="dependencyGroupGrid">
@@ -8911,7 +8911,7 @@ export default async function Home({
             <span>
               Strict gate:{" "}
               {p0bGoogleManualBackfillFulfillmentSummary?.strict_gate_command ||
-                "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_manual_backfill_fulfillment.py docs/runtime_preflight/au-p0b-google-manual-backfill-fulfillment-latest.json --require-fulfilled"}
+                "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_p0b_google_manual_backfill_fulfillment.py docs/runtime_preflight/au-p0b-google-manual-backfill-fulfillment-latest.json --require-fulfilled"}
             </span>
           </div>
           {p0bGoogleManualBackfillFulfillmentItems.length ? (
@@ -9015,7 +9015,7 @@ export default async function Home({
               {p0bGoogleManualBackfillClearance?.hard_gate_commands?.find((command) =>
                 command.endsWith("--require-cleared")
               ) ||
-                "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_manual_backfill_clearance.py docs/runtime_preflight/au-p0b-google-manual-backfill-clearance-latest.json --require-cleared"}
+                "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_p0b_google_manual_backfill_clearance.py docs/runtime_preflight/au-p0b-google-manual-backfill-clearance-latest.json --require-cleared"}
             </span>
           </div>
           {p0bGoogleManualBackfillClearanceItems.length ? (
@@ -9109,14 +9109,14 @@ export default async function Home({
               {p0bGooglePhaseExecutionRequest?.hard_gate_commands?.find((command) =>
                 command.endsWith("--require-google-phases-ready")
               ) ||
-                "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_phase_execution_request_packet.py docs/runtime_preflight/au-p0b-google-phase-execution-request-latest.json --require-google-phases-ready"}
+                "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_p0b_google_phase_execution_request_packet.py docs/runtime_preflight/au-p0b-google-phase-execution-request-latest.json --require-google-phases-ready"}
             </span>
             <span>
               Strict scoring gate:{" "}
               {p0bGooglePhaseExecutionRequest?.hard_gate_commands?.find((command) =>
                 command.endsWith("--require-google-main-scoring-ready")
               ) ||
-                "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_execution_checklist.py docs/runtime_preflight/au-p0b-google-execution-checklist-latest.json --require-google-main-scoring-ready"}
+                "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_p0b_google_execution_checklist.py docs/runtime_preflight/au-p0b-google-execution-checklist-latest.json --require-google-main-scoring-ready"}
             </span>
           </div>
           <div className="dependencyGroupGrid">
@@ -9217,7 +9217,7 @@ export default async function Home({
               {p0bGooglePhaseExecutionFulfillment?.hard_gate_commands?.find((command) =>
                 command.endsWith("--require-fulfilled")
               ) ||
-                "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_phase_execution_fulfillment.py docs/runtime_preflight/au-p0b-google-phase-execution-fulfillment-latest.json --require-fulfilled"}
+                "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_p0b_google_phase_execution_fulfillment.py docs/runtime_preflight/au-p0b-google-phase-execution-fulfillment-latest.json --require-fulfilled"}
             </span>
           </div>
           <div className="dependencyGroupGrid">
@@ -9332,7 +9332,7 @@ export default async function Home({
               {p0bGooglePhaseExecutionClearance?.hard_gate_commands?.find((command) =>
                 command.endsWith("--require-cleared")
               ) ||
-                "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_phase_execution_clearance.py docs/runtime_preflight/au-p0b-google-phase-execution-clearance-latest.json --require-cleared"}
+                "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_p0b_google_phase_execution_clearance.py docs/runtime_preflight/au-p0b-google-phase-execution-clearance-latest.json --require-cleared"}
             </span>
           </div>
           {p0bGooglePhaseExecutionClearanceItems.length ? (
@@ -10044,7 +10044,7 @@ export default async function Home({
               {customerHandoffClearance?.hard_gate_commands?.find((command) =>
                 command.endsWith("--require-cleared")
               ) ||
-                "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_customer_handoff_clearance.py docs/runtime_preflight/au-customer-handoff-clearance-latest.json --require-cleared"}
+                "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_customer_handoff_clearance.py docs/runtime_preflight/au-customer-handoff-clearance-latest.json --require-cleared"}
             </span>
           </div>
           {topCustomerHandoffClearanceItems.length ? (
@@ -10210,7 +10210,7 @@ export default async function Home({
             <span>
               Strict gate:{" "}
               {customerHandoffPackage?.hard_gate_commands?.find((command) => command.endsWith("--require-ready")) ||
-                "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_customer_handoff_package.py docs/runtime_preflight/au-customer-handoff-package-latest.json --require-ready"}
+                "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_customer_handoff_package.py docs/runtime_preflight/au-customer-handoff-package-latest.json --require-ready"}
             </span>
           </div>
           {topCustomerHandoffPackageIndex.length ? (
@@ -10304,7 +10304,7 @@ export default async function Home({
               {customerHandoffReadiness?.hard_gate_commands?.find((command) =>
                 command.endsWith("--require-customer-ready")
               ) ||
-                "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_customer_handoff_readiness.py docs/runtime_preflight/au-customer-handoff-readiness-latest.json --require-customer-ready"}
+                "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_customer_handoff_readiness.py docs/runtime_preflight/au-customer-handoff-readiness-latest.json --require-customer-ready"}
             </span>
           </div>
           <code>{paths.customerHandoffReadiness}</code>
@@ -10381,7 +10381,7 @@ export default async function Home({
               {p0aCredentialRequest?.hard_gate_commands?.find((command) =>
                 command.endsWith("--require-ready-environment")
               ) ||
-                "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_env_report.py docs/runtime_preflight/au-p0a-env-latest.json --require-ready-environment"}
+                "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_p0a_env_report.py docs/runtime_preflight/au-p0a-env-latest.json --require-ready-environment"}
             </span>
           </div>
           {requestedP0aCredentials.length ? (
@@ -10451,7 +10451,7 @@ export default async function Home({
             <span>
               Strict gate:{" "}
               {p0aCredentialFulfillmentSummary?.strict_gate_command ||
-                "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_credential_fulfillment.py docs/runtime_preflight/au-p0a-credential-fulfillment-latest.json --require-fulfilled"}
+                "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_p0a_credential_fulfillment.py docs/runtime_preflight/au-p0a-credential-fulfillment-latest.json --require-fulfilled"}
             </span>
           </div>
           {p0aCredentialFulfillmentItems.length ? (
@@ -10550,7 +10550,7 @@ export default async function Home({
             <span>
               Strict gate:{" "}
               {p0aCredentialClearance?.hard_gate_commands?.find((command) => command.endsWith("--require-cleared")) ||
-                "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_credential_clearance.py docs/runtime_preflight/au-p0a-credential-clearance-latest.json --require-cleared"}
+                "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_p0a_credential_clearance.py docs/runtime_preflight/au-p0a-credential-clearance-latest.json --require-cleared"}
             </span>
           </div>
           {p0aCredentialUpdateContract ? (
@@ -10733,7 +10733,7 @@ export default async function Home({
               {p0aCredentialUpdateReceipt?.strict_gate_commands?.find((command) =>
                 command.includes("--require-complete")
               ) ||
-                "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_credential_update_receipt.py docs/runtime_preflight/au-p0a-credential-update-receipt-latest.json --require-complete"}
+                "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_p0a_credential_update_receipt.py docs/runtime_preflight/au-p0a-credential-update-receipt-latest.json --require-complete"}
             </span>
           </div>
           {p0aCredentialUpdateReceiptRecords.length ? (
@@ -10820,7 +10820,7 @@ export default async function Home({
               {p0aRealBatchRequest?.hard_gate_commands?.find((command) =>
                 command.endsWith("--require-real-batches-ready")
               ) ||
-                "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_real_batch_request_packet.py docs/runtime_preflight/au-p0a-real-batch-request-latest.json --require-real-batches-ready"}
+                "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_p0a_real_batch_request_packet.py docs/runtime_preflight/au-p0a-real-batch-request-latest.json --require-real-batches-ready"}
             </span>
           </div>
           <div className="dependencyGroupGrid">
@@ -10896,7 +10896,7 @@ export default async function Home({
             <span>
               Strict gate:{" "}
               {p0aRealBatchFulfillmentSummary?.strict_gate_command ||
-                "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_real_batch_fulfillment.py docs/runtime_preflight/au-p0a-real-batch-fulfillment-latest.json --require-fulfilled"}
+                "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_p0a_real_batch_fulfillment.py docs/runtime_preflight/au-p0a-real-batch-fulfillment-latest.json --require-fulfilled"}
             </span>
           </div>
           <div className="dependencyGroupGrid">
@@ -10972,7 +10972,7 @@ export default async function Home({
             <span>
               Strict gate:{" "}
               {p0aRealBatchClearance?.hard_gate_commands?.find((command) => command.endsWith("--require-cleared")) ||
-                "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_real_batch_clearance.py docs/runtime_preflight/au-p0a-real-batch-clearance-latest.json --require-cleared"}
+                "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_p0a_real_batch_clearance.py docs/runtime_preflight/au-p0a-real-batch-clearance-latest.json --require-cleared"}
             </span>
           </div>
           <div className="dependencyGroupGrid">
@@ -11137,7 +11137,7 @@ export default async function Home({
               {nextWorkItemPacket?.hard_gate_commands?.find((command) =>
                 command.endsWith("--require-customer-ready")
               ) ||
-                "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_customer_handoff_readiness.py docs/runtime_preflight/au-customer-handoff-readiness-latest.json --require-customer-ready"}
+                "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_customer_handoff_readiness.py docs/runtime_preflight/au-customer-handoff-readiness-latest.json --require-customer-ready"}
             </span>
           </div>
           {nextWorkItemEvidenceOutputs.length ? (
@@ -11616,12 +11616,12 @@ export default async function Home({
                                   value={`${process.env.NEXT_PUBLIC_APP_BASE_URL || "http://localhost:3000"}/invite/accept`}
                                 />
                                 <input type="hidden" name="sent_by" value="runtime-console" />
-                                <input type="hidden" name="smtp_env_prefix" value="GENO_NOTIFICATION_SMTP" />
-                                <input type="hidden" name="subject" value="GENO project invitation" />
+                                <input type="hidden" name="smtp_env_prefix" value="GEO_NOTIFICATION_SMTP" />
+                                <input type="hidden" name="subject" value="GEO project invitation" />
                                 <input
                                   type="hidden"
                                   name="message"
-                                  value="You have been invited to join a GENO runtime project."
+                                  value="You have been invited to join a GEO runtime project."
                                 />
                                 <input
                                   type="hidden"
@@ -12640,7 +12640,7 @@ export default async function Home({
               </label>
               <label>
                 <span>Prepared by</span>
-                <input name="prepared_by" defaultValue={projectBrandKit?.prepared_by || "GENO SaaS AU"} />
+                <input name="prepared_by" defaultValue={projectBrandKit?.prepared_by || "GEO SaaS AU"} />
               </label>
               <label className="wideField">
                 <span>Logo URL</span>
@@ -13799,7 +13799,7 @@ export default async function Home({
             </label>
             <label>
               <span>Endpoint URL</span>
-              <input name="endpoint_url" placeholder="https://hooks.example.com/geno-runtime, Slack Incoming Webhook URL, or mailto:ops@example.com" />
+              <input name="endpoint_url" placeholder="https://hooks.example.com/geo-runtime, Slack Incoming Webhook URL, or mailto:ops@example.com" />
             </label>
             <label>
               <span>Event types</span>
@@ -13807,7 +13807,7 @@ export default async function Home({
             </label>
             <label>
               <span>Signing env (webhook)</span>
-              <input name="signing_secret_env" placeholder="GENO_NOTIFICATION_WEBHOOK_SIGNING_SECRET" />
+              <input name="signing_secret_env" placeholder="GEO_NOTIFICATION_WEBHOOK_SIGNING_SECRET" />
             </label>
             <label>
               <span>Signing key id</span>
@@ -13815,7 +13815,7 @@ export default async function Home({
             </label>
             <label>
               <span>Previous signing env</span>
-              <input name="previous_signing_secret_env" placeholder="GENO_NOTIFICATION_WEBHOOK_SIGNING_SECRET_PREVIOUS" />
+              <input name="previous_signing_secret_env" placeholder="GEO_NOTIFICATION_WEBHOOK_SIGNING_SECRET_PREVIOUS" />
             </label>
             <label>
               <span>Previous key id</span>
@@ -13823,7 +13823,7 @@ export default async function Home({
             </label>
             <label>
               <span>Slack channel</span>
-              <input name="slack_channel" placeholder="#geno-alerts" />
+              <input name="slack_channel" placeholder="#geo-alerts" />
             </label>
             <label>
               <span>Email reply-to</span>

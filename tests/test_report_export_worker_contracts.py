@@ -3,14 +3,14 @@ from __future__ import annotations
 import unittest
 from datetime import UTC, datetime
 
-from geno_core.models import (
+from geo_core.models import (
     RuntimeReportArtifact,
     RuntimeReportExport,
     RuntimeReportExportJob,
     RuntimeReportExportJobStatusInput,
     RuntimeReportExportPage,
 )
-from geno_core.object_store import S3CompatibleObjectStore
+from geo_core.object_store import S3CompatibleObjectStore
 from workers.report_export_worker.run_report_export_jobs import process_next_report_export_job
 
 
@@ -135,7 +135,7 @@ class ReportExportWorkerContractsTest(unittest.TestCase):
 
         store = S3CompatibleObjectStore(
             endpoint="http://minio:9000",
-            bucket="geno-reports",
+            bucket="geo-reports",
             access_key="minio",
             secret_key="minio123",
             requester=requester,
@@ -145,7 +145,7 @@ class ReportExportWorkerContractsTest(unittest.TestCase):
 
         self.assertEqual(result["status"], "succeeded")
         self.assertEqual(result["report_export_id"], report_export_id)
-        self.assertTrue(str(result["artifact_url"]).startswith("s3://geno-reports/report-artifacts/"))
+        self.assertTrue(str(result["artifact_url"]).startswith("s3://geo-reports/report-artifacts/"))
         self.assertEqual(repository.claimed_by, "runtime-worker")
         self.assertEqual(repository.lease_seconds, 900)
         self.assertEqual(repository.artifact_kwargs["platform"], "perplexity")

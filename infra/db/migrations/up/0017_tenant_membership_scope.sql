@@ -24,24 +24,24 @@ ALTER TABLE tenant_members FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS tenant_members_runtime_tenant_isolation ON tenant_members;
 CREATE POLICY tenant_members_runtime_tenant_isolation ON tenant_members
   USING (
-    NOT geno_runtime_rls_enabled()
-    OR user_id = nullif(current_setting('geno.runtime_actor_id', true), '')
+    NOT geo_runtime_rls_enabled()
+    OR user_id = nullif(current_setting('geo.runtime_actor_id', true), '')
     OR EXISTS (
       SELECT 1
       FROM tenant_members self_membership
       WHERE self_membership.tenant_id = tenant_members.tenant_id
-        AND self_membership.user_id = nullif(current_setting('geno.runtime_actor_id', true), '')
+        AND self_membership.user_id = nullif(current_setting('geo.runtime_actor_id', true), '')
         AND self_membership.status = 'active'
         AND self_membership.role IN ('super_admin', 'tenant_admin')
     )
   )
   WITH CHECK (
-    NOT geno_runtime_rls_enabled()
+    NOT geo_runtime_rls_enabled()
     OR EXISTS (
       SELECT 1
       FROM tenant_members self_membership
       WHERE self_membership.tenant_id = tenant_members.tenant_id
-        AND self_membership.user_id = nullif(current_setting('geno.runtime_actor_id', true), '')
+        AND self_membership.user_id = nullif(current_setting('geo.runtime_actor_id', true), '')
         AND self_membership.status = 'active'
         AND self_membership.role IN ('super_admin', 'tenant_admin')
     )

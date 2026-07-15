@@ -234,7 +234,7 @@ class AuCustomerHandoffPackageTest(unittest.TestCase):
             output_path = Path(tmpdir) / "customer-handoff-package.json"
             markdown_output_path = Path(tmpdir) / "customer-handoff-package.md"
             env = os.environ.copy()
-            env["PYTHONPATH"] = "packages/geno_core:apps/api"
+            env["PYTHONPATH"] = "packages/geo_core:apps/api"
             build_result = subprocess.run(
                 [
                     sys.executable,

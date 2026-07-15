@@ -611,9 +611,9 @@ def build_au_p0b_google_environment_clearance(
                 "make verify-au-p0a-real-batch-clearance",
                 str(fulfillment_summary.get("strict_gate_command") or ""),
                 str(fulfillment_summary.get("ready_smoke_strict_gate_command") or ""),
-                "PYTHONPATH=packages/geno_core:apps/api python3 "
+                "PYTHONPATH=packages/geo_core:apps/api python3 "
                 "scripts/verify_au_p0b_google_environment_clearance.py "
-                "${GENO_AU_P0B_GOOGLE_ENVIRONMENT_CLEARANCE_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-environment-clearance-latest.json} "
+                "${GEO_AU_P0B_GOOGLE_ENVIRONMENT_CLEARANCE_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-environment-clearance-latest.json} "
                 "--require-cleared",
             ]
         ),
@@ -648,7 +648,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--environment-request-path",
         default=os.environ.get(
-            "GENO_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH",
+            "GEO_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH",
             DEFAULT_ENVIRONMENT_REQUEST_PATH,
         ),
         help="Path to the AU P0b Google environment request packet JSON.",
@@ -656,7 +656,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--playwright-env-report-path",
         default=os.environ.get(
-            "GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH",
+            "GEO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH",
             DEFAULT_PLAYWRIGHT_ENV_REPORT_PATH,
         ),
         help="Path to the AU P0b Google Playwright environment report JSON.",
@@ -664,7 +664,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--environment-fulfillment-path",
         default=os.environ.get(
-            "GENO_AU_P0B_GOOGLE_ENVIRONMENT_FULFILLMENT_OUTPUT_PATH",
+            "GEO_AU_P0B_GOOGLE_ENVIRONMENT_FULFILLMENT_OUTPUT_PATH",
             DEFAULT_ENVIRONMENT_FULFILLMENT_PATH,
         ),
         help="Path to the AU P0b Google environment fulfillment JSON.",
@@ -672,19 +672,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--external-dependency-clearance-path",
         default=os.environ.get(
-            "GENO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH",
+            "GEO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH",
             DEFAULT_EXTERNAL_DEPENDENCY_CLEARANCE_PATH,
         ),
         help="Path to the AU external dependency clearance JSON.",
     )
     parser.add_argument(
         "--env-file",
-        default=os.environ.get("GENO_AU_P0B_GOOGLE_ENV_FILE", DEFAULT_PLAYWRIGHT_ENV_FILE),
+        default=os.environ.get("GEO_AU_P0B_GOOGLE_ENV_FILE", DEFAULT_PLAYWRIGHT_ENV_FILE),
         help="Optional env file to parse if the Playwright environment report must be generated in memory.",
     )
     parser.add_argument(
         "--output-path",
-        default=os.environ.get("GENO_AU_P0B_GOOGLE_ENVIRONMENT_CLEARANCE_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_P0B_GOOGLE_ENVIRONMENT_CLEARANCE_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to write the AU P0b Google environment clearance JSON.",
     )
     parser.add_argument("--generated-at", default=None, help="Override generated_at timestamp for deterministic tests.")

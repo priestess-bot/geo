@@ -809,7 +809,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "path",
         nargs="?",
-        default=os.environ.get("GENO_AU_CUSTOMER_HANDOFF_CLEARANCE_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_CUSTOMER_HANDOFF_CLEARANCE_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to the AU customer handoff clearance JSON.",
     )
     parser.add_argument(

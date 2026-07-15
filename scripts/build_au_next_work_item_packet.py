@@ -39,9 +39,9 @@ REQUEST_PACKET_CONTEXTS: dict[str, dict[str, str]] = {
         "build_command": "make au-p0a-credential-request",
         "verify_command": "make verify-au-p0a-credential-request",
         "strict_gate_command": (
-            "PYTHONPATH=packages/geno_core:apps/api python3 "
+            "PYTHONPATH=packages/geo_core:apps/api python3 "
             "scripts/verify_au_p0a_credential_request_packet.py "
-            "${GENO_AU_P0A_CREDENTIAL_REQUEST_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-request-latest.json} "
+            "${GEO_AU_P0A_CREDENTIAL_REQUEST_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-request-latest.json} "
             "--require-credentials-ready"
         ),
         "runtime_endpoint": "GET /v1/p0a-credential-request/au",
@@ -56,9 +56,9 @@ REQUEST_PACKET_CONTEXTS: dict[str, dict[str, str]] = {
         "build_command": "make au-p0a-real-batch-fulfillment",
         "verify_command": "make verify-au-p0a-real-batch-fulfillment",
         "strict_gate_command": (
-            "PYTHONPATH=packages/geno_core:apps/api python3 "
+            "PYTHONPATH=packages/geo_core:apps/api python3 "
             "scripts/verify_au_p0a_real_batch_fulfillment.py "
-            "${GENO_AU_P0A_REAL_BATCH_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-real-batch-fulfillment-latest.json} "
+            "${GEO_AU_P0A_REAL_BATCH_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-real-batch-fulfillment-latest.json} "
             "--require-fulfilled"
         ),
         "runtime_endpoint": "GET /v1/p0a-real-batch-fulfillment/au",
@@ -73,9 +73,9 @@ REQUEST_PACKET_CONTEXTS: dict[str, dict[str, str]] = {
         "build_command": "make au-p0a-real-batch-fulfillment",
         "verify_command": "make verify-au-p0a-real-batch-fulfillment",
         "strict_gate_command": (
-            "PYTHONPATH=packages/geno_core:apps/api python3 "
+            "PYTHONPATH=packages/geo_core:apps/api python3 "
             "scripts/verify_au_p0a_real_batch_fulfillment.py "
-            "${GENO_AU_P0A_REAL_BATCH_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-real-batch-fulfillment-latest.json} "
+            "${GEO_AU_P0A_REAL_BATCH_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-real-batch-fulfillment-latest.json} "
             "--require-fulfilled"
         ),
         "runtime_endpoint": "GET /v1/p0a-real-batch-fulfillment/au",
@@ -90,9 +90,9 @@ REQUEST_PACKET_CONTEXTS: dict[str, dict[str, str]] = {
         "build_command": "make au-p0b-google-environment-fulfillment",
         "verify_command": "make verify-au-p0b-google-environment-fulfillment",
         "strict_gate_command": (
-            "PYTHONPATH=packages/geno_core:apps/api python3 "
+            "PYTHONPATH=packages/geo_core:apps/api python3 "
             "scripts/verify_au_p0b_google_environment_fulfillment.py "
-            "${GENO_AU_P0B_GOOGLE_ENVIRONMENT_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-environment-fulfillment-latest.json} "
+            "${GEO_AU_P0B_GOOGLE_ENVIRONMENT_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-environment-fulfillment-latest.json} "
             "--require-fulfilled"
         ),
         "runtime_endpoint": "GET /v1/p0b-google-environment-fulfillment/au",
@@ -107,9 +107,9 @@ REQUEST_PACKET_CONTEXTS: dict[str, dict[str, str]] = {
         "build_command": "make au-p0b-google-manual-backfill-fulfillment",
         "verify_command": "make verify-au-p0b-google-manual-backfill-fulfillment",
         "strict_gate_command": (
-            "PYTHONPATH=packages/geno_core:apps/api python3 "
+            "PYTHONPATH=packages/geo_core:apps/api python3 "
             "scripts/verify_au_p0b_google_manual_backfill_fulfillment.py "
-            "${GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-manual-backfill-fulfillment-latest.json} "
+            "${GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-manual-backfill-fulfillment-latest.json} "
             "--require-fulfilled"
         ),
         "runtime_endpoint": "GET /v1/p0b-google-manual-backfill-fulfillment/au",
@@ -124,9 +124,9 @@ REQUEST_PACKET_CONTEXTS: dict[str, dict[str, str]] = {
         "build_command": "make au-p0b-google-phase-execution-fulfillment",
         "verify_command": "make verify-au-p0b-google-phase-execution-fulfillment",
         "strict_gate_command": (
-            "PYTHONPATH=packages/geno_core:apps/api python3 "
+            "PYTHONPATH=packages/geo_core:apps/api python3 "
             "scripts/verify_au_p0b_google_phase_execution_fulfillment.py "
-            "${GENO_AU_P0B_GOOGLE_PHASE_EXECUTION_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-phase-execution-fulfillment-latest.json} "
+            "${GEO_AU_P0B_GOOGLE_PHASE_EXECUTION_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-phase-execution-fulfillment-latest.json} "
             "--require-fulfilled"
         ),
         "runtime_endpoint": "GET /v1/p0b-google-phase-execution-fulfillment/au",
@@ -141,9 +141,9 @@ REQUEST_PACKET_CONTEXTS: dict[str, dict[str, str]] = {
         "build_command": "make au-p0b-google-phase-execution-fulfillment",
         "verify_command": "make verify-au-p0b-google-phase-execution-fulfillment",
         "strict_gate_command": (
-            "PYTHONPATH=packages/geno_core:apps/api python3 "
+            "PYTHONPATH=packages/geo_core:apps/api python3 "
             "scripts/verify_au_p0b_google_phase_execution_fulfillment.py "
-            "${GENO_AU_P0B_GOOGLE_PHASE_EXECUTION_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-phase-execution-fulfillment-latest.json} "
+            "${GEO_AU_P0B_GOOGLE_PHASE_EXECUTION_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-phase-execution-fulfillment-latest.json} "
             "--require-fulfilled"
         ),
         "runtime_endpoint": "GET /v1/p0b-google-phase-execution-fulfillment/au",
@@ -158,9 +158,9 @@ REQUEST_PACKET_CONTEXTS: dict[str, dict[str, str]] = {
         "build_command": "make au-p0b-google-phase-execution-fulfillment",
         "verify_command": "make verify-au-p0b-google-phase-execution-fulfillment",
         "strict_gate_command": (
-            "PYTHONPATH=packages/geno_core:apps/api python3 "
+            "PYTHONPATH=packages/geo_core:apps/api python3 "
             "scripts/verify_au_p0b_google_phase_execution_fulfillment.py "
-            "${GENO_AU_P0B_GOOGLE_PHASE_EXECUTION_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-phase-execution-fulfillment-latest.json} "
+            "${GEO_AU_P0B_GOOGLE_PHASE_EXECUTION_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-phase-execution-fulfillment-latest.json} "
             "--require-fulfilled"
         ),
         "runtime_endpoint": "GET /v1/p0b-google-phase-execution-fulfillment/au",
@@ -577,8 +577,8 @@ def build_au_next_work_item_packet(
     ]
     _append_unique(
         hard_gate_commands,
-        "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_customer_handoff_readiness.py "
-        "${GENO_AU_CUSTOMER_HANDOFF_READINESS_OUTPUT_PATH:-docs/runtime_preflight/au-customer-handoff-readiness-latest.json} "
+        "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_customer_handoff_readiness.py "
+        "${GEO_AU_CUSTOMER_HANDOFF_READINESS_OUTPUT_PATH:-docs/runtime_preflight/au-customer-handoff-readiness-latest.json} "
         "--require-customer-ready",
     )
     for command in combined_verification_commands:
@@ -719,20 +719,20 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build an AU next work item packet JSON")
     parser.add_argument(
         "--handoff-dossier-path",
-        default=os.environ.get("GENO_AU_HANDOFF_DOSSIER_OUTPUT_PATH", DEFAULT_HANDOFF_DOSSIER_PATH),
+        default=os.environ.get("GEO_AU_HANDOFF_DOSSIER_OUTPUT_PATH", DEFAULT_HANDOFF_DOSSIER_PATH),
         help="Path to the AU handoff dossier JSON.",
     )
     parser.add_argument(
         "--external-dependency-handoff-path",
         default=os.environ.get(
-            "GENO_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH",
+            "GEO_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH",
             DEFAULT_EXTERNAL_DEPENDENCY_HANDOFF_PATH,
         ),
         help="Path to the AU external dependency handoff JSON.",
     )
     parser.add_argument(
         "--output-path",
-        default=os.environ.get("GENO_AU_NEXT_WORK_ITEM_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_NEXT_WORK_ITEM_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to write the AU next work item packet JSON.",
     )
     parser.add_argument("--generated-at", default=None, help="Override generated_at timestamp for deterministic tests.")

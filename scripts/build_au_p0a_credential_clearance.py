@@ -323,9 +323,9 @@ def _credential_update_contract(
     strict_commands = _unique_strings(
         [
             strict_gate_command,
-            "PYTHONPATH=packages/geno_core:apps/api python3 "
+            "PYTHONPATH=packages/geo_core:apps/api python3 "
             "scripts/verify_au_p0a_credential_clearance.py "
-            "${GENO_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-clearance-latest.json} "
+            "${GEO_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-clearance-latest.json} "
             "--require-cleared",
         ]
     )
@@ -584,9 +584,9 @@ def build_au_p0a_credential_clearance(
                 "make au-p0a-credential-update-receipt",
                 "make verify-au-p0a-credential-update-receipt",
                 strict_gate_command,
-                "PYTHONPATH=packages/geno_core:apps/api python3 "
+                "PYTHONPATH=packages/geo_core:apps/api python3 "
                 "scripts/verify_au_p0a_credential_clearance.py "
-                "${GENO_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-clearance-latest.json} "
+                "${GEO_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-clearance-latest.json} "
                 "--require-cleared",
             ]
         ),
@@ -605,18 +605,18 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build an AU P0a credential clearance JSON")
     parser.add_argument(
         "--credential-request-path",
-        default=os.environ.get("GENO_AU_P0A_CREDENTIAL_REQUEST_OUTPUT_PATH", DEFAULT_CREDENTIAL_REQUEST_PATH),
+        default=os.environ.get("GEO_AU_P0A_CREDENTIAL_REQUEST_OUTPUT_PATH", DEFAULT_CREDENTIAL_REQUEST_PATH),
         help="Path to the AU P0a credential request packet JSON.",
     )
     parser.add_argument(
         "--env-report-path",
-        default=os.environ.get("GENO_AU_P0A_ENV_OUTPUT_PATH", DEFAULT_ENV_REPORT_PATH),
+        default=os.environ.get("GEO_AU_P0A_ENV_OUTPUT_PATH", DEFAULT_ENV_REPORT_PATH),
         help="Path to the AU P0a environment report JSON.",
     )
     parser.add_argument(
         "--credential-fulfillment-path",
         default=os.environ.get(
-            "GENO_AU_P0A_CREDENTIAL_FULFILLMENT_OUTPUT_PATH",
+            "GEO_AU_P0A_CREDENTIAL_FULFILLMENT_OUTPUT_PATH",
             DEFAULT_CREDENTIAL_FULFILLMENT_PATH,
         ),
         help="Path to the AU P0a credential fulfillment JSON.",
@@ -624,14 +624,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--external-dependency-clearance-path",
         default=os.environ.get(
-            "GENO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH",
+            "GEO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH",
             DEFAULT_EXTERNAL_DEPENDENCY_CLEARANCE_PATH,
         ),
         help="Path to the AU external dependency clearance JSON.",
     )
     parser.add_argument(
         "--output-path",
-        default=os.environ.get("GENO_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to write the AU P0a credential clearance JSON.",
     )
     parser.add_argument("--generated-at", default=None, help="Override generated_at timestamp for deterministic tests.")

@@ -7,7 +7,7 @@ const ARTIFACT_TYPES = new Set(["markdown", "csv", "pdf"]);
 export async function GET(request: NextRequest) {
   const reportExportId = request.nextUrl.searchParams.get("report_export_id")?.trim() || "";
   const artifactType = request.nextUrl.searchParams.get("type")?.trim() || "markdown";
-  const sessionToken = request.cookies.get("GENO_RUNTIME_SESSION")?.value || "";
+  const sessionToken = request.cookies.get("GEO_RUNTIME_SESSION")?.value || "";
 
   if (!reportExportId || !sessionToken) {
     return NextResponse.json({ detail: "An authenticated customer session is required." }, { status: 401 });
@@ -20,8 +20,8 @@ export async function GET(request: NextRequest) {
   artifactUrl.searchParams.set("type", artifactType);
   const artifactResponse = await fetch(artifactUrl.toString(), {
     headers: {
-      "X-GENO-Session-Token": sessionToken,
-      "X-GENO-Customer-Portal-Access": "true"
+      "X-GEO-Session-Token": sessionToken,
+      "X-GEO-Customer-Portal-Access": "true"
     },
     cache: "no-store"
   });

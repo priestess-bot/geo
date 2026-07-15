@@ -14,16 +14,16 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from geno_core.analysis_pipeline import analyze_and_score_records  # noqa: E402
-from geno_core.bootstrap import build_au_project_bootstrap  # noqa: E402
-from geno_core.collection import run_collection_slice  # noqa: E402
-from geno_core.collectors import (  # noqa: E402
+from geo_core.analysis_pipeline import analyze_and_score_records  # noqa: E402
+from geo_core.bootstrap import build_au_project_bootstrap  # noqa: E402
+from geo_core.collection import run_collection_slice  # noqa: E402
+from geo_core.collectors import (  # noqa: E402
     FixtureChatGPTSearchBrowserCollector,
     FixtureOpenAIWebSearchCollector,
     FixturePerplexitySonarCollector,
 )
-from geno_core.graph import build_citation_graph  # noqa: E402
-from geno_core.report import (  # noqa: E402
+from geo_core.graph import build_citation_graph  # noqa: E402
+from geo_core.report import (  # noqa: E402
     SCORE_RATE_DENOMINATORS,
     MarkdownCsvReportExporter,
     render_audit_summary_lines,
@@ -262,7 +262,7 @@ def build_au_p0c_report_package(
     rate_definitions = _as_dict(score_rates.get("definitions"))
     audit_summary = _as_dict(method_disclosure.get("audit_summary"))
     fidelity = _as_dict(method_disclosure.get("api_browser_fidelity"))
-    white_label_markdown = _white_label_markdown(report, client_name="Koala AU", prepared_by="GENO SaaS AU")
+    white_label_markdown = _white_label_markdown(report, client_name="Koala AU", prepared_by="GEO SaaS AU")
     white_label_pdf = render_markdown_pdf(white_label_markdown)
 
     method_checks = {
@@ -311,7 +311,7 @@ def build_au_p0c_report_package(
     white_label_checks = {
         "starts_with_pdf_header": white_label_pdf.startswith(b"%PDF-1.4"),
         "ends_with_eof": white_label_pdf.rstrip().endswith(b"%%EOF"),
-        "template_payload_hash_present": bool(_sha256("white_label_v1:Koala AU:GENO SaaS AU")),
+        "template_payload_hash_present": bool(_sha256("white_label_v1:Koala AU:GEO SaaS AU")),
     }
 
     artifacts = {
@@ -415,19 +415,19 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build an AU P0c customer report delivery package JSON")
     parser.add_argument(
         "--output-path",
-        default=os.environ.get("GENO_AU_P0C_REPORT_PACKAGE_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_P0C_REPORT_PACKAGE_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to write the AU P0c report package JSON.",
     )
     parser.add_argument("--generated-at", default=None, help="Override generated_at timestamp for deterministic tests.")
     parser.add_argument(
         "--prompt-limit",
         type=int,
-        default=int(os.environ.get("GENO_AU_P0C_REPORT_PACKAGE_PROMPT_LIMIT", str(DEFAULT_PROMPT_LIMIT))),
+        default=int(os.environ.get("GEO_AU_P0C_REPORT_PACKAGE_PROMPT_LIMIT", str(DEFAULT_PROMPT_LIMIT))),
     )
     parser.add_argument(
         "--cities",
         type=_cities_from_arg,
-        default=_cities_from_arg(os.environ.get("GENO_AU_P0C_REPORT_PACKAGE_CITIES", ",".join(DEFAULT_CITIES))),
+        default=_cities_from_arg(os.environ.get("GEO_AU_P0C_REPORT_PACKAGE_CITIES", ",".join(DEFAULT_CITIES))),
     )
     return parser.parse_args()
 

@@ -30,7 +30,7 @@ APPLICATION_CONSUMERS = (
     "task-worker-runtime",
 )
 OBJECT_STORE_CALLER_SERVICE_MAP = {
-    "apps/api/geno_api/main.py": frozenset({"api"}),
+    "apps/api/geo_api/main.py": frozenset({"api"}),
     "scripts/run_production_object_store_smoke.py": frozenset(APPLICATION_CONSUMERS),
     "scripts/verify_runtime_e2e.py": frozenset({"runtime-e2e"}),
     "workers/collector_worker/run_collection_slice.py": frozenset(
@@ -62,29 +62,29 @@ ALL_SECRET_NAMES = (
     | RETENTION_SECRET_NAMES
 )
 SECRET_HOST_ENV = {
-    "minio_root_user": "GENO_MINIO_ROOT_USER_SECRET_FILE",
-    "minio_root_password": "GENO_MINIO_ROOT_PASSWORD_SECRET_FILE",
-    "object_store_application_access_key": "GENO_OBJECT_STORE_APPLICATION_ACCESS_KEY_SECRET_FILE",
-    "object_store_application_secret_key": "GENO_OBJECT_STORE_APPLICATION_SECRET_KEY_SECRET_FILE",
-    "object_store_backup_access_key": "GENO_OBJECT_STORE_BACKUP_ACCESS_KEY_SECRET_FILE",
-    "object_store_backup_secret_key": "GENO_OBJECT_STORE_BACKUP_SECRET_KEY_SECRET_FILE",
-    "object_store_restore_access_key": "GENO_OBJECT_STORE_RESTORE_ACCESS_KEY_SECRET_FILE",
-    "object_store_restore_secret_key": "GENO_OBJECT_STORE_RESTORE_SECRET_KEY_SECRET_FILE",
-    "object_store_retention_access_key": "GENO_OBJECT_STORE_RETENTION_ACCESS_KEY_SECRET_FILE",
-    "object_store_retention_secret_key": "GENO_OBJECT_STORE_RETENTION_SECRET_KEY_SECRET_FILE",
+    "minio_root_user": "GEO_MINIO_ROOT_USER_SECRET_FILE",
+    "minio_root_password": "GEO_MINIO_ROOT_PASSWORD_SECRET_FILE",
+    "object_store_application_access_key": "GEO_OBJECT_STORE_APPLICATION_ACCESS_KEY_SECRET_FILE",
+    "object_store_application_secret_key": "GEO_OBJECT_STORE_APPLICATION_SECRET_KEY_SECRET_FILE",
+    "object_store_backup_access_key": "GEO_OBJECT_STORE_BACKUP_ACCESS_KEY_SECRET_FILE",
+    "object_store_backup_secret_key": "GEO_OBJECT_STORE_BACKUP_SECRET_KEY_SECRET_FILE",
+    "object_store_restore_access_key": "GEO_OBJECT_STORE_RESTORE_ACCESS_KEY_SECRET_FILE",
+    "object_store_restore_secret_key": "GEO_OBJECT_STORE_RESTORE_SECRET_KEY_SECRET_FILE",
+    "object_store_retention_access_key": "GEO_OBJECT_STORE_RETENTION_ACCESS_KEY_SECRET_FILE",
+    "object_store_retention_secret_key": "GEO_OBJECT_STORE_RETENTION_SECRET_KEY_SECRET_FILE",
 }
 DEVELOPMENT_CREDENTIALS = frozenset(
     {
         "minio",
         "minio123",
-        "geno-application-local",
-        "geno-application-local-secret",
-        "geno-backup-local",
-        "geno-backup-local-secret",
-        "geno-restore-local",
-        "geno-restore-local-secret",
-        "geno-retention-local",
-        "geno-retention-local-secret",
+        "geo-application-local",
+        "geo-application-local-secret",
+        "geo-backup-local",
+        "geo-backup-local-secret",
+        "geo-restore-local",
+        "geo-restore-local-secret",
+        "geo-retention-local",
+        "geo-retention-local-secret",
     }
 )
 SENSITIVE_ENV_RE = re.compile(
@@ -121,14 +121,14 @@ def _config_only_env() -> dict[str, str]:
     env = os.environ.copy()
     env.update(
         {
-            "GENO_CONNECTOR_SECRET_MASTER_KEY": "config-only-connector-sentinel",
-            "GENO_REPORT_ARTIFACT_SIGNING_SECRET": "config-only-signing-sentinel",
-            "GENO_AUTH_DELIVERY_MASTER_KEY_SECRET_FILE": "/run/geno-config-only/auth-delivery-master-key",
-            "GENO_AUTH_DELIVERY_KEY_ID": "config-only-auth-delivery-key",
-            "GENO_AUTH_RECOVERY_COOKIE_SECRET_FILE": "/run/geno-config-only/auth-recovery-cookie",
+            "GEO_CONNECTOR_SECRET_MASTER_KEY": "config-only-connector-sentinel",
+            "GEO_REPORT_ARTIFACT_SIGNING_SECRET": "config-only-signing-sentinel",
+            "GEO_AUTH_DELIVERY_MASTER_KEY_SECRET_FILE": "/run/geo-config-only/auth-delivery-master-key",
+            "GEO_AUTH_DELIVERY_KEY_ID": "config-only-auth-delivery-key",
+            "GEO_AUTH_RECOVERY_COOKIE_SECRET_FILE": "/run/geo-config-only/auth-recovery-cookie",
             "ADMIN_WEB_BASE_URL": "https://admin.config-only.example/login",
             "CUSTOMER_WEB_BASE_URL": "https://customer.config-only.example/",
-            "GENO_MINIO_ENCRYPTED_VOLUME_NAME": "geno-config-only-encrypted-minio",
+            "GEO_MINIO_ENCRYPTED_VOLUME_NAME": "geo-config-only-encrypted-minio",
             "OBJECT_STORE_BACKUP_PREFIX": "production/config-only/",
             "OBJECT_STORE_BACKUP_SMOKE_PREFIX": "smoke/config-only-run/",
             "OBJECT_STORE_RESTORE_PREFIX": "restore-smoke/config-only-run/",
@@ -136,7 +136,7 @@ def _config_only_env() -> dict[str, str]:
         }
     )
     for variable in SECRET_HOST_ENV.values():
-        env[variable] = f"/run/geno-config-only/{variable.lower()}"
+        env[variable] = f"/run/geo-config-only/{variable.lower()}"
     return env
 
 
@@ -228,7 +228,7 @@ def verify_merged_compose(config: dict[str, Any]) -> list[dict[str, str]]:
         "Caller-to-service mapping covers the complete runtime inventory",
     )
 
-    expected_tuple = ("http://minio:9000", "geno-reports", "us-east-1")
+    expected_tuple = ("http://minio:9000", "geo-reports", "us-east-1")
     for name in APPLICATION_CONSUMERS:
         service = services[name]
         environment = service.get("environment", {})
@@ -582,7 +582,7 @@ def validate_consumer_receipt(payload: dict[str, Any]) -> None:
             raise ProductionObjectStoreVerificationError(
                 f"consumer_roundtrip_receipt: {name} service binding mismatch"
             )
-        if result.get("execution_path") != "geno_core.runtime.build_object_store_from_env":
+        if result.get("execution_path") != "geo_core.runtime.build_object_store_from_env":
             raise ProductionObjectStoreVerificationError(
                 f"consumer_roundtrip_receipt: {name} did not use the native builder"
             )

@@ -11,8 +11,8 @@ from typing import Any
 
 import httpx
 
-from geno_core.knowledge_application import load_deepseek_api_key
-from geno_core.knowledge_pipeline import QdrantKnowledgeStore, deterministic_embedding
+from geo_core.knowledge_application import load_deepseek_api_key
+from geo_core.knowledge_pipeline import QdrantKnowledgeStore, deterministic_embedding
 
 
 COMPONENT_MODULES = {
@@ -156,10 +156,10 @@ def build_probe(args: argparse.Namespace) -> dict[str, Any]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Probe GEO knowledge pipeline component availability.")
     parser.add_argument("--artifact", default="/tmp/geo-knowledge-component-probe.json")
-    parser.add_argument("--compose-project", default=os.getenv("GENO_COMPOSE_PROJECT", "geno-auto"))
-    parser.add_argument("--env-file", default=os.getenv("GENO_COMPOSE_ENV_FILE", "tmp/docker-compose.auto-ports.env"))
-    parser.add_argument("--qdrant-url", default=os.getenv("GENO_QDRANT_PROBE_URL", "http://localhost:18006"))
-    parser.add_argument("--project-id", default=os.getenv("GENO_KNOWLEDGE_PROBE_PROJECT_ID", ""))
+    parser.add_argument("--compose-project", default=os.getenv("GEO_COMPOSE_PROJECT", "geo-auto"))
+    parser.add_argument("--env-file", default=os.getenv("GEO_COMPOSE_ENV_FILE", "tmp/docker-compose.auto-ports.env"))
+    parser.add_argument("--qdrant-url", default=os.getenv("GEO_QDRANT_PROBE_URL", "http://localhost:18006"))
+    parser.add_argument("--project-id", default=os.getenv("GEO_KNOWLEDGE_PROBE_PROJECT_ID", ""))
     args = parser.parse_args(argv)
     probe = build_probe(args)
     Path(args.artifact).write_text(json.dumps(probe, indent=2, ensure_ascii=False), encoding="utf-8")

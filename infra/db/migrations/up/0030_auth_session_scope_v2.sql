@@ -685,13 +685,13 @@ ON CONFLICT (singleton) DO UPDATE SET
 
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'geno_rls_authz_owner') THEN
-    CREATE ROLE geno_rls_authz_owner NOLOGIN BYPASSRLS;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'geo_rls_authz_owner') THEN
+    CREATE ROLE geo_rls_authz_owner NOLOGIN BYPASSRLS;
   ELSE
-    ALTER ROLE geno_rls_authz_owner NOLOGIN BYPASSRLS;
+    ALTER ROLE geo_rls_authz_owner NOLOGIN BYPASSRLS;
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'geno_runtime_rollback_app') THEN
-    CREATE ROLE geno_runtime_rollback_app NOLOGIN;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'geo_runtime_rollback_app') THEN
+    CREATE ROLE geo_runtime_rollback_app NOLOGIN;
   END IF;
 END $$;
 
@@ -699,13 +699,13 @@ GRANT SELECT ON projects, project_members, project_member_invitations,
   tenant_members, runtime_sessions, runtime_project_access_grants,
   auth_invitation_redemption_attempts, auth_runtime_write_controls,
   runtime_session_reauth_queue
-  TO geno_rls_authz_owner;
-GRANT INSERT, UPDATE ON runtime_project_access_grants TO geno_rls_authz_owner;
-GRANT UPDATE ON project_members TO geno_rls_authz_owner;
-GRANT UPDATE ON runtime_sessions TO geno_rls_authz_owner;
-GRANT INSERT, UPDATE ON runtime_session_reauth_queue TO geno_rls_authz_owner;
+  TO geo_rls_authz_owner;
+GRANT INSERT, UPDATE ON runtime_project_access_grants TO geo_rls_authz_owner;
+GRANT UPDATE ON project_members TO geo_rls_authz_owner;
+GRANT UPDATE ON runtime_sessions TO geo_rls_authz_owner;
+GRANT INSERT, UPDATE ON runtime_session_reauth_queue TO geo_rls_authz_owner;
 
-CREATE OR REPLACE FUNCTION geno_runtime_tenant_id()
+CREATE OR REPLACE FUNCTION geo_runtime_tenant_id()
 RETURNS uuid
 LANGUAGE plpgsql
 STABLE
@@ -716,7 +716,7 @@ DECLARE
 BEGIN
   value := coalesce(
     nullif(current_setting('app.tenant_id', true), ''),
-    nullif(current_setting('geno.runtime_tenant_id', true), '')
+    nullif(current_setting('geo.runtime_tenant_id', true), '')
   );
   IF value IS NULL THEN
     RETURN NULL;
@@ -727,37 +727,37 @@ EXCEPTION WHEN invalid_text_representation THEN
 END;
 $$;
 
-CREATE OR REPLACE FUNCTION geno_runtime_idempotency_key_hash()
+CREATE OR REPLACE FUNCTION geo_runtime_idempotency_key_hash()
 RETURNS text
 LANGUAGE sql
 STABLE
 SET search_path = pg_catalog
 AS $$
-  SELECT nullif(current_setting('geno.runtime_idempotency_key_hash', true), '');
+  SELECT nullif(current_setting('geo.runtime_idempotency_key_hash', true), '');
 $$;
 
-CREATE OR REPLACE FUNCTION geno_runtime_requested_surface()
+CREATE OR REPLACE FUNCTION geo_runtime_requested_surface()
 RETURNS text
 LANGUAGE sql
 STABLE
 SET search_path = pg_catalog
 AS $$
-  SELECT nullif(current_setting('geno.runtime_requested_surface', true), '');
+  SELECT nullif(current_setting('geo.runtime_requested_surface', true), '');
 $$;
 
-CREATE OR REPLACE FUNCTION geno_runtime_session_token_hash()
+CREATE OR REPLACE FUNCTION geo_runtime_session_token_hash()
 RETURNS text
 LANGUAGE sql
 STABLE
 SET search_path = pg_catalog
 AS $$
-  SELECT nullif(current_setting('geno.runtime_session_token_hash', true), '');
+  SELECT nullif(current_setting('geo.runtime_session_token_hash', true), '');
 $$;
 
-REVOKE ALL ON FUNCTION geno_runtime_session_token_hash() FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION geno_runtime_session_token_hash() TO geno_runtime_app;
+REVOKE ALL ON FUNCTION geo_runtime_session_token_hash() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION geo_runtime_session_token_hash() TO geo_runtime_app;
 
-CREATE OR REPLACE FUNCTION geno_authz_role_has_permission(role_name text, required_permission text)
+CREATE OR REPLACE FUNCTION geo_authz_role_has_permission(role_name text, required_permission text)
 RETURNS boolean
 LANGUAGE sql
 IMMUTABLE
@@ -780,8 +780,8 @@ AS $$
       'report.revoke', 'report.download', 'action.manage', 'action.read',
       'retest.run', 'retest.read'
     ]::text[])
-    WHEN 'admin' THEN public.geno_authz_role_has_permission('owner', required_permission)
-    WHEN 'project_owner' THEN public.geno_authz_role_has_permission('owner', required_permission)
+    WHEN 'admin' THEN public.geo_authz_role_has_permission('owner', required_permission)
+    WHEN 'project_owner' THEN public.geo_authz_role_has_permission('owner', required_permission)
     WHEN 'analyst' THEN required_permission = ANY(ARRAY[
       'project.read', 'prompt.import', 'collection.run', 'collection.read',
       'evidence.read_summary', 'evidence.read_raw', 'analysis.read',
@@ -806,12 +806,12 @@ AS $$
       'project.read', 'score.read', 'report.read', 'report.download',
       'action.read', 'retest.read', 'knowledge.read_approved'
     ]::text[])
-    WHEN 'client_viewer' THEN public.geno_authz_role_has_permission('viewer', required_permission)
+    WHEN 'client_viewer' THEN public.geo_authz_role_has_permission('viewer', required_permission)
     ELSE false
   END;
 $$;
 
-CREATE OR REPLACE FUNCTION geno_authz_has_project_permission(
+CREATE OR REPLACE FUNCTION geo_authz_has_project_permission(
   row_project_id uuid,
   required_permission text DEFAULT 'project.read'
 )
@@ -823,38 +823,38 @@ SET search_path = pg_catalog
 AS $$
   SELECT
     row_project_id IS NOT NULL
-    AND public.geno_runtime_actor_id() IS NOT NULL
-    AND public.geno_runtime_tenant_id() IS NOT NULL
+    AND public.geo_runtime_actor_id() IS NOT NULL
+    AND public.geo_runtime_tenant_id() IS NOT NULL
     AND (
       EXISTS (
         SELECT 1
         FROM public.project_members pm
         WHERE pm.project_id = row_project_id
-          AND pm.tenant_id = public.geno_runtime_tenant_id()
-          AND lower(btrim(pm.user_id)) = lower(btrim(public.geno_runtime_actor_id()))
+          AND pm.tenant_id = public.geo_runtime_tenant_id()
+          AND lower(btrim(pm.user_id)) = lower(btrim(public.geo_runtime_actor_id()))
           AND pm.status = 'active'
-          AND public.geno_authz_role_has_permission(pm.role, required_permission)
+          AND public.geo_authz_role_has_permission(pm.role, required_permission)
       )
       OR EXISTS (
         SELECT 1
         FROM public.runtime_project_access_grants grant_row
         WHERE grant_row.project_id = row_project_id
-          AND grant_row.tenant_id = public.geno_runtime_tenant_id()
-          AND lower(btrim(grant_row.actor_id)) = lower(btrim(public.geno_runtime_actor_id()))
+          AND grant_row.tenant_id = public.geo_runtime_tenant_id()
+          AND lower(btrim(grant_row.actor_id)) = lower(btrim(public.geo_runtime_actor_id()))
           AND grant_row.status = 'active'
           AND required_permission = ANY(grant_row.permissions)
       )
     );
 $$;
 
-ALTER FUNCTION geno_authz_role_has_permission(text, text) OWNER TO geno_rls_authz_owner;
-ALTER FUNCTION geno_authz_has_project_permission(uuid, text) OWNER TO geno_rls_authz_owner;
-REVOKE ALL ON FUNCTION geno_authz_role_has_permission(text, text) FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_authz_has_project_permission(uuid, text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION geno_authz_role_has_permission(text, text) TO geno_runtime_app;
-GRANT EXECUTE ON FUNCTION geno_authz_has_project_permission(uuid, text) TO geno_runtime_app;
+ALTER FUNCTION geo_authz_role_has_permission(text, text) OWNER TO geo_rls_authz_owner;
+ALTER FUNCTION geo_authz_has_project_permission(uuid, text) OWNER TO geo_rls_authz_owner;
+REVOKE ALL ON FUNCTION geo_authz_role_has_permission(text, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION geo_authz_has_project_permission(uuid, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION geo_authz_role_has_permission(text, text) TO geo_runtime_app;
+GRANT EXECUTE ON FUNCTION geo_authz_has_project_permission(uuid, text) TO geo_runtime_app;
 
-CREATE OR REPLACE FUNCTION geno_authz_can_manage_tenant(row_tenant_id uuid)
+CREATE OR REPLACE FUNCTION geo_authz_can_manage_tenant(row_tenant_id uuid)
 RETURNS boolean
 LANGUAGE sql
 STABLE
@@ -865,29 +865,29 @@ AS $$
     SELECT 1
     FROM public.tenant_members tm
     WHERE tm.tenant_id = row_tenant_id
-      AND lower(btrim(tm.user_id)) = lower(btrim(public.geno_runtime_actor_id()))
+      AND lower(btrim(tm.user_id)) = lower(btrim(public.geo_runtime_actor_id()))
       AND tm.status = 'active'
       AND lower(tm.role) IN ('super_admin', 'tenant_admin')
   );
 $$;
 
-ALTER FUNCTION geno_authz_can_manage_tenant(uuid) OWNER TO geno_rls_authz_owner;
-REVOKE ALL ON FUNCTION geno_authz_can_manage_tenant(uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION geno_authz_can_manage_tenant(uuid) TO geno_runtime_app;
+ALTER FUNCTION geo_authz_can_manage_tenant(uuid) OWNER TO geo_rls_authz_owner;
+REVOKE ALL ON FUNCTION geo_authz_can_manage_tenant(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION geo_authz_can_manage_tenant(uuid) TO geo_runtime_app;
 
 DROP POLICY IF EXISTS tenant_members_runtime_tenant_isolation ON tenant_members;
 CREATE POLICY tenant_members_runtime_tenant_isolation ON tenant_members
   USING (
-    NOT geno_runtime_rls_enabled()
-    OR lower(btrim(user_id)) = lower(btrim(geno_runtime_actor_id()))
-    OR geno_authz_can_manage_tenant(tenant_id)
+    NOT geo_runtime_rls_enabled()
+    OR lower(btrim(user_id)) = lower(btrim(geo_runtime_actor_id()))
+    OR geo_authz_can_manage_tenant(tenant_id)
   )
   WITH CHECK (
-    NOT geno_runtime_rls_enabled()
-    OR geno_authz_can_manage_tenant(tenant_id)
+    NOT geo_runtime_rls_enabled()
+    OR geo_authz_can_manage_tenant(tenant_id)
   );
 
-CREATE OR REPLACE FUNCTION geno_runtime_can_access_project(row_project_id uuid)
+CREATE OR REPLACE FUNCTION geo_runtime_can_access_project(row_project_id uuid)
 RETURNS boolean
 LANGUAGE plpgsql
 STABLE
@@ -896,23 +896,23 @@ AS $$
 DECLARE
   context_project_id uuid;
 BEGIN
-  IF NOT public.geno_runtime_rls_enabled() THEN
+  IF NOT public.geo_runtime_rls_enabled() THEN
     RETURN true;
   END IF;
   IF row_project_id IS NULL THEN
     RETURN false;
   END IF;
-  context_project_id := public.geno_runtime_project_id();
+  context_project_id := public.geo_runtime_project_id();
   IF context_project_id IS NOT NULL AND context_project_id <> row_project_id THEN
     RETURN false;
   END IF;
   IF context_project_id IS NULL
-    AND cardinality(public.geno_runtime_project_ids()) > 0
-    AND NOT (row_project_id = ANY(public.geno_runtime_project_ids()))
+    AND cardinality(public.geo_runtime_project_ids()) > 0
+    AND NOT (row_project_id = ANY(public.geo_runtime_project_ids()))
   THEN
     RETURN false;
   END IF;
-  RETURN public.geno_authz_has_project_permission(row_project_id, 'project.read');
+  RETURN public.geo_authz_has_project_permission(row_project_id, 'project.read');
 END;
 $$;
 
@@ -929,10 +929,10 @@ DROP POLICY IF EXISTS project_members_insert_manage ON project_members;
 DROP POLICY IF EXISTS project_members_insert_invitation ON project_members;
 DROP POLICY IF EXISTS project_members_update_manage ON project_members;
 DROP POLICY IF EXISTS project_members_delete_manage ON project_members;
-DROP FUNCTION IF EXISTS geno_runtime_can_accept_project_invitation(uuid);
-DROP FUNCTION IF EXISTS geno_runtime_can_accept_project_invitation(uuid, uuid);
+DROP FUNCTION IF EXISTS geo_runtime_can_accept_project_invitation(uuid);
+DROP FUNCTION IF EXISTS geo_runtime_can_accept_project_invitation(uuid, uuid);
 
-CREATE OR REPLACE FUNCTION geno_runtime_can_recover_project_invitation(row_invitation_id uuid)
+CREATE OR REPLACE FUNCTION geo_runtime_can_recover_project_invitation(row_invitation_id uuid)
 RETURNS boolean
 LANGUAGE sql
 STABLE
@@ -940,26 +940,26 @@ SECURITY DEFINER
 SET search_path = pg_catalog
 AS $$
   SELECT
-    public.geno_runtime_invitation_token_hash() IS NOT NULL
-    AND public.geno_runtime_idempotency_key_hash() IS NOT NULL
-    AND public.geno_runtime_requested_surface() IN ('admin', 'customer')
+    public.geo_runtime_invitation_token_hash() IS NOT NULL
+    AND public.geo_runtime_idempotency_key_hash() IS NOT NULL
+    AND public.geo_runtime_requested_surface() IN ('admin', 'customer')
     AND EXISTS (
       SELECT 1
       FROM public.project_member_invitations pmi
       JOIN public.auth_invitation_redemption_attempts attempt
         ON attempt.invitation_id = pmi.id
       WHERE pmi.id = row_invitation_id
-        AND pmi.invite_token_hash = public.geno_runtime_invitation_token_hash()
+        AND pmi.invite_token_hash = public.geo_runtime_invitation_token_hash()
         AND pmi.status = 'accepted'
         AND pmi.accepted_by_attempt_id = attempt.id
-        AND attempt.idempotency_key_hash = public.geno_runtime_idempotency_key_hash()
-        AND attempt.requested_surface = public.geno_runtime_requested_surface()
-        AND attempt.token_fingerprint = public.geno_runtime_invitation_token_hash()
+        AND attempt.idempotency_key_hash = public.geo_runtime_idempotency_key_hash()
+        AND attempt.requested_surface = public.geo_runtime_requested_surface()
+        AND attempt.token_fingerprint = public.geo_runtime_invitation_token_hash()
         AND attempt.status IN ('preparing', 'succeeded')
     );
 $$;
 
-CREATE OR REPLACE FUNCTION geno_runtime_can_recover_redemption_attempt(row_attempt_id uuid)
+CREATE OR REPLACE FUNCTION geo_runtime_can_recover_redemption_attempt(row_attempt_id uuid)
 RETURNS boolean
 LANGUAGE sql
 STABLE
@@ -967,18 +967,18 @@ SECURITY DEFINER
 SET search_path = pg_catalog
 AS $$
   SELECT (
-    public.geno_runtime_invitation_token_hash() IS NOT NULL
-    AND public.geno_runtime_idempotency_key_hash() IS NOT NULL
-    AND public.geno_runtime_requested_surface() IN ('admin', 'customer')
+    public.geo_runtime_invitation_token_hash() IS NOT NULL
+    AND public.geo_runtime_idempotency_key_hash() IS NOT NULL
+    AND public.geo_runtime_requested_surface() IN ('admin', 'customer')
     AND EXISTS (
       SELECT 1
       FROM public.auth_invitation_redemption_attempts attempt
       JOIN public.project_member_invitations pmi ON pmi.id = attempt.invitation_id
       WHERE attempt.id = row_attempt_id
-        AND pmi.invite_token_hash = public.geno_runtime_invitation_token_hash()
-        AND attempt.idempotency_key_hash = public.geno_runtime_idempotency_key_hash()
-        AND attempt.requested_surface = public.geno_runtime_requested_surface()
-        AND attempt.token_fingerprint = public.geno_runtime_invitation_token_hash()
+        AND pmi.invite_token_hash = public.geo_runtime_invitation_token_hash()
+        AND attempt.idempotency_key_hash = public.geo_runtime_idempotency_key_hash()
+        AND attempt.requested_surface = public.geo_runtime_requested_surface()
+        AND attempt.token_fingerprint = public.geo_runtime_invitation_token_hash()
         AND attempt.status = 'succeeded'
         AND pmi.status = 'accepted'
         AND pmi.accepted_by_attempt_id = attempt.id
@@ -989,18 +989,18 @@ AS $$
     JOIN public.runtime_sessions session_row ON session_row.id = attempt.session_id
     WHERE attempt.id = row_attempt_id
       AND session_row.status = 'active'
-      AND lower(btrim(session_row.actor_id)) = lower(btrim(public.geno_runtime_actor_id()))
+      AND lower(btrim(session_row.actor_id)) = lower(btrim(public.geo_runtime_actor_id()))
   );
 $$;
 
-ALTER FUNCTION geno_runtime_can_recover_project_invitation(uuid) OWNER TO geno_rls_authz_owner;
-ALTER FUNCTION geno_runtime_can_recover_redemption_attempt(uuid) OWNER TO geno_rls_authz_owner;
-REVOKE ALL ON FUNCTION geno_runtime_can_recover_project_invitation(uuid) FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_runtime_can_recover_redemption_attempt(uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION geno_runtime_can_recover_project_invitation(uuid) TO geno_runtime_app;
-GRANT EXECUTE ON FUNCTION geno_runtime_can_recover_redemption_attempt(uuid) TO geno_runtime_app;
+ALTER FUNCTION geo_runtime_can_recover_project_invitation(uuid) OWNER TO geo_rls_authz_owner;
+ALTER FUNCTION geo_runtime_can_recover_redemption_attempt(uuid) OWNER TO geo_rls_authz_owner;
+REVOKE ALL ON FUNCTION geo_runtime_can_recover_project_invitation(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION geo_runtime_can_recover_redemption_attempt(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION geo_runtime_can_recover_project_invitation(uuid) TO geo_runtime_app;
+GRANT EXECUTE ON FUNCTION geo_runtime_can_recover_redemption_attempt(uuid) TO geo_runtime_app;
 
-CREATE OR REPLACE FUNCTION geno_runtime_can_accept_project_invitation(
+CREATE OR REPLACE FUNCTION geo_runtime_can_accept_project_invitation(
   row_project_id uuid,
   row_tenant_id uuid,
   row_user_id text,
@@ -1014,14 +1014,14 @@ SECURITY DEFINER
 SET search_path = pg_catalog
 AS $$
   SELECT
-    public.geno_runtime_rls_enabled()
+    public.geo_runtime_rls_enabled()
     AND row_project_id IS NOT NULL
     AND row_tenant_id IS NOT NULL
     AND nullif(btrim(row_user_id), '') IS NOT NULL
     AND lower(row_status) = 'active'
-    AND public.geno_runtime_invitation_token_hash() IS NOT NULL
-    AND public.geno_runtime_idempotency_key_hash() IS NOT NULL
-    AND public.geno_runtime_requested_surface() IN ('admin', 'customer')
+    AND public.geo_runtime_invitation_token_hash() IS NOT NULL
+    AND public.geo_runtime_idempotency_key_hash() IS NOT NULL
+    AND public.geo_runtime_requested_surface() IN ('admin', 'customer')
     AND EXISTS (
       SELECT 1
       FROM public.project_member_invitations pmi
@@ -1032,16 +1032,16 @@ AS $$
         AND lower(btrim(pmi.email)) = lower(btrim(row_user_id))
         AND lower(btrim(pmi.role)) = lower(btrim(row_role))
         AND pmi.status = 'pending'
-        AND pmi.invite_token_hash = public.geno_runtime_invitation_token_hash()
+        AND pmi.invite_token_hash = public.geo_runtime_invitation_token_hash()
         AND (pmi.expires_at IS NULL OR pmi.expires_at > now())
         AND attempt.status = 'preparing'
-        AND attempt.idempotency_key_hash = public.geno_runtime_idempotency_key_hash()
-        AND attempt.requested_surface = public.geno_runtime_requested_surface()
-        AND attempt.token_fingerprint = public.geno_runtime_invitation_token_hash()
+        AND attempt.idempotency_key_hash = public.geo_runtime_idempotency_key_hash()
+        AND attempt.requested_surface = public.geo_runtime_requested_surface()
+        AND attempt.token_fingerprint = public.geo_runtime_invitation_token_hash()
     );
 $$;
 
-CREATE OR REPLACE FUNCTION geno_runtime_can_finalize_project_invitation(
+CREATE OR REPLACE FUNCTION geo_runtime_can_finalize_project_invitation(
   row_invitation_id uuid,
   row_attempt_id uuid,
   row_status text,
@@ -1056,28 +1056,28 @@ AS $$
   SELECT
     lower(row_status) = 'accepted'
     AND row_accepted_at IS NOT NULL
-    AND public.geno_runtime_invitation_token_hash() IS NOT NULL
-    AND public.geno_runtime_idempotency_key_hash() IS NOT NULL
-    AND public.geno_runtime_requested_surface() IN ('admin', 'customer')
+    AND public.geo_runtime_invitation_token_hash() IS NOT NULL
+    AND public.geo_runtime_idempotency_key_hash() IS NOT NULL
+    AND public.geo_runtime_requested_surface() IN ('admin', 'customer')
     AND EXISTS (
       SELECT 1
       FROM public.project_member_invitations pmi
       JOIN public.auth_invitation_redemption_attempts attempt
         ON attempt.invitation_id = pmi.id
       WHERE pmi.id = row_invitation_id
-        AND pmi.invite_token_hash = public.geno_runtime_invitation_token_hash()
+        AND pmi.invite_token_hash = public.geo_runtime_invitation_token_hash()
         AND (pmi.expires_at IS NULL OR pmi.expires_at > now())
         AND attempt.id = row_attempt_id
         AND attempt.status = 'preparing'
-        AND attempt.idempotency_key_hash = public.geno_runtime_idempotency_key_hash()
-        AND attempt.requested_surface = public.geno_runtime_requested_surface()
-        AND attempt.token_fingerprint = public.geno_runtime_invitation_token_hash()
+        AND attempt.idempotency_key_hash = public.geo_runtime_idempotency_key_hash()
+        AND attempt.requested_surface = public.geo_runtime_requested_surface()
+        AND attempt.token_fingerprint = public.geo_runtime_invitation_token_hash()
         AND row_accepted_at >= attempt.created_at
         AND row_accepted_at <= now() + interval '1 minute'
     );
 $$;
 
-CREATE OR REPLACE FUNCTION geno_runtime_can_insert_redeemed_session(
+CREATE OR REPLACE FUNCTION geo_runtime_can_insert_redeemed_session(
   row_attempt_id uuid,
   row_actor_id text,
   row_tenant_id uuid,
@@ -1095,26 +1095,26 @@ AS $$
     lower(row_status) = 'active'
     AND row_scope_version = 'runtime_session_scope_v2'
     AND row_policy_version = 'auth_surface_policy_v1'
-    AND public.geno_runtime_invitation_token_hash() IS NOT NULL
-    AND public.geno_runtime_idempotency_key_hash() IS NOT NULL
-    AND public.geno_runtime_requested_surface() IN ('admin', 'customer')
+    AND public.geo_runtime_invitation_token_hash() IS NOT NULL
+    AND public.geo_runtime_idempotency_key_hash() IS NOT NULL
+    AND public.geo_runtime_requested_surface() IN ('admin', 'customer')
     AND EXISTS (
       SELECT 1
       FROM public.auth_invitation_redemption_attempts attempt
       JOIN public.project_member_invitations pmi ON pmi.id = attempt.invitation_id
       WHERE attempt.id = row_attempt_id
         AND attempt.status = 'preparing'
-        AND attempt.idempotency_key_hash = public.geno_runtime_idempotency_key_hash()
-        AND attempt.requested_surface = public.geno_runtime_requested_surface()
-        AND attempt.token_fingerprint = public.geno_runtime_invitation_token_hash()
+        AND attempt.idempotency_key_hash = public.geo_runtime_idempotency_key_hash()
+        AND attempt.requested_surface = public.geo_runtime_requested_surface()
+        AND attempt.token_fingerprint = public.geo_runtime_invitation_token_hash()
         AND pmi.status = 'pending'
-        AND pmi.invite_token_hash = public.geno_runtime_invitation_token_hash()
+        AND pmi.invite_token_hash = public.geo_runtime_invitation_token_hash()
         AND lower(btrim(pmi.email)) = lower(btrim(row_actor_id))
         AND pmi.tenant_id = row_tenant_id
     );
 $$;
 
-CREATE OR REPLACE FUNCTION geno_runtime_lock_scope_members(
+CREATE OR REPLACE FUNCTION geo_runtime_lock_scope_members(
   requested_actor_id text,
   requested_tenant_id uuid
 )
@@ -1126,8 +1126,8 @@ SET search_path = pg_catalog
 AS $$
   SELECT member_row.project_id, member_row.role
   FROM public.project_members member_row
-  WHERE requested_tenant_id = public.geno_runtime_tenant_id()
-    AND lower(btrim(requested_actor_id)) = lower(btrim(public.geno_runtime_actor_id()))
+  WHERE requested_tenant_id = public.geo_runtime_tenant_id()
+    AND lower(btrim(requested_actor_id)) = lower(btrim(public.geo_runtime_actor_id()))
     AND member_row.tenant_id = requested_tenant_id
     AND lower(btrim(member_row.user_id)) = lower(btrim(requested_actor_id))
     AND member_row.status = 'active'
@@ -1135,7 +1135,7 @@ AS $$
   FOR SHARE OF member_row;
 $$;
 
-CREATE OR REPLACE FUNCTION geno_runtime_lock_invited_member(
+CREATE OR REPLACE FUNCTION geo_runtime_lock_invited_member(
   requested_project_id uuid,
   requested_tenant_id uuid,
   requested_actor_id text
@@ -1152,7 +1152,7 @@ AS $$
     AND member_row.tenant_id = requested_tenant_id
     AND lower(btrim(member_row.user_id)) = lower(btrim(requested_actor_id))
     AND member_row.status = 'active'
-    AND public.geno_runtime_can_accept_project_invitation(
+    AND public.geo_runtime_can_accept_project_invitation(
       member_row.project_id,
       member_row.tenant_id,
       member_row.user_id,
@@ -1162,7 +1162,7 @@ AS $$
   FOR SHARE OF member_row;
 $$;
 
-CREATE OR REPLACE FUNCTION geno_runtime_lock_scope_grants(
+CREATE OR REPLACE FUNCTION geo_runtime_lock_scope_grants(
   requested_actor_id text,
   requested_tenant_id uuid
 )
@@ -1174,8 +1174,8 @@ SET search_path = pg_catalog
 AS $$
   SELECT grant_row.project_id, grant_row.canonical_role, grant_row.permissions
   FROM public.runtime_project_access_grants grant_row
-  WHERE requested_tenant_id = public.geno_runtime_tenant_id()
-    AND lower(btrim(requested_actor_id)) = lower(btrim(public.geno_runtime_actor_id()))
+  WHERE requested_tenant_id = public.geo_runtime_tenant_id()
+    AND lower(btrim(requested_actor_id)) = lower(btrim(public.geo_runtime_actor_id()))
     AND grant_row.tenant_id = requested_tenant_id
     AND lower(btrim(grant_row.actor_id)) = lower(btrim(requested_actor_id))
     AND grant_row.status = 'active'
@@ -1183,42 +1183,42 @@ AS $$
   FOR SHARE OF grant_row;
 $$;
 
-ALTER FUNCTION geno_runtime_can_accept_project_invitation(uuid, uuid, text, text, text)
-  OWNER TO geno_rls_authz_owner;
-ALTER FUNCTION geno_runtime_can_finalize_project_invitation(uuid, uuid, text, timestamptz)
-  OWNER TO geno_rls_authz_owner;
-ALTER FUNCTION geno_runtime_can_insert_redeemed_session(uuid, text, uuid, text, text, text)
-  OWNER TO geno_rls_authz_owner;
-ALTER FUNCTION geno_runtime_lock_scope_members(text, uuid) OWNER TO geno_rls_authz_owner;
-ALTER FUNCTION geno_runtime_lock_invited_member(uuid, uuid, text) OWNER TO geno_rls_authz_owner;
-ALTER FUNCTION geno_runtime_lock_scope_grants(text, uuid) OWNER TO geno_rls_authz_owner;
-REVOKE ALL ON FUNCTION geno_runtime_can_accept_project_invitation(uuid, uuid, text, text, text)
+ALTER FUNCTION geo_runtime_can_accept_project_invitation(uuid, uuid, text, text, text)
+  OWNER TO geo_rls_authz_owner;
+ALTER FUNCTION geo_runtime_can_finalize_project_invitation(uuid, uuid, text, timestamptz)
+  OWNER TO geo_rls_authz_owner;
+ALTER FUNCTION geo_runtime_can_insert_redeemed_session(uuid, text, uuid, text, text, text)
+  OWNER TO geo_rls_authz_owner;
+ALTER FUNCTION geo_runtime_lock_scope_members(text, uuid) OWNER TO geo_rls_authz_owner;
+ALTER FUNCTION geo_runtime_lock_invited_member(uuid, uuid, text) OWNER TO geo_rls_authz_owner;
+ALTER FUNCTION geo_runtime_lock_scope_grants(text, uuid) OWNER TO geo_rls_authz_owner;
+REVOKE ALL ON FUNCTION geo_runtime_can_accept_project_invitation(uuid, uuid, text, text, text)
   FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_runtime_can_finalize_project_invitation(uuid, uuid, text, timestamptz)
+REVOKE ALL ON FUNCTION geo_runtime_can_finalize_project_invitation(uuid, uuid, text, timestamptz)
   FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_runtime_can_insert_redeemed_session(uuid, text, uuid, text, text, text)
+REVOKE ALL ON FUNCTION geo_runtime_can_insert_redeemed_session(uuid, text, uuid, text, text, text)
   FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_runtime_lock_scope_members(text, uuid) FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_runtime_lock_invited_member(uuid, uuid, text) FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_runtime_lock_scope_grants(text, uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION geno_runtime_can_accept_project_invitation(uuid, uuid, text, text, text)
-  TO geno_runtime_app;
-GRANT EXECUTE ON FUNCTION geno_runtime_can_finalize_project_invitation(uuid, uuid, text, timestamptz)
-  TO geno_runtime_app;
-GRANT EXECUTE ON FUNCTION geno_runtime_can_insert_redeemed_session(uuid, text, uuid, text, text, text)
-  TO geno_runtime_app;
-GRANT EXECUTE ON FUNCTION geno_runtime_lock_scope_members(text, uuid) TO geno_runtime_app;
-GRANT EXECUTE ON FUNCTION geno_runtime_lock_invited_member(uuid, uuid, text) TO geno_runtime_app;
-GRANT EXECUTE ON FUNCTION geno_runtime_lock_scope_grants(text, uuid) TO geno_runtime_app;
+REVOKE ALL ON FUNCTION geo_runtime_lock_scope_members(text, uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION geo_runtime_lock_invited_member(uuid, uuid, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION geo_runtime_lock_scope_grants(text, uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION geo_runtime_can_accept_project_invitation(uuid, uuid, text, text, text)
+  TO geo_runtime_app;
+GRANT EXECUTE ON FUNCTION geo_runtime_can_finalize_project_invitation(uuid, uuid, text, timestamptz)
+  TO geo_runtime_app;
+GRANT EXECUTE ON FUNCTION geo_runtime_can_insert_redeemed_session(uuid, text, uuid, text, text, text)
+  TO geo_runtime_app;
+GRANT EXECUTE ON FUNCTION geo_runtime_lock_scope_members(text, uuid) TO geo_runtime_app;
+GRANT EXECUTE ON FUNCTION geo_runtime_lock_invited_member(uuid, uuid, text) TO geo_runtime_app;
+GRANT EXECUTE ON FUNCTION geo_runtime_lock_scope_grants(text, uuid) TO geo_runtime_app;
 
-CREATE OR REPLACE FUNCTION geno_guard_project_invitation_update()
+CREATE OR REPLACE FUNCTION geo_guard_project_invitation_update()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = pg_catalog
 AS $$
 BEGIN
-  IF session_user <> 'geno_runtime_app' THEN
+  IF session_user <> 'geo_runtime_app' THEN
     RETURN NEW;
   END IF;
   IF OLD.status = 'pending' AND NEW.status = 'accepted' THEN
@@ -1236,7 +1236,7 @@ BEGIN
       OR NEW.audience IS DISTINCT FROM OLD.audience
       OR NEW.allowed_surfaces IS DISTINCT FROM OLD.allowed_surfaces
       OR NEW.policy_version IS DISTINCT FROM OLD.policy_version
-      OR NOT public.geno_runtime_can_finalize_project_invitation(
+      OR NOT public.geo_runtime_can_finalize_project_invitation(
         NEW.id, NEW.accepted_by_attempt_id, NEW.status, NEW.accepted_at
       )
     THEN
@@ -1244,8 +1244,8 @@ BEGIN
     END IF;
     RETURN NEW;
   END IF;
-  IF public.geno_authz_has_project_permission(OLD.project_id, 'member.manage')
-    AND public.geno_authz_has_project_permission(NEW.project_id, 'member.manage')
+  IF public.geo_authz_has_project_permission(OLD.project_id, 'member.manage')
+    AND public.geo_authz_has_project_permission(NEW.project_id, 'member.manage')
   THEN
     RETURN NEW;
   END IF;
@@ -1253,69 +1253,69 @@ BEGIN
 END;
 $$;
 
-ALTER FUNCTION geno_guard_project_invitation_update() OWNER TO geno_rls_authz_owner;
-REVOKE ALL ON FUNCTION geno_guard_project_invitation_update() FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_guard_project_invitation_update() FROM geno_runtime_app;
+ALTER FUNCTION geo_guard_project_invitation_update() OWNER TO geo_rls_authz_owner;
+REVOKE ALL ON FUNCTION geo_guard_project_invitation_update() FROM PUBLIC;
+REVOKE ALL ON FUNCTION geo_guard_project_invitation_update() FROM geo_runtime_app;
 DROP TRIGGER IF EXISTS project_member_invitations_strict_update ON project_member_invitations;
 CREATE TRIGGER project_member_invitations_strict_update
 BEFORE UPDATE ON project_member_invitations
-FOR EACH ROW EXECUTE FUNCTION geno_guard_project_invitation_update();
+FOR EACH ROW EXECUTE FUNCTION geo_guard_project_invitation_update();
 
 CREATE POLICY project_member_invitations_select ON project_member_invitations
   FOR SELECT USING (
-    geno_authz_has_project_permission(project_id, 'member.manage')
+    geo_authz_has_project_permission(project_id, 'member.manage')
     OR (
       status = 'pending'
-      AND invite_token_hash = geno_runtime_invitation_token_hash()
+      AND invite_token_hash = geo_runtime_invitation_token_hash()
       AND (expires_at IS NULL OR expires_at > now())
     )
     OR (
       status = 'accepted'
       AND accepted_by_attempt_id IS NOT NULL
-      AND geno_runtime_can_finalize_project_invitation(id, accepted_by_attempt_id, status, accepted_at)
+      AND geo_runtime_can_finalize_project_invitation(id, accepted_by_attempt_id, status, accepted_at)
     )
-    OR geno_runtime_can_recover_project_invitation(id)
+    OR geo_runtime_can_recover_project_invitation(id)
   );
 CREATE POLICY project_member_invitations_insert_manage ON project_member_invitations
-  FOR INSERT WITH CHECK (geno_authz_has_project_permission(project_id, 'member.manage'));
+  FOR INSERT WITH CHECK (geo_authz_has_project_permission(project_id, 'member.manage'));
 CREATE POLICY project_member_invitations_update_manage ON project_member_invitations
   FOR UPDATE
-  USING (geno_authz_has_project_permission(project_id, 'member.manage'))
-  WITH CHECK (geno_authz_has_project_permission(project_id, 'member.manage'));
+  USING (geo_authz_has_project_permission(project_id, 'member.manage'))
+  WITH CHECK (geo_authz_has_project_permission(project_id, 'member.manage'));
 CREATE POLICY project_member_invitations_update_accept ON project_member_invitations
   FOR UPDATE
   USING (
     status = 'pending'
-    AND invite_token_hash = geno_runtime_invitation_token_hash()
+    AND invite_token_hash = geo_runtime_invitation_token_hash()
     AND (expires_at IS NULL OR expires_at > now())
   )
   WITH CHECK (
     status = 'accepted'
     AND accepted_by_attempt_id IS NOT NULL
     AND accepted_at IS NOT NULL
-    AND invite_token_hash = geno_runtime_invitation_token_hash()
+    AND invite_token_hash = geo_runtime_invitation_token_hash()
   );
 CREATE POLICY project_member_invitations_update_recover ON project_member_invitations
   FOR UPDATE
-  USING (geno_runtime_can_recover_project_invitation(id))
+  USING (geo_runtime_can_recover_project_invitation(id))
   WITH CHECK (false);
 CREATE POLICY project_member_invitations_delete_manage ON project_member_invitations
-  FOR DELETE USING (geno_authz_has_project_permission(project_id, 'member.manage'));
+  FOR DELETE USING (geo_authz_has_project_permission(project_id, 'member.manage'));
 
 CREATE POLICY project_members_select ON project_members
-  FOR SELECT USING (geno_authz_has_project_permission(project_id, 'project.read'));
+  FOR SELECT USING (geo_authz_has_project_permission(project_id, 'project.read'));
 CREATE POLICY project_members_insert_manage ON project_members
-  FOR INSERT WITH CHECK (geno_authz_has_project_permission(project_id, 'member.manage'));
+  FOR INSERT WITH CHECK (geo_authz_has_project_permission(project_id, 'member.manage'));
 CREATE POLICY project_members_insert_invitation ON project_members
   FOR INSERT WITH CHECK (
-    geno_runtime_can_accept_project_invitation(project_id, tenant_id, user_id, role, status)
+    geo_runtime_can_accept_project_invitation(project_id, tenant_id, user_id, role, status)
   );
 CREATE POLICY project_members_update_manage ON project_members
   FOR UPDATE
-  USING (geno_authz_has_project_permission(project_id, 'member.manage'))
-  WITH CHECK (geno_authz_has_project_permission(project_id, 'member.manage'));
+  USING (geo_authz_has_project_permission(project_id, 'member.manage'))
+  WITH CHECK (geo_authz_has_project_permission(project_id, 'member.manage'));
 CREATE POLICY project_members_delete_manage ON project_members
-  FOR DELETE USING (geno_authz_has_project_permission(project_id, 'member.manage'));
+  FOR DELETE USING (geo_authz_has_project_permission(project_id, 'member.manage'));
 
 DROP POLICY IF EXISTS runtime_sessions_runtime_actor_isolation ON runtime_sessions;
 DROP POLICY IF EXISTS runtime_sessions_select ON runtime_sessions;
@@ -1323,24 +1323,24 @@ DROP POLICY IF EXISTS runtime_sessions_insert_redeem ON runtime_sessions;
 DROP POLICY IF EXISTS runtime_sessions_update_self ON runtime_sessions;
 CREATE POLICY runtime_sessions_select ON runtime_sessions
   FOR SELECT USING (
-    lower(btrim(actor_id)) = lower(btrim(geno_runtime_actor_id()))
-    OR session_token_hash = geno_runtime_session_token_hash()
+    lower(btrim(actor_id)) = lower(btrim(geo_runtime_actor_id()))
+    OR session_token_hash = geo_runtime_session_token_hash()
   );
 CREATE POLICY runtime_sessions_insert_redeem ON runtime_sessions
   FOR INSERT WITH CHECK (
-    geno_runtime_can_insert_redeemed_session(
+    geo_runtime_can_insert_redeemed_session(
       redemption_attempt_id, actor_id, tenant_id, status, scope_version, authz_policy_version
     )
   );
 CREATE POLICY runtime_sessions_update_self ON runtime_sessions
   FOR UPDATE
   USING (
-    lower(btrim(actor_id)) = lower(btrim(geno_runtime_actor_id()))
-    OR session_token_hash = geno_runtime_session_token_hash()
+    lower(btrim(actor_id)) = lower(btrim(geo_runtime_actor_id()))
+    OR session_token_hash = geo_runtime_session_token_hash()
   )
   WITH CHECK (
-    lower(btrim(actor_id)) = lower(btrim(geno_runtime_actor_id()))
-    OR session_token_hash = geno_runtime_session_token_hash()
+    lower(btrim(actor_id)) = lower(btrim(geo_runtime_actor_id()))
+    OR session_token_hash = geo_runtime_session_token_hash()
   );
 
 ALTER TABLE runtime_project_access_grants ENABLE ROW LEVEL SECURITY;
@@ -1348,7 +1348,7 @@ ALTER TABLE runtime_project_access_grants FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS runtime_project_access_grants_runtime_project_isolation ON runtime_project_access_grants;
 DROP POLICY IF EXISTS runtime_project_access_grants_select ON runtime_project_access_grants;
 CREATE POLICY runtime_project_access_grants_select ON runtime_project_access_grants
-  FOR SELECT USING (geno_authz_has_project_permission(project_id, 'project.read'));
+  FOR SELECT USING (geo_authz_has_project_permission(project_id, 'project.read'));
 
 ALTER TABLE auth_invitation_redemption_attempts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE auth_invitation_redemption_attempts FORCE ROW LEVEL SECURITY;
@@ -1356,27 +1356,27 @@ DROP POLICY IF EXISTS auth_redemption_attempts_runtime_isolation ON auth_invitat
 CREATE POLICY auth_redemption_attempts_runtime_isolation ON auth_invitation_redemption_attempts
   USING (
     (
-      idempotency_key_hash = geno_runtime_idempotency_key_hash()
-      AND requested_surface = geno_runtime_requested_surface()
+      idempotency_key_hash = geo_runtime_idempotency_key_hash()
+      AND requested_surface = geo_runtime_requested_surface()
       AND EXISTS (
         SELECT 1 FROM project_member_invitations pmi
         WHERE pmi.id = invitation_id
-          AND pmi.invite_token_hash = geno_runtime_invitation_token_hash()
+          AND pmi.invite_token_hash = geo_runtime_invitation_token_hash()
       )
     )
-    OR geno_runtime_can_recover_redemption_attempt(id)
+    OR geo_runtime_can_recover_redemption_attempt(id)
   )
   WITH CHECK (
     (
-      idempotency_key_hash = geno_runtime_idempotency_key_hash()
-      AND requested_surface = geno_runtime_requested_surface()
+      idempotency_key_hash = geo_runtime_idempotency_key_hash()
+      AND requested_surface = geo_runtime_requested_surface()
       AND EXISTS (
         SELECT 1 FROM project_member_invitations pmi
         WHERE pmi.id = invitation_id
-          AND pmi.invite_token_hash = geno_runtime_invitation_token_hash()
+          AND pmi.invite_token_hash = geo_runtime_invitation_token_hash()
       )
     )
-    OR geno_runtime_can_recover_redemption_attempt(id)
+    OR geo_runtime_can_recover_redemption_attempt(id)
   );
 
 ALTER TABLE auth_preflight_rate_limits ENABLE ROW LEVEL SECURITY;
@@ -1390,32 +1390,32 @@ ALTER TABLE auth_migration_conflicts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE auth_migration_conflicts FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS auth_migration_conflicts_runtime_isolation ON auth_migration_conflicts;
 CREATE POLICY auth_migration_conflicts_runtime_isolation ON auth_migration_conflicts
-  USING (geno_runtime_can_access_project(project_id))
-  WITH CHECK (geno_runtime_can_access_project(project_id));
+  USING (geo_runtime_can_access_project(project_id))
+  WITH CHECK (geo_runtime_can_access_project(project_id));
 
 ALTER TABLE auth_migration_reconciliation ENABLE ROW LEVEL SECURITY;
 ALTER TABLE auth_migration_reconciliation FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS auth_migration_reconciliation_maintenance_only ON auth_migration_reconciliation;
 CREATE POLICY auth_migration_reconciliation_maintenance_only ON auth_migration_reconciliation
-  USING (NOT geno_runtime_rls_enabled())
-  WITH CHECK (NOT geno_runtime_rls_enabled());
+  USING (NOT geo_runtime_rls_enabled())
+  WITH CHECK (NOT geo_runtime_rls_enabled());
 
 ALTER TABLE auth_migration_quarantine ENABLE ROW LEVEL SECURITY;
 ALTER TABLE auth_migration_quarantine FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS auth_migration_quarantine_maintenance_only ON auth_migration_quarantine;
 CREATE POLICY auth_migration_quarantine_maintenance_only ON auth_migration_quarantine
-  USING (NOT geno_runtime_rls_enabled())
-  WITH CHECK (NOT geno_runtime_rls_enabled());
+  USING (NOT geo_runtime_rls_enabled())
+  WITH CHECK (NOT geo_runtime_rls_enabled());
 
 ALTER TABLE runtime_session_reauth_queue ENABLE ROW LEVEL SECURITY;
 ALTER TABLE runtime_session_reauth_queue FORCE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS runtime_session_reauth_queue_actor_isolation ON runtime_session_reauth_queue;
 CREATE POLICY runtime_session_reauth_queue_actor_isolation ON runtime_session_reauth_queue
   USING (
-    NOT geno_runtime_rls_enabled()
-    OR lower(btrim(actor_id)) = lower(btrim(geno_runtime_actor_id()))
+    NOT geo_runtime_rls_enabled()
+    OR lower(btrim(actor_id)) = lower(btrim(geo_runtime_actor_id()))
   )
-  WITH CHECK (NOT geno_runtime_rls_enabled());
+  WITH CHECK (NOT geo_runtime_rls_enabled());
 
 ALTER TABLE auth_runtime_write_controls ENABLE ROW LEVEL SECURITY;
 ALTER TABLE auth_runtime_write_controls FORCE ROW LEVEL SECURITY;
@@ -1423,7 +1423,7 @@ DROP POLICY IF EXISTS auth_runtime_write_controls_read_policy ON auth_runtime_wr
 CREATE POLICY auth_runtime_write_controls_read_policy ON auth_runtime_write_controls
   FOR SELECT USING (true);
 
-CREATE OR REPLACE FUNCTION geno_sync_tenant_member_project_grants()
+CREATE OR REPLACE FUNCTION geo_sync_tenant_member_project_grants()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -1494,7 +1494,7 @@ BEGIN
 END;
 $$;
 
-CREATE OR REPLACE FUNCTION geno_sync_project_tenant_role_grants()
+CREATE OR REPLACE FUNCTION geo_sync_project_tenant_role_grants()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -1547,20 +1547,20 @@ BEGIN
 END;
 $$;
 
-ALTER FUNCTION geno_sync_tenant_member_project_grants() OWNER TO geno_rls_authz_owner;
-ALTER FUNCTION geno_sync_project_tenant_role_grants() OWNER TO geno_rls_authz_owner;
-REVOKE ALL ON FUNCTION geno_sync_tenant_member_project_grants() FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_sync_project_tenant_role_grants() FROM PUBLIC;
+ALTER FUNCTION geo_sync_tenant_member_project_grants() OWNER TO geo_rls_authz_owner;
+ALTER FUNCTION geo_sync_project_tenant_role_grants() OWNER TO geo_rls_authz_owner;
+REVOKE ALL ON FUNCTION geo_sync_tenant_member_project_grants() FROM PUBLIC;
+REVOKE ALL ON FUNCTION geo_sync_project_tenant_role_grants() FROM PUBLIC;
 
 DROP TRIGGER IF EXISTS tenant_members_sync_project_grants ON tenant_members;
 CREATE TRIGGER tenant_members_sync_project_grants
 AFTER INSERT OR UPDATE OF role, status, tenant_id, user_id OR DELETE ON tenant_members
-FOR EACH ROW EXECUTE FUNCTION geno_sync_tenant_member_project_grants();
+FOR EACH ROW EXECUTE FUNCTION geo_sync_tenant_member_project_grants();
 
 DROP TRIGGER IF EXISTS projects_sync_tenant_role_grants ON projects;
 CREATE TRIGGER projects_sync_tenant_role_grants
 AFTER INSERT OR UPDATE OF status, tenant_id ON projects
-FOR EACH ROW EXECUTE FUNCTION geno_sync_project_tenant_role_grants();
+FOR EACH ROW EXECUTE FUNCTION geo_sync_project_tenant_role_grants();
 
 -- Backfill grants using the same trigger contract used by subsequent writes.
 UPDATE tenant_members
@@ -1583,7 +1583,7 @@ WHERE status = 'active'
       )
   );
 
-CREATE OR REPLACE FUNCTION geno_revoke_scope_v2_sessions(
+CREATE OR REPLACE FUNCTION geo_revoke_scope_v2_sessions(
   scope_actor_id text,
   scope_tenant_id uuid,
   scope_project_id uuid,
@@ -1650,7 +1650,7 @@ BEGIN
 END;
 $$;
 
-CREATE OR REPLACE FUNCTION geno_revoke_sessions_on_project_member_change()
+CREATE OR REPLACE FUNCTION geo_revoke_sessions_on_project_member_change()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -1658,7 +1658,7 @@ SET search_path = pg_catalog
 AS $$
 BEGIN
   IF TG_OP IN ('UPDATE', 'DELETE') THEN
-    PERFORM public.geno_revoke_scope_v2_sessions(
+    PERFORM public.geo_revoke_scope_v2_sessions(
       OLD.user_id, OLD.tenant_id, OLD.project_id, 'project_membership_changed'
     );
   END IF;
@@ -1668,7 +1668,7 @@ BEGIN
        IS DISTINCT FROM
        (OLD.user_id, OLD.tenant_id, OLD.project_id, OLD.role, OLD.status)
   ) THEN
-    PERFORM public.geno_revoke_scope_v2_sessions(
+    PERFORM public.geo_revoke_scope_v2_sessions(
       NEW.user_id, NEW.tenant_id, NEW.project_id, 'project_membership_changed'
     );
   END IF;
@@ -1676,7 +1676,7 @@ BEGIN
 END;
 $$;
 
-CREATE OR REPLACE FUNCTION geno_revoke_sessions_on_tenant_member_change()
+CREATE OR REPLACE FUNCTION geo_revoke_sessions_on_tenant_member_change()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -1684,7 +1684,7 @@ SET search_path = pg_catalog
 AS $$
 BEGIN
   IF TG_OP IN ('UPDATE', 'DELETE') THEN
-    PERFORM public.geno_revoke_scope_v2_sessions(
+    PERFORM public.geo_revoke_scope_v2_sessions(
       OLD.user_id, OLD.tenant_id, NULL, 'tenant_membership_changed'
     );
   END IF;
@@ -1694,7 +1694,7 @@ BEGIN
        IS DISTINCT FROM
        (OLD.user_id, OLD.tenant_id, OLD.role, OLD.status)
   ) THEN
-    PERFORM public.geno_revoke_scope_v2_sessions(
+    PERFORM public.geo_revoke_scope_v2_sessions(
       NEW.user_id, NEW.tenant_id, NULL, 'tenant_membership_changed'
     );
   END IF;
@@ -1702,7 +1702,7 @@ BEGIN
 END;
 $$;
 
-CREATE OR REPLACE FUNCTION geno_revoke_sessions_on_project_grant_change()
+CREATE OR REPLACE FUNCTION geo_revoke_sessions_on_project_grant_change()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -1710,7 +1710,7 @@ SET search_path = pg_catalog
 AS $$
 BEGIN
   IF TG_OP IN ('UPDATE', 'DELETE') THEN
-    PERFORM public.geno_revoke_scope_v2_sessions(
+    PERFORM public.geo_revoke_scope_v2_sessions(
       OLD.actor_id, OLD.tenant_id, OLD.project_id, 'project_access_grant_changed'
     );
   END IF;
@@ -1720,7 +1720,7 @@ BEGIN
        IS DISTINCT FROM
        (OLD.actor_id, OLD.tenant_id, OLD.project_id, OLD.canonical_role, OLD.permissions, OLD.status)
   ) THEN
-    PERFORM public.geno_revoke_scope_v2_sessions(
+    PERFORM public.geo_revoke_scope_v2_sessions(
       NEW.actor_id, NEW.tenant_id, NEW.project_id, 'project_access_grant_changed'
     );
   END IF;
@@ -1728,7 +1728,7 @@ BEGIN
 END;
 $$;
 
-CREATE OR REPLACE FUNCTION geno_revoke_sessions_on_project_lifecycle_change()
+CREATE OR REPLACE FUNCTION geo_revoke_sessions_on_project_lifecycle_change()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -1739,12 +1739,12 @@ BEGIN
     TG_OP = 'UPDATE'
     AND (NEW.tenant_id, NEW.status) IS DISTINCT FROM (OLD.tenant_id, OLD.status)
   ) THEN
-    PERFORM public.geno_revoke_scope_v2_sessions(
+    PERFORM public.geo_revoke_scope_v2_sessions(
       NULL, OLD.tenant_id, OLD.id, 'project_lifecycle_changed'
     );
   END IF;
   IF TG_OP = 'UPDATE' AND NEW.tenant_id IS DISTINCT FROM OLD.tenant_id THEN
-    PERFORM public.geno_revoke_scope_v2_sessions(
+    PERFORM public.geo_revoke_scope_v2_sessions(
       NULL, NEW.tenant_id, NEW.id, 'project_lifecycle_changed'
     );
   END IF;
@@ -1752,39 +1752,39 @@ BEGIN
 END;
 $$;
 
-ALTER FUNCTION geno_revoke_scope_v2_sessions(text, uuid, uuid, text) OWNER TO geno_rls_authz_owner;
-ALTER FUNCTION geno_revoke_sessions_on_project_member_change() OWNER TO geno_rls_authz_owner;
-ALTER FUNCTION geno_revoke_sessions_on_tenant_member_change() OWNER TO geno_rls_authz_owner;
-ALTER FUNCTION geno_revoke_sessions_on_project_grant_change() OWNER TO geno_rls_authz_owner;
-ALTER FUNCTION geno_revoke_sessions_on_project_lifecycle_change() OWNER TO geno_rls_authz_owner;
-REVOKE ALL ON FUNCTION geno_revoke_scope_v2_sessions(text, uuid, uuid, text) FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_revoke_sessions_on_project_member_change() FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_revoke_sessions_on_tenant_member_change() FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_revoke_sessions_on_project_grant_change() FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_revoke_sessions_on_project_lifecycle_change() FROM PUBLIC;
+ALTER FUNCTION geo_revoke_scope_v2_sessions(text, uuid, uuid, text) OWNER TO geo_rls_authz_owner;
+ALTER FUNCTION geo_revoke_sessions_on_project_member_change() OWNER TO geo_rls_authz_owner;
+ALTER FUNCTION geo_revoke_sessions_on_tenant_member_change() OWNER TO geo_rls_authz_owner;
+ALTER FUNCTION geo_revoke_sessions_on_project_grant_change() OWNER TO geo_rls_authz_owner;
+ALTER FUNCTION geo_revoke_sessions_on_project_lifecycle_change() OWNER TO geo_rls_authz_owner;
+REVOKE ALL ON FUNCTION geo_revoke_scope_v2_sessions(text, uuid, uuid, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION geo_revoke_sessions_on_project_member_change() FROM PUBLIC;
+REVOKE ALL ON FUNCTION geo_revoke_sessions_on_tenant_member_change() FROM PUBLIC;
+REVOKE ALL ON FUNCTION geo_revoke_sessions_on_project_grant_change() FROM PUBLIC;
+REVOKE ALL ON FUNCTION geo_revoke_sessions_on_project_lifecycle_change() FROM PUBLIC;
 
 DROP TRIGGER IF EXISTS project_members_revoke_scope_v2_sessions ON project_members;
 CREATE TRIGGER project_members_revoke_scope_v2_sessions
 AFTER INSERT OR UPDATE OF user_id, tenant_id, project_id, role, status OR DELETE ON project_members
-FOR EACH ROW EXECUTE FUNCTION geno_revoke_sessions_on_project_member_change();
+FOR EACH ROW EXECUTE FUNCTION geo_revoke_sessions_on_project_member_change();
 
 DROP TRIGGER IF EXISTS tenant_members_revoke_scope_v2_sessions ON tenant_members;
 CREATE TRIGGER tenant_members_revoke_scope_v2_sessions
 AFTER INSERT OR UPDATE OF user_id, tenant_id, role, status OR DELETE ON tenant_members
-FOR EACH ROW EXECUTE FUNCTION geno_revoke_sessions_on_tenant_member_change();
+FOR EACH ROW EXECUTE FUNCTION geo_revoke_sessions_on_tenant_member_change();
 
 DROP TRIGGER IF EXISTS runtime_grants_revoke_scope_v2_sessions ON runtime_project_access_grants;
 CREATE TRIGGER runtime_grants_revoke_scope_v2_sessions
 AFTER INSERT OR UPDATE OF actor_id, tenant_id, project_id, canonical_role, permissions, status OR DELETE
 ON runtime_project_access_grants
-FOR EACH ROW EXECUTE FUNCTION geno_revoke_sessions_on_project_grant_change();
+FOR EACH ROW EXECUTE FUNCTION geo_revoke_sessions_on_project_grant_change();
 
 DROP TRIGGER IF EXISTS projects_revoke_scope_v2_sessions ON projects;
 CREATE TRIGGER projects_revoke_scope_v2_sessions
 AFTER UPDATE OF tenant_id, status OR DELETE ON projects
-FOR EACH ROW EXECUTE FUNCTION geno_revoke_sessions_on_project_lifecycle_change();
+FOR EACH ROW EXECUTE FUNCTION geo_revoke_sessions_on_project_lifecycle_change();
 
-CREATE OR REPLACE FUNCTION geno_authz_canonical_role(role_name text)
+CREATE OR REPLACE FUNCTION geo_authz_canonical_role(role_name text)
 RETURNS text
 LANGUAGE sql
 IMMUTABLE
@@ -1804,11 +1804,11 @@ AS $$
   END;
 $$;
 
-ALTER FUNCTION geno_authz_canonical_role(text) OWNER TO geno_rls_authz_owner;
-REVOKE ALL ON FUNCTION geno_authz_canonical_role(text) FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_authz_canonical_role(text) FROM geno_runtime_app;
+ALTER FUNCTION geo_authz_canonical_role(text) OWNER TO geo_rls_authz_owner;
+REVOKE ALL ON FUNCTION geo_authz_canonical_role(text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION geo_authz_canonical_role(text) FROM geo_runtime_app;
 
-CREATE OR REPLACE FUNCTION geno_validate_runtime_session_scope_v2()
+CREATE OR REPLACE FUNCTION geo_validate_runtime_session_scope_v2()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -1822,7 +1822,7 @@ DECLARE
   projected_permissions text[];
   stored_permissions text[];
 BEGIN
-  IF TG_OP = 'UPDATE' AND session_user = 'geno_runtime_app' THEN
+  IF TG_OP = 'UPDATE' AND session_user = 'geo_runtime_app' THEN
     IF NEW.id IS DISTINCT FROM OLD.id
       OR NEW.session_token_hash IS DISTINCT FROM OLD.session_token_hash
       OR NEW.actor_id IS DISTINCT FROM OLD.actor_id
@@ -1910,15 +1910,15 @@ BEGIN
   SELECT coalesce(array_agg(DISTINCT role_value ORDER BY role_value), ARRAY[]::text[])
   INTO projected_roles
   FROM (
-    SELECT public.geno_authz_canonical_role(tenant_role.role_name) AS role_value
+    SELECT public.geo_authz_canonical_role(tenant_role.role_name) AS role_value
     FROM jsonb_array_elements_text(NEW.tenant_roles) AS tenant_role(role_name)
     UNION ALL
-    SELECT public.geno_authz_canonical_role(scope_role.role_name) AS role_value
+    SELECT public.geo_authz_canonical_role(scope_role.role_name) AS role_value
     FROM jsonb_array_elements(NEW.project_scopes) AS scope_item(scope_json),
          jsonb_array_elements_text(scope_item.scope_json->'roles') AS scope_role(role_name)
   ) roles_projection;
-  SELECT coalesce(array_agg(DISTINCT public.geno_authz_canonical_role(flat_role.role_name)
-                            ORDER BY public.geno_authz_canonical_role(flat_role.role_name)), ARRAY[]::text[])
+  SELECT coalesce(array_agg(DISTINCT public.geo_authz_canonical_role(flat_role.role_name)
+                            ORDER BY public.geo_authz_canonical_role(flat_role.role_name)), ARRAY[]::text[])
   INTO stored_roles
   FROM jsonb_array_elements_text(NEW.roles) AS flat_role(role_name);
   IF projected_roles <> stored_roles THEN
@@ -1947,8 +1947,8 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'runtime session project scope must belong to the active session tenant';
   END IF;
-  IF TG_OP = 'INSERT' AND session_user = 'geno_runtime_app' THEN
-    IF NOT public.geno_runtime_can_insert_redeemed_session(
+  IF TG_OP = 'INSERT' AND session_user = 'geo_runtime_app' THEN
+    IF NOT public.geo_runtime_can_insert_redeemed_session(
       NEW.redemption_attempt_id,
       NEW.actor_id,
       NEW.tenant_id,
@@ -1976,8 +1976,8 @@ BEGIN
         WHERE member_row.tenant_id = NEW.tenant_id
           AND lower(btrim(member_row.user_id)) = lower(btrim(NEW.actor_id))
           AND member_row.status = 'active'
-          AND public.geno_authz_canonical_role(member_row.role)
-            = public.geno_authz_canonical_role(tenant_role.role_name)
+          AND public.geo_authz_canonical_role(member_row.role)
+            = public.geo_authz_canonical_role(tenant_role.role_name)
       )
     ) THEN
       RAISE EXCEPTION 'runtime session tenant role is not backed by active membership' USING ERRCODE = '42501';
@@ -1993,8 +1993,8 @@ BEGIN
           AND member_row.tenant_id = NEW.tenant_id
           AND lower(btrim(member_row.user_id)) = lower(btrim(NEW.actor_id))
           AND member_row.status = 'active'
-          AND public.geno_authz_canonical_role(member_row.role)
-            = public.geno_authz_canonical_role(scope_role.role_name)
+          AND public.geo_authz_canonical_role(member_row.role)
+            = public.geo_authz_canonical_role(scope_role.role_name)
       )
       AND NOT EXISTS (
         SELECT 1
@@ -2003,8 +2003,8 @@ BEGIN
           AND grant_row.tenant_id = NEW.tenant_id
           AND lower(btrim(grant_row.actor_id)) = lower(btrim(NEW.actor_id))
           AND grant_row.status = 'active'
-          AND public.geno_authz_canonical_role(grant_row.canonical_role)
-            = public.geno_authz_canonical_role(scope_role.role_name)
+          AND public.geo_authz_canonical_role(grant_row.canonical_role)
+            = public.geo_authz_canonical_role(scope_role.role_name)
       )
     ) THEN
       RAISE EXCEPTION 'runtime session project role is not backed by active membership or grant' USING ERRCODE = '42501';
@@ -2020,7 +2020,7 @@ BEGIN
           AND member_row.tenant_id = NEW.tenant_id
           AND lower(btrim(member_row.user_id)) = lower(btrim(NEW.actor_id))
           AND member_row.status = 'active'
-          AND public.geno_authz_role_has_permission(member_row.role, scope_permission.permission_name)
+          AND public.geo_authz_role_has_permission(member_row.role, scope_permission.permission_name)
       )
       AND NOT EXISTS (
         SELECT 1
@@ -2042,9 +2042,9 @@ BEGIN
         SELECT 1
         FROM jsonb_array_elements_text(scope_item.scope_json->'roles') AS scope_role(role_name)
         WHERE (scope_capability.capability_name = 'portal.customer.access'
-               AND public.geno_authz_canonical_role(scope_role.role_name) = 'client_viewer')
+               AND public.geo_authz_canonical_role(scope_role.role_name) = 'client_viewer')
            OR (scope_capability.capability_name = 'portal.admin.access'
-               AND public.geno_authz_canonical_role(scope_role.role_name) <> 'client_viewer')
+               AND public.geo_authz_canonical_role(scope_role.role_name) <> 'client_viewer')
       )
     ) THEN
       RAISE EXCEPTION 'runtime session portal capability is not backed by a scoped role' USING ERRCODE = '42501';
@@ -2082,17 +2082,17 @@ BEGIN
 END;
 $$;
 
-ALTER FUNCTION geno_validate_runtime_session_scope_v2() OWNER TO geno_rls_authz_owner;
-REVOKE ALL ON FUNCTION geno_validate_runtime_session_scope_v2() FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_validate_runtime_session_scope_v2() FROM geno_runtime_app;
+ALTER FUNCTION geo_validate_runtime_session_scope_v2() OWNER TO geo_rls_authz_owner;
+REVOKE ALL ON FUNCTION geo_validate_runtime_session_scope_v2() FROM PUBLIC;
+REVOKE ALL ON FUNCTION geo_validate_runtime_session_scope_v2() FROM geo_runtime_app;
 
 DROP TRIGGER IF EXISTS runtime_sessions_validate_scope_v2 ON runtime_sessions;
 CREATE TRIGGER runtime_sessions_validate_scope_v2
 BEFORE INSERT OR UPDATE
 ON runtime_sessions
-FOR EACH ROW EXECUTE FUNCTION geno_validate_runtime_session_scope_v2();
+FOR EACH ROW EXECUTE FUNCTION geo_validate_runtime_session_scope_v2();
 
-CREATE OR REPLACE FUNCTION geno_enforce_auth_writes_enabled()
+CREATE OR REPLACE FUNCTION geo_enforce_auth_writes_enabled()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -2109,8 +2109,8 @@ BEGIN
 END;
 $$;
 
-ALTER FUNCTION geno_enforce_auth_writes_enabled() OWNER TO geno_rls_authz_owner;
-REVOKE ALL ON FUNCTION geno_enforce_auth_writes_enabled() FROM PUBLIC;
+ALTER FUNCTION geo_enforce_auth_writes_enabled() OWNER TO geo_rls_authz_owner;
+REVOKE ALL ON FUNCTION geo_enforce_auth_writes_enabled() FROM PUBLIC;
 
 DO $$
 DECLARE
@@ -2128,30 +2128,30 @@ BEGIN
     EXECUTE format('DROP TRIGGER IF EXISTS auth_writes_enabled_guard ON public.%I', table_name);
     EXECUTE format(
       'CREATE TRIGGER auth_writes_enabled_guard BEFORE INSERT OR UPDATE OR DELETE ON public.%I '
-      'FOR EACH ROW EXECUTE FUNCTION public.geno_enforce_auth_writes_enabled()',
+      'FOR EACH ROW EXECUTE FUNCTION public.geo_enforce_auth_writes_enabled()',
       table_name
     );
   END LOOP;
 END $$;
 
-REVOKE INSERT, UPDATE, DELETE ON runtime_project_access_grants FROM geno_runtime_app;
-GRANT SELECT ON runtime_project_access_grants TO geno_runtime_app;
-REVOKE UPDATE, DELETE ON runtime_sessions FROM geno_runtime_app;
+REVOKE INSERT, UPDATE, DELETE ON runtime_project_access_grants FROM geo_runtime_app;
+GRANT SELECT ON runtime_project_access_grants TO geo_runtime_app;
+REVOKE UPDATE, DELETE ON runtime_sessions FROM geo_runtime_app;
 GRANT UPDATE (last_used_at, status, revoked_at, revoked_by, revoke_reason, updated_at)
-  ON runtime_sessions TO geno_runtime_app;
-GRANT SELECT, INSERT, UPDATE, DELETE ON auth_invitation_redemption_attempts TO geno_runtime_app;
-GRANT SELECT, INSERT, UPDATE, DELETE ON auth_preflight_rate_limits TO geno_runtime_app;
-GRANT SELECT, INSERT, UPDATE, DELETE ON runtime_session_reauth_queue TO geno_runtime_app;
-GRANT SELECT ON auth_runtime_write_controls TO geno_runtime_app;
-GRANT SELECT, INSERT, UPDATE, DELETE ON auth_migration_conflicts TO geno_runtime_app;
-GRANT SELECT ON auth_migration_reconciliation TO geno_runtime_app;
-GRANT SELECT ON auth_migration_quarantine TO geno_runtime_app;
+  ON runtime_sessions TO geo_runtime_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON auth_invitation_redemption_attempts TO geo_runtime_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON auth_preflight_rate_limits TO geo_runtime_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON runtime_session_reauth_queue TO geo_runtime_app;
+GRANT SELECT ON auth_runtime_write_controls TO geo_runtime_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON auth_migration_conflicts TO geo_runtime_app;
+GRANT SELECT ON auth_migration_reconciliation TO geo_runtime_app;
+GRANT SELECT ON auth_migration_quarantine TO geo_runtime_app;
 
-GRANT USAGE ON SCHEMA public TO geno_runtime_rollback_app;
-GRANT SELECT ON projects, tenants, auth_runtime_write_controls TO geno_runtime_rollback_app;
-REVOKE INSERT, UPDATE, DELETE ON project_members FROM geno_runtime_rollback_app;
-REVOKE INSERT, UPDATE, DELETE ON project_member_invitations FROM geno_runtime_rollback_app;
-REVOKE INSERT, UPDATE, DELETE ON tenant_members FROM geno_runtime_rollback_app;
-REVOKE INSERT, UPDATE, DELETE ON runtime_sessions FROM geno_runtime_rollback_app;
-REVOKE INSERT, UPDATE, DELETE ON runtime_project_access_grants FROM geno_runtime_rollback_app;
-REVOKE INSERT, UPDATE, DELETE ON auth_invitation_redemption_attempts FROM geno_runtime_rollback_app;
+GRANT USAGE ON SCHEMA public TO geo_runtime_rollback_app;
+GRANT SELECT ON projects, tenants, auth_runtime_write_controls TO geo_runtime_rollback_app;
+REVOKE INSERT, UPDATE, DELETE ON project_members FROM geo_runtime_rollback_app;
+REVOKE INSERT, UPDATE, DELETE ON project_member_invitations FROM geo_runtime_rollback_app;
+REVOKE INSERT, UPDATE, DELETE ON tenant_members FROM geo_runtime_rollback_app;
+REVOKE INSERT, UPDATE, DELETE ON runtime_sessions FROM geo_runtime_rollback_app;
+REVOKE INSERT, UPDATE, DELETE ON runtime_project_access_grants FROM geo_runtime_rollback_app;
+REVOKE INSERT, UPDATE, DELETE ON auth_invitation_redemption_attempts FROM geo_runtime_rollback_app;

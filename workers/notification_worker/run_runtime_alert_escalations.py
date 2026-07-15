@@ -6,9 +6,9 @@ from dataclasses import asdict
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
-from geno_core.models import RuntimeAlertEventInput
-from geno_core.repository import PostgresEvidenceRepository
-from geno_core.runtime import (
+from geo_core.models import RuntimeAlertEventInput
+from geo_core.repository import PostgresEvidenceRepository
+from geo_core.runtime import (
     build_repository_from_env,
     close_repository_connection,
     validate_runtime_schema_compatibility,
@@ -267,7 +267,7 @@ def escalate_runtime_alerts_for_projects(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Escalate overdue GENO runtime alerts for matching projects")
+    parser = argparse.ArgumentParser(description="Escalate overdue GEO runtime alerts for matching projects")
     parser.add_argument(
         "--project-id",
         action="append",

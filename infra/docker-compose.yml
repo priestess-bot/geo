@@ -2,16 +2,16 @@ services:
   postgres:
     image: pgvector/pgvector:pg16
     environment:
-      POSTGRES_DB: geno
-      POSTGRES_USER: geno
-      POSTGRES_PASSWORD: geno
+      POSTGRES_DB: geo
+      POSTGRES_USER: geo
+      POSTGRES_PASSWORD: geo
     ports:
-      - "${GENO_POSTGRES_HOST_PORT:-5432}:5432"
+      - "${GEO_POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./db/migrations/up:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U geno -d geno"]
+      test: ["CMD-SHELL", "pg_isready -U geo -d geo"]
       interval: 5s
       timeout: 5s
       retries: 12
@@ -19,7 +19,7 @@ services:
   db-migrate:
     image: pgvector/pgvector:pg16
     environment:
-      PGPASSWORD: geno
+      PGPASSWORD: geo
     volumes:
       - ./db/migrations/up:/migrations/up:ro
     command:
@@ -27,17 +27,17 @@ services:
       - -c
       - |
         set -eu
-        until psql -h postgres -U geno -d geno -tAc "SELECT 1" >/dev/null 2>&1; do
+        until psql -h postgres -U geo -d geo -tAc "SELECT 1" >/dev/null 2>&1; do
           sleep 1
         done
         # The official Postgres entrypoint briefly exposes its temporary init
         # server before restarting into the final server on a fresh volume.
         sleep 5
-        until psql -h postgres -U geno -d geno -tAc "SELECT 1" >/dev/null 2>&1; do
+        until psql -h postgres -U geo -d geo -tAc "SELECT 1" >/dev/null 2>&1; do
           sleep 1
         done
-        if [ "$(psql -h postgres -U geno -d geno -tAc "SELECT to_regprocedure('geno_runtime_can_access_project(uuid)') IS NOT NULL")" != "t" ]; then
-          psql -h postgres -U geno -d geno -v ON_ERROR_STOP=1 -f /migrations/up/0010_runtime_project_rls.sql
+        if [ "$(psql -h postgres -U geo -d geo -tAc "SELECT to_regprocedure('geo_runtime_can_access_project(uuid)') IS NOT NULL")" != "t" ]; then
+          psql -h postgres -U geo -d geo -v ON_ERROR_STOP=1 -f /migrations/up/0010_runtime_project_rls.sql
         fi
         for file in \
           /migrations/up/0011_entity_alias_candidate_reviews.sql \
@@ -62,7 +62,7 @@ services:
           /migrations/up/0030_auth_session_scope_v2.sql \
           /migrations/up/0031_geo_placement_runtime.sql
         do
-          psql -h postgres -U geno -d geno -v ON_ERROR_STOP=1 -f "$$file"
+          psql -h postgres -U geo -d geo -v ON_ERROR_STOP=1 -f "$$file"
         done
     depends_on:
       postgres:
@@ -75,13 +75,13 @@ services:
       MINIO_ROOT_USER: minio
       MINIO_ROOT_PASSWORD: minio123
     ports:
-      - "${GENO_MINIO_HOST_PORT:-9000}:9000"
-      - "${GENO_MINIO_CONSOLE_HOST_PORT:-9001}:9001"
+      - "${GEO_MINIO_HOST_PORT:-9000}:9000"
+      - "${GEO_MINIO_CONSOLE_HOST_PORT:-9001}:9001"
     volumes:
       - minio_data:/data
 
   minio-bootstrap:
-    image: ${GENO_MINIO_MC_IMAGE:-minio/mc:RELEASE.2025-02-21T16-00-46Z}
+    image: ${GEO_MINIO_MC_IMAGE:-minio/mc:RELEASE.2025-02-21T16-00-46Z}
     entrypoint:
       - /bin/sh
       - /bootstrap/bootstrap.sh
@@ -89,22 +89,22 @@ services:
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio123}
-      OBJECT_STORE_BUCKET: geno-reports
-      OBJECT_STORE_BACKUP_BUCKET: geno-backups
-      OBJECT_STORE_ACCESS_KEY: ${OBJECT_STORE_ACCESS_KEY:-geno-application-local}
-      OBJECT_STORE_SECRET_KEY: ${OBJECT_STORE_SECRET_KEY:-geno-application-local-secret}
-      OBJECT_STORE_BACKUP_ACCESS_KEY: ${OBJECT_STORE_BACKUP_ACCESS_KEY:-geno-backup-local}
-      OBJECT_STORE_BACKUP_SECRET_KEY: ${OBJECT_STORE_BACKUP_SECRET_KEY:-geno-backup-local-secret}
-      OBJECT_STORE_RESTORE_ACCESS_KEY: ${OBJECT_STORE_RESTORE_ACCESS_KEY:-geno-restore-local}
-      OBJECT_STORE_RESTORE_SECRET_KEY: ${OBJECT_STORE_RESTORE_SECRET_KEY:-geno-restore-local-secret}
-      OBJECT_STORE_RETENTION_ACCESS_KEY: ${OBJECT_STORE_RETENTION_ACCESS_KEY:-geno-retention-local}
-      OBJECT_STORE_RETENTION_SECRET_KEY: ${OBJECT_STORE_RETENTION_SECRET_KEY:-geno-retention-local-secret}
+      OBJECT_STORE_BUCKET: geo-reports
+      OBJECT_STORE_BACKUP_BUCKET: geo-backups
+      OBJECT_STORE_ACCESS_KEY: ${OBJECT_STORE_ACCESS_KEY:-geo-application-local}
+      OBJECT_STORE_SECRET_KEY: ${OBJECT_STORE_SECRET_KEY:-geo-application-local-secret}
+      OBJECT_STORE_BACKUP_ACCESS_KEY: ${OBJECT_STORE_BACKUP_ACCESS_KEY:-geo-backup-local}
+      OBJECT_STORE_BACKUP_SECRET_KEY: ${OBJECT_STORE_BACKUP_SECRET_KEY:-geo-backup-local-secret}
+      OBJECT_STORE_RESTORE_ACCESS_KEY: ${OBJECT_STORE_RESTORE_ACCESS_KEY:-geo-restore-local}
+      OBJECT_STORE_RESTORE_SECRET_KEY: ${OBJECT_STORE_RESTORE_SECRET_KEY:-geo-restore-local-secret}
+      OBJECT_STORE_RETENTION_ACCESS_KEY: ${OBJECT_STORE_RETENTION_ACCESS_KEY:-geo-retention-local}
+      OBJECT_STORE_RETENTION_SECRET_KEY: ${OBJECT_STORE_RETENTION_SECRET_KEY:-geo-retention-local-secret}
       OBJECT_STORE_BACKUP_PREFIX: ${OBJECT_STORE_BACKUP_PREFIX:-production/local/}
       OBJECT_STORE_BACKUP_SMOKE_PREFIX: ${OBJECT_STORE_BACKUP_SMOKE_PREFIX:-smoke/local/}
       OBJECT_STORE_RESTORE_PREFIX: ${OBJECT_STORE_RESTORE_PREFIX:-restore-smoke/local/}
       OBJECT_STORE_RETENTION_PREFIX: ${OBJECT_STORE_RETENTION_PREFIX:-retention-approved/local/}
       MINIO_BOOTSTRAP_ENABLE_EPHEMERAL: ${MINIO_BOOTSTRAP_ENABLE_EPHEMERAL:-1}
-      MINIO_POLICY_VERSION: geno-object-store-policy-v1
+      MINIO_POLICY_VERSION: geo-object-store-policy-v1
     volumes:
       - ./minio:/bootstrap:ro
       - object_store_receipts:/receipts
@@ -115,8 +115,8 @@ services:
   qdrant:
     image: qdrant/qdrant:v1.13.4
     ports:
-      - "${GENO_QDRANT_HTTP_HOST_PORT:-6333}:6333"
-      - "${GENO_QDRANT_GRPC_HOST_PORT:-6334}:6334"
+      - "${GEO_QDRANT_HTTP_HOST_PORT:-6333}:6333"
+      - "${GEO_QDRANT_GRPC_HOST_PORT:-6334}:6334"
     volumes:
       - qdrant_storage:/qdrant/storage
 
@@ -138,12 +138,12 @@ services:
       retries: 20
 
   report-pdf-renderer:
-    image: ${GENO_PDF_RENDERER_IMAGE:-geno-pdf-renderer:local}
+    image: ${GEO_PDF_RENDERER_IMAGE:-geo-pdf-renderer:local}
     build:
       context: ..
       dockerfile: workers/report_export_worker/Dockerfile.renderer
     environment:
-      GENO_DEPLOYMENT_ENVIRONMENT: ${GENO_DEPLOYMENT_ENVIRONMENT:-development}
+      GEO_DEPLOYMENT_ENVIRONMENT: ${GEO_DEPLOYMENT_ENVIRONMENT:-development}
     healthcheck:
       test:
         - CMD
@@ -164,59 +164,59 @@ services:
       - --port
       - "4000"
     environment:
-      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-geno-local}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-geo-local}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     ports:
-      - "${GENO_LITELLM_HOST_PORT:-4000}:4000"
+      - "${GEO_LITELLM_HOST_PORT:-4000}:4000"
     volumes:
       - ./litellm_config.yaml:/app/config.yaml:ro
 
   api:
-    image: ${GENO_API_IMAGE:-geno-api:local}
+    image: ${GEO_API_IMAGE:-geo-api:local}
     build:
       context: ..
       dockerfile: apps/api/Dockerfile
     environment:
-      DATABASE_URL: postgresql://geno_runtime_app:geno_runtime_app@postgres:5432/geno
-      GENO_RUNTIME_DB_POOL_ENABLED: ${GENO_RUNTIME_DB_POOL_ENABLED:-1}
-      GENO_RUNTIME_DB_POOL_MAX_SIZE: ${GENO_RUNTIME_DB_POOL_MAX_SIZE:-10}
-      GENO_RUNTIME_DB_POOL_TIMEOUT_SECONDS: ${GENO_RUNTIME_DB_POOL_TIMEOUT_SECONDS:-5}
+      DATABASE_URL: postgresql://geo_runtime_app:geo_runtime_app@postgres:5432/geo
+      GEO_RUNTIME_DB_POOL_ENABLED: ${GEO_RUNTIME_DB_POOL_ENABLED:-1}
+      GEO_RUNTIME_DB_POOL_MAX_SIZE: ${GEO_RUNTIME_DB_POOL_MAX_SIZE:-10}
+      GEO_RUNTIME_DB_POOL_TIMEOUT_SECONDS: ${GEO_RUNTIME_DB_POOL_TIMEOUT_SECONDS:-5}
       OBJECT_STORE_ENDPOINT: http://minio:9000
-      OBJECT_STORE_BUCKET: geno-reports
+      OBJECT_STORE_BUCKET: geo-reports
       OBJECT_STORE_ACCESS_KEY: minio
       OBJECT_STORE_SECRET_KEY: minio123
       OBJECT_STORE_REGION: us-east-1
       QDRANT_URL: http://qdrant:6333
       QDRANT_COLLECTION: ${QDRANT_COLLECTION:-geo_knowledge_chunks_bge_m3_v1}
       KNOWLEDGE_EMBEDDING_API_URL: http://knowledge-embedding-api:8100
-      GENO_PDF_RENDERER_URL: http://report-pdf-renderer:8200
-      GENO_REPORT_PDF_RENDERER_REQUIRED: ${GENO_REPORT_PDF_RENDERER_REQUIRED:-1}
-      GENO_TASK_QUEUE_ENABLED: ${GENO_TASK_QUEUE_ENABLED:-1}
-      GENO_TASK_QUEUE_REQUIRED: ${GENO_TASK_QUEUE_REQUIRED:-1}
-      GENO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
+      GEO_PDF_RENDERER_URL: http://report-pdf-renderer:8200
+      GEO_REPORT_PDF_RENDERER_REQUIRED: ${GEO_REPORT_PDF_RENDERER_REQUIRED:-1}
+      GEO_TASK_QUEUE_ENABLED: ${GEO_TASK_QUEUE_ENABLED:-1}
+      GEO_TASK_QUEUE_REQUIRED: ${GEO_TASK_QUEUE_REQUIRED:-1}
+      GEO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
       LITELLM_BASE_URL: http://litellm:4000
-      LITELLM_API_KEY: ${LITELLM_MASTER_KEY:-sk-geno-local}
-      GENO_CONNECTOR_SECRET_MASTER_KEY: ${GENO_CONNECTOR_SECRET_MASTER_KEY:-geno-local-connector-secret-master-key}
-      GENO_RUNTIME_PROJECT_ACCESS_CONTROL: ${GENO_RUNTIME_PROJECT_ACCESS_CONTROL:-1}
-      GENO_RUNTIME_AUTH_MODE: ${GENO_RUNTIME_AUTH_MODE:-header}
-      GENO_RUNTIME_SESSION_COOKIE_SECURE: ${GENO_RUNTIME_SESSION_COOKIE_SECURE:-0}
-      GENO_DEPLOYMENT_ENVIRONMENT: ${GENO_DEPLOYMENT_ENVIRONMENT:-development}
-      GENO_DEV_TOOLS_ENABLED: ${GENO_DEV_TOOLS_ENABLED:-0}
-      GENO_NOTIFICATION_EMAIL_PREFERENCE_BASE_URL: ${GENO_NOTIFICATION_EMAIL_PREFERENCE_BASE_URL:-}
-      GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET: ${GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET:-}
-      GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_TTL_SECONDS: ${GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_TTL_SECONDS:-2592000}
-      GENO_DEEPSEEK_API_KEY_FILE: ${GENO_DEEPSEEK_API_KEY_FILE:-/run/secrets/deepseek_api_key}
+      LITELLM_API_KEY: ${LITELLM_MASTER_KEY:-sk-geo-local}
+      GEO_CONNECTOR_SECRET_MASTER_KEY: ${GEO_CONNECTOR_SECRET_MASTER_KEY:-geo-local-connector-secret-master-key}
+      GEO_RUNTIME_PROJECT_ACCESS_CONTROL: ${GEO_RUNTIME_PROJECT_ACCESS_CONTROL:-1}
+      GEO_RUNTIME_AUTH_MODE: ${GEO_RUNTIME_AUTH_MODE:-header}
+      GEO_RUNTIME_SESSION_COOKIE_SECURE: ${GEO_RUNTIME_SESSION_COOKIE_SECURE:-0}
+      GEO_DEPLOYMENT_ENVIRONMENT: ${GEO_DEPLOYMENT_ENVIRONMENT:-development}
+      GEO_DEV_TOOLS_ENABLED: ${GEO_DEV_TOOLS_ENABLED:-0}
+      GEO_NOTIFICATION_EMAIL_PREFERENCE_BASE_URL: ${GEO_NOTIFICATION_EMAIL_PREFERENCE_BASE_URL:-}
+      GEO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET: ${GEO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET:-}
+      GEO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_TTL_SECONDS: ${GEO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_TTL_SECONDS:-2592000}
+      GEO_DEEPSEEK_API_KEY_FILE: ${GEO_DEEPSEEK_API_KEY_FILE:-/run/secrets/deepseek_api_key}
     volumes:
       - ../deepseek_api_key.txt:/run/secrets/deepseek_api_key:ro
     command:
       - uvicorn
-      - geno_api.main:app
+      - geo_api.main:app
       - --host
       - 0.0.0.0
       - --port
-      - "${GENO_API_CONTAINER_PORT:-8000}"
+      - "${GEO_API_CONTAINER_PORT:-8000}"
     ports:
-      - "${GENO_API_HOST_PORT:-8000}:${GENO_API_CONTAINER_PORT:-8000}"
+      - "${GEO_API_HOST_PORT:-8000}:${GEO_API_CONTAINER_PORT:-8000}"
     depends_on:
       db-migrate:
         condition: service_completed_successfully
@@ -242,7 +242,7 @@ services:
       - --storage.tsdb.path=/prometheus
       - --web.enable-lifecycle
     ports:
-      - "${GENO_PROMETHEUS_HOST_PORT:-9090}:9090"
+      - "${GEO_PROMETHEUS_HOST_PORT:-9090}:9090"
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
@@ -259,7 +259,7 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
       GF_USERS_ALLOW_SIGN_UP: "false"
     ports:
-      - "${GENO_GRAFANA_HOST_PORT:-3001}:3000"
+      - "${GEO_GRAFANA_HOST_PORT:-3001}:3000"
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
@@ -268,16 +268,16 @@ services:
         condition: service_started
 
   ops-runtime-smoke:
-    image: ${GENO_API_IMAGE:-geno-api:local}
+    image: ${GEO_API_IMAGE:-geo-api:local}
     build:
       context: ..
       dockerfile: apps/api/Dockerfile
     profiles:
       - ops-smoke
     environment:
-      GENO_OPS_SMOKE_API_BASE_URL: http://api:${GENO_API_CONTAINER_PORT:-8000}
-      GENO_OPS_SMOKE_PROMETHEUS_BASE_URL: http://prometheus:9090
-      GENO_OPS_SMOKE_GRAFANA_BASE_URL: http://grafana:3000
+      GEO_OPS_SMOKE_API_BASE_URL: http://api:${GEO_API_CONTAINER_PORT:-8000}
+      GEO_OPS_SMOKE_PROMETHEUS_BASE_URL: http://prometheus:9090
+      GEO_OPS_SMOKE_GRAFANA_BASE_URL: http://grafana:3000
     command:
       - python
       - scripts/run_ops_runtime_smoke.py
@@ -290,22 +290,22 @@ services:
         condition: service_started
 
   collector-worker:
-    image: ${GENO_API_IMAGE:-geno-api:local}
+    image: ${GEO_API_IMAGE:-geo-api:local}
     build:
       context: ..
       dockerfile: apps/api/Dockerfile
     profiles:
       - worker
     environment:
-      DATABASE_URL: postgresql://geno_runtime_app:geno_runtime_app@postgres:5432/geno
+      DATABASE_URL: postgresql://geo_runtime_app:geo_runtime_app@postgres:5432/geo
       OBJECT_STORE_ENDPOINT: http://minio:9000
-      OBJECT_STORE_BUCKET: geno-reports
+      OBJECT_STORE_BUCKET: geo-reports
       OBJECT_STORE_ACCESS_KEY: minio
       OBJECT_STORE_SECRET_KEY: minio123
       OBJECT_STORE_REGION: us-east-1
       LITELLM_BASE_URL: http://litellm:4000
-      LITELLM_API_KEY: ${LITELLM_MASTER_KEY:-sk-geno-local}
-      GENO_RUNTIME_PROJECT_ACCESS_CONTROL: ${GENO_RUNTIME_PROJECT_ACCESS_CONTROL:-1}
+      LITELLM_API_KEY: ${LITELLM_MASTER_KEY:-sk-geo-local}
+      GEO_RUNTIME_PROJECT_ACCESS_CONTROL: ${GEO_RUNTIME_PROJECT_ACCESS_CONTROL:-1}
     command:
       - python
       - workers/collector_worker/run_collection_slice.py
@@ -323,21 +323,21 @@ services:
         condition: service_started
 
   collector-worker-litellm:
-    image: ${GENO_API_IMAGE:-geno-api:local}
+    image: ${GEO_API_IMAGE:-geo-api:local}
     build:
       context: ..
       dockerfile: apps/api/Dockerfile
     profiles:
       - llm-gateway
     environment:
-      DATABASE_URL: postgresql://geno_runtime_app:geno_runtime_app@postgres:5432/geno
+      DATABASE_URL: postgresql://geo_runtime_app:geo_runtime_app@postgres:5432/geo
       OBJECT_STORE_ENDPOINT: http://minio:9000
-      OBJECT_STORE_BUCKET: geno-reports
+      OBJECT_STORE_BUCKET: geo-reports
       OBJECT_STORE_ACCESS_KEY: minio
       OBJECT_STORE_SECRET_KEY: minio123
       OBJECT_STORE_REGION: us-east-1
       LITELLM_BASE_URL: http://litellm:4000
-      LITELLM_API_KEY: ${LITELLM_MASTER_KEY:-sk-geno-local}
+      LITELLM_API_KEY: ${LITELLM_MASTER_KEY:-sk-geo-local}
     command:
       - python
       - workers/collector_worker/run_collection_slice.py
@@ -351,7 +351,7 @@ services:
       - --judge-gateway
       - litellm
       - --judge-model
-      - geno-gpt-4.1-mini
+      - geo-gpt-4.1-mini
     depends_on:
       postgres:
         condition: service_healthy
@@ -367,27 +367,27 @@ services:
     profiles:
       - scheduler
     environment:
-      DATABASE_URL: postgresql://geno_runtime_app:geno_runtime_app@postgres:5432/geno
+      DATABASE_URL: postgresql://geo_runtime_app:geo_runtime_app@postgres:5432/geo
       OBJECT_STORE_ENDPOINT: http://minio:9000
-      OBJECT_STORE_BUCKET: geno-reports
+      OBJECT_STORE_BUCKET: geo-reports
       OBJECT_STORE_ACCESS_KEY: minio
       OBJECT_STORE_SECRET_KEY: minio123
       OBJECT_STORE_REGION: us-east-1
       PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      GENO_BROWSER_COLLECTOR_ENABLED: ${GENO_BROWSER_COLLECTOR_ENABLED:-0}
-      GENO_BROWSER_START_URL: ${GENO_BROWSER_START_URL:-https://chatgpt.com/}
-      GENO_BROWSER_PROMPT_SELECTOR: ${GENO_BROWSER_PROMPT_SELECTOR:-}
-      GENO_BROWSER_ANSWER_SELECTOR: ${GENO_BROWSER_ANSWER_SELECTOR:-}
-      GENO_BROWSER_SUBMIT_SELECTOR: ${GENO_BROWSER_SUBMIT_SELECTOR:-}
-      GENO_BROWSER_CITATION_SELECTOR: ${GENO_BROWSER_CITATION_SELECTOR:-}
-      GENO_BROWSER_STORAGE_STATE: ${GENO_BROWSER_STORAGE_STATE:-}
-      GENO_BROWSER_ARTIFACT_DIR: ${GENO_BROWSER_ARTIFACT_DIR:-/tmp/geno-browser-artifacts}
-      GENO_BROWSER_FIDELITY_EXECUTE: ${GENO_BROWSER_FIDELITY_EXECUTE:-0}
-      GENO_BROWSER_FIDELITY_PERSIST_PLAN: ${GENO_BROWSER_FIDELITY_PERSIST_PLAN:-1}
-      GENO_BROWSER_FIDELITY_PROMPT_COUNT: ${GENO_BROWSER_FIDELITY_PROMPT_COUNT:-10}
-      GENO_BROWSER_FIDELITY_CITY_COUNT: ${GENO_BROWSER_FIDELITY_CITY_COUNT:-2}
-      GENO_BROWSER_FIDELITY_SAMPLE_SIZE: ${GENO_BROWSER_FIDELITY_SAMPLE_SIZE:-1}
+      GEO_BROWSER_COLLECTOR_ENABLED: ${GEO_BROWSER_COLLECTOR_ENABLED:-0}
+      GEO_BROWSER_START_URL: ${GEO_BROWSER_START_URL:-https://chatgpt.com/}
+      GEO_BROWSER_PROMPT_SELECTOR: ${GEO_BROWSER_PROMPT_SELECTOR:-}
+      GEO_BROWSER_ANSWER_SELECTOR: ${GEO_BROWSER_ANSWER_SELECTOR:-}
+      GEO_BROWSER_SUBMIT_SELECTOR: ${GEO_BROWSER_SUBMIT_SELECTOR:-}
+      GEO_BROWSER_CITATION_SELECTOR: ${GEO_BROWSER_CITATION_SELECTOR:-}
+      GEO_BROWSER_STORAGE_STATE: ${GEO_BROWSER_STORAGE_STATE:-}
+      GEO_BROWSER_ARTIFACT_DIR: ${GEO_BROWSER_ARTIFACT_DIR:-/tmp/geo-browser-artifacts}
+      GEO_BROWSER_FIDELITY_EXECUTE: ${GEO_BROWSER_FIDELITY_EXECUTE:-0}
+      GEO_BROWSER_FIDELITY_PERSIST_PLAN: ${GEO_BROWSER_FIDELITY_PERSIST_PLAN:-1}
+      GEO_BROWSER_FIDELITY_PROMPT_COUNT: ${GEO_BROWSER_FIDELITY_PROMPT_COUNT:-10}
+      GEO_BROWSER_FIDELITY_CITY_COUNT: ${GEO_BROWSER_FIDELITY_CITY_COUNT:-2}
+      GEO_BROWSER_FIDELITY_SAMPLE_SIZE: ${GEO_BROWSER_FIDELITY_SAMPLE_SIZE:-1}
     command:
       - python
       - scripts/run_browser_fidelity_scheduler.py
@@ -404,16 +404,16 @@ services:
     profiles:
       - scheduler
     environment:
-      DATABASE_URL: postgresql://geno_runtime_app:geno_runtime_app@postgres:5432/geno
-      GENO_RUNTIME_ALERT_MARKET_CODE: ${GENO_RUNTIME_ALERT_MARKET_CODE:-AU}
-      GENO_RUNTIME_ALERT_MAX_PROJECTS: ${GENO_RUNTIME_ALERT_MAX_PROJECTS:-50}
+      DATABASE_URL: postgresql://geo_runtime_app:geo_runtime_app@postgres:5432/geo
+      GEO_RUNTIME_ALERT_MARKET_CODE: ${GEO_RUNTIME_ALERT_MARKET_CODE:-AU}
+      GEO_RUNTIME_ALERT_MAX_PROJECTS: ${GEO_RUNTIME_ALERT_MAX_PROJECTS:-50}
     command:
       - python
       - workers/notification_worker/run_runtime_alert_notifications.py
       - --market-code
-      - ${GENO_RUNTIME_ALERT_MARKET_CODE:-AU}
+      - ${GEO_RUNTIME_ALERT_MARKET_CODE:-AU}
       - --max-projects
-      - ${GENO_RUNTIME_ALERT_MAX_PROJECTS:-50}
+      - ${GEO_RUNTIME_ALERT_MAX_PROJECTS:-50}
     depends_on:
       postgres:
         condition: service_healthy
@@ -425,19 +425,19 @@ services:
     profiles:
       - scheduler
     environment:
-      DATABASE_URL: postgresql://geno_runtime_app:geno_runtime_app@postgres:5432/geno
-      GENO_RUNTIME_ALERT_MARKET_CODE: ${GENO_RUNTIME_ALERT_MARKET_CODE:-AU}
-      GENO_RUNTIME_ALERT_MAX_PROJECTS: ${GENO_RUNTIME_ALERT_MAX_PROJECTS:-50}
-      GENO_RUNTIME_ALERT_ESCALATION_THRESHOLDS: ${GENO_RUNTIME_ALERT_ESCALATION_THRESHOLDS:-critical=4,high=24}
+      DATABASE_URL: postgresql://geo_runtime_app:geo_runtime_app@postgres:5432/geo
+      GEO_RUNTIME_ALERT_MARKET_CODE: ${GEO_RUNTIME_ALERT_MARKET_CODE:-AU}
+      GEO_RUNTIME_ALERT_MAX_PROJECTS: ${GEO_RUNTIME_ALERT_MAX_PROJECTS:-50}
+      GEO_RUNTIME_ALERT_ESCALATION_THRESHOLDS: ${GEO_RUNTIME_ALERT_ESCALATION_THRESHOLDS:-critical=4,high=24}
     command:
       - python
       - workers/notification_worker/run_runtime_alert_escalations.py
       - --market-code
-      - ${GENO_RUNTIME_ALERT_MARKET_CODE:-AU}
+      - ${GEO_RUNTIME_ALERT_MARKET_CODE:-AU}
       - --max-projects
-      - ${GENO_RUNTIME_ALERT_MAX_PROJECTS:-50}
+      - ${GEO_RUNTIME_ALERT_MAX_PROJECTS:-50}
       - --severity-threshold-hours
-      - ${GENO_RUNTIME_ALERT_ESCALATION_THRESHOLDS:-critical=4,high=24}
+      - ${GEO_RUNTIME_ALERT_ESCALATION_THRESHOLDS:-critical=4,high=24}
     depends_on:
       postgres:
         condition: service_healthy
@@ -449,29 +449,29 @@ services:
     profiles:
       - scheduler
     environment:
-      DATABASE_URL: postgresql://geno_runtime_app:geno_runtime_app@postgres:5432/geno
+      DATABASE_URL: postgresql://geo_runtime_app:geo_runtime_app@postgres:5432/geo
       OBJECT_STORE_ENDPOINT: http://minio:9000
-      OBJECT_STORE_BUCKET: geno-reports
+      OBJECT_STORE_BUCKET: geo-reports
       OBJECT_STORE_ACCESS_KEY: minio
       OBJECT_STORE_SECRET_KEY: minio123
       OBJECT_STORE_REGION: us-east-1
-      GENO_REPORT_EXPORT_WORKER_MAX_JOBS: ${GENO_REPORT_EXPORT_WORKER_MAX_JOBS:-1}
-      GENO_REPORT_EXPORT_WORKER_MAX_ATTEMPTS: ${GENO_REPORT_EXPORT_WORKER_MAX_ATTEMPTS:-3}
-      GENO_REPORT_EXPORT_WORKER_RETRY_BACKOFF_SECONDS: ${GENO_REPORT_EXPORT_WORKER_RETRY_BACKOFF_SECONDS:-300}
-      GENO_REPORT_EXPORT_WORKER_LEASE_SECONDS: ${GENO_REPORT_EXPORT_WORKER_LEASE_SECONDS:-900}
-      GENO_PDF_RENDERER_URL: http://report-pdf-renderer:8200
-      GENO_REPORT_PDF_RENDERER_REQUIRED: ${GENO_REPORT_PDF_RENDERER_REQUIRED:-1}
+      GEO_REPORT_EXPORT_WORKER_MAX_JOBS: ${GEO_REPORT_EXPORT_WORKER_MAX_JOBS:-1}
+      GEO_REPORT_EXPORT_WORKER_MAX_ATTEMPTS: ${GEO_REPORT_EXPORT_WORKER_MAX_ATTEMPTS:-3}
+      GEO_REPORT_EXPORT_WORKER_RETRY_BACKOFF_SECONDS: ${GEO_REPORT_EXPORT_WORKER_RETRY_BACKOFF_SECONDS:-300}
+      GEO_REPORT_EXPORT_WORKER_LEASE_SECONDS: ${GEO_REPORT_EXPORT_WORKER_LEASE_SECONDS:-900}
+      GEO_PDF_RENDERER_URL: http://report-pdf-renderer:8200
+      GEO_REPORT_PDF_RENDERER_REQUIRED: ${GEO_REPORT_PDF_RENDERER_REQUIRED:-1}
     command:
       - python
       - workers/report_export_worker/run_report_export_jobs.py
       - --max-jobs
-      - ${GENO_REPORT_EXPORT_WORKER_MAX_JOBS:-1}
+      - ${GEO_REPORT_EXPORT_WORKER_MAX_JOBS:-1}
       - --max-attempts
-      - ${GENO_REPORT_EXPORT_WORKER_MAX_ATTEMPTS:-3}
+      - ${GEO_REPORT_EXPORT_WORKER_MAX_ATTEMPTS:-3}
       - --retry-backoff-seconds
-      - ${GENO_REPORT_EXPORT_WORKER_RETRY_BACKOFF_SECONDS:-300}
+      - ${GEO_REPORT_EXPORT_WORKER_RETRY_BACKOFF_SECONDS:-300}
       - --lease-seconds
-      - ${GENO_REPORT_EXPORT_WORKER_LEASE_SECONDS:-900}
+      - ${GEO_REPORT_EXPORT_WORKER_LEASE_SECONDS:-900}
     depends_on:
       postgres:
         condition: service_healthy
@@ -481,16 +481,16 @@ services:
         condition: service_healthy
 
   knowledge-worker:
-    image: ${GENO_KNOWLEDGE_WORKER_IMAGE:-geno-knowledge-worker:local}
+    image: ${GEO_KNOWLEDGE_WORKER_IMAGE:-geo-knowledge-worker:local}
     build:
       context: ..
       dockerfile: workers/knowledge_worker/Dockerfile.heavy
     profiles:
       - knowledge
     environment:
-      DATABASE_URL: postgresql://geno_runtime_app:geno_runtime_app@postgres:5432/geno
+      DATABASE_URL: postgresql://geo_runtime_app:geo_runtime_app@postgres:5432/geo
       OBJECT_STORE_ENDPOINT: http://minio:9000
-      OBJECT_STORE_BUCKET: geno-reports
+      OBJECT_STORE_BUCKET: geo-reports
       OBJECT_STORE_ACCESS_KEY: minio
       OBJECT_STORE_SECRET_KEY: minio123
       OBJECT_STORE_REGION: us-east-1
@@ -501,20 +501,20 @@ services:
       GEO_BGE_M3_MODEL: ${GEO_BGE_M3_MODEL:-/models/bge-m3-pytorch}
       GEO_KNOWLEDGE_COMPONENT_RUNNER: /app/scripts/run_knowledge_component.py
       GEO_ALLOW_CRAWLER_FALLBACK: ${GEO_ALLOW_CRAWLER_FALLBACK:-false}
-      GENO_KNOWLEDGE_REQUIRE_REAL_MODEL: ${GENO_KNOWLEDGE_REQUIRE_REAL_MODEL:-true}
-      GENO_KNOWLEDGE_REQUIRE_OBJECT_STORE: ${GENO_KNOWLEDGE_REQUIRE_OBJECT_STORE:-true}
-      GENO_KNOWLEDGE_REQUIRE_QDRANT: ${GENO_KNOWLEDGE_REQUIRE_QDRANT:-true}
-      GENO_DEEPSEEK_API_KEY_FILE: ${GENO_DEEPSEEK_API_KEY_FILE:-/run/secrets/deepseek_api_key}
-      GENO_KNOWLEDGE_WORKER_MAX_JOBS: ${GENO_KNOWLEDGE_WORKER_MAX_JOBS:-1}
-      GENO_KNOWLEDGE_WORKER_LEASE_SECONDS: ${GENO_KNOWLEDGE_WORKER_LEASE_SECONDS:-600}
-      GENO_KNOWLEDGE_WORKER_POLL_SECONDS: ${GENO_KNOWLEDGE_WORKER_POLL_SECONDS:-2.0}
+      GEO_KNOWLEDGE_REQUIRE_REAL_MODEL: ${GEO_KNOWLEDGE_REQUIRE_REAL_MODEL:-true}
+      GEO_KNOWLEDGE_REQUIRE_OBJECT_STORE: ${GEO_KNOWLEDGE_REQUIRE_OBJECT_STORE:-true}
+      GEO_KNOWLEDGE_REQUIRE_QDRANT: ${GEO_KNOWLEDGE_REQUIRE_QDRANT:-true}
+      GEO_DEEPSEEK_API_KEY_FILE: ${GEO_DEEPSEEK_API_KEY_FILE:-/run/secrets/deepseek_api_key}
+      GEO_KNOWLEDGE_WORKER_MAX_JOBS: ${GEO_KNOWLEDGE_WORKER_MAX_JOBS:-1}
+      GEO_KNOWLEDGE_WORKER_LEASE_SECONDS: ${GEO_KNOWLEDGE_WORKER_LEASE_SECONDS:-600}
+      GEO_KNOWLEDGE_WORKER_POLL_SECONDS: ${GEO_KNOWLEDGE_WORKER_POLL_SECONDS:-2.0}
     command:
       - python
       - workers/knowledge_worker/run_knowledge_pipeline.py
       - --max-jobs
-      - ${GENO_KNOWLEDGE_WORKER_MAX_JOBS:-1}
+      - ${GEO_KNOWLEDGE_WORKER_MAX_JOBS:-1}
       - --lease-seconds
-      - ${GENO_KNOWLEDGE_WORKER_LEASE_SECONDS:-600}
+      - ${GEO_KNOWLEDGE_WORKER_LEASE_SECONDS:-600}
     volumes:
       - ../deepseek_api_key.txt:/run/secrets/deepseek_api_key:ro
       - ../.cache/models:/models:ro
@@ -529,7 +529,7 @@ services:
         condition: service_started
 
   knowledge-embedding-api:
-    image: ${GENO_KNOWLEDGE_WORKER_IMAGE:-geno-knowledge-worker:local}
+    image: ${GEO_KNOWLEDGE_WORKER_IMAGE:-geo-knowledge-worker:local}
     build:
       context: ..
       dockerfile: workers/knowledge_worker/Dockerfile.heavy
@@ -558,27 +558,27 @@ services:
       retries: 20
 
   task-worker-runtime:
-    image: ${GENO_API_IMAGE:-geno-api:local}
+    image: ${GEO_API_IMAGE:-geo-api:local}
     build:
       context: ..
       dockerfile: apps/api/Dockerfile
     environment:
-      DATABASE_URL: postgresql://geno_runtime_app:geno_runtime_app@postgres:5432/geno
+      DATABASE_URL: postgresql://geo_runtime_app:geo_runtime_app@postgres:5432/geo
       OBJECT_STORE_ENDPOINT: http://minio:9000
-      OBJECT_STORE_BUCKET: geno-reports
+      OBJECT_STORE_BUCKET: geo-reports
       OBJECT_STORE_ACCESS_KEY: minio
       OBJECT_STORE_SECRET_KEY: minio123
       OBJECT_STORE_REGION: us-east-1
-      GENO_PDF_RENDERER_URL: http://report-pdf-renderer:8200
-      GENO_REPORT_PDF_RENDERER_REQUIRED: "1"
-      GENO_TASK_QUEUE_ENABLED: "1"
-      GENO_TASK_QUEUE_REQUIRED: "1"
-      GENO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
-      GENO_COLLECTION_JOB_LEASE_SECONDS: ${GENO_COLLECTION_JOB_LEASE_SECONDS:-3600}
-      GENO_COLLECTION_JOB_TIMEOUT_SECONDS: ${GENO_COLLECTION_JOB_TIMEOUT_SECONDS:-3600}
-      GENO_COLLECTION_CHILD_TERMINATE_GRACE_SECONDS: ${GENO_COLLECTION_CHILD_TERMINATE_GRACE_SECONDS:-10}
-      GENO_COLLECTION_RETRY_BACKOFF_SECONDS: ${GENO_COLLECTION_RETRY_BACKOFF_SECONDS:-120}
-      GENO_COLLECTION_PROVIDER_CONCURRENCY: ${GENO_COLLECTION_PROVIDER_CONCURRENCY:-1}
+      GEO_PDF_RENDERER_URL: http://report-pdf-renderer:8200
+      GEO_REPORT_PDF_RENDERER_REQUIRED: "1"
+      GEO_TASK_QUEUE_ENABLED: "1"
+      GEO_TASK_QUEUE_REQUIRED: "1"
+      GEO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
+      GEO_COLLECTION_JOB_LEASE_SECONDS: ${GEO_COLLECTION_JOB_LEASE_SECONDS:-3600}
+      GEO_COLLECTION_JOB_TIMEOUT_SECONDS: ${GEO_COLLECTION_JOB_TIMEOUT_SECONDS:-3600}
+      GEO_COLLECTION_CHILD_TERMINATE_GRACE_SECONDS: ${GEO_COLLECTION_CHILD_TERMINATE_GRACE_SECONDS:-10}
+      GEO_COLLECTION_RETRY_BACKOFF_SECONDS: ${GEO_COLLECTION_RETRY_BACKOFF_SECONDS:-120}
+      GEO_COLLECTION_PROVIDER_CONCURRENCY: ${GEO_COLLECTION_PROVIDER_CONCURRENCY:-1}
     command:
       - dramatiq
       - workers.task_queue.tasks
@@ -602,14 +602,14 @@ services:
         condition: service_healthy
 
   task-worker-knowledge:
-    image: ${GENO_KNOWLEDGE_WORKER_IMAGE:-geno-knowledge-worker:local}
+    image: ${GEO_KNOWLEDGE_WORKER_IMAGE:-geo-knowledge-worker:local}
     build:
       context: ..
       dockerfile: workers/knowledge_worker/Dockerfile.heavy
     environment:
-      DATABASE_URL: postgresql://geno_runtime_app:geno_runtime_app@postgres:5432/geno
+      DATABASE_URL: postgresql://geo_runtime_app:geo_runtime_app@postgres:5432/geo
       OBJECT_STORE_ENDPOINT: http://minio:9000
-      OBJECT_STORE_BUCKET: geno-reports
+      OBJECT_STORE_BUCKET: geo-reports
       OBJECT_STORE_ACCESS_KEY: minio
       OBJECT_STORE_SECRET_KEY: minio123
       OBJECT_STORE_REGION: us-east-1
@@ -620,16 +620,16 @@ services:
       GEO_BGE_M3_MODEL: ${GEO_BGE_M3_MODEL:-/models/bge-m3-pytorch}
       GEO_KNOWLEDGE_COMPONENT_RUNNER: /app/scripts/run_knowledge_component.py
       GEO_ALLOW_CRAWLER_FALLBACK: ${GEO_ALLOW_CRAWLER_FALLBACK:-false}
-      GENO_KNOWLEDGE_REQUIRE_REAL_MODEL: ${GENO_KNOWLEDGE_REQUIRE_REAL_MODEL:-true}
-      GENO_KNOWLEDGE_REQUIRE_OBJECT_STORE: ${GENO_KNOWLEDGE_REQUIRE_OBJECT_STORE:-true}
-      GENO_KNOWLEDGE_REQUIRE_QDRANT: ${GENO_KNOWLEDGE_REQUIRE_QDRANT:-true}
-      GENO_DEEPSEEK_API_KEY_FILE: ${GENO_DEEPSEEK_API_KEY_FILE:-/run/secrets/deepseek_api_key}
-      GENO_KNOWLEDGE_WORKER_MAX_JOBS: ${GENO_KNOWLEDGE_WORKER_MAX_JOBS:-25}
-      GENO_KNOWLEDGE_WORKER_LEASE_SECONDS: ${GENO_KNOWLEDGE_WORKER_LEASE_SECONDS:-600}
-      GENO_KNOWLEDGE_DRAMATIQ_DRAIN_CYCLES: ${GENO_KNOWLEDGE_DRAMATIQ_DRAIN_CYCLES:-20}
-      GENO_TASK_QUEUE_ENABLED: "1"
-      GENO_TASK_QUEUE_REQUIRED: "1"
-      GENO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
+      GEO_KNOWLEDGE_REQUIRE_REAL_MODEL: ${GEO_KNOWLEDGE_REQUIRE_REAL_MODEL:-true}
+      GEO_KNOWLEDGE_REQUIRE_OBJECT_STORE: ${GEO_KNOWLEDGE_REQUIRE_OBJECT_STORE:-true}
+      GEO_KNOWLEDGE_REQUIRE_QDRANT: ${GEO_KNOWLEDGE_REQUIRE_QDRANT:-true}
+      GEO_DEEPSEEK_API_KEY_FILE: ${GEO_DEEPSEEK_API_KEY_FILE:-/run/secrets/deepseek_api_key}
+      GEO_KNOWLEDGE_WORKER_MAX_JOBS: ${GEO_KNOWLEDGE_WORKER_MAX_JOBS:-25}
+      GEO_KNOWLEDGE_WORKER_LEASE_SECONDS: ${GEO_KNOWLEDGE_WORKER_LEASE_SECONDS:-600}
+      GEO_KNOWLEDGE_DRAMATIQ_DRAIN_CYCLES: ${GEO_KNOWLEDGE_DRAMATIQ_DRAIN_CYCLES:-20}
+      GEO_TASK_QUEUE_ENABLED: "1"
+      GEO_TASK_QUEUE_REQUIRED: "1"
+      GEO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
     command:
       - dramatiq
       - workers.task_queue.tasks
@@ -655,20 +655,20 @@ services:
         condition: service_healthy
 
   task-recovery-dispatcher:
-    image: ${GENO_API_IMAGE:-geno-api:local}
+    image: ${GEO_API_IMAGE:-geo-api:local}
     build:
       context: ..
       dockerfile: apps/api/Dockerfile
     environment:
-      DATABASE_URL: postgresql://geno_runtime_app:geno_runtime_app@postgres:5432/geno
-      GENO_TASK_QUEUE_ENABLED: "1"
-      GENO_TASK_QUEUE_REQUIRED: "1"
-      GENO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
+      DATABASE_URL: postgresql://geo_runtime_app:geo_runtime_app@postgres:5432/geo
+      GEO_TASK_QUEUE_ENABLED: "1"
+      GEO_TASK_QUEUE_REQUIRED: "1"
+      GEO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
     command:
       - python
       - workers/task_queue/run_recovery_dispatcher.py
       - --interval-seconds
-      - ${GENO_TASK_RECOVERY_INTERVAL_SECONDS:-30}
+      - ${GEO_TASK_RECOVERY_INTERVAL_SECONDS:-30}
     depends_on:
       task-worker-runtime:
         condition: service_started
@@ -684,39 +684,39 @@ services:
     profiles:
       - scheduler
     environment:
-      DATABASE_URL: postgresql://geno_runtime_app:geno_runtime_app@postgres:5432/geno
-      GENO_NOTIFICATION_DELIVERY_MAX_DELIVERIES: ${GENO_NOTIFICATION_DELIVERY_MAX_DELIVERIES:-1}
-      GENO_NOTIFICATION_DELIVERY_MAX_ATTEMPTS: ${GENO_NOTIFICATION_DELIVERY_MAX_ATTEMPTS:-3}
-      GENO_NOTIFICATION_DELIVERY_RETRY_BACKOFF_SECONDS: ${GENO_NOTIFICATION_DELIVERY_RETRY_BACKOFF_SECONDS:-120}
-      GENO_NOTIFICATION_DELIVERY_LEASE_SECONDS: ${GENO_NOTIFICATION_DELIVERY_LEASE_SECONDS:-300}
-      GENO_NOTIFICATION_DELIVERY_TIMEOUT_SECONDS: ${GENO_NOTIFICATION_DELIVERY_TIMEOUT_SECONDS:-5.0}
-      GENO_NOTIFICATION_WEBHOOK_SIGNING_SECRET: ${GENO_NOTIFICATION_WEBHOOK_SIGNING_SECRET:-}
-      GENO_NOTIFICATION_WEBHOOK_SIGNING_SECRET_PREVIOUS: ${GENO_NOTIFICATION_WEBHOOK_SIGNING_SECRET_PREVIOUS:-}
-      GENO_NOTIFICATION_SMTP_HOST: ${GENO_NOTIFICATION_SMTP_HOST:-}
-      GENO_NOTIFICATION_SMTP_PORT: ${GENO_NOTIFICATION_SMTP_PORT:-587}
-      GENO_NOTIFICATION_SMTP_TLS: ${GENO_NOTIFICATION_SMTP_TLS:-1}
-      GENO_NOTIFICATION_SMTP_USERNAME: ${GENO_NOTIFICATION_SMTP_USERNAME:-}
-      GENO_NOTIFICATION_SMTP_PASSWORD: ${GENO_NOTIFICATION_SMTP_PASSWORD:-}
-      GENO_NOTIFICATION_SMTP_FROM: ${GENO_NOTIFICATION_SMTP_FROM:-}
-      GENO_NOTIFICATION_SMTP_TIMEOUT_SECONDS: ${GENO_NOTIFICATION_SMTP_TIMEOUT_SECONDS:-10}
-      GENO_NOTIFICATION_EMAIL_PREFERENCE_BASE_URL: ${GENO_NOTIFICATION_EMAIL_PREFERENCE_BASE_URL:-}
-      GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET: ${GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET:-}
-      GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_TTL_SECONDS: ${GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_TTL_SECONDS:-2592000}
+      DATABASE_URL: postgresql://geo_runtime_app:geo_runtime_app@postgres:5432/geo
+      GEO_NOTIFICATION_DELIVERY_MAX_DELIVERIES: ${GEO_NOTIFICATION_DELIVERY_MAX_DELIVERIES:-1}
+      GEO_NOTIFICATION_DELIVERY_MAX_ATTEMPTS: ${GEO_NOTIFICATION_DELIVERY_MAX_ATTEMPTS:-3}
+      GEO_NOTIFICATION_DELIVERY_RETRY_BACKOFF_SECONDS: ${GEO_NOTIFICATION_DELIVERY_RETRY_BACKOFF_SECONDS:-120}
+      GEO_NOTIFICATION_DELIVERY_LEASE_SECONDS: ${GEO_NOTIFICATION_DELIVERY_LEASE_SECONDS:-300}
+      GEO_NOTIFICATION_DELIVERY_TIMEOUT_SECONDS: ${GEO_NOTIFICATION_DELIVERY_TIMEOUT_SECONDS:-5.0}
+      GEO_NOTIFICATION_WEBHOOK_SIGNING_SECRET: ${GEO_NOTIFICATION_WEBHOOK_SIGNING_SECRET:-}
+      GEO_NOTIFICATION_WEBHOOK_SIGNING_SECRET_PREVIOUS: ${GEO_NOTIFICATION_WEBHOOK_SIGNING_SECRET_PREVIOUS:-}
+      GEO_NOTIFICATION_SMTP_HOST: ${GEO_NOTIFICATION_SMTP_HOST:-}
+      GEO_NOTIFICATION_SMTP_PORT: ${GEO_NOTIFICATION_SMTP_PORT:-587}
+      GEO_NOTIFICATION_SMTP_TLS: ${GEO_NOTIFICATION_SMTP_TLS:-1}
+      GEO_NOTIFICATION_SMTP_USERNAME: ${GEO_NOTIFICATION_SMTP_USERNAME:-}
+      GEO_NOTIFICATION_SMTP_PASSWORD: ${GEO_NOTIFICATION_SMTP_PASSWORD:-}
+      GEO_NOTIFICATION_SMTP_FROM: ${GEO_NOTIFICATION_SMTP_FROM:-}
+      GEO_NOTIFICATION_SMTP_TIMEOUT_SECONDS: ${GEO_NOTIFICATION_SMTP_TIMEOUT_SECONDS:-10}
+      GEO_NOTIFICATION_EMAIL_PREFERENCE_BASE_URL: ${GEO_NOTIFICATION_EMAIL_PREFERENCE_BASE_URL:-}
+      GEO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET: ${GEO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET:-}
+      GEO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_TTL_SECONDS: ${GEO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_TTL_SECONDS:-2592000}
     command:
       - python
       - workers/notification_worker/run_notification_deliveries.py
       - --max-deliveries
-      - ${GENO_NOTIFICATION_DELIVERY_MAX_DELIVERIES:-1}
+      - ${GEO_NOTIFICATION_DELIVERY_MAX_DELIVERIES:-1}
       - --max-attempts
-      - ${GENO_NOTIFICATION_DELIVERY_MAX_ATTEMPTS:-3}
+      - ${GEO_NOTIFICATION_DELIVERY_MAX_ATTEMPTS:-3}
       - --retry-backoff-seconds
-      - ${GENO_NOTIFICATION_DELIVERY_RETRY_BACKOFF_SECONDS:-120}
+      - ${GEO_NOTIFICATION_DELIVERY_RETRY_BACKOFF_SECONDS:-120}
       - --lease-seconds
-      - ${GENO_NOTIFICATION_DELIVERY_LEASE_SECONDS:-300}
+      - ${GEO_NOTIFICATION_DELIVERY_LEASE_SECONDS:-300}
       - --timeout-seconds
-      - ${GENO_NOTIFICATION_DELIVERY_TIMEOUT_SECONDS:-5.0}
+      - ${GEO_NOTIFICATION_DELIVERY_TIMEOUT_SECONDS:-5.0}
       - --secondary-signing-secret-env
-      - GENO_NOTIFICATION_WEBHOOK_SIGNING_SECRET_PREVIOUS
+      - GEO_NOTIFICATION_WEBHOOK_SIGNING_SECRET_PREVIOUS
     depends_on:
       postgres:
         condition: service_healthy
@@ -728,16 +728,16 @@ services:
     profiles:
       - scheduler
     environment:
-      DATABASE_URL: postgresql://geno_runtime_app:geno_runtime_app@postgres:5432/geno
-      GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE: ${GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU}
-      GENO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS: ${GENO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS:-50}
+      DATABASE_URL: postgresql://geo_runtime_app:geo_runtime_app@postgres:5432/geo
+      GEO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE: ${GEO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU}
+      GEO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS: ${GEO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS:-50}
     command:
       - python
       - workers/notification_worker/run_entity_alias_assignment_notifications.py
       - --market-code
-      - ${GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU}
+      - ${GEO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU}
       - --max-projects
-      - ${GENO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS:-50}
+      - ${GEO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS:-50}
     depends_on:
       postgres:
         condition: service_healthy
@@ -749,16 +749,16 @@ services:
     profiles:
       - scheduler
     environment:
-      DATABASE_URL: postgresql://geno_runtime_app:geno_runtime_app@postgres:5432/geno
-      GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE: ${GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU}
-      GENO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS: ${GENO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS:-50}
+      DATABASE_URL: postgresql://geo_runtime_app:geo_runtime_app@postgres:5432/geo
+      GEO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE: ${GEO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU}
+      GEO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS: ${GEO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS:-50}
     command:
       - python
       - workers/notification_worker/run_entity_alias_assignment_escalations.py
       - --market-code
-      - ${GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU}
+      - ${GEO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU}
       - --max-projects
-      - ${GENO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS:-50}
+      - ${GEO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS:-50}
     depends_on:
       postgres:
         condition: service_healthy
@@ -770,21 +770,21 @@ services:
     profiles:
       - scheduler
     environment:
-      DATABASE_URL: postgresql://geno_runtime_app:geno_runtime_app@postgres:5432/geno
-      GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE: ${GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU}
-      GENO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS: ${GENO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS:-50}
-      GENO_ENTITY_ALIAS_ASSIGNMENT_REASSIGN_TO: ${GENO_ENTITY_ALIAS_ASSIGNMENT_REASSIGN_TO:-runtime-console}
+      DATABASE_URL: postgresql://geo_runtime_app:geo_runtime_app@postgres:5432/geo
+      GEO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE: ${GEO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU}
+      GEO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS: ${GEO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS:-50}
+      GEO_ENTITY_ALIAS_ASSIGNMENT_REASSIGN_TO: ${GEO_ENTITY_ALIAS_ASSIGNMENT_REASSIGN_TO:-runtime-console}
     command:
       - python
       - workers/notification_worker/run_entity_alias_assignment_reassignments.py
       - --market-code
-      - ${GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU}
+      - ${GEO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU}
       - --assigned-to
-      - ${GENO_ENTITY_ALIAS_ASSIGNMENT_REASSIGN_TO:-runtime-console}
+      - ${GEO_ENTITY_ALIAS_ASSIGNMENT_REASSIGN_TO:-runtime-console}
       - --from-assignment-status
       - escalated
       - --max-projects
-      - ${GENO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS:-50}
+      - ${GEO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS:-50}
     depends_on:
       postgres:
         condition: service_healthy
@@ -796,40 +796,40 @@ services:
     profiles:
       - scheduler
     environment:
-      DATABASE_URL: postgresql://geno_runtime_app:geno_runtime_app@postgres:5432/geno
-      GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE: ${GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU}
-      GENO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS: ${GENO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS:-50}
-      GENO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_REVIEWERS: ${GENO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_REVIEWERS:-runtime-console}
-      GENO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_MAX_PER_REVIEWER: ${GENO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_MAX_PER_REVIEWER:-10}
-      GENO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_LIMIT: ${GENO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_LIMIT:-50}
+      DATABASE_URL: postgresql://geo_runtime_app:geo_runtime_app@postgres:5432/geo
+      GEO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE: ${GEO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU}
+      GEO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS: ${GEO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS:-50}
+      GEO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_REVIEWERS: ${GEO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_REVIEWERS:-runtime-console}
+      GEO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_MAX_PER_REVIEWER: ${GEO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_MAX_PER_REVIEWER:-10}
+      GEO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_LIMIT: ${GEO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_LIMIT:-50}
     command:
       - python
       - workers/notification_worker/run_entity_alias_assignment_dispatch_apply.py
       - --market-code
-      - ${GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU}
+      - ${GEO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU}
       - --reviewer-id
-      - ${GENO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_REVIEWERS:-runtime-console}
+      - ${GEO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_REVIEWERS:-runtime-console}
       - --max-per-reviewer
-      - ${GENO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_MAX_PER_REVIEWER:-10}
+      - ${GEO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_MAX_PER_REVIEWER:-10}
       - --limit-per-project
-      - ${GENO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_LIMIT:-50}
+      - ${GEO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_LIMIT:-50}
       - --max-projects
-      - ${GENO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS:-50}
+      - ${GEO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS:-50}
     depends_on:
       postgres:
         condition: service_healthy
 
   runtime-e2e:
-    image: ${GENO_API_IMAGE:-geno-api:local}
+    image: ${GEO_API_IMAGE:-geo-api:local}
     build:
       context: ..
       dockerfile: apps/api/Dockerfile
     profiles:
       - e2e
     environment:
-      DATABASE_URL: postgresql://geno_runtime_app:geno_runtime_app@postgres:5432/geno
+      DATABASE_URL: postgresql://geo_runtime_app:geo_runtime_app@postgres:5432/geo
       OBJECT_STORE_ENDPOINT: http://minio:9000
-      OBJECT_STORE_BUCKET: geno-reports
+      OBJECT_STORE_BUCKET: geo-reports
       OBJECT_STORE_ACCESS_KEY: minio
       OBJECT_STORE_SECRET_KEY: minio123
       OBJECT_STORE_REGION: us-east-1
@@ -843,15 +843,15 @@ services:
         condition: service_started
 
   db-smoke:
-    image: ${GENO_API_IMAGE:-geno-api:local}
+    image: ${GEO_API_IMAGE:-geo-api:local}
     build:
       context: ..
       dockerfile: apps/api/Dockerfile
     profiles:
       - db-smoke
     environment:
-      DATABASE_URL: postgresql://geno:geno@postgres:5432/geno
-      RUNTIME_DATABASE_URL: postgresql://geno_runtime_app:geno_runtime_app@postgres:5432/geno
+      DATABASE_URL: postgresql://geo:geo@postgres:5432/geo
+      RUNTIME_DATABASE_URL: postgresql://geo_runtime_app:geo_runtime_app@postgres:5432/geo
     command:
       - python
       - scripts/verify_db_smoke.py
@@ -864,23 +864,23 @@ services:
     profiles:
       - backup-smoke
     environment:
-      PGPASSWORD: geno
+      PGPASSWORD: geo
     command:
       - /bin/sh
       - -c
       - |
         set -eu
-        restore_db="geno_restore_smoke"
-        dump_path="/tmp/geno-backup-smoke.dump"
-        trap 'dropdb -h postgres -U geno --if-exists "$$restore_db" >/dev/null 2>&1 || true' EXIT
-        dropdb -h postgres -U geno --if-exists "$$restore_db"
-        pg_dump -h postgres -U geno -d geno --format=custom --file="$$dump_path"
-        createdb -h postgres -U geno "$$restore_db"
-        pg_restore -h postgres -U geno -d "$$restore_db" --no-owner --no-privileges --exit-on-error "$$dump_path"
-        source_tables="$$(psql -h postgres -U geno -d geno -tAc "SELECT count(*) FROM pg_tables WHERE schemaname = 'public'")"
-        restored_tables="$$(psql -h postgres -U geno -d "$$restore_db" -tAc "SELECT count(*) FROM pg_tables WHERE schemaname = 'public'")"
-        source_projects="$$(psql -h postgres -U geno -d geno -tAc "SELECT count(*) FROM projects")"
-        restored_projects="$$(psql -h postgres -U geno -d "$$restore_db" -tAc "SELECT count(*) FROM projects")"
+        restore_db="geo_restore_smoke"
+        dump_path="/tmp/geo-backup-smoke.dump"
+        trap 'dropdb -h postgres -U geo --if-exists "$$restore_db" >/dev/null 2>&1 || true' EXIT
+        dropdb -h postgres -U geo --if-exists "$$restore_db"
+        pg_dump -h postgres -U geo -d geo --format=custom --file="$$dump_path"
+        createdb -h postgres -U geo "$$restore_db"
+        pg_restore -h postgres -U geo -d "$$restore_db" --no-owner --no-privileges --exit-on-error "$$dump_path"
+        source_tables="$$(psql -h postgres -U geo -d geo -tAc "SELECT count(*) FROM pg_tables WHERE schemaname = 'public'")"
+        restored_tables="$$(psql -h postgres -U geo -d "$$restore_db" -tAc "SELECT count(*) FROM pg_tables WHERE schemaname = 'public'")"
+        source_projects="$$(psql -h postgres -U geo -d geo -tAc "SELECT count(*) FROM projects")"
+        restored_projects="$$(psql -h postgres -U geo -d "$$restore_db" -tAc "SELECT count(*) FROM projects")"
         test "$$source_tables" = "$$restored_tables"
         test "$$source_projects" = "$$restored_projects"
         test "$$(stat -c %s "$$dump_path")" -gt 0
@@ -890,7 +890,7 @@ services:
         condition: service_completed_successfully
 
   backup-object-smoke:
-    image: ${GENO_MINIO_MC_IMAGE:-minio/mc:RELEASE.2025-02-21T16-00-46Z}
+    image: ${GEO_MINIO_MC_IMAGE:-minio/mc:RELEASE.2025-02-21T16-00-46Z}
     profiles:
       - backup-smoke
     entrypoint:
@@ -898,12 +898,12 @@ services:
       - /bootstrap/backup-restore-smoke.sh
     environment:
       OBJECT_STORE_ENDPOINT: http://minio:9000
-      OBJECT_STORE_BUCKET: geno-reports
-      OBJECT_STORE_BACKUP_BUCKET: geno-backups
-      OBJECT_STORE_BACKUP_ACCESS_KEY: ${OBJECT_STORE_BACKUP_ACCESS_KEY:-geno-backup-local}
-      OBJECT_STORE_BACKUP_SECRET_KEY: ${OBJECT_STORE_BACKUP_SECRET_KEY:-geno-backup-local-secret}
-      OBJECT_STORE_RESTORE_ACCESS_KEY: ${OBJECT_STORE_RESTORE_ACCESS_KEY:-geno-restore-local}
-      OBJECT_STORE_RESTORE_SECRET_KEY: ${OBJECT_STORE_RESTORE_SECRET_KEY:-geno-restore-local-secret}
+      OBJECT_STORE_BUCKET: geo-reports
+      OBJECT_STORE_BACKUP_BUCKET: geo-backups
+      OBJECT_STORE_BACKUP_ACCESS_KEY: ${OBJECT_STORE_BACKUP_ACCESS_KEY:-geo-backup-local}
+      OBJECT_STORE_BACKUP_SECRET_KEY: ${OBJECT_STORE_BACKUP_SECRET_KEY:-geo-backup-local-secret}
+      OBJECT_STORE_RESTORE_ACCESS_KEY: ${OBJECT_STORE_RESTORE_ACCESS_KEY:-geo-restore-local}
+      OBJECT_STORE_RESTORE_SECRET_KEY: ${OBJECT_STORE_RESTORE_SECRET_KEY:-geo-restore-local-secret}
       OBJECT_STORE_BACKUP_PREFIX: ${OBJECT_STORE_BACKUP_PREFIX:-production/local/}
       OBJECT_STORE_BACKUP_SMOKE_PREFIX: ${OBJECT_STORE_BACKUP_SMOKE_PREFIX:-smoke/local/}
       OBJECT_STORE_RESTORE_PREFIX: ${OBJECT_STORE_RESTORE_PREFIX:-restore-smoke/local/}
@@ -920,11 +920,11 @@ services:
       context: ..
       dockerfile: apps/customer-web/Dockerfile
     environment:
-      API_INTERNAL_BASE_URL: http://api:${GENO_API_CONTAINER_PORT:-8000}
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:${GENO_API_HOST_PORT:-8000}
-      GENO_RUNTIME_AUTH_MODE: ${GENO_RUNTIME_AUTH_MODE:-header}
-      GENO_RUNTIME_SESSION_COOKIE_SECURE: ${GENO_RUNTIME_SESSION_COOKIE_SECURE:-0}
-      PORT: ${GENO_CUSTOMER_WEB_CONTAINER_PORT:-3000}
+      API_INTERNAL_BASE_URL: http://api:${GEO_API_CONTAINER_PORT:-8000}
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:${GEO_API_HOST_PORT:-8000}
+      GEO_RUNTIME_AUTH_MODE: ${GEO_RUNTIME_AUTH_MODE:-header}
+      GEO_RUNTIME_SESSION_COOKIE_SECURE: ${GEO_RUNTIME_SESSION_COOKIE_SECURE:-0}
+      PORT: ${GEO_CUSTOMER_WEB_CONTAINER_PORT:-3000}
     command:
       - npm
       - run
@@ -933,9 +933,9 @@ services:
       - -H
       - 0.0.0.0
       - -p
-      - "${GENO_CUSTOMER_WEB_CONTAINER_PORT:-3000}"
+      - "${GEO_CUSTOMER_WEB_CONTAINER_PORT:-3000}"
     ports:
-      - "${GENO_CUSTOMER_WEB_HOST_PORT:-3000}:${GENO_CUSTOMER_WEB_CONTAINER_PORT:-3000}"
+      - "${GEO_CUSTOMER_WEB_HOST_PORT:-3000}:${GEO_CUSTOMER_WEB_CONTAINER_PORT:-3000}"
     depends_on:
       api:
         condition: service_started
@@ -945,14 +945,14 @@ services:
       context: ..
       dockerfile: apps/admin-web/Dockerfile
     environment:
-      API_INTERNAL_BASE_URL: http://api:${GENO_API_CONTAINER_PORT:-8000}
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:${GENO_API_HOST_PORT:-8000}
-      NEXT_PUBLIC_CUSTOMER_WEB_BASE_URL: http://localhost:${GENO_CUSTOMER_WEB_HOST_PORT:-3000}
-      GENO_ADMIN_ACTOR_ID: ${GENO_ADMIN_ACTOR_ID:-runtime-console}
-      GENO_ADMIN_DEV_TOOLS_ENABLED: ${GENO_ADMIN_DEV_TOOLS_ENABLED:-0}
-      GENO_RUNTIME_AUTH_MODE: ${GENO_RUNTIME_AUTH_MODE:-header}
-      GENO_RUNTIME_SESSION_COOKIE_SECURE: ${GENO_RUNTIME_SESSION_COOKIE_SECURE:-0}
-      PORT: ${GENO_ADMIN_WEB_CONTAINER_PORT:-3000}
+      API_INTERNAL_BASE_URL: http://api:${GEO_API_CONTAINER_PORT:-8000}
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:${GEO_API_HOST_PORT:-8000}
+      NEXT_PUBLIC_CUSTOMER_WEB_BASE_URL: http://localhost:${GEO_CUSTOMER_WEB_HOST_PORT:-3000}
+      GEO_ADMIN_ACTOR_ID: ${GEO_ADMIN_ACTOR_ID:-runtime-console}
+      GEO_ADMIN_DEV_TOOLS_ENABLED: ${GEO_ADMIN_DEV_TOOLS_ENABLED:-0}
+      GEO_RUNTIME_AUTH_MODE: ${GEO_RUNTIME_AUTH_MODE:-header}
+      GEO_RUNTIME_SESSION_COOKIE_SECURE: ${GEO_RUNTIME_SESSION_COOKIE_SECURE:-0}
+      PORT: ${GEO_ADMIN_WEB_CONTAINER_PORT:-3000}
     command:
       - npm
       - run
@@ -961,9 +961,9 @@ services:
       - -H
       - 0.0.0.0
       - -p
-      - "${GENO_ADMIN_WEB_CONTAINER_PORT:-3000}"
+      - "${GEO_ADMIN_WEB_CONTAINER_PORT:-3000}"
     ports:
-      - "${GENO_ADMIN_WEB_HOST_PORT:-3001}:${GENO_ADMIN_WEB_CONTAINER_PORT:-3000}"
+      - "${GEO_ADMIN_WEB_HOST_PORT:-3001}:${GEO_ADMIN_WEB_CONTAINER_PORT:-3000}"
     volumes:
       - ../docs:/app/docs:ro
     depends_on:
@@ -977,7 +977,7 @@ services:
       context: ..
       dockerfile: apps/dashboard-web/Dockerfile
     environment:
-      PORT: ${GENO_DASHBOARD_WEB_CONTAINER_PORT:-3000}
+      PORT: ${GEO_DASHBOARD_WEB_CONTAINER_PORT:-3000}
     command:
       - npm
       - run
@@ -986,9 +986,9 @@ services:
       - -H
       - 0.0.0.0
       - -p
-      - "${GENO_DASHBOARD_WEB_CONTAINER_PORT:-3000}"
+      - "${GEO_DASHBOARD_WEB_CONTAINER_PORT:-3000}"
     ports:
-      - "${GENO_DASHBOARD_WEB_HOST_PORT:-3002}:${GENO_DASHBOARD_WEB_CONTAINER_PORT:-3000}"
+      - "${GEO_DASHBOARD_WEB_HOST_PORT:-3002}:${GEO_DASHBOARD_WEB_CONTAINER_PORT:-3000}"
 
 volumes:
   postgres_data:

@@ -14,19 +14,19 @@ from uuid import UUID, uuid4
 
 import psycopg
 
-from geno_core.bootstrap import build_project_bootstrap
-from geno_core.repositories.schema_v2_tenancy_repository import (
+from geo_core.bootstrap import build_project_bootstrap
+from geo_core.repositories.schema_v2_tenancy_repository import (
     PrivilegedSchemaV2TenancyRepository,
     SchemaV2TenancySeedConflictError,
 )
-from geno_core.schema_v2.tenancy_seed import translate_project_bootstrap_to_v2_seed
+from geo_core.schema_v2.tenancy_seed import translate_project_bootstrap_to_v2_seed
 
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNNER = ROOT / "scripts/schema_v2_runner.py"
 SCHEMA_ROOT = Path(os.getenv("SCHEMA_V2_ROOT", "/schema-v2"))
 BEHAVIOR_TEST_ENABLED = os.getenv("SCHEMA_V2_BEHAVIOR_TEST") == "1"
-LOCK_NAME = "geno:schema-v2:install"
+LOCK_NAME = "geo:schema-v2:install"
 
 
 @unittest.skipUnless(BEHAVIOR_TEST_ENABLED, "SCHEMA_V2_BEHAVIOR_TEST=1 is required")
@@ -45,9 +45,9 @@ class SchemaV2PostgresBehaviorTest(unittest.TestCase):
                 "--schema-root",
                 str(SCHEMA_ROOT),
                 "--app-version",
-                os.getenv("GENO_APP_VERSION", "0.1.0"),
+                os.getenv("GEO_APP_VERSION", "0.1.0"),
                 "--app-commit",
-                os.getenv("GENO_APP_COMMIT", "behavior-test"),
+                os.getenv("GEO_APP_COMMIT", "behavior-test"),
                 "--lock-timeout-seconds",
                 str(lock_timeout_seconds),
             ],
@@ -120,98 +120,98 @@ class SchemaV2PostgresBehaviorTest(unittest.TestCase):
                 "projects, industry_profiles, market_profiles, tenants CASCADE"
             )
             for signature in (
-                "geno_v2_fail_durable_job_dispatch(uuid, text, uuid, text, text, boolean, integer)",
-                "geno_v2_complete_durable_job_dispatch(uuid, text, uuid)",
-                "geno_v2_heartbeat_durable_job_dispatch(uuid, text, uuid, integer)",
-                "geno_v2_claim_durable_job_dispatch(text, integer, uuid, uuid)",
-                "geno_v2_enqueue_durable_job_dispatch()",
-                "geno_v2_require_finalized_score_evidence()",
-                "geno_v2_record_job_command_audit(uuid, uuid, text, text, uuid, text, text, text, jsonb, jsonb)",
-                "geno_v2_fail_retest_run(uuid, text, uuid, text, text, boolean, integer)",
-                "geno_v2_complete_retest_run(uuid, text, uuid, uuid, jsonb)",
-                "geno_v2_heartbeat_retest_run(uuid, text, uuid, integer)",
-                "geno_v2_claim_retest_run(text, integer, uuid)",
-                "geno_v2_fail_visibility_score_run(uuid, text, uuid, text, text, boolean, integer)",
-                "geno_v2_complete_visibility_score_run(uuid, text, uuid, jsonb)",
-                "geno_v2_heartbeat_visibility_score_run(uuid, text, uuid, integer)",
-                "geno_v2_claim_visibility_score_run(text, integer, uuid)",
-                "geno_v2_fail_collection_job(uuid, text, uuid, text, text, boolean, integer)",
-                "geno_v2_complete_collection_job(uuid, text, uuid, jsonb)",
-                "geno_v2_heartbeat_collection_job(uuid, text, uuid, integer)",
-                "geno_v2_claim_collection_job(text, integer, uuid)",
-                "geno_v2_fail_artifact_finalize(uuid, text, uuid, text, text, boolean, integer)",
-                "geno_v2_complete_artifact_finalize(uuid, text, uuid, text)",
-                "geno_v2_heartbeat_artifact_finalize(uuid, text, uuid, integer)",
-                "geno_v2_claim_artifact_finalize(text, integer, uuid)",
-                "geno_v2_refresh_collection_run_summary(uuid, uuid)",
-                "geno_v2_guard_score_run_profile()",
-                "geno_v2_guard_used_weight_component_update()",
-                "geno_v2_guard_used_weight_profile_update()",
-                "geno_v2_guard_evidence_asset_finalize()",
-                "geno_v2_reject_immutable_domain_update()",
-                "geno_v2_worker_login_startup_ready(text)",
-                "geno_v2_auth_login_startup_ready(text)",
-                "geno_v2_audit_auth_login_provision_receipt()",
-                "geno_v2_validate_auth_login_provision_lineage()",
-                "geno_v2_reject_auth_login_receipt_mutation()",
-                "geno_v2_guard_auth_login_provision_attempt()",
-                "geno_v2_resolve_current_reauth_queue()",
-                "geno_v2_logout_current_session()",
-                "geno_v2_erase_current_auth_delivery_secret()",
-                "geno_v2_confirm_current_auth_delivery()",
-                "geno_v2_redeem_auth_invitation(uuid, uuid, uuid, text, text, text, "
+                "geo_v2_fail_durable_job_dispatch(uuid, text, uuid, text, text, boolean, integer)",
+                "geo_v2_complete_durable_job_dispatch(uuid, text, uuid)",
+                "geo_v2_heartbeat_durable_job_dispatch(uuid, text, uuid, integer)",
+                "geo_v2_claim_durable_job_dispatch(text, integer, uuid, uuid)",
+                "geo_v2_enqueue_durable_job_dispatch()",
+                "geo_v2_require_finalized_score_evidence()",
+                "geo_v2_record_job_command_audit(uuid, uuid, text, text, uuid, text, text, text, jsonb, jsonb)",
+                "geo_v2_fail_retest_run(uuid, text, uuid, text, text, boolean, integer)",
+                "geo_v2_complete_retest_run(uuid, text, uuid, uuid, jsonb)",
+                "geo_v2_heartbeat_retest_run(uuid, text, uuid, integer)",
+                "geo_v2_claim_retest_run(text, integer, uuid)",
+                "geo_v2_fail_visibility_score_run(uuid, text, uuid, text, text, boolean, integer)",
+                "geo_v2_complete_visibility_score_run(uuid, text, uuid, jsonb)",
+                "geo_v2_heartbeat_visibility_score_run(uuid, text, uuid, integer)",
+                "geo_v2_claim_visibility_score_run(text, integer, uuid)",
+                "geo_v2_fail_collection_job(uuid, text, uuid, text, text, boolean, integer)",
+                "geo_v2_complete_collection_job(uuid, text, uuid, jsonb)",
+                "geo_v2_heartbeat_collection_job(uuid, text, uuid, integer)",
+                "geo_v2_claim_collection_job(text, integer, uuid)",
+                "geo_v2_fail_artifact_finalize(uuid, text, uuid, text, text, boolean, integer)",
+                "geo_v2_complete_artifact_finalize(uuid, text, uuid, text)",
+                "geo_v2_heartbeat_artifact_finalize(uuid, text, uuid, integer)",
+                "geo_v2_claim_artifact_finalize(text, integer, uuid)",
+                "geo_v2_refresh_collection_run_summary(uuid, uuid)",
+                "geo_v2_guard_score_run_profile()",
+                "geo_v2_guard_used_weight_component_update()",
+                "geo_v2_guard_used_weight_profile_update()",
+                "geo_v2_guard_evidence_asset_finalize()",
+                "geo_v2_reject_immutable_domain_update()",
+                "geo_v2_worker_login_startup_ready(text)",
+                "geo_v2_auth_login_startup_ready(text)",
+                "geo_v2_audit_auth_login_provision_receipt()",
+                "geo_v2_validate_auth_login_provision_lineage()",
+                "geo_v2_reject_auth_login_receipt_mutation()",
+                "geo_v2_guard_auth_login_provision_attempt()",
+                "geo_v2_resolve_current_reauth_queue()",
+                "geo_v2_logout_current_session()",
+                "geo_v2_erase_current_auth_delivery_secret()",
+                "geo_v2_confirm_current_auth_delivery()",
+                "geo_v2_redeem_auth_invitation(uuid, uuid, uuid, text, text, text, "
                 "text, timestamptz, bytea, text, bytea, timestamptz)",
-                "geno_v2_build_locked_auth_scope(uuid, text)",
-                "geno_v2_expire_project_member_invitation(uuid)",
-                "geno_v2_revoke_project_member_invitation(uuid, text)",
-                "geno_v2_create_project_member_invitation(uuid, uuid, text, text, text, "
+                "geo_v2_build_locked_auth_scope(uuid, text)",
+                "geo_v2_expire_project_member_invitation(uuid)",
+                "geo_v2_revoke_project_member_invitation(uuid, text)",
+                "geo_v2_create_project_member_invitation(uuid, uuid, text, text, text, "
                 "timestamptz)",
-                "geno_v2_preflight_auth_invitation(uuid, text, text, text)",
-                "geno_v2_write_auth_command_audit(text, uuid, uuid, text, text, text, "
+                "geo_v2_preflight_auth_invitation(uuid, text, text, text)",
+                "geo_v2_write_auth_command_audit(text, uuid, uuid, text, text, text, "
                 "text, jsonb, jsonb, text)",
-                "geno_v2_auth_context_has_project_permission(jsonb, uuid, text)",
-                "geno_v2_lock_auth_command_project(uuid, uuid)",
-                "geno_v2_lock_auth_command_context(boolean, boolean)",
-                "geno_v2_consume_auth_preflight_bucket(text, integer, integer, "
+                "geo_v2_auth_context_has_project_permission(jsonb, uuid, text)",
+                "geo_v2_lock_auth_command_project(uuid, uuid)",
+                "geo_v2_lock_auth_command_context(boolean, boolean)",
+                "geo_v2_consume_auth_preflight_bucket(text, integer, integer, "
                 "timestamptz)",
-                "geno_v2_auth_redeem_request_hash(uuid, text, text)",
-                "geno_v2_session_can_read_audit(uuid, uuid, text)",
-                "geno_v2_session_can_read_project_member(uuid, uuid, text)",
-                "geno_v2_session_can_read_tenant_member(uuid, text)",
-                "geno_v2_session_can_read_profile(text, text)",
-                "geno_v2_session_has_project_permission(uuid, uuid, text)",
-                "geno_v2_session_has_tenant_permission(uuid, text)",
-                "geno_v2_session_can_access_tenant(uuid)",
-                "geno_v2_resolve_session_context()",
-                "geno_v2_guard_runtime_session_update()",
-                "geno_v2_validate_runtime_session_snapshot()",
-                "geno_v2_validate_auth_redemption_lineage()",
-                "geno_v2_revoke_sessions_for_authz_change()",
-                "geno_v2_lock_runtime_session_authz_sources()",
-                "geno_v2_revoke_affected_sessions(uuid, text, uuid, text)",
-                "geno_v2_require_auth_writes_enabled()",
-                "geno_v2_lock_auth_write_control()",
-                "geno_v2_guard_auth_write_control_state()",
-                "geno_v2_guard_auth_preflight_rate_limit_state()",
-                "geno_v2_guard_runtime_reauth_state()",
-                "geno_v2_guard_auth_redemption_attempt_state()",
-                "geno_v2_guard_project_member_invitation_state()",
-                "geno_v2_jsonb_text_set(jsonb)",
-                "geno_v2_reject_audit_event_mutation()",
-                "geno_v2_sync_tenant_status_grants()",
-                "geno_v2_sync_project_tenant_grants()",
-                "geno_v2_sync_tenant_member_project_grants()",
-                "geno_v2_authz_can_read_profile(text, text)",
-                "geno_v2_authz_can_access_tenant(uuid)",
-                "geno_v2_authz_has_project_permission(uuid, uuid, text)",
-                "geno_v2_authz_has_tenant_permission(uuid, text)",
-                "geno_v2_runtime_scope_contains(uuid)",
-                "geno_v2_runtime_project_ids()",
-                "geno_v2_runtime_project_id()",
-                "geno_v2_runtime_tenant_id()",
-                "geno_v2_runtime_actor_id()",
-                "geno_v2_role_has_permission(text, text)",
-                "geno_v2_permissions_for_role(text)",
+                "geo_v2_auth_redeem_request_hash(uuid, text, text)",
+                "geo_v2_session_can_read_audit(uuid, uuid, text)",
+                "geo_v2_session_can_read_project_member(uuid, uuid, text)",
+                "geo_v2_session_can_read_tenant_member(uuid, text)",
+                "geo_v2_session_can_read_profile(text, text)",
+                "geo_v2_session_has_project_permission(uuid, uuid, text)",
+                "geo_v2_session_has_tenant_permission(uuid, text)",
+                "geo_v2_session_can_access_tenant(uuid)",
+                "geo_v2_resolve_session_context()",
+                "geo_v2_guard_runtime_session_update()",
+                "geo_v2_validate_runtime_session_snapshot()",
+                "geo_v2_validate_auth_redemption_lineage()",
+                "geo_v2_revoke_sessions_for_authz_change()",
+                "geo_v2_lock_runtime_session_authz_sources()",
+                "geo_v2_revoke_affected_sessions(uuid, text, uuid, text)",
+                "geo_v2_require_auth_writes_enabled()",
+                "geo_v2_lock_auth_write_control()",
+                "geo_v2_guard_auth_write_control_state()",
+                "geo_v2_guard_auth_preflight_rate_limit_state()",
+                "geo_v2_guard_runtime_reauth_state()",
+                "geo_v2_guard_auth_redemption_attempt_state()",
+                "geo_v2_guard_project_member_invitation_state()",
+                "geo_v2_jsonb_text_set(jsonb)",
+                "geo_v2_reject_audit_event_mutation()",
+                "geo_v2_sync_tenant_status_grants()",
+                "geo_v2_sync_project_tenant_grants()",
+                "geo_v2_sync_tenant_member_project_grants()",
+                "geo_v2_authz_can_read_profile(text, text)",
+                "geo_v2_authz_can_access_tenant(uuid)",
+                "geo_v2_authz_has_project_permission(uuid, uuid, text)",
+                "geo_v2_authz_has_tenant_permission(uuid, text)",
+                "geo_v2_runtime_scope_contains(uuid)",
+                "geo_v2_runtime_project_ids()",
+                "geo_v2_runtime_project_id()",
+                "geo_v2_runtime_tenant_id()",
+                "geo_v2_runtime_actor_id()",
+                "geo_v2_role_has_permission(text, text)",
+                "geo_v2_permissions_for_role(text)",
             ):
                 cursor.execute(f"DROP FUNCTION IF EXISTS {signature} CASCADE")
             cursor.execute(
@@ -225,7 +225,7 @@ class SchemaV2PostgresBehaviorTest(unittest.TestCase):
                         JOIN pg_catalog.pg_namespace AS namespace
                           ON namespace.oid = procedure.pronamespace
                         WHERE namespace.nspname = 'public'
-                          AND procedure.proname LIKE 'geno_v2_%'
+                          AND procedure.proname LIKE 'geo_v2_%'
                     LOOP
                         EXECUTE format('DROP FUNCTION IF EXISTS %s CASCADE', routine.signature);
                     END LOOP;
@@ -235,7 +235,7 @@ class SchemaV2PostgresBehaviorTest(unittest.TestCase):
             )
             cursor.execute("DROP TABLE IF EXISTS app_schema_metadata CASCADE")
             cursor.execute("DROP TABLE IF EXISTS schema_migration_ledger CASCADE")
-            cursor.execute("DROP FUNCTION IF EXISTS geno_schema_v2_reject_ledger_mutation()")
+            cursor.execute("DROP FUNCTION IF EXISTS geo_schema_v2_reject_ledger_mutation()")
 
     def _create_dirty_objects(self, connection: psycopg.Connection[object]) -> None:
         with connection.cursor() as cursor:
@@ -304,11 +304,11 @@ class SchemaV2PostgresBehaviorTest(unittest.TestCase):
             self._drop_bootstrap_metadata(connection)
             with connection.cursor() as cursor:
                 cursor.execute(
-                    "ALTER ROLE geno_v2_api_login "
+                    "ALTER ROLE geo_v2_api_login "
                     "SET app.session_token_hash TO 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'"
                 )
                 cursor.execute(
-                    "ALTER ROLE geno_v2_api_login IN DATABASE geno_v2 "
+                    "ALTER ROLE geo_v2_api_login IN DATABASE geo_v2 "
                     "SET app.actor_id TO 'forged@example.test'"
                 )
 
@@ -321,15 +321,15 @@ class SchemaV2PostgresBehaviorTest(unittest.TestCase):
         with psycopg.connect(autocommit=True) as connection:
             with connection.cursor() as cursor:
                 cursor.execute(
-                    "SELECT rolconfig FROM pg_roles WHERE rolname = 'geno_v2_api_login'"
+                    "SELECT rolconfig FROM pg_roles WHERE rolname = 'geo_v2_api_login'"
                 )
                 self.assertIsNone(cursor.fetchone()[0])
                 cursor.execute(
                     "SELECT count(*) FROM pg_db_role_setting "
                     "WHERE setrole = ("
-                    "SELECT oid FROM pg_roles WHERE rolname = 'geno_v2_api_login'"
+                    "SELECT oid FROM pg_roles WHERE rolname = 'geo_v2_api_login'"
                     ") AND setdatabase = ("
-                    "SELECT oid FROM pg_database WHERE datname = 'geno_v2')"
+                    "SELECT oid FROM pg_database WHERE datname = 'geo_v2')"
                 )
                 self.assertEqual(cursor.fetchone()[0], 0)
 
@@ -361,7 +361,7 @@ class SchemaV2PostgresBehaviorTest(unittest.TestCase):
             self.assertEqual(restored.returncode, 0, restored.stdout + restored.stderr)
 
     def test_role_memberships_block_install_in_both_directions(self) -> None:
-        probe_role = "geno_v2_membership_probe"
+        probe_role = "geo_v2_membership_probe"
         with psycopg.connect(autocommit=True) as connection:
             with connection.cursor() as cursor:
                 cursor.execute(f"DROP ROLE IF EXISTS {probe_role}")
@@ -369,12 +369,12 @@ class SchemaV2PostgresBehaviorTest(unittest.TestCase):
 
         membership_pairs = (
             (
-                f"GRANT geno_v2_runtime TO {probe_role}",
-                f"REVOKE geno_v2_runtime FROM {probe_role}",
+                f"GRANT geo_v2_runtime TO {probe_role}",
+                f"REVOKE geo_v2_runtime FROM {probe_role}",
             ),
             (
-                f"GRANT {probe_role} TO geno_v2_authz_owner",
-                f"REVOKE {probe_role} FROM geno_v2_authz_owner",
+                f"GRANT {probe_role} TO geo_v2_authz_owner",
+                f"REVOKE {probe_role} FROM geo_v2_authz_owner",
             ),
         )
         try:
@@ -408,8 +408,8 @@ class SchemaV2PostgresBehaviorTest(unittest.TestCase):
         finally:
             with psycopg.connect(autocommit=True) as connection:
                 with connection.cursor() as cursor:
-                    cursor.execute(f"REVOKE geno_v2_runtime FROM {probe_role}")
-                    cursor.execute(f"REVOKE {probe_role} FROM geno_v2_authz_owner")
+                    cursor.execute(f"REVOKE geo_v2_runtime FROM {probe_role}")
+                    cursor.execute(f"REVOKE {probe_role} FROM geo_v2_authz_owner")
                     cursor.execute(f"DROP ROLE IF EXISTS {probe_role}")
 
 
@@ -649,7 +649,7 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                 cursor.execute(
                     "SELECT DISTINCT permission FROM unnest(%s::text[]) AS role(role_name) "
                     "CROSS JOIN LATERAL unnest("
-                    "geno_v2_permissions_for_role(role.role_name)) AS item(permission) "
+                    "geo_v2_permissions_for_role(role.role_name)) AS item(permission) "
                     "ORDER BY permission",
                     (project_roles,),
                 )
@@ -919,9 +919,9 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
     def _set_forged_runtime_context(self, cursor: psycopg.Cursor[object]) -> None:
         cursor.execute("RESET ROLE")
         cursor.execute("RESET ALL")
-        cursor.execute("SET ROLE geno_v2_api_login")
+        cursor.execute("SET ROLE geo_v2_api_login")
         cursor.execute("BEGIN")
-        cursor.execute("SET LOCAL ROLE geno_v2_runtime")
+        cursor.execute("SET LOCAL ROLE geo_v2_runtime")
         cursor.execute(
             "SELECT set_config('app.actor_id', %s, true), "
             "set_config('app.tenant_id', %s, true), "
@@ -944,7 +944,7 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
 
     def _begin_runtime_transaction(self, cursor: psycopg.Cursor[object]) -> None:
         cursor.execute("BEGIN")
-        cursor.execute("SET LOCAL ROLE geno_v2_runtime")
+        cursor.execute("SET LOCAL ROLE geo_v2_runtime")
 
     def _insert_current_scope_session(
         self,
@@ -997,7 +997,7 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
             cursor.execute(
                 "SELECT DISTINCT permission FROM unnest(%s::text[]) AS role(role_name) "
                 "CROSS JOIN LATERAL unnest("
-                "geno_v2_permissions_for_role(role.role_name)) AS item(permission) "
+                "geo_v2_permissions_for_role(role.role_name)) AS item(permission) "
                 "ORDER BY permission",
                 (project_roles,),
             )
@@ -1162,16 +1162,16 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                     "SELECT rolname, rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, "
                     "rolreplication, rolbypassrls FROM pg_roles "
                     "WHERE rolname IN ("
-                    "'geno_v2_api_login', 'geno_v2_runtime', 'geno_v2_authz_owner') "
+                    "'geo_v2_api_login', 'geo_v2_runtime', 'geo_v2_authz_owner') "
                     "ORDER BY rolname"
                 )
                 role_rows = cursor.fetchall()
                 self.assertEqual(
                     role_rows,
                     [
-                        ("geno_v2_api_login", False, False, False, False, False, False),
-                        ("geno_v2_authz_owner", False, False, False, False, False, True),
-                        ("geno_v2_runtime", False, False, False, False, False, False),
+                        ("geo_v2_api_login", False, False, False, False, False, False),
+                        ("geo_v2_authz_owner", False, False, False, False, False, True),
+                        ("geo_v2_runtime", False, False, False, False, False, False),
                     ],
                 )
 
@@ -1220,7 +1220,7 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                 )
                 policy_rows = cursor.fetchall()
                 self.assertEqual({row[0] for row in policy_rows}, readable_tables)
-                self.assertTrue(all(row[1] == ["geno_v2_runtime"] for row in policy_rows))
+                self.assertTrue(all(row[1] == ["geo_v2_runtime"] for row in policy_rows))
 
                 cursor.execute(
                     "SELECT EXISTS ("
@@ -1243,10 +1243,10 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                     with self.subTest(runtime_table_acl=table_name):
                         cursor.execute(
                             "SELECT "
-                            "has_table_privilege('geno_v2_runtime', %s, 'SELECT'), "
-                            "has_table_privilege('geno_v2_runtime', %s, 'INSERT'), "
-                            "has_table_privilege('geno_v2_runtime', %s, 'UPDATE'), "
-                            "has_table_privilege('geno_v2_runtime', %s, 'DELETE')",
+                            "has_table_privilege('geo_v2_runtime', %s, 'SELECT'), "
+                            "has_table_privilege('geo_v2_runtime', %s, 'INSERT'), "
+                            "has_table_privilege('geo_v2_runtime', %s, 'UPDATE'), "
+                            "has_table_privilege('geo_v2_runtime', %s, 'DELETE')",
                             tuple(f"public.{table_name}" for _ in range(4)),
                         )
                         self.assertEqual(
@@ -1255,115 +1255,115 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                         )
 
                 cursor.execute(
-                    "SELECT has_schema_privilege('geno_v2_runtime', 'public', 'USAGE')"
+                    "SELECT has_schema_privilege('geo_v2_runtime', 'public', 'USAGE')"
                 )
                 self.assertTrue(cursor.fetchone()[0])
                 collection_scoring_functions = (
-                    "geno_v2_claim_durable_job_dispatch",
-                    "geno_v2_complete_durable_job_dispatch",
-                    "geno_v2_enqueue_durable_job_dispatch",
-                    "geno_v2_fail_durable_job_dispatch",
-                    "geno_v2_heartbeat_durable_job_dispatch",
-                    "geno_v2_ack_collection_job_cancel",
-                    "geno_v2_ack_retest_run_cancel",
-                    "geno_v2_ack_visibility_score_run_cancel",
-                    "geno_v2_claim_collection_job",
-                    "geno_v2_claim_artifact_finalize",
-                    "geno_v2_claim_retest_run",
-                    "geno_v2_claim_visibility_score_run",
-                    "geno_v2_complete_collection_job",
-                    "geno_v2_complete_artifact_finalize",
-                    "geno_v2_complete_retest_run",
-                    "geno_v2_complete_visibility_score_run",
-                    "geno_v2_fail_collection_job",
-                    "geno_v2_fail_artifact_finalize",
-                    "geno_v2_guard_evidence_asset_finalize",
-                    "geno_v2_require_finalized_score_evidence",
-                    "geno_v2_guard_score_run_profile",
-                    "geno_v2_fail_retest_run",
-                    "geno_v2_fail_visibility_score_run",
-                    "geno_v2_guard_used_weight_component_update",
-                    "geno_v2_guard_used_weight_profile_update",
-                    "geno_v2_heartbeat_collection_job",
-                    "geno_v2_heartbeat_artifact_finalize",
-                    "geno_v2_heartbeat_retest_run",
-                    "geno_v2_heartbeat_visibility_score_run",
-                    "geno_v2_persist_collection_result",
-                    "geno_v2_persist_retest_result",
-                    "geno_v2_persist_visibility_score_result",
-                    "geno_v2_record_job_command_audit",
-                    "geno_v2_refresh_collection_run_summary",
-                    "geno_v2_reject_immutable_domain_update",
-                    "geno_v2_replay_collection_job",
-                    "geno_v2_replay_retest_run",
-                    "geno_v2_replay_visibility_score_run",
-                    "geno_v2_request_collection_job_cancel",
-                    "geno_v2_request_retest_run_cancel",
-                    "geno_v2_request_visibility_score_run_cancel",
+                    "geo_v2_claim_durable_job_dispatch",
+                    "geo_v2_complete_durable_job_dispatch",
+                    "geo_v2_enqueue_durable_job_dispatch",
+                    "geo_v2_fail_durable_job_dispatch",
+                    "geo_v2_heartbeat_durable_job_dispatch",
+                    "geo_v2_ack_collection_job_cancel",
+                    "geo_v2_ack_retest_run_cancel",
+                    "geo_v2_ack_visibility_score_run_cancel",
+                    "geo_v2_claim_collection_job",
+                    "geo_v2_claim_artifact_finalize",
+                    "geo_v2_claim_retest_run",
+                    "geo_v2_claim_visibility_score_run",
+                    "geo_v2_complete_collection_job",
+                    "geo_v2_complete_artifact_finalize",
+                    "geo_v2_complete_retest_run",
+                    "geo_v2_complete_visibility_score_run",
+                    "geo_v2_fail_collection_job",
+                    "geo_v2_fail_artifact_finalize",
+                    "geo_v2_guard_evidence_asset_finalize",
+                    "geo_v2_require_finalized_score_evidence",
+                    "geo_v2_guard_score_run_profile",
+                    "geo_v2_fail_retest_run",
+                    "geo_v2_fail_visibility_score_run",
+                    "geo_v2_guard_used_weight_component_update",
+                    "geo_v2_guard_used_weight_profile_update",
+                    "geo_v2_heartbeat_collection_job",
+                    "geo_v2_heartbeat_artifact_finalize",
+                    "geo_v2_heartbeat_retest_run",
+                    "geo_v2_heartbeat_visibility_score_run",
+                    "geo_v2_persist_collection_result",
+                    "geo_v2_persist_retest_result",
+                    "geo_v2_persist_visibility_score_result",
+                    "geo_v2_record_job_command_audit",
+                    "geo_v2_refresh_collection_run_summary",
+                    "geo_v2_reject_immutable_domain_update",
+                    "geo_v2_replay_collection_job",
+                    "geo_v2_replay_retest_run",
+                    "geo_v2_replay_visibility_score_run",
+                    "geo_v2_request_collection_job_cancel",
+                    "geo_v2_request_retest_run_cancel",
+                    "geo_v2_request_visibility_score_run_cancel",
                 )
                 knowledge_functions = (
-                    "geno_v2_accept_knowledge_risk",
-                    "geno_v2_ack_knowledge_job_cancel",
-                    "geno_v2_begin_finalizing_knowledge_job",
-                    "geno_v2_claim_knowledge_job",
-                    "geno_v2_complete_knowledge_job",
-                    "geno_v2_create_knowledge_governance_version",
-                    "geno_v2_create_knowledge_job",
-                    "geno_v2_create_knowledge_quality_definition",
-                    "geno_v2_fail_knowledge_job",
-                    "geno_v2_guard_candidate_transition",
-                    "geno_v2_guard_fact_head",
-                    "geno_v2_guard_knowledge_asset_head",
-                    "geno_v2_guard_knowledge_risk_acceptance",
-                    "geno_v2_heartbeat_knowledge_job",
-                    "geno_v2_knowledge_job_inputs_ready",
-                    "geno_v2_knowledge_quality_certificate_complete",
-                    "geno_v2_persist_knowledge_job_result",
-                    "geno_v2_read_approved_knowledge",
-                    "geno_v2_read_knowledge_job_input",
-                    "geno_v2_refresh_knowledge_pipeline_state",
-                    "geno_v2_reject_knowledge_immutable_update",
-                    "geno_v2_replay_knowledge_job",
-                    "geno_v2_request_knowledge_job_cancel",
-                    "geno_v2_require_finalized_knowledge_artifact",
-                    "geno_v2_require_finalized_parser_input",
-                    "geno_v2_require_ready_knowledge_job_inputs",
-                    "geno_v2_retry_knowledge_pipeline_stage",
-                    "geno_v2_review_knowledge_fact_candidate",
-                    "geno_v2_set_knowledge_source_status",
-                    "geno_v2_validate_candidate_review_consistency",
-                    "geno_v2_validate_chunk_set_input_kind",
-                    "geno_v2_validate_fact_source_governance_lineage",
-                    "geno_v2_validate_job_quality_definition",
-                    "geno_v2_validate_knowledge_job_result_type",
-                    "geno_v2_validate_knowledge_job_stage",
-                    "geno_v2_validate_knowledge_revision_job_type",
-                    "geno_v2_validate_knowledge_subject",
-                    "geno_v2_withdraw_knowledge_fact",
+                    "geo_v2_accept_knowledge_risk",
+                    "geo_v2_ack_knowledge_job_cancel",
+                    "geo_v2_begin_finalizing_knowledge_job",
+                    "geo_v2_claim_knowledge_job",
+                    "geo_v2_complete_knowledge_job",
+                    "geo_v2_create_knowledge_governance_version",
+                    "geo_v2_create_knowledge_job",
+                    "geo_v2_create_knowledge_quality_definition",
+                    "geo_v2_fail_knowledge_job",
+                    "geo_v2_guard_candidate_transition",
+                    "geo_v2_guard_fact_head",
+                    "geo_v2_guard_knowledge_asset_head",
+                    "geo_v2_guard_knowledge_risk_acceptance",
+                    "geo_v2_heartbeat_knowledge_job",
+                    "geo_v2_knowledge_job_inputs_ready",
+                    "geo_v2_knowledge_quality_certificate_complete",
+                    "geo_v2_persist_knowledge_job_result",
+                    "geo_v2_read_approved_knowledge",
+                    "geo_v2_read_knowledge_job_input",
+                    "geo_v2_refresh_knowledge_pipeline_state",
+                    "geo_v2_reject_knowledge_immutable_update",
+                    "geo_v2_replay_knowledge_job",
+                    "geo_v2_request_knowledge_job_cancel",
+                    "geo_v2_require_finalized_knowledge_artifact",
+                    "geo_v2_require_finalized_parser_input",
+                    "geo_v2_require_ready_knowledge_job_inputs",
+                    "geo_v2_retry_knowledge_pipeline_stage",
+                    "geo_v2_review_knowledge_fact_candidate",
+                    "geo_v2_set_knowledge_source_status",
+                    "geo_v2_validate_candidate_review_consistency",
+                    "geo_v2_validate_chunk_set_input_kind",
+                    "geo_v2_validate_fact_source_governance_lineage",
+                    "geo_v2_validate_job_quality_definition",
+                    "geo_v2_validate_knowledge_job_result_type",
+                    "geo_v2_validate_knowledge_job_stage",
+                    "geo_v2_validate_knowledge_revision_job_type",
+                    "geo_v2_validate_knowledge_subject",
+                    "geo_v2_withdraw_knowledge_fact",
                 )
                 report_functions = (
-                    "geno_v2_claim_notification_delivery",
-                    "geno_v2_claim_report_generation_job",
-                    "geno_v2_complete_notification_delivery",
-                    "geno_v2_complete_report_generation_job",
-                    "geno_v2_create_report_generation_job",
-                    "geno_v2_fail_notification_delivery",
-                    "geno_v2_fail_report_generation_job",
-                    "geno_v2_heartbeat_notification_delivery",
-                    "geno_v2_heartbeat_report_generation_job",
-                    "geno_v2_persist_report_generation_result",
-                    "geno_v2_read_portal_reports",
-                    "geno_v2_reject_report_immutable_update",
-                    "geno_v2_require_finalized_report_artifact",
+                    "geo_v2_claim_notification_delivery",
+                    "geo_v2_claim_report_generation_job",
+                    "geo_v2_complete_notification_delivery",
+                    "geo_v2_complete_report_generation_job",
+                    "geo_v2_create_report_generation_job",
+                    "geo_v2_fail_notification_delivery",
+                    "geo_v2_fail_report_generation_job",
+                    "geo_v2_heartbeat_notification_delivery",
+                    "geo_v2_heartbeat_report_generation_job",
+                    "geo_v2_persist_report_generation_result",
+                    "geo_v2_read_portal_reports",
+                    "geo_v2_reject_report_immutable_update",
+                    "geo_v2_require_finalized_report_artifact",
                 )
                 geo_command_functions = (
-                    "geno_v2_create_geo_campaign",
-                    "geno_v2_create_project_destination",
-                    "geno_v2_qualify_project_destination",
-                    "geno_v2_create_placement_opportunity",
-                    "geno_v2_read_geo_campaigns",
-                    "geno_v2_reject_unqualified_destination_submission",
-                    "geno_v2_reject_geo_placement_immutable_update",
+                    "geo_v2_create_geo_campaign",
+                    "geo_v2_create_project_destination",
+                    "geo_v2_qualify_project_destination",
+                    "geo_v2_create_placement_opportunity",
+                    "geo_v2_read_geo_campaigns",
+                    "geo_v2_reject_unqualified_destination_submission",
+                    "geo_v2_reject_geo_placement_immutable_update",
                 )
                 non_auth_functions = (
                     collection_scoring_functions + knowledge_functions + report_functions
@@ -1371,32 +1371,32 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                 )
                 cursor.execute(
                     "SELECT proname, "
-                    "has_function_privilege('geno_v2_runtime', pg_proc.oid, 'EXECUTE') "
+                    "has_function_privilege('geo_v2_runtime', pg_proc.oid, 'EXECUTE') "
                     "FROM pg_proc JOIN pg_namespace ON pg_namespace.oid = pronamespace "
-                    "WHERE nspname = 'public' AND proname LIKE 'geno_v2_%%' "
+                    "WHERE nspname = 'public' AND proname LIKE 'geo_v2_%%' "
                     "AND NOT (proname = ANY(%s)) ORDER BY proname",
                     (list(non_auth_functions),),
                 )
                 function_acl_rows = cursor.fetchall()
                 runtime_function_names = {
-                    "geno_v2_auth_login_startup_ready",
-                    "geno_v2_confirm_current_auth_delivery",
-                    "geno_v2_create_project_member_invitation",
-                    "geno_v2_erase_current_auth_delivery_secret",
-                    "geno_v2_expire_project_member_invitation",
-                    "geno_v2_logout_current_session",
-                    "geno_v2_preflight_auth_invitation",
-                    "geno_v2_redeem_auth_invitation",
-                    "geno_v2_resolve_current_reauth_queue",
-                    "geno_v2_revoke_project_member_invitation",
-                    "geno_v2_resolve_session_context",
-                    "geno_v2_session_can_access_tenant",
-                    "geno_v2_session_can_read_audit",
-                    "geno_v2_session_can_read_project_member",
-                    "geno_v2_session_can_read_profile",
-                    "geno_v2_session_can_read_tenant_member",
-                    "geno_v2_session_has_project_permission",
-                    "geno_v2_session_has_tenant_permission",
+                    "geo_v2_auth_login_startup_ready",
+                    "geo_v2_confirm_current_auth_delivery",
+                    "geo_v2_create_project_member_invitation",
+                    "geo_v2_erase_current_auth_delivery_secret",
+                    "geo_v2_expire_project_member_invitation",
+                    "geo_v2_logout_current_session",
+                    "geo_v2_preflight_auth_invitation",
+                    "geo_v2_redeem_auth_invitation",
+                    "geo_v2_resolve_current_reauth_queue",
+                    "geo_v2_revoke_project_member_invitation",
+                    "geo_v2_resolve_session_context",
+                    "geo_v2_session_can_access_tenant",
+                    "geo_v2_session_can_read_audit",
+                    "geo_v2_session_can_read_project_member",
+                    "geo_v2_session_can_read_profile",
+                    "geo_v2_session_can_read_tenant_member",
+                    "geo_v2_session_has_project_permission",
+                    "geo_v2_session_has_tenant_permission",
                 }
                 self.assertEqual(
                     {row[0] for row in function_acl_rows if row[1]},
@@ -1406,7 +1406,7 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                 cursor.execute(
                     "SELECT proname, pg_get_userbyid(proowner), prosecdef, proconfig "
                     "FROM pg_proc JOIN pg_namespace ON pg_namespace.oid = pronamespace "
-                    "WHERE nspname = 'public' AND proname LIKE 'geno_v2_%%' "
+                    "WHERE nspname = 'public' AND proname LIKE 'geo_v2_%%' "
                     "AND NOT (proname = ANY(%s)) ORDER BY proname",
                     (list(non_auth_functions),),
                 )
@@ -1414,56 +1414,56 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                 self.assertEqual(
                     {row[0] for row in function_rows},
                     {
-                        "geno_v2_audit_auth_login_provision_receipt",
-                        "geno_v2_auth_login_startup_ready",
-                        "geno_v2_worker_login_startup_ready",
-                        "geno_v2_auth_context_has_project_permission",
-                        "geno_v2_auth_redeem_request_hash",
-                        "geno_v2_build_locked_auth_scope",
-                        "geno_v2_confirm_current_auth_delivery",
-                        "geno_v2_consume_auth_preflight_bucket",
-                        "geno_v2_create_project_member_invitation",
-                        "geno_v2_erase_current_auth_delivery_secret",
-                        "geno_v2_expire_project_member_invitation",
-                        "geno_v2_lock_auth_command_context",
-                        "geno_v2_lock_auth_command_project",
-                        "geno_v2_lock_auth_write_control",
-                        "geno_v2_logout_current_session",
-                        "geno_v2_preflight_auth_invitation",
-                        "geno_v2_redeem_auth_invitation",
-                        "geno_v2_resolve_current_reauth_queue",
-                        "geno_v2_revoke_project_member_invitation",
-                        "geno_v2_write_auth_command_audit",
-                        "geno_v2_permissions_for_role",
-                        "geno_v2_reject_audit_event_mutation",
-                        "geno_v2_role_has_permission",
-                        "geno_v2_sync_project_tenant_grants",
-                        "geno_v2_sync_tenant_member_project_grants",
-                        "geno_v2_sync_tenant_status_grants",
-                        "geno_v2_jsonb_text_set",
-                        "geno_v2_validate_auth_redemption_lineage",
-                        "geno_v2_validate_auth_login_provision_lineage",
-                        "geno_v2_validate_runtime_session_snapshot",
-                        "geno_v2_guard_runtime_session_update",
-                        "geno_v2_guard_project_member_invitation_state",
-                        "geno_v2_guard_auth_redemption_attempt_state",
-                        "geno_v2_guard_runtime_reauth_state",
-                        "geno_v2_guard_auth_write_control_state",
-                        "geno_v2_guard_auth_preflight_rate_limit_state",
-                        "geno_v2_guard_auth_login_provision_attempt",
-                        "geno_v2_require_auth_writes_enabled",
-                        "geno_v2_reject_auth_login_receipt_mutation",
-                        "geno_v2_revoke_affected_sessions",
-                        "geno_v2_lock_runtime_session_authz_sources",
-                        "geno_v2_revoke_sessions_for_authz_change",
-                        "geno_v2_resolve_session_context",
-                        "geno_v2_session_can_access_tenant",
-                        "geno_v2_session_has_tenant_permission",
-                        "geno_v2_session_has_project_permission",
-                        "geno_v2_session_can_read_profile",
-                        "geno_v2_session_can_read_project_member",
-                        "geno_v2_session_can_read_tenant_member",
-                        "geno_v2_session_can_read_audit",
+                        "geo_v2_audit_auth_login_provision_receipt",
+                        "geo_v2_auth_login_startup_ready",
+                        "geo_v2_worker_login_startup_ready",
+                        "geo_v2_auth_context_has_project_permission",
+                        "geo_v2_auth_redeem_request_hash",
+                        "geo_v2_build_locked_auth_scope",
+                        "geo_v2_confirm_current_auth_delivery",
+                        "geo_v2_consume_auth_preflight_bucket",
+                        "geo_v2_create_project_member_invitation",
+                        "geo_v2_erase_current_auth_delivery_secret",
+                        "geo_v2_expire_project_member_invitation",
+                        "geo_v2_lock_auth_command_context",
+                        "geo_v2_lock_auth_command_project",
+                        "geo_v2_lock_auth_write_control",
+                        "geo_v2_logout_current_session",
+                        "geo_v2_preflight_auth_invitation",
+                        "geo_v2_redeem_auth_invitation",
+                        "geo_v2_resolve_current_reauth_queue",
+                        "geo_v2_revoke_project_member_invitation",
+                        "geo_v2_write_auth_command_audit",
+                        "geo_v2_permissions_for_role",
+                        "geo_v2_reject_audit_event_mutation",
+                        "geo_v2_role_has_permission",
+                        "geo_v2_sync_project_tenant_grants",
+                        "geo_v2_sync_tenant_member_project_grants",
+                        "geo_v2_sync_tenant_status_grants",
+                        "geo_v2_jsonb_text_set",
+                        "geo_v2_validate_auth_redemption_lineage",
+                        "geo_v2_validate_auth_login_provision_lineage",
+                        "geo_v2_validate_runtime_session_snapshot",
+                        "geo_v2_guard_runtime_session_update",
+                        "geo_v2_guard_project_member_invitation_state",
+                        "geo_v2_guard_auth_redemption_attempt_state",
+                        "geo_v2_guard_runtime_reauth_state",
+                        "geo_v2_guard_auth_write_control_state",
+                        "geo_v2_guard_auth_preflight_rate_limit_state",
+                        "geo_v2_guard_auth_login_provision_attempt",
+                        "geo_v2_require_auth_writes_enabled",
+                        "geo_v2_reject_auth_login_receipt_mutation",
+                        "geo_v2_revoke_affected_sessions",
+                        "geo_v2_lock_runtime_session_authz_sources",
+                        "geo_v2_revoke_sessions_for_authz_change",
+                        "geo_v2_resolve_session_context",
+                        "geo_v2_session_can_access_tenant",
+                        "geo_v2_session_has_tenant_permission",
+                        "geo_v2_session_has_project_permission",
+                        "geo_v2_session_can_read_profile",
+                        "geo_v2_session_can_read_project_member",
+                        "geo_v2_session_can_read_tenant_member",
+                        "geo_v2_session_can_read_audit",
                     },
                 )
                 cursor.execute(
@@ -1473,51 +1473,51 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                 database_owner = cursor.fetchone()[0]
                 function_owners = {row[0]: row[1] for row in function_rows}
                 self.assertEqual(
-                    function_owners.pop("geno_v2_lock_runtime_session_authz_sources"),
+                    function_owners.pop("geo_v2_lock_runtime_session_authz_sources"),
                     database_owner,
                 )
-                self.assertEqual(set(function_owners.values()), {"geno_v2_authz_owner"})
+                self.assertEqual(set(function_owners.values()), {"geo_v2_authz_owner"})
                 security_definer_functions = {row[0] for row in function_rows if row[2]}
                 self.assertEqual(
                     security_definer_functions,
                     {
-                        "geno_v2_audit_auth_login_provision_receipt",
-                        "geno_v2_auth_login_startup_ready",
-                        "geno_v2_worker_login_startup_ready",
-                        "geno_v2_auth_context_has_project_permission",
-                        "geno_v2_auth_redeem_request_hash",
-                        "geno_v2_build_locked_auth_scope",
-                        "geno_v2_confirm_current_auth_delivery",
-                        "geno_v2_consume_auth_preflight_bucket",
-                        "geno_v2_create_project_member_invitation",
-                        "geno_v2_erase_current_auth_delivery_secret",
-                        "geno_v2_expire_project_member_invitation",
-                        "geno_v2_lock_auth_command_context",
-                        "geno_v2_lock_auth_command_project",
-                        "geno_v2_lock_auth_write_control",
-                        "geno_v2_logout_current_session",
-                        "geno_v2_preflight_auth_invitation",
-                        "geno_v2_redeem_auth_invitation",
-                        "geno_v2_resolve_current_reauth_queue",
-                        "geno_v2_revoke_project_member_invitation",
-                        "geno_v2_write_auth_command_audit",
-                        "geno_v2_sync_project_tenant_grants",
-                        "geno_v2_sync_tenant_member_project_grants",
-                        "geno_v2_sync_tenant_status_grants",
-                        "geno_v2_validate_auth_redemption_lineage",
-                        "geno_v2_validate_runtime_session_snapshot",
-                        "geno_v2_require_auth_writes_enabled",
-                        "geno_v2_revoke_affected_sessions",
-                        "geno_v2_lock_runtime_session_authz_sources",
-                        "geno_v2_revoke_sessions_for_authz_change",
-                        "geno_v2_resolve_session_context",
-                        "geno_v2_session_can_access_tenant",
-                        "geno_v2_session_has_tenant_permission",
-                        "geno_v2_session_has_project_permission",
-                        "geno_v2_session_can_read_profile",
-                        "geno_v2_session_can_read_project_member",
-                        "geno_v2_session_can_read_tenant_member",
-                        "geno_v2_session_can_read_audit",
+                        "geo_v2_audit_auth_login_provision_receipt",
+                        "geo_v2_auth_login_startup_ready",
+                        "geo_v2_worker_login_startup_ready",
+                        "geo_v2_auth_context_has_project_permission",
+                        "geo_v2_auth_redeem_request_hash",
+                        "geo_v2_build_locked_auth_scope",
+                        "geo_v2_confirm_current_auth_delivery",
+                        "geo_v2_consume_auth_preflight_bucket",
+                        "geo_v2_create_project_member_invitation",
+                        "geo_v2_erase_current_auth_delivery_secret",
+                        "geo_v2_expire_project_member_invitation",
+                        "geo_v2_lock_auth_command_context",
+                        "geo_v2_lock_auth_command_project",
+                        "geo_v2_lock_auth_write_control",
+                        "geo_v2_logout_current_session",
+                        "geo_v2_preflight_auth_invitation",
+                        "geo_v2_redeem_auth_invitation",
+                        "geo_v2_resolve_current_reauth_queue",
+                        "geo_v2_revoke_project_member_invitation",
+                        "geo_v2_write_auth_command_audit",
+                        "geo_v2_sync_project_tenant_grants",
+                        "geo_v2_sync_tenant_member_project_grants",
+                        "geo_v2_sync_tenant_status_grants",
+                        "geo_v2_validate_auth_redemption_lineage",
+                        "geo_v2_validate_runtime_session_snapshot",
+                        "geo_v2_require_auth_writes_enabled",
+                        "geo_v2_revoke_affected_sessions",
+                        "geo_v2_lock_runtime_session_authz_sources",
+                        "geo_v2_revoke_sessions_for_authz_change",
+                        "geo_v2_resolve_session_context",
+                        "geo_v2_session_can_access_tenant",
+                        "geo_v2_session_has_tenant_permission",
+                        "geo_v2_session_has_project_permission",
+                        "geo_v2_session_can_read_profile",
+                        "geo_v2_session_can_read_project_member",
+                        "geo_v2_session_can_read_tenant_member",
+                        "geo_v2_session_can_read_audit",
                     },
                 )
                 self.assertTrue(all(row[3] == ["search_path=pg_catalog"] for row in function_rows))
@@ -1530,16 +1530,16 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                     "JOIN pg_roles AS granted ON granted.oid = membership.roleid "
                     "JOIN pg_roles AS member_role ON member_role.oid = membership.member "
                     "WHERE granted.rolname IN ("
-                    "'geno_v2_runtime', 'geno_v2_authz_owner', 'geno_v2_api_login') "
+                    "'geo_v2_runtime', 'geo_v2_authz_owner', 'geo_v2_api_login') "
                     "OR member_role.rolname IN ("
-                    "'geno_v2_runtime', 'geno_v2_authz_owner', 'geno_v2_api_login')"
+                    "'geo_v2_runtime', 'geo_v2_authz_owner', 'geo_v2_api_login')"
                 )
                 self.assertEqual(
                     cursor.fetchall(),
                     [
                         (
-                            "geno_v2_runtime",
-                            "geno_v2_api_login",
+                            "geo_v2_runtime",
+                            "geo_v2_api_login",
                             False,
                             False,
                             True,
@@ -1548,51 +1548,51 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                 )
                 cursor.execute(
                     "SELECT rolpassword IS NULL FROM pg_authid "
-                    "WHERE rolname = 'geno_v2_api_login'"
+                    "WHERE rolname = 'geo_v2_api_login'"
                 )
                 self.assertTrue(cursor.fetchone()[0])
                 cursor.execute(
-                    "SELECT rolconfig FROM pg_roles WHERE rolname = 'geno_v2_api_login'"
+                    "SELECT rolconfig FROM pg_roles WHERE rolname = 'geo_v2_api_login'"
                 )
                 self.assertIsNone(cursor.fetchone()[0])
                 cursor.execute(
                     "SELECT count(*) FROM pg_db_role_setting "
                     "WHERE setrole = ("
-                    "SELECT oid FROM pg_roles WHERE rolname = 'geno_v2_api_login'"
+                    "SELECT oid FROM pg_roles WHERE rolname = 'geo_v2_api_login'"
                     ")"
                 )
                 self.assertEqual(cursor.fetchone()[0], 0)
                 cursor.execute(
                     "SELECT has_table_privilege("
-                    "'geno_v2_api_login', 'public.projects', 'SELECT')"
+                    "'geo_v2_api_login', 'public.projects', 'SELECT')"
                 )
                 self.assertFalse(cursor.fetchone()[0])
                 cursor.execute(
                     "SELECT has_table_privilege("
-                    "'geno_v2_authz_owner', 'public.project_member_invitations', 'SELECT'), "
+                    "'geo_v2_authz_owner', 'public.project_member_invitations', 'SELECT'), "
                     "has_table_privilege("
-                    "'geno_v2_authz_owner', "
+                    "'geo_v2_authz_owner', "
                     "'public.auth_invitation_redemption_attempts', 'SELECT'), "
                     "has_table_privilege("
-                    "'geno_v2_authz_owner', 'public.runtime_sessions', 'SELECT')"
+                    "'geo_v2_authz_owner', 'public.runtime_sessions', 'SELECT')"
                 )
                 self.assertEqual(cursor.fetchone(), (True, True, True))
                 cursor.execute(
                     "SELECT has_table_privilege("
-                    "'geno_v2_authz_owner', 'public.runtime_sessions', 'UPDATE'), "
+                    "'geo_v2_authz_owner', 'public.runtime_sessions', 'UPDATE'), "
                     "has_column_privilege("
-                    "'geno_v2_authz_owner', 'public.runtime_sessions', 'status', 'UPDATE'), "
+                    "'geo_v2_authz_owner', 'public.runtime_sessions', 'status', 'UPDATE'), "
                     "has_column_privilege("
-                    "'geno_v2_authz_owner', 'public.runtime_sessions', 'actor_id', 'UPDATE'), "
+                    "'geo_v2_authz_owner', 'public.runtime_sessions', 'actor_id', 'UPDATE'), "
                     "has_table_privilege("
-                    "'geno_v2_authz_owner', 'public.runtime_session_reauth_queue', 'INSERT'), "
+                    "'geo_v2_authz_owner', 'public.runtime_session_reauth_queue', 'INSERT'), "
                     "has_table_privilege("
-                    "'geno_v2_authz_owner', 'public.runtime_session_reauth_queue', 'UPDATE'), "
+                    "'geo_v2_authz_owner', 'public.runtime_session_reauth_queue', 'UPDATE'), "
                     "has_column_privilege("
-                    "'geno_v2_authz_owner', 'public.runtime_session_reauth_queue', "
+                    "'geo_v2_authz_owner', 'public.runtime_session_reauth_queue', "
                     "'session_id', 'SELECT'), "
                     "has_table_privilege("
-                    "'geno_v2_authz_owner', 'public.auth_runtime_write_controls', 'SELECT')"
+                    "'geo_v2_authz_owner', 'public.auth_runtime_write_controls', 'SELECT')"
                 )
                 self.assertEqual(
                     cursor.fetchone(),
@@ -1608,7 +1608,7 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                     with self.subTest(authz_owner_source_update=source_table):
                         cursor.execute(
                             "SELECT has_table_privilege("
-                            "'geno_v2_authz_owner', %s, 'UPDATE')",
+                            "'geo_v2_authz_owner', %s, 'UPDATE')",
                             (f"public.{source_table}",),
                         )
                         self.assertFalse(cursor.fetchone()[0])
@@ -1622,9 +1622,9 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                 self.assertEqual(cursor.fetchall(), [])
                 cursor.execute(
                     "SELECT has_database_privilege("
-                    "'geno_v2_api_login', current_database(), 'CONNECT'), "
+                    "'geo_v2_api_login', current_database(), 'CONNECT'), "
                     "has_database_privilege("
-                    "'geno_v2_api_login', current_database(), 'TEMPORARY')"
+                    "'geo_v2_api_login', current_database(), 'TEMPORARY')"
                 )
                 self.assertEqual(cursor.fetchone(), (True, False))
                 cursor.execute(
@@ -1636,19 +1636,19 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                 )
                 self.assertEqual(cursor.fetchall(), [])
 
-                probe_role = f"geno_v2_grant_probe_{uuid4().hex}"
+                probe_role = f"geo_v2_grant_probe_{uuid4().hex}"
                 cursor.execute(f"CREATE ROLE {probe_role} NOLOGIN")
                 try:
-                    cursor.execute("SET ROLE geno_v2_api_login")
+                    cursor.execute("SET ROLE geo_v2_api_login")
                     with self.assertRaises(psycopg.errors.InsufficientPrivilege):
-                        cursor.execute(f"GRANT geno_v2_runtime TO {probe_role}")
+                        cursor.execute(f"GRANT geo_v2_runtime TO {probe_role}")
                     cursor.execute("RESET ROLE")
                     cursor.execute(
                         "SELECT "
-                        "pg_has_role('geno_v2_api_login', "
-                        "'geno_v2_authz_owner', 'SET'), "
-                        "pg_has_role('geno_v2_api_login', "
-                        "'geno_v2_authz_owner', 'USAGE')"
+                        "pg_has_role('geo_v2_api_login', "
+                        "'geo_v2_authz_owner', 'SET'), "
+                        "pg_has_role('geo_v2_api_login', "
+                        "'geo_v2_authz_owner', 'USAGE')"
                     )
                     self.assertEqual(cursor.fetchone(), (False, False))
                 finally:
@@ -1708,7 +1708,7 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                     with self.subTest(table_name=table_name):
                         cursor.execute(f"SELECT count(*) FROM public.{table_name}")
                         self.assertEqual(cursor.fetchone()[0], 0)
-                cursor.execute("SELECT * FROM geno_v2_resolve_session_context()")
+                cursor.execute("SELECT * FROM geo_v2_resolve_session_context()")
                 self.assertEqual(cursor.fetchall(), [])
                 for table_name in sensitive_tables:
                     with self.subTest(sensitive_table_name=table_name):
@@ -1721,7 +1721,7 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                 cursor.execute("SAVEPOINT internal_function_check")
                 with self.assertRaises(psycopg.errors.InsufficientPrivilege):
                     cursor.execute(
-                        "SELECT public.geno_v2_permissions_for_role('super_admin')"
+                        "SELECT public.geo_v2_permissions_for_role('super_admin')"
                     )
                 cursor.execute("ROLLBACK TO SAVEPOINT internal_function_check")
                 cursor.execute("RELEASE SAVEPOINT internal_function_check")
@@ -1876,7 +1876,7 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
     def test_06_session_hash_is_the_only_read_authorization_context(self) -> None:
         with psycopg.connect(autocommit=True) as connection:
             with connection.cursor() as cursor:
-                cursor.execute("SET ROLE geno_v2_api_login")
+                cursor.execute("SET ROLE geo_v2_api_login")
 
                 self._begin_runtime_transaction(cursor)
                 cursor.execute(
@@ -1892,7 +1892,7 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                         str(self.project_b1),
                     ),
                 )
-                cursor.execute("SELECT * FROM geno_v2_resolve_session_context()")
+                cursor.execute("SELECT * FROM geo_v2_resolve_session_context()")
                 resolver_rows = cursor.fetchall()
                 self.assertEqual(
                     tuple(column.name for column in cursor.description or ()),
@@ -1947,7 +1947,7 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                             "SELECT set_config('app.session_token_hash', %s, true)",
                             (invalid_hash,),
                         )
-                        cursor.execute("SELECT * FROM geno_v2_resolve_session_context()")
+                        cursor.execute("SELECT * FROM geo_v2_resolve_session_context()")
                         self.assertEqual(cursor.fetchall(), [])
                         cursor.execute("SELECT count(*) FROM projects")
                         self.assertEqual(cursor.fetchone()[0], 0)
@@ -1992,13 +1992,13 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                     "UPDATE tenants SET status = 'disabled' WHERE id = %s",
                     (self.tenant_b,),
                 )
-                cursor.execute("SET ROLE geno_v2_api_login")
+                cursor.execute("SET ROLE geo_v2_api_login")
                 self._begin_runtime_transaction(cursor)
                 cursor.execute(
                     "SELECT set_config('app.session_token_hash', %s, true)",
                     (self.cross_tenant_session_hash,),
                 )
-                cursor.execute("SELECT * FROM geno_v2_resolve_session_context()")
+                cursor.execute("SELECT * FROM geo_v2_resolve_session_context()")
                 self.assertEqual(cursor.fetchall(), [])
                 cursor.execute("COMMIT")
                 cursor.execute("RESET ROLE")
@@ -2396,14 +2396,14 @@ class SchemaV2TenancyPostgresBehaviorTest(unittest.TestCase):
                     "SELECT writes_enabled FROM auth_runtime_write_controls WHERE singleton"
                 )
                 self.assertTrue(cursor.fetchone()[0])
-                cursor.execute("SELECT geno_v2_require_auth_writes_enabled()")
+                cursor.execute("SELECT geo_v2_require_auth_writes_enabled()")
                 cursor.execute(
                     "UPDATE auth_runtime_write_controls SET writes_enabled = false, "
                     "reason = 'behavior-test-disabled', updated_by = 'behavior-test', "
                     "updated_at = clock_timestamp() WHERE singleton"
                 )
                 with self.assertRaises(psycopg.errors.InsufficientPrivilege) as raised:
-                    cursor.execute("SELECT geno_v2_require_auth_writes_enabled()")
+                    cursor.execute("SELECT geo_v2_require_auth_writes_enabled()")
                 self.assertEqual(raised.exception.sqlstate, "42501")
                 self.assertIn("auth_writes_temporarily_disabled", str(raised.exception))
                 cursor.execute(

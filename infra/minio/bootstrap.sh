@@ -1,9 +1,9 @@
 #!/bin/sh
 set -eu
 
-export MC_CONFIG_DIR="${MC_CONFIG_DIR:-/tmp/geno-minio-bootstrap-mc}"
-trap 'rm -rf "$MC_CONFIG_DIR" /tmp/geno-minio-bootstrap' EXIT
-mkdir -p /tmp/geno-minio-bootstrap "${MINIO_BOOTSTRAP_RECEIPT_DIR:-/receipts}"
+export MC_CONFIG_DIR="${MC_CONFIG_DIR:-/tmp/geo-minio-bootstrap-mc}"
+trap 'rm -rf "$MC_CONFIG_DIR" /tmp/geo-minio-bootstrap' EXIT
+mkdir -p /tmp/geo-minio-bootstrap "${MINIO_BOOTSTRAP_RECEIPT_DIR:-/receipts}"
 
 read_secret() {
   value="$(printenv "$1" 2>/dev/null || true)"
@@ -50,13 +50,13 @@ file_sha256() {
 }
 
 endpoint="${MINIO_ENDPOINT:-http://minio:9000}"
-reports_bucket="${OBJECT_STORE_BUCKET:-geno-reports}"
-backup_bucket="${OBJECT_STORE_BACKUP_BUCKET:-geno-backups}"
+reports_bucket="${OBJECT_STORE_BUCKET:-geo-reports}"
+backup_bucket="${OBJECT_STORE_BACKUP_BUCKET:-geo-backups}"
 backup_prefix="${OBJECT_STORE_BACKUP_PREFIX:-production/local/}"
 smoke_prefix="${OBJECT_STORE_BACKUP_SMOKE_PREFIX:-smoke/local/}"
 restore_prefix="${OBJECT_STORE_RESTORE_PREFIX:-restore-smoke/local/}"
 retention_prefix="${OBJECT_STORE_RETENTION_PREFIX:-retention-approved/local/}"
-policy_version="${MINIO_POLICY_VERSION:-geno-object-store-policy-v1}"
+policy_version="${MINIO_POLICY_VERSION:-geo-object-store-policy-v1}"
 receipt_dir="${MINIO_BOOTSTRAP_RECEIPT_DIR:-/receipts}"
 action="${MINIO_BOOTSTRAP_ACTION:-provision}"
 
@@ -128,27 +128,27 @@ mc version enable "root/$backup_bucket" >/dev/null
 mc ilm rule import "root/$reports_bucket" < /bootstrap/reports-lifecycle.json >/dev/null
 mc ilm rule import "root/$backup_bucket" < /bootstrap/backups-lifecycle.json >/dev/null
 
-cat > /tmp/geno-minio-bootstrap/application-policy.json <<EOF
+cat > /tmp/geo-minio-bootstrap/application-policy.json <<EOF
 {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetBucketLocation","s3:ListBucket"],"Resource":["arn:aws:s3:::$reports_bucket"]},{"Effect":"Allow","Action":["s3:GetObject","s3:GetObjectVersion","s3:PutObject"],"Resource":["arn:aws:s3:::$reports_bucket/*"]}]}
 EOF
-cat > /tmp/geno-minio-bootstrap/backup-policy.json <<EOF
+cat > /tmp/geo-minio-bootstrap/backup-policy.json <<EOF
 {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetBucketLocation"],"Resource":["arn:aws:s3:::$reports_bucket","arn:aws:s3:::$backup_bucket"]},{"Effect":"Allow","Action":["s3:ListBucket"],"Resource":["arn:aws:s3:::$reports_bucket"],"Condition":{"StringLike":{"s3:prefix":["*"]}}},{"Effect":"Allow","Action":["s3:GetObject","s3:GetObjectVersion"],"Resource":["arn:aws:s3:::$reports_bucket/*"]},{"Effect":"Allow","Action":["s3:ListBucket"],"Resource":["arn:aws:s3:::$backup_bucket"],"Condition":{"StringLike":{"s3:prefix":["$backup_prefix*","$smoke_prefix*"]}}},{"Effect":"Allow","Action":["s3:GetObject","s3:GetObjectVersion","s3:PutObject"],"Resource":["arn:aws:s3:::$backup_bucket/$backup_prefix*","arn:aws:s3:::$backup_bucket/$smoke_prefix*"]},{"Effect":"Allow","Action":["s3:DeleteObject","s3:DeleteObjectVersion"],"Resource":["arn:aws:s3:::$backup_bucket/$smoke_prefix*"]}]}
 EOF
-cat > /tmp/geno-minio-bootstrap/restore-policy.json <<EOF
+cat > /tmp/geo-minio-bootstrap/restore-policy.json <<EOF
 {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetBucketLocation"],"Resource":["arn:aws:s3:::$backup_bucket","arn:aws:s3:::$reports_bucket"]},{"Effect":"Allow","Action":["s3:ListBucket"],"Resource":["arn:aws:s3:::$backup_bucket"],"Condition":{"StringLike":{"s3:prefix":["$backup_prefix*","$smoke_prefix*"]}}},{"Effect":"Allow","Action":["s3:GetObject","s3:GetObjectVersion"],"Resource":["arn:aws:s3:::$backup_bucket/$backup_prefix*","arn:aws:s3:::$backup_bucket/$smoke_prefix*"]},{"Effect":"Allow","Action":["s3:ListBucket"],"Resource":["arn:aws:s3:::$reports_bucket"],"Condition":{"StringLike":{"s3:prefix":["$restore_prefix*"]}}},{"Effect":"Allow","Action":["s3:GetObject","s3:PutObject","s3:DeleteObject"],"Resource":["arn:aws:s3:::$reports_bucket/$restore_prefix*"]}]}
 EOF
-cat > /tmp/geno-minio-bootstrap/retention-policy.json <<EOF
+cat > /tmp/geo-minio-bootstrap/retention-policy.json <<EOF
 {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetBucketLocation"],"Resource":["arn:aws:s3:::$reports_bucket"]},{"Effect":"Allow","Action":["s3:ListBucket"],"Resource":["arn:aws:s3:::$reports_bucket"],"Condition":{"StringLike":{"s3:prefix":["$retention_prefix*"]}}},{"Effect":"Allow","Action":["s3:DeleteObject","s3:DeleteObjectVersion"],"Resource":["arn:aws:s3:::$reports_bucket/$retention_prefix*"]}]}
 EOF
 
-application_policy="geno-application-v1"
-backup_policy="geno-backup-v1"
-restore_policy="geno-restore-v1"
-retention_policy="geno-retention-v1"
-mc admin policy create root "$application_policy" /tmp/geno-minio-bootstrap/application-policy.json >/dev/null
-mc admin policy create root "$backup_policy" /tmp/geno-minio-bootstrap/backup-policy.json >/dev/null
-mc admin policy create root "$restore_policy" /tmp/geno-minio-bootstrap/restore-policy.json >/dev/null
-mc admin policy create root "$retention_policy" /tmp/geno-minio-bootstrap/retention-policy.json >/dev/null
+application_policy="geo-application-v1"
+backup_policy="geo-backup-v1"
+restore_policy="geo-restore-v1"
+retention_policy="geo-retention-v1"
+mc admin policy create root "$application_policy" /tmp/geo-minio-bootstrap/application-policy.json >/dev/null
+mc admin policy create root "$backup_policy" /tmp/geo-minio-bootstrap/backup-policy.json >/dev/null
+mc admin policy create root "$restore_policy" /tmp/geo-minio-bootstrap/restore-policy.json >/dev/null
+mc admin policy create root "$retention_policy" /tmp/geo-minio-bootstrap/retention-policy.json >/dev/null
 
 mc admin user add root "$application_user" "$application_password" >/dev/null
 mc admin policy attach root "$application_policy" --user "$application_user" >/dev/null
@@ -164,18 +164,18 @@ fi
 
 mc alias set application "$endpoint" "$application_user" "$application_password" >/dev/null
 readiness_key="bootstrap-readiness/object-store-ready.txt"
-printf 'geno production object store readiness\n' > /tmp/geno-minio-bootstrap/readiness.txt
-mc cp /tmp/geno-minio-bootstrap/readiness.txt "application/$reports_bucket/$readiness_key" >/dev/null
+printf 'geo production object store readiness\n' > /tmp/geo-minio-bootstrap/readiness.txt
+mc cp /tmp/geo-minio-bootstrap/readiness.txt "application/$reports_bucket/$readiness_key" >/dev/null
 mc stat "application/$reports_bucket/$readiness_key" >/dev/null
-mc cp "application/$reports_bucket/$readiness_key" /tmp/geno-minio-bootstrap/readiness-restored.txt >/dev/null
-source_hash="$(file_sha256 /tmp/geno-minio-bootstrap/readiness.txt)"
-restored_hash="$(file_sha256 /tmp/geno-minio-bootstrap/readiness-restored.txt)"
+mc cp "application/$reports_bucket/$readiness_key" /tmp/geo-minio-bootstrap/readiness-restored.txt >/dev/null
+source_hash="$(file_sha256 /tmp/geo-minio-bootstrap/readiness.txt)"
+restored_hash="$(file_sha256 /tmp/geo-minio-bootstrap/readiness-restored.txt)"
 test "$source_hash" = "$restored_hash"
 if mc rm "application/$reports_bucket/$readiness_key" >/dev/null 2>&1; then
   echo "Application principal unexpectedly deleted a business object" >&2
   exit 1
 fi
-if mc mb "application/geno-forbidden-$reports_bucket" >/dev/null 2>&1; then
+if mc mb "application/geo-forbidden-$reports_bucket" >/dev/null 2>&1; then
   echo "Application principal unexpectedly created a bucket" >&2
   exit 1
 fi
@@ -188,12 +188,12 @@ if mc admin info application >/dev/null 2>&1; then
   exit 1
 fi
 
-application_hash="$(file_sha256 /tmp/geno-minio-bootstrap/application-policy.json)"
-backup_hash="$(file_sha256 /tmp/geno-minio-bootstrap/backup-policy.json)"
-restore_hash="$(file_sha256 /tmp/geno-minio-bootstrap/restore-policy.json)"
-retention_hash="$(file_sha256 /tmp/geno-minio-bootstrap/retention-policy.json)"
+application_hash="$(file_sha256 /tmp/geo-minio-bootstrap/application-policy.json)"
+backup_hash="$(file_sha256 /tmp/geo-minio-bootstrap/backup-policy.json)"
+restore_hash="$(file_sha256 /tmp/geo-minio-bootstrap/restore-policy.json)"
+retention_hash="$(file_sha256 /tmp/geo-minio-bootstrap/retention-policy.json)"
 verified_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 cat > "$receipt_dir/bootstrap.json" <<EOF
-{"schema_version":"production-object-store-bootstrap-v1","policy_version":"$policy_version","reports_bucket":"$reports_bucket","backup_bucket":"$backup_bucket","backup_prefix":"$backup_prefix","backup_smoke_prefix":"$smoke_prefix","restore_prefix":"$restore_prefix","retention_prefix":"$retention_prefix","versioning":{"$reports_bucket":"enabled","$backup_bucket":"enabled"},"lifecycle":{"$reports_bucket":"geno-reports-lifecycle-v1","$backup_bucket":"geno-backups-lifecycle-v1"},"policy_hashes":{"application":"$application_hash","backup":"$backup_hash","restore":"$restore_hash","retention":"$retention_hash"},"application_readiness_sha256":"$source_hash","application_delete_denied":true,"application_create_bucket_denied":true,"application_cross_bucket_denied":true,"application_admin_denied":true,"ephemeral_principals_enabled":${MINIO_BOOTSTRAP_ENABLE_EPHEMERAL:-0},"verified_at":"$verified_at"}
+{"schema_version":"production-object-store-bootstrap-v1","policy_version":"$policy_version","reports_bucket":"$reports_bucket","backup_bucket":"$backup_bucket","backup_prefix":"$backup_prefix","backup_smoke_prefix":"$smoke_prefix","restore_prefix":"$restore_prefix","retention_prefix":"$retention_prefix","versioning":{"$reports_bucket":"enabled","$backup_bucket":"enabled"},"lifecycle":{"$reports_bucket":"geo-reports-lifecycle-v1","$backup_bucket":"geo-backups-lifecycle-v1"},"policy_hashes":{"application":"$application_hash","backup":"$backup_hash","restore":"$restore_hash","retention":"$retention_hash"},"application_readiness_sha256":"$source_hash","application_delete_denied":true,"application_create_bucket_denied":true,"application_cross_bucket_denied":true,"application_admin_denied":true,"ephemeral_principals_enabled":${MINIO_BOOTSTRAP_ENABLE_EPHEMERAL:-0},"verified_at":"$verified_at"}
 EOF
 echo "MinIO production bootstrap completed: receipt=$receipt_dir/bootstrap.json"

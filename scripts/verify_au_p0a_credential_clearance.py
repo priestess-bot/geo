@@ -487,7 +487,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "path",
         nargs="?",
-        default=os.environ.get("GENO_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to the AU P0a credential clearance JSON.",
     )
     parser.add_argument("--require-cleared", action="store_true", help="Fail unless P0a credentials are cleared.")

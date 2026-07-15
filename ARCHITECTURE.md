@@ -1,6 +1,6 @@
 # 架构图
 
-> **范围说明**：当前仓库本身是文档与规划项目（仓库目录结构见 [README](README.md)）。本文件画的是**规划中要构建的 GENO SaaS 澳大利亚首发系统架构**，源自规格 [docs/GENO-SaaS-AU-首发技术落地路径.md](docs/GENO-SaaS-AU-首发技术落地路径.md) 第 3 章，落地节奏见 [PROJECT-PLAN.md](PROJECT-PLAN.md)。
+> **范围说明**：当前仓库本身是文档与规划项目（仓库目录结构见 [README](README.md)）。本文件画的是**规划中要构建的 GEO SaaS 澳大利亚首发系统架构**，源自规格 [docs/GEO-SaaS-AU-首发技术落地路径.md](docs/GEO-SaaS-AU-首发技术落地路径.md) 第 3 章，落地节奏见 [PROJECT-PLAN.md](PROJECT-PLAN.md)。
 >
 > 三张图：① 分层系统架构（静态结构）· ② 可插拔点（开源优先·可替换）· ③ 证据优先数据流水线（运行时）。Mermaid 在 GitHub / GitLab / VS Code 等可直接渲染。
 >

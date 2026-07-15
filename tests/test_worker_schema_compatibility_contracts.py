@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-from geno_core.schema_compatibility import (
+from geo_core.schema_compatibility import (
     DEFAULT_SCHEMA_CONNECT_TIMEOUT_SECONDS,
     _default_connector,
 )
@@ -110,7 +110,7 @@ class WorkerSchemaCompatibilityContractsTest(unittest.TestCase):
         task_module = importlib.import_module("workers.task_queue.tasks")
         broker = StubBroker(middleware=[])
         broker.add_middleware(task_module.SchemaCompatibilityMiddleware())
-        schema_error = RuntimeError("database_url=postgresql://user:SECRET@db/geno_v2")
+        schema_error = RuntimeError("database_url=postgresql://user:SECRET@db/geo_v2")
 
         with (
             patch.object(
@@ -134,8 +134,8 @@ class WorkerSchemaCompatibilityContractsTest(unittest.TestCase):
         requirements = (ROOT / "apps/api/requirements.txt").read_text(encoding="utf-8")
         self.assertIn("COPY apps/api/requirements.txt ./api-requirements.txt", dockerfile)
         self.assertIn("pip install --no-cache-dir -r api-requirements.txt", dockerfile)
-        self.assertIn("COPY packages/geno_core ./packages/geno_core", dockerfile)
-        self.assertIn("PYTHONPATH=/app:/app/packages/geno_core", dockerfile)
+        self.assertIn("COPY packages/geo_core ./packages/geo_core", dockerfile)
+        self.assertIn("PYTHONPATH=/app:/app/packages/geo_core", dockerfile)
         self.assertIn("psycopg[binary]", requirements)
 
     def test_default_connector_uses_a_bounded_timeout_without_rewriting_the_dsn(self) -> None:
@@ -147,7 +147,7 @@ class WorkerSchemaCompatibilityContractsTest(unittest.TestCase):
             return sentinel
 
         fake_psycopg = SimpleNamespace(connect=connect)
-        database_url = "postgresql://schema-user:SECRET@db.internal/geno_v2"
+        database_url = "postgresql://schema-user:SECRET@db.internal/geo_v2"
         with patch.dict(sys.modules, {"psycopg": fake_psycopg}):
             result = _default_connector(database_url)
 

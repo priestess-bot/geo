@@ -9,9 +9,9 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import UUID
 
-from geno_core.auth_delivery import AuthDeliveryError, AuthDeliveryKeyring
-from geno_core.runtime import RuntimePostgresConnectionPool
-from geno_core.schema_v2.anonymous_auth_uow import (
+from geo_core.auth_delivery import AuthDeliveryError, AuthDeliveryKeyring
+from geo_core.runtime import RuntimePostgresConnectionPool
+from geo_core.schema_v2.anonymous_auth_uow import (
     SchemaV2AnonymousAuthCommitOutcomeUnknownError,
     SchemaV2AnonymousAuthCommandError,
     SchemaV2AnonymousAuthInputError,
@@ -35,7 +35,7 @@ from geno_core.schema_v2.anonymous_auth_uow import (
     hash_raw_invitation_token,
     hmac_source_identity,
 )
-from geno_core.schema_v2.session_uow import (
+from geo_core.schema_v2.session_uow import (
     SchemaV2ApiSessionUnitOfWork,
     SchemaV2SessionTokenHash,
     hash_raw_session_token,
@@ -231,8 +231,8 @@ class SchemaV2AnonymousAuthUnitOfWorkTest(unittest.TestCase):
         self.redemption_material = build_redemption_material(
             RAW_SESSION_TOKEN,
             RAW_CSRF_TOKEN,
-            session_cookie_name="geno-session",
-            csrf_cookie_name="geno-csrf",
+            session_cookie_name="geo-session",
+            csrf_cookie_name="geo-csrf",
             session_expires_at=SESSION_EXPIRY,
             secure=True,
             attempt_id=ATTEMPT_ID,
@@ -241,8 +241,8 @@ class SchemaV2AnonymousAuthUnitOfWorkTest(unittest.TestCase):
         self.old_redemption_material = build_redemption_material(
             "old-raw-session-token-for-cookie",
             "old-raw-csrf-token-for-cookie",
-            session_cookie_name="geno-session",
-            csrf_cookie_name="geno-csrf",
+            session_cookie_name="geo-session",
+            csrf_cookie_name="geo-csrf",
             session_expires_at=SESSION_EXPIRY,
             secure=True,
             attempt_id=OLD_ATTEMPT_ID,
@@ -327,8 +327,8 @@ class SchemaV2AnonymousAuthUnitOfWorkTest(unittest.TestCase):
         )
         decrypted = self.redemption_material._encrypted_delivery.decrypt()
         self.assertEqual(decrypted.absolute_session_expires_at, SESSION_EXPIRY)
-        self.assertIn(f"geno-session={RAW_SESSION_TOKEN}", decrypted.cookie_headers[0])
-        self.assertIn(f"geno-csrf={RAW_CSRF_TOKEN}", decrypted.cookie_headers[1])
+        self.assertIn(f"geo-session={RAW_SESSION_TOKEN}", decrypted.cookie_headers[0])
+        self.assertIn(f"geo-csrf={RAW_CSRF_TOKEN}", decrypted.cookie_headers[1])
 
         invalid_factories = (
             lambda: hash_raw_invitation_token(""),
@@ -346,8 +346,8 @@ class SchemaV2AnonymousAuthUnitOfWorkTest(unittest.TestCase):
             lambda: build_redemption_material(
                 "",
                 RAW_CSRF_TOKEN,
-                session_cookie_name="geno-session",
-                csrf_cookie_name="geno-csrf",
+                session_cookie_name="geo-session",
+                csrf_cookie_name="geo-csrf",
                 session_expires_at=SESSION_EXPIRY,
                 secure=True,
                 attempt_id=ATTEMPT_ID,
@@ -375,7 +375,7 @@ class SchemaV2AnonymousAuthUnitOfWorkTest(unittest.TestCase):
         self.assertEqual(self.redemption_material._session_expires_at, SESSION_EXPIRY)
         delivery = encrypted.decrypt()
         self.assertEqual(delivery.absolute_session_expires_at, SESSION_EXPIRY)
-        self.assertIn(f"geno-session={RAW_SESSION_TOKEN}", delivery.cookie_headers[0])
+        self.assertIn(f"geo-session={RAW_SESSION_TOKEN}", delivery.cookie_headers[0])
         with self.assertRaises(AuthDeliveryError):
             self.delivery_keyring.decrypt(
                 ciphertext=encrypted._ciphertext,
@@ -414,12 +414,12 @@ class SchemaV2AnonymousAuthUnitOfWorkTest(unittest.TestCase):
             connection.events,
             [
                 "SQL:BEGIN",
-                "SQL:SET LOCAL ROLE geno_v2_runtime",
+                "SQL:SET LOCAL ROLE geo_v2_runtime",
                 "SQL:SELECT set_config('app.session_token_hash', '', true)",
                 "SQL:SELECT result_code, compatibility, requested_surface, "
                 "recommended_surface, invitation_role, policy_version, "
                 "invitation_request_count, source_request_count, retry_after_seconds, "
-                "correlation_id FROM public.geno_v2_preflight_auth_invitation(%s, %s, %s, %s)",
+                "correlation_id FROM public.geo_v2_preflight_auth_invitation(%s, %s, %s, %s)",
                 "COMMIT",
                 "SQL:RESET ALL",
                 "SQL:RESET ROLE",
@@ -435,9 +435,9 @@ class SchemaV2AnonymousAuthUnitOfWorkTest(unittest.TestCase):
             hmac.new(RAW_SOURCE_KEY, RAW_SOURCE_IDENTITY.encode(), hashlib.sha256).hexdigest(),
         )
         sql = "\n".join(statement for statement, _params in connection.calls)
-        self.assertEqual(sql.count("geno_v2_preflight_auth_invitation"), 1)
+        self.assertEqual(sql.count("geo_v2_preflight_auth_invitation"), 1)
         for forbidden in (
-            "geno_v2_resolve_session_context",
+            "geo_v2_resolve_session_context",
             "runtime_sessions",
             "app.actor_id",
             "app.tenant_id",
@@ -537,15 +537,15 @@ class SchemaV2AnonymousAuthUnitOfWorkTest(unittest.TestCase):
         self.assertEqual(result.session.project_ids, (PROJECT_ID,))  # type: ignore[union-attr]
         self.assertIsNotNone(result.encrypted_delivery)
         decrypted = result.encrypted_delivery.decrypt()  # type: ignore[union-attr]
-        self.assertIn(f"geno-session={RAW_SESSION_TOKEN}", decrypted.cookie_headers[0])
+        self.assertIn(f"geo-session={RAW_SESSION_TOKEN}", decrypted.cookie_headers[0])
         self.assertNotIn(RAW_SESSION_TOKEN, repr(result))
         self.assertNotIn(RAW_CSRF_TOKEN, repr(result))
 
         statement, params = connection.calls[3]
-        self.assertIn("FROM public.geno_v2_redeem_auth_invitation(", statement)
+        self.assertIn("FROM public.geo_v2_redeem_auth_invitation(", statement)
         self.assertEqual(
             sum(
-                "geno_v2_redeem_auth_invitation" in call_statement
+                "geo_v2_redeem_auth_invitation" in call_statement
                 for call_statement, _params in connection.calls
             ),
             1,
@@ -639,7 +639,7 @@ class SchemaV2AnonymousAuthUnitOfWorkTest(unittest.TestCase):
     def test_database_commit_rollback_and_cleanup_failures_are_redacted(self) -> None:
         database_failure = FakeConnection(
             [compatible_preflight_row()],
-            fail_on_sql="geno_v2_preflight_auth_invitation",
+            fail_on_sql="geo_v2_preflight_auth_invitation",
         )
         with self.assertRaises(SchemaV2AnonymousAuthUnitOfWorkError) as raised:
             self._preflight(database_failure)
@@ -725,7 +725,7 @@ class SchemaV2AnonymousAuthUnitOfWorkTest(unittest.TestCase):
             with self.subTest(sqlstate=sqlstate):
                 connection = FakeConnection(
                     [compatible_preflight_row()],
-                    fail_on_sql="geno_v2_preflight_auth_invitation",
+                    fail_on_sql="geo_v2_preflight_auth_invitation",
                     database_error=FakeDatabaseError(sqlstate, primary_message),
                 )
                 with self.assertRaises(SchemaV2AnonymousAuthCommandError) as raised:
@@ -740,7 +740,7 @@ class SchemaV2AnonymousAuthUnitOfWorkTest(unittest.TestCase):
         ):
             connection = FakeConnection(
                 [compatible_preflight_row()],
-                fail_on_sql="geno_v2_preflight_auth_invitation",
+                fail_on_sql="geo_v2_preflight_auth_invitation",
                 database_error=error,
             )
             with self.assertRaises(SchemaV2AnonymousAuthUnitOfWorkError) as raised:

@@ -253,14 +253,14 @@ def _credential_update_action_plan(
                 "allowed_update_surface_ids": allowed_surfaces,
                 "accepted_injection_methods": [
                     "process_environment",
-                    "GENO_AU_P0A_ENV_FILE",
+                    "GEO_AU_P0A_ENV_FILE",
                     str(record.get("target_env_file") or contract.get("target_env_file") or ".env.au-p0a"),
                 ],
                 "next_command_after_update": "make au-p0a-env",
                 "strict_gate_command": (
-                    "PYTHONPATH=packages/geno_core:apps/api python3 "
+                    "PYTHONPATH=packages/geo_core:apps/api python3 "
                     "scripts/verify_au_p0a_credential_update_receipt.py "
-                    "${GENO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-update-receipt-latest.json} "
+                    "${GEO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-update-receipt-latest.json} "
                     "--require-complete"
                 ),
                 "blocking_reasons": _strings(record.get("blocking_reasons")),
@@ -281,9 +281,9 @@ def _credential_update_action_plan(
         "post_update_validation_sequence": post_update_commands,
         "post_update_validation_command_count": len(post_update_commands),
         "strict_gate_command": (
-            "PYTHONPATH=packages/geno_core:apps/api python3 "
+            "PYTHONPATH=packages/geo_core:apps/api python3 "
             "scripts/verify_au_p0a_credential_update_receipt.py "
-            "${GENO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-update-receipt-latest.json} "
+            "${GEO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-update-receipt-latest.json} "
             "--require-complete"
         ),
         "redaction_policy": {
@@ -478,9 +478,9 @@ def build_au_p0a_credential_update_receipt(
         "post_update_validation_sequence": post_update_commands,
         "strict_gate_commands": [
             "make verify-au-p0a-credential-update-receipt",
-            "PYTHONPATH=packages/geno_core:apps/api python3 "
+            "PYTHONPATH=packages/geo_core:apps/api python3 "
             "scripts/verify_au_p0a_credential_update_receipt.py "
-            "${GENO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-update-receipt-latest.json} "
+            "${GEO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-update-receipt-latest.json} "
             "--require-complete",
         ],
         "runtime_endpoints": {
@@ -503,30 +503,30 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build an AU P0a credential update receipt JSON")
     parser.add_argument(
         "--credential-request-path",
-        default=os.environ.get("GENO_AU_P0A_CREDENTIAL_REQUEST_OUTPUT_PATH", DEFAULT_CREDENTIAL_REQUEST_PATH),
+        default=os.environ.get("GEO_AU_P0A_CREDENTIAL_REQUEST_OUTPUT_PATH", DEFAULT_CREDENTIAL_REQUEST_PATH),
         help="Path to the AU P0a credential request packet JSON.",
     )
     parser.add_argument(
         "--env-report-path",
-        default=os.environ.get("GENO_AU_P0A_ENV_OUTPUT_PATH", DEFAULT_ENV_REPORT_PATH),
+        default=os.environ.get("GEO_AU_P0A_ENV_OUTPUT_PATH", DEFAULT_ENV_REPORT_PATH),
         help="Path to the AU P0a environment report JSON.",
     )
     parser.add_argument(
         "--credential-fulfillment-path",
         default=os.environ.get(
-            "GENO_AU_P0A_CREDENTIAL_FULFILLMENT_OUTPUT_PATH",
+            "GEO_AU_P0A_CREDENTIAL_FULFILLMENT_OUTPUT_PATH",
             DEFAULT_CREDENTIAL_FULFILLMENT_PATH,
         ),
         help="Path to the AU P0a credential fulfillment JSON.",
     )
     parser.add_argument(
         "--credential-clearance-path",
-        default=os.environ.get("GENO_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH", DEFAULT_CREDENTIAL_CLEARANCE_PATH),
+        default=os.environ.get("GEO_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH", DEFAULT_CREDENTIAL_CLEARANCE_PATH),
         help="Path to the AU P0a credential clearance JSON.",
     )
     parser.add_argument(
         "--output-path",
-        default=os.environ.get("GENO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to write the AU P0a credential update receipt JSON.",
     )
     parser.add_argument("--generated-at", default=None, help="Override generated_at timestamp for deterministic tests.")

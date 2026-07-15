@@ -34,7 +34,7 @@ RECOMMENDED_ENV = (
     "GOOGLE_PLAYWRIGHT_BROWSER_NAME",
     "GOOGLE_PLAYWRIGHT_TIMEOUT_SECONDS",
     "GOOGLE_PLAYWRIGHT_VENDOR_COST",
-    "GENO_BROWSER_ARTIFACT_DIR",
+    "GEO_BROWSER_ARTIFACT_DIR",
     "OBJECT_STORE_ENDPOINT",
     "OBJECT_STORE_BUCKET",
 )
@@ -43,7 +43,7 @@ REQUIRED_SELECTOR_GROUPS = (
     ("google_aio_answer_selector", ("GOOGLE_AIO_PLAYWRIGHT_ANSWER_SELECTOR", "GOOGLE_PLAYWRIGHT_ANSWER_SELECTOR")),
 )
 OPTIONAL_FILE_ENVS = ("GOOGLE_PLAYWRIGHT_STORAGE_STATE",)
-OPTIONAL_DIRECTORY_ENVS = ("GENO_BROWSER_ARTIFACT_DIR",)
+OPTIONAL_DIRECTORY_ENVS = ("GEO_BROWSER_ARTIFACT_DIR",)
 
 
 def _utc_now_iso() -> str:
@@ -540,17 +540,17 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build a redacted AU P0b Google Playwright environment report")
     parser.add_argument(
         "--runbook-path",
-        default=os.environ.get("GENO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH", DEFAULT_RUNBOOK_PATH),
+        default=os.environ.get("GEO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH", DEFAULT_RUNBOOK_PATH),
         help="Path to the generated AU P0b Google runbook JSON.",
     )
     parser.add_argument(
         "--env-file",
-        default=os.environ.get("GENO_AU_P0B_GOOGLE_ENV_FILE", DEFAULT_ENV_FILE),
+        default=os.environ.get("GEO_AU_P0B_GOOGLE_ENV_FILE", DEFAULT_ENV_FILE),
         help="Optional env file to parse without shell evaluation. Missing files are allowed.",
     )
     parser.add_argument(
         "--output-path",
-        default=os.environ.get("GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to write the redacted Google Playwright environment report JSON.",
     )
     parser.add_argument(

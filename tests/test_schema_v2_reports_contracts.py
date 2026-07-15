@@ -41,10 +41,10 @@ class SchemaV2ReportsContractsTest(unittest.TestCase):
 
     def test_notification_delivery_has_reclaim_and_fencing_contract(self) -> None:
         for function in (
-            "geno_v2_claim_notification_delivery",
-            "geno_v2_heartbeat_notification_delivery",
-            "geno_v2_complete_notification_delivery",
-            "geno_v2_fail_notification_delivery",
+            "geo_v2_claim_notification_delivery",
+            "geo_v2_heartbeat_notification_delivery",
+            "geo_v2_complete_notification_delivery",
+            "geo_v2_fail_notification_delivery",
         ):
             self.assertIn(function, SQL)
         self.assertIn("lease_expires_at<=statement_timestamp()", SQL)
@@ -52,20 +52,20 @@ class SchemaV2ReportsContractsTest(unittest.TestCase):
 
     def test_report_generation_has_reclaim_and_fencing_contract(self) -> None:
         for function in (
-            "geno_v2_claim_report_generation_job",
-            "geno_v2_heartbeat_report_generation_job",
-            "geno_v2_complete_report_generation_job",
-            "geno_v2_fail_report_generation_job",
+            "geo_v2_claim_report_generation_job",
+            "geo_v2_heartbeat_report_generation_job",
+            "geo_v2_complete_report_generation_job",
+            "geo_v2_fail_report_generation_job",
         ):
             self.assertIn(function, SQL)
         self.assertIn("report completion rejected by lease or lineage", SQL)
-        self.assertIn("geno_v2_create_report_generation_job", SQL)
-        self.assertIn("geno_v2_persist_report_generation_result", SQL)
+        self.assertIn("geo_v2_create_report_generation_job", SQL)
+        self.assertIn("geo_v2_persist_report_generation_result", SQL)
         self.assertIn("report_versions_generation_job_project_fkey", SQL)
         self.assertIn("pg_advisory_xact_lock", SQL)
 
     def test_portal_uses_customer_safe_function_without_runtime_table_policy(self) -> None:
-        self.assertIn("CREATE FUNCTION geno_v2_read_portal_reports", SQL)
+        self.assertIn("CREATE FUNCTION geo_v2_read_portal_reports", SQL)
         self.assertIn("role_item.role_name='client_viewer'", SQL)
         self.assertNotIn("_runtime_read", SQL)
 

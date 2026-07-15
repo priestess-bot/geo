@@ -285,7 +285,7 @@ def verify_au_p0a_credential_request_packet(
         if item.get("secret_redacted") is not True:
             errors.append(f"requested_credential_secret_redaction_missing:{name}")
         accepted_methods = {str(value) for value in _as_list(item.get("accepted_injection_methods"))}
-        if not {"process_environment", "GENO_AU_P0A_ENV_FILE", ".env.au-p0a"}.issubset(accepted_methods):
+        if not {"process_environment", "GEO_AU_P0A_ENV_FILE", ".env.au-p0a"}.issubset(accepted_methods):
             errors.append(f"requested_credential_injection_methods_incomplete:{name}")
 
     if redaction_policy.get("raw_secret_values_allowed") is not False:
@@ -351,7 +351,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "path",
         nargs="?",
-        default=os.environ.get("GENO_AU_P0A_CREDENTIAL_REQUEST_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_P0A_CREDENTIAL_REQUEST_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to the AU P0a credential request packet JSON.",
     )
     parser.add_argument(

@@ -53,7 +53,7 @@ scripts/run_auth_surface_session_e2e.py
 
 禁止修改：
 
-- `apps/api/**`、`packages/geno_core/**`、`infra/db/**`；
+- `apps/api/**`、`packages/geo_core/**`、`infra/db/**`；
 - `infra/docker-compose*.yml`、`Makefile`、总 Gate 脚本/测试；
 - `tests/test_api_contracts.py`、`tests/test_core_contracts.py`、`tests/test_infra_contracts.py`；
 - 冻结 wire contract、设计方案和其他 worktree plan。
@@ -69,7 +69,7 @@ scripts/run_auth_surface_session_e2e.py
 
 - Admin 固定 `requested_surface=admin`，Customer 固定 `customer`。
 - 第一次提交先调 BFF `redeem-prepare`，可先调上游只读 preflight，不得调 redeem。
-- BFF 生成随机 Idempotency-Key，用 `GENO_AUTH_RECOVERY_COOKIE_SECRET` 对以下绑定数据做认证加密或 HMAC 完整性保护：
+- BFF 生成随机 Idempotency-Key，用 `GEO_AUTH_RECOVERY_COOKIE_SECRET` 对以下绑定数据做认证加密或 HMAC 完整性保护：
 
 ```text
 key
@@ -129,7 +129,7 @@ issued_at/expires_at
 执行：
 
 ```bash
-PYTHONPATH=packages/geno_core:apps/api \
+PYTHONPATH=packages/geo_core:apps/api \
   python3 -m unittest tests.test_auth_web_contracts
 
 npm --prefix apps/admin-web run typecheck
@@ -153,4 +153,4 @@ feat(auth-web): add stable browser redemption recovery
 test(auth-web): cover surface-scoped multi-project sessions
 ```
 
-新增并提交 `docs/worktree-results/auth-web.md`，列出集成 session 需注入的 `GENO_AUTH_RECOVERY_COOKIE_SECRET`、OpenAPI/generated DTO 对账、后端错误映射、Playwright 启动命令和未执行 live 场景。
+新增并提交 `docs/worktree-results/auth-web.md`，列出集成 session 需注入的 `GEO_AUTH_RECOVERY_COOKIE_SECRET`、OpenAPI/generated DTO 对账、后端错误映射、Playwright 启动命令和未执行 live 场景。

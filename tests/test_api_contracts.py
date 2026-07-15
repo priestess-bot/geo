@@ -26,12 +26,12 @@ import starlette.routing
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.primitives import hashes
 
-from geno_api.access_logging import persist_runtime_http_access_log
-from geno_api.main import app, close_runtime_resources, reset_runtime_auth_caches, reset_runtime_metrics
-from geno_core.durable_jobs import JobStateConflictError
-from geno_core.runtime import RuntimeComponentDiagnostic, RuntimeDiagnostics
-from geno_core.email_preferences import sign_runtime_notification_email_preference_token
-from geno_core.webhook_signing import (
+from geo_api.access_logging import persist_runtime_http_access_log
+from geo_api.main import app, close_runtime_resources, reset_runtime_auth_caches, reset_runtime_metrics
+from geo_core.durable_jobs import JobStateConflictError
+from geo_core.runtime import RuntimeComponentDiagnostic, RuntimeDiagnostics
+from geo_core.email_preferences import sign_runtime_notification_email_preference_token
+from geo_core.webhook_signing import (
     RUNTIME_NOTIFICATION_WEBHOOK_DELIVERY_ID_HEADER,
     RUNTIME_NOTIFICATION_WEBHOOK_NOTIFICATION_ID_HEADER,
     RUNTIME_NOTIFICATION_WEBHOOK_PAYLOAD_HASH_HEADER,
@@ -87,7 +87,7 @@ from tests.test_au_p0a_environment_checklist import AuP0aEnvironmentChecklistTes
 from tests.test_au_p0a_execution_checklist import AuP0aExecutionChecklistTest
 from tests.test_au_p0b_google_execution_checklist import AuP0bGoogleExecutionChecklistTest
 from tests.test_au_p0b_google_environment_request_packet import AuP0bGoogleEnvironmentRequestPacketTest
-from geno_core.models import (
+from geo_core.models import (
     RuntimeEntityAlias,
     RuntimeEntityAliasAssignmentEscalationResult,
     RuntimeEntityAliasAssignmentNotificationResult,
@@ -262,7 +262,7 @@ class ApiContractsTest(unittest.TestCase):
         return f"{encoded_header}.{encoded_payload}.{encoded_signature}"
 
     def _dev_tools_env(self):
-        return patch.dict(os.environ, {"GENO_DEV_TOOLS_ENABLED": "1"}, clear=False)
+        return patch.dict(os.environ, {"GEO_DEV_TOOLS_ENABLED": "1"}, clear=False)
 
     def _skip_archived_au_preflight_contract(self) -> None:
         self.skipTest(
@@ -350,7 +350,7 @@ class ApiContractsTest(unittest.TestCase):
 
     def test_readiness_returns_503_when_database_check_fails(self) -> None:
         with patch(
-            "geno_api.ops_routes.runtime_database_diagnostic",
+            "geo_api.ops_routes.runtime_database_diagnostic",
             return_value=RuntimeComponentDiagnostic(
                 name="database",
                 status="fail",
@@ -367,7 +367,7 @@ class ApiContractsTest(unittest.TestCase):
 
     def test_readiness_returns_200_when_database_check_passes(self) -> None:
         with patch(
-            "geno_api.ops_routes.runtime_database_diagnostic",
+            "geo_api.ops_routes.runtime_database_diagnostic",
             return_value=RuntimeComponentDiagnostic(
                 name="database",
                 status="pass",
@@ -398,7 +398,7 @@ class ApiContractsTest(unittest.TestCase):
                 ),
             ),
         )
-        with patch("geno_api.ops_routes.build_runtime_diagnostics", return_value=diagnostics):
+        with patch("geo_api.ops_routes.build_runtime_diagnostics", return_value=diagnostics):
             response = self.client.get("/v1/runtime-diagnostics")
 
         self.assertEqual(response.status_code, 200)
@@ -444,7 +444,7 @@ class ApiContractsTest(unittest.TestCase):
                 "remaining_blockers": ["missing_signed_report_url"],
             },
         }
-        with patch("geno_api.main.build_au_launch_status", return_value=status_payload) as build_status:
+        with patch("geo_api.main.build_au_launch_status", return_value=status_payload) as build_status:
             response = self.client.get("/v1/launch-status/au")
 
         self.assertEqual(response.status_code, 200)
@@ -504,8 +504,8 @@ class ApiContractsTest(unittest.TestCase):
             ],
             "remediation_plan_hash": "plan123",
         }
-        with patch("geno_api.main._build_au_launch_status_from_env", return_value=status_payload) as build_status, patch(
-            "geno_api.main.build_au_launch_remediation_plan",
+        with patch("geo_api.main._build_au_launch_status_from_env", return_value=status_payload) as build_status, patch(
+            "geo_api.main.build_au_launch_remediation_plan",
             return_value=plan_payload,
         ) as build_plan:
             response = self.client.get("/v1/launch-remediation-plan/au")
@@ -529,11 +529,11 @@ class ApiContractsTest(unittest.TestCase):
             with patch.dict(
                 os.environ,
                 {
-                    "GENO_AU_P0A_RUNBOOK_OUTPUT_PATH": str(runbook_path),
-                    "GENO_AU_P0A_ENV_OUTPUT_PATH": str(env_path),
-                    "GENO_AU_P0A_STATUS_OUTPUT_PATH": str(Path(temp_dir) / "missing-status.json"),
-                    "GENO_AU_P0A_ENV_FILE": str(Path(temp_dir) / "missing.env"),
-                    "GENO_AU_P0A_ENVIRONMENT_CHECKLIST_OUTPUT_PATH": str(Path(temp_dir) / "checklist.json"),
+                    "GEO_AU_P0A_RUNBOOK_OUTPUT_PATH": str(runbook_path),
+                    "GEO_AU_P0A_ENV_OUTPUT_PATH": str(env_path),
+                    "GEO_AU_P0A_STATUS_OUTPUT_PATH": str(Path(temp_dir) / "missing-status.json"),
+                    "GEO_AU_P0A_ENV_FILE": str(Path(temp_dir) / "missing.env"),
+                    "GEO_AU_P0A_ENVIRONMENT_CHECKLIST_OUTPUT_PATH": str(Path(temp_dir) / "checklist.json"),
                 },
                 clear=False,
             ):
@@ -577,14 +577,14 @@ class ApiContractsTest(unittest.TestCase):
             with patch.dict(
                 os.environ,
                 {
-                    "GENO_AU_P0A_RUNBOOK_OUTPUT_PATH": str(runbook_path),
-                    "GENO_AU_P0A_ENV_OUTPUT_PATH": str(environment_path),
-                    "GENO_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH": str(execution_path),
-                    "GENO_AU_P0A_READINESS_OUTPUT_PATH": str(readiness_path),
-                    "GENO_AU_P0A_PACKAGE_OUTPUT_PATH": str(package_path),
-                    "GENO_AU_P0A_STATUS_OUTPUT_PATH": str(status_path),
-                    "GENO_AU_P0A_ENV_FILE": str(Path(temp_dir) / "missing.env"),
-                    "GENO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH": str(Path(temp_dir) / "execution-checklist.json"),
+                    "GEO_AU_P0A_RUNBOOK_OUTPUT_PATH": str(runbook_path),
+                    "GEO_AU_P0A_ENV_OUTPUT_PATH": str(environment_path),
+                    "GEO_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH": str(execution_path),
+                    "GEO_AU_P0A_READINESS_OUTPUT_PATH": str(readiness_path),
+                    "GEO_AU_P0A_PACKAGE_OUTPUT_PATH": str(package_path),
+                    "GEO_AU_P0A_STATUS_OUTPUT_PATH": str(status_path),
+                    "GEO_AU_P0A_ENV_FILE": str(Path(temp_dir) / "missing.env"),
+                    "GEO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH": str(Path(temp_dir) / "execution-checklist.json"),
                 },
                 clear=False,
             ):
@@ -616,13 +616,13 @@ class ApiContractsTest(unittest.TestCase):
             with patch.dict(
                 os.environ,
                 {
-                    "GENO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH": str(runbook_path),
-                    "GENO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH": str(execution_path),
-                    "GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH": str(env_path),
-                    "GENO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH": str(status_path),
-                    "GENO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH": str(package_path),
-                    "GENO_AU_P0B_GOOGLE_ENV_FILE": str(Path(temp_dir) / "missing-google.env"),
-                    "GENO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH": str(Path(temp_dir) / "checklist.json"),
+                    "GEO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH": str(runbook_path),
+                    "GEO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH": str(execution_path),
+                    "GEO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH": str(env_path),
+                    "GEO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH": str(status_path),
+                    "GEO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH": str(package_path),
+                    "GEO_AU_P0B_GOOGLE_ENV_FILE": str(Path(temp_dir) / "missing-google.env"),
+                    "GEO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH": str(Path(temp_dir) / "checklist.json"),
                 },
                 clear=False,
             ):
@@ -674,15 +674,15 @@ class ApiContractsTest(unittest.TestCase):
             with patch.dict(
                 os.environ,
                 {
-                    "GENO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH": str(runbook_path),
-                    "GENO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH": str(execution_path),
-                    "GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH": str(env_path),
-                    "GENO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH": str(status_path),
-                    "GENO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH": str(package_path),
-                    "GENO_AU_P0A_ENV_OUTPUT_PATH": str(p0a_env_path),
-                    "GENO_AU_P0B_GOOGLE_ENV_FILE": str(Path(temp_dir) / "missing-google.env"),
-                    "GENO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH": str(Path(temp_dir) / "checklist.json"),
-                    "GENO_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH": str(
+                    "GEO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH": str(runbook_path),
+                    "GEO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH": str(execution_path),
+                    "GEO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH": str(env_path),
+                    "GEO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH": str(status_path),
+                    "GEO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH": str(package_path),
+                    "GEO_AU_P0A_ENV_OUTPUT_PATH": str(p0a_env_path),
+                    "GEO_AU_P0B_GOOGLE_ENV_FILE": str(Path(temp_dir) / "missing-google.env"),
+                    "GEO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH": str(Path(temp_dir) / "checklist.json"),
+                    "GEO_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH": str(
                         Path(temp_dir) / "environment-request.json"
                     ),
                 },
@@ -748,18 +748,18 @@ class ApiContractsTest(unittest.TestCase):
             with patch.dict(
                 os.environ,
                 {
-                    "GENO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH": str(runbook_path),
-                    "GENO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH": str(execution_path),
-                    "GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH": str(env_path),
-                    "GENO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH": str(status_path),
-                    "GENO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH": str(package_path),
-                    "GENO_AU_P0A_ENV_OUTPUT_PATH": str(p0a_env_path),
-                    "GENO_AU_P0B_GOOGLE_ENV_FILE": str(Path(temp_dir) / "missing-google.env"),
-                    "GENO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH": str(Path(temp_dir) / "checklist.json"),
-                    "GENO_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH": str(
+                    "GEO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH": str(runbook_path),
+                    "GEO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH": str(execution_path),
+                    "GEO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH": str(env_path),
+                    "GEO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH": str(status_path),
+                    "GEO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH": str(package_path),
+                    "GEO_AU_P0A_ENV_OUTPUT_PATH": str(p0a_env_path),
+                    "GEO_AU_P0B_GOOGLE_ENV_FILE": str(Path(temp_dir) / "missing-google.env"),
+                    "GEO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH": str(Path(temp_dir) / "checklist.json"),
+                    "GEO_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH": str(
                         Path(temp_dir) / "environment-request.json"
                     ),
-                    "GENO_AU_P0B_GOOGLE_ENVIRONMENT_FULFILLMENT_OUTPUT_PATH": str(fulfillment_path),
+                    "GEO_AU_P0B_GOOGLE_ENVIRONMENT_FULFILLMENT_OUTPUT_PATH": str(fulfillment_path),
                 },
                 clear=False,
             ):
@@ -815,26 +815,26 @@ class ApiContractsTest(unittest.TestCase):
             with patch.dict(
                 os.environ,
                 {
-                    "GENO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH": str(runbook_path),
-                    "GENO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH": str(execution_path),
-                    "GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH": str(env_path),
-                    "GENO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH": str(status_path),
-                    "GENO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH": str(package_path),
-                    "GENO_AU_P0A_ENV_OUTPUT_PATH": str(p0a_env_path),
-                    "GENO_AU_P0B_GOOGLE_ENV_FILE": str(Path(temp_dir) / "missing-google.env"),
-                    "GENO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH": str(Path(temp_dir) / "checklist.json"),
-                    "GENO_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH": str(
+                    "GEO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH": str(runbook_path),
+                    "GEO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH": str(execution_path),
+                    "GEO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH": str(env_path),
+                    "GEO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH": str(status_path),
+                    "GEO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH": str(package_path),
+                    "GEO_AU_P0A_ENV_OUTPUT_PATH": str(p0a_env_path),
+                    "GEO_AU_P0B_GOOGLE_ENV_FILE": str(Path(temp_dir) / "missing-google.env"),
+                    "GEO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH": str(Path(temp_dir) / "checklist.json"),
+                    "GEO_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH": str(
                         Path(temp_dir) / "environment-request.json"
                     ),
-                    "GENO_AU_P0B_GOOGLE_ENVIRONMENT_FULFILLMENT_OUTPUT_PATH": str(
+                    "GEO_AU_P0B_GOOGLE_ENVIRONMENT_FULFILLMENT_OUTPUT_PATH": str(
                         Path(temp_dir) / "environment-fulfillment.json"
                     ),
-                    "GENO_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH": str(handoff_path),
-                    "GENO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH": str(external_clearance_path),
-                    "GENO_AU_P0B_GOOGLE_ENVIRONMENT_CLEARANCE_OUTPUT_PATH": str(clearance_path),
+                    "GEO_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH": str(handoff_path),
+                    "GEO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH": str(external_clearance_path),
+                    "GEO_AU_P0B_GOOGLE_ENVIRONMENT_CLEARANCE_OUTPUT_PATH": str(clearance_path),
                 },
                 clear=False,
-            ), patch("geno_api.main.au_external_dependency_clearance", return_value=external_clearance):
+            ), patch("geo_api.main.au_external_dependency_clearance", return_value=external_clearance):
                 response = self.client.get("/v1/p0b-google-environment-clearance/au")
 
         self.assertEqual(response.status_code, 200)
@@ -896,14 +896,14 @@ class ApiContractsTest(unittest.TestCase):
             with patch.dict(
                 os.environ,
                 {
-                    "GENO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH": str(runbook_path),
-                    "GENO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH": str(execution_path),
-                    "GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH": str(env_path),
-                    "GENO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH": str(status_path),
-                    "GENO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH": str(package_path),
-                    "GENO_AU_P0B_GOOGLE_ENV_FILE": str(Path(temp_dir) / "missing-google.env"),
-                    "GENO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH": str(Path(temp_dir) / "checklist.json"),
-                    "GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_REQUEST_OUTPUT_PATH": str(
+                    "GEO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH": str(runbook_path),
+                    "GEO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH": str(execution_path),
+                    "GEO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH": str(env_path),
+                    "GEO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH": str(status_path),
+                    "GEO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH": str(package_path),
+                    "GEO_AU_P0B_GOOGLE_ENV_FILE": str(Path(temp_dir) / "missing-google.env"),
+                    "GEO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH": str(Path(temp_dir) / "checklist.json"),
+                    "GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_REQUEST_OUTPUT_PATH": str(
                         Path(temp_dir) / "manual-backfill-request.json"
                     ),
                 },
@@ -967,21 +967,21 @@ class ApiContractsTest(unittest.TestCase):
             with patch.dict(
                 os.environ,
                 {
-                    "GENO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH": str(runbook_path),
-                    "GENO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH": str(execution_path),
-                    "GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH": str(env_path),
-                    "GENO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH": str(status_path),
-                    "GENO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH": str(package_path),
-                    "GENO_AU_P0B_GOOGLE_ENV_FILE": str(Path(temp_dir) / "missing-google.env"),
-                    "GENO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH": str(Path(temp_dir) / "checklist.json"),
-                    "GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_REQUEST_OUTPUT_PATH": str(
+                    "GEO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH": str(runbook_path),
+                    "GEO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH": str(execution_path),
+                    "GEO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH": str(env_path),
+                    "GEO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH": str(status_path),
+                    "GEO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH": str(package_path),
+                    "GEO_AU_P0B_GOOGLE_ENV_FILE": str(Path(temp_dir) / "missing-google.env"),
+                    "GEO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH": str(Path(temp_dir) / "checklist.json"),
+                    "GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_REQUEST_OUTPUT_PATH": str(
                         Path(temp_dir) / "manual-backfill-request.json"
                     ),
-                    "GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_VERIFICATION_PATH": str(
+                    "GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_VERIFICATION_PATH": str(
                         Path(temp_dir) / "missing-manual-verification.json"
                     ),
                     "MANUAL_BACKFILL_PATH": str(Path(temp_dir) / "missing-manual.jsonl"),
-                    "GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH": str(
+                    "GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH": str(
                         Path(temp_dir) / "manual-backfill-fulfillment.json"
                     ),
                 },
@@ -1040,31 +1040,31 @@ class ApiContractsTest(unittest.TestCase):
             with patch.dict(
                 os.environ,
                 {
-                    "GENO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH": str(runbook_path),
-                    "GENO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH": str(execution_path),
-                    "GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH": str(env_path),
-                    "GENO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH": str(status_path),
-                    "GENO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH": str(package_path),
-                    "GENO_AU_P0B_GOOGLE_ENV_FILE": str(Path(temp_dir) / "missing-google.env"),
-                    "GENO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH": str(Path(temp_dir) / "checklist.json"),
-                    "GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_REQUEST_OUTPUT_PATH": str(
+                    "GEO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH": str(runbook_path),
+                    "GEO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH": str(execution_path),
+                    "GEO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH": str(env_path),
+                    "GEO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH": str(status_path),
+                    "GEO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH": str(package_path),
+                    "GEO_AU_P0B_GOOGLE_ENV_FILE": str(Path(temp_dir) / "missing-google.env"),
+                    "GEO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH": str(Path(temp_dir) / "checklist.json"),
+                    "GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_REQUEST_OUTPUT_PATH": str(
                         Path(temp_dir) / "manual-backfill-request.json"
                     ),
-                    "GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_VERIFICATION_PATH": str(
+                    "GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_VERIFICATION_PATH": str(
                         Path(temp_dir) / "missing-manual-verification.json"
                     ),
                     "MANUAL_BACKFILL_PATH": str(Path(temp_dir) / "missing-manual.jsonl"),
-                    "GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH": str(
+                    "GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH": str(
                         Path(temp_dir) / "manual-backfill-fulfillment.json"
                     ),
-                    "GENO_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH": str(handoff_path),
-                    "GENO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH": str(external_clearance_path),
-                    "GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_CLEARANCE_OUTPUT_PATH": str(
+                    "GEO_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH": str(handoff_path),
+                    "GEO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH": str(external_clearance_path),
+                    "GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_CLEARANCE_OUTPUT_PATH": str(
                         Path(temp_dir) / "manual-backfill-clearance.json"
                     ),
                 },
                 clear=False,
-            ), patch("geno_api.main.au_external_dependency_clearance", return_value=external_clearance):
+            ), patch("geo_api.main.au_external_dependency_clearance", return_value=external_clearance):
                 response = self.client.get("/v1/p0b-google-manual-backfill-clearance/au")
 
         self.assertEqual(response.status_code, 200)
@@ -1132,14 +1132,14 @@ class ApiContractsTest(unittest.TestCase):
             with patch.dict(
                 os.environ,
                 {
-                    "GENO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH": str(runbook_path),
-                    "GENO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH": str(execution_path),
-                    "GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH": str(env_path),
-                    "GENO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH": str(status_path),
-                    "GENO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH": str(package_path),
-                    "GENO_AU_P0B_GOOGLE_ENV_FILE": str(Path(temp_dir) / "missing-google.env"),
-                    "GENO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH": str(Path(temp_dir) / "checklist.json"),
-                    "GENO_AU_P0B_GOOGLE_PHASE_EXECUTION_REQUEST_OUTPUT_PATH": str(
+                    "GEO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH": str(runbook_path),
+                    "GEO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH": str(execution_path),
+                    "GEO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH": str(env_path),
+                    "GEO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH": str(status_path),
+                    "GEO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH": str(package_path),
+                    "GEO_AU_P0B_GOOGLE_ENV_FILE": str(Path(temp_dir) / "missing-google.env"),
+                    "GEO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH": str(Path(temp_dir) / "checklist.json"),
+                    "GEO_AU_P0B_GOOGLE_PHASE_EXECUTION_REQUEST_OUTPUT_PATH": str(
                         Path(temp_dir) / "phase-execution-request.json"
                     ),
                 },
@@ -1207,17 +1207,17 @@ class ApiContractsTest(unittest.TestCase):
             with patch.dict(
                 os.environ,
                 {
-                    "GENO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH": str(runbook_path),
-                    "GENO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH": str(execution_path),
-                    "GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH": str(env_path),
-                    "GENO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH": str(status_path),
-                    "GENO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH": str(package_path),
-                    "GENO_AU_P0B_GOOGLE_ENV_FILE": str(Path(temp_dir) / "missing-google.env"),
-                    "GENO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH": str(Path(temp_dir) / "checklist.json"),
-                    "GENO_AU_P0B_GOOGLE_PHASE_EXECUTION_REQUEST_OUTPUT_PATH": str(
+                    "GEO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH": str(runbook_path),
+                    "GEO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH": str(execution_path),
+                    "GEO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH": str(env_path),
+                    "GEO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH": str(status_path),
+                    "GEO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH": str(package_path),
+                    "GEO_AU_P0B_GOOGLE_ENV_FILE": str(Path(temp_dir) / "missing-google.env"),
+                    "GEO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH": str(Path(temp_dir) / "checklist.json"),
+                    "GEO_AU_P0B_GOOGLE_PHASE_EXECUTION_REQUEST_OUTPUT_PATH": str(
                         Path(temp_dir) / "phase-execution-request.json"
                     ),
-                    "GENO_AU_P0B_GOOGLE_PHASE_EXECUTION_FULFILLMENT_OUTPUT_PATH": str(
+                    "GEO_AU_P0B_GOOGLE_PHASE_EXECUTION_FULFILLMENT_OUTPUT_PATH": str(
                         Path(temp_dir) / "phase-execution-fulfillment.json"
                     ),
                 },
@@ -1278,23 +1278,23 @@ class ApiContractsTest(unittest.TestCase):
             with patch.dict(
                 os.environ,
                 {
-                    "GENO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH": str(runbook_path),
-                    "GENO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH": str(execution_path),
-                    "GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH": str(env_path),
-                    "GENO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH": str(status_path),
-                    "GENO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH": str(package_path),
-                    "GENO_AU_P0B_GOOGLE_ENV_FILE": str(Path(temp_dir) / "missing-google.env"),
-                    "GENO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH": str(Path(temp_dir) / "checklist.json"),
-                    "GENO_AU_P0B_GOOGLE_PHASE_EXECUTION_REQUEST_OUTPUT_PATH": str(
+                    "GEO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH": str(runbook_path),
+                    "GEO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH": str(execution_path),
+                    "GEO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH": str(env_path),
+                    "GEO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH": str(status_path),
+                    "GEO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH": str(package_path),
+                    "GEO_AU_P0B_GOOGLE_ENV_FILE": str(Path(temp_dir) / "missing-google.env"),
+                    "GEO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH": str(Path(temp_dir) / "checklist.json"),
+                    "GEO_AU_P0B_GOOGLE_PHASE_EXECUTION_REQUEST_OUTPUT_PATH": str(
                         Path(temp_dir) / "phase-execution-request.json"
                     ),
-                    "GENO_AU_P0B_GOOGLE_PHASE_EXECUTION_FULFILLMENT_OUTPUT_PATH": str(
+                    "GEO_AU_P0B_GOOGLE_PHASE_EXECUTION_FULFILLMENT_OUTPUT_PATH": str(
                         Path(temp_dir) / "phase-execution-fulfillment.json"
                     ),
-                    "GENO_AU_P0B_GOOGLE_PHASE_EXECUTION_CLEARANCE_OUTPUT_PATH": str(
+                    "GEO_AU_P0B_GOOGLE_PHASE_EXECUTION_CLEARANCE_OUTPUT_PATH": str(
                         Path(temp_dir) / "phase-execution-clearance.json"
                     ),
-                    "GENO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH": str(external_clearance_path),
+                    "GEO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH": str(external_clearance_path),
                 },
                 clear=False,
             ):
@@ -1359,15 +1359,15 @@ class ApiContractsTest(unittest.TestCase):
             with patch.dict(
                 os.environ,
                 {
-                    "GENO_AU_P0A_RUNBOOK_OUTPUT_PATH": str(runbook_path),
-                    "GENO_AU_P0A_ENV_OUTPUT_PATH": str(environment_path),
-                    "GENO_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH": str(execution_path),
-                    "GENO_AU_P0A_READINESS_OUTPUT_PATH": str(readiness_path),
-                    "GENO_AU_P0A_PACKAGE_OUTPUT_PATH": str(package_path),
-                    "GENO_AU_P0A_STATUS_OUTPUT_PATH": str(status_path),
-                    "GENO_AU_P0A_ENV_FILE": str(Path(temp_dir) / "missing.env"),
-                    "GENO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH": str(Path(temp_dir) / "execution-checklist.json"),
-                    "GENO_AU_P0A_REAL_BATCH_REQUEST_OUTPUT_PATH": str(Path(temp_dir) / "real-batch-request.json"),
+                    "GEO_AU_P0A_RUNBOOK_OUTPUT_PATH": str(runbook_path),
+                    "GEO_AU_P0A_ENV_OUTPUT_PATH": str(environment_path),
+                    "GEO_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH": str(execution_path),
+                    "GEO_AU_P0A_READINESS_OUTPUT_PATH": str(readiness_path),
+                    "GEO_AU_P0A_PACKAGE_OUTPUT_PATH": str(package_path),
+                    "GEO_AU_P0A_STATUS_OUTPUT_PATH": str(status_path),
+                    "GEO_AU_P0A_ENV_FILE": str(Path(temp_dir) / "missing.env"),
+                    "GEO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH": str(Path(temp_dir) / "execution-checklist.json"),
+                    "GEO_AU_P0A_REAL_BATCH_REQUEST_OUTPUT_PATH": str(Path(temp_dir) / "real-batch-request.json"),
                 },
                 clear=False,
             ):
@@ -1432,16 +1432,16 @@ class ApiContractsTest(unittest.TestCase):
             with patch.dict(
                 os.environ,
                 {
-                    "GENO_AU_P0A_RUNBOOK_OUTPUT_PATH": str(runbook_path),
-                    "GENO_AU_P0A_ENV_OUTPUT_PATH": str(environment_path),
-                    "GENO_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH": str(execution_path),
-                    "GENO_AU_P0A_READINESS_OUTPUT_PATH": str(readiness_path),
-                    "GENO_AU_P0A_PACKAGE_OUTPUT_PATH": str(package_path),
-                    "GENO_AU_P0A_STATUS_OUTPUT_PATH": str(status_path),
-                    "GENO_AU_P0A_ENV_FILE": str(Path(temp_dir) / "missing.env"),
-                    "GENO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH": str(Path(temp_dir) / "execution-checklist.json"),
-                    "GENO_AU_P0A_REAL_BATCH_REQUEST_OUTPUT_PATH": str(Path(temp_dir) / "real-batch-request.json"),
-                    "GENO_AU_P0A_REAL_BATCH_FULFILLMENT_OUTPUT_PATH": str(Path(temp_dir) / "real-batch-fulfillment.json"),
+                    "GEO_AU_P0A_RUNBOOK_OUTPUT_PATH": str(runbook_path),
+                    "GEO_AU_P0A_ENV_OUTPUT_PATH": str(environment_path),
+                    "GEO_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH": str(execution_path),
+                    "GEO_AU_P0A_READINESS_OUTPUT_PATH": str(readiness_path),
+                    "GEO_AU_P0A_PACKAGE_OUTPUT_PATH": str(package_path),
+                    "GEO_AU_P0A_STATUS_OUTPUT_PATH": str(status_path),
+                    "GEO_AU_P0A_ENV_FILE": str(Path(temp_dir) / "missing.env"),
+                    "GEO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH": str(Path(temp_dir) / "execution-checklist.json"),
+                    "GEO_AU_P0A_REAL_BATCH_REQUEST_OUTPUT_PATH": str(Path(temp_dir) / "real-batch-request.json"),
+                    "GEO_AU_P0A_REAL_BATCH_FULFILLMENT_OUTPUT_PATH": str(Path(temp_dir) / "real-batch-fulfillment.json"),
                 },
                 clear=False,
             ):
@@ -1481,8 +1481,8 @@ class ApiContractsTest(unittest.TestCase):
             launch_status_path, remediation_plan_path = helper._write_launch_status_and_plan(temp_dir, ready=False)
             status_payload = json.loads(launch_status_path.read_text(encoding="utf-8"))
             plan_payload = json.loads(remediation_plan_path.read_text(encoding="utf-8"))
-            with patch("geno_api.main._build_au_launch_status_from_env", return_value=status_payload), patch(
-                "geno_api.main.build_au_launch_remediation_plan",
+            with patch("geo_api.main._build_au_launch_status_from_env", return_value=status_payload), patch(
+                "geo_api.main.build_au_launch_remediation_plan",
                 return_value=plan_payload,
             ):
                 response = self.client.get("/v1/p0a-real-batch-clearance/au")
@@ -1544,8 +1544,8 @@ class ApiContractsTest(unittest.TestCase):
             launch_status_path, remediation_plan_path = helper._write_launch_status_and_plan(temp_dir, ready=False)
             status_payload = json.loads(launch_status_path.read_text(encoding="utf-8"))
             plan_payload = json.loads(remediation_plan_path.read_text(encoding="utf-8"))
-            with patch("geno_api.main._build_au_launch_status_from_env", return_value=status_payload), patch(
-                "geno_api.main.build_au_launch_remediation_plan",
+            with patch("geo_api.main._build_au_launch_status_from_env", return_value=status_payload), patch(
+                "geo_api.main.build_au_launch_remediation_plan",
                 return_value=plan_payload,
             ):
                 response = self.client.get("/v1/handoff-dossier/au")
@@ -1682,8 +1682,8 @@ class ApiContractsTest(unittest.TestCase):
             launch_status_path, remediation_plan_path = helper._write_launch_status_and_plan(temp_dir, ready=False)
             status_payload = json.loads(launch_status_path.read_text(encoding="utf-8"))
             plan_payload = json.loads(remediation_plan_path.read_text(encoding="utf-8"))
-            with patch("geno_api.main._build_au_launch_status_from_env", return_value=status_payload), patch(
-                "geno_api.main.build_au_launch_remediation_plan",
+            with patch("geo_api.main._build_au_launch_status_from_env", return_value=status_payload), patch(
+                "geo_api.main.build_au_launch_remediation_plan",
                 return_value=plan_payload,
             ):
                 response = self.client.get("/v1/customer-handoff-readiness/au")
@@ -1731,8 +1731,8 @@ class ApiContractsTest(unittest.TestCase):
             launch_status_path, remediation_plan_path = helper._write_launch_status_and_plan(temp_dir, ready=False)
             status_payload = json.loads(launch_status_path.read_text(encoding="utf-8"))
             plan_payload = json.loads(remediation_plan_path.read_text(encoding="utf-8"))
-            with patch("geno_api.main._build_au_launch_status_from_env", return_value=status_payload), patch(
-                "geno_api.main.build_au_launch_remediation_plan",
+            with patch("geo_api.main._build_au_launch_status_from_env", return_value=status_payload), patch(
+                "geo_api.main.build_au_launch_remediation_plan",
                 return_value=plan_payload,
             ):
                 response = self.client.get("/v1/next-work-item/au")
@@ -1878,8 +1878,8 @@ class ApiContractsTest(unittest.TestCase):
             launch_status_path, remediation_plan_path = helper._write_launch_status_and_plan(temp_dir, ready=False)
             status_payload = json.loads(launch_status_path.read_text(encoding="utf-8"))
             plan_payload = json.loads(remediation_plan_path.read_text(encoding="utf-8"))
-            with patch("geno_api.main._build_au_launch_status_from_env", return_value=status_payload), patch(
-                "geno_api.main.build_au_launch_remediation_plan",
+            with patch("geo_api.main._build_au_launch_status_from_env", return_value=status_payload), patch(
+                "geo_api.main.build_au_launch_remediation_plan",
                 return_value=plan_payload,
             ):
                 response = self.client.get("/v1/delivery-progress/au")
@@ -2062,8 +2062,8 @@ class ApiContractsTest(unittest.TestCase):
             launch_status_path, remediation_plan_path = helper._write_launch_status_and_plan(temp_dir, ready=False)
             status_payload = json.loads(launch_status_path.read_text(encoding="utf-8"))
             plan_payload = json.loads(remediation_plan_path.read_text(encoding="utf-8"))
-            with patch("geno_api.main._build_au_launch_status_from_env", return_value=status_payload), patch(
-                "geno_api.main.build_au_launch_remediation_plan",
+            with patch("geo_api.main._build_au_launch_status_from_env", return_value=status_payload), patch(
+                "geo_api.main.build_au_launch_remediation_plan",
                 return_value=plan_payload,
             ):
                 response = self.client.get("/v1/customer-handoff-clearance/au")
@@ -2437,8 +2437,8 @@ class ApiContractsTest(unittest.TestCase):
             launch_status_path, remediation_plan_path = helper._write_launch_status_and_plan(temp_dir, ready=False)
             status_payload = json.loads(launch_status_path.read_text(encoding="utf-8"))
             plan_payload = json.loads(remediation_plan_path.read_text(encoding="utf-8"))
-            with patch("geno_api.main._build_au_launch_status_from_env", return_value=status_payload), patch(
-                "geno_api.main.build_au_launch_remediation_plan",
+            with patch("geo_api.main._build_au_launch_status_from_env", return_value=status_payload), patch(
+                "geo_api.main.build_au_launch_remediation_plan",
                 return_value=plan_payload,
             ):
                 response = self.client.get("/v1/p0a-credential-clearance/au")
@@ -2519,8 +2519,8 @@ class ApiContractsTest(unittest.TestCase):
             launch_status_path, remediation_plan_path = helper._write_launch_status_and_plan(temp_dir, ready=False)
             status_payload = json.loads(launch_status_path.read_text(encoding="utf-8"))
             plan_payload = json.loads(remediation_plan_path.read_text(encoding="utf-8"))
-            with patch("geno_api.main._build_au_launch_status_from_env", return_value=status_payload), patch(
-                "geno_api.main.build_au_launch_remediation_plan",
+            with patch("geo_api.main._build_au_launch_status_from_env", return_value=status_payload), patch(
+                "geo_api.main.build_au_launch_remediation_plan",
                 return_value=plan_payload,
             ):
                 response = self.client.get("/v1/p0a-credential-update-receipt/au")
@@ -2601,8 +2601,8 @@ class ApiContractsTest(unittest.TestCase):
             launch_status_path, remediation_plan_path = helper._write_launch_status_and_plan(temp_dir, ready=False)
             status_payload = json.loads(launch_status_path.read_text(encoding="utf-8"))
             plan_payload = json.loads(remediation_plan_path.read_text(encoding="utf-8"))
-            with patch("geno_api.main._build_au_launch_status_from_env", return_value=status_payload), patch(
-                "geno_api.main.build_au_launch_remediation_plan",
+            with patch("geo_api.main._build_au_launch_status_from_env", return_value=status_payload), patch(
+                "geo_api.main.build_au_launch_remediation_plan",
                 return_value=plan_payload,
             ):
                 response = self.client.get("/v1/external-dependency-handoff/au")
@@ -2697,8 +2697,8 @@ class ApiContractsTest(unittest.TestCase):
             launch_status_path, remediation_plan_path = helper._write_launch_status_and_plan(temp_dir, ready=False)
             status_payload = json.loads(launch_status_path.read_text(encoding="utf-8"))
             plan_payload = json.loads(remediation_plan_path.read_text(encoding="utf-8"))
-            with patch("geno_api.main._build_au_launch_status_from_env", return_value=status_payload), patch(
-                "geno_api.main.build_au_launch_remediation_plan",
+            with patch("geo_api.main._build_au_launch_status_from_env", return_value=status_payload), patch(
+                "geo_api.main.build_au_launch_remediation_plan",
                 return_value=plan_payload,
             ):
                 response = self.client.get("/v1/external-dependency-clearance/au")
@@ -2787,7 +2787,7 @@ class ApiContractsTest(unittest.TestCase):
     def test_metrics_endpoint_exports_request_and_pool_metrics(self) -> None:
         self.client.get("/health")
         with patch(
-            "geno_api.runtime_metrics.runtime_postgres_pool_snapshot",
+            "geo_api.runtime_metrics.runtime_postgres_pool_snapshot",
             return_value={
                 "enabled": True,
                 "max_size": 10,
@@ -2801,17 +2801,17 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("text/plain", response.headers["content-type"])
         body = response.text
-        self.assertIn("# TYPE geno_api_requests_total counter", body)
-        self.assertIn('geno_api_requests_total{method="GET",path="/health",status="200"} 1', body)
+        self.assertIn("# TYPE geo_api_requests_total counter", body)
+        self.assertIn('geo_api_requests_total{method="GET",path="/health",status="200"} 1', body)
         self.assertIn(
-            'geno_api_request_duration_seconds_bucket{method="GET",path="/health",status="200",le="+Inf"} 1',
+            'geo_api_request_duration_seconds_bucket{method="GET",path="/health",status="200",le="+Inf"} 1',
             body,
         )
-        self.assertIn('geno_api_request_duration_seconds_count{method="GET",path="/health",status="200"} 1', body)
-        self.assertIn("geno_runtime_postgres_pool_snapshot_ok 1", body)
-        self.assertIn("geno_runtime_postgres_pool_enabled 1", body)
-        self.assertIn("geno_runtime_postgres_pool_max_size 10", body)
-        self.assertIn("geno_runtime_postgres_pool_connections_created 2", body)
+        self.assertIn('geo_api_request_duration_seconds_count{method="GET",path="/health",status="200"} 1', body)
+        self.assertIn("geo_runtime_postgres_pool_snapshot_ok 1", body)
+        self.assertIn("geo_runtime_postgres_pool_enabled 1", body)
+        self.assertIn("geo_runtime_postgres_pool_max_size 10", body)
+        self.assertIn("geo_runtime_postgres_pool_connections_created 2", body)
         self.assertNotIn('path="/metrics"', body)
 
     def test_metrics_endpoint_uses_route_path_without_query_values(self) -> None:
@@ -2820,19 +2820,19 @@ class ApiContractsTest(unittest.TestCase):
 
         metrics = self.client.get("/metrics").text
 
-        self.assertIn('geno_api_requests_total{method="GET",path="/v1/projects/runtime",status="503"} 1', metrics)
+        self.assertIn('geo_api_requests_total{method="GET",path="/v1/projects/runtime",status="503"} 1', metrics)
         self.assertNotIn("market_code", metrics)
         self.assertNotIn("limit=5", metrics)
 
     def test_runtime_access_log_emits_request_id_and_route_template(self) -> None:
-        with self.assertLogs("geno_api.access", level="INFO") as captured:
+        with self.assertLogs("geo_api.access", level="INFO") as captured:
             response = self.client.get(
                 "/v1/projects/runtime?market_code=AU&limit=5",
-                headers={"X-GENO-Request-Id": "req-runtime-001"},
+                headers={"X-GEO-Request-Id": "req-runtime-001"},
             )
 
         self.assertEqual(response.status_code, 503)
-        self.assertEqual(response.headers["X-GENO-Request-Id"], "req-runtime-001")
+        self.assertEqual(response.headers["X-GEO-Request-Id"], "req-runtime-001")
         payload = json.loads(captured.records[0].getMessage())
         self.assertEqual(payload["event_type"], "runtime_api_request")
         self.assertEqual(payload["log_version"], "runtime_access_log_v1")
@@ -2847,10 +2847,10 @@ class ApiContractsTest(unittest.TestCase):
 
     def test_runtime_access_log_persistence_skip_is_quiet_without_database_url(self) -> None:
         with patch.dict("os.environ", {}, clear=True):
-            with self.assertLogs("geno_api.access", level="INFO") as captured:
+            with self.assertLogs("geo_api.access", level="INFO") as captured:
                 response = self.client.get(
                     "/v1/projects/runtime?market_code=AU&limit=5",
-                    headers={"X-GENO-Request-Id": "req-runtime-no-db"},
+                    headers={"X-GEO-Request-Id": "req-runtime-no-db"},
                 )
 
         self.assertEqual(response.status_code, 503)
@@ -2860,10 +2860,10 @@ class ApiContractsTest(unittest.TestCase):
         self.assertNotIn("DATABASE_URL is required when persistence is enabled", messages)
 
     def test_runtime_access_log_sanitizes_invalid_request_id(self) -> None:
-        with self.assertLogs("geno_api.access", level="INFO") as captured:
-            response = self.client.get("/health", headers={"X-GENO-Request-Id": "bad request id"})
+        with self.assertLogs("geo_api.access", level="INFO") as captured:
+            response = self.client.get("/health", headers={"X-GEO-Request-Id": "bad request id"})
 
-        response_request_id = response.headers["X-GENO-Request-Id"]
+        response_request_id = response.headers["X-GEO-Request-Id"]
         payload = json.loads(captured.records[0].getMessage())
         self.assertEqual(payload["status_code"], 200)
         self.assertEqual(payload["request_id"], response_request_id)
@@ -2907,7 +2907,7 @@ class ApiContractsTest(unittest.TestCase):
             response_body=b'{"connector_secret":{"secret_ref":"connector-secret:abc123"}}',
             response_headers={"content-type": "application/json"},
             response_media_type="application/json",
-            actor_header="X-GENO-Actor-Id",
+            actor_header="X-GEO-Actor-Id",
             repository_builder=lambda: fake_repository,
             object_store_builder=lambda: fake_store,
             close_repository=lambda repository: None,
@@ -2923,7 +2923,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertNotIn("sk-test-provider-secret", archived_text)
 
     def test_shutdown_closes_runtime_postgres_pool(self) -> None:
-        with patch("geno_api.main.close_runtime_postgres_pool") as close_pool:
+        with patch("geo_api.main.close_runtime_postgres_pool") as close_pool:
             close_runtime_resources()
         close_pool.assert_called_once_with()
 
@@ -2968,10 +2968,10 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(first["audit_events"][0]["event_type"], "answer_run_collected")
 
     def test_fixture_evidence_slice_endpoint_is_developer_only_by_default(self) -> None:
-        with patch.dict(os.environ, {"GENO_DEV_TOOLS_ENABLED": "0"}, clear=False):
+        with patch.dict(os.environ, {"GEO_DEV_TOOLS_ENABLED": "0"}, clear=False):
             response = self.client.get("/v1/evidence-runs/au/p0a-fixture-slice")
         self.assertEqual(response.status_code, 404)
-        self.assertIn("GENO_DEV_TOOLS_ENABLED", response.json()["detail"])
+        self.assertIn("GEO_DEV_TOOLS_ENABLED", response.json()["detail"])
 
     def test_runtime_project_create_endpoint_requires_persistence_config(self) -> None:
         response = self.client.post("/v1/projects/runtime/au/dtc-ecommerce")
@@ -2984,8 +2984,8 @@ class ApiContractsTest(unittest.TestCase):
                 self.bootstrap = bootstrap
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/projects/runtime/au/dtc-ecommerce",
@@ -3020,8 +3020,8 @@ class ApiContractsTest(unittest.TestCase):
                 self.bootstrap = bootstrap
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/projects/runtime",
@@ -3061,9 +3061,9 @@ class ApiContractsTest(unittest.TestCase):
                 self.bootstrap = bootstrap
 
         fake_repository = FakeRepository()
-        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
-            "geno_api.main.build_repository_from_env", return_value=fake_repository
-        ), patch("geno_api.main.close_repository_connection"):
+        with patch.dict("os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geo_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geo_api.main.close_repository_connection"):
             response = self.client.post(
                 "/v1/projects/runtime/au/dtc-ecommerce",
                 json={
@@ -3072,7 +3072,7 @@ class ApiContractsTest(unittest.TestCase):
                     "competitors": ["Emma Sleep", "Sleeping Duck", "Ecosa"],
                     "owner_user_id": "payload-owner",
                 },
-                headers={"X-GENO-Actor-Id": "agency-owner"},
+                headers={"X-GEO-Actor-Id": "agency-owner"},
             )
 
         self.assertEqual(response.status_code, 200)
@@ -3097,8 +3097,8 @@ class ApiContractsTest(unittest.TestCase):
                 self.bootstrap = bootstrap
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/projects/runtime/au/dtc-ecommerce",
@@ -3134,8 +3134,8 @@ class ApiContractsTest(unittest.TestCase):
                 }
 
         fake_repository = FakeRepository()
-        with patch("geno_api.runtime_access_routes.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.runtime_access_routes.close_repository_connection"
+        with patch("geo_api.runtime_access_routes.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.runtime_access_routes.close_repository_connection"
         ):
             response = self.client.get("/v1/customer-portal/tokens/runtime?project_id=project-1&limit=5&offset=2")
 
@@ -3170,12 +3170,12 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
-        ), patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True):
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
+        ), patch.dict("os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True):
             response = self.client.post(
                 "/v1/connectors/runtime/secrets",
-                headers={"X-GENO-Actor-Id": "agency-owner"},
+                headers={"X-GEO-Actor-Id": "agency-owner"},
                 json={
                     "project_id": "project-1",
                     "provider": "openai",
@@ -3201,12 +3201,12 @@ class ApiContractsTest(unittest.TestCase):
             def save_connector_secret(self, secret_input: object) -> RuntimeConnectorSecret:
                 raise AssertionError("viewer must not be allowed to mutate connector secret")
 
-        with patch("geno_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
-            "geno_api.main.close_repository_connection"
-        ), patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True):
+        with patch("geo_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
+            "geo_api.main.close_repository_connection"
+        ), patch.dict("os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True):
             response = self.client.post(
                 "/v1/connectors/runtime/secrets",
-                headers={"X-GENO-Actor-Id": "viewer@example.com"},
+                headers={"X-GEO-Actor-Id": "viewer@example.com"},
                 json={
                     "project_id": "project-1",
                     "provider": "openai",
@@ -3237,12 +3237,12 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
-        ), patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True):
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
+        ), patch.dict("os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True):
             response = self.client.get(
                 "/v1/connectors/runtime/secrets?project_id=project-1&provider=openai",
-                headers={"X-GENO-Actor-Id": "agency-owner"},
+                headers={"X-GEO-Actor-Id": "agency-owner"},
             )
 
         self.assertEqual(response.status_code, 200)
@@ -3265,12 +3265,12 @@ class ApiContractsTest(unittest.TestCase):
                 return "sk-visible-for-admin"
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
-        ), patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True):
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
+        ), patch.dict("os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True):
             response = self.client.get(
                 "/v1/connectors/runtime/secrets/reveal?project_id=project-1&secret_ref=connector-secret:abc123",
-                headers={"X-GENO-Actor-Id": "agency-owner"},
+                headers={"X-GEO-Actor-Id": "agency-owner"},
             )
 
         self.assertEqual(response.status_code, 200)
@@ -3299,12 +3299,12 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
-        ), patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1", "DEEPSEEK_API_KEY": "ds-test-secret"}, clear=True):
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
+        ), patch.dict("os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1", "DEEPSEEK_API_KEY": "ds-test-secret"}, clear=True):
             response = self.client.post(
                 "/v1/connectors/runtime/test",
-                headers={"X-GENO-Actor-Id": "agency-owner"},
+                headers={"X-GEO-Actor-Id": "agency-owner"},
                 json={
                     "project_id": "project-1",
                     "provider": "openai",
@@ -3327,12 +3327,12 @@ class ApiContractsTest(unittest.TestCase):
             def get_project_member_role(self, *, project_id: str, actor_id: str) -> str:
                 return "owner"
 
-        with patch("geno_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
-            "geno_api.main.close_repository_connection"
-        ), patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True):
+        with patch("geo_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
+            "geo_api.main.close_repository_connection"
+        ), patch.dict("os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True):
             response = self.client.post(
                 "/v1/connectors/runtime/test",
-                headers={"X-GENO-Actor-Id": "agency-owner"},
+                headers={"X-GEO-Actor-Id": "agency-owner"},
                 json={
                     "project_id": "project-1",
                     "provider": "openai",
@@ -3353,12 +3353,12 @@ class ApiContractsTest(unittest.TestCase):
             def save_connector_secret(self, secret_input: object) -> RuntimeConnectorSecret:
                 raise AssertionError("viewer must not be allowed to test connector")
 
-        with patch("geno_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
-            "geno_api.main.close_repository_connection"
-        ), patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True):
+        with patch("geo_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
+            "geo_api.main.close_repository_connection"
+        ), patch.dict("os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True):
             response = self.client.post(
                 "/v1/connectors/runtime/test",
-                headers={"X-GENO-Actor-Id": "viewer@example.com"},
+                headers={"X-GEO-Actor-Id": "viewer@example.com"},
                 json={
                     "project_id": "project-1",
                     "provider": "openai",
@@ -3383,8 +3383,8 @@ class ApiContractsTest(unittest.TestCase):
                 return RuntimeProjectPage(total_count=0, limit=int(kwargs["limit"]), offset=int(kwargs["offset"]), records=())
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/projects/runtime"
@@ -3407,8 +3407,8 @@ class ApiContractsTest(unittest.TestCase):
                 return RuntimeProjectPage(total_count=0, limit=int(kwargs["limit"]), offset=int(kwargs["offset"]), records=())
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/projects/runtime?market_code=AU&status=archived&include_archived=true&limit=2&offset=1"
@@ -3442,8 +3442,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.patch(
                 "/v1/projects/runtime",
@@ -3471,8 +3471,8 @@ class ApiContractsTest(unittest.TestCase):
             def update_runtime_project(self, project: RuntimeProjectUpdateInput) -> RuntimeProject:
                 raise AssertionError("direct status mutation must be rejected before repository update")
 
-        with patch("geno_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.patch(
                 "/v1/projects/runtime",
@@ -3521,25 +3521,25 @@ class ApiContractsTest(unittest.TestCase):
 
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
         denied_repository = FakeRepository(role="analyst")
-        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
-            "geno_api.main.build_repository_from_env", return_value=denied_repository
-        ), patch("geno_api.main.close_repository_connection"):
+        with patch.dict("os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geo_api.main.build_repository_from_env", return_value=denied_repository
+        ), patch("geo_api.main.close_repository_connection"):
             denied = self.client.patch(
                 "/v1/projects/runtime",
                 json={"project_id": project_id, "name": "Koala GEO Pilot"},
-                headers={"X-GENO-Actor-Id": "agency-owner"},
+                headers={"X-GEO-Actor-Id": "agency-owner"},
             )
         self.assertEqual(denied.status_code, 403)
         self.assertIn("requires owner, admin", denied.json()["detail"])
 
         allowed_repository = FakeRepository(role="owner")
-        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
-            "geno_api.main.build_repository_from_env", return_value=allowed_repository
-        ), patch("geno_api.main.close_repository_connection"):
+        with patch.dict("os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geo_api.main.build_repository_from_env", return_value=allowed_repository
+        ), patch("geo_api.main.close_repository_connection"):
             allowed = self.client.patch(
                 "/v1/projects/runtime",
                 json={"project_id": project_id, "name": "Koala GEO Pilot", "updated_by": "payload-user"},
-                headers={"X-GENO-Actor-Id": "agency-owner"},
+                headers={"X-GEO-Actor-Id": "agency-owner"},
             )
         self.assertEqual(allowed.status_code, 200)
         self.assertEqual(allowed_repository.project.updated_by, "agency-owner")
@@ -3568,8 +3568,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/projects/runtime/action",
@@ -3624,25 +3624,25 @@ class ApiContractsTest(unittest.TestCase):
 
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
         denied_repository = FakeRepository(role="analyst")
-        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
-            "geno_api.main.build_repository_from_env", return_value=denied_repository
-        ), patch("geno_api.main.close_repository_connection"):
+        with patch.dict("os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geo_api.main.build_repository_from_env", return_value=denied_repository
+        ), patch("geo_api.main.close_repository_connection"):
             denied = self.client.post(
                 "/v1/projects/runtime/action",
                 json={"project_id": project_id, "action": "restore"},
-                headers={"X-GENO-Actor-Id": "agency-owner"},
+                headers={"X-GEO-Actor-Id": "agency-owner"},
             )
         self.assertEqual(denied.status_code, 403)
         self.assertIn("requires owner, admin", denied.json()["detail"])
 
         allowed_repository = FakeRepository(role="owner")
-        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
-            "geno_api.main.build_repository_from_env", return_value=allowed_repository
-        ), patch("geno_api.main.close_repository_connection"):
+        with patch.dict("os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geo_api.main.build_repository_from_env", return_value=allowed_repository
+        ), patch("geo_api.main.close_repository_connection"):
             allowed = self.client.post(
                 "/v1/projects/runtime/action",
                 json={"project_id": project_id, "action": "restore", "updated_by": "payload-user"},
-                headers={"X-GENO-Actor-Id": "agency-owner"},
+                headers={"X-GEO-Actor-Id": "agency-owner"},
             )
         self.assertEqual(allowed.status_code, 200)
         self.assertEqual(allowed_repository.project_action.updated_by, "agency-owner")
@@ -3653,8 +3653,8 @@ class ApiContractsTest(unittest.TestCase):
             def apply_runtime_project_action(self, project_action: RuntimeProjectActionInput) -> object:
                 raise ValueError("project already archived")
 
-        with patch("geno_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/projects/runtime/action",
@@ -3682,8 +3682,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/project-entities/runtime/brand",
@@ -3724,8 +3724,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/project-entities/runtime/competitors",
@@ -3772,8 +3772,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/projects/runtime/lifecycle-events"
@@ -3809,22 +3809,22 @@ class ApiContractsTest(unittest.TestCase):
 
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
         denied_repository = FakeRepository(role=None)
-        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
-            "geno_api.main.build_repository_from_env", return_value=denied_repository
-        ), patch("geno_api.main.close_repository_connection"):
+        with patch.dict("os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geo_api.main.build_repository_from_env", return_value=denied_repository
+        ), patch("geo_api.main.close_repository_connection"):
             denied = self.client.get(
                 f"/v1/projects/runtime/lifecycle-events?project_id={project_id}",
-                headers={"X-GENO-Actor-Id": "outsider"},
+                headers={"X-GEO-Actor-Id": "outsider"},
             )
         self.assertEqual(denied.status_code, 403)
 
         allowed_repository = FakeRepository(role="viewer")
-        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
-            "geno_api.main.build_repository_from_env", return_value=allowed_repository
-        ), patch("geno_api.main.close_repository_connection"):
+        with patch.dict("os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geo_api.main.build_repository_from_env", return_value=allowed_repository
+        ), patch("geo_api.main.close_repository_connection"):
             allowed = self.client.get(
                 f"/v1/projects/runtime/lifecycle-events?project_id={project_id}",
-                headers={"X-GENO-Actor-Id": "viewer-user"},
+                headers={"X-GEO-Actor-Id": "viewer-user"},
             )
         self.assertEqual(allowed.status_code, 200)
         self.assertEqual(allowed_repository.contexts, [("viewer-user", project_id)])
@@ -3847,8 +3847,8 @@ class ApiContractsTest(unittest.TestCase):
 
         fake_repository = FakeRepository()
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 f"/v1/projects/runtime/lifecycle-events/export.csv?project_id={project_id}&limit=10&offset=2"
@@ -3857,11 +3857,11 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("project_archived", response.text)
         self.assertEqual(response.headers["content-type"], "text/csv; charset=utf-8")
-        self.assertEqual(response.headers["x-geno-project-lifecycle-export-hash"], "hash-lifecycle-csv")
-        self.assertEqual(response.headers["x-geno-project-lifecycle-project-id"], project_id)
-        self.assertEqual(response.headers["x-geno-project-lifecycle-method-version"], "runtime_project_lifecycle_export_v1")
-        self.assertEqual(response.headers["x-geno-project-lifecycle-row-count"], "1")
-        self.assertEqual(response.headers["x-geno-project-lifecycle-total-count"], "3")
+        self.assertEqual(response.headers["x-geo-project-lifecycle-export-hash"], "hash-lifecycle-csv")
+        self.assertEqual(response.headers["x-geo-project-lifecycle-project-id"], project_id)
+        self.assertEqual(response.headers["x-geo-project-lifecycle-method-version"], "runtime_project_lifecycle_export_v1")
+        self.assertEqual(response.headers["x-geo-project-lifecycle-row-count"], "1")
+        self.assertEqual(response.headers["x-geo-project-lifecycle-total-count"], "3")
         self.assertIn("runtime-project-lifecycle-events.csv", response.headers["content-disposition"])
         self.assertEqual(fake_repository.kwargs["project_id"], project_id)
         self.assertEqual(fake_repository.kwargs["limit"], 10)
@@ -3906,13 +3906,13 @@ class ApiContractsTest(unittest.TestCase):
 
         fake_repository = FakeRepository()
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
-        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
-            "geno_api.main.build_repository_from_env", return_value=fake_repository
-        ), patch("geno_api.main.close_repository_connection"):
+        with patch.dict("os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geo_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geo_api.main.close_repository_connection"):
             response = self.client.get(
                 f"/v1/audit-events/runtime?project_id={project_id}"
                 "&event_type=runtime_prompts_imported&target_type=prompt_import&actor_id=agency-owner&limit=10&offset=2",
-                headers={"X-GENO-Actor-Id": "viewer-user"},
+                headers={"X-GEO-Actor-Id": "viewer-user"},
             )
 
         self.assertEqual(response.status_code, 200)
@@ -3942,8 +3942,8 @@ class ApiContractsTest(unittest.TestCase):
 
         fake_repository = FakeRepository()
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 f"/v1/audit-events/runtime/export.csv?project_id={project_id}&event_type=runtime_prompts_imported&limit=10"
@@ -3952,37 +3952,37 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("runtime_prompts_imported", response.text)
         self.assertEqual(response.headers["content-type"], "text/csv; charset=utf-8")
-        self.assertEqual(response.headers["x-geno-audit-export-hash"], "hash-audit-csv")
-        self.assertEqual(response.headers["x-geno-audit-method-version"], "runtime_audit_events_export_v1")
-        self.assertEqual(response.headers["x-geno-audit-row-count"], "1")
-        self.assertEqual(response.headers["x-geno-audit-total-count"], "5")
-        self.assertEqual(response.headers["x-geno-audit-project-id"], project_id)
+        self.assertEqual(response.headers["x-geo-audit-export-hash"], "hash-audit-csv")
+        self.assertEqual(response.headers["x-geo-audit-method-version"], "runtime_audit_events_export_v1")
+        self.assertEqual(response.headers["x-geo-audit-row-count"], "1")
+        self.assertEqual(response.headers["x-geo-audit-total-count"], "5")
+        self.assertEqual(response.headers["x-geo-audit-project-id"], project_id)
         self.assertIn("runtime-audit-events.csv", response.headers["content-disposition"])
         self.assertEqual(fake_repository.kwargs["project_id"], project_id)
         self.assertEqual(fake_repository.kwargs["event_type"], "runtime_prompts_imported")
         self.assertEqual(fake_repository.kwargs["limit"], 10)
 
     def test_runtime_projects_endpoint_requires_actor_when_access_control_enabled(self) -> None:
-        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}):
+        with patch.dict("os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}):
             response = self.client.get("/v1/projects/runtime")
 
         self.assertEqual(response.status_code, 401)
-        self.assertIn("X-GENO-Actor-Id", response.json()["detail"])
+        self.assertIn("X-GEO-Actor-Id", response.json()["detail"])
 
     def test_runtime_projects_endpoint_requires_jwt_secret_when_jwt_auth_mode_enabled(self) -> None:
-        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1", "GENO_RUNTIME_AUTH_MODE": "jwt"}, clear=False):
+        with patch.dict("os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1", "GEO_RUNTIME_AUTH_MODE": "jwt"}, clear=False):
             response = self.client.get("/v1/projects/runtime")
 
         self.assertEqual(response.status_code, 503)
-        self.assertIn("GENO_RUNTIME_JWT_SECRET", response.json()["detail"])
+        self.assertIn("GEO_RUNTIME_JWT_SECRET", response.json()["detail"])
 
     def test_runtime_projects_endpoint_requires_bearer_jwt_when_jwt_auth_mode_enabled(self) -> None:
         with patch.dict(
             "os.environ",
             {
-                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
-                "GENO_RUNTIME_AUTH_MODE": "jwt",
-                "GENO_RUNTIME_JWT_SECRET": "test-runtime-secret",
+                "GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GEO_RUNTIME_AUTH_MODE": "jwt",
+                "GEO_RUNTIME_JWT_SECRET": "test-runtime-secret",
             },
             clear=False,
         ):
@@ -3996,9 +3996,9 @@ class ApiContractsTest(unittest.TestCase):
         with patch.dict(
             "os.environ",
             {
-                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
-                "GENO_RUNTIME_AUTH_MODE": "jwt",
-                "GENO_RUNTIME_JWT_SECRET": "test-runtime-secret",
+                "GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GEO_RUNTIME_AUTH_MODE": "jwt",
+                "GEO_RUNTIME_JWT_SECRET": "test-runtime-secret",
             },
             clear=False,
         ):
@@ -4014,10 +4014,10 @@ class ApiContractsTest(unittest.TestCase):
                 return RuntimeProjectPage(total_count=0, limit=int(kwargs["limit"]), offset=int(kwargs["offset"]), records=())
 
         fake_repository = FakeRepository()
-        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
-            "geno_api.main.build_repository_from_env", return_value=fake_repository
-        ), patch("geno_api.main.close_repository_connection"):
-            response = self.client.get("/v1/projects/runtime?market_code=AU", headers={"X-GENO-Actor-Id": "agency-owner"})
+        with patch.dict("os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geo_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geo_api.main.close_repository_connection"):
+            response = self.client.get("/v1/projects/runtime?market_code=AU", headers={"X-GEO-Actor-Id": "agency-owner"})
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(fake_repository.kwargs["actor_id"], "agency-owner")
@@ -4033,13 +4033,13 @@ class ApiContractsTest(unittest.TestCase):
         with patch.dict(
             "os.environ",
             {
-                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
-                "GENO_RUNTIME_AUTH_MODE": "jwt",
-                "GENO_RUNTIME_JWT_SECRET": "test-runtime-secret",
+                "GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GEO_RUNTIME_AUTH_MODE": "jwt",
+                "GEO_RUNTIME_JWT_SECRET": "test-runtime-secret",
             },
             clear=False,
-        ), patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        ), patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get("/v1/projects/runtime?market_code=AU", headers={"Authorization": f"Bearer {token}"})
 
@@ -4057,13 +4057,13 @@ class ApiContractsTest(unittest.TestCase):
         with patch.dict(
             "os.environ",
             {
-                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
-                "GENO_RUNTIME_AUTH_MODE": "jwks",
-                "GENO_RUNTIME_JWKS_JSON": jwks_json,
+                "GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GEO_RUNTIME_AUTH_MODE": "jwks",
+                "GEO_RUNTIME_JWKS_JSON": jwks_json,
             },
             clear=False,
-        ), patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        ), patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get("/v1/projects/runtime?market_code=AU", headers={"Authorization": f"Bearer {token}"})
 
@@ -4097,17 +4097,17 @@ class ApiContractsTest(unittest.TestCase):
         with patch.dict(
             "os.environ",
             {
-                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
-                "GENO_RUNTIME_AUTH_MODE": "jwks",
-                "GENO_RUNTIME_JWKS_JSON": "",
-                "GENO_RUNTIME_JWKS_URL": jwks_url,
-                "GENO_RUNTIME_JWKS_CACHE_TTL_SECONDS": "60",
-                "GENO_RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS": "1.5",
+                "GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GEO_RUNTIME_AUTH_MODE": "jwks",
+                "GEO_RUNTIME_JWKS_JSON": "",
+                "GEO_RUNTIME_JWKS_URL": jwks_url,
+                "GEO_RUNTIME_JWKS_CACHE_TTL_SECONDS": "60",
+                "GEO_RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS": "1.5",
             },
             clear=False,
-        ), patch("geno_api.main.httpx.get", side_effect=fake_get), patch(
-            "geno_api.main.build_repository_from_env", return_value=fake_repository
-        ), patch("geno_api.main.close_repository_connection"):
+        ), patch("geo_api.main.httpx.get", side_effect=fake_get), patch(
+            "geo_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geo_api.main.close_repository_connection"):
             first = self.client.get("/v1/projects/runtime?market_code=AU", headers={"Authorization": f"Bearer {token}"})
             second = self.client.get("/v1/projects/runtime?market_code=AU", headers={"Authorization": f"Bearer {token}"})
 
@@ -4152,17 +4152,17 @@ class ApiContractsTest(unittest.TestCase):
         with patch.dict(
             "os.environ",
             {
-                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
-                "GENO_RUNTIME_AUTH_MODE": "jwks",
-                "GENO_RUNTIME_JWKS_JSON": "",
-                "GENO_RUNTIME_JWKS_URL": jwks_url,
-                "GENO_RUNTIME_JWKS_CACHE_TTL_SECONDS": "0",
-                "GENO_RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS": "1.5",
+                "GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GEO_RUNTIME_AUTH_MODE": "jwks",
+                "GEO_RUNTIME_JWKS_JSON": "",
+                "GEO_RUNTIME_JWKS_URL": jwks_url,
+                "GEO_RUNTIME_JWKS_CACHE_TTL_SECONDS": "0",
+                "GEO_RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS": "1.5",
             },
             clear=False,
-        ), patch("geno_api.main.httpx.get", side_effect=fake_get), patch(
-            "geno_api.main.build_repository_from_env", return_value=fake_repository
-        ), patch("geno_api.main.close_repository_connection"):
+        ), patch("geo_api.main.httpx.get", side_effect=fake_get), patch(
+            "geo_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geo_api.main.close_repository_connection"):
             first = self.client.get("/v1/projects/runtime?market_code=AU", headers={"Authorization": f"Bearer {token}"})
             second = self.client.get("/v1/projects/runtime?market_code=AU", headers={"Authorization": f"Bearer {token}"})
 
@@ -4204,18 +4204,18 @@ class ApiContractsTest(unittest.TestCase):
         with patch.dict(
             "os.environ",
             {
-                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
-                "GENO_RUNTIME_AUTH_MODE": "jwks",
-                "GENO_RUNTIME_JWKS_JSON": "",
-                "GENO_RUNTIME_JWKS_URL": jwks_url,
-                "GENO_RUNTIME_JWKS_CACHE_TTL_SECONDS": "0",
-                "GENO_RUNTIME_JWKS_STALE_IF_ERROR_SECONDS": "60",
-                "GENO_RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS": "1.5",
+                "GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GEO_RUNTIME_AUTH_MODE": "jwks",
+                "GEO_RUNTIME_JWKS_JSON": "",
+                "GEO_RUNTIME_JWKS_URL": jwks_url,
+                "GEO_RUNTIME_JWKS_CACHE_TTL_SECONDS": "0",
+                "GEO_RUNTIME_JWKS_STALE_IF_ERROR_SECONDS": "60",
+                "GEO_RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS": "1.5",
             },
             clear=False,
-        ), patch("geno_api.main.httpx.get", side_effect=fake_get), patch(
-            "geno_api.main.build_repository_from_env", return_value=fake_repository
-        ), patch("geno_api.main.close_repository_connection"):
+        ), patch("geo_api.main.httpx.get", side_effect=fake_get), patch(
+            "geo_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geo_api.main.close_repository_connection"):
             first = self.client.get("/v1/projects/runtime?market_code=AU", headers={"Authorization": f"Bearer {token}"})
             second = self.client.get("/v1/projects/runtime?market_code=AU", headers={"Authorization": f"Bearer {token}"})
 
@@ -4242,9 +4242,9 @@ class ApiContractsTest(unittest.TestCase):
             def json(self) -> object:
                 return self.payload
 
-        issuer = "https://idp.example.test/realms/geno"
+        issuer = "https://idp.example.test/realms/geo"
         discovery_url = f"{issuer}/.well-known/openid-configuration"
-        jwks_url = "https://idp.example.test/realms/geno/protocol/openid-connect/certs"
+        jwks_url = "https://idp.example.test/realms/geo/protocol/openid-connect/certs"
         fake_repository = FakeRepository()
         token, jwks_json = self._runtime_jwks_rs256_token(payload={"sub": "oidc-owner", "iss": issuer})
         jwks_payload = json.loads(jwks_json)
@@ -4261,19 +4261,19 @@ class ApiContractsTest(unittest.TestCase):
         with patch.dict(
             "os.environ",
             {
-                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
-                "GENO_RUNTIME_AUTH_MODE": "jwks",
-                "GENO_RUNTIME_JWKS_JSON": "",
-                "GENO_RUNTIME_JWKS_URL": "",
-                "GENO_RUNTIME_JWT_ISSUER": issuer,
-                "GENO_RUNTIME_JWKS_CACHE_TTL_SECONDS": "60",
-                "GENO_RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS": "60",
-                "GENO_RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS": "1.25",
+                "GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GEO_RUNTIME_AUTH_MODE": "jwks",
+                "GEO_RUNTIME_JWKS_JSON": "",
+                "GEO_RUNTIME_JWKS_URL": "",
+                "GEO_RUNTIME_JWT_ISSUER": issuer,
+                "GEO_RUNTIME_JWKS_CACHE_TTL_SECONDS": "60",
+                "GEO_RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS": "60",
+                "GEO_RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS": "1.25",
             },
             clear=False,
-        ), patch("geno_api.main.httpx.get", side_effect=fake_get), patch(
-            "geno_api.main.build_repository_from_env", return_value=fake_repository
-        ), patch("geno_api.main.close_repository_connection"):
+        ), patch("geo_api.main.httpx.get", side_effect=fake_get), patch(
+            "geo_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geo_api.main.close_repository_connection"):
             first = self.client.get("/v1/projects/runtime?market_code=AU", headers={"Authorization": f"Bearer {token}"})
             second = self.client.get("/v1/projects/runtime?market_code=AU", headers={"Authorization": f"Bearer {token}"})
 
@@ -4306,9 +4306,9 @@ class ApiContractsTest(unittest.TestCase):
                     raise ValueError("temporary upstream parse failure")
                 return self.payload
 
-        issuer = "https://idp.example.test/realms/geno"
+        issuer = "https://idp.example.test/realms/geo"
         discovery_url = f"{issuer}/.well-known/openid-configuration"
-        jwks_url = "https://idp.example.test/realms/geno/protocol/openid-connect/certs"
+        jwks_url = "https://idp.example.test/realms/geo/protocol/openid-connect/certs"
         fake_repository = FakeRepository()
         token, jwks_json = self._runtime_jwks_rs256_token(payload={"sub": "stale-oidc-owner", "iss": issuer})
         jwks_payload = json.loads(jwks_json)
@@ -4327,21 +4327,21 @@ class ApiContractsTest(unittest.TestCase):
         with patch.dict(
             "os.environ",
             {
-                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
-                "GENO_RUNTIME_AUTH_MODE": "jwks",
-                "GENO_RUNTIME_JWKS_JSON": "",
-                "GENO_RUNTIME_JWKS_URL": "",
-                "GENO_RUNTIME_JWT_ISSUER": issuer,
-                "GENO_RUNTIME_JWKS_CACHE_TTL_SECONDS": "0",
-                "GENO_RUNTIME_JWKS_STALE_IF_ERROR_SECONDS": "60",
-                "GENO_RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS": "0",
-                "GENO_RUNTIME_OIDC_DISCOVERY_STALE_IF_ERROR_SECONDS": "60",
-                "GENO_RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS": "1.25",
+                "GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GEO_RUNTIME_AUTH_MODE": "jwks",
+                "GEO_RUNTIME_JWKS_JSON": "",
+                "GEO_RUNTIME_JWKS_URL": "",
+                "GEO_RUNTIME_JWT_ISSUER": issuer,
+                "GEO_RUNTIME_JWKS_CACHE_TTL_SECONDS": "0",
+                "GEO_RUNTIME_JWKS_STALE_IF_ERROR_SECONDS": "60",
+                "GEO_RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS": "0",
+                "GEO_RUNTIME_OIDC_DISCOVERY_STALE_IF_ERROR_SECONDS": "60",
+                "GEO_RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS": "1.25",
             },
             clear=False,
-        ), patch("geno_api.main.httpx.get", side_effect=fake_get), patch(
-            "geno_api.main.build_repository_from_env", return_value=fake_repository
-        ), patch("geno_api.main.close_repository_connection"):
+        ), patch("geo_api.main.httpx.get", side_effect=fake_get), patch(
+            "geo_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geo_api.main.close_repository_connection"):
             first = self.client.get("/v1/projects/runtime?market_code=AU", headers={"Authorization": f"Bearer {token}"})
             second = self.client.get("/v1/projects/runtime?market_code=AU", headers={"Authorization": f"Bearer {token}"})
 
@@ -4356,9 +4356,9 @@ class ApiContractsTest(unittest.TestCase):
         with patch.dict(
             "os.environ",
             {
-                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
-                "GENO_RUNTIME_AUTH_MODE": "jwks",
-                "GENO_RUNTIME_JWKS_JSON": trusted_jwks_json,
+                "GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GEO_RUNTIME_AUTH_MODE": "jwks",
+                "GEO_RUNTIME_JWKS_JSON": trusted_jwks_json,
             },
             clear=False,
         ):
@@ -4385,13 +4385,13 @@ class ApiContractsTest(unittest.TestCase):
         with patch.dict(
             "os.environ",
             {
-                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
-                "GENO_RUNTIME_AUTH_MODE": "jwt",
-                "GENO_RUNTIME_JWT_SECRET": "test-runtime-secret",
+                "GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GEO_RUNTIME_AUTH_MODE": "jwt",
+                "GEO_RUNTIME_JWT_SECRET": "test-runtime-secret",
             },
             clear=False,
-        ), patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        ), patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/project-members/runtime",
@@ -4436,8 +4436,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/project-members/runtime?project_id=9a50797d-a341-55a4-8bdf-cc255c017e5c&limit=5&offset=1"
@@ -4465,20 +4465,20 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/project-members/runtime/export.csv?project_id=project-1&limit=5&offset=1",
-                headers={"X-GENO-Actor-Id": "agency-owner"},
+                headers={"X-GEO-Actor-Id": "agency-owner"},
             )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["content-type"], "text/csv; charset=utf-8")
-        self.assertEqual(response.headers["x-geno-project-member-export-hash"], "hash-project-members-csv")
-        self.assertEqual(response.headers["x-geno-project-member-project-id"], "project-1")
-        self.assertEqual(response.headers["x-geno-project-member-row-count"], "1")
-        self.assertEqual(response.headers["x-geno-project-member-total-count"], "2")
+        self.assertEqual(response.headers["x-geo-project-member-export-hash"], "hash-project-members-csv")
+        self.assertEqual(response.headers["x-geo-project-member-project-id"], "project-1")
+        self.assertEqual(response.headers["x-geo-project-member-row-count"], "1")
+        self.assertEqual(response.headers["x-geo-project-member-total-count"], "2")
         self.assertIn("runtime-project-members.csv", response.headers["content-disposition"])
         self.assertIn("member-1", response.text)
         self.assertEqual(fake_repository.kwargs["project_id"], "project-1")
@@ -4495,12 +4495,12 @@ class ApiContractsTest(unittest.TestCase):
                 raise AssertionError("list_runtime_project_members should not be called when access is denied")
 
         fake_repository = FakeRepository()
-        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
-            "geno_api.main.build_repository_from_env", return_value=fake_repository
-        ), patch("geno_api.main.close_repository_connection"):
+        with patch.dict("os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geo_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geo_api.main.close_repository_connection"):
             response = self.client.get(
                 "/v1/project-members/runtime?project_id=9a50797d-a341-55a4-8bdf-cc255c017e5c",
-                headers={"X-GENO-Actor-Id": "agency-owner"},
+                headers={"X-GEO-Actor-Id": "agency-owner"},
             )
 
         self.assertEqual(response.status_code, 403)
@@ -4527,8 +4527,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/project-members/runtime",
@@ -4562,9 +4562,9 @@ class ApiContractsTest(unittest.TestCase):
                 return RuntimeProjectMember(member={"id": "member-1", "project_id": member.project_id}, audit_events=())
 
         fake_repository = FakeRepository()
-        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
-            "geno_api.main.build_repository_from_env", return_value=fake_repository
-        ), patch("geno_api.main.close_repository_connection"):
+        with patch.dict("os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geo_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geo_api.main.close_repository_connection"):
             response = self.client.post(
                 "/v1/project-members/runtime",
                 json={
@@ -4573,7 +4573,7 @@ class ApiContractsTest(unittest.TestCase):
                     "role": "viewer",
                     "updated_by": "payload-user",
                 },
-                headers={"X-GENO-Actor-Id": "agency-owner"},
+                headers={"X-GEO-Actor-Id": "agency-owner"},
             )
 
         self.assertEqual(response.status_code, 200)
@@ -4592,9 +4592,9 @@ class ApiContractsTest(unittest.TestCase):
                 raise AssertionError("save_runtime_project_member should not be called for analyst role")
 
         fake_repository = FakeRepository()
-        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
-            "geno_api.main.build_repository_from_env", return_value=fake_repository
-        ), patch("geno_api.main.close_repository_connection"):
+        with patch.dict("os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geo_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geo_api.main.close_repository_connection"):
             response = self.client.post(
                 "/v1/project-members/runtime",
                 json={
@@ -4602,7 +4602,7 @@ class ApiContractsTest(unittest.TestCase):
                     "user_id": "viewer@example.com",
                     "role": "viewer",
                 },
-                headers={"X-GENO-Actor-Id": "agency-analyst"},
+                headers={"X-GEO-Actor-Id": "agency-analyst"},
             )
 
         self.assertEqual(response.status_code, 403)
@@ -4630,8 +4630,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.request(
                 "DELETE",
@@ -4661,9 +4661,9 @@ class ApiContractsTest(unittest.TestCase):
                 return RuntimeProjectMember(member={"id": "member-1", "user_id": member.user_id}, audit_events=())
 
         fake_repository = FakeRepository()
-        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
-            "geno_api.main.build_repository_from_env", return_value=fake_repository
-        ), patch("geno_api.main.close_repository_connection"):
+        with patch.dict("os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geo_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geo_api.main.close_repository_connection"):
             response = self.client.request(
                 "DELETE",
                 "/v1/project-members/runtime",
@@ -4672,7 +4672,7 @@ class ApiContractsTest(unittest.TestCase):
                     "user_id": "viewer@example.com",
                     "deleted_by": "payload-user",
                 },
-                headers={"X-GENO-Actor-Id": "agency-admin"},
+                headers={"X-GEO-Actor-Id": "agency-admin"},
             )
 
         self.assertEqual(response.status_code, 200)
@@ -4689,9 +4689,9 @@ class ApiContractsTest(unittest.TestCase):
                 raise AssertionError("delete_runtime_project_member should not be called for viewer role")
 
         fake_repository = FakeRepository()
-        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
-            "geno_api.main.build_repository_from_env", return_value=fake_repository
-        ), patch("geno_api.main.close_repository_connection"):
+        with patch.dict("os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geo_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geo_api.main.close_repository_connection"):
             response = self.client.request(
                 "DELETE",
                 "/v1/project-members/runtime",
@@ -4699,7 +4699,7 @@ class ApiContractsTest(unittest.TestCase):
                     "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
                     "user_id": "viewer@example.com",
                 },
-                headers={"X-GENO-Actor-Id": "agency-viewer"},
+                headers={"X-GEO-Actor-Id": "agency-viewer"},
             )
 
         self.assertEqual(response.status_code, 403)
@@ -4711,8 +4711,8 @@ class ApiContractsTest(unittest.TestCase):
             def delete_runtime_project_member(self, member: object) -> RuntimeProjectMember:
                 raise ValueError("cannot remove or downgrade the last project owner")
 
-        with patch("geno_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.request(
                 "DELETE",
@@ -4750,8 +4750,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/project-member-invitations/runtime"
@@ -4781,24 +4781,24 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/project-member-invitations/runtime/export.csv?project_id=project-1&status=pending&limit=5",
-                headers={"X-GENO-Actor-Id": "agency-owner"},
+                headers={"X-GEO-Actor-Id": "agency-owner"},
             )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["content-type"], "text/csv; charset=utf-8")
         self.assertEqual(
-            response.headers["x-geno-project-member-invitation-export-hash"],
+            response.headers["x-geo-project-member-invitation-export-hash"],
             "hash-project-member-invitations-csv",
         )
-        self.assertEqual(response.headers["x-geno-project-member-invitation-project-id"], "project-1")
-        self.assertEqual(response.headers["x-geno-project-member-invitation-status"], "pending")
-        self.assertEqual(response.headers["x-geno-project-member-invitation-row-count"], "1")
-        self.assertEqual(response.headers["x-geno-project-member-invitation-total-count"], "3")
+        self.assertEqual(response.headers["x-geo-project-member-invitation-project-id"], "project-1")
+        self.assertEqual(response.headers["x-geo-project-member-invitation-status"], "pending")
+        self.assertEqual(response.headers["x-geo-project-member-invitation-row-count"], "1")
+        self.assertEqual(response.headers["x-geo-project-member-invitation-total-count"], "3")
         self.assertIn("runtime-project-member-invitations.csv", response.headers["content-disposition"])
         self.assertIn("invite-1", response.text)
         self.assertEqual(fake_repository.kwargs["project_id"], "project-1")
@@ -4815,12 +4815,12 @@ class ApiContractsTest(unittest.TestCase):
                 raise AssertionError("list_runtime_project_member_invitations should not be called for viewer role")
 
         fake_repository = FakeRepository()
-        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
-            "geno_api.main.build_repository_from_env", return_value=fake_repository
-        ), patch("geno_api.main.close_repository_connection"):
+        with patch.dict("os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geo_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geo_api.main.close_repository_connection"):
             response = self.client.get(
                 "/v1/project-member-invitations/runtime?project_id=9a50797d-a341-55a4-8bdf-cc255c017e5c",
-                headers={"X-GENO-Actor-Id": "agency-viewer"},
+                headers={"X-GEO-Actor-Id": "agency-viewer"},
             )
 
         self.assertEqual(response.status_code, 403)
@@ -4838,7 +4838,7 @@ class ApiContractsTest(unittest.TestCase):
                         "email": invitation.email,
                         "role": invitation.role,
                         "status": "pending",
-                        "invite_token": "geno-invite-token",
+                        "invite_token": "geo-invite-token",
                         "invite_token_hash": "hash",
                     },
                     audit_events=(
@@ -4851,8 +4851,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/project-member-invitations/runtime",
@@ -4896,9 +4896,9 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
-            "geno_api.main.build_repository_from_env", return_value=fake_repository
-        ), patch("geno_api.main.close_repository_connection"):
+        with patch.dict("os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geo_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geo_api.main.close_repository_connection"):
             response = self.client.post(
                 "/v1/project-member-invitations/runtime",
                 json={
@@ -4907,7 +4907,7 @@ class ApiContractsTest(unittest.TestCase):
                     "role": "viewer",
                     "invited_by": "payload-user",
                 },
-                headers={"X-GENO-Actor-Id": "agency-admin"},
+                headers={"X-GEO-Actor-Id": "agency-admin"},
             )
 
         self.assertEqual(response.status_code, 200)
@@ -4916,8 +4916,8 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(fake_repository.invitation.invited_by, "agency-admin")
 
     def test_runtime_project_member_invitation_create_endpoint_rejects_bad_expiry(self) -> None:
-        with patch("geno_api.main.build_repository_from_env", return_value=object()), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=object()), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/project-member-invitations/runtime",
@@ -4953,8 +4953,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/project-member-invitations/runtime/action",
@@ -4980,8 +4980,8 @@ class ApiContractsTest(unittest.TestCase):
             def apply_runtime_project_member_invitation_action(self, action: object) -> object:
                 raise ValueError("cannot revoke invitation with status revoked")
 
-        with patch("geno_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/project-member-invitations/runtime/action",
@@ -5017,19 +5017,19 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/project-member-invitations/runtime/email",
                 json={
                     "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
                     "invitation_id": "21a98a17-7930-5504-a6fa-cd08990fbf07",
-                    "invite_token": "geno-invite-token",
+                    "invite_token": "geo-invite-token",
                     "accept_base_url": "https://app.example.com/invite/accept",
                     "sent_by": "agency-admin",
-                    "smtp_env_prefix": "GENO_TEST_SMTP",
-                    "subject": "Join GENO",
+                    "smtp_env_prefix": "GEO_TEST_SMTP",
+                    "subject": "Join GEO",
                     "message": "Please join.",
                     "reason": "send invitation",
                 },
@@ -5038,10 +5038,10 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["audit_events"][0]["event_type"], "project_member_invitation_email_sent")
         self.assertEqual(fake_repository.email_input.project_id, "9a50797d-a341-55a4-8bdf-cc255c017e5c")
-        self.assertEqual(fake_repository.email_input.invite_token, "geno-invite-token")
+        self.assertEqual(fake_repository.email_input.invite_token, "geo-invite-token")
         self.assertEqual(fake_repository.email_input.accept_base_url, "https://app.example.com/invite/accept")
-        self.assertEqual(fake_repository.email_input.smtp_env_prefix, "GENO_TEST_SMTP")
-        self.assertEqual(fake_repository.email_input.subject, "Join GENO")
+        self.assertEqual(fake_repository.email_input.smtp_env_prefix, "GEO_TEST_SMTP")
+        self.assertEqual(fake_repository.email_input.subject, "Join GEO")
         self.assertEqual(fake_repository.email_input.message, "Please join.")
 
     def test_runtime_project_member_invitation_email_endpoint_uses_actor_and_requires_admin_or_owner_role(
@@ -5063,19 +5063,19 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
-            "geno_api.main.build_repository_from_env", return_value=fake_repository
-        ), patch("geno_api.main.close_repository_connection"):
+        with patch.dict("os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geo_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geo_api.main.close_repository_connection"):
             response = self.client.post(
                 "/v1/project-member-invitations/runtime/email",
                 json={
                     "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
                     "invitation_id": "21a98a17-7930-5504-a6fa-cd08990fbf07",
-                    "invite_token": "geno-invite-token",
+                    "invite_token": "geo-invite-token",
                     "accept_base_url": "https://app.example.com/invite/accept",
                     "sent_by": "payload-user",
                 },
-                headers={"X-GENO-Actor-Id": "agency-admin"},
+                headers={"X-GEO-Actor-Id": "agency-admin"},
             )
 
         self.assertEqual(response.status_code, 200)
@@ -5086,17 +5086,17 @@ class ApiContractsTest(unittest.TestCase):
     def test_runtime_project_member_invitation_email_endpoint_returns_unavailable_for_smtp_failure(self) -> None:
         class FakeRepository:
             def send_runtime_project_member_invitation_email(self, email_input: object) -> object:
-                raise RuntimeError("GENO_NOTIFICATION_SMTP_HOST is not configured")
+                raise RuntimeError("GEO_NOTIFICATION_SMTP_HOST is not configured")
 
-        with patch("geno_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/project-member-invitations/runtime/email",
                 json={
                     "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
                     "invitation_id": "21a98a17-7930-5504-a6fa-cd08990fbf07",
-                    "invite_token": "geno-invite-token",
+                    "invite_token": "geo-invite-token",
                     "accept_base_url": "https://app.example.com/invite/accept",
                 },
             )
@@ -5124,14 +5124,14 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/project-member-invitations/runtime/accept",
                 json={
                     "invitation_id": "21a98a17-7930-5504-a6fa-cd08990fbf07",
-                    "invite_token": "geno-invite-token",
+                    "invite_token": "geo-invite-token",
                     "accepted_by": "viewer@example.com",
                     "reason": "accept invite",
                 },
@@ -5156,14 +5156,14 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
-            "geno_api.main.build_repository_from_env", return_value=fake_repository
-        ), patch("geno_api.main.close_repository_connection"):
+        with patch.dict("os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geo_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geo_api.main.close_repository_connection"):
             response = self.client.post(
                 "/v1/project-member-invitations/runtime/accept",
                 json={
                     "invitation_id": "21a98a17-7930-5504-a6fa-cd08990fbf07",
-                    "invite_token": "geno-invite-token",
+                    "invite_token": "geo-invite-token",
                 },
             )
 
@@ -5175,14 +5175,14 @@ class ApiContractsTest(unittest.TestCase):
             def accept_runtime_project_member_invitation(self, invitation: object) -> object:
                 raise ValueError("project member invitation expired")
 
-        with patch("geno_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/project-member-invitations/runtime/accept",
                 json={
                     "invitation_id": "21a98a17-7930-5504-a6fa-cd08990fbf07",
-                    "invite_token": "geno-invite-token",
+                    "invite_token": "geo-invite-token",
                 },
             )
 
@@ -5194,14 +5194,14 @@ class ApiContractsTest(unittest.TestCase):
             def preflight(self, **_kwargs: object) -> object:
                 raise AssertionError("malformed invitation_id must be rejected by request validation")
 
-        with patch("geno_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/auth/invitations/preflight",
                 json={
                     "invitation_id": "21a98a17-7930-5504-a6fa-not-a-uuid",
-                    "invite_token": "geno-invite-token",
+                    "invite_token": "geo-invite-token",
                     "requested_surface": "customer",
                 },
             )
@@ -5248,18 +5248,18 @@ class ApiContractsTest(unittest.TestCase):
                         "status": "active",
                     },
                     audit_events=({"event_type": "runtime_session_created"},),
-                    raw_session_token="geno-session-secret",
+                    raw_session_token="geo-session-secret",
                 )
 
         fake_repository = FakeRepository()
-        with patch.dict("os.environ", {"GENO_RUNTIME_SESSION_COOKIE_SECURE": "0"}, clear=False), patch(
-            "geno_api.main.build_repository_from_env", return_value=fake_repository
-        ), patch("geno_api.main.close_repository_connection"):
+        with patch.dict("os.environ", {"GEO_RUNTIME_SESSION_COOKIE_SECURE": "0"}, clear=False), patch(
+            "geo_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geo_api.main.close_repository_connection"):
             response = self.client.post(
                 "/v1/auth/invitations/redeem",
                 json={
                     "invitation_id": "21a98a17-7930-5504-a6fa-cd08990fbf07",
-                    "invite_token": "geno-invite-token",
+                    "invite_token": "geo-invite-token",
                     "accepted_by": "viewer@example.com",
                 },
             )
@@ -5292,22 +5292,22 @@ class ApiContractsTest(unittest.TestCase):
                 return RuntimeSession(
                     session={"id": "session-1", "actor_id": "viewer@example.com", "project_ids": [session_input.project_ids[0]]},
                     audit_events=(),
-                    raw_session_token="geno-session-secret",
+                    raw_session_token="geo-session-secret",
                 )
 
         fake_repository = FakeRepository()
         with patch.dict(
             "os.environ",
-            {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1", "GENO_RUNTIME_SESSION_COOKIE_SECURE": "0"},
+            {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1", "GEO_RUNTIME_SESSION_COOKIE_SECURE": "0"},
             clear=False,
-        ), patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        ), patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/auth/invitations/redeem",
                 json={
                     "invitation_id": "21a98a17-7930-5504-a6fa-cd08990fbf07",
-                    "invite_token": "geno-invite-token",
+                    "invite_token": "geo-invite-token",
                 },
             )
 
@@ -5319,14 +5319,14 @@ class ApiContractsTest(unittest.TestCase):
             def accept_runtime_project_member_invitation(self, invitation: object) -> object:
                 raise ValueError("cannot accept invitation with status accepted")
 
-        with patch("geno_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/auth/invitations/redeem",
                 json={
                     "invitation_id": "21a98a17-7930-5504-a6fa-cd08990fbf07",
-                    "invite_token": "geno-invite-token",
+                    "invite_token": "geo-invite-token",
                 },
             )
 
@@ -5370,12 +5370,12 @@ class ApiContractsTest(unittest.TestCase):
         fake_repository = FakeRepository()
         with patch.dict(
             "os.environ",
-            {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1", "GENO_RUNTIME_AUTH_MODE": "session"},
+            {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1", "GEO_RUNTIME_AUTH_MODE": "session"},
             clear=False,
-        ), patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        ), patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
-            response = self.client.get("/v1/auth/me", headers={"X-GENO-Session-Token": "raw-session-token"})
+            response = self.client.get("/v1/auth/me", headers={"X-GEO-Session-Token": "raw-session-token"})
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["session"]["actor_id"], "viewer@example.com")
@@ -5385,18 +5385,18 @@ class ApiContractsTest(unittest.TestCase):
 
         with patch.dict(
             "os.environ",
-            {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1", "GENO_RUNTIME_AUTH_MODE": "session"},
+            {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1", "GEO_RUNTIME_AUTH_MODE": "session"},
             clear=False,
-        ), patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        ), patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             confirmed = self.client.get(
                 "/v1/auth/me",
                 headers={
-                    "X-GENO-Session-Token": "raw-session-token",
-                    "X-GENO-CSRF-Token": "csrf-token",
+                    "X-GEO-Session-Token": "raw-session-token",
+                    "X-GEO-CSRF-Token": "csrf-token",
                 },
-                cookies={"GENO_CSRF_TOKEN": "csrf-token"},
+                cookies={"GEO_CSRF_TOKEN": "csrf-token"},
             )
 
         self.assertEqual(confirmed.status_code, 200)
@@ -5433,29 +5433,29 @@ class ApiContractsTest(unittest.TestCase):
         with patch.dict(
             "os.environ",
             {
-                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
-                "GENO_RUNTIME_AUTH_MODE": "session",
-                "GENO_RUNTIME_SESSION_COOKIE_SECURE": "0",
+                "GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GEO_RUNTIME_AUTH_MODE": "session",
+                "GEO_RUNTIME_SESSION_COOKIE_SECURE": "0",
             },
             clear=False,
-        ), patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        ), patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/auth/logout",
                 headers={
-                    "X-GENO-Session-Token": "raw-session-token",
-                    "X-GENO-CSRF-Token": "csrf-token",
+                    "X-GEO-Session-Token": "raw-session-token",
+                    "X-GEO-CSRF-Token": "csrf-token",
                 },
-                cookies={"GENO_CSRF_TOKEN": "csrf-token"},
+                cookies={"GEO_CSRF_TOKEN": "csrf-token"},
             )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["status"], "logged_out")
         self.assertEqual(fake_repository.revoke_input.session_id, "session-1")
         set_cookie_headers = "\n".join(response.headers.get_list("set-cookie"))
-        self.assertIn("GENO_RUNTIME_SESSION=", set_cookie_headers)
-        self.assertIn("GENO_CSRF_TOKEN=", set_cookie_headers)
+        self.assertIn("GEO_RUNTIME_SESSION=", set_cookie_headers)
+        self.assertIn("GEO_CSRF_TOKEN=", set_cookie_headers)
         self.assertIn("Max-Age=0", set_cookie_headers)
 
     def test_auth_logout_rejects_session_mutation_without_csrf(self) -> None:
@@ -5466,17 +5466,17 @@ class ApiContractsTest(unittest.TestCase):
         with patch.dict(
             "os.environ",
             {
-                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
-                "GENO_RUNTIME_AUTH_MODE": "session",
+                "GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GEO_RUNTIME_AUTH_MODE": "session",
             },
             clear=False,
-        ), patch("geno_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
-            "geno_api.main.close_repository_connection"
+        ), patch("geo_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
+            "geo_api.main.close_repository_connection"
         ):
-            response = self.client.post("/v1/auth/logout", headers={"X-GENO-Session-Token": "raw-session-token"})
+            response = self.client.post("/v1/auth/logout", headers={"X-GEO-Session-Token": "raw-session-token"})
 
         self.assertEqual(response.status_code, 403)
-        self.assertIn("X-GENO-CSRF-Token", response.json()["detail"])
+        self.assertIn("X-GEO-CSRF-Token", response.json()["detail"])
 
     def test_auth_logout_rejects_session_mutation_with_mismatched_csrf(self) -> None:
         class FakeRepository:
@@ -5486,17 +5486,17 @@ class ApiContractsTest(unittest.TestCase):
         with patch.dict(
             "os.environ",
             {
-                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
-                "GENO_RUNTIME_AUTH_MODE": "session",
+                "GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GEO_RUNTIME_AUTH_MODE": "session",
             },
             clear=False,
-        ), patch("geno_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
-            "geno_api.main.close_repository_connection"
+        ), patch("geo_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/auth/logout",
-                headers={"X-GENO-Session-Token": "raw-session-token", "X-GENO-CSRF-Token": "csrf-token-a"},
-                cookies={"GENO_CSRF_TOKEN": "csrf-token-b"},
+                headers={"X-GEO-Session-Token": "raw-session-token", "X-GEO-CSRF-Token": "csrf-token-a"},
+                cookies={"GEO_CSRF_TOKEN": "csrf-token-b"},
             )
 
         self.assertEqual(response.status_code, 403)
@@ -5529,25 +5529,25 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/prompts/runtime/export.csv"
                 "?project_id=project-1&market_code=AU&intent_type=brand_awareness&city=Sydney&status=active&limit=5",
-                headers={"X-GENO-Actor-Id": "analyst-1"},
+                headers={"X-GEO-Actor-Id": "analyst-1"},
             )
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("prompt-1", response.text)
-        self.assertEqual(response.headers["x-geno-prompt-export-hash"], "hash-prompts-csv")
-        self.assertEqual(response.headers["x-geno-prompt-project-id"], "project-1")
-        self.assertEqual(response.headers["x-geno-prompt-market-code"], "AU")
-        self.assertEqual(response.headers["x-geno-prompt-intent-type"], "brand_awareness")
-        self.assertEqual(response.headers["x-geno-prompt-city"], "Sydney")
-        self.assertEqual(response.headers["x-geno-prompt-status"], "active")
-        self.assertEqual(response.headers["x-geno-prompt-row-count"], "1")
-        self.assertEqual(response.headers["x-geno-prompt-total-count"], "2")
+        self.assertEqual(response.headers["x-geo-prompt-export-hash"], "hash-prompts-csv")
+        self.assertEqual(response.headers["x-geo-prompt-project-id"], "project-1")
+        self.assertEqual(response.headers["x-geo-prompt-market-code"], "AU")
+        self.assertEqual(response.headers["x-geo-prompt-intent-type"], "brand_awareness")
+        self.assertEqual(response.headers["x-geo-prompt-city"], "Sydney")
+        self.assertEqual(response.headers["x-geo-prompt-status"], "active")
+        self.assertEqual(response.headers["x-geo-prompt-row-count"], "1")
+        self.assertEqual(response.headers["x-geo-prompt-total-count"], "2")
         self.assertIn('filename="runtime-prompts.csv"', response.headers["content-disposition"])
         self.assertEqual(fake_repository.kwargs["project_id"], "project-1")
         self.assertEqual(fake_repository.kwargs["market_code"], "AU")
@@ -5562,10 +5562,10 @@ class ApiContractsTest(unittest.TestCase):
             def user_can_access_project(self, **kwargs: object) -> bool:
                 return True
 
-        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
-            "geno_api.main.build_repository_from_env", return_value=FakeRepository()
-        ), patch("geno_api.main.close_repository_connection"):
-            response = self.client.get("/v1/prompts/runtime", headers={"X-GENO-Actor-Id": "agency-owner"})
+        with patch.dict("os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geo_api.main.build_repository_from_env", return_value=FakeRepository()
+        ), patch("geo_api.main.close_repository_connection"):
+            response = self.client.get("/v1/prompts/runtime", headers={"X-GEO-Actor-Id": "agency-owner"})
 
         self.assertEqual(response.status_code, 400)
         self.assertIn("project_id is required", response.json()["detail"])
@@ -5580,12 +5580,12 @@ class ApiContractsTest(unittest.TestCase):
                 raise AssertionError("list_runtime_prompts should not be called when access is denied")
 
         fake_repository = FakeRepository()
-        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
-            "geno_api.main.build_repository_from_env", return_value=fake_repository
-        ), patch("geno_api.main.close_repository_connection"):
+        with patch.dict("os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geo_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geo_api.main.close_repository_connection"):
             response = self.client.get(
                 "/v1/prompts/runtime?project_id=9a50797d-a341-55a4-8bdf-cc255c017e5c",
-                headers={"X-GENO-Actor-Id": "agency-owner"},
+                headers={"X-GEO-Actor-Id": "agency-owner"},
             )
 
         self.assertEqual(response.status_code, 403)
@@ -5612,12 +5612,12 @@ class ApiContractsTest(unittest.TestCase):
                 }
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.patch(
                 "/v1/prompts/runtime",
-                headers={"X-GENO-Actor-Id": "agency-owner"},
+                headers={"X-GEO-Actor-Id": "agency-owner"},
                 json={
                     "project_id": "project-1",
                     "prompt_id": "prompt-1",
@@ -5647,12 +5647,12 @@ class ApiContractsTest(unittest.TestCase):
             def update_runtime_prompt(self, update: object) -> dict[str, object]:
                 raise ValueError("prompt not found")
 
-        with patch("geno_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.patch(
                 "/v1/prompts/runtime",
-                headers={"X-GENO-Actor-Id": "agency-owner"},
+                headers={"X-GEO-Actor-Id": "agency-owner"},
                 json={
                     "project_id": "project-1",
                     "prompt_id": "prompt-missing",
@@ -5682,12 +5682,12 @@ class ApiContractsTest(unittest.TestCase):
                 raise AssertionError("update_runtime_prompt should not be called for viewer role")
 
         fake_repository = FakeRepository()
-        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
-            "geno_api.main.build_repository_from_env", return_value=fake_repository
-        ), patch("geno_api.main.close_repository_connection"):
+        with patch.dict("os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geo_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geo_api.main.close_repository_connection"):
             response = self.client.patch(
                 "/v1/prompts/runtime",
-                headers={"X-GENO-Actor-Id": "agency-viewer"},
+                headers={"X-GEO-Actor-Id": "agency-viewer"},
                 json={
                     "project_id": "project-1",
                     "prompt_id": "prompt-1",
@@ -5718,9 +5718,9 @@ class ApiContractsTest(unittest.TestCase):
                 raise AssertionError("import_runtime_prompts_csv should not be called for viewer role")
 
         fake_repository = FakeRepository()
-        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
-            "geno_api.main.build_repository_from_env", return_value=fake_repository
-        ), patch("geno_api.main.close_repository_connection"):
+        with patch.dict("os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geo_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geo_api.main.close_repository_connection"):
             response = self.client.post(
                 "/v1/prompts/runtime/import.csv",
                 json={
@@ -5729,7 +5729,7 @@ class ApiContractsTest(unittest.TestCase):
                     "imported_by": "runtime-console",
                     "max_rows": 100,
                 },
-                headers={"X-GENO-Actor-Id": "agency-viewer"},
+                headers={"X-GEO-Actor-Id": "agency-viewer"},
             )
 
         self.assertEqual(response.status_code, 403)
@@ -5760,9 +5760,9 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
-            "geno_api.main.build_repository_from_env", return_value=fake_repository
-        ), patch("geno_api.main.close_repository_connection"):
+        with patch.dict("os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geo_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geo_api.main.close_repository_connection"):
             response = self.client.post(
                 "/v1/human-reviews/runtime",
                 json={
@@ -5774,7 +5774,7 @@ class ApiContractsTest(unittest.TestCase):
                     "reviewer_id": "agency-analyst",
                     "payload": {},
                 },
-                headers={"X-GENO-Actor-Id": "agency-analyst"},
+                headers={"X-GEO-Actor-Id": "agency-analyst"},
             )
 
         self.assertEqual(response.status_code, 200)
@@ -5791,9 +5791,9 @@ class ApiContractsTest(unittest.TestCase):
                 raise AssertionError("save_human_review should not be called for viewer role")
 
         fake_repository = FakeRepository()
-        with patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
-            "geno_api.main.build_repository_from_env", return_value=fake_repository
-        ), patch("geno_api.main.close_repository_connection"):
+        with patch.dict("os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}), patch(
+            "geo_api.main.build_repository_from_env", return_value=fake_repository
+        ), patch("geo_api.main.close_repository_connection"):
             response = self.client.post(
                 "/v1/human-reviews/runtime",
                 json={
@@ -5805,7 +5805,7 @@ class ApiContractsTest(unittest.TestCase):
                     "reviewer_id": "agency-viewer",
                     "payload": {},
                 },
-                headers={"X-GENO-Actor-Id": "agency-viewer"},
+                headers={"X-GEO-Actor-Id": "agency-viewer"},
             )
 
         self.assertEqual(response.status_code, 403)
@@ -5869,8 +5869,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/prompts/runtime/imports"
@@ -5916,8 +5916,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/prompts/runtime/import.csv",
@@ -5966,8 +5966,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/prompts/runtime/import.file"
@@ -6012,8 +6012,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/collection-runs/runtime"
@@ -6046,21 +6046,21 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/collection-runs/runtime/export.csv?project_id=project-1&run_type=p0a_slice&limit=5",
-                headers={"X-GENO-Actor-Id": "analyst-1"},
+                headers={"X-GEO-Actor-Id": "analyst-1"},
             )
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("run-1", response.text)
-        self.assertEqual(response.headers["x-geno-collection-run-export-hash"], "hash-collection-runs-csv")
-        self.assertEqual(response.headers["x-geno-collection-run-project-id"], "project-1")
-        self.assertEqual(response.headers["x-geno-collection-run-type"], "p0a_slice")
-        self.assertEqual(response.headers["x-geno-collection-run-row-count"], "1")
-        self.assertEqual(response.headers["x-geno-collection-run-total-count"], "2")
+        self.assertEqual(response.headers["x-geo-collection-run-export-hash"], "hash-collection-runs-csv")
+        self.assertEqual(response.headers["x-geo-collection-run-project-id"], "project-1")
+        self.assertEqual(response.headers["x-geo-collection-run-type"], "p0a_slice")
+        self.assertEqual(response.headers["x-geo-collection-run-row-count"], "1")
+        self.assertEqual(response.headers["x-geo-collection-run-total-count"], "2")
         self.assertIn('filename="runtime-collection-runs.csv"', response.headers["content-disposition"])
         self.assertEqual(fake_repository.kwargs["project_id"], "project-1")
         self.assertEqual(fake_repository.kwargs["run_type"], "p0a_slice")
@@ -6087,17 +6087,17 @@ class ApiContractsTest(unittest.TestCase):
             market_profile = object()
 
         fake_repository = FakeRepository()
-        with self._dev_tools_env(), patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
-        ), patch("geno_api.main._load_runtime_project_bootstrap", return_value=FakeBootstrap()), patch(
-            "geno_api.main.worker_collectors", return_value=("collector-a", "collector-b")
-        ) as collectors, patch("geno_api.main.run_collection_slice", return_value=()) as run_slice, patch(
-            "geno_api.main.persist_worker_collection_records",
+        with self._dev_tools_env(), patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
+        ), patch("geo_api.main._load_runtime_project_bootstrap", return_value=FakeBootstrap()), patch(
+            "geo_api.main.worker_collectors", return_value=("collector-a", "collector-b")
+        ) as collectors, patch("geo_api.main.run_collection_slice", return_value=()) as run_slice, patch(
+            "geo_api.main.persist_worker_collection_records",
             return_value={"enabled": True, "project_id": "project-1", "analysis": {"enabled": True}},
         ) as persist:
             response = self.client.post(
                 "/v1/collection-runs/runtime/fixture",
-                headers={"X-GENO-Actor-Id": "agency-owner"},
+                headers={"X-GEO-Actor-Id": "agency-owner"},
                 json={
                     "project_id": "project-1",
                     "prompt_limit": 1,
@@ -6178,8 +6178,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/fidelity-checks/runtime"
@@ -6218,23 +6218,23 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/fidelity-checks/runtime/export.csv"
                 "?project_id=project-1&report_export_id=report-1&status=sampled&limit=5",
-                headers={"X-GENO-Actor-Id": "analyst-1"},
+                headers={"X-GEO-Actor-Id": "analyst-1"},
             )
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("check-1", response.text)
-        self.assertEqual(response.headers["x-geno-fidelity-check-export-hash"], "hash-fidelity-csv")
-        self.assertEqual(response.headers["x-geno-fidelity-check-project-id"], "project-1")
-        self.assertEqual(response.headers["x-geno-fidelity-check-report-export-id"], "report-1")
-        self.assertEqual(response.headers["x-geno-fidelity-check-status"], "sampled")
-        self.assertEqual(response.headers["x-geno-fidelity-check-row-count"], "1")
-        self.assertEqual(response.headers["x-geno-fidelity-check-total-count"], "2")
+        self.assertEqual(response.headers["x-geo-fidelity-check-export-hash"], "hash-fidelity-csv")
+        self.assertEqual(response.headers["x-geo-fidelity-check-project-id"], "project-1")
+        self.assertEqual(response.headers["x-geo-fidelity-check-report-export-id"], "report-1")
+        self.assertEqual(response.headers["x-geo-fidelity-check-status"], "sampled")
+        self.assertEqual(response.headers["x-geo-fidelity-check-row-count"], "1")
+        self.assertEqual(response.headers["x-geo-fidelity-check-total-count"], "2")
         self.assertIn('filename="runtime-fidelity-checks.csv"', response.headers["content-disposition"])
         self.assertEqual(fake_repository.kwargs["project_id"], "project-1")
         self.assertEqual(fake_repository.kwargs["report_export_id"], "report-1")
@@ -6278,8 +6278,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/fidelity-checks/runtime/trend"
@@ -6325,8 +6325,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/fidelity-checks/runtime",
@@ -6419,8 +6419,8 @@ class ApiContractsTest(unittest.TestCase):
             "s3://manual/two.png,s3://manual/two.html,2,2,desktop,Row note"
         )
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/evidence-runs/runtime/manual-backfill/import.csv",
@@ -6479,8 +6479,8 @@ class ApiContractsTest(unittest.TestCase):
             f"{missing_prompt},Manual answer missing prompt"
         )
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/evidence-runs/runtime/manual-backfill/import.csv",
@@ -6519,8 +6519,8 @@ class ApiContractsTest(unittest.TestCase):
                 self.saved_records = records
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/evidence-runs/runtime/manual-backfill/import.csv",
@@ -6644,7 +6644,7 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository):
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository):
             response = self.client.get(
                 f"/v1/entity-aliases/runtime/candidates?project_id={project_id}&entity_kind=brand&limit=10"
             )
@@ -6699,7 +6699,7 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository):
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository):
             response = self.client.get(
                 f"/v1/entity-aliases/runtime/candidates/reviews?project_id={project_id}"
                 "&decision=rejected&entity_kind=brand&assigned_to=reviewer@example.com"
@@ -6747,7 +6747,7 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository):
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository):
             response = self.client.get(
                 f"/v1/entity-aliases/runtime/candidates/assignment-stats?project_id={project_id}"
                 "&due_soon_before=2026-06-20T00:00:00Z"
@@ -6815,7 +6815,7 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository):
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository):
             response = self.client.get(
                 f"/v1/entity-aliases/runtime/candidates/assignment-workbench?project_id={project_id}"
                 "&reviewer_id=runtime-console&due_soon_before=2026-06-20T00:00:00Z&limit=8"
@@ -6888,7 +6888,7 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository):
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository):
             response = self.client.get(
                 f"/v1/entity-aliases/runtime/candidates/assignment-workload?project_id={project_id}"
                 "&due_soon_before=2026-06-20T00:00:00Z"
@@ -6964,7 +6964,7 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository):
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository):
             response = self.client.get(
                 f"/v1/entity-aliases/runtime/candidates/assignment-dispatch-plan?project_id={project_id}"
                 "&reviewer_ids=reviewer-a@example.com,reviewer-b@example.com"
@@ -7052,7 +7052,7 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository):
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository):
             response = self.client.post(
                 "/v1/entity-aliases/runtime/candidates/assignment-dispatch-apply",
                 json={
@@ -7114,7 +7114,7 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository):
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository):
             response = self.client.post(
                 "/v1/entity-aliases/runtime/candidates/assignment-notifications",
                 json={
@@ -7167,7 +7167,7 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository):
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository):
             response = self.client.post(
                 "/v1/entity-aliases/runtime/candidates/assignment-escalations",
                 json={
@@ -7220,7 +7220,7 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository):
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository):
             response = self.client.post(
                 "/v1/entity-aliases/runtime/candidates/assignment-reassignments",
                 json={
@@ -7284,7 +7284,7 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository):
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository):
             response = self.client.post(
                 "/v1/entity-aliases/runtime/candidates/review",
                 json={
@@ -7357,7 +7357,7 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository):
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository):
             response = self.client.post(
                 "/v1/entity-aliases/runtime/candidates/review-batch",
                 json={
@@ -7449,7 +7449,7 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository):
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository):
             response = self.client.post(
                 "/v1/entity-aliases/runtime/candidates/assign",
                 json={
@@ -7510,7 +7510,7 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository):
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository):
             response = self.client.post(
                 "/v1/entity-aliases/runtime/candidates/assignment-action",
                 json={
@@ -7538,7 +7538,7 @@ class ApiContractsTest(unittest.TestCase):
             def apply_entity_alias_candidate_assignment_action(self, action):
                 raise ValueError("entity alias candidate review is already assigned")
 
-        with patch("geno_api.main.build_repository_from_env", return_value=FakeRepository()):
+        with patch("geo_api.main.build_repository_from_env", return_value=FakeRepository()):
             response = self.client.post(
                 "/v1/entity-aliases/runtime/candidates/assignment-action",
                 json={
@@ -7591,7 +7591,7 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository):
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository):
             response = self.client.post(
                 "/v1/entity-aliases/runtime/candidates/assignment-actions",
                 json={
@@ -7633,7 +7633,7 @@ class ApiContractsTest(unittest.TestCase):
             def record_entity_alias_candidate_reviews(self, reviews, **kwargs):
                 raise AssertionError("batch review should reject cross-project payload before writing")
 
-        with patch("geno_api.main.build_repository_from_env", return_value=FakeRepository()):
+        with patch("geo_api.main.build_repository_from_env", return_value=FakeRepository()):
             response = self.client.post(
                 "/v1/entity-aliases/runtime/candidates/review-batch",
                 json={
@@ -7714,8 +7714,8 @@ class ApiContractsTest(unittest.TestCase):
                 self.audit_events.extend(events)
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/entity-aliases/runtime/confirm-batch",
@@ -7792,8 +7792,8 @@ class ApiContractsTest(unittest.TestCase):
                 return RuntimeEntityAlias(entity_alias={}, entity={}, audit_events=())
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/entity-aliases/runtime/confirm-batch",
@@ -7835,8 +7835,8 @@ class ApiContractsTest(unittest.TestCase):
                 return RuntimeEntityAlias(entity_alias={}, entity={}, audit_events=())
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/entity-aliases/runtime/confirm-batch",
@@ -7932,8 +7932,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/project-brand-kits/runtime?project_id=9a50797d-a341-55a4-8bdf-cc255c017e5c"
@@ -7971,8 +7971,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/project-brand-kits/runtime",
@@ -8000,8 +8000,8 @@ class ApiContractsTest(unittest.TestCase):
                 return type("RuntimeProjectPage", (), {"total_count": 1})()
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/project-brand-kits/runtime/logo"
@@ -8024,7 +8024,7 @@ class ApiContractsTest(unittest.TestCase):
                     "StoredObject",
                     (),
                     {
-                        "uri": "s3://geno-reports/brand-assets/project/logo-25f766a3e701-logo.png",
+                        "uri": "s3://geo-reports/brand-assets/project/logo-25f766a3e701-logo.png",
                         "content_type": kwargs["content_type"],
                         "content_hash": "25f766a3e70154aacaa073a049855d207842f9f6a743c082e693c2cadde4ed1b",
                     },
@@ -8060,9 +8060,9 @@ class ApiContractsTest(unittest.TestCase):
 
         fake_repository = FakeRepository()
         fake_store = FakeStore()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.build_object_store_from_env", return_value=fake_store
-        ), patch("geno_api.main.close_repository_connection"):
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.build_object_store_from_env", return_value=fake_store
+        ), patch("geo_api.main.close_repository_connection"):
             response = self.client.post(
                 "/v1/project-brand-kits/runtime/logo"
                 "?project_id=9a50797d-a341-55a4-8bdf-cc255c017e5c"
@@ -8074,7 +8074,7 @@ class ApiContractsTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload["brand_kit"]["logo_url"], "s3://geno-reports/brand-assets/project/logo-25f766a3e701-logo.png")
+        self.assertEqual(payload["brand_kit"]["logo_url"], "s3://geo-reports/brand-assets/project/logo-25f766a3e701-logo.png")
         self.assertEqual(payload["audit_events"][0]["event_type"], "project_brand_logo_uploaded")
         self.assertEqual(fake_store.kwargs["content"], b"fake-logo-bytes")
         self.assertEqual(fake_store.kwargs["content_type"], "image/png")
@@ -8103,7 +8103,7 @@ class ApiContractsTest(unittest.TestCase):
                             version_id="ce333139-53e7-44c8-8c85-ce498d841391",
                             project_id=str(kwargs["project_id"]),
                             asset_type="logo",
-                            asset_url="s3://geno-reports/brand-assets/project/logo.png",
+                            asset_url="s3://geo-reports/brand-assets/project/logo.png",
                             source_filename="Client Logo.png",
                             source_content_type="image/png",
                             content_hash="25f766a3e70154aacaa073a049855d207842f9f6a743c082e693c2cadde4ed1b",
@@ -8116,8 +8116,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/project-brand-kits/runtime/assets"
@@ -8152,7 +8152,7 @@ class ApiContractsTest(unittest.TestCase):
                                 "id": "ddc23a34-2ffb-5a56-a81a-3b98aaf843b4",
                                 "project_id": str(kwargs["project_id"]),
                                 "asset_type": "image",
-                                "asset_url": "s3://geno-reports/brand-assets/project/hero.png",
+                                "asset_url": "s3://geo-reports/brand-assets/project/hero.png",
                                 "category": "brand_creative",
                                 "preview_url": "https://cdn.example.com/project/hero-preview.png",
                                 "source_filename": "hero.png",
@@ -8179,8 +8179,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/project-brand-assets/runtime"
@@ -8230,15 +8230,15 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/project-brand-assets/runtime",
                 json={
                     "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
                     "asset_type": "image",
-                    "asset_url": "s3://geno-reports/brand-assets/project/hero.png",
+                    "asset_url": "s3://geo-reports/brand-assets/project/hero.png",
                     "category": "brand_creative",
                     "preview_url": "https://cdn.example.com/project/hero-preview.png",
                     "source_filename": "hero.png",
@@ -8253,7 +8253,7 @@ class ApiContractsTest(unittest.TestCase):
             )
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload["asset"]["asset_url"], "s3://geno-reports/brand-assets/project/hero.png")
+        self.assertEqual(payload["asset"]["asset_url"], "s3://geo-reports/brand-assets/project/hero.png")
         self.assertEqual(payload["audit_events"][0]["event_type"], "project_brand_asset_registered")
         self.assertIsInstance(fake_repository.asset, RuntimeProjectBrandAssetInput)
         self.assertEqual(fake_repository.asset.category, "brand_creative")
@@ -8276,7 +8276,7 @@ class ApiContractsTest(unittest.TestCase):
                         "id": scan.asset_id,
                         "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
                         "asset_type": "image",
-                        "asset_url": "s3://geno-reports/brand-assets/project/hero.png",
+                        "asset_url": "s3://geo-reports/brand-assets/project/hero.png",
                         "category": "brand_creative",
                         "preview_url": "https://cdn.example.com/project/hero-preview.png",
                         "source_filename": "hero.png",
@@ -8301,8 +8301,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/project-brand-assets/runtime/ddc23a34-2ffb-5a56-a81a-3b98aaf843b4/scan-status",
@@ -8348,21 +8348,21 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/project-brand-kits/runtime/assets/activate",
                 json={
                     "project_id": "9a50797d-a341-55a4-8bdf-cc255c017e5c",
-                    "asset_url": "s3://geno-reports/brand-assets/project/logo.png",
+                    "asset_url": "s3://geo-reports/brand-assets/project/logo.png",
                     "activated_by": "agency-admin",
                     "reason": "restore previous logo",
                 },
             )
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload["brand_kit"]["logo_url"], "s3://geno-reports/brand-assets/project/logo.png")
+        self.assertEqual(payload["brand_kit"]["logo_url"], "s3://geo-reports/brand-assets/project/logo.png")
         self.assertEqual(payload["audit_events"][0]["event_type"], "project_brand_logo_version_activated")
         self.assertEqual(fake_repository.activation.project_id, "9a50797d-a341-55a4-8bdf-cc255c017e5c")
         self.assertEqual(fake_repository.activation.activated_by, "agency-admin")
@@ -8375,8 +8375,8 @@ class ApiContractsTest(unittest.TestCase):
                 return None
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/score-weight-configs/runtime?project_id=9a50797d-a341-55a4-8bdf-cc255c017e5c"
@@ -8421,8 +8421,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get("/v1/score-weight-profiles/runtime")
         self.assertEqual(response.status_code, 200)
@@ -8457,8 +8457,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/score-weight-profiles/runtime",
@@ -8486,8 +8486,8 @@ class ApiContractsTest(unittest.TestCase):
                 return None
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/score-weight-configs/runtime"
@@ -8534,8 +8534,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/score-weight-configs/runtime",
@@ -8585,8 +8585,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/score-weight-configs/runtime",
@@ -8660,8 +8660,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/human-reviews/runtime"
@@ -8698,23 +8698,23 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/human-reviews/runtime/export.csv"
                 "?project_id=project-1&target_type=content_draft&review_status=needs_changes&limit=5",
-                headers={"X-GENO-Actor-Id": "agency-owner"},
+                headers={"X-GEO-Actor-Id": "agency-owner"},
             )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["content-type"], "text/csv; charset=utf-8")
-        self.assertEqual(response.headers["x-geno-human-review-export-hash"], "hash-human-reviews-csv")
-        self.assertEqual(response.headers["x-geno-human-review-project-id"], "project-1")
-        self.assertEqual(response.headers["x-geno-human-review-target-type"], "content_draft")
-        self.assertEqual(response.headers["x-geno-human-review-status"], "needs_changes")
-        self.assertEqual(response.headers["x-geno-human-review-row-count"], "1")
-        self.assertEqual(response.headers["x-geno-human-review-total-count"], "4")
+        self.assertEqual(response.headers["x-geo-human-review-export-hash"], "hash-human-reviews-csv")
+        self.assertEqual(response.headers["x-geo-human-review-project-id"], "project-1")
+        self.assertEqual(response.headers["x-geo-human-review-target-type"], "content_draft")
+        self.assertEqual(response.headers["x-geo-human-review-status"], "needs_changes")
+        self.assertEqual(response.headers["x-geo-human-review-row-count"], "1")
+        self.assertEqual(response.headers["x-geo-human-review-total-count"], "4")
         self.assertIn("runtime-human-reviews.csv", response.headers["content-disposition"])
         self.assertIn("review-1", response.text)
         self.assertEqual(fake_repository.kwargs["project_id"], "project-1")
@@ -8741,22 +8741,22 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/visibility-scores/runtime/export.csv"
                 "?project_id=project-1&scope_type=collection_slice&limit=5",
-                headers={"X-GENO-Actor-Id": "agency-owner"},
+                headers={"X-GEO-Actor-Id": "agency-owner"},
             )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["content-type"], "text/csv; charset=utf-8")
-        self.assertEqual(response.headers["x-geno-score-snapshot-export-hash"], "hash-score-snapshots-csv")
-        self.assertEqual(response.headers["x-geno-score-snapshot-project-id"], "project-1")
-        self.assertEqual(response.headers["x-geno-score-snapshot-scope-type"], "collection_slice")
-        self.assertEqual(response.headers["x-geno-score-snapshot-row-count"], "1")
-        self.assertEqual(response.headers["x-geno-score-snapshot-total-count"], "3")
+        self.assertEqual(response.headers["x-geo-score-snapshot-export-hash"], "hash-score-snapshots-csv")
+        self.assertEqual(response.headers["x-geo-score-snapshot-project-id"], "project-1")
+        self.assertEqual(response.headers["x-geo-score-snapshot-scope-type"], "collection_slice")
+        self.assertEqual(response.headers["x-geo-score-snapshot-row-count"], "1")
+        self.assertEqual(response.headers["x-geo-score-snapshot-total-count"], "3")
         self.assertIn("runtime-score-snapshots.csv", response.headers["content-disposition"])
         self.assertIn("snapshot-1", response.text)
         self.assertEqual(fake_repository.kwargs["project_id"], "project-1")
@@ -8788,8 +8788,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/human-reviews/runtime/queue"
@@ -8833,8 +8833,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/human-reviews/runtime",
@@ -8861,8 +8861,8 @@ class ApiContractsTest(unittest.TestCase):
             def save_human_review(self, review: object) -> RuntimeHumanReviewRecord:
                 raise ValueError("content draft not found")
 
-        with patch("geno_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/human-reviews/runtime",
@@ -8904,20 +8904,20 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/citation-graphs/runtime/export.csv?project_id=project-1&limit=5",
-                headers={"X-GENO-Actor-Id": "agency-owner"},
+                headers={"X-GEO-Actor-Id": "agency-owner"},
             )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["content-type"], "text/csv; charset=utf-8")
-        self.assertEqual(response.headers["x-geno-citation-graph-export-hash"], "hash-citation-graphs-csv")
-        self.assertEqual(response.headers["x-geno-citation-graph-project-id"], "project-1")
-        self.assertEqual(response.headers["x-geno-citation-graph-row-count"], "1")
-        self.assertEqual(response.headers["x-geno-citation-graph-total-count"], "2")
+        self.assertEqual(response.headers["x-geo-citation-graph-export-hash"], "hash-citation-graphs-csv")
+        self.assertEqual(response.headers["x-geo-citation-graph-project-id"], "project-1")
+        self.assertEqual(response.headers["x-geo-citation-graph-row-count"], "1")
+        self.assertEqual(response.headers["x-geo-citation-graph-total-count"], "2")
         self.assertIn("runtime-citation-graphs.csv", response.headers["content-disposition"])
         self.assertIn("source-1", response.text)
         self.assertEqual(fake_repository.kwargs["project_id"], "project-1")
@@ -8958,8 +8958,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/reports/runtime/report-1/management-events",
@@ -8999,8 +8999,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             published = self.client.post(
                 "/v1/reports/runtime/report-1/management-events",
@@ -9040,23 +9040,23 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/reports/runtime/management-events/export.csv"
                 "?project_id=project-1&status=client_ready&report_type=worker_runtime&limit=5",
-                headers={"X-GENO-Actor-Id": "agency-owner"},
+                headers={"X-GEO-Actor-Id": "agency-owner"},
             )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["content-type"], "text/csv; charset=utf-8")
-        self.assertEqual(response.headers["x-geno-report-management-export-hash"], "hash-report-management-csv")
-        self.assertEqual(response.headers["x-geno-report-management-project-id"], "project-1")
-        self.assertEqual(response.headers["x-geno-report-management-status"], "client_ready")
-        self.assertEqual(response.headers["x-geno-report-management-report-type"], "worker_runtime")
-        self.assertEqual(response.headers["x-geno-report-management-row-count"], "1")
-        self.assertEqual(response.headers["x-geno-report-management-total-count"], "4")
+        self.assertEqual(response.headers["x-geo-report-management-export-hash"], "hash-report-management-csv")
+        self.assertEqual(response.headers["x-geo-report-management-project-id"], "project-1")
+        self.assertEqual(response.headers["x-geo-report-management-status"], "client_ready")
+        self.assertEqual(response.headers["x-geo-report-management-report-type"], "worker_runtime")
+        self.assertEqual(response.headers["x-geo-report-management-row-count"], "1")
+        self.assertEqual(response.headers["x-geo-report-management-total-count"], "4")
         self.assertIn("runtime-report-management-events.csv", response.headers["content-disposition"])
         self.assertIn("report-1", response.text)
         self.assertEqual(fake_repository.kwargs["project_id"], "project-1")
@@ -9096,8 +9096,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/report-export-jobs/runtime?project_id=project-1&status=queued&limit=5&offset=0"
@@ -9129,22 +9129,22 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/report-export-jobs/runtime/export.csv"
                 "?project_id=project-1&status=queued&report_export_id=report-1&limit=5",
-                headers={"X-GENO-Actor-Id": "agency-owner"},
+                headers={"X-GEO-Actor-Id": "agency-owner"},
             )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["content-type"], "text/csv; charset=utf-8")
-        self.assertEqual(response.headers["x-geno-report-export-job-export-hash"], "hash-report-jobs-csv")
-        self.assertEqual(response.headers["x-geno-report-export-job-project-id"], "project-1")
-        self.assertEqual(response.headers["x-geno-report-export-job-status"], "queued")
-        self.assertEqual(response.headers["x-geno-report-export-job-report-export-id"], "report-1")
-        self.assertEqual(response.headers["x-geno-report-export-job-row-count"], "1")
-        self.assertEqual(response.headers["x-geno-report-export-job-total-count"], "3")
+        self.assertEqual(response.headers["x-geo-report-export-job-export-hash"], "hash-report-jobs-csv")
+        self.assertEqual(response.headers["x-geo-report-export-job-project-id"], "project-1")
+        self.assertEqual(response.headers["x-geo-report-export-job-status"], "queued")
+        self.assertEqual(response.headers["x-geo-report-export-job-report-export-id"], "report-1")
+        self.assertEqual(response.headers["x-geo-report-export-job-row-count"], "1")
+        self.assertEqual(response.headers["x-geo-report-export-job-total-count"], "3")
         self.assertIn("runtime-report-export-jobs.csv", response.headers["content-disposition"])
         self.assertIn("job-1", response.text)
         self.assertEqual(fake_repository.kwargs["project_id"], "project-1")
@@ -9167,8 +9167,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get("/v1/report-export-jobs/runtime/stats?project_id=project-1")
         self.assertEqual(response.status_code, 200)
@@ -9210,8 +9210,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/runtime-notifications?project_id=project-1&status=unread&notification_type=report_export_job&limit=5"
@@ -9243,22 +9243,22 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/runtime-notifications/export.csv"
                 "?project_id=project-1&status=unread&notification_type=report_export_job&limit=5",
-                headers={"X-GENO-Actor-Id": "agency-owner"},
+                headers={"X-GEO-Actor-Id": "agency-owner"},
             )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["content-type"], "text/csv; charset=utf-8")
-        self.assertEqual(response.headers["x-geno-notification-export-hash"], "hash-notifications-csv")
-        self.assertEqual(response.headers["x-geno-notification-project-id"], "project-1")
-        self.assertEqual(response.headers["x-geno-notification-status"], "unread")
-        self.assertEqual(response.headers["x-geno-notification-type"], "report_export_job")
-        self.assertEqual(response.headers["x-geno-notification-row-count"], "1")
-        self.assertEqual(response.headers["x-geno-notification-total-count"], "4")
+        self.assertEqual(response.headers["x-geo-notification-export-hash"], "hash-notifications-csv")
+        self.assertEqual(response.headers["x-geo-notification-project-id"], "project-1")
+        self.assertEqual(response.headers["x-geo-notification-status"], "unread")
+        self.assertEqual(response.headers["x-geo-notification-type"], "report_export_job")
+        self.assertEqual(response.headers["x-geo-notification-row-count"], "1")
+        self.assertEqual(response.headers["x-geo-notification-total-count"], "4")
         self.assertIn("runtime-notifications.csv", response.headers["content-disposition"])
         self.assertIn("notification-1", response.text)
         self.assertEqual(fake_repository.kwargs["project_id"], "project-1")
@@ -9294,8 +9294,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/runtime-notifications/notification-1/status",
@@ -9322,7 +9322,7 @@ class ApiContractsTest(unittest.TestCase):
                                 "id": "subscription-1",
                                 "project_id": kwargs["project_id"],
                                 "channel": "webhook",
-                                "endpoint_url": "https://hooks.example.com/geno",
+                                "endpoint_url": "https://hooks.example.com/geo",
                                 "event_types": ["report_export_job"],
                                 "severity_threshold": "warning",
                                 "status": "active",
@@ -9336,8 +9336,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/runtime-notification-subscriptions?project_id=project-1&status=active&limit=5"
@@ -9345,7 +9345,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["total_count"], 1)
-        self.assertEqual(payload["records"][0]["subscription"]["endpoint_url"], "https://hooks.example.com/geno")
+        self.assertEqual(payload["records"][0]["subscription"]["endpoint_url"], "https://hooks.example.com/geo")
         self.assertEqual(payload["records"][0]["audit_events"][0]["event_type"], "runtime_notification_subscription_saved")
         self.assertEqual(fake_repository.kwargs["status"], "active")
 
@@ -9365,23 +9365,23 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/runtime-notification-subscriptions/export.csv?project_id=project-1&status=active&limit=5",
-                headers={"X-GENO-Actor-Id": "agency-owner"},
+                headers={"X-GEO-Actor-Id": "agency-owner"},
             )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["content-type"], "text/csv; charset=utf-8")
         self.assertEqual(
-            response.headers["x-geno-notification-subscription-export-hash"],
+            response.headers["x-geo-notification-subscription-export-hash"],
             "hash-notification-subscriptions-csv",
         )
-        self.assertEqual(response.headers["x-geno-notification-subscription-project-id"], "project-1")
-        self.assertEqual(response.headers["x-geno-notification-subscription-status"], "active")
-        self.assertEqual(response.headers["x-geno-notification-subscription-row-count"], "1")
-        self.assertEqual(response.headers["x-geno-notification-subscription-total-count"], "2")
+        self.assertEqual(response.headers["x-geo-notification-subscription-project-id"], "project-1")
+        self.assertEqual(response.headers["x-geo-notification-subscription-status"], "active")
+        self.assertEqual(response.headers["x-geo-notification-subscription-row-count"], "1")
+        self.assertEqual(response.headers["x-geo-notification-subscription-total-count"], "2")
         self.assertIn("runtime-notification-subscriptions.csv", response.headers["content-disposition"])
         self.assertIn("subscription-1", response.text)
         self.assertEqual(fake_repository.kwargs["project_id"], "project-1")
@@ -9409,8 +9409,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/runtime-notification-subscriptions",
@@ -9470,7 +9470,7 @@ class ApiContractsTest(unittest.TestCase):
                                 "notification_id": "notification-1",
                                 "subscription_id": "subscription-1",
                                 "channel": "webhook",
-                                "endpoint_url": "https://hooks.example.com/geno",
+                                "endpoint_url": "https://hooks.example.com/geo",
                                 "status": "queued",
                                 "attempt_count": 0,
                                 "max_attempts": 3,
@@ -9478,15 +9478,15 @@ class ApiContractsTest(unittest.TestCase):
                                 "updated_by": "runtime-worker",
                             },
                             notification={"id": "notification-1", "title": "Report export failed"},
-                            subscription={"id": "subscription-1", "endpoint_url": "https://hooks.example.com/geno"},
+                            subscription={"id": "subscription-1", "endpoint_url": "https://hooks.example.com/geo"},
                             audit_events=({"event_type": "runtime_notification_delivery_queued"},),
                         ),
                     ),
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/runtime-notification-deliveries?project_id=project-1&status=queued&limit=5"
@@ -9515,21 +9515,21 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/runtime-notification-deliveries/export.csv"
                 "?project_id=project-1&status=queued&notification_id=notification-1&subscription_id=subscription-1&limit=5",
-                headers={"X-GENO-Actor-Id": "agency-owner"},
+                headers={"X-GEO-Actor-Id": "agency-owner"},
             )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["content-type"], "text/csv; charset=utf-8")
-        self.assertEqual(response.headers["x-geno-notification-delivery-export-hash"], "hash-notification-deliveries-csv")
-        self.assertEqual(response.headers["x-geno-notification-delivery-project-id"], "project-1")
-        self.assertEqual(response.headers["x-geno-notification-delivery-status"], "queued")
-        self.assertEqual(response.headers["x-geno-notification-delivery-row-count"], "1")
-        self.assertEqual(response.headers["x-geno-notification-delivery-total-count"], "4")
+        self.assertEqual(response.headers["x-geo-notification-delivery-export-hash"], "hash-notification-deliveries-csv")
+        self.assertEqual(response.headers["x-geo-notification-delivery-project-id"], "project-1")
+        self.assertEqual(response.headers["x-geo-notification-delivery-status"], "queued")
+        self.assertEqual(response.headers["x-geo-notification-delivery-row-count"], "1")
+        self.assertEqual(response.headers["x-geo-notification-delivery-total-count"], "4")
         self.assertIn("runtime-notification-deliveries.csv", response.headers["content-disposition"])
         self.assertIn("subscription-1", response.text)
         self.assertEqual(fake_repository.kwargs["project_id"], "project-1")
@@ -9575,8 +9575,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/runtime-notification-deliveries/delivery-1/email-feedback",
@@ -9637,7 +9637,7 @@ class ApiContractsTest(unittest.TestCase):
                 "delivery_id": "delivery-1",
                 "feedback_type": "bounce",
                 "recipient_hash": "a" * 64,
-                "provider": "geno",
+                "provider": "geo",
                 "provider_event_id_hash": "b" * 64,
                 "metadata": {"provider_reason": "smtp 550"},
                 "reason": "provider bounce webhook",
@@ -9662,15 +9662,15 @@ class ApiContractsTest(unittest.TestCase):
         with patch.dict(
             os.environ,
             {
-                "GENO_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_SECRET": "feedback-secret",
-                "GENO_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_SECRET_ID": "feedback-v1",
+                "GEO_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_SECRET": "feedback-secret",
+                "GEO_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_SECRET_ID": "feedback-v1",
             },
             clear=False,
-        ), patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        ), patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
-                "/v1/runtime-notification-email-feedback-webhooks/geno",
+                "/v1/runtime-notification-email-feedback-webhooks/geo",
                 content=body,
                 headers=headers,
             )
@@ -9687,11 +9687,11 @@ class ApiContractsTest(unittest.TestCase):
     def test_runtime_notification_email_feedback_webhook_rejects_missing_signature(self) -> None:
         with patch.dict(
             os.environ,
-            {"GENO_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_SECRET": "feedback-secret"},
+            {"GEO_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_SECRET": "feedback-secret"},
             clear=False,
         ):
             response = self.client.post(
-                "/v1/runtime-notification-email-feedback-webhooks/geno",
+                "/v1/runtime-notification-email-feedback-webhooks/geo",
                 json={
                     "delivery_id": "delivery-1",
                     "feedback_type": "bounce",
@@ -9741,7 +9741,7 @@ class ApiContractsTest(unittest.TestCase):
                 "email": "Ops@Example.com",
                 "sg_event_id": "sendgrid-event-1",
                 "timestamp": 1781462400,
-                "custom_args": {"geno_delivery_id": "delivery-1"},
+                "custom_args": {"geo_delivery_id": "delivery-1"},
             },
             {"event": "delivered", "email": "ignored@example.com"},
         ]
@@ -9749,17 +9749,17 @@ class ApiContractsTest(unittest.TestCase):
         with patch.dict(
             os.environ,
             {
-                "GENO_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_SECRET": "feedback-secret",
-                "GENO_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_SECRET_ID": "provider-feedback-v1",
+                "GEO_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_SECRET": "feedback-secret",
+                "GEO_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_SECRET_ID": "provider-feedback-v1",
             },
             clear=False,
-        ), patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        ), patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/runtime-notification-email-feedback-webhooks/sendgrid",
                 json=body,
-                headers={"x-geno-provider-webhook-secret": "feedback-secret"},
+                headers={"x-geo-provider-webhook-secret": "feedback-secret"},
             )
         self.assertEqual(response.status_code, 200)
         payload = response.json()
@@ -9782,7 +9782,7 @@ class ApiContractsTest(unittest.TestCase):
     def test_runtime_notification_email_provider_feedback_webhook_rejects_missing_secret(self) -> None:
         with patch.dict(
             os.environ,
-            {"GENO_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_SECRET": "feedback-secret"},
+            {"GEO_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_SECRET": "feedback-secret"},
             clear=False,
         ):
             response = self.client.post(
@@ -9828,24 +9828,24 @@ class ApiContractsTest(unittest.TestCase):
                 "event": "failed",
                 "recipient": "ops@example.com",
                 "id": "mailgun-event-1",
-                "user-variables": {"geno_delivery_id": "delivery-1"},
+                "user-variables": {"geo_delivery_id": "delivery-1"},
             },
         }
         fake_repository = FakeRepository()
         with patch.dict(
             os.environ,
             {
-                "GENO_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_SECRET": "feedback-secret",
-                "GENO_NOTIFICATION_EMAIL_MAILGUN_SIGNING_KEY": signing_key,
+                "GEO_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_SECRET": "feedback-secret",
+                "GEO_NOTIFICATION_EMAIL_MAILGUN_SIGNING_KEY": signing_key,
             },
             clear=False,
-        ), patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        ), patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/runtime-notification-email-feedback-webhooks/mailgun",
                 json=body,
-                headers={"x-geno-provider-webhook-secret": "feedback-secret"},
+                headers={"x-geo-provider-webhook-secret": "feedback-secret"},
             )
         self.assertEqual(response.status_code, 200)
         metadata = fake_repository.feedback_inputs[0].metadata
@@ -9860,8 +9860,8 @@ class ApiContractsTest(unittest.TestCase):
         with patch.dict(
             os.environ,
             {
-                "GENO_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_SECRET": "feedback-secret",
-                "GENO_NOTIFICATION_EMAIL_MAILGUN_SIGNING_KEY": "mailgun-signing-key",
+                "GEO_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_SECRET": "feedback-secret",
+                "GEO_NOTIFICATION_EMAIL_MAILGUN_SIGNING_KEY": "mailgun-signing-key",
             },
             clear=False,
         ):
@@ -9871,7 +9871,7 @@ class ApiContractsTest(unittest.TestCase):
                     "signature": {"timestamp": timestamp, "token": "mailgun-token", "signature": "bad"},
                     "event-data": {"event": "failed", "recipient": "ops@example.com"},
                 },
-                headers={"x-geno-provider-webhook-secret": "feedback-secret"},
+                headers={"x-geo-provider-webhook-secret": "feedback-secret"},
             )
 
         self.assertEqual(response.status_code, 401)
@@ -9908,8 +9908,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/runtime-notification-email-feedback-events"
@@ -9957,8 +9957,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/runtime-notification-email-feedback-events/feedback-1/suppress-recipient",
@@ -10013,8 +10013,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/runtime-notification-email-feedback-events/feedback-1/project-suppression",
@@ -10064,8 +10064,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/runtime-notification-email-suppressions?project_id=project-1&status=active&limit=5"
@@ -10093,20 +10093,20 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/runtime-notification-email-suppressions/export.csv?project_id=project-1&status=active&limit=5",
-                headers={"X-GENO-Actor-Id": "agency-owner"},
+                headers={"X-GEO-Actor-Id": "agency-owner"},
             )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["content-type"], "text/csv; charset=utf-8")
-        self.assertEqual(response.headers["x-geno-email-suppression-export-hash"], "hash-email-suppression-csv")
-        self.assertEqual(response.headers["x-geno-email-suppression-project-id"], "project-1")
-        self.assertEqual(response.headers["x-geno-email-suppression-status"], "active")
-        self.assertEqual(response.headers["x-geno-email-suppression-row-count"], "1")
-        self.assertEqual(response.headers["x-geno-email-suppression-total-count"], "3")
+        self.assertEqual(response.headers["x-geo-email-suppression-export-hash"], "hash-email-suppression-csv")
+        self.assertEqual(response.headers["x-geo-email-suppression-project-id"], "project-1")
+        self.assertEqual(response.headers["x-geo-email-suppression-status"], "active")
+        self.assertEqual(response.headers["x-geo-email-suppression-row-count"], "1")
+        self.assertEqual(response.headers["x-geo-email-suppression-total-count"], "3")
         self.assertIn("runtime-notification-email-suppressions.csv", response.headers["content-disposition"])
         self.assertIn("suppression-1", response.text)
         self.assertEqual(fake_repository.kwargs["project_id"], "project-1")
@@ -10133,8 +10133,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/runtime-notification-email-suppressions",
@@ -10199,10 +10199,10 @@ class ApiContractsTest(unittest.TestCase):
         fake_repository = FakeRepository()
         with patch.dict(
             os.environ,
-            {"GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET": "preference-secret"},
+            {"GEO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET": "preference-secret"},
             clear=False,
-        ), patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        ), patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/runtime-notification-email-preferences/unsubscribe",
@@ -10217,13 +10217,13 @@ class ApiContractsTest(unittest.TestCase):
         self.assertNotIn(token, str(fake_repository.unsubscribe))
 
     def test_runtime_notification_email_preference_unsubscribe_requires_secret(self) -> None:
-        with patch.dict(os.environ, {"GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET": ""}, clear=False):
+        with patch.dict(os.environ, {"GEO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET": ""}, clear=False):
             response = self.client.post(
                 "/v1/runtime-notification-email-preferences/unsubscribe",
                 json={"token": "token"},
             )
         self.assertEqual(response.status_code, 503)
-        self.assertIn("GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET", response.json()["detail"])
+        self.assertIn("GEO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET", response.json()["detail"])
 
     def test_runtime_notification_email_preference_unsubscribe_accepts_query_token_for_one_click(self) -> None:
         class FakeRepository:
@@ -10266,10 +10266,10 @@ class ApiContractsTest(unittest.TestCase):
         fake_repository = FakeRepository()
         with patch.dict(
             os.environ,
-            {"GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET": "preference-secret"},
+            {"GEO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET": "preference-secret"},
             clear=False,
-        ), patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        ), patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 f"/v1/runtime-notification-email-preferences/unsubscribe?token={token}",
@@ -10322,10 +10322,10 @@ class ApiContractsTest(unittest.TestCase):
         fake_repository = FakeRepository()
         with patch.dict(
             os.environ,
-            {"GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET": "preference-secret"},
+            {"GEO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET": "preference-secret"},
             clear=False,
-        ), patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        ), patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/runtime-notification-email-preferences/unsubscribe",
@@ -10383,10 +10383,10 @@ class ApiContractsTest(unittest.TestCase):
         fake_repository = FakeRepository()
         with patch.dict(
             os.environ,
-            {"GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET": "preference-secret"},
+            {"GEO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET": "preference-secret"},
             clear=False,
-        ), patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        ), patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(f"/v1/runtime-notification-email-preferences/status?token={token}")
         self.assertEqual(response.status_code, 200)
@@ -10438,10 +10438,10 @@ class ApiContractsTest(unittest.TestCase):
         fake_repository = FakeRepository()
         with patch.dict(
             os.environ,
-            {"GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET": "preference-secret"},
+            {"GEO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET": "preference-secret"},
             clear=False,
-        ), patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        ), patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/runtime-notification-email-preferences/resubscribe",
@@ -10502,8 +10502,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             enqueue_response = self.client.post(
                 "/v1/report-export-jobs/runtime",
@@ -10523,7 +10523,7 @@ class ApiContractsTest(unittest.TestCase):
                     "status": "succeeded",
                     "updated_by": "runtime-console",
                     "report_export_id": "report-1",
-                    "artifact_url": "s3://geno-reports/report.pdf",
+                    "artifact_url": "s3://geo-reports/report.pdf",
                 },
             )
         self.assertEqual(enqueue_response.status_code, 200)
@@ -10532,7 +10532,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(status_response.json()["audit_events"][0]["event_type"], "report_export_job_status_updated")
         self.assertEqual(fake_repository.enqueued.filters["city"], "Sydney")
         self.assertEqual(fake_repository.updated.status, "succeeded")
-        self.assertEqual(fake_repository.updated.artifact_url, "s3://geno-reports/report.pdf")
+        self.assertEqual(fake_repository.updated.artifact_url, "s3://geo-reports/report.pdf")
 
     def test_runtime_report_artifact_endpoint_requires_persistence_config(self) -> None:
         response = self.client.get(
@@ -10572,8 +10572,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/reports/runtime/report-1/artifact"
@@ -10586,10 +10586,10 @@ class ApiContractsTest(unittest.TestCase):
             response.headers["content-disposition"],
             'attachment; filename="worker-runtime-v1-white-label.pdf"',
         )
-        self.assertEqual(response.headers["x-geno-report-artifact-template"], "white_label")
-        self.assertEqual(response.headers["x-geno-report-artifact-template-hash"], "template-hash")
-        self.assertEqual(response.headers["x-geno-report-artifact-row-count"], "2")
-        self.assertEqual(response.headers["x-geno-report-artifact-total-count"], "4")
+        self.assertEqual(response.headers["x-geo-report-artifact-template"], "white_label")
+        self.assertEqual(response.headers["x-geo-report-artifact-template-hash"], "template-hash")
+        self.assertEqual(response.headers["x-geo-report-artifact-row-count"], "2")
+        self.assertEqual(response.headers["x-geo-report-artifact-total-count"], "4")
         self.assertEqual(fake_repository.kwargs["template"], "white_label")
         self.assertEqual(fake_repository.kwargs["client_name"], "ExampleBrand AU")
         self.assertEqual(fake_repository.kwargs["prepared_by"], "Partner Agency")
@@ -10599,12 +10599,12 @@ class ApiContractsTest(unittest.TestCase):
             def get_report_export_project_id(self, *, report_export_id: str) -> str:
                 return "project-1"
 
-        with patch("geno_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
+            "geo_api.main.close_repository_connection"
         ), patch.dict("os.environ", {}, clear=True):
             response = self.client.get("/v1/reports/runtime/report-1/artifact/signed-url?type=pdf")
         self.assertEqual(response.status_code, 503)
-        self.assertIn("GENO_REPORT_ARTIFACT_SIGNING_SECRET", response.json()["detail"])
+        self.assertIn("GEO_REPORT_ARTIFACT_SIGNING_SECRET", response.json()["detail"])
 
     def test_runtime_report_artifact_signed_url_downloads_and_rejects_tampering(self) -> None:
         class FakeRepository:
@@ -10632,13 +10632,13 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ), patch.dict(
             "os.environ",
             {
-                "GENO_REPORT_ARTIFACT_SIGNING_SECRET": "signed-url-secret",
-                "GENO_REPORT_ARTIFACT_SIGNED_URL_TTL_SECONDS": "600",
+                "GEO_REPORT_ARTIFACT_SIGNING_SECRET": "signed-url-secret",
+                "GEO_REPORT_ARTIFACT_SIGNED_URL_TTL_SECONDS": "600",
             },
             clear=True,
         ):
@@ -10657,7 +10657,7 @@ class ApiContractsTest(unittest.TestCase):
             download_response = self.client.get(download_path)
             self.assertEqual(download_response.status_code, 200)
             self.assertEqual(download_response.text, "signed artifact content")
-            self.assertEqual(download_response.headers["x-geno-report-artifact-signed"], "true")
+            self.assertEqual(download_response.headers["x-geo-report-artifact-signed"], "true")
             self.assertEqual(fake_repository.kwargs["platform"], "perplexity")
 
             tampered_path = download_path.replace("platform=perplexity", "platform=chatgpt")
@@ -10697,19 +10697,19 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ), patch.dict(
             "os.environ",
             {
-                "GENO_REPORT_ARTIFACT_SIGNING_SECRET": "signed-url-secret",
-                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GEO_REPORT_ARTIFACT_SIGNING_SECRET": "signed-url-secret",
+                "GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
             },
             clear=True,
         ):
             signed_response = self.client.get(
                 "/v1/reports/runtime/report-1/artifact/signed-url?type=pdf",
-                headers={"X-GENO-Actor-Id": "agency-owner"},
+                headers={"X-GEO-Actor-Id": "agency-owner"},
             )
             self.assertEqual(signed_response.status_code, 200)
             download_url = signed_response.json()["download_url"]
@@ -10718,7 +10718,7 @@ class ApiContractsTest(unittest.TestCase):
             download_path = download_url.replace("http://testserver", "")
             download_response = self.client.get(download_path)
         self.assertEqual(download_response.status_code, 200)
-        self.assertEqual(download_response.headers["x-geno-report-artifact-signed"], "true")
+        self.assertEqual(download_response.headers["x-geo-report-artifact-signed"], "true")
         self.assertEqual(fake_repository.context["actor_id"], "agency-owner")
         self.assertEqual(fake_repository.member_check["actor_id"], "agency-owner")
 
@@ -10743,14 +10743,14 @@ class ApiContractsTest(unittest.TestCase):
                 raise AssertionError("unpublished customer report must not render an artifact")
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
-        ), patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True):
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
+        ), patch.dict("os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True):
             response = self.client.get(
                 "/v1/reports/runtime/report-1/artifact?type=pdf",
                 headers={
-                    "X-GENO-Actor-Id": "customer@example.com",
-                    "X-GENO-Customer-Portal-Access": "true",
+                    "X-GEO-Actor-Id": "customer@example.com",
+                    "X-GEO-Customer-Portal-Access": "true",
                 },
             )
 
@@ -10777,14 +10777,14 @@ class ApiContractsTest(unittest.TestCase):
                 raise AssertionError("revoked customer report must not render an artifact")
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
-        ), patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True):
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
+        ), patch.dict("os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True):
             response = self.client.get(
                 "/v1/reports/runtime/report-1/artifact?type=markdown",
                 headers={
-                    "X-GENO-Actor-Id": "customer@example.com",
-                    "X-GENO-Customer-Portal-Access": "true",
+                    "X-GEO-Actor-Id": "customer@example.com",
+                    "X-GEO-Customer-Portal-Access": "true",
                 },
             )
 
@@ -10824,14 +10824,14 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
-        ), patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True):
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
+        ), patch.dict("os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True):
             response = self.client.get(
                 "/v1/reports/runtime/report-1/artifact?type=markdown",
                 headers={
-                    "X-GENO-Actor-Id": "customer@example.com",
-                    "X-GENO-Customer-Portal-Access": "true",
+                    "X-GEO-Actor-Id": "customer@example.com",
+                    "X-GEO-Customer-Portal-Access": "true",
                 },
             )
 
@@ -10857,12 +10857,12 @@ class ApiContractsTest(unittest.TestCase):
                 raise AssertionError("viewer role must not bypass customer publication status")
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
-        ), patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True):
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
+        ), patch.dict("os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True):
             response = self.client.get(
                 "/v1/reports/runtime/report-1/artifact?type=markdown",
-                headers={"X-GENO-Actor-Id": "customer@example.com"},
+                headers={"X-GEO-Actor-Id": "customer@example.com"},
             )
 
         self.assertEqual(response.status_code, 403)
@@ -10888,14 +10888,14 @@ class ApiContractsTest(unittest.TestCase):
                 raise AssertionError("cross-project actor must not render an artifact")
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
-        ), patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True):
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
+        ), patch.dict("os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True):
             response = self.client.get(
                 "/v1/reports/runtime/report-1/artifact?type=pdf",
                 headers={
-                    "X-GENO-Actor-Id": "customer@example.com",
-                    "X-GENO-Customer-Portal-Access": "true",
+                    "X-GEO-Actor-Id": "customer@example.com",
+                    "X-GEO-Customer-Portal-Access": "true",
                 },
             )
 
@@ -10916,14 +10916,14 @@ class ApiContractsTest(unittest.TestCase):
                     "project_id": "project-1",
                     "answer_run_id": "answer-run-1",
                     "asset_type": "html_snapshot",
-                    "url": "s3://geno-evidence/project-1/answer-run-1/asset.html",
+                    "url": "s3://geo-evidence/project-1/answer-run-1/asset.html",
                     "content_hash": "a" * 64,
                     "storage_backend": "s3_compatible",
                     "storage_key": "project-1/answer-run-1/asset.html",
-                    "bucket": "geno-evidence",
+                    "bucket": "geo-evidence",
                     "content_type": "text/html; charset=utf-8",
                     "byte_size": 123,
-                    "metadata": {"bucket": "geno-evidence", "storage_key": "hidden", "safe": "visible"},
+                    "metadata": {"bucket": "geo-evidence", "storage_key": "hidden", "safe": "visible"},
                     "visibility": "internal",
                     "created_by": "collector",
                     "created_at": "2026-07-05T00:00:00Z",
@@ -10935,12 +10935,12 @@ class ApiContractsTest(unittest.TestCase):
                 return "analyst"
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
-        ), patch.dict("os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True):
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
+        ), patch.dict("os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True):
             response = self.client.get(
                 "/v1/evidence-assets/runtime/evidence-1/summary",
-                headers={"X-GENO-Actor-Id": "analyst@example.com"},
+                headers={"X-GEO-Actor-Id": "analyst@example.com"},
             )
 
         self.assertEqual(response.status_code, 200)
@@ -10949,7 +10949,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertEqual(payload["content_hash"], "a" * 64)
         self.assertEqual(payload["metadata"], {"safe": "visible"})
         self.assertIn("/v1/evidence-assets/runtime/evidence-1/download", payload["download_proxy"])
-        self.assertNotIn("s3://geno-evidence", serialized)
+        self.assertNotIn("s3://geo-evidence", serialized)
         self.assertNotIn("storage_key", serialized)
         self.assertEqual(fake_repository.member_check["actor_id"], "analyst@example.com")
 
@@ -10965,11 +10965,11 @@ class ApiContractsTest(unittest.TestCase):
                     "project_id": "project-1",
                     "answer_run_id": "answer-run-1",
                     "asset_type": "html_snapshot",
-                    "url": "s3://geno-evidence/project-1/answer-run-1/asset.html",
+                    "url": "s3://geo-evidence/project-1/answer-run-1/asset.html",
                     "content_hash": "a" * 64,
                     "storage_backend": "s3_compatible",
                     "storage_key": "project-1/answer-run-1/asset.html",
-                    "bucket": "geno-evidence",
+                    "bucket": "geo-evidence",
                     "content_type": "text/html; charset=utf-8",
                     "byte_size": 123,
                     "metadata": {},
@@ -10983,7 +10983,7 @@ class ApiContractsTest(unittest.TestCase):
                 return "analyst"
 
         class FakeObjectStore:
-            bucket = "geno-evidence"
+            bucket = "geo-evidence"
 
             def get_object(self, *, key: str, expected_hash: str | None = None) -> object:
                 self.key = key
@@ -10996,19 +10996,19 @@ class ApiContractsTest(unittest.TestCase):
                 return Downloaded()
 
         fake_store = FakeObjectStore()
-        with patch("geno_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
-            "geno_api.main.close_repository_connection"
-        ), patch("geno_api.main.build_object_store_from_env", return_value=fake_store), patch.dict(
-            "os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True
+        with patch("geo_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
+            "geo_api.main.close_repository_connection"
+        ), patch("geo_api.main.build_object_store_from_env", return_value=fake_store), patch.dict(
+            "os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True
         ):
             response = self.client.get(
                 "/v1/evidence-assets/runtime/evidence-1/download",
-                headers={"X-GENO-Actor-Id": "analyst@example.com"},
+                headers={"X-GEO-Actor-Id": "analyst@example.com"},
             )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content, b"<html>raw evidence</html>")
-        self.assertEqual(response.headers["x-geno-evidence-asset-proxy"], "true")
+        self.assertEqual(response.headers["x-geo-evidence-asset-proxy"], "true")
         self.assertEqual(fake_store.key, "project-1/answer-run-1/asset.html")
         self.assertEqual(fake_store.expected_hash, "a" * 64)
 
@@ -11022,7 +11022,7 @@ class ApiContractsTest(unittest.TestCase):
                     "id": evidence_asset_id,
                     "project_id": "project-1",
                     "asset_type": "html_snapshot",
-                    "url": "s3://geno-evidence/project-1/asset.html",
+                    "url": "s3://geo-evidence/project-1/asset.html",
                     "content_hash": "a" * 64,
                     "storage_backend": "s3_compatible",
                     "metadata": {},
@@ -11031,16 +11031,16 @@ class ApiContractsTest(unittest.TestCase):
             def get_project_member_role(self, *, project_id: str, actor_id: str) -> str:
                 return "viewer"
 
-        with patch("geno_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
-            "geno_api.main.close_repository_connection"
-        ), patch("geno_api.main.build_object_store_from_env") as store_builder, patch.dict(
-            "os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True
+        with patch("geo_api.main.build_repository_from_env", return_value=FakeRepository()), patch(
+            "geo_api.main.close_repository_connection"
+        ), patch("geo_api.main.build_object_store_from_env") as store_builder, patch.dict(
+            "os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True
         ):
             response = self.client.get(
                 "/v1/evidence-assets/runtime/evidence-1/download",
                 headers={
-                    "X-GENO-Actor-Id": "customer@example.com",
-                    "X-GENO-Customer-Portal-Access": "true",
+                    "X-GEO-Actor-Id": "customer@example.com",
+                    "X-GEO-Customer-Portal-Access": "true",
                 },
             )
 
@@ -11058,7 +11058,7 @@ class ApiContractsTest(unittest.TestCase):
                     "id": evidence_asset_id,
                     "project_id": "project-2",
                     "asset_type": "html_snapshot",
-                    "url": "s3://geno-evidence/project-2/asset.html",
+                    "url": "s3://geo-evidence/project-2/asset.html",
                     "content_hash": "a" * 64,
                     "metadata": {},
                 }
@@ -11068,14 +11068,14 @@ class ApiContractsTest(unittest.TestCase):
                 return None
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
-        ), patch("geno_api.main.build_object_store_from_env") as store_builder, patch.dict(
-            "os.environ", {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
+        ), patch("geo_api.main.build_object_store_from_env") as store_builder, patch.dict(
+            "os.environ", {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=True
         ):
             response = self.client.get(
                 "/v1/evidence-assets/runtime/evidence-1/download",
-                headers={"X-GENO-Actor-Id": "analyst@example.com"},
+                headers={"X-GEO-Actor-Id": "analyst@example.com"},
             )
 
         self.assertEqual(response.status_code, 403)
@@ -11104,21 +11104,21 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/action-plans/runtime/export.csv?project_id=project-1&status=open&limit=5",
-                headers={"X-GENO-Actor-Id": "agency-owner"},
+                headers={"X-GEO-Actor-Id": "agency-owner"},
             )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["content-type"], "text/csv; charset=utf-8")
-        self.assertEqual(response.headers["x-geno-action-plan-export-hash"], "hash-action-plans-csv")
-        self.assertEqual(response.headers["x-geno-action-plan-project-id"], "project-1")
-        self.assertEqual(response.headers["x-geno-action-plan-status"], "open")
-        self.assertEqual(response.headers["x-geno-action-plan-row-count"], "1")
-        self.assertEqual(response.headers["x-geno-action-plan-total-count"], "2")
+        self.assertEqual(response.headers["x-geo-action-plan-export-hash"], "hash-action-plans-csv")
+        self.assertEqual(response.headers["x-geo-action-plan-project-id"], "project-1")
+        self.assertEqual(response.headers["x-geo-action-plan-status"], "open")
+        self.assertEqual(response.headers["x-geo-action-plan-row-count"], "1")
+        self.assertEqual(response.headers["x-geo-action-plan-total-count"], "2")
         self.assertIn("runtime-action-plans.csv", response.headers["content-disposition"])
         self.assertIn("act-1", response.text)
         self.assertEqual(fake_repository.kwargs["project_id"], "project-1")
@@ -11190,8 +11190,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/runtime-alerts"
@@ -11229,22 +11229,22 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/runtime-alerts/export.csv?project_id=project-1&alert_type=brand_absent&severity=high&limit=5",
-                headers={"X-GENO-Actor-Id": "agency-owner"},
+                headers={"X-GEO-Actor-Id": "agency-owner"},
             )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["content-type"], "text/csv; charset=utf-8")
-        self.assertEqual(response.headers["x-geno-runtime-alert-export-hash"], "hash-runtime-alerts-csv")
-        self.assertEqual(response.headers["x-geno-runtime-alert-project-id"], "project-1")
-        self.assertEqual(response.headers["x-geno-runtime-alert-type"], "brand_absent")
-        self.assertEqual(response.headers["x-geno-runtime-alert-severity"], "high")
-        self.assertEqual(response.headers["x-geno-runtime-alert-row-count"], "1")
-        self.assertEqual(response.headers["x-geno-runtime-alert-total-count"], "3")
+        self.assertEqual(response.headers["x-geo-runtime-alert-export-hash"], "hash-runtime-alerts-csv")
+        self.assertEqual(response.headers["x-geo-runtime-alert-project-id"], "project-1")
+        self.assertEqual(response.headers["x-geo-runtime-alert-type"], "brand_absent")
+        self.assertEqual(response.headers["x-geo-runtime-alert-severity"], "high")
+        self.assertEqual(response.headers["x-geo-runtime-alert-row-count"], "1")
+        self.assertEqual(response.headers["x-geo-runtime-alert-total-count"], "3")
         self.assertIn("runtime-alerts.csv", response.headers["content-disposition"])
         self.assertIn("runtime-alert-1", response.text)
         self.assertEqual(fake_repository.kwargs["project_id"], "project-1")
@@ -11274,8 +11274,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/runtime-alerts/runtime-alert-1/events",
@@ -11322,8 +11322,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/runtime-alerts/notifications",
@@ -11371,22 +11371,22 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/content-engines/runtime/export.csv"
                 "?project_id=project-1&review_status=pending_human_review&limit=5",
-                headers={"X-GENO-Actor-Id": "agency-owner"},
+                headers={"X-GEO-Actor-Id": "agency-owner"},
             )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["content-type"], "text/csv; charset=utf-8")
-        self.assertEqual(response.headers["x-geno-content-engine-export-hash"], "hash-content-engines-csv")
-        self.assertEqual(response.headers["x-geno-content-engine-project-id"], "project-1")
-        self.assertEqual(response.headers["x-geno-content-engine-review-status"], "pending_human_review")
-        self.assertEqual(response.headers["x-geno-content-engine-row-count"], "1")
-        self.assertEqual(response.headers["x-geno-content-engine-total-count"], "2")
+        self.assertEqual(response.headers["x-geo-content-engine-export-hash"], "hash-content-engines-csv")
+        self.assertEqual(response.headers["x-geo-content-engine-project-id"], "project-1")
+        self.assertEqual(response.headers["x-geo-content-engine-review-status"], "pending_human_review")
+        self.assertEqual(response.headers["x-geo-content-engine-row-count"], "1")
+        self.assertEqual(response.headers["x-geo-content-engine-total-count"], "2")
         self.assertIn("runtime-content-engines.csv", response.headers["content-disposition"])
         self.assertIn("draft-1", response.text)
         self.assertEqual(fake_repository.kwargs["project_id"], "project-1")
@@ -11408,9 +11408,9 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
-        ), patch("geno_api.main.assert_runtime_project_access"):
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
+        ), patch("geo_api.main.assert_runtime_project_access"):
             response = self.client.patch(
                 "/v1/content-drafts/runtime/draft-1/review",
                 json={
@@ -11421,7 +11421,7 @@ class ApiContractsTest(unittest.TestCase):
                     "notes": "ready",
                     "payload": {"source": "test"},
                 },
-                headers={"X-GENO-Actor-Id": "agency-owner"},
+                headers={"X-GEO-Actor-Id": "agency-owner"},
             )
 
         self.assertEqual(response.status_code, 200)
@@ -11448,9 +11448,9 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
-        ), patch("geno_api.main.assert_runtime_project_access"):
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
+        ), patch("geo_api.main.assert_runtime_project_access"):
             response = self.client.patch(
                 "/v1/manual-distribution-records/runtime/dist-1/backfill",
                 json={
@@ -11460,7 +11460,7 @@ class ApiContractsTest(unittest.TestCase):
                     "checked_by": "runtime-console",
                     "notes": "proof checked",
                 },
-                headers={"X-GENO-Actor-Id": "agency-owner"},
+                headers={"X-GEO-Actor-Id": "agency-owner"},
             )
 
         self.assertEqual(response.status_code, 200)
@@ -11517,8 +11517,8 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/knowledge-facts/runtime/search"
@@ -11568,8 +11568,8 @@ class ApiContractsTest(unittest.TestCase):
 
         csv_content = "fact_type,subject,predicate,object_value\nreturns_policy,KoalaHome,has_policy,30 day returns"
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.post(
                 "/v1/knowledge-facts/runtime/import.csv",
@@ -11640,13 +11640,13 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
-        ), patch("geno_api.main.assert_runtime_project_access"):
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
+        ), patch("geo_api.main.assert_runtime_project_access"):
             response = self.client.get(
                 "/v1/knowledge-applications/runtime"
                 "?project_id=9a50797d-a341-55a4-8bdf-cc255c017e5c&limit=25&offset=2",
-                headers={"X-GENO-Actor-Id": "agency-owner"},
+                headers={"X-GEO-Actor-Id": "agency-owner"},
             )
 
         self.assertEqual(response.status_code, 200)
@@ -11674,9 +11674,9 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
-        ), patch("geno_api.main.assert_runtime_project_access"):
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
+        ), patch("geo_api.main.assert_runtime_project_access"):
             response = self.client.post(
                 "/v1/knowledge-documents/runtime",
                 json={
@@ -11687,7 +11687,7 @@ class ApiContractsTest(unittest.TestCase):
                     "raw_text": "",
                     "metadata": {"source": "admin-web"},
                 },
-                headers={"X-GENO-Actor-Id": "agency-owner"},
+                headers={"X-GEO-Actor-Id": "agency-owner"},
             )
 
         self.assertEqual(response.status_code, 200)
@@ -11730,9 +11730,9 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
-        ), patch("geno_api.main.assert_runtime_project_access"):
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
+        ), patch("geo_api.main.assert_runtime_project_access"):
             response = self.client.post(
                 "/v1/knowledge-applications/runtime/generate",
                 json={
@@ -11750,7 +11750,7 @@ class ApiContractsTest(unittest.TestCase):
                     "prompt_template_version": "v1",
                     "knowledge_source_policy": "approved_only",
                 },
-                headers={"X-GENO-Actor-Id": "agency-owner"},
+                headers={"X-GEO-Actor-Id": "agency-owner"},
             )
 
         self.assertEqual(response.status_code, 200)
@@ -11798,9 +11798,9 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
-        ), patch("geno_api.main.assert_runtime_project_access"):
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
+        ), patch("geo_api.main.assert_runtime_project_access"):
             review_response = self.client.patch(
                 "/v1/prompt-candidates/runtime/9a03d2af-e71c-5964-89d6-ea14595a8a37/review",
                 json={
@@ -11810,7 +11810,7 @@ class ApiContractsTest(unittest.TestCase):
                     "decision": "use this prompt",
                     "notes": "good coverage",
                 },
-                headers={"X-GENO-Actor-Id": "agency-owner"},
+                headers={"X-GEO-Actor-Id": "agency-owner"},
             )
             import_response = self.client.post(
                 "/v1/prompt-candidates/runtime/import-approved",
@@ -11820,7 +11820,7 @@ class ApiContractsTest(unittest.TestCase):
                     "prompt_candidate_ids": ["9a03d2af-e71c-5964-89d6-ea14595a8a37"],
                     "prompt_version": "knowledge_generated_test",
                 },
-                headers={"X-GENO-Actor-Id": "agency-owner"},
+                headers={"X-GEO-Actor-Id": "agency-owner"},
             )
 
         self.assertEqual(review_response.status_code, 200)
@@ -11856,21 +11856,21 @@ class ApiContractsTest(unittest.TestCase):
                 )
 
         fake_repository = FakeRepository()
-        with patch("geno_api.main.build_repository_from_env", return_value=fake_repository), patch(
-            "geno_api.main.close_repository_connection"
+        with patch("geo_api.main.build_repository_from_env", return_value=fake_repository), patch(
+            "geo_api.main.close_repository_connection"
         ):
             response = self.client.get(
                 "/v1/traceability/runtime/export.csv?project_id=project-1&report_export_id=report-1",
-                headers={"X-GENO-Actor-Id": "agency-owner"},
+                headers={"X-GEO-Actor-Id": "agency-owner"},
             )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["content-type"], "text/csv; charset=utf-8")
-        self.assertEqual(response.headers["x-geno-traceability-export-hash"], "hash-traceability-csv")
-        self.assertEqual(response.headers["x-geno-traceability-project-id"], "project-1")
-        self.assertEqual(response.headers["x-geno-traceability-report-export-id"], "report-1")
-        self.assertEqual(response.headers["x-geno-traceability-row-count"], "2")
-        self.assertEqual(response.headers["x-geno-traceability-total-count"], "1")
+        self.assertEqual(response.headers["x-geo-traceability-export-hash"], "hash-traceability-csv")
+        self.assertEqual(response.headers["x-geo-traceability-project-id"], "project-1")
+        self.assertEqual(response.headers["x-geo-traceability-report-export-id"], "report-1")
+        self.assertEqual(response.headers["x-geo-traceability-row-count"], "2")
+        self.assertEqual(response.headers["x-geo-traceability-total-count"], "1")
         self.assertIn("runtime-traceability.csv", response.headers["content-disposition"])
         self.assertIn("bundle-1", response.text)
         self.assertEqual(fake_repository.kwargs["project_id"], "project-1")
@@ -12324,7 +12324,7 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/v1/runtime-notification-subscriptions", payload["persistence"])
         self.assertIn("/v1/runtime-notification-deliveries", payload["persistence"])
         self.assertIn("/v1/runtime-notification-email-feedback-events", payload["persistence"])
-        self.assertIn("/v1/runtime-notification-email-feedback-webhooks/geno", payload["persistence"])
+        self.assertIn("/v1/runtime-notification-email-feedback-webhooks/geo", payload["persistence"])
         self.assertIn("/v1/runtime-notification-email-feedback-webhooks/{provider}", payload["persistence"])
         self.assertIn(
             "/v1/runtime-notification-email-feedback-events/{feedback_event_id}/suppress-recipient",
@@ -12391,31 +12391,31 @@ class ApiContractsTest(unittest.TestCase):
         self.assertIn("/metrics", payload["persistence"])
 
     def test_terminal_collection_job_cancel_maps_state_conflict_to_409(self) -> None:
-        with patch("geno_api.main.build_repository_from_env", return_value=object()), patch(
-            "geno_api.main.close_repository_connection"
-        ), patch("geno_api.main.assert_runtime_project_access"), patch(
-            "geno_api.main.CollectionJobStore"
+        with patch("geo_api.main.build_repository_from_env", return_value=object()), patch(
+            "geo_api.main.close_repository_connection"
+        ), patch("geo_api.main.assert_runtime_project_access"), patch(
+            "geo_api.main.CollectionJobStore"
         ) as store_class:
             store_class.return_value.cancel.side_effect = JobStateConflictError(
                 "cannot cancel terminal durable job in status succeeded"
             )
             response = self.client.post(
                 "/v1/collection-jobs/runtime/job-1/cancel?project_id=project-1",
-                headers={"X-GENO-Actor-Id": "agency-owner"},
+                headers={"X-GEO-Actor-Id": "agency-owner"},
             )
         self.assertEqual(response.status_code, 409)
         self.assertIn("terminal durable job", response.json()["detail"])
 
     def test_missing_collection_job_cancel_remains_404(self) -> None:
-        with patch("geno_api.main.build_repository_from_env", return_value=object()), patch(
-            "geno_api.main.close_repository_connection"
-        ), patch("geno_api.main.assert_runtime_project_access"), patch(
-            "geno_api.main.CollectionJobStore"
+        with patch("geo_api.main.build_repository_from_env", return_value=object()), patch(
+            "geo_api.main.close_repository_connection"
+        ), patch("geo_api.main.assert_runtime_project_access"), patch(
+            "geo_api.main.CollectionJobStore"
         ) as store_class:
             store_class.return_value.cancel.side_effect = ValueError("durable job not found")
             response = self.client.post(
                 "/v1/collection-jobs/runtime/missing/cancel?project_id=project-1",
-                headers={"X-GENO-Actor-Id": "agency-owner"},
+                headers={"X-GEO-Actor-Id": "agency-owner"},
             )
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.json()["detail"], "durable job not found")

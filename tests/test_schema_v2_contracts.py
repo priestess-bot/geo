@@ -34,7 +34,7 @@ except ImportError:  # pragma: no cover - the CI image provides PyYAML.
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_ROOT = ROOT / "infra/db/schema-v2"
-COMPOSE_USER = "geno_v2_contract_installer"
+COMPOSE_USER = "geo_v2_contract_installer"
 COMPOSE_PASSWORD = "V2ContractToken_7qB8N5vR3mK9xT2wC6pL4sH1"
 
 
@@ -156,7 +156,7 @@ class SchemaV2ManifestContractsTest(unittest.TestCase):
             payload["database_name"] = "another_database"
             manifest_path.write_text(json.dumps(payload), encoding="utf-8")
 
-            with self.assertRaisesRegex(SchemaV2Error, "must remain fixed at 'geno_v2'"):
+            with self.assertRaisesRegex(SchemaV2Error, "must remain fixed at 'geo_v2'"):
                 load_manifest(copied_root)
 
 
@@ -183,11 +183,11 @@ class SchemaV2SqlContractsTest(unittest.TestCase):
 
         for forbidden in (
             "uuid_generate_v4",
-            "CREATE ROLE geno_v2_runtime LOGIN",
-            "CREATE ROLE geno_v2_authz_owner LOGIN",
+            "CREATE ROLE geo_v2_runtime LOGIN",
+            "CREATE ROLE geo_v2_authz_owner LOGIN",
             "PASSWORD '",
-            "CREATE ROLE geno_v2_api_login LOGIN",
-            "ALTER ROLE geno_v2_api_login LOGIN",
+            "CREATE ROLE geo_v2_api_login LOGIN",
+            "ALTER ROLE geo_v2_api_login LOGIN",
             "CONCURRENTLY",
             "quarantine",
             "FROM public.runtime_sessions",
@@ -256,17 +256,17 @@ class SchemaV2SqlContractsTest(unittest.TestCase):
             with self.subTest(forbidden=forbidden):
                 self.assertNotIn(forbidden, sql)
 
-        self.assertIn("CREATE ROLE geno_v2_api_login", sql)
+        self.assertIn("CREATE ROLE geo_v2_api_login", sql)
         self.assertIn("NOLOGIN NOSUPERUSER", sql)
-        self.assertIn("ALTER ROLE geno_v2_api_login PASSWORD NULL", sql)
-        self.assertIn("ALTER ROLE geno_v2_api_login RESET ALL", sql)
+        self.assertIn("ALTER ROLE geo_v2_api_login PASSWORD NULL", sql)
+        self.assertIn("ALTER ROLE geo_v2_api_login RESET ALL", sql)
         self.assertIn(
-            "ALTER ROLE geno_v2_api_login IN DATABASE geno_v2 RESET ALL",
+            "ALTER ROLE geo_v2_api_login IN DATABASE geo_v2 RESET ALL",
             sql,
         )
         self.assertIn("WITH ADMIN FALSE, INHERIT FALSE, SET TRUE", sql)
-        self.assertIn("REVOKE CONNECT, TEMPORARY ON DATABASE geno_v2 FROM PUBLIC", sql)
-        self.assertIn("GRANT CONNECT ON DATABASE geno_v2 TO geno_v2_api_login", sql)
+        self.assertIn("REVOKE CONNECT, TEMPORARY ON DATABASE geo_v2 FROM PUBLIC", sql)
+        self.assertIn("GRANT CONNECT ON DATABASE geo_v2 TO geo_v2_api_login", sql)
         self.assertIn(
             "ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE EXECUTE ON FUNCTIONS",
             sql,
@@ -275,7 +275,7 @@ class SchemaV2SqlContractsTest(unittest.TestCase):
         self.assertIn("session_row.issued_at <= statement_timestamp()", sql)
         self.assertIn("DEFERRABLE INITIALLY DEFERRED", sql)
         self.assertEqual(sql.count("CREATE CONSTRAINT TRIGGER"), 3)
-        self.assertIn("geno_v2_validate_auth_redemption_lineage", sql)
+        self.assertIn("geo_v2_validate_auth_redemption_lineage", sql)
         self.assertIn(
             "attempt_row.token_fingerprint <> invitation_row.invite_token_hash",
             sql,
@@ -289,16 +289,16 @@ class SchemaV2SqlContractsTest(unittest.TestCase):
             "auth_invitation_redemption_attempts",
             sql,
         )
-        self.assertIn("runtime_sessions, project_members TO geno_v2_authz_owner", sql)
-        self.assertIn("geno_v2_session_can_read_project_member", sql)
+        self.assertIn("runtime_sessions, project_members TO geo_v2_authz_owner", sql)
+        self.assertIn("geo_v2_session_can_read_project_member", sql)
         self.assertIn(
-            "USING (geno_v2_session_can_read_project_member("
+            "USING (geo_v2_session_can_read_project_member("
             "project_id, tenant_id, user_id))",
             sql,
         )
-        self.assertNotIn("GRANT SELECT ON runtime_sessions TO geno_v2_runtime", sql)
+        self.assertNotIn("GRANT SELECT ON runtime_sessions TO geo_v2_runtime", sql)
         self.assertNotIn(
-            "GRANT SELECT ON runtime_project_access_grants TO geno_v2_runtime",
+            "GRANT SELECT ON runtime_project_access_grants TO geo_v2_runtime",
             sql,
         )
 
@@ -308,16 +308,16 @@ class SchemaV2SqlContractsTest(unittest.TestCase):
         )
 
         for function_name in (
-            "geno_v2_guard_project_member_invitation_state",
-            "geno_v2_guard_auth_redemption_attempt_state",
-            "geno_v2_guard_runtime_session_update",
-            "geno_v2_guard_runtime_reauth_state",
-            "geno_v2_guard_auth_write_control_state",
-            "geno_v2_guard_auth_preflight_rate_limit_state",
-            "geno_v2_require_auth_writes_enabled",
-            "geno_v2_revoke_affected_sessions",
-            "geno_v2_lock_runtime_session_authz_sources",
-            "geno_v2_revoke_sessions_for_authz_change",
+            "geo_v2_guard_project_member_invitation_state",
+            "geo_v2_guard_auth_redemption_attempt_state",
+            "geo_v2_guard_runtime_session_update",
+            "geo_v2_guard_runtime_reauth_state",
+            "geo_v2_guard_auth_write_control_state",
+            "geo_v2_guard_auth_preflight_rate_limit_state",
+            "geo_v2_require_auth_writes_enabled",
+            "geo_v2_revoke_affected_sessions",
+            "geo_v2_lock_runtime_session_authz_sources",
+            "geo_v2_revoke_sessions_for_authz_change",
         ):
             with self.subTest(function_name=function_name):
                 self.assertIn(f"FUNCTION {function_name}", sql)
@@ -335,10 +335,10 @@ class SchemaV2SqlContractsTest(unittest.TestCase):
         )
         self.assertIn("BEFORE UPDATE OR DELETE ON auth_runtime_write_controls", sql)
         reauth_guard = sql.split(
-            "CREATE FUNCTION geno_v2_guard_runtime_reauth_state()", 1
+            "CREATE FUNCTION geo_v2_guard_runtime_reauth_state()", 1
         )[1].split("$guard_reauth$;", 1)[0]
         session_guard = sql.split(
-            "CREATE OR REPLACE FUNCTION geno_v2_guard_runtime_session_update()", 1
+            "CREATE OR REPLACE FUNCTION geo_v2_guard_runtime_session_update()", 1
         )[1].split("$guard_session_update$;", 1)[0]
         self.assertIn("IF TG_OP = 'INSERT'", reauth_guard)
         self.assertIn("NEW.status <> 'pending'", reauth_guard)
@@ -355,7 +355,7 @@ class SchemaV2SqlContractsTest(unittest.TestCase):
         self.assertIn("GRANT UPDATE (status, revoked_at, revoked_by", sql)
         self.assertIn("GRANT INSERT ON runtime_session_reauth_queue", sql)
         self.assertIn("GRANT SELECT ON auth_runtime_write_controls", sql)
-        self.assertNotIn("TO geno_v2_runtime", sql)
+        self.assertNotIn("TO geo_v2_runtime", sql)
         self.assertNotIn("CREATE POLICY", sql)
         self.assertNotIn("LOGIN", sql.replace("NOLOGIN", ""))
 
@@ -377,15 +377,15 @@ class SchemaV2SqlContractsTest(unittest.TestCase):
         self.assertIn("NEW.resolved_by_session_id IS NULL", sql)
         self.assertIn("auth-delivery-v1 + NUL + canonical attempt UUID", sql)
         public_signatures = (
-            "geno_v2_preflight_auth_invitation(uuid, text, text, text)",
-            "geno_v2_create_project_member_invitation(\n    uuid, uuid, text, text, text, timestamptz\n)",
-            "geno_v2_revoke_project_member_invitation(uuid, text)",
-            "geno_v2_expire_project_member_invitation(uuid)",
-            "geno_v2_redeem_auth_invitation(\n    uuid, uuid, uuid, text, text, text, text, timestamptz,\n    bytea, text, bytea, timestamptz\n)",
-            "geno_v2_confirm_current_auth_delivery()",
-            "geno_v2_erase_current_auth_delivery_secret()",
-            "geno_v2_logout_current_session()",
-            "geno_v2_resolve_current_reauth_queue()",
+            "geo_v2_preflight_auth_invitation(uuid, text, text, text)",
+            "geo_v2_create_project_member_invitation(\n    uuid, uuid, text, text, text, timestamptz\n)",
+            "geo_v2_revoke_project_member_invitation(uuid, text)",
+            "geo_v2_expire_project_member_invitation(uuid)",
+            "geo_v2_redeem_auth_invitation(\n    uuid, uuid, uuid, text, text, text, text, timestamptz,\n    bytea, text, bytea, timestamptz\n)",
+            "geo_v2_confirm_current_auth_delivery()",
+            "geo_v2_erase_current_auth_delivery_secret()",
+            "geo_v2_logout_current_session()",
+            "geo_v2_resolve_current_reauth_queue()",
         )
         normalized_sql = " ".join(sql.split())
         for signature in public_signatures:
@@ -398,7 +398,7 @@ class SchemaV2SqlContractsTest(unittest.TestCase):
                     f"REVOKE ALL ON FUNCTION {normalized_signature} FROM PUBLIC",
                     normalized_sql,
                 )
-        self.assertEqual(sql.count("TO geno_v2_runtime;"), 9)
+        self.assertEqual(sql.count("TO geo_v2_runtime;"), 9)
         self.assertIn("invitation_limit constant integer := 20", sql)
         self.assertIn("source_limit constant integer := 100", sql)
         self.assertIn("window_seconds constant integer := 600", sql)
@@ -407,17 +407,17 @@ class SchemaV2SqlContractsTest(unittest.TestCase):
         self.assertNotRegex(sql, r"(?<!public\.)digest\(")
         self.assertIn(
             "GRANT EXECUTE ON FUNCTION public.digest(bytea, text) "
-            "TO geno_v2_authz_owner",
+            "TO geo_v2_authz_owner",
             sql,
         )
         self.assertIn("'member.manage'", sql)
         self.assertIn("UUID-ordered NO KEY UPDATE lock", sql)
-        self.assertIn("CREATE OR REPLACE FUNCTION geno_v2_require_auth_writes_enabled", sql)
-        self.assertIn("CREATE FUNCTION geno_v2_lock_auth_write_control()", sql)
+        self.assertIn("CREATE OR REPLACE FUNCTION geo_v2_require_auth_writes_enabled", sql)
+        self.assertIn("CREATE FUNCTION geo_v2_lock_auth_write_control()", sql)
         self.assertIn("VOLATILE", sql)
         self.assertIn("FOR SHARE", sql)
         self.assertIn(
-            "REVOKE ALL ON FUNCTION geno_v2_lock_auth_write_control() FROM PUBLIC",
+            "REVOKE ALL ON FUNCTION geo_v2_lock_auth_write_control() FROM PUBLIC",
             sql,
         )
         self.assertIn(
@@ -452,19 +452,19 @@ class SchemaV2SqlContractsTest(unittest.TestCase):
         self.assertIn("auth_login_attempts_guard_state", sql)
         self.assertIn("auth_login_receipts_reject_mutation", sql)
         self.assertIn("DEFERRABLE INITIALLY DEFERRED", sql)
-        self.assertIn("geno_v2_auth_login_startup_ready", sql)
+        self.assertIn("geo_v2_auth_login_startup_ready", sql)
         self.assertIn("ORDER BY attempt.attempt_sequence DESC", sql)
         self.assertIn("attempt.status = 'succeeded'", sql)
         self.assertIn("attempt.operation IN ('provision', 'rotate')", sql)
         self.assertIn("WHERE attempt.login_kind = 'api'", sql)
-        self.assertIn("session_user = 'geno_v2_api_login'", sql)
-        self.assertIn("current_setting('role', true) = 'geno_v2_runtime'", sql)
+        self.assertIn("session_user = 'geo_v2_api_login'", sql)
+        self.assertIn("current_setting('role', true) = 'geo_v2_runtime'", sql)
         self.assertIn("DO $auth_login_provision_catalog_assert$", sql)
         self.assertIn("has_schema_privilege(api_login_oid, 'public', 'USAGE')", sql)
         self.assertIn("has_function_privilege(api_login_oid", sql)
         self.assertIn("NOLOGIN NOSUPERUSER", sql)
         self.assertIn("NOBYPASSRLS PASSWORD NULL", sql)
-        self.assertNotIn("ALTER ROLE geno_v2_api_login LOGIN", sql)
+        self.assertNotIn("ALTER ROLE geo_v2_api_login LOGIN", sql)
         self.assertNotIn("PASSWORD '", sql)
         self.assertNotIn("CREATE POLICY", sql)
         self.assertTrue(sql.rstrip().endswith("$auth_login_provision_catalog_assert$;"))
@@ -472,7 +472,7 @@ class SchemaV2SqlContractsTest(unittest.TestCase):
     def test_runner_uses_a_session_lock_and_transactional_ledger(self) -> None:
         runner = (ROOT / "scripts/schema_v2_runner.py").read_text(encoding="utf-8")
 
-        self.assertEqual(ADVISORY_LOCK_NAME, "geno:schema-v2:install")
+        self.assertEqual(ADVISORY_LOCK_NAME, "geo:schema-v2:install")
         self.assertIn("pg_try_advisory_lock(hashtextextended", runner)
         self.assertIn("pg_advisory_unlock(hashtextextended", runner)
         self.assertIn("connection.autocommit = True", runner)
@@ -621,7 +621,7 @@ class SchemaV2SqlContractsTest(unittest.TestCase):
         environment = {
             "PGHOST": "postgres-v2",
             "PGPORT": "5432",
-            "PGDATABASE": "geno_v2",
+            "PGDATABASE": "geo_v2",
             "PGUSER": "runner",
             "PGPASSWORD": "marker-password",
         }
@@ -633,7 +633,7 @@ class SchemaV2SqlContractsTest(unittest.TestCase):
                 with self.assertRaisesRegex(SchemaV2Error, key):
                     _validate_pg_environment(invalid)
         with self.assertRaisesRegex(SchemaV2Error, "PGDATABASE must remain fixed"):
-            _validate_pg_environment({**environment, "PGDATABASE": "geno"})
+            _validate_pg_environment({**environment, "PGDATABASE": "geo"})
 
     def test_connection_failure_stderr_is_stable_and_contains_no_connection_markers(self) -> None:
         password_marker = "PASSWORD_MARKER_must_never_appear"
@@ -643,7 +643,7 @@ class SchemaV2SqlContractsTest(unittest.TestCase):
             **os.environ,
             "PGHOST": "127.0.0.1",
             "PGPORT": "1",
-            "PGDATABASE": "geno_v2",
+            "PGDATABASE": "geo_v2",
             "PGUSER": user_marker,
             "PGPASSWORD": password_marker,
             "SCHEMA_V2_DATABASE_URL": deprecated_dsn_marker,
@@ -679,7 +679,7 @@ class SchemaV2SqlContractsTest(unittest.TestCase):
             **os.environ,
             "PGHOST": "127.0.0.1",
             "PGPORT": "1",
-            "PGDATABASE": "geno_v2",
+            "PGDATABASE": "geo_v2",
             "PGUSER": "timeout-test",
             "PGPASSWORD": "timeout-test-marker",
         }
@@ -774,7 +774,7 @@ class SchemaV2ComposeContractsTest(unittest.TestCase):
             "schema-v2-worker-login-provision-behavior-test"
         ]
 
-        self.assertEqual(database["environment"]["POSTGRES_DB"], "geno_v2")
+        self.assertEqual(database["environment"]["POSTGRES_DB"], "geo_v2")
         self.assertEqual(database["environment"]["POSTGRES_USER"], COMPOSE_USER)
         self.assertEqual(database["environment"]["POSTGRES_PASSWORD"], COMPOSE_PASSWORD)
         self.assertEqual(
@@ -784,7 +784,7 @@ class SchemaV2ComposeContractsTest(unittest.TestCase):
         expected_pg_environment = {
             "PGHOST": "postgres-v2",
             "PGPORT": "5432",
-            "PGDATABASE": "geno_v2",
+            "PGDATABASE": "geo_v2",
             "PGUSER": COMPOSE_USER,
             "PGPASSWORD": COMPOSE_PASSWORD,
         }
@@ -905,7 +905,7 @@ class SchemaV2ComposeContractsTest(unittest.TestCase):
         self.assertNotIn("infra/db/migrations/up", rendered)
         self.assertNotIn("/docker-entrypoint-initdb.d", rendered)
         self.assertNotIn("must_not_be_used", rendered)
-        self.assertNotIn("geno_v2_local", rendered)
+        self.assertNotIn("geo_v2_local", rendered)
         self.assertNotIn("postgresql://", rendered)
 
     def test_makefile_exposes_contract_and_fresh_install_entrypoints(self) -> None:
@@ -929,16 +929,16 @@ class SchemaV2ComposeContractsTest(unittest.TestCase):
         self.assertIn(
             "run --rm schema-v2-anonymous-auth-uow-behavior-test", makefile
         )
-        self.assertIn("geno-schema-v2-anonymous-auth-pg", makefile)
+        self.assertIn("geo-schema-v2-anonymous-auth-pg", makefile)
         self.assertIn("schema-v2-login-provision-gate:", makefile)
         self.assertIn("run --rm schema-v2-login-provision-behavior-test", makefile)
-        self.assertIn("geno-schema-v2-login-provision-pg", makefile)
+        self.assertIn("geo-schema-v2-login-provision-pg", makefile)
         self.assertIn("schema-v2-worker-login-provision-gate:", makefile)
         self.assertIn(
             "run --rm schema-v2-worker-login-provision-behavior-test",
             makefile,
         )
-        self.assertIn("geno-schema-v2-worker-login-provision-pg", makefile)
+        self.assertIn("geo-schema-v2-worker-login-provision-pg", makefile)
         self.assertIn("SCRAM-SHA-256$$", makefile)
         self.assertIn("appeared in PostgreSQL logs", makefile)
         self.assertIn("down --remove-orphans -v", makefile)

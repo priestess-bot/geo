@@ -32,7 +32,7 @@ CREATE TABLE schema_migration_ledger (
         CHECK (btrim(app_commit) <> '')
 );
 
-CREATE FUNCTION geno_schema_v2_reject_ledger_mutation()
+CREATE FUNCTION geo_schema_v2_reject_ledger_mutation()
 RETURNS trigger
 LANGUAGE plpgsql
 AS $$
@@ -44,7 +44,7 @@ $$;
 CREATE TRIGGER schema_migration_ledger_immutable
 BEFORE UPDATE OR DELETE ON schema_migration_ledger
 FOR EACH ROW
-EXECUTE FUNCTION geno_schema_v2_reject_ledger_mutation();
+EXECUTE FUNCTION geo_schema_v2_reject_ledger_mutation();
 
 COMMENT ON TABLE app_schema_metadata IS
     'Single-row compatibility contract for the independently installed Schema v2 database.';

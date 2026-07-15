@@ -65,9 +65,9 @@ def _wait_prometheus_target(url: str, *, job_name: str, attempts: int = 30) -> t
 def run_ops_runtime_smoke() -> dict[str, object]:
     run_id = str(uuid4())
     started_at = datetime.now(UTC)
-    api_base = os.environ.get("GENO_OPS_SMOKE_API_BASE_URL", "http://api:8000").rstrip("/")
-    prometheus_base = os.environ.get("GENO_OPS_SMOKE_PROMETHEUS_BASE_URL", "http://prometheus:9090").rstrip("/")
-    grafana_base = os.environ.get("GENO_OPS_SMOKE_GRAFANA_BASE_URL", "http://grafana:3000").rstrip("/")
+    api_base = os.environ.get("GEO_OPS_SMOKE_API_BASE_URL", "http://api:8000").rstrip("/")
+    prometheus_base = os.environ.get("GEO_OPS_SMOKE_PROMETHEUS_BASE_URL", "http://prometheus:9090").rstrip("/")
+    grafana_base = os.environ.get("GEO_OPS_SMOKE_GRAFANA_BASE_URL", "http://grafana:3000").rstrip("/")
 
     checks: list[dict[str, object]] = []
     health_status, health_body = _wait(f"{api_base}/health")
@@ -83,7 +83,7 @@ def run_ops_runtime_smoke() -> dict[str, object]:
     checks.append({"name": "api_ready", "status": "pass", "http_status": ready_status})
 
     metrics_status, metrics_body = _wait(f"{api_base}/metrics")
-    required_metrics = {"geno_api_requests_total", "geno_runtime_postgres_pool_snapshot_ok"}
+    required_metrics = {"geo_api_requests_total", "geo_runtime_postgres_pool_snapshot_ok"}
     missing_metrics = sorted(metric for metric in required_metrics if metric not in metrics_body)
     if missing_metrics:
         raise AssertionError(f"missing runtime metrics: {missing_metrics}")
@@ -91,7 +91,7 @@ def run_ops_runtime_smoke() -> dict[str, object]:
 
     prometheus_status, api_targets = _wait_prometheus_target(
         f"{prometheus_base}/api/v1/targets",
-        job_name="geno-api",
+        job_name="geo-api",
     )
     checks.append({"name": "prometheus_target", "status": "pass", "http_status": prometheus_status})
 

@@ -1,7 +1,7 @@
 # Collector Worker
 
-M2a has a deterministic fixture runner in `geno_core.collection` and fixture adapters in
-`geno_core.collectors`. They implement the same `CollectorBackend` contract expected by real
+M2a has a deterministic fixture runner in `geo_core.collection` and fixture adapters in
+`geo_core.collectors`. They implement the same `CollectorBackend` contract expected by real
 platform adapters, so tests can verify AnswerRun, RawAnswer, citations, evidence assets, cost, and
 AuditEvent without external API credentials.
 
@@ -14,7 +14,7 @@ P0a adapters:
 Local fixture slice:
 
 ```bash
-PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --mode fixture
+PYTHONPATH=packages/geo_core:apps/api python3 workers/collector_worker/run_collection_slice.py --mode fixture
 ```
 
 The worker always prints `p0a_readiness_gate` for stable P0a modes. The default local slice uses
@@ -22,14 +22,14 @@ The worker always prints `p0a_readiness_gate` for stable P0a modes. The default 
 Run a gate-ready fixture slice with:
 
 ```bash
-PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py \
+PYTHONPATH=packages/geo_core:apps/api python3 workers/collector_worker/run_collection_slice.py \
   --mode fixture --prompt-limit 1 --sample-size 3
 ```
 
 `P0ACollectionReadinessGate` checks required platforms (`chatgpt`, `perplexity`), required metadata,
 `answer_present` / `surface_triggered`, citation presence, screenshot or HTML evidence assets, and
 sample size k=3. Real API mode must pass the same gate before P0a design partner data is considered
-ready. Official API adapters generate `geno-api-snapshot://...` HTML snapshot evidence assets from
+ready. Official API adapters generate `geo-api-snapshot://...` HTML snapshot evidence assets from
 the raw provider response, with the snapshot hash stored on `EvidenceAsset.content_hash`; these
 prove API-response provenance but do not replace browser fidelity samples. During `--persist`, if
 `OBJECT_STORE_ENDPOINT` is configured, the worker archives those API snapshots to
@@ -40,7 +40,7 @@ raw evidence rows.
 Collection retry/rate-limit policy:
 
 ```bash
-PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py \
+PYTHONPATH=packages/geo_core:apps/api python3 workers/collector_worker/run_collection_slice.py \
   --mode api --prompt-limit 1 --cities Sydney \
   --collection-max-retries 2 \
   --collection-retry-backoff-seconds 1 \
@@ -59,8 +59,8 @@ Temporal workflow.
 Persisted fixture slice:
 
 ```bash
-DATABASE_URL=postgresql://geno_runtime_app:geno_runtime_app@localhost:5432/geno \
-PYTHONPATH=packages/geno_core:apps/api \
+DATABASE_URL=postgresql://geo_runtime_app:geo_runtime_app@localhost:5432/geo \
+PYTHONPATH=packages/geo_core:apps/api \
 python3 workers/collector_worker/run_collection_slice.py --mode fixture --persist
 ```
 
@@ -70,22 +70,22 @@ python3 workers/collector_worker/run_collection_slice.py --mode fixture --persis
 `CollectionRunSummary` through `PostgresEvidenceRepository`. Each `CollectionCost` records
 `duration_ms` for the collector call. If object storage is configured, API snapshot evidence assets
 are archived before the evidence rows are saved, so downstream report/traceability reads see the
-durable `s3://...` URI rather than the temporary `geno-api-snapshot://...` reference. The summary
+durable `s3://...` URI rather than the temporary `geo-api-snapshot://...` reference. The summary
 records planned runs, attempted runs, success/failure counts, success rate, trigger rate,
 answer-present rate, total cost, average cost per run, total duration, average duration,
 platform/city/access-method distributions, failure summary, and linked `answer_run_ids`, then
 writes a `collection_run_summarized` audit event. If `DATABASE_URL` is missing, the worker exits with code `2` and
 prints a persistence error instead of silently dropping evidence.
 
-The local Compose stack creates a non-bypass runtime database role, `geno_runtime_app`, through
+The local Compose stack creates a non-bypass runtime database role, `geo_runtime_app`, through
 migration `0010_runtime_project_rls`. Use that role for worker/API runtime commands; keep the
-bootstrap `geno` role for database initialization and migration/admin operations only.
+bootstrap `geo` role for database initialization and migration/admin operations only.
 
 Persisted fixture slice with analysis/scoring:
 
 ```bash
-DATABASE_URL=postgresql://geno_runtime_app:geno_runtime_app@localhost:5432/geno \
-PYTHONPATH=packages/geno_core:apps/api \
+DATABASE_URL=postgresql://geo_runtime_app:geo_runtime_app@localhost:5432/geo \
+PYTHONPATH=packages/geo_core:apps/api \
 python3 workers/collector_worker/run_collection_slice.py --mode fixture --prompt-limit 1 --persist --persist-analysis
 ```
 
@@ -134,8 +134,8 @@ The default formula is `au_visibility_v1`. To exercise a candidate formula witho
 snapshots, pass a registered version:
 
 ```bash
-DATABASE_URL=postgresql://geno_runtime_app:geno_runtime_app@localhost:5432/geno \
-PYTHONPATH=packages/geno_core:apps/api \
+DATABASE_URL=postgresql://geo_runtime_app:geo_runtime_app@localhost:5432/geo \
+PYTHONPATH=packages/geo_core:apps/api \
 python3 workers/collector_worker/run_collection_slice.py \
   --mode fixture --prompt-limit 1 --persist --persist-analysis \
   --score-formula-version au_visibility_v1_1_local_boost
@@ -145,11 +145,11 @@ LiteLLM judge adapter slice:
 
 ```bash
 LITELLM_BASE_URL=http://localhost:4000 LITELLM_API_KEY=... \
-DATABASE_URL=postgresql://geno_runtime_app:geno_runtime_app@localhost:5432/geno \
-PYTHONPATH=packages/geno_core:apps/api \
+DATABASE_URL=postgresql://geo_runtime_app:geo_runtime_app@localhost:5432/geo \
+PYTHONPATH=packages/geo_core:apps/api \
 python3 workers/collector_worker/run_collection_slice.py \
   --mode fixture --prompt-limit 1 --persist --persist-analysis \
-  --judge-gateway litellm --judge-model geno-gpt-4.1-mini
+  --judge-gateway litellm --judge-model geo-gpt-4.1-mini
 ```
 
 The adapter-level retry/cost behavior is covered by local contract tests. The Compose stack also
@@ -168,8 +168,8 @@ reconciliation against provider billing exports.
 Fixture API-vs-browser fidelity sample:
 
 ```bash
-DATABASE_URL=postgresql://geno_runtime_app:geno_runtime_app@localhost:5432/geno \
-PYTHONPATH=packages/geno_core:apps/api \
+DATABASE_URL=postgresql://geo_runtime_app:geo_runtime_app@localhost:5432/geo \
+PYTHONPATH=packages/geo_core:apps/api \
 python3 workers/collector_worker/run_collection_slice.py \
   --mode fixture --prompt-limit 1 --cities Sydney \
   --include-browser-fidelity-fixture --persist --persist-analysis
@@ -178,7 +178,7 @@ python3 workers/collector_worker/run_collection_slice.py \
 Scheduled browser fidelity sampling plan:
 
 ```bash
-PYTHONPATH=packages/geno_core:apps/api \
+PYTHONPATH=packages/geo_core:apps/api \
 python3 workers/collector_worker/run_collection_slice.py \
   --plan-browser-fidelity-sampling \
   --fidelity-run-date 2026-06-11 \
@@ -198,15 +198,15 @@ replayed instead of relying on `--prompt-limit` ordering.
 Lightweight browser fidelity scheduler:
 
 ```bash
-PYTHONPATH=packages/geno_core:apps/api python3 scripts/run_browser_fidelity_scheduler.py
-GENO_BROWSER_FIDELITY_EXECUTE=1 PYTHONPATH=packages/geno_core:apps/api python3 scripts/run_browser_fidelity_scheduler.py
+PYTHONPATH=packages/geo_core:apps/api python3 scripts/run_browser_fidelity_scheduler.py
+GEO_BROWSER_FIDELITY_EXECUTE=1 PYTHONPATH=packages/geo_core:apps/api python3 scripts/run_browser_fidelity_scheduler.py
 docker compose -f infra/docker-compose.yml --profile scheduler run --rm browser-fidelity-scheduler
 ```
 
 The scheduler is a JSON wrapper for cron or Kubernetes CronJob. It runs the planning command,
 returns the plan payload and the exact worker command, and only executes the worker when
-`--execute` or `GENO_BROWSER_FIDELITY_EXECUTE=1` is set. Compose `scheduler` defaults to
-`GENO_BROWSER_FIDELITY_PERSIST_PLAN=1` and `GENO_BROWSER_FIDELITY_EXECUTE=0`, so a scheduled job can
+`--execute` or `GEO_BROWSER_FIDELITY_EXECUTE=1` is set. Compose `scheduler` defaults to
+`GEO_BROWSER_FIDELITY_PERSIST_PLAN=1` and `GEO_BROWSER_FIDELITY_EXECUTE=0`, so a scheduled job can
 record the `browser_fidelity_sampling_planned` audit event without accidentally calling external
 providers or launching a browser before credentials/selectors are ready.
 
@@ -214,18 +214,18 @@ Real API-vs-browser browser fidelity preflight:
 
 ```bash
 PERPLEXITY_API_KEY=... OPENAI_API_KEY=... \
-GENO_BROWSER_COLLECTOR_ENABLED=1 \
-GENO_BROWSER_PROMPT_SELECTOR='textarea' \
-GENO_BROWSER_ANSWER_SELECTOR='[data-message-author-role="assistant"]' \
-GENO_BROWSER_STORAGE_STATE=/path/to/chatgpt-storage-state.json \
-GENO_BROWSER_ARTIFACT_DIR=/tmp/geno-browser-artifacts \
+GEO_BROWSER_COLLECTOR_ENABLED=1 \
+GEO_BROWSER_PROMPT_SELECTOR='textarea' \
+GEO_BROWSER_ANSWER_SELECTOR='[data-message-author-role="assistant"]' \
+GEO_BROWSER_STORAGE_STATE=/path/to/chatgpt-storage-state.json \
+GEO_BROWSER_ARTIFACT_DIR=/tmp/geo-browser-artifacts \
 make api-browser-fidelity-preflight
 ```
 
 `--include-browser-fidelity-playwright` is only available in `--mode api`. It adds
 `chatgpt_search.browser.playwright` next to the official API collectors so the same prompt/city can
 be sampled through the consumer browser surface. The collector is deliberately strict: health is
-`not_configured` until `GENO_BROWSER_COLLECTOR_ENABLED=1`; `selector_missing` until prompt and
+`not_configured` until `GEO_BROWSER_COLLECTOR_ENABLED=1`; `selector_missing` until prompt and
 answer selectors are configured; `session_state_missing` if the optional storage-state file is
 configured but absent; and `playwright_missing` if the Python Playwright package is not installed.
 `--require-ready-collectors` turns those states into worker exit code `3` before any external
@@ -233,18 +233,18 @@ collection starts. `make api-browser-fidelity-preflight` also passes
 `--require-no-collection-failures`, so it exits with worker code `5` if browser launch, login,
 selector matching, page interaction, or an official API call fails after health has passed.
 Successful browser collection writes both screenshot and HTML snapshot evidence hashes into the
-standard `RawEvidenceRecord` path. When `GENO_BROWSER_ARTIFACT_DIR` is configured and
+standard `RawEvidenceRecord` path. When `GEO_BROWSER_ARTIFACT_DIR` is configured and
 `OBJECT_STORE_ENDPOINT` is available, `--persist` archives local `file://` browser HTML/PNG assets
 to `evidence/<project_id>/<answer_run_id>/<asset_id>.<ext>`, replaces the EvidenceAsset URL/hash
 with the stored `s3://...` object, and writes a `browser_capture_assets_archived` audit event before
-raw evidence rows are saved. Browser `geno-browser-*://` metadata references are not archived
+raw evidence rows are saved. Browser `geo-browser-*://` metadata references are not archived
 because they do not carry retrievable artifact bytes.
 
 API adapter slice:
 
 ```bash
 PERPLEXITY_API_KEY=... OPENAI_API_KEY=... \
-PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --mode api
+PYTHONPATH=packages/geo_core:apps/api python3 workers/collector_worker/run_collection_slice.py --mode api
 ```
 
 If API keys are missing, the worker returns `CollectionFailureRecord` items and writes
@@ -276,7 +276,7 @@ make verify-au-p0a-execution-checklist
 
 `make api-preflight` runs `--mode api --prompt-limit 1 --cities Sydney --sample-size 3
 --require-ready-collectors --require-p0a-readiness --preflight-output-path
-${GENO_API_PREFLIGHT_OUTPUT_PATH:-docs/runtime_preflight/api-preflight-latest.json}`.
+${GEO_API_PREFLIGHT_OUTPUT_PATH:-docs/runtime_preflight/api-preflight-latest.json}`.
 `--require-ready-collectors` exits before collection with worker exit code `3` if a selected
 collector health is not `ready`; the JSON output still includes `collector_health` and
 `collector_health_gate` for audit, and the same payload is written to `--preflight-output-path`.
@@ -295,40 +295,40 @@ missing keys, still pass this audit verifier when the payload is complete; use
 `python3 scripts/verify_preflight_payload.py --require-design-partner-ready` when the check is
 intended to gate expansion to a design-partner batch.
 `make preflight-manifest` writes
-`${GENO_API_PREFLIGHT_MANIFEST_PATH:-docs/runtime_preflight/api-preflight-manifest-latest.json}`.
+`${GEO_API_PREFLIGHT_MANIFEST_PATH:-docs/runtime_preflight/api-preflight-manifest-latest.json}`.
 The manifest records the preflight file sha256, payload hash, verifier result, run summary,
 blocking reasons, replayable worker args, and its own `manifest_payload_hash` for package-level
 audit indexing.
 `make au-p0a-runbook` writes
-`${GENO_AU_P0A_RUNBOOK_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-runbook-latest.json}` with the
+`${GEO_AU_P0A_RUNBOOK_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-runbook-latest.json}` with the
 ordered command plan for preflight, 5-prompt Sydney small batch, and full 100 prompts × 4 geo × k=3
 batch. `make verify-au-p0a-runbook` verifies its payload hash, step order, planned runs, and required
-gate commands. `make verify-au-p0a-env-template` checks the committed `.env.au-p0a.example` before local secret filling: provider keys must be empty, database/object store defaults must be local placeholders, runtime output paths must remain under `docs/runtime_preflight/*.json`, and secret-like markers are rejected. This template gate does not prove the real local `.env.au-p0a` or providers are ready. `make au-p0a-env` writes `${GENO_AU_P0A_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-env-latest.json}` with redacted required/recommended environment checks sourced from `.env.au-p0a` or process environment; `make verify-au-p0a-env` recomputes its hash and rejects raw secret fields. `make au-p0a-runbook-dry-run` writes
-`${GENO_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-runbook-execution-latest.json}`
+gate commands. `make verify-au-p0a-env-template` checks the committed `.env.au-p0a.example` before local secret filling: provider keys must be empty, database/object store defaults must be local placeholders, runtime output paths must remain under `docs/runtime_preflight/*.json`, and secret-like markers are rejected. This template gate does not prove the real local `.env.au-p0a` or providers are ready. `make au-p0a-env` writes `${GEO_AU_P0A_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-env-latest.json}` with redacted required/recommended environment checks sourced from `.env.au-p0a` or process environment; `make verify-au-p0a-env` recomputes its hash and rejects raw secret fields. `make au-p0a-runbook-dry-run` writes
+`${GEO_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-runbook-execution-latest.json}`
 with all planned steps, output paths, external provider call risk, environment gaps, zero executed
 commands by default, and an `execution_payload_hash`. `make verify-au-p0a-runbook-execution`
 recomputes that hash and validates step counts, dry-run invariants, execution mode, and readiness. `make au-p0a-readiness` writes
-`${GENO_AU_P0A_READINESS_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-readiness-latest.json}` and
-checks the selected phase (`GENO_AU_P0A_READINESS_PHASE=preflight|small_batch|full_batch`) against
+`${GEO_AU_P0A_READINESS_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-readiness-latest.json}` and
+checks the selected phase (`GEO_AU_P0A_READINESS_PHASE=preflight|small_batch|full_batch`) against
 required environment variables, the verified runbook, and upstream design-partner-ready payload and
 manifest gates. By default it only verifies that `DATABASE_URL` is present; set
-`GENO_AU_P0A_REQUIRE_DB_CHECK=1` or pass `--require-db-check` to run a read-only `SELECT 1`
+`GEO_AU_P0A_REQUIRE_DB_CHECK=1` or pass `--require-db-check` to run a read-only `SELECT 1`
 PostgreSQL connection check before starting real batches. The checked-in Chinese runbook is
 `docs/AU-P0a-真实批次运行手册.md`. `make au-p0a-package` writes
-`${GENO_AU_P0A_PACKAGE_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-evidence-package-latest.json}`
+`${GEO_AU_P0A_PACKAGE_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-evidence-package-latest.json}`
 with file hashes, verifier status, design-partner readiness, and missing-artifact gaps across the
 runbook, environment report, runbook execution dry-run, readiness file, preflight, small batch, and full batch artifacts.
 `make verify-au-p0a-package`
 recomputes the package hash and verifies that summary counts, missing/failed/ready artifacts, and
 blocking reasons match the embedded artifact entries. `make au-p0a-status` writes
-`${GENO_AU_P0A_STATUS_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-status-latest.json}` with a single
+`${GEO_AU_P0A_STATUS_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-status-latest.json}` with a single
 machine-readable progress view across the runbook, environment report, runbook execution dry-run, all three readiness
 phases, package verifier, completion percentage, design-ready percentage, remaining blockers, and
 next action.
 `make verify-au-p0a-status` recomputes the status report hash and checks that completion, blockers,
 ready state, and next action can be derived from the embedded gate summaries.
 `make au-p0a-execution-checklist` writes
-`${GENO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-execution-checklist-latest.json}`
+`${GEO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-execution-checklist-latest.json}`
 with the redacted setup commands, execution commands, verification commands, evidence output paths,
 artifact summary, remaining blockers, and `p0a_execution_checklist_hash` across the full P0a path.
 `make verify-au-p0a-execution-checklist` recomputes the hash, checks derived readiness, rejects raw
@@ -341,7 +341,7 @@ not replace the full 100 prompts × 4 geo × k=3 design-partner batch.
 Google spike fixture:
 
 ```bash
-PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --mode google-fixture
+PYTHONPATH=packages/geo_core:apps/api python3 workers/collector_worker/run_collection_slice.py --mode google-fixture
 ```
 
 This runs the 30 prompt × 2 surfaces × 2 geo × k=2 spike matrix with fixture Google adapters and

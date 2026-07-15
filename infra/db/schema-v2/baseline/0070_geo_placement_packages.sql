@@ -250,7 +250,7 @@ CREATE TABLE placement_package_claims (
     CONSTRAINT placement_package_claims_unique UNIQUE (placement_package_id, claim_text)
 );
 
-CREATE FUNCTION geno_v2_reject_geo_placement_immutable_update()
+CREATE FUNCTION geo_v2_reject_geo_placement_immutable_update()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $$
 BEGIN
     RAISE EXCEPTION 'geo placement traceability rows are immutable' USING ERRCODE = '55000';
@@ -274,14 +274,14 @@ BEGIN
         'placement_evidence_items', 'geo_prompt_definition_versions',
         'geo_prompt_bundles', 'placement_package_claims'
     ] LOOP
-        EXECUTE format('CREATE TRIGGER %I BEFORE UPDATE OR DELETE ON public.%I FOR EACH ROW EXECUTE FUNCTION public.geno_v2_reject_geo_placement_immutable_update()', table_name || '_immutable', table_name);
+        EXECUTE format('CREATE TRIGGER %I BEFORE UPDATE OR DELETE ON public.%I FOR EACH ROW EXECUTE FUNCTION public.geo_v2_reject_geo_placement_immutable_update()', table_name || '_immutable', table_name);
     END LOOP;
 END;
 $$;
 
-ALTER FUNCTION geno_v2_reject_geo_placement_immutable_update() OWNER TO geno_v2_result_owner;
+ALTER FUNCTION geo_v2_reject_geo_placement_immutable_update() OWNER TO geo_v2_result_owner;
 REVOKE ALL ON placement_briefs, placement_brief_versions, placement_evidence_packs,
     placement_evidence_items, geo_prompt_definitions, geo_prompt_definition_versions,
     geo_prompt_bundles, placement_packages, placement_package_claims
-    FROM PUBLIC, geno_v2_runtime, geno_v2_worker;
-REVOKE ALL ON FUNCTION geno_v2_reject_geo_placement_immutable_update() FROM PUBLIC;
+    FROM PUBLIC, geo_v2_runtime, geo_v2_worker;
+REVOKE ALL ON FUNCTION geo_v2_reject_geo_placement_immutable_update() FROM PUBLIC;

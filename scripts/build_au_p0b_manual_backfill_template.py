@@ -7,8 +7,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from geno_core.bootstrap import build_au_project_bootstrap
-from geno_core.google_spike import (
+from geo_core.bootstrap import build_au_project_bootstrap
+from geo_core.google_spike import (
     GOOGLE_SPIKE_GEO_CITIES,
     GOOGLE_SPIKE_SAMPLE_SIZE,
     select_google_spike_prompts,

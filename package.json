@@ -1,0 +1,10 @@
+{
+  "name": "geo-platform",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@9.15.4",
+  "scripts": {
+    "build": "corepack pnpm --filter geo-production-admin-web --filter geo-production-customer-web build",
+    "typecheck": "corepack pnpm --filter './apps/**' --filter './packages/web/**' typecheck"
+  }
+}

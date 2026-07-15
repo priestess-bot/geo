@@ -317,22 +317,22 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build an AU P0b Google spike evidence package JSON")
     parser.add_argument(
         "--runbook-path",
-        default=os.environ.get("GENO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH", DEFAULT_RUNBOOK_PATH),
+        default=os.environ.get("GEO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH", DEFAULT_RUNBOOK_PATH),
         help="Path to the generated AU P0b Google runbook JSON.",
     )
     parser.add_argument(
         "--execution-path",
-        default=os.environ.get("GENO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH", DEFAULT_EXECUTION_PATH),
+        default=os.environ.get("GEO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH", DEFAULT_EXECUTION_PATH),
         help="Path to the generated AU P0b Google runbook execution JSON.",
     )
     parser.add_argument(
         "--status-report-path",
-        default=os.environ.get("GENO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH", DEFAULT_STATUS_REPORT_PATH),
+        default=os.environ.get("GEO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH", DEFAULT_STATUS_REPORT_PATH),
         help="Path to the AU P0b Google status report JSON.",
     )
     parser.add_argument(
         "--output-path",
-        default=os.environ.get("GENO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to write the AU P0b Google evidence package JSON.",
     )
     parser.add_argument("--generated-at", default=None, help="Override generated_at timestamp for deterministic tests.")

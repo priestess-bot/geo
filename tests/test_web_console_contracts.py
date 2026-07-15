@@ -10,7 +10,7 @@ class WebConsoleContractsTest(unittest.TestCase):
         layout_source = Path("apps/web/app/layout.tsx").read_text(encoding="utf-8")
         css_source = Path("apps/web/app/globals.css").read_text(encoding="utf-8")
 
-        self.assertIn("GENO 澳大利亚客户工作台", page_source)
+        self.assertIn("GEO 澳大利亚客户工作台", page_source)
         self.assertIn("AI 可见度", page_source)
         self.assertIn("试点交付状态", page_source)
         self.assertIn("报告状态", page_source)
@@ -27,7 +27,7 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn('customerHandoffPackage: "/v1/customer-handoff-package/au"', page_source)
         self.assertIn('<html lang="zh-CN"', layout_source)
         self.assertIn("suppressHydrationWarning", layout_source)
-        self.assertIn("GENO 澳大利亚客户工作台", layout_source)
+        self.assertIn("GEO 澳大利亚客户工作台", layout_source)
         self.assertIn(".customerDashboard", css_source)
         self.assertIn(".customerStatusPill", css_source)
         self.assertNotIn("P0a 环境检查清单", page_source)
@@ -933,7 +933,7 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("/v1/runtime-notification-email-feedback-events", page_source)
         self.assertIn("/v1/runtime-notification-email-suppressions", page_source)
         self.assertIn("/v1/runtime-notification-email-suppressions/export.csv", page_source)
-        self.assertIn("/v1/runtime-notification-email-feedback-webhooks/geno", page_source)
+        self.assertIn("/v1/runtime-notification-email-feedback-webhooks/geo", page_source)
         self.assertIn(
             "/v1/runtime-notification-email-feedback-events/${feedbackEventId}/suppress-recipient",
             page_source,
@@ -1006,8 +1006,8 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("signing_secret_env", page_source)
         self.assertIn("signing_secret_key_id", page_source)
         self.assertIn("previous_signing_secret_env", page_source)
-        self.assertIn("GENO_NOTIFICATION_WEBHOOK_SIGNING_SECRET_PREVIOUS", page_source)
-        self.assertIn("GENO_NOTIFICATION_WEBHOOK_SIGNING_SECRET", page_source)
+        self.assertIn("GEO_NOTIFICATION_WEBHOOK_SIGNING_SECRET_PREVIOUS", page_source)
+        self.assertIn("GEO_NOTIFICATION_WEBHOOK_SIGNING_SECRET", page_source)
         self.assertIn("unread_count", page_source)
         self.assertIn("retryable_count", page_source)
         self.assertIn("expired_running_count", page_source)
@@ -1103,7 +1103,7 @@ class WebConsoleContractsTest(unittest.TestCase):
 
         self.assertIn("InviteAcceptPage", page_source)
         self.assertIn("acceptProjectInvitation", page_source)
-        self.assertIn("GENO_WEB_INVITE_ACCEPT_AUTO_SUBMIT", page_source)
+        self.assertIn("GEO_WEB_INVITE_ACCEPT_AUTO_SUBMIT", page_source)
         self.assertIn("/v1/project-member-invitations/runtime/accept", page_source)
         self.assertIn('name="invitation_id"', page_source)
         self.assertIn('name="invite_token"', page_source)
@@ -1402,7 +1402,7 @@ class WebConsoleContractsTest(unittest.TestCase):
         self.assertIn("source_chunk_filter", actions_source)
         self.assertIn("source_report_id", actions_source)
         self.assertIn("source_retest_id", actions_source)
-        self.assertIn("edited_text=payload.edited_text", Path("apps/api/geno_api/main.py").read_text(encoding="utf-8"))
+        self.assertIn("edited_text=payload.edited_text", Path("apps/api/geo_api/main.py").read_text(encoding="utf-8"))
         self.assertNotIn("/v1/knowledge-applications/runtime", page_source)
         self.assertNotIn("/v1/knowledge-applications/runtime", actions_source)
         self.assertIn("prompt_template_id", actions_source)

@@ -22,34 +22,34 @@
 Use a Compose secret/file mount for the active 32-byte URL-safe-base64 key. Do not place the raw key in the merged Compose environment.
 
 ```text
-GENO_AUTH_DELIVERY_MASTER_KEY_FILE=/run/secrets/geno_auth_delivery_master_key
-GENO_AUTH_DELIVERY_KEY_ID=<stable-key-id>
-GENO_AUTH_DELIVERY_PREVIOUS_KEYS_FILE=/run/secrets/geno_auth_delivery_previous_keys
-GENO_AUTH_DELIVERY_RECOVERY_TTL_SECONDS=600
-GENO_AUTH_DELIVERY_MAX_REPLAY=5
-GENO_RUNTIME_SESSION_TTL_SECONDS=604800
-GENO_RUNTIME_SESSION_COOKIE_SECURE=true
+GEO_AUTH_DELIVERY_MASTER_KEY_FILE=/run/secrets/geo_auth_delivery_master_key
+GEO_AUTH_DELIVERY_KEY_ID=<stable-key-id>
+GEO_AUTH_DELIVERY_PREVIOUS_KEYS_FILE=/run/secrets/geo_auth_delivery_previous_keys
+GEO_AUTH_DELIVERY_RECOVERY_TTL_SECONDS=600
+GEO_AUTH_DELIVERY_MAX_REPLAY=5
+GEO_RUNTIME_SESSION_TTL_SECONDS=604800
+GEO_RUNTIME_SESSION_COOKIE_SECURE=true
 AUTH_WRITES_ENABLED=1
-GENO_AUTH_PREFLIGHT_RATE_LIMIT=20
-GENO_AUTH_PREFLIGHT_RATE_WINDOW_SECONDS=600
+GEO_AUTH_PREFLIGHT_RATE_LIMIT=20
+GEO_AUTH_PREFLIGHT_RATE_WINDOW_SECONDS=600
 ```
 
-`GENO_AUTH_DELIVERY_PREVIOUS_KEYS_FILE` is optional JSON mapping old key IDs to encoded keys. Keep every key that can decrypt delivery ciphertext still inside the recovery TTL, then remove it only after cleanup has erased that ciphertext.
+`GEO_AUTH_DELIVERY_PREVIOUS_KEYS_FILE` is optional JSON mapping old key IDs to encoded keys. Keep every key that can decrypt delivery ciphertext still inside the recovery TTL, then remove it only after cleanup has erased that ciphertext.
 
 Preflight defaults to a shared invitation-ID bucket. This is deliberate because the API normally observes the BFF container address, not the browser address. Source-wide throttling is optional:
 
 ```text
-GENO_AUTH_PREFLIGHT_TRUSTED_SOURCE_HEADER=X-GENO-Trusted-Client-Fingerprint
-GENO_AUTH_PREFLIGHT_SOURCE_RATE_LIMIT=100
+GEO_AUTH_PREFLIGHT_TRUSTED_SOURCE_HEADER=X-GEO-Trusted-Client-Fingerprint
+GEO_AUTH_PREFLIGHT_SOURCE_RATE_LIMIT=100
 ```
 
 Enable it only when ingress strips any client-supplied copy of that header and the BFF injects an authenticated, stable fingerprint. Otherwise leave both variables unset.
 
 ## Migration And Rollback
 
-Apply `infra/db/migrations/up/0030_auth_session_scope_v2.sql` with the migration owner. It creates/updates the `geno_rls_authz_owner` and `geno_runtime_rollback_app` roles, so the migration runner needs role-management authority.
+Apply `infra/db/migrations/up/0030_auth_session_scope_v2.sql` with the migration owner. It creates/updates the `geo_rls_authz_owner` and `geo_runtime_rollback_app` roles, so the migration runner needs role-management authority.
 
-The down migration is intentionally additive and fail closed. It revokes active v2 sessions, disables `auth_runtime_write_controls`, and keeps `geno_runtime_rollback_app` read-only. Reapplying the up migration is the forward-fix path and re-enables the DB write control. Edge rollback must also set `AUTH_WRITES_ENABLED=0` before an old binary is started.
+The down migration is intentionally additive and fail closed. It revokes active v2 sessions, disables `auth_runtime_write_controls`, and keeps `geo_runtime_rollback_app` read-only. Reapplying the up migration is the forward-fix path and re-enables the DB write control. Edge rollback must also set `AUTH_WRITES_ENABLED=0` before an old binary is started.
 
 Verified against the dedicated `geo-auth-core-postgres-1` project:
 
@@ -66,7 +66,7 @@ Run ciphertext and expired preflight-bucket cleanup from a maintenance role that
 
 ```bash
 AUTH_MAINTENANCE_DATABASE_URL=<maintenance-url> \
-PYTHONPATH=packages/geno_core:apps/api:. \
+PYTHONPATH=packages/geo_core:apps/api:. \
 python3 scripts/cleanup_auth_redemption_attempts.py --all --batch-size 500
 ```
 
@@ -75,11 +75,11 @@ Schedule this more frequently than the recovery TTL. Add the E2E probe to the pr
 ```bash
 AUTH_E2E_DATABASE_URL=<owner-test-url> \
 AUTH_E2E_APP_DATABASE_URL=<runtime-app-test-url> \
-PYTHONPATH=packages/geno_core:apps/api:. \
+PYTHONPATH=packages/geo_core:apps/api:. \
 python3 scripts/run_auth_session_v2_e2e.py
 ```
 
-The repository has no committed OpenAPI snapshot/generator. After merge, regenerate through the integration session's chosen artifact path from `geno_api.main:app.openapi()` or capture the running API's `/openapi.json`; verify there is exactly one `GET /v1/projects/runtime` operation and the new auth schemas/routes are present.
+The repository has no committed OpenAPI snapshot/generator. After merge, regenerate through the integration session's chosen artifact path from `geo_api.main:app.openapi()` or capture the running API's `/openapi.json`; verify there is exactly one `GET /v1/projects/runtime` operation and the new auth schemas/routes are present.
 
 ## Merge Follow-Ups
 
@@ -90,14 +90,14 @@ The repository has no committed OpenAPI snapshot/generator. After merge, regener
 
 ## Verification
 
-- `AUTH_TEST_DATABASE_URL=postgresql://geno:geno@localhost:55433/geno AUTH_TEST_APP_DATABASE_URL=postgresql://geno_runtime_app:geno_runtime_app@localhost:55433/geno PYTHONPATH=packages/geno_core:apps/api:. python3 -m pytest -q tests/test_auth_postgres_integration.py`: `21 passed`.
-- `PYTHONPATH=packages/geno_core:apps/api:. python3 -m pytest -q tests/test_auth_session_v2_contracts.py tests/test_production_runtime_contracts.py tests/test_api_contracts.py::ApiContractsTest::test_auth_invitation_preflight_rejects_malformed_invitation_id_before_repository`: `21 passed`.
-- `PYTHONPATH=packages/geno_core:apps/api:. python3 -m pytest -q tests/test_auth_session_v2_contracts.py tests/test_auth_redemption_repository.py tests/test_auth_context_contracts.py tests/test_production_runtime_contracts.py`: `37 passed`.
+- `AUTH_TEST_DATABASE_URL=postgresql://geo:geo@localhost:55433/geo AUTH_TEST_APP_DATABASE_URL=postgresql://geo_runtime_app:geo_runtime_app@localhost:55433/geo PYTHONPATH=packages/geo_core:apps/api:. python3 -m pytest -q tests/test_auth_postgres_integration.py`: `21 passed`.
+- `PYTHONPATH=packages/geo_core:apps/api:. python3 -m pytest -q tests/test_auth_session_v2_contracts.py tests/test_production_runtime_contracts.py tests/test_api_contracts.py::ApiContractsTest::test_auth_invitation_preflight_rejects_malformed_invitation_id_before_repository`: `21 passed`.
+- `PYTHONPATH=packages/geo_core:apps/api:. python3 -m pytest -q tests/test_auth_session_v2_contracts.py tests/test_auth_redemption_repository.py tests/test_auth_context_contracts.py tests/test_production_runtime_contracts.py`: `37 passed`.
 - Focused API auth unittest selection: `6 passed`.
 - Focused Core auth/email unittest selection: `5 passed`.
 - Fresh `0001..0030` migration chain on a temporary PostgreSQL database: passed.
 - `0030` rerun on the fully migrated database: passed.
 - `0030` down/up roundtrip followed by the PostgreSQL auth suite: passed.
-- `python3 -m compileall -q apps/api/geno_api packages/geno_core/geno_core tests/test_auth_postgres_integration.py tests/test_auth_session_v2_contracts.py tests/test_production_runtime_contracts.py`: passed.
+- `python3 -m compileall -q apps/api/geo_api packages/geo_core/geo_core tests/test_auth_postgres_integration.py tests/test_auth_session_v2_contracts.py tests/test_production_runtime_contracts.py`: passed.
 - `python3 -m ruff check ...`: passed.
 - `git diff --check`: passed.

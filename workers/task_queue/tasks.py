@@ -14,14 +14,14 @@ import dramatiq
 from dramatiq.brokers.redis import RedisBroker
 from dramatiq.middleware import MiddlewareError
 
-from geno_core.collection_jobs import CollectionJobStore
-from geno_core.durable_jobs import (
+from geo_core.collection_jobs import CollectionJobStore
+from geo_core.durable_jobs import (
     LeaseClaim,
     LeaseGuard,
     LostLeaseError,
     internal_lease_environment,
 )
-from geno_core.runtime import (
+from geo_core.runtime import (
     build_object_store_from_env,
     build_repository_from_env,
     close_repository_connection,
@@ -31,9 +31,9 @@ from workers.knowledge_worker.run_knowledge_pipeline import run_once as run_know
 from workers.report_export_worker.run_report_export_jobs import process_next_report_export_job
 
 
-BROKER_URL = os.getenv("GENO_TASK_QUEUE_BROKER_URL", "redis://valkey:6379/0").strip()
+BROKER_URL = os.getenv("GEO_TASK_QUEUE_BROKER_URL", "redis://valkey:6379/0").strip()
 if not BROKER_URL:
-    raise RuntimeError("GENO_TASK_QUEUE_BROKER_URL is required")
+    raise RuntimeError("GEO_TASK_QUEUE_BROKER_URL is required")
 
 broker = RedisBroker(url=BROKER_URL)
 
@@ -59,9 +59,9 @@ class CollectionFinalizingDescriptorError(RuntimeError):
 
 @contextmanager
 def _collection_rate_limit_context():
-    bypass = os.getenv("GENO_COLLECTION_TEST_BYPASS_RATE_LIMIT", "").strip().lower()
+    bypass = os.getenv("GEO_COLLECTION_TEST_BYPASS_RATE_LIMIT", "").strip().lower()
     if bypass in {"1", "true", "yes"}:
-        if os.getenv("GENO_DEPLOYMENT_ENVIRONMENT", "").strip().lower() != "test":
+        if os.getenv("GEO_DEPLOYMENT_ENVIRONMENT", "").strip().lower() != "test":
             raise RuntimeError("collection rate-limit bypass is restricted to the test environment")
         with nullcontext(True) as acquired:
             yield acquired
@@ -76,7 +76,7 @@ def _collection_rate_limit_context():
     acquired_slot: int | None = None
     try:
         with connection.cursor() as cursor:
-            for slot in range(max(1, int(os.getenv("GENO_COLLECTION_PROVIDER_CONCURRENCY", "1")))):
+            for slot in range(max(1, int(os.getenv("GEO_COLLECTION_PROVIDER_CONCURRENCY", "1")))):
                 cursor.execute(
                     "SELECT pg_try_advisory_lock(%s, %s)",
                     (_COLLECTION_ADVISORY_LOCK_NAMESPACE, slot),
@@ -184,18 +184,18 @@ def _run_collection_subprocess(
 
 
 def _collection_test_after_claim_failpoint(claim: LeaseClaim) -> None:
-    failpoint = os.getenv("GENO_DURABLE_JOB_AFTER_CLAIM_FAILPOINT", "").strip()
+    failpoint = os.getenv("GEO_DURABLE_JOB_AFTER_CLAIM_FAILPOINT", "").strip()
     if failpoint not in {"all", "collection_jobs"}:
         return
-    if os.getenv("GENO_DEPLOYMENT_ENVIRONMENT", "").strip().lower() != "test":
+    if os.getenv("GEO_DEPLOYMENT_ENVIRONMENT", "").strip().lower() != "test":
         raise RuntimeError("durable job failpoints are restricted to the test environment")
     target_attempt = max(
-        1, int(os.getenv("GENO_DURABLE_JOB_AFTER_CLAIM_FAILPOINT_ATTEMPT", "1"))
+        1, int(os.getenv("GEO_DURABLE_JOB_AFTER_CLAIM_FAILPOINT_ATTEMPT", "1"))
     )
     if claim.attempt_count != target_attempt:
         return
     pause_seconds = max(
-        0.0, float(os.getenv("GENO_DURABLE_JOB_AFTER_CLAIM_PAUSE_SECONDS", "0"))
+        0.0, float(os.getenv("GEO_DURABLE_JOB_AFTER_CLAIM_PAUSE_SECONDS", "0"))
     )
     if pause_seconds:
         time.sleep(pause_seconds)
@@ -204,10 +204,10 @@ def _collection_test_after_claim_failpoint(claim: LeaseClaim) -> None:
 
 
 def _collection_test_command(command: list[str]) -> list[str]:
-    raw_seconds = os.getenv("GENO_COLLECTION_TEST_CHILD_SECONDS", "").strip()
+    raw_seconds = os.getenv("GEO_COLLECTION_TEST_CHILD_SECONDS", "").strip()
     if not raw_seconds:
         return command
-    if os.getenv("GENO_DEPLOYMENT_ENVIRONMENT", "").strip().lower() != "test":
+    if os.getenv("GEO_DEPLOYMENT_ENVIRONMENT", "").strip().lower() != "test":
         raise RuntimeError("collection test child is restricted to the test environment")
     seconds = max(0.1, float(raw_seconds))
     code = (
@@ -229,10 +229,10 @@ def _collection_test_command(command: list[str]) -> list[str]:
 def process_collection_queue() -> dict[str, Any]:
     repository = build_repository_from_env()
     store = CollectionJobStore(repository)
-    worker_id = os.getenv("GENO_COLLECTION_WORKER_ID", "dramatiq-collection-worker")
+    worker_id = os.getenv("GEO_COLLECTION_WORKER_ID", "dramatiq-collection-worker")
     claim: LeaseClaim | None = None
     guard: LeaseGuard | None = None
-    lease_seconds = int(os.getenv("GENO_COLLECTION_JOB_LEASE_SECONDS", "3600"))
+    lease_seconds = int(os.getenv("GEO_COLLECTION_JOB_LEASE_SECONDS", "3600"))
     capacity = ExitStack()
     try:
         acquired = capacity.enter_context(_collection_rate_limit_context())
@@ -312,9 +312,9 @@ def process_collection_queue() -> dict[str, Any]:
         completed = _run_collection_subprocess(
             command,
             guard=guard,
-            timeout_seconds=int(os.getenv("GENO_COLLECTION_JOB_TIMEOUT_SECONDS", "3600")),
+            timeout_seconds=int(os.getenv("GEO_COLLECTION_JOB_TIMEOUT_SECONDS", "3600")),
             terminate_grace_seconds=float(
-                os.getenv("GENO_COLLECTION_CHILD_TERMINATE_GRACE_SECONDS", "10")
+                os.getenv("GEO_COLLECTION_CHILD_TERMINATE_GRACE_SECONDS", "10")
             ),
             environment={
                 **os.environ,
@@ -371,7 +371,7 @@ def process_collection_queue() -> dict[str, Any]:
                 claim=claim,
                 error_code=exc.__class__.__name__,
                 error_message=error_message,
-                retry_seconds=int(os.getenv("GENO_COLLECTION_RETRY_BACKOFF_SECONDS", "120")),
+                retry_seconds=int(os.getenv("GEO_COLLECTION_RETRY_BACKOFF_SECONDS", "120")),
                 retryable=not isinstance(
                     exc,
                     (FileNotFoundError, PermissionError, CollectionFinalizingDescriptorError),
@@ -402,19 +402,19 @@ def process_collection_queue() -> dict[str, Any]:
     time_limit=3_600_000,
 )
 def process_knowledge_queue() -> dict[str, Any]:
-    from geno_core.knowledge_pipeline import close_knowledge_repository, connect_knowledge_pipeline_repository
+    from geo_core.knowledge_pipeline import close_knowledge_repository, connect_knowledge_pipeline_repository
 
     repository = connect_knowledge_pipeline_repository()
-    worker_id = os.getenv("GENO_KNOWLEDGE_WORKER_ID", "dramatiq-knowledge-worker")
+    worker_id = os.getenv("GEO_KNOWLEDGE_WORKER_ID", "dramatiq-knowledge-worker")
     repository.set_maintenance_scope(worker_id=worker_id)
     processed: list[dict[str, Any]] = []
     try:
-        for _ in range(max(1, int(os.getenv("GENO_KNOWLEDGE_DRAMATIQ_DRAIN_CYCLES", "20")))):
+        for _ in range(max(1, int(os.getenv("GEO_KNOWLEDGE_DRAMATIQ_DRAIN_CYCLES", "20")))):
             result = run_knowledge_once(
                 repository,
                 worker_id=worker_id,
-                lease_seconds=int(os.getenv("GENO_KNOWLEDGE_WORKER_LEASE_SECONDS", "600")),
-                max_jobs=int(os.getenv("GENO_KNOWLEDGE_WORKER_MAX_JOBS", "25")),
+                lease_seconds=int(os.getenv("GEO_KNOWLEDGE_WORKER_LEASE_SECONDS", "600")),
+                max_jobs=int(os.getenv("GEO_KNOWLEDGE_WORKER_MAX_JOBS", "25")),
             )
             current = list(result.get("processed") or [])
             processed.extend(current)
@@ -438,15 +438,15 @@ def process_report_export_queue() -> dict[str, Any]:
     object_store = build_object_store_from_env()
     results: list[dict[str, Any]] = []
     try:
-        for _ in range(max(1, int(os.getenv("GENO_REPORT_DRAMATIQ_DRAIN_JOBS", "25")))):
+        for _ in range(max(1, int(os.getenv("GEO_REPORT_DRAMATIQ_DRAIN_JOBS", "25")))):
             result = process_next_report_export_job(
                 repository=repository,
                 object_store=object_store,
-                updated_by=os.getenv("GENO_REPORT_EXPORT_WORKER_ID", "dramatiq-report-worker"),
+                updated_by=os.getenv("GEO_REPORT_EXPORT_WORKER_ID", "dramatiq-report-worker"),
                 require_object_store=True,
-                max_attempts=int(os.getenv("GENO_REPORT_EXPORT_WORKER_MAX_ATTEMPTS", "3")),
-                retry_backoff_seconds=int(os.getenv("GENO_REPORT_EXPORT_WORKER_RETRY_BACKOFF_SECONDS", "300")),
-                lease_seconds=int(os.getenv("GENO_REPORT_EXPORT_WORKER_LEASE_SECONDS", "900")),
+                max_attempts=int(os.getenv("GEO_REPORT_EXPORT_WORKER_MAX_ATTEMPTS", "3")),
+                retry_backoff_seconds=int(os.getenv("GEO_REPORT_EXPORT_WORKER_RETRY_BACKOFF_SECONDS", "300")),
+                lease_seconds=int(os.getenv("GEO_REPORT_EXPORT_WORKER_LEASE_SECONDS", "900")),
             )
             results.append(result)
             if result.get("status") == "idle":

@@ -17,10 +17,10 @@ import httpx
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT_DIR = ROOT / "tmp/full-project-lifecycle-smoke"
 AUTO_PORTS_ENV = ROOT / "tmp/docker-compose.auto-ports.env"
-ACTOR_HEADER = "X-GENO-Actor-Id"
-CUSTOMER_PORTAL_HEADER = "X-GENO-Customer-Portal-Access"
+ACTOR_HEADER = "X-GEO-Actor-Id"
+CUSTOMER_PORTAL_HEADER = "X-GEO-Customer-Portal-Access"
 ADMIN_ACTOR_ID = "runtime-console"
-TEST_SECRET = "geno-full-lifecycle-secret-do-not-log"
+TEST_SECRET = "geo-full-lifecycle-secret-do-not-log"
 LAST_STEPS: list["StepResult"] = []
 LAST_CONTEXT: dict[str, Any] = {}
 
@@ -58,21 +58,21 @@ def _read_auto_ports() -> dict[str, str]:
 def _worker_env() -> dict[str, str]:
     env = os.environ.copy()
     ports = _read_auto_ports()
-    postgres_port = ports.get("GENO_POSTGRES_HOST_PORT", "18000")
-    minio_port = ports.get("GENO_MINIO_HOST_PORT", "18001")
-    env.setdefault("DATABASE_URL", f"postgresql://geno_runtime_app:geno_runtime_app@localhost:{postgres_port}/geno")
+    postgres_port = ports.get("GEO_POSTGRES_HOST_PORT", "18000")
+    minio_port = ports.get("GEO_MINIO_HOST_PORT", "18001")
+    env.setdefault("DATABASE_URL", f"postgresql://geo_runtime_app:geo_runtime_app@localhost:{postgres_port}/geo")
     env.setdefault("OBJECT_STORE_ENDPOINT", f"http://localhost:{minio_port}")
-    env.setdefault("OBJECT_STORE_BUCKET", "geno-reports")
+    env.setdefault("OBJECT_STORE_BUCKET", "geo-reports")
     env.setdefault("OBJECT_STORE_ACCESS_KEY", "minio")
     env.setdefault("OBJECT_STORE_SECRET_KEY", "minio123")
     env.setdefault("OBJECT_STORE_REGION", "us-east-1")
-    env.setdefault("GENO_DEEPSEEK_API_KEY_FILE", str(ROOT / "deepseek_api_key.txt"))
-    env.setdefault("PYTHONPATH", "packages/geno_core:apps/api")
+    env.setdefault("GEO_DEEPSEEK_API_KEY_FILE", str(ROOT / "deepseek_api_key.txt"))
+    env.setdefault("PYTHONPATH", "packages/geo_core:apps/api")
     return env
 
 
 def _docker_worker_container() -> str | None:
-    configured = os.environ.get("GENO_FULL_LIFECYCLE_WORKER_CONTAINER", "").strip()
+    configured = os.environ.get("GEO_FULL_LIFECYCLE_WORKER_CONTAINER", "").strip()
     if configured:
         return configured
     try:
@@ -86,7 +86,7 @@ def _docker_worker_container() -> str | None:
     except (OSError, subprocess.CalledProcessError):
         return None
     names = [line.strip() for line in result.stdout.splitlines() if line.strip()]
-    for candidate in ("geno-auto-api-1", "geo-api-1", "geno-api-1", "api-1"):
+    for candidate in ("geo-auto-api-1", "geo-api-1", "geo-api-1", "api-1"):
         if candidate in names:
             return candidate
     return next((name for name in names if name.endswith("-api-1") or name == "api"), None)
@@ -115,7 +115,7 @@ def _run_deepseek_worker(project_id: str) -> dict[str, Any]:
     if result.returncode != 0 and "psycopg is required" in result.stderr:
         container = _docker_worker_container()
         if container:
-            key_path = Path(_worker_env()["GENO_DEEPSEEK_API_KEY_FILE"])
+            key_path = Path(_worker_env()["GEO_DEEPSEEK_API_KEY_FILE"])
             if not key_path.is_file():
                 raise SmokeFailure(f"DeepSeek API key file is missing: {key_path}")
             api_key = key_path.read_text(encoding="utf-8").strip()
@@ -162,11 +162,11 @@ def _run_deepseek_worker(project_id: str) -> dict[str, Any]:
 def _api_base(value: str | None) -> str:
     if value:
         return value.rstrip("/")
-    env_value = os.environ.get("GENO_FULL_LIFECYCLE_API_BASE") or os.environ.get("NEXT_PUBLIC_API_BASE_URL")
+    env_value = os.environ.get("GEO_FULL_LIFECYCLE_API_BASE") or os.environ.get("NEXT_PUBLIC_API_BASE_URL")
     if env_value:
         return env_value.rstrip("/")
     ports = _read_auto_ports()
-    return f"http://localhost:{ports.get('GENO_API_HOST_PORT', '18000')}"
+    return f"http://localhost:{ports.get('GEO_API_HOST_PORT', '18000')}"
 
 
 def _headers(actor_id: str = ADMIN_ACTOR_ID, *, customer_portal: bool = False) -> dict[str, str]:
@@ -371,7 +371,7 @@ def _manual_backfill_csv(prompt_id: str, brand: str) -> str:
                 f"{prompt_id},google,google_ai_mode,"
                 f"\"{brand} is mentioned with BrightNest and cites official warranty material\","
                 "\"https://example.com/warranty|https://example.com/support\","
-                "s3://geno-smoke/google-screen.png,s3://geno-smoke/google-page.html,true,true,1,1,desktop,lifecycle smoke backfill"
+                "s3://geo-smoke/google-screen.png,s3://geo-smoke/google-page.html,true,true,1,1,desktop,lifecycle smoke backfill"
             ),
         ]
     )
@@ -917,8 +917,8 @@ def _run(
                     "surface": "google_ai_mode",
                     "answer_text": f"{brand} is recommended alongside BrightNest with source citations.",
                     "citation_urls": ["https://example.com/support", "https://example.com/warranty"],
-                    "screenshot_url": "s3://geno-smoke/single-screen.png",
-                    "html_snapshot_url": "s3://geno-smoke/single-page.html",
+                    "screenshot_url": "s3://geo-smoke/single-screen.png",
+                    "html_snapshot_url": "s3://geo-smoke/single-page.html",
                     "answer_present": True,
                     "surface_triggered": True,
                     "sample_index": 1,
@@ -1127,7 +1127,7 @@ def _run(
                     "status": "succeeded",
                     "updated_by": ADMIN_ACTOR_ID,
                     "report_export_id": report_id,
-                    "artifact_url": f"s3://geno-smoke/reports/{report_id}.pdf",
+                    "artifact_url": f"s3://geo-smoke/reports/{report_id}.pdf",
                 },
             ).json()
             fidelity = _request(

@@ -261,17 +261,17 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Bootstrap the local AU P0b Google env file from the committed template")
     parser.add_argument(
         "--template-path",
-        default=os.environ.get("GENO_AU_P0B_GOOGLE_ENV_TEMPLATE_PATH", DEFAULT_TEMPLATE_PATH),
+        default=os.environ.get("GEO_AU_P0B_GOOGLE_ENV_TEMPLATE_PATH", DEFAULT_TEMPLATE_PATH),
         help="Path to the committed AU P0b Google env template.",
     )
     parser.add_argument(
         "--env-file",
-        default=os.environ.get("GENO_AU_P0B_GOOGLE_ENV_FILE", DEFAULT_ENV_FILE),
+        default=os.environ.get("GEO_AU_P0B_GOOGLE_ENV_FILE", DEFAULT_ENV_FILE),
         help="Path to the local AU P0b Google env file.",
     )
     parser.add_argument(
         "--output-path",
-        default=os.environ.get("GENO_AU_P0B_GOOGLE_ENV_BOOTSTRAP_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_P0B_GOOGLE_ENV_BOOTSTRAP_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to write the bootstrap audit JSON.",
     )
     parser.add_argument("--overwrite", action="store_true", help="Overwrite an existing env file with the template.")

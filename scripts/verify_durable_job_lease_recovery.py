@@ -66,7 +66,7 @@ def _compose(project: str, *args: str, timeout: int = 180) -> subprocess.Complet
 
 def _tracked_runtime_source_files() -> tuple[str, ...]:
     completed = _run(
-        ["git", "ls-files", "packages/geno_core", "apps/api", "workers"]
+        ["git", "ls-files", "packages/geo_core", "apps/api", "workers"]
     )
     files = tuple(line.strip() for line in completed.stdout.splitlines() if line.strip())
     if not files:
@@ -136,8 +136,8 @@ def _bound_container_receipt(
     durable_configuration = {
         key: environment[key]
         for key in (
-            "GENO_KNOWLEDGE_WORKER_LEASE_SECONDS",
-            "GENO_COLLECTION_JOB_LEASE_SECONDS",
+            "GEO_KNOWLEDGE_WORKER_LEASE_SECONDS",
+            "GEO_COLLECTION_JOB_LEASE_SECONDS",
         )
         if key in environment
     }
@@ -678,7 +678,7 @@ def main() -> int:
                 "durable_configuration"
             ]
             knowledge_lease_seconds = int(
-                knowledge_configuration["GENO_KNOWLEDGE_WORKER_LEASE_SECONDS"]
+                knowledge_configuration["GEO_KNOWLEDGE_WORKER_LEASE_SECONDS"]
             )
             _record(
                 checks,

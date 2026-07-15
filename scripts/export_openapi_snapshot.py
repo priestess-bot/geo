@@ -13,7 +13,7 @@ from typing import Any, Iterator, Mapping, Sequence
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_SNAPSHOT_PATH = ROOT / "contracts/openapi/geno-api.openapi.json"
+DEFAULT_SNAPSHOT_PATH = ROOT / "contracts/openapi/geo-api.openapi.json"
 DEFAULT_MANIFEST_PATH = ROOT / "contracts/openapi/manifest.json"
 MANIFEST_VERSION = 1
 HTTP_METHODS = frozenset(
@@ -27,10 +27,10 @@ REQUIRED_OPERATIONS: tuple[tuple[str, str], ...] = (
     ("/v1/projects/runtime", "get"),
 )
 ISOLATED_ENVIRONMENT = {
-    "GENO_DEPLOYMENT_ENVIRONMENT": "development",
-    "GENO_DEV_TOOLS_ENABLED": "0",
-    "GENO_RUNTIME_AUTH_MODE": "header",
-    "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "0",
+    "GEO_DEPLOYMENT_ENVIRONMENT": "development",
+    "GEO_DEV_TOOLS_ENABLED": "0",
+    "GEO_RUNTIME_AUTH_MODE": "header",
+    "GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "0",
 }
 
 
@@ -51,7 +51,7 @@ def isolated_openapi_environment() -> Iterator[None]:
 
 
 def _ensure_import_paths() -> None:
-    for path in (ROOT, ROOT / "apps/api", ROOT / "packages/geno_core"):
+    for path in (ROOT, ROOT / "apps/api", ROOT / "packages/geo_core"):
         value = str(path)
         if value not in sys.path:
             sys.path.insert(0, value)
@@ -60,7 +60,7 @@ def _ensure_import_paths() -> None:
 def generate_openapi_document() -> dict[str, Any]:
     _ensure_import_paths()
     with isolated_openapi_environment():
-        module = importlib.import_module("geno_api.main")
+        module = importlib.import_module("geo_api.main")
         app = module.app
         app.openapi_schema = None
         document = app.openapi()

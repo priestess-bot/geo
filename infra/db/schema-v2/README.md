@@ -1,10 +1,10 @@
 # Schema v2 baseline
 
-This directory is the source of truth for fresh `geno_v2` database installs.
+This directory is the source of truth for fresh `geo_v2` database installs.
 It is intentionally isolated from `infra/db/migrations/up`, which remains the
 Schema v1 migration chain until the v2 cutover is approved.
 
-The database name is fixed to `geno_v2` in both the manifest and the isolated
+The database name is fixed to `geo_v2` in both the manifest and the isolated
 Compose stack. `SCHEMA_V2_POSTGRES_DB`, `SCHEMA_V2_DATABASE_URL`, and raw DSN
 arguments are deliberately unsupported: the runner rejects any other database
 identity and reads only structured libpq `PGHOST`, `PGPORT`, `PGDATABASE`,
@@ -22,7 +22,7 @@ file, in manifest order:
 ```
 
 The installer refuses checksum drift before opening a database connection. It
-then acquires the session-level advisory lock `geno:schema-v2:install` with a
+then acquires the session-level advisory lock `geo:schema-v2:install` with a
 bounded deadline while it installs or verifies the ledger. Each SQL file and
 its ledger row are committed in the same transaction.
 
@@ -33,7 +33,7 @@ new attempt starts once less than two seconds remain. The advisory-lock timeout
 is separate and may be zero for a single non-blocking acquisition attempt.
 
 During pre-cutover development, changing the baseline requires deleting the
-disposable `geno_v2` volume and performing a fresh install. After the baseline
+disposable `geo_v2` volume and performing a fresh install. After the baseline
 is released, never edit a listed baseline file; add an ordered file under
 `migrations/` and list it in `migration_files` instead.
 
@@ -41,7 +41,7 @@ is released, never edit a listed baseline file; add an ordered file under
 
 Baseline `0010_tenancy_project_rls.sql` creates and forces RLS on the tenancy,
 project, membership, derived-grant, profile, and audit tables, but deliberately
-defines no runtime policies and grants `geno_v2_runtime` no schema, table, or
+defines no runtime policies and grants `geo_v2_runtime` no schema, table, or
 function access. Caller-controlled `app.actor_id`, `app.tenant_id`,
 `app.project_id`, `app.project_ids`, or role GUCs are not authentication.
 
@@ -83,7 +83,7 @@ ACL surface.
 Baseline `0014_auth_login_provision.sql` installs the immutable deployment
 attempt, terminal receipt, redacted audit, and startup-readiness contracts. It
 does not contain a credential and its final operation always seals
-`geno_v2_api_login` as `NOLOGIN` with `PASSWORD NULL`. The latest monotonic
+`geo_v2_api_login` as `NOLOGIN` with `PASSWORD NULL`. The latest monotonic
 attempt per `login_kind` is the readiness truth; `api` is active in this slice
 and the reserved `worker` kind lets the later worker LOGIN reuse the same
 contract without sharing credentials or state. A pending, failed, or disable attempt makes the
@@ -98,9 +98,9 @@ disconnect during `COMMIT` cannot be made deterministic in this local gate;
 the commit-outcome-unknown and forced-discard path remains covered by the
 fault-injected unit gate in `tests/test_schema_v2_anonymous_auth_uow.py`.
 
-The baseline creates `geno_v2_api_login` as a `NOLOGIN`, passwordless,
+The baseline creates `geo_v2_api_login` as a `NOLOGIN`, passwordless,
 `NOINHERIT`, `NOBYPASSRLS` deployment placeholder. It is the only permitted
-member of `geno_v2_runtime`, with inheritance disabled and `SET` enabled. A
+member of `geo_v2_runtime`, with inheritance disabled and `SET` enabled. A
 deployment must not provision or wire this LOGIN during 0011. Gate tests use an
 installer-owned `SET ROLE` only to verify RLS logic; that is not production
 authentication. Neither runtime role may inherit or set the BYPASSRLS authz
@@ -112,7 +112,7 @@ backends before beginning a request transaction.
 
 Run `scripts/schema_v2_provision_login.py` only as a one-shot deployment job
 after baseline install and verification. Installer connectivity is accepted
-only from structured `PGHOST`, `PGPORT`, fixed `PGDATABASE=geno_v2`, `PGUSER`,
+only from structured `PGHOST`, `PGPORT`, fixed `PGDATABASE=geo_v2`, `PGUSER`,
 and `PGPASSWORD` settings. Raw DSNs, service files, database URLs, plaintext API
 password environment variables, and password command-line arguments are
 rejected.
@@ -133,18 +133,18 @@ version is the non-secret secret-manager version:
 python scripts/schema_v2_provision_login.py \
   --initiated-by deployment-controller \
   provision \
-  --credential-file /run/secrets/geno_v2_api_login \
+  --credential-file /run/secrets/geo_v2_api_login \
   --credential-version api-login-2026-07-13-01
 
 unset PGUSER PGPASSWORD
 python scripts/schema_v2_provision_login.py \
   check \
-  --credential-file /run/secrets/geno_v2_api_login \
+  --credential-file /run/secrets/geo_v2_api_login \
   --credential-version api-login-2026-07-13-01
 ```
 
 Provisioning acquires the Schema install lock followed by the dedicated
-`geno:schema-v2:auth-login-provision` lock. It first fail-closes any interrupted
+`geo:schema-v2:auth-login-provision` lock. It first fail-closes any interrupted
 `preparing` attempt by setting `NOLOGIN PASSWORD NULL` and writing a failed
 receipt. The new attempt and role update then commit atomically, followed by a
 real new-credential login and anonymous runtime smoke. A deterministic smoke
@@ -159,7 +159,7 @@ python scripts/schema_v2_provision_login.py \
   --initiated-by deployment-controller \
   rotate \
   --drain-confirmed \
-  --credential-file /run/secrets/geno_v2_api_login_next \
+  --credential-file /run/secrets/geo_v2_api_login_next \
   --credential-version api-login-2026-07-13-02
 ```
 
@@ -173,13 +173,13 @@ python scripts/schema_v2_provision_login.py \
 
 Every Schema v2 API and database worker deployment must run the `check` command
 with its configured credential version before process startup. This creates a
-fresh connection using the same secret, switches to `geno_v2_runtime`, verifies
+fresh connection using the same secret, switches to `geo_v2_runtime`, verifies
 anonymous session resolution and sealed sensitive DML, and requires the latest
 attempt and matching receipt to be successful. A missing, pending, failed,
 disabled, or version-mismatched state fails closed. The startup environment
 must contain only the structured endpoint fields and must not receive the
 installer `PGUSER` or `PGPASSWORD`. Every request transaction
-must still use `SET LOCAL ROLE geno_v2_runtime` and `SET LOCAL
+must still use `SET LOCAL ROLE geo_v2_runtime` and `SET LOCAL
 app.session_token_hash`; pooled connections must rollback/reset before reuse.
 
 ## Worker LOGIN provisioning
@@ -187,8 +187,8 @@ app.session_token_hash`; pooled connections must rollback/reset before reuse.
 Baseline `0021_worker_login_provision.sql` extends the same immutable ledger for
 the `worker` login kind after 0020 has installed the capability role and narrow
 durable-job functions. The baseline always ends with
-`geno_v2_worker_login NOLOGIN PASSWORD NULL`. Its sole membership is
-`geno_v2_worker -> geno_v2_worker_login` with `ADMIN FALSE`, `INHERIT FALSE`,
+`geo_v2_worker_login NOLOGIN PASSWORD NULL`. Its sole membership is
+`geo_v2_worker -> geo_v2_worker_login` with `ADMIN FALSE`, `INHERIT FALSE`,
 and `SET TRUE`; the LOGIN has no direct public-schema, table, sequence, or
 function privileges.
 
@@ -206,7 +206,7 @@ python scripts/schema_v2_provision_login.py \
   --login-kind worker \
   --initiated-by deployment-controller \
   provision \
-  --credential-file /run/secrets/geno_v2_worker_login \
+  --credential-file /run/secrets/geo_v2_worker_login \
   --credential-version worker-login-2026-07-13-01
 
 python scripts/schema_v2_provision_login.py \
@@ -214,7 +214,7 @@ python scripts/schema_v2_provision_login.py \
   --initiated-by deployment-controller \
   rotate \
   --drain-confirmed \
-  --credential-file /run/secrets/geno_v2_worker_login_next \
+  --credential-file /run/secrets/geo_v2_worker_login_next \
   --credential-version worker-login-2026-07-13-02
 
 python scripts/schema_v2_provision_login.py \
@@ -230,17 +230,17 @@ unset PGUSER PGPASSWORD
 python scripts/schema_v2_provision_login.py \
   --login-kind worker \
   check \
-  --credential-file /run/secrets/geno_v2_worker_login \
+  --credential-file /run/secrets/geo_v2_worker_login \
   --credential-version worker-login-2026-07-13-02
 ```
 
 The check creates a real worker-authenticated connection, proves the LOGIN has
 zero direct privileges, rejects access to the runtime role, switches with
-`SET LOCAL ROLE geno_v2_worker`, and evaluates the worker-only startup readiness
+`SET LOCAL ROLE geo_v2_worker`, and evaluates the worker-only startup readiness
 function. The isolated PostgreSQL behavior gate, rather than an operational
 startup check, exercises a real durable dispatch claim/heartbeat/complete
 lifecycle. The check then verifies transaction cleanup restored the
-physical connection to `session_user=current_user=geno_v2_worker_login`.
+physical connection to `session_user=current_user=geo_v2_worker_login`.
 
 ## Governed Knowledge Pipeline
 

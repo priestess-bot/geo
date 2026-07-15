@@ -64,11 +64,11 @@ class SchemaV2ReportsPostgresTest(unittest.TestCase):
     def test_report_job_reclaims_expired_lease_and_fences_result_writes(self) -> None:
         job_id = self._create_report_job(f"report-lease-{uuid4().hex}")
         with psycopg.connect() as connection, connection.cursor() as cursor:
-            cursor.execute("SELECT id, lease_token FROM geno_v2_claim_report_generation_job('worker-a', 5, %s)", (self.project_a,))
+            cursor.execute("SELECT id, lease_token FROM geo_v2_claim_report_generation_job('worker-a', 5, %s)", (self.project_a,))
             claimed_id, stale_token = cursor.fetchone()
             self.assertEqual(claimed_id, job_id)
             cursor.execute("UPDATE report_generation_jobs SET lease_expires_at = clock_timestamp() - interval '1 second' WHERE id = %s", (job_id,))
-            cursor.execute("SELECT id, lease_token, attempt_count FROM geno_v2_claim_report_generation_job('worker-b', 30, %s)", (self.project_a,))
+            cursor.execute("SELECT id, lease_token, attempt_count FROM geo_v2_claim_report_generation_job('worker-b', 30, %s)", (self.project_a,))
             reclaimed_id, active_token, attempts = cursor.fetchone()
             self.assertEqual(reclaimed_id, job_id)
             self.assertNotEqual(stale_token, active_token)
@@ -76,20 +76,20 @@ class SchemaV2ReportsPostgresTest(unittest.TestCase):
             connection.commit()
             with self.assertRaises(psycopg.Error):
                 cursor.execute(
-                    "SELECT geno_v2_persist_report_generation_result(%s, 'worker-a', %s, 'Blocked', 'en-AU', 'stale result', %s, %s)",
+                    "SELECT geo_v2_persist_report_generation_result(%s, 'worker-a', %s, 'Blocked', 'en-AU', 'stale result', %s, %s)",
                     (job_id, stale_token, _digest("stale"), _digest("method")),
                 )
             connection.rollback()
             cursor.execute(
-                "SELECT (geno_v2_persist_report_generation_result(%s, 'worker-b', %s, 'Report', 'en-AU', 'fresh result', %s, %s)).id",
+                "SELECT (geo_v2_persist_report_generation_result(%s, 'worker-b', %s, 'Report', 'en-AU', 'fresh result', %s, %s)).id",
                 (job_id, active_token, _digest("fresh"), _digest("method")),
             )
             version_id = cursor.fetchone()[0]
             connection.commit()
             with self.assertRaises(psycopg.Error):
-                cursor.execute("SELECT geno_v2_complete_report_generation_job(%s, 'worker-a', %s, %s)", (job_id, stale_token, version_id))
+                cursor.execute("SELECT geo_v2_complete_report_generation_job(%s, 'worker-a', %s, %s)", (job_id, stale_token, version_id))
             connection.rollback()
-            cursor.execute("SELECT (geno_v2_complete_report_generation_job(%s, 'worker-b', %s, %s)).status", (job_id, active_token, version_id))
+            cursor.execute("SELECT (geo_v2_complete_report_generation_job(%s, 'worker-b', %s, %s)).status", (job_id, active_token, version_id))
             self.assertEqual(cursor.fetchone()[0], "succeeded")
             connection.commit()
 
@@ -101,18 +101,18 @@ class SchemaV2ReportsPostgresTest(unittest.TestCase):
             cursor.execute("INSERT INTO notifications (id, tenant_id, project_id, event_type, title, body, target_type, payload_hash, created_by) VALUES (%s, %s, %s, 'report.ready', 'Ready', 'Report ready', 'report', %s, 'fixture')", (notification_id, self.tenant_id, self.project_a, _digest("notification")))
             cursor.execute("INSERT INTO notification_deliveries (tenant_id, project_id, notification_id, recipient_id) VALUES (%s, %s, %s, %s) RETURNING id", (self.tenant_id, self.project_a, notification_id, recipient_id))
             delivery_id = cursor.fetchone()[0]
-            cursor.execute("SELECT id, lease_token FROM geno_v2_claim_notification_delivery('worker-a', 5, %s)", (self.project_a,))
+            cursor.execute("SELECT id, lease_token FROM geo_v2_claim_notification_delivery('worker-a', 5, %s)", (self.project_a,))
             self.assertEqual(cursor.fetchone()[0], delivery_id)
             cursor.execute("SELECT lease_token FROM notification_deliveries WHERE id = %s", (delivery_id,))
             stale_token = cursor.fetchone()[0]
             cursor.execute("UPDATE notification_deliveries SET lease_expires_at = clock_timestamp() - interval '1 second' WHERE id = %s", (delivery_id,))
-            cursor.execute("SELECT id, lease_token FROM geno_v2_claim_notification_delivery('worker-b', 30, %s)", (self.project_a,))
+            cursor.execute("SELECT id, lease_token FROM geo_v2_claim_notification_delivery('worker-b', 30, %s)", (self.project_a,))
             _, active_token = cursor.fetchone()
             connection.commit()
             with self.assertRaises(psycopg.Error):
-                cursor.execute("SELECT geno_v2_complete_notification_delivery(%s, 'worker-a', %s, %s)", (delivery_id, stale_token, _digest("stale")))
+                cursor.execute("SELECT geo_v2_complete_notification_delivery(%s, 'worker-a', %s, %s)", (delivery_id, stale_token, _digest("stale")))
             connection.rollback()
-            cursor.execute("SELECT (geno_v2_complete_notification_delivery(%s, 'worker-b', %s, %s)).status", (delivery_id, active_token, _digest("delivered")))
+            cursor.execute("SELECT (geo_v2_complete_notification_delivery(%s, 'worker-b', %s, %s)).status", (delivery_id, active_token, _digest("delivered")))
             self.assertEqual(cursor.fetchone()[0], "delivered")
             connection.commit()
 
@@ -130,8 +130,8 @@ class SchemaV2ReportsPostgresTest(unittest.TestCase):
         with psycopg.connect() as connection, connection.cursor() as cursor:
             cursor.execute("SELECT relname, relforcerowsecurity FROM pg_class WHERE relname = ANY(%s) ORDER BY relname", (["report_exports", "report_generation_jobs", "notification_deliveries"],))
             self.assertEqual(cursor.fetchall(), [("notification_deliveries", True), ("report_exports", True), ("report_generation_jobs", True)])
-            cursor.execute("SELECT proname FROM pg_proc WHERE proname = ANY(%s) ORDER BY proname", (["geno_v2_claim_report_generation_job", "geno_v2_persist_report_generation_result", "geno_v2_read_portal_reports"],))
-            self.assertEqual(cursor.fetchall(), [("geno_v2_claim_report_generation_job",), ("geno_v2_persist_report_generation_result",), ("geno_v2_read_portal_reports",)])
+            cursor.execute("SELECT proname FROM pg_proc WHERE proname = ANY(%s) ORDER BY proname", (["geo_v2_claim_report_generation_job", "geo_v2_persist_report_generation_result", "geo_v2_read_portal_reports"],))
+            self.assertEqual(cursor.fetchall(), [("geo_v2_claim_report_generation_job",), ("geo_v2_persist_report_generation_result",), ("geo_v2_read_portal_reports",)])
 
 
 if __name__ == "__main__":

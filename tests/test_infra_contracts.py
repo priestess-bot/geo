@@ -12,7 +12,7 @@ except ImportError:  # pragma: no cover - local CI image currently provides PyYA
 
 
 ROOT = Path(__file__).resolve().parents[1]
-RUNTIME_DATABASE_URL = "postgresql://geno_runtime_app:geno_runtime_app@postgres:5432/geno"
+RUNTIME_DATABASE_URL = "postgresql://geo_runtime_app:geo_runtime_app@postgres:5432/geo"
 
 
 @unittest.skipIf(yaml is None, "PyYAML is required for compose/config contract checks")
@@ -42,19 +42,19 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("/app/config.yaml", litellm["command"])
         self.assertIn("--port", litellm["command"])
         self.assertIn("4000", litellm["command"])
-        self.assertEqual(litellm["environment"]["LITELLM_MASTER_KEY"], "sk-geno-local")
+        self.assertEqual(litellm["environment"]["LITELLM_MASTER_KEY"], "sk-geo-local")
         self.assertIn("4000", {str(port["published"]) for port in litellm["ports"]})
         self.assertTrue(
             any(volume["target"] == "/app/config.yaml" and volume["read_only"] for volume in litellm["volumes"])
         )
 
         self.assertEqual(worker["environment"]["LITELLM_BASE_URL"], "http://litellm:4000")
-        self.assertEqual(worker["environment"]["LITELLM_API_KEY"], "sk-geno-local")
-        self.assertNotIn("GENO_RUNTIME_DB_POOL_ENABLED", worker["environment"])
+        self.assertEqual(worker["environment"]["LITELLM_API_KEY"], "sk-geo-local")
+        self.assertNotIn("GEO_RUNTIME_DB_POOL_ENABLED", worker["environment"])
         self.assertIn("--judge-gateway", worker["command"])
         self.assertIn("litellm", worker["command"])
         self.assertIn("--judge-model", worker["command"])
-        self.assertIn("geno-gpt-4.1-mini", worker["command"])
+        self.assertIn("geo-gpt-4.1-mini", worker["command"])
         mode_index = worker["command"].index("--mode")
         self.assertEqual(worker["command"][mode_index + 1], "api")
         self.assertIn("--require-ready-collectors", worker["command"])
@@ -69,9 +69,9 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("python", verifier["command"])
         self.assertIn("scripts/verify_runtime_e2e.py", verifier["command"])
         self.assertEqual(verifier["environment"]["DATABASE_URL"], RUNTIME_DATABASE_URL)
-        self.assertNotIn("GENO_RUNTIME_DB_POOL_ENABLED", verifier["environment"])
+        self.assertNotIn("GEO_RUNTIME_DB_POOL_ENABLED", verifier["environment"])
         self.assertEqual(verifier["environment"]["OBJECT_STORE_ENDPOINT"], "http://minio:9000")
-        self.assertEqual(verifier["environment"]["OBJECT_STORE_BUCKET"], "geno-reports")
+        self.assertEqual(verifier["environment"]["OBJECT_STORE_BUCKET"], "geo-reports")
         self.assertEqual(verifier["environment"]["OBJECT_STORE_ACCESS_KEY"], "minio")
         self.assertEqual(verifier["environment"]["OBJECT_STORE_SECRET_KEY"], "minio123")
         self.assertIn("postgres", verifier["depends_on"])
@@ -85,7 +85,7 @@ class InfraContractsTest(unittest.TestCase):
         self.assertEqual(verifier["build"]["dockerfile"], "apps/api/Dockerfile")
         self.assertIn("python", verifier["command"])
         self.assertIn("scripts/verify_db_smoke.py", verifier["command"])
-        self.assertEqual(verifier["environment"]["DATABASE_URL"], "postgresql://geno:geno@postgres:5432/geno")
+        self.assertEqual(verifier["environment"]["DATABASE_URL"], "postgresql://geo:geo@postgres:5432/geo")
         self.assertEqual(verifier["environment"]["RUNTIME_DATABASE_URL"], RUNTIME_DATABASE_URL)
         self.assertNotIn("OBJECT_STORE_ENDPOINT", verifier["environment"])
         self.assertIn("postgres", verifier["depends_on"])
@@ -100,7 +100,7 @@ class InfraContractsTest(unittest.TestCase):
         migration_command = "\n".join(migrator["command"])
 
         self.assertEqual(migrator["image"], "pgvector/pgvector:pg16")
-        self.assertEqual(migrator["environment"]["PGPASSWORD"], "geno")
+        self.assertEqual(migrator["environment"]["PGPASSWORD"], "geo")
         self.assertTrue(any(volume["target"] == "/migrations/up" and volume["read_only"] for volume in migrator["volumes"]))
         self.assertIn("0015_customer_portal_launch_access_logs.sql", migration_command)
         self.assertIn("0016_runtime_sessions.sql", migration_command)
@@ -108,7 +108,7 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("0018_connector_secret_refs.sql", migration_command)
         self.assertIn("0019_evidence_asset_metadata.sql", migration_command)
         self.assertIn("0020_action_recommendation_contract.sql", migration_command)
-        self.assertIn("to_regprocedure('geno_runtime_can_access_project(uuid)')", migration_command)
+        self.assertIn("to_regprocedure('geo_runtime_can_access_project(uuid)')", migration_command)
         self.assertIn("postgres", migrator["depends_on"])
         self.assertEqual(api["depends_on"]["db-migrate"]["condition"], "service_completed_successfully")
         self.assertIn("postgres db-migrate minio api customer-web admin-web", makefile)
@@ -140,17 +140,17 @@ class InfraContractsTest(unittest.TestCase):
         self.assertEqual(scheduler["build"]["dockerfile"], "apps/api/Dockerfile")
         self.assertEqual(scheduler["command"], ["python", "scripts/run_browser_fidelity_scheduler.py"])
         self.assertEqual(scheduler["environment"]["DATABASE_URL"], RUNTIME_DATABASE_URL)
-        self.assertNotIn("GENO_RUNTIME_DB_POOL_ENABLED", scheduler["environment"])
+        self.assertNotIn("GEO_RUNTIME_DB_POOL_ENABLED", scheduler["environment"])
         self.assertEqual(scheduler["environment"]["OBJECT_STORE_ENDPOINT"], "http://minio:9000")
-        self.assertEqual(scheduler["environment"]["GENO_BROWSER_FIDELITY_EXECUTE"], "0")
-        self.assertEqual(scheduler["environment"]["GENO_BROWSER_FIDELITY_PERSIST_PLAN"], "1")
+        self.assertEqual(scheduler["environment"]["GEO_BROWSER_FIDELITY_EXECUTE"], "0")
+        self.assertEqual(scheduler["environment"]["GEO_BROWSER_FIDELITY_PERSIST_PLAN"], "1")
         self.assertIn("postgres", scheduler["depends_on"])
         self.assertIn("minio", scheduler["depends_on"])
 
         self.assertEqual(alert_worker["build"]["dockerfile"], "apps/api/Dockerfile")
         self.assertEqual(alert_worker["environment"]["DATABASE_URL"], RUNTIME_DATABASE_URL)
-        self.assertEqual(alert_worker["environment"]["GENO_RUNTIME_ALERT_MARKET_CODE"], "AU")
-        self.assertNotIn("GENO_RUNTIME_DB_POOL_ENABLED", alert_worker["environment"])
+        self.assertEqual(alert_worker["environment"]["GEO_RUNTIME_ALERT_MARKET_CODE"], "AU")
+        self.assertNotIn("GEO_RUNTIME_DB_POOL_ENABLED", alert_worker["environment"])
         self.assertIn("workers/notification_worker/run_runtime_alert_notifications.py", alert_worker["command"])
         self.assertIn("--market-code", alert_worker["command"])
         self.assertIn("AU", alert_worker["command"])
@@ -160,12 +160,12 @@ class InfraContractsTest(unittest.TestCase):
 
         self.assertEqual(escalation_worker["build"]["dockerfile"], "apps/api/Dockerfile")
         self.assertEqual(escalation_worker["environment"]["DATABASE_URL"], RUNTIME_DATABASE_URL)
-        self.assertEqual(escalation_worker["environment"]["GENO_RUNTIME_ALERT_MARKET_CODE"], "AU")
+        self.assertEqual(escalation_worker["environment"]["GEO_RUNTIME_ALERT_MARKET_CODE"], "AU")
         self.assertEqual(
-            escalation_worker["environment"]["GENO_RUNTIME_ALERT_ESCALATION_THRESHOLDS"],
+            escalation_worker["environment"]["GEO_RUNTIME_ALERT_ESCALATION_THRESHOLDS"],
             "critical=4,high=24",
         )
-        self.assertNotIn("GENO_RUNTIME_DB_POOL_ENABLED", escalation_worker["environment"])
+        self.assertNotIn("GEO_RUNTIME_DB_POOL_ENABLED", escalation_worker["environment"])
         self.assertIn("workers/notification_worker/run_runtime_alert_escalations.py", escalation_worker["command"])
         self.assertIn("--severity-threshold-hours", escalation_worker["command"])
         self.assertIn("critical=4,high=24", escalation_worker["command"])
@@ -174,8 +174,8 @@ class InfraContractsTest(unittest.TestCase):
         self.assertEqual(report_export_worker["build"]["dockerfile"], "apps/api/Dockerfile")
         self.assertEqual(report_export_worker["environment"]["DATABASE_URL"], RUNTIME_DATABASE_URL)
         self.assertEqual(report_export_worker["environment"]["OBJECT_STORE_ENDPOINT"], "http://minio:9000")
-        self.assertEqual(report_export_worker["environment"]["OBJECT_STORE_BUCKET"], "geno-reports")
-        self.assertNotIn("GENO_RUNTIME_DB_POOL_ENABLED", report_export_worker["environment"])
+        self.assertEqual(report_export_worker["environment"]["OBJECT_STORE_BUCKET"], "geo-reports")
+        self.assertNotIn("GEO_RUNTIME_DB_POOL_ENABLED", report_export_worker["environment"])
         self.assertIn("workers/report_export_worker/run_report_export_jobs.py", report_export_worker["command"])
         self.assertIn("--max-jobs", report_export_worker["command"])
         self.assertIn("1", report_export_worker["command"])
@@ -191,16 +191,16 @@ class InfraContractsTest(unittest.TestCase):
         self.assertEqual(notification_delivery_worker["build"]["dockerfile"], "apps/api/Dockerfile")
         self.assertEqual(notification_delivery_worker["environment"]["DATABASE_URL"], RUNTIME_DATABASE_URL)
         self.assertEqual(
-            notification_delivery_worker["environment"]["GENO_NOTIFICATION_WEBHOOK_SIGNING_SECRET"],
+            notification_delivery_worker["environment"]["GEO_NOTIFICATION_WEBHOOK_SIGNING_SECRET"],
             "",
         )
         self.assertEqual(
-            notification_delivery_worker["environment"]["GENO_NOTIFICATION_WEBHOOK_SIGNING_SECRET_PREVIOUS"],
+            notification_delivery_worker["environment"]["GEO_NOTIFICATION_WEBHOOK_SIGNING_SECRET_PREVIOUS"],
             "",
         )
-        self.assertEqual(notification_delivery_worker["environment"]["GENO_NOTIFICATION_SMTP_HOST"], "")
-        self.assertEqual(notification_delivery_worker["environment"]["GENO_NOTIFICATION_SMTP_PORT"], "587")
-        self.assertNotIn("GENO_RUNTIME_DB_POOL_ENABLED", notification_delivery_worker["environment"])
+        self.assertEqual(notification_delivery_worker["environment"]["GEO_NOTIFICATION_SMTP_HOST"], "")
+        self.assertEqual(notification_delivery_worker["environment"]["GEO_NOTIFICATION_SMTP_PORT"], "587")
+        self.assertNotIn("GEO_RUNTIME_DB_POOL_ENABLED", notification_delivery_worker["environment"])
         self.assertNotIn("OBJECT_STORE_ENDPOINT", notification_delivery_worker["environment"])
         self.assertIn("workers/notification_worker/run_notification_deliveries.py", notification_delivery_worker["command"])
         self.assertIn("--max-deliveries", notification_delivery_worker["command"])
@@ -213,15 +213,15 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("300", notification_delivery_worker["command"])
         self.assertIn("--timeout-seconds", notification_delivery_worker["command"])
         self.assertIn("--secondary-signing-secret-env", notification_delivery_worker["command"])
-        self.assertIn("GENO_NOTIFICATION_WEBHOOK_SIGNING_SECRET_PREVIOUS", notification_delivery_worker["command"])
+        self.assertIn("GEO_NOTIFICATION_WEBHOOK_SIGNING_SECRET_PREVIOUS", notification_delivery_worker["command"])
         self.assertIn("5.0", notification_delivery_worker["command"])
         self.assertIn("postgres", notification_delivery_worker["depends_on"])
         self.assertNotIn("minio", notification_delivery_worker["depends_on"])
 
         self.assertEqual(alias_assignment_worker["build"]["dockerfile"], "apps/api/Dockerfile")
         self.assertEqual(alias_assignment_worker["environment"]["DATABASE_URL"], RUNTIME_DATABASE_URL)
-        self.assertEqual(alias_assignment_worker["environment"]["GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE"], "AU")
-        self.assertNotIn("GENO_RUNTIME_DB_POOL_ENABLED", alias_assignment_worker["environment"])
+        self.assertEqual(alias_assignment_worker["environment"]["GEO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE"], "AU")
+        self.assertNotIn("GEO_RUNTIME_DB_POOL_ENABLED", alias_assignment_worker["environment"])
         self.assertIn("workers/notification_worker/run_entity_alias_assignment_notifications.py", alias_assignment_worker["command"])
         self.assertIn("--market-code", alias_assignment_worker["command"])
         self.assertIn("AU", alias_assignment_worker["command"])
@@ -232,10 +232,10 @@ class InfraContractsTest(unittest.TestCase):
         self.assertEqual(alias_assignment_escalation_worker["build"]["dockerfile"], "apps/api/Dockerfile")
         self.assertEqual(alias_assignment_escalation_worker["environment"]["DATABASE_URL"], RUNTIME_DATABASE_URL)
         self.assertEqual(
-            alias_assignment_escalation_worker["environment"]["GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE"],
+            alias_assignment_escalation_worker["environment"]["GEO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE"],
             "AU",
         )
-        self.assertNotIn("GENO_RUNTIME_DB_POOL_ENABLED", alias_assignment_escalation_worker["environment"])
+        self.assertNotIn("GEO_RUNTIME_DB_POOL_ENABLED", alias_assignment_escalation_worker["environment"])
         self.assertIn(
             "workers/notification_worker/run_entity_alias_assignment_escalations.py",
             alias_assignment_escalation_worker["command"],
@@ -249,14 +249,14 @@ class InfraContractsTest(unittest.TestCase):
         self.assertEqual(alias_assignment_reassignment_worker["build"]["dockerfile"], "apps/api/Dockerfile")
         self.assertEqual(alias_assignment_reassignment_worker["environment"]["DATABASE_URL"], RUNTIME_DATABASE_URL)
         self.assertEqual(
-            alias_assignment_reassignment_worker["environment"]["GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE"],
+            alias_assignment_reassignment_worker["environment"]["GEO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE"],
             "AU",
         )
         self.assertEqual(
-            alias_assignment_reassignment_worker["environment"]["GENO_ENTITY_ALIAS_ASSIGNMENT_REASSIGN_TO"],
+            alias_assignment_reassignment_worker["environment"]["GEO_ENTITY_ALIAS_ASSIGNMENT_REASSIGN_TO"],
             "runtime-console",
         )
-        self.assertNotIn("GENO_RUNTIME_DB_POOL_ENABLED", alias_assignment_reassignment_worker["environment"])
+        self.assertNotIn("GEO_RUNTIME_DB_POOL_ENABLED", alias_assignment_reassignment_worker["environment"])
         self.assertIn(
             "workers/notification_worker/run_entity_alias_assignment_reassignments.py",
             alias_assignment_reassignment_worker["command"],
@@ -270,14 +270,14 @@ class InfraContractsTest(unittest.TestCase):
         self.assertEqual(alias_assignment_dispatch_apply_worker["build"]["dockerfile"], "apps/api/Dockerfile")
         self.assertEqual(alias_assignment_dispatch_apply_worker["environment"]["DATABASE_URL"], RUNTIME_DATABASE_URL)
         self.assertEqual(
-            alias_assignment_dispatch_apply_worker["environment"]["GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE"],
+            alias_assignment_dispatch_apply_worker["environment"]["GEO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE"],
             "AU",
         )
         self.assertEqual(
-            alias_assignment_dispatch_apply_worker["environment"]["GENO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_REVIEWERS"],
+            alias_assignment_dispatch_apply_worker["environment"]["GEO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_REVIEWERS"],
             "runtime-console",
         )
-        self.assertNotIn("GENO_RUNTIME_DB_POOL_ENABLED", alias_assignment_dispatch_apply_worker["environment"])
+        self.assertNotIn("GEO_RUNTIME_DB_POOL_ENABLED", alias_assignment_dispatch_apply_worker["environment"])
         self.assertIn(
             "workers/notification_worker/run_entity_alias_assignment_dispatch_apply.py",
             alias_assignment_dispatch_apply_worker["command"],
@@ -299,7 +299,7 @@ class InfraContractsTest(unittest.TestCase):
         self.assertEqual(prometheus["image"], "prom/prometheus:v3.0.1")
         self.assertIn("--config.file=/etc/prometheus/prometheus.yml", prometheus["command"])
         self.assertIn(
-            os.environ.get("GENO_PROMETHEUS_HOST_PORT", "9090"),
+            os.environ.get("GEO_PROMETHEUS_HOST_PORT", "9090"),
             {str(port["published"]) for port in prometheus["ports"]},
         )
         self.assertTrue(
@@ -311,7 +311,7 @@ class InfraContractsTest(unittest.TestCase):
         self.assertEqual(grafana["environment"]["GF_SECURITY_ADMIN_USER"], "admin")
         self.assertEqual(grafana["environment"]["GF_SECURITY_ADMIN_PASSWORD"], "admin")
         self.assertIn(
-            os.environ.get("GENO_GRAFANA_HOST_PORT", "3001"),
+            os.environ.get("GEO_GRAFANA_HOST_PORT", "3001"),
             {str(port["published"]) for port in grafana["ports"]},
         )
         self.assertTrue(
@@ -322,7 +322,7 @@ class InfraContractsTest(unittest.TestCase):
     def test_observability_config_scrapes_api_metrics_and_provisions_datasource(self) -> None:
         prometheus_config = yaml.safe_load((ROOT / "infra/prometheus/prometheus.yml").read_text(encoding="utf-8"))
         scrape_configs = {item["job_name"]: item for item in prometheus_config["scrape_configs"]}
-        api_scrape = scrape_configs["geno-api"]
+        api_scrape = scrape_configs["geo-api"]
         self.assertEqual(api_scrape["metrics_path"], "/metrics")
         self.assertEqual(api_scrape["static_configs"][0]["targets"], ["api:8000"])
 
@@ -330,7 +330,7 @@ class InfraContractsTest(unittest.TestCase):
             (ROOT / "infra/grafana/provisioning/datasources/prometheus.yml").read_text(encoding="utf-8")
         )
         datasource = grafana_datasource["datasources"][0]
-        self.assertEqual(datasource["name"], "GENO Prometheus")
+        self.assertEqual(datasource["name"], "GEO Prometheus")
         self.assertEqual(datasource["type"], "prometheus")
         self.assertEqual(datasource["url"], "http://prometheus:9090")
         self.assertTrue(datasource["isDefault"])
@@ -417,14 +417,14 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn('"candidate_id"', db_smoke_source)
         self.assertIn('"assignment_status"', db_smoke_source)
 
-    def test_litellm_config_uses_env_secrets_and_geno_model_aliases(self) -> None:
+    def test_litellm_config_uses_env_secrets_and_geo_model_aliases(self) -> None:
         config = yaml.safe_load((ROOT / "infra/litellm_config.yaml").read_text(encoding="utf-8"))
         model_list = {item["model_name"]: item["litellm_params"] for item in config["model_list"]}
 
-        self.assertEqual(model_list["geno-gpt-4.1-mini"]["model"], "openai/gpt-4.1-mini")
-        self.assertEqual(model_list["geno-gpt-4.1-mini"]["api_key"], "os.environ/OPENAI_API_KEY")
-        self.assertEqual(model_list["geno-text-embedding-3-small"]["model"], "openai/text-embedding-3-small")
-        self.assertEqual(model_list["geno-text-embedding-3-small"]["api_key"], "os.environ/OPENAI_API_KEY")
+        self.assertEqual(model_list["geo-gpt-4.1-mini"]["model"], "openai/gpt-4.1-mini")
+        self.assertEqual(model_list["geo-gpt-4.1-mini"]["api_key"], "os.environ/OPENAI_API_KEY")
+        self.assertEqual(model_list["geo-text-embedding-3-small"]["model"], "openai/text-embedding-3-small")
+        self.assertEqual(model_list["geo-text-embedding-3-small"]["api_key"], "os.environ/OPENAI_API_KEY")
         self.assertEqual(config["general_settings"]["master_key"], "os.environ/LITELLM_MASTER_KEY")
 
     def test_api_service_enables_runtime_database_pool(self) -> None:
@@ -432,20 +432,20 @@ class InfraContractsTest(unittest.TestCase):
         api = config["services"]["api"]
 
         self.assertEqual(api["environment"]["DATABASE_URL"], RUNTIME_DATABASE_URL)
-        self.assertEqual(api["environment"]["GENO_RUNTIME_DB_POOL_ENABLED"], "1")
-        self.assertEqual(api["environment"]["GENO_RUNTIME_DB_POOL_MAX_SIZE"], "10")
-        self.assertEqual(api["environment"]["GENO_RUNTIME_DB_POOL_TIMEOUT_SECONDS"], "5")
+        self.assertEqual(api["environment"]["GEO_RUNTIME_DB_POOL_ENABLED"], "1")
+        self.assertEqual(api["environment"]["GEO_RUNTIME_DB_POOL_MAX_SIZE"], "10")
+        self.assertEqual(api["environment"]["GEO_RUNTIME_DB_POOL_TIMEOUT_SECONDS"], "5")
 
     def test_api_image_includes_runtime_e2e_verifier(self) -> None:
         dockerfile = (ROOT / "apps/api/Dockerfile").read_text(encoding="utf-8")
 
         self.assertIn("COPY scripts ./scripts", dockerfile)
-        self.assertIn("ENV PYTHONPATH=/app:/app/packages/geno_core:/app/apps/api", dockerfile)
+        self.assertIn("ENV PYTHONPATH=/app:/app/packages/geo_core:/app/apps/api", dockerfile)
 
     def test_api_domain_route_boundary_has_ops_router(self) -> None:
-        main_source = (ROOT / "apps/api/geno_api/main.py").read_text(encoding="utf-8")
-        ops_source = (ROOT / "apps/api/geno_api/ops_routes.py").read_text(encoding="utf-8")
-        access_source = (ROOT / "apps/api/geno_api/runtime_access_routes.py").read_text(encoding="utf-8")
+        main_source = (ROOT / "apps/api/geo_api/main.py").read_text(encoding="utf-8")
+        ops_source = (ROOT / "apps/api/geo_api/ops_routes.py").read_text(encoding="utf-8")
+        access_source = (ROOT / "apps/api/geo_api/runtime_access_routes.py").read_text(encoding="utf-8")
 
         self.assertIn("register_ops_routes(app)", main_source)
         self.assertIn("register_runtime_access_routes(", main_source)
@@ -463,23 +463,23 @@ class InfraContractsTest(unittest.TestCase):
         migration = (ROOT / "infra/db/migrations/up/0010_runtime_project_rls.sql").read_text(encoding="utf-8")
         rollback = (ROOT / "infra/db/migrations/down/0010_runtime_project_rls.down.sql").read_text(encoding="utf-8")
 
-        self.assertIn("CREATE OR REPLACE FUNCTION geno_runtime_can_access_project", migration)
-        self.assertIn("CREATE ROLE geno_runtime_app LOGIN PASSWORD 'geno_runtime_app'", migration)
-        self.assertIn("GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO geno_runtime_app", migration)
+        self.assertIn("CREATE OR REPLACE FUNCTION geo_runtime_can_access_project", migration)
+        self.assertIn("CREATE ROLE geo_runtime_app LOGIN PASSWORD 'geo_runtime_app'", migration)
+        self.assertIn("GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO geo_runtime_app", migration)
         self.assertIn("current_setting('app.actor_id', true)", migration)
         self.assertIn("current_setting('app.project_id', true)", migration)
         self.assertIn("current_setting('app.project_ids', true)", migration)
         self.assertIn("current_setting('app.roles', true)", migration)
-        self.assertIn("current_setting('geno.runtime_actor_id', true)", migration)
-        self.assertIn("current_setting('geno.runtime_project_id', true)", migration)
+        self.assertIn("current_setting('geo.runtime_actor_id', true)", migration)
+        self.assertIn("current_setting('geo.runtime_project_id', true)", migration)
         self.assertIn("ALTER TABLE projects FORCE ROW LEVEL SECURITY", migration)
         self.assertIn("projects_runtime_project_isolation", migration)
         self.assertIn("project_members_runtime_project_isolation", migration)
         self.assertIn("'collection_run_summaries'", migration)
         self.assertIn("raw_answers_runtime_project_isolation", migration)
         self.assertIn("entity_aliases_runtime_project_isolation", migration)
-        self.assertIn("DROP FUNCTION IF EXISTS geno_runtime_can_access_project(uuid)", rollback)
-        self.assertIn("DROP ROLE IF EXISTS geno_runtime_app", rollback)
+        self.assertIn("DROP FUNCTION IF EXISTS geo_runtime_can_access_project(uuid)", rollback)
+        self.assertIn("DROP ROLE IF EXISTS geo_runtime_app", rollback)
 
     def test_project_member_invitation_migration_is_project_scoped_and_auditable(self) -> None:
         migration = (ROOT / "infra/db/migrations/up/0013_project_member_invitations.sql").read_text(encoding="utf-8")
@@ -495,7 +495,7 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("idx_project_member_invitations_project_status", migration)
         self.assertIn("ALTER TABLE project_member_invitations FORCE ROW LEVEL SECURITY", migration)
         self.assertIn("project_member_invitations_runtime_project_isolation", migration)
-        self.assertIn("geno_runtime_can_access_project(project_id)", migration)
+        self.assertIn("geo_runtime_can_access_project(project_id)", migration)
         self.assertIn("DROP TABLE IF EXISTS project_member_invitations", rollback)
         self.assertIn('"project_member_invitations"', db_smoke_source)
         self.assertIn('"invite_token_hash"', db_smoke_source)
@@ -510,16 +510,16 @@ class InfraContractsTest(unittest.TestCase):
         )
         db_smoke_source = (ROOT / "scripts/verify_db_smoke.py").read_text(encoding="utf-8")
 
-        self.assertIn("CREATE OR REPLACE FUNCTION geno_runtime_invitation_token_hash", migration)
-        self.assertIn("current_setting('geno.runtime_invitation_token_hash', true)", migration)
-        self.assertIn("CREATE OR REPLACE FUNCTION geno_runtime_can_accept_project_invitation", migration)
-        self.assertIn("invite_token_hash = geno_runtime_invitation_token_hash()", migration)
+        self.assertIn("CREATE OR REPLACE FUNCTION geo_runtime_invitation_token_hash", migration)
+        self.assertIn("current_setting('geo.runtime_invitation_token_hash', true)", migration)
+        self.assertIn("CREATE OR REPLACE FUNCTION geo_runtime_can_accept_project_invitation", migration)
+        self.assertIn("invite_token_hash = geo_runtime_invitation_token_hash()", migration)
         self.assertIn("status = 'pending'", migration)
         self.assertIn("status IN ('pending', 'accepted')", migration)
-        self.assertIn("DROP FUNCTION IF EXISTS geno_runtime_can_accept_project_invitation(uuid)", rollback)
-        self.assertIn("DROP FUNCTION IF EXISTS geno_runtime_invitation_token_hash()", rollback)
-        self.assertIn('"geno_runtime_invitation_token_hash"', db_smoke_source)
-        self.assertIn('"geno_runtime_can_accept_project_invitation"', db_smoke_source)
+        self.assertIn("DROP FUNCTION IF EXISTS geo_runtime_can_accept_project_invitation(uuid)", rollback)
+        self.assertIn("DROP FUNCTION IF EXISTS geo_runtime_invitation_token_hash()", rollback)
+        self.assertIn('"geo_runtime_invitation_token_hash"', db_smoke_source)
+        self.assertIn('"geo_runtime_can_accept_project_invitation"', db_smoke_source)
 
     def test_runtime_sessions_migration_stores_hashed_tokens_and_rls(self) -> None:
         migration = (ROOT / "infra/db/migrations/up/0016_runtime_sessions.sql").read_text(encoding="utf-8")
@@ -533,7 +533,7 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("CHECK (status IN ('active', 'expired', 'revoked'))", migration)
         self.assertIn("ALTER TABLE runtime_sessions FORCE ROW LEVEL SECURITY", migration)
         self.assertIn("runtime_sessions_runtime_actor_isolation", migration)
-        self.assertIn("current_setting('geno.runtime_actor_id', true)", migration)
+        self.assertIn("current_setting('geo.runtime_actor_id', true)", migration)
         self.assertIn("DROP TABLE IF EXISTS runtime_sessions", rollback)
         self.assertIn('"runtime_sessions"', db_smoke_source)
         self.assertIn('"session_token_hash"', db_smoke_source)
@@ -565,7 +565,7 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("python3 -m ruff check apps/api packages workers scripts tests", makefile)
         self.assertIn("compile-python:", makefile)
         self.assertIn(
-            "python3 -m compileall apps/api/geno_api packages/geno_core/geno_core workers scripts tests",
+            "python3 -m compileall apps/api/geo_api packages/geo_core/geo_core workers scripts tests",
             makefile,
         )
         self.assertIn("web-typecheck:", makefile)
@@ -589,14 +589,14 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("scripts/verify_au_p0a_env_template.py", makefile)
         self.assertIn("au-p0a-env-bootstrap:", makefile)
         self.assertIn("scripts/bootstrap_au_p0a_env_file.py", makefile)
-        self.assertIn("GENO_AU_P0A_ENV_BOOTSTRAP_OUTPUT_PATH", makefile)
+        self.assertIn("GEO_AU_P0A_ENV_BOOTSTRAP_OUTPUT_PATH", makefile)
         self.assertIn("verify-au-p0a-env-bootstrap:", makefile)
         self.assertIn("scripts/verify_au_p0a_env_file_bootstrap.py", makefile)
         self.assertIn("verify-au-p0b-google-env-template:", makefile)
         self.assertIn("scripts/verify_au_p0b_google_env_template.py", makefile)
         self.assertIn("au-p0b-google-env-bootstrap:", makefile)
         self.assertIn("scripts/bootstrap_au_p0b_google_env_file.py", makefile)
-        self.assertIn("GENO_AU_P0B_GOOGLE_ENV_BOOTSTRAP_OUTPUT_PATH", makefile)
+        self.assertIn("GEO_AU_P0B_GOOGLE_ENV_BOOTSTRAP_OUTPUT_PATH", makefile)
         self.assertIn("verify-au-p0b-google-env-bootstrap:", makefile)
         self.assertIn("scripts/verify_au_p0b_google_env_file_bootstrap.py", makefile)
         self.assertIn("au-p0b-google-runbook-dry-run:", makefile)
@@ -611,50 +611,50 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("scripts/build_au_p0b_google_evidence_package.py", makefile)
         self.assertIn("verify-au-p0b-google-package:", makefile)
         self.assertIn("scripts/verify_au_p0b_google_evidence_package.py", makefile)
-        self.assertIn("GENO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH", makefile)
+        self.assertIn("GEO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH", makefile)
         self.assertIn("au-p0b-google-execution-checklist:", makefile)
         self.assertIn("scripts/build_au_p0b_google_execution_checklist.py", makefile)
-        self.assertIn("GENO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH", makefile)
+        self.assertIn("GEO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH", makefile)
         self.assertIn("verify-au-p0b-google-execution-checklist:", makefile)
         self.assertIn("scripts/verify_au_p0b_google_execution_checklist.py", makefile)
         self.assertIn("au-p0b-google-environment-request:", makefile)
         self.assertIn("scripts/build_au_p0b_google_environment_request_packet.py", makefile)
-        self.assertIn("GENO_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH", makefile)
+        self.assertIn("GEO_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH", makefile)
         self.assertIn("verify-au-p0b-google-environment-request:", makefile)
         self.assertIn("scripts/verify_au_p0b_google_environment_request_packet.py", makefile)
         self.assertIn("au-p0b-google-manual-backfill-request:", makefile)
         self.assertIn("scripts/build_au_p0b_google_manual_backfill_request_packet.py", makefile)
-        self.assertIn("GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_REQUEST_OUTPUT_PATH", makefile)
+        self.assertIn("GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_REQUEST_OUTPUT_PATH", makefile)
         self.assertIn("verify-au-p0b-google-manual-backfill-request:", makefile)
         self.assertIn("scripts/verify_au_p0b_google_manual_backfill_request_packet.py", makefile)
         self.assertIn("au-p0b-google-phase-execution-request:", makefile)
         self.assertIn("scripts/build_au_p0b_google_phase_execution_request_packet.py", makefile)
-        self.assertIn("GENO_AU_P0B_GOOGLE_PHASE_EXECUTION_REQUEST_OUTPUT_PATH", makefile)
+        self.assertIn("GEO_AU_P0B_GOOGLE_PHASE_EXECUTION_REQUEST_OUTPUT_PATH", makefile)
         self.assertIn("verify-au-p0b-google-phase-execution-request:", makefile)
         self.assertIn("scripts/verify_au_p0b_google_phase_execution_request_packet.py", makefile)
         self.assertIn("au-p0b-google-phase-execution-fulfillment:", makefile)
         self.assertIn("scripts/build_au_p0b_google_phase_execution_fulfillment.py", makefile)
-        self.assertIn("GENO_AU_P0B_GOOGLE_PHASE_EXECUTION_FULFILLMENT_OUTPUT_PATH", makefile)
+        self.assertIn("GEO_AU_P0B_GOOGLE_PHASE_EXECUTION_FULFILLMENT_OUTPUT_PATH", makefile)
         self.assertIn("verify-au-p0b-google-phase-execution-fulfillment:", makefile)
         self.assertIn("scripts/verify_au_p0b_google_phase_execution_fulfillment.py", makefile)
         self.assertIn("au-p0b-google-phase-execution-clearance:", makefile)
         self.assertIn("scripts/build_au_p0b_google_phase_execution_clearance.py", makefile)
-        self.assertIn("GENO_AU_P0B_GOOGLE_PHASE_EXECUTION_CLEARANCE_OUTPUT_PATH", makefile)
+        self.assertIn("GEO_AU_P0B_GOOGLE_PHASE_EXECUTION_CLEARANCE_OUTPUT_PATH", makefile)
         self.assertIn("verify-au-p0b-google-phase-execution-clearance:", makefile)
         self.assertIn("scripts/verify_au_p0b_google_phase_execution_clearance.py", makefile)
         self.assertIn("au-launch-status:", makefile)
         self.assertIn("scripts/build_au_launch_status.py", makefile)
         self.assertIn("verify-au-launch-status:", makefile)
         self.assertIn("scripts/verify_au_launch_status.py", makefile)
-        self.assertIn("GENO_AU_LAUNCH_STATUS_OUTPUT_PATH", makefile)
+        self.assertIn("GEO_AU_LAUNCH_STATUS_OUTPUT_PATH", makefile)
         self.assertIn("au-launch-remediation-plan:", makefile)
         self.assertIn("scripts/build_au_launch_remediation_plan.py", makefile)
         self.assertIn("verify-au-launch-remediation-plan:", makefile)
         self.assertIn("scripts/verify_au_launch_remediation_plan.py", makefile)
-        self.assertIn("GENO_AU_LAUNCH_REMEDIATION_PLAN_OUTPUT_PATH", makefile)
+        self.assertIn("GEO_AU_LAUNCH_REMEDIATION_PLAN_OUTPUT_PATH", makefile)
         self.assertIn("au-p0a-environment-checklist:", makefile)
         self.assertIn("scripts/build_au_p0a_environment_checklist.py", makefile)
-        self.assertIn("GENO_AU_P0A_ENVIRONMENT_CHECKLIST_OUTPUT_PATH", makefile)
+        self.assertIn("GEO_AU_P0A_ENVIRONMENT_CHECKLIST_OUTPUT_PATH", makefile)
         self.assertIn("verify-au-p0a-environment-checklist:", makefile)
         self.assertIn("scripts/verify_au_p0a_environment_checklist.py", makefile)
         self.assertIn("au-p0a-runbook-dry-run:", makefile)
@@ -665,101 +665,101 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("scripts/build_au_p0a_status_report.py", makefile)
         self.assertIn("au-p0a-execution-checklist:", makefile)
         self.assertIn("scripts/build_au_p0a_execution_checklist.py", makefile)
-        self.assertIn("GENO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH", makefile)
+        self.assertIn("GEO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH", makefile)
         self.assertIn("verify-au-p0a-execution-checklist:", makefile)
         self.assertIn("scripts/verify_au_p0a_execution_checklist.py", makefile)
         self.assertIn("au-p0a-credential-request:", makefile)
         self.assertIn("scripts/build_au_p0a_credential_request_packet.py", makefile)
-        self.assertIn("GENO_AU_P0A_CREDENTIAL_REQUEST_OUTPUT_PATH", makefile)
+        self.assertIn("GEO_AU_P0A_CREDENTIAL_REQUEST_OUTPUT_PATH", makefile)
         self.assertIn("verify-au-p0a-credential-request:", makefile)
         self.assertIn("scripts/verify_au_p0a_credential_request_packet.py", makefile)
         self.assertIn("au-p0a-credential-fulfillment:", makefile)
         self.assertIn("scripts/build_au_p0a_credential_fulfillment.py", makefile)
-        self.assertIn("GENO_AU_P0A_CREDENTIAL_FULFILLMENT_OUTPUT_PATH", makefile)
+        self.assertIn("GEO_AU_P0A_CREDENTIAL_FULFILLMENT_OUTPUT_PATH", makefile)
         self.assertIn("verify-au-p0a-credential-fulfillment:", makefile)
         self.assertIn("scripts/verify_au_p0a_credential_fulfillment.py", makefile)
         self.assertIn("au-p0a-credential-clearance:", makefile)
         self.assertIn("scripts/build_au_p0a_credential_clearance.py", makefile)
-        self.assertIn("GENO_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH", makefile)
+        self.assertIn("GEO_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH", makefile)
         self.assertIn("verify-au-p0a-credential-clearance:", makefile)
         self.assertIn("scripts/verify_au_p0a_credential_clearance.py", makefile)
         self.assertIn("au-p0a-credential-update-receipt:", makefile)
         self.assertIn("scripts/build_au_p0a_credential_update_receipt.py", makefile)
-        self.assertIn("GENO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH", makefile)
+        self.assertIn("GEO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH", makefile)
         self.assertIn("verify-au-p0a-credential-update-receipt:", makefile)
         self.assertIn("scripts/verify_au_p0a_credential_update_receipt.py", makefile)
         self.assertIn("--p0a-credential-update-receipt-path", makefile)
         self.assertIn("au-p0b-google-environment-fulfillment:", makefile)
         self.assertIn("scripts/build_au_p0b_google_environment_fulfillment.py", makefile)
-        self.assertIn("GENO_AU_P0B_GOOGLE_ENVIRONMENT_FULFILLMENT_OUTPUT_PATH", makefile)
+        self.assertIn("GEO_AU_P0B_GOOGLE_ENVIRONMENT_FULFILLMENT_OUTPUT_PATH", makefile)
         self.assertIn("verify-au-p0b-google-environment-fulfillment:", makefile)
         self.assertIn("scripts/verify_au_p0b_google_environment_fulfillment.py", makefile)
         self.assertIn("au-p0b-google-environment-clearance:", makefile)
         self.assertIn("scripts/build_au_p0b_google_environment_clearance.py", makefile)
-        self.assertIn("GENO_AU_P0B_GOOGLE_ENVIRONMENT_CLEARANCE_OUTPUT_PATH", makefile)
+        self.assertIn("GEO_AU_P0B_GOOGLE_ENVIRONMENT_CLEARANCE_OUTPUT_PATH", makefile)
         self.assertIn("verify-au-p0b-google-environment-clearance:", makefile)
         self.assertIn("scripts/verify_au_p0b_google_environment_clearance.py", makefile)
         self.assertIn("au-p0b-google-manual-backfill-evidence:", makefile)
         self.assertIn("--allow-blocked-output", makefile)
         self.assertIn("au-p0b-google-manual-backfill-fulfillment:", makefile)
         self.assertIn("scripts/build_au_p0b_google_manual_backfill_fulfillment.py", makefile)
-        self.assertIn("GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH", makefile)
+        self.assertIn("GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH", makefile)
         self.assertIn("verify-au-p0b-google-manual-backfill-fulfillment:", makefile)
         self.assertIn("scripts/verify_au_p0b_google_manual_backfill_fulfillment.py", makefile)
         self.assertIn("au-p0b-google-manual-backfill-clearance:", makefile)
         self.assertIn("scripts/build_au_p0b_google_manual_backfill_clearance.py", makefile)
-        self.assertIn("GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_CLEARANCE_OUTPUT_PATH", makefile)
+        self.assertIn("GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_CLEARANCE_OUTPUT_PATH", makefile)
         self.assertIn("verify-au-p0b-google-manual-backfill-clearance:", makefile)
         self.assertIn("scripts/verify_au_p0b_google_manual_backfill_clearance.py", makefile)
         self.assertIn("au-p0a-real-batch-request:", makefile)
         self.assertIn("scripts/build_au_p0a_real_batch_request_packet.py", makefile)
-        self.assertIn("GENO_AU_P0A_REAL_BATCH_REQUEST_OUTPUT_PATH", makefile)
+        self.assertIn("GEO_AU_P0A_REAL_BATCH_REQUEST_OUTPUT_PATH", makefile)
         self.assertIn("verify-au-p0a-real-batch-request:", makefile)
         self.assertIn("scripts/verify_au_p0a_real_batch_request_packet.py", makefile)
         self.assertIn("au-p0a-real-batch-fulfillment:", makefile)
         self.assertIn("scripts/build_au_p0a_real_batch_fulfillment.py", makefile)
-        self.assertIn("GENO_AU_P0A_REAL_BATCH_FULFILLMENT_OUTPUT_PATH", makefile)
+        self.assertIn("GEO_AU_P0A_REAL_BATCH_FULFILLMENT_OUTPUT_PATH", makefile)
         self.assertIn("verify-au-p0a-real-batch-fulfillment:", makefile)
         self.assertIn("scripts/verify_au_p0a_real_batch_fulfillment.py", makefile)
         self.assertIn("au-p0a-real-batch-clearance:", makefile)
         self.assertIn("scripts/build_au_p0a_real_batch_clearance.py", makefile)
-        self.assertIn("GENO_AU_P0A_REAL_BATCH_CLEARANCE_OUTPUT_PATH", makefile)
+        self.assertIn("GEO_AU_P0A_REAL_BATCH_CLEARANCE_OUTPUT_PATH", makefile)
         self.assertIn("verify-au-p0a-real-batch-clearance:", makefile)
         self.assertIn("scripts/verify_au_p0a_real_batch_clearance.py", makefile)
-        self.assertIn("--env-file $${GENO_AU_P0A_ENV_FILE:-.env.au-p0a}", makefile)
+        self.assertIn("--env-file $${GEO_AU_P0A_ENV_FILE:-.env.au-p0a}", makefile)
         self.assertIn("au-handoff-dossier:", makefile)
         self.assertIn("scripts/build_au_handoff_dossier.py", makefile)
-        self.assertIn("--p0a-execution-checklist-path $${GENO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH", makefile)
-        self.assertIn("GENO_AU_HANDOFF_DOSSIER_OUTPUT_PATH", makefile)
-        self.assertIn("GENO_AU_HANDOFF_DOSSIER_MARKDOWN_PATH", makefile)
+        self.assertIn("--p0a-execution-checklist-path $${GEO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH", makefile)
+        self.assertIn("GEO_AU_HANDOFF_DOSSIER_OUTPUT_PATH", makefile)
+        self.assertIn("GEO_AU_HANDOFF_DOSSIER_MARKDOWN_PATH", makefile)
         self.assertIn("verify-au-handoff-dossier:", makefile)
         self.assertIn("scripts/verify_au_handoff_dossier.py", makefile)
         self.assertIn("au-customer-handoff-readiness:", makefile)
         self.assertIn("scripts/build_au_customer_handoff_readiness.py", makefile)
-        self.assertIn("GENO_AU_CUSTOMER_HANDOFF_READINESS_OUTPUT_PATH", makefile)
+        self.assertIn("GEO_AU_CUSTOMER_HANDOFF_READINESS_OUTPUT_PATH", makefile)
         self.assertIn("verify-au-customer-handoff-readiness:", makefile)
         self.assertIn("scripts/verify_au_customer_handoff_readiness.py", makefile)
         self.assertIn("au-customer-handoff-clearance:", makefile)
         self.assertIn("scripts/build_au_customer_handoff_clearance.py", makefile)
-        self.assertIn("--p0a-credential-clearance-path $${GENO_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH", makefile)
-        self.assertIn("--p0a-real-batch-clearance-path $${GENO_AU_P0A_REAL_BATCH_CLEARANCE_OUTPUT_PATH", makefile)
-        self.assertIn("--p0b-google-environment-clearance-path $${GENO_AU_P0B_GOOGLE_ENVIRONMENT_CLEARANCE_OUTPUT_PATH", makefile)
-        self.assertIn("--p0b-google-manual-backfill-clearance-path $${GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_CLEARANCE_OUTPUT_PATH", makefile)
-        self.assertIn("--p0b-google-phase-execution-clearance-path $${GENO_AU_P0B_GOOGLE_PHASE_EXECUTION_CLEARANCE_OUTPUT_PATH", makefile)
-        self.assertIn("GENO_AU_CUSTOMER_HANDOFF_CLEARANCE_OUTPUT_PATH", makefile)
+        self.assertIn("--p0a-credential-clearance-path $${GEO_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH", makefile)
+        self.assertIn("--p0a-real-batch-clearance-path $${GEO_AU_P0A_REAL_BATCH_CLEARANCE_OUTPUT_PATH", makefile)
+        self.assertIn("--p0b-google-environment-clearance-path $${GEO_AU_P0B_GOOGLE_ENVIRONMENT_CLEARANCE_OUTPUT_PATH", makefile)
+        self.assertIn("--p0b-google-manual-backfill-clearance-path $${GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_CLEARANCE_OUTPUT_PATH", makefile)
+        self.assertIn("--p0b-google-phase-execution-clearance-path $${GEO_AU_P0B_GOOGLE_PHASE_EXECUTION_CLEARANCE_OUTPUT_PATH", makefile)
+        self.assertIn("GEO_AU_CUSTOMER_HANDOFF_CLEARANCE_OUTPUT_PATH", makefile)
         self.assertIn("verify-au-customer-handoff-clearance:", makefile)
         self.assertIn("scripts/verify_au_customer_handoff_clearance.py", makefile)
         self.assertIn("au-customer-handoff-package:", makefile)
         self.assertIn("scripts/build_au_customer_handoff_package.py", makefile)
-        self.assertIn("--customer-handoff-clearance-path $${GENO_AU_CUSTOMER_HANDOFF_CLEARANCE_OUTPUT_PATH", makefile)
-        self.assertIn("--next-work-item-path $${GENO_AU_NEXT_WORK_ITEM_OUTPUT_PATH", makefile)
-        self.assertIn("--p0a-credential-update-receipt-path $${GENO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH", makefile)
-        self.assertIn("--p0a-evidence-package-path $${GENO_AU_P0A_EVIDENCE_PACKAGE_OUTPUT_PATH", makefile)
-        self.assertIn("--p0b-google-evidence-package-path $${GENO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH", makefile)
-        self.assertIn("--p0c-report-package-path $${GENO_AU_P0C_REPORT_PACKAGE_OUTPUT_PATH", makefile)
-        self.assertIn("GENO_AU_CUSTOMER_HANDOFF_PACKAGE_OUTPUT_PATH", makefile)
-        self.assertIn("GENO_AU_CUSTOMER_HANDOFF_PACKAGE_MARKDOWN_PATH", makefile)
-        self.assertIn("--markdown-output-path $${GENO_AU_CUSTOMER_HANDOFF_PACKAGE_MARKDOWN_PATH", makefile)
+        self.assertIn("--customer-handoff-clearance-path $${GEO_AU_CUSTOMER_HANDOFF_CLEARANCE_OUTPUT_PATH", makefile)
+        self.assertIn("--next-work-item-path $${GEO_AU_NEXT_WORK_ITEM_OUTPUT_PATH", makefile)
+        self.assertIn("--p0a-credential-update-receipt-path $${GEO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH", makefile)
+        self.assertIn("--p0a-evidence-package-path $${GEO_AU_P0A_EVIDENCE_PACKAGE_OUTPUT_PATH", makefile)
+        self.assertIn("--p0b-google-evidence-package-path $${GEO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH", makefile)
+        self.assertIn("--p0c-report-package-path $${GEO_AU_P0C_REPORT_PACKAGE_OUTPUT_PATH", makefile)
+        self.assertIn("GEO_AU_CUSTOMER_HANDOFF_PACKAGE_OUTPUT_PATH", makefile)
+        self.assertIn("GEO_AU_CUSTOMER_HANDOFF_PACKAGE_MARKDOWN_PATH", makefile)
+        self.assertIn("--markdown-output-path $${GEO_AU_CUSTOMER_HANDOFF_PACKAGE_MARKDOWN_PATH", makefile)
         self.assertIn("verify-au-customer-handoff-package:", makefile)
         self.assertIn("scripts/verify_au_customer_handoff_package.py", makefile)
         self.assertIn("au-delivery-evidence-refresh:", makefile)
@@ -816,39 +816,39 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("$(MAKE) verify-au-customer-handoff-package", makefile)
         self.assertIn("au-next-work-item:", makefile)
         self.assertIn("scripts/build_au_next_work_item_packet.py", makefile)
-        self.assertIn("GENO_AU_NEXT_WORK_ITEM_OUTPUT_PATH", makefile)
+        self.assertIn("GEO_AU_NEXT_WORK_ITEM_OUTPUT_PATH", makefile)
         self.assertIn("verify-au-next-work-item:", makefile)
         self.assertIn("scripts/verify_au_next_work_item_packet.py", makefile)
         self.assertIn("au-delivery-progress:", makefile)
         self.assertIn("scripts/build_au_delivery_progress.py", makefile)
-        self.assertIn("--p0a-credential-clearance-path $${GENO_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH", makefile)
-        self.assertIn("--p0a-real-batch-clearance-path $${GENO_AU_P0A_REAL_BATCH_CLEARANCE_OUTPUT_PATH", makefile)
-        self.assertIn("--p0b-google-environment-clearance-path $${GENO_AU_P0B_GOOGLE_ENVIRONMENT_CLEARANCE_OUTPUT_PATH", makefile)
-        self.assertIn("--p0b-google-manual-backfill-clearance-path $${GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_CLEARANCE_OUTPUT_PATH", makefile)
-        self.assertIn("--p0b-google-phase-execution-clearance-path $${GENO_AU_P0B_GOOGLE_PHASE_EXECUTION_CLEARANCE_OUTPUT_PATH", makefile)
-        self.assertIn("GENO_AU_DELIVERY_PROGRESS_OUTPUT_PATH", makefile)
+        self.assertIn("--p0a-credential-clearance-path $${GEO_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH", makefile)
+        self.assertIn("--p0a-real-batch-clearance-path $${GEO_AU_P0A_REAL_BATCH_CLEARANCE_OUTPUT_PATH", makefile)
+        self.assertIn("--p0b-google-environment-clearance-path $${GEO_AU_P0B_GOOGLE_ENVIRONMENT_CLEARANCE_OUTPUT_PATH", makefile)
+        self.assertIn("--p0b-google-manual-backfill-clearance-path $${GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_CLEARANCE_OUTPUT_PATH", makefile)
+        self.assertIn("--p0b-google-phase-execution-clearance-path $${GEO_AU_P0B_GOOGLE_PHASE_EXECUTION_CLEARANCE_OUTPUT_PATH", makefile)
+        self.assertIn("GEO_AU_DELIVERY_PROGRESS_OUTPUT_PATH", makefile)
         self.assertIn("verify-au-delivery-progress:", makefile)
         self.assertIn("scripts/verify_au_delivery_progress.py", makefile)
         self.assertIn("au-external-dependency-handoff:", makefile)
         self.assertIn("scripts/build_au_external_dependency_handoff.py", makefile)
-        self.assertIn("GENO_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH", makefile)
+        self.assertIn("GEO_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH", makefile)
         self.assertIn(
-            "--p0b-google-manual-backfill-fulfillment-path $${GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH",
+            "--p0b-google-manual-backfill-fulfillment-path $${GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH",
             makefile,
         )
         self.assertIn("verify-au-external-dependency-handoff:", makefile)
         self.assertIn("scripts/verify_au_external_dependency_handoff.py", makefile)
         self.assertIn("au-external-dependency-clearance:", makefile)
         self.assertIn("scripts/run_au_external_dependency_clearance.py", makefile)
-        self.assertIn("GENO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH", makefile)
+        self.assertIn("GEO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH", makefile)
         self.assertIn("verify-au-external-dependency-clearance:", makefile)
         self.assertIn("scripts/verify_au_external_dependency_clearance.py", makefile)
-        self.assertIn("--p0c-report-package-path $${GENO_AU_P0C_REPORT_PACKAGE_OUTPUT_PATH", makefile)
+        self.assertIn("--p0c-report-package-path $${GEO_AU_P0C_REPORT_PACKAGE_OUTPUT_PATH", makefile)
         self.assertIn("au-p0c-report-package:", makefile)
         self.assertIn("scripts/build_au_p0c_report_package.py", makefile)
         self.assertIn("verify-au-p0c-report-package:", makefile)
         self.assertIn("scripts/verify_au_p0c_report_package.py", makefile)
-        self.assertIn("GENO_AU_P0C_REPORT_PACKAGE_OUTPUT_PATH", makefile)
+        self.assertIn("GEO_AU_P0C_REPORT_PACKAGE_OUTPUT_PATH", makefile)
         manual_evidence_block = makefile.split("au-p0b-google-manual-backfill-evidence:", 1)[1].split(
             "\nverify-au-p0b-google-manual-backfill:",
             1,
@@ -865,10 +865,10 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("scripts/build_au_p0b_manual_backfill_template.py", makefile)
         self.assertIn("verify-au-p0b-google-manual-backfill:", makefile)
         self.assertIn("scripts/verify_au_p0b_manual_backfill.py", makefile)
-        self.assertIn("GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_VERIFICATION_PATH", makefile)
+        self.assertIn("GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_VERIFICATION_PATH", makefile)
         self.assertIn("au-p0b-google-playwright-env:", makefile)
         self.assertIn("scripts/build_au_p0b_google_playwright_env_report.py", makefile)
-        self.assertIn("--env-file $${GENO_AU_P0B_GOOGLE_ENV_FILE:-.env.au-p0b-google}", makefile)
+        self.assertIn("--env-file $${GEO_AU_P0B_GOOGLE_ENV_FILE:-.env.au-p0b-google}", makefile)
         self.assertIn("verify-au-p0b-google-playwright-env:", makefile)
         self.assertIn("scripts/verify_au_p0b_google_playwright_env_report.py", makefile)
         self.assertIn("au-p0b-google-playwright-smoke:", makefile)
@@ -877,15 +877,15 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("scripts/verify_au_p0b_google_playwright_smoke.py", makefile)
         self.assertIn("au-p0b-google-spike-health:", makefile)
         self.assertIn("--mode google-spike --require-ready-collectors --health-check-only", makefile)
-        self.assertIn("GENO_AU_P0B_GOOGLE_SPIKE_HEALTH_OUTPUT_PATH", makefile)
+        self.assertIn("GEO_AU_P0B_GOOGLE_SPIKE_HEALTH_OUTPUT_PATH", makefile)
         self.assertIn("au-p0b-google-spike-health-manifest:", makefile)
-        self.assertIn("GENO_AU_P0B_GOOGLE_SPIKE_HEALTH_MANIFEST_PATH", makefile)
+        self.assertIn("GEO_AU_P0B_GOOGLE_SPIKE_HEALTH_MANIFEST_PATH", makefile)
         self.assertIn("au-p0b-google-spike:", makefile)
         self.assertIn("--require-no-collection-failures --require-google-spike-gates", makefile)
-        self.assertIn("GENO_AU_P0B_GOOGLE_SPIKE_PERSIST_ARGS", makefile)
-        self.assertIn("GENO_AU_P0B_GOOGLE_SPIKE_OUTPUT_PATH", makefile)
+        self.assertIn("GEO_AU_P0B_GOOGLE_SPIKE_PERSIST_ARGS", makefile)
+        self.assertIn("GEO_AU_P0B_GOOGLE_SPIKE_OUTPUT_PATH", makefile)
         self.assertIn("au-p0b-google-spike-manifest:", makefile)
-        self.assertIn("GENO_AU_P0B_GOOGLE_SPIKE_MANIFEST_PATH", makefile)
+        self.assertIn("GEO_AU_P0B_GOOGLE_SPIKE_MANIFEST_PATH", makefile)
         self.assertIn("au-p0b-google-serp-health:", makefile)
         self.assertIn("--mode google-serp-spike", makefile)
         self.assertIn("verify-au-p0b-google-serp-health:", makefile)
@@ -905,74 +905,74 @@ class InfraContractsTest(unittest.TestCase):
         self.assertIn("verify-au-broader-platform-registry:", makefile)
         self.assertIn("au-retest-scheduler-plan:", makefile)
         self.assertIn("scripts/build_au_retest_scheduler_plan.py", makefile)
-        self.assertIn("GENO_AU_RETEST_SCHEDULER_PLAN_OUTPUT_PATH", makefile)
+        self.assertIn("GEO_AU_RETEST_SCHEDULER_PLAN_OUTPUT_PATH", makefile)
         self.assertIn("verify-au-retest-scheduler-plan:", makefile)
         self.assertIn("scripts/verify_au_retest_scheduler_plan.py", makefile)
         self.assertIn("au-retest-execution-status:", makefile)
         self.assertIn("scripts/build_au_retest_execution_status.py", makefile)
-        self.assertIn("GENO_AU_RETEST_EXECUTION_STATUS_OUTPUT_PATH", makefile)
+        self.assertIn("GEO_AU_RETEST_EXECUTION_STATUS_OUTPUT_PATH", makefile)
         self.assertIn("verify-au-retest-execution-status:", makefile)
         self.assertIn("scripts/verify_au_retest_execution_status.py", makefile)
         self.assertIn("scripts/verify_au_broader_platform_registry.py", makefile)
         self.assertIn(
-            "\t@PYTHONPATH=packages/geno_core:apps/api python3 workers/collector_worker/run_collection_slice.py --plan-browser-fidelity-sampling",
+            "\t@PYTHONPATH=packages/geo_core:apps/api python3 workers/collector_worker/run_collection_slice.py --plan-browser-fidelity-sampling",
             makefile,
         )
         self.assertIn("browser-fidelity-scheduler-plan:", makefile)
         self.assertIn("browser-fidelity-scheduler-run:", makefile)
         self.assertIn("report-export-worker:", makefile)
         self.assertIn(
-            "\tPYTHONPATH=packages/geno_core:apps/api python3 workers/report_export_worker/run_report_export_jobs.py --max-jobs $${GENO_REPORT_EXPORT_WORKER_MAX_JOBS:-1} --max-attempts $${GENO_REPORT_EXPORT_WORKER_MAX_ATTEMPTS:-3} --retry-backoff-seconds $${GENO_REPORT_EXPORT_WORKER_RETRY_BACKOFF_SECONDS:-300} --lease-seconds $${GENO_REPORT_EXPORT_WORKER_LEASE_SECONDS:-900}",
+            "\tPYTHONPATH=packages/geo_core:apps/api python3 workers/report_export_worker/run_report_export_jobs.py --max-jobs $${GEO_REPORT_EXPORT_WORKER_MAX_JOBS:-1} --max-attempts $${GEO_REPORT_EXPORT_WORKER_MAX_ATTEMPTS:-3} --retry-backoff-seconds $${GEO_REPORT_EXPORT_WORKER_RETRY_BACKOFF_SECONDS:-300} --lease-seconds $${GEO_REPORT_EXPORT_WORKER_LEASE_SECONDS:-900}",
             makefile,
         )
         self.assertIn("runtime-alert-notification-worker:", makefile)
         self.assertIn(
-            "\tPYTHONPATH=packages/geno_core:apps/api python3 workers/notification_worker/run_runtime_alert_notifications.py --market-code $${GENO_RUNTIME_ALERT_MARKET_CODE:-AU} --max-projects $${GENO_RUNTIME_ALERT_MAX_PROJECTS:-50}",
+            "\tPYTHONPATH=packages/geo_core:apps/api python3 workers/notification_worker/run_runtime_alert_notifications.py --market-code $${GEO_RUNTIME_ALERT_MARKET_CODE:-AU} --max-projects $${GEO_RUNTIME_ALERT_MAX_PROJECTS:-50}",
             makefile,
         )
         self.assertIn("runtime-alert-escalation-worker:", makefile)
         self.assertIn(
-            "\tPYTHONPATH=packages/geno_core:apps/api python3 workers/notification_worker/run_runtime_alert_escalations.py --market-code $${GENO_RUNTIME_ALERT_MARKET_CODE:-AU} --max-projects $${GENO_RUNTIME_ALERT_MAX_PROJECTS:-50} --severity-threshold-hours $${GENO_RUNTIME_ALERT_ESCALATION_THRESHOLDS:-critical=4,high=24}",
+            "\tPYTHONPATH=packages/geo_core:apps/api python3 workers/notification_worker/run_runtime_alert_escalations.py --market-code $${GEO_RUNTIME_ALERT_MARKET_CODE:-AU} --max-projects $${GEO_RUNTIME_ALERT_MAX_PROJECTS:-50} --severity-threshold-hours $${GEO_RUNTIME_ALERT_ESCALATION_THRESHOLDS:-critical=4,high=24}",
             makefile,
         )
         self.assertIn("entity-alias-assignment-notification-worker:", makefile)
         self.assertIn(
-            "\tPYTHONPATH=packages/geno_core:apps/api python3 workers/notification_worker/run_entity_alias_assignment_notifications.py --market-code $${GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU} --max-projects $${GENO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS:-50}",
+            "\tPYTHONPATH=packages/geo_core:apps/api python3 workers/notification_worker/run_entity_alias_assignment_notifications.py --market-code $${GEO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU} --max-projects $${GEO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS:-50}",
             makefile,
         )
         self.assertIn("entity-alias-assignment-escalation-worker:", makefile)
         self.assertIn(
-            "\tPYTHONPATH=packages/geno_core:apps/api python3 workers/notification_worker/run_entity_alias_assignment_escalations.py --market-code $${GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU} --max-projects $${GENO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS:-50}",
+            "\tPYTHONPATH=packages/geo_core:apps/api python3 workers/notification_worker/run_entity_alias_assignment_escalations.py --market-code $${GEO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU} --max-projects $${GEO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS:-50}",
             makefile,
         )
         self.assertIn("entity-alias-assignment-reassignment-worker:", makefile)
         self.assertIn(
-            "\tPYTHONPATH=packages/geno_core:apps/api python3 workers/notification_worker/run_entity_alias_assignment_reassignments.py --market-code $${GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU} --assigned-to $${GENO_ENTITY_ALIAS_ASSIGNMENT_REASSIGN_TO:-runtime-console} --from-assignment-status escalated --max-projects $${GENO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS:-50}",
+            "\tPYTHONPATH=packages/geo_core:apps/api python3 workers/notification_worker/run_entity_alias_assignment_reassignments.py --market-code $${GEO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU} --assigned-to $${GEO_ENTITY_ALIAS_ASSIGNMENT_REASSIGN_TO:-runtime-console} --from-assignment-status escalated --max-projects $${GEO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS:-50}",
             makefile,
         )
         self.assertIn("entity-alias-assignment-dispatch-apply-worker:", makefile)
         self.assertIn(
-            "\tPYTHONPATH=packages/geno_core:apps/api python3 workers/notification_worker/run_entity_alias_assignment_dispatch_apply.py --market-code $${GENO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU} --reviewer-id $${GENO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_REVIEWERS:-runtime-console} --max-per-reviewer $${GENO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_MAX_PER_REVIEWER:-10} --limit-per-project $${GENO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_LIMIT:-50} --max-projects $${GENO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS:-50}",
+            "\tPYTHONPATH=packages/geo_core:apps/api python3 workers/notification_worker/run_entity_alias_assignment_dispatch_apply.py --market-code $${GEO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU} --reviewer-id $${GEO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_REVIEWERS:-runtime-console} --max-per-reviewer $${GEO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_MAX_PER_REVIEWER:-10} --limit-per-project $${GEO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_LIMIT:-50} --max-projects $${GEO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS:-50}",
             makefile,
         )
         self.assertIn("notification-delivery-worker:", makefile)
         self.assertIn(
-            "\tPYTHONPATH=packages/geno_core:apps/api python3 workers/notification_worker/run_notification_deliveries.py --max-deliveries $${GENO_NOTIFICATION_DELIVERY_MAX_DELIVERIES:-1} --max-attempts $${GENO_NOTIFICATION_DELIVERY_MAX_ATTEMPTS:-3} --retry-backoff-seconds $${GENO_NOTIFICATION_DELIVERY_RETRY_BACKOFF_SECONDS:-120} --lease-seconds $${GENO_NOTIFICATION_DELIVERY_LEASE_SECONDS:-300} --timeout-seconds $${GENO_NOTIFICATION_DELIVERY_TIMEOUT_SECONDS:-5.0} --secondary-signing-secret-env $${GENO_NOTIFICATION_WEBHOOK_SIGNING_SECRET_PREVIOUS_ENV:-GENO_NOTIFICATION_WEBHOOK_SIGNING_SECRET_PREVIOUS}",
+            "\tPYTHONPATH=packages/geo_core:apps/api python3 workers/notification_worker/run_notification_deliveries.py --max-deliveries $${GEO_NOTIFICATION_DELIVERY_MAX_DELIVERIES:-1} --max-attempts $${GEO_NOTIFICATION_DELIVERY_MAX_ATTEMPTS:-3} --retry-backoff-seconds $${GEO_NOTIFICATION_DELIVERY_RETRY_BACKOFF_SECONDS:-120} --lease-seconds $${GEO_NOTIFICATION_DELIVERY_LEASE_SECONDS:-300} --timeout-seconds $${GEO_NOTIFICATION_DELIVERY_TIMEOUT_SECONDS:-5.0} --secondary-signing-secret-env $${GEO_NOTIFICATION_WEBHOOK_SIGNING_SECRET_PREVIOUS_ENV:-GEO_NOTIFICATION_WEBHOOK_SIGNING_SECRET_PREVIOUS}",
             makefile,
         )
         self.assertIn("docker-config-scheduler:", makefile)
         self.assertIn("docker-config-observability:", makefile)
         self.assertIn("docker-config-db-smoke:", makefile)
         self.assertIn("db-smoke:", makefile)
-        self.assertIn("docker compose -p geno-db-smoke -f infra/docker-compose.yml --profile db-smoke run --rm db-smoke", makefile)
+        self.assertIn("docker compose -p geo-db-smoke -f infra/docker-compose.yml --profile db-smoke run --rm db-smoke", makefile)
         self.assertIn("ci-local: quality test web-build docker-config docker-config-llm docker-config-scheduler docker-config-observability docker-config-db-smoke db-smoke runtime-e2e", makefile)
         self.assertIn("!.env.au-p0a.example", gitignore)
         p0a_env_example = (ROOT / ".env.au-p0a.example").read_text(encoding="utf-8")
         for name in (
             "PERPLEXITY_API_KEY=",
             "OPENAI_API_KEY=",
-            "DATABASE_URL=postgresql://geno_runtime_app:geno_runtime_app@localhost:5432/geno",
-            "GENO_AU_P0A_STATUS_OUTPUT_PATH=docs/runtime_preflight/au-p0a-status-latest.json",
+            "DATABASE_URL=postgresql://geo_runtime_app:geo_runtime_app@localhost:5432/geo",
+            "GEO_AU_P0A_STATUS_OUTPUT_PATH=docs/runtime_preflight/au-p0a-status-latest.json",
         ):
             self.assertIn(name, p0a_env_example)
         for forbidden in ("sk-", "pplx-", "AIza", "serpapi.com"):
@@ -988,8 +988,8 @@ class InfraContractsTest(unittest.TestCase):
             "DATABASE_URL=",
             "GOOGLE_PLAYWRIGHT_BROWSER_NAME=chromium",
             "GOOGLE_PLAYWRIGHT_TIMEOUT_SECONDS=45",
-            "GENO_AU_P0B_GOOGLE_ENV_FILE=.env.au-p0b-google",
-            "GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_VERIFICATION_PATH=",
+            "GEO_AU_P0B_GOOGLE_ENV_FILE=.env.au-p0b-google",
+            "GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_VERIFICATION_PATH=",
         ):
             self.assertIn(name, google_env_example)
         for forbidden in ("sk-", "AIza", "postgresql://user:pass@", "serpapi.com", "storage_state"):

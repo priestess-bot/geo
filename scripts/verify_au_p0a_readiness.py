@@ -426,28 +426,28 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--phase",
         choices=PHASES,
-        default=os.environ.get("GENO_AU_P0A_READINESS_PHASE", "preflight"),
+        default=os.environ.get("GEO_AU_P0A_READINESS_PHASE", "preflight"),
         help="Readiness phase to verify: preflight, small_batch, or full_batch.",
     )
     parser.add_argument(
         "--runbook-path",
-        default=os.environ.get("GENO_AU_P0A_RUNBOOK_OUTPUT_PATH", DEFAULT_RUNBOOK_PATH),
+        default=os.environ.get("GEO_AU_P0A_RUNBOOK_OUTPUT_PATH", DEFAULT_RUNBOOK_PATH),
         help="Path to the generated AU P0a runbook JSON.",
     )
     parser.add_argument(
         "--output-path",
-        default=os.environ.get("GENO_AU_P0A_READINESS_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_P0A_READINESS_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to write the readiness JSON result.",
     )
     parser.add_argument(
         "--env-file",
-        default=os.environ.get("GENO_AU_P0A_ENV_FILE", DEFAULT_ENV_FILE),
+        default=os.environ.get("GEO_AU_P0A_ENV_FILE", DEFAULT_ENV_FILE),
         help="Optional env file to parse without shell evaluation. Missing files are allowed.",
     )
     parser.add_argument(
         "--require-db-check",
         action="store_true",
-        default=_flag_enabled(os.environ.get("GENO_AU_P0A_REQUIRE_DB_CHECK")),
+        default=_flag_enabled(os.environ.get("GEO_AU_P0A_REQUIRE_DB_CHECK")),
         help="Require a read-only SELECT 1 check against DATABASE_URL before passing readiness.",
     )
     parser.add_argument(

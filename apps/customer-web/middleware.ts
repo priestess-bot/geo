@@ -4,7 +4,7 @@ export function middleware(request: NextRequest) {
   if (hasInvitationTokenKey(request.nextUrl.searchParams)) {
     const landing = new URL("/", request.url);
     copySafeValue(request.nextUrl.searchParams, landing.searchParams, "invitation_id", 80);
-    if (request.cookies.get("GENO_RUNTIME_SESSION")?.value) {
+    if (request.cookies.get("GEO_RUNTIME_SESSION")?.value) {
       copySafeProjectId(request.nextUrl.searchParams, landing.searchParams);
     }
     return withNoReferrer(NextResponse.redirect(landing, 303));

@@ -8,8 +8,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
 
-from geno_core.audit import hash_payload
-from geno_core.models import MarketProfile, RawCollectResult
+from geo_core.audit import hash_payload
+from geo_core.models import MarketProfile, RawCollectResult
 from scripts.run_au_p0b_google_playwright_smoke import (
     SMOKE_VERSION,
     compute_smoke_payload_hash,
@@ -62,8 +62,8 @@ class FakeReadyGoogleAIOCollector:
                     "source_type": "brand_official",
                 }
             ],
-            screenshot_url="geno-browser-screenshot://google_aio.playwright/fake.png",
-            html_snapshot_url="geno-browser-snapshot://google_aio.playwright/fake.html",
+            screenshot_url="geo-browser-screenshot://google_aio.playwright/fake.png",
+            html_snapshot_url="geo-browser-snapshot://google_aio.playwright/fake.html",
             raw_payload={
                 "prompt": prompt,
                 "market_code": market.market_code,
@@ -73,7 +73,7 @@ class FakeReadyGoogleAIOCollector:
                 "platform": "google",
                 "surface": "google_aio",
                 "collector_backend_id": self.id(),
-                "_geno_browser_capture": {
+                "_geo_browser_capture": {
                     "capture_type": "google_browser_ui",
                     "start_url": "https://www.google.com/search?udm=14",
                     "final_url": "https://www.google.com/search?q=koala",
@@ -119,7 +119,7 @@ class GooglePlaywrightSmokeTest(unittest.TestCase):
         self.assertEqual(payload["collector_version"], "google-playwright-browser-v1")
         self.assertEqual(payload["smoke_payload_hash"], compute_smoke_payload_hash(payload))
         self.assertEqual(
-            payload["evidence"]["raw_answer"]["raw_payload"]["_geno_browser_capture"]["capture_type"],
+            payload["evidence"]["raw_answer"]["raw_payload"]["_geo_browser_capture"]["capture_type"],
             "google_browser_ui",
         )
         self.assertIn("html_snapshot", payload["evidence_asset_hashes"])

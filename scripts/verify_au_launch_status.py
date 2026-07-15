@@ -156,7 +156,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "path",
         nargs="?",
-        default=os.environ.get("GENO_AU_LAUNCH_STATUS_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_LAUNCH_STATUS_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to the AU launch status JSON.",
     )
     parser.add_argument(

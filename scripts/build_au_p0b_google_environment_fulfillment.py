@@ -298,15 +298,15 @@ def _google_environment_action_plan(
     missing_items = _required_missing_items(items)
     target_env_file = _target_env_file(environment_request)
     strict_gate_command = (
-        "PYTHONPATH=packages/geno_core:apps/api python3 "
+        "PYTHONPATH=packages/geo_core:apps/api python3 "
         "scripts/verify_au_p0b_google_environment_fulfillment.py "
-        "${GENO_AU_P0B_GOOGLE_ENVIRONMENT_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-environment-fulfillment-latest.json} "
+        "${GEO_AU_P0B_GOOGLE_ENVIRONMENT_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-environment-fulfillment-latest.json} "
         "--require-fulfilled"
     )
     ready_smoke_gate_command = (
-        "PYTHONPATH=packages/geno_core:apps/api python3 "
+        "PYTHONPATH=packages/geo_core:apps/api python3 "
         "scripts/verify_au_p0b_google_playwright_env_report.py "
-        "${GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-playwright-env-latest.json} "
+        "${GEO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-playwright-env-latest.json} "
         "--require-ready-smoke"
     )
     validation_sequence = [
@@ -462,15 +462,15 @@ def build_au_p0b_google_environment_fulfillment(
         if missing_required
         else "make verify-au-p0b-google-environment-fulfillment",
         "strict_gate_command": (
-            "PYTHONPATH=packages/geno_core:apps/api python3 "
+            "PYTHONPATH=packages/geo_core:apps/api python3 "
             "scripts/verify_au_p0b_google_environment_fulfillment.py "
-            "${GENO_AU_P0B_GOOGLE_ENVIRONMENT_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-environment-fulfillment-latest.json} "
+            "${GEO_AU_P0B_GOOGLE_ENVIRONMENT_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-environment-fulfillment-latest.json} "
             "--require-fulfilled"
         ),
         "ready_smoke_strict_gate_command": (
-            "PYTHONPATH=packages/geno_core:apps/api python3 "
+            "PYTHONPATH=packages/geo_core:apps/api python3 "
             "scripts/verify_au_p0b_google_playwright_env_report.py "
-            "${GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-playwright-env-latest.json} "
+            "${GEO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-playwright-env-latest.json} "
             "--require-ready-smoke"
         ),
         "raw_secret_values_allowed": False,
@@ -586,7 +586,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--environment-request-path",
         default=os.environ.get(
-            "GENO_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH",
+            "GEO_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH",
             DEFAULT_ENVIRONMENT_REQUEST_PATH,
         ),
         help="Path to the AU P0b Google environment request packet JSON.",
@@ -594,19 +594,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--playwright-env-report-path",
         default=os.environ.get(
-            "GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH",
+            "GEO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH",
             DEFAULT_PLAYWRIGHT_ENV_REPORT_PATH,
         ),
         help="Path to the AU P0b Google Playwright environment report JSON.",
     )
     parser.add_argument(
         "--env-file",
-        default=os.environ.get("GENO_AU_P0B_GOOGLE_ENV_FILE", DEFAULT_PLAYWRIGHT_ENV_FILE),
+        default=os.environ.get("GEO_AU_P0B_GOOGLE_ENV_FILE", DEFAULT_PLAYWRIGHT_ENV_FILE),
         help="Optional env file to parse if the Playwright environment report must be generated in memory.",
     )
     parser.add_argument(
         "--output-path",
-        default=os.environ.get("GENO_AU_P0B_GOOGLE_ENVIRONMENT_FULFILLMENT_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_P0B_GOOGLE_ENVIRONMENT_FULFILLMENT_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to write the AU P0b Google environment fulfillment JSON.",
     )
     parser.add_argument("--generated-at", default=None, help="Override generated_at timestamp for deterministic tests.")

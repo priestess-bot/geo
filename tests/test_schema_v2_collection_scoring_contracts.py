@@ -124,9 +124,9 @@ class SchemaV2CollectionScoringContractsTest(unittest.TestCase):
     def test_all_project_tables_force_rls_and_use_session_permissions(self) -> None:
         self.assertIn("ALTER TABLE %I ENABLE ROW LEVEL SECURITY", self.sql)
         self.assertIn("ALTER TABLE %I FORCE ROW LEVEL SECURITY", self.sql)
-        self.assertIn("public.geno_v2_session_has_project_permission", self.sql)
-        self.assertIn("FOR SELECT TO geno_v2_runtime", self.sql)
-        self.assertIn("FOR INSERT TO geno_v2_runtime", self.sql)
+        self.assertIn("public.geo_v2_session_has_project_permission", self.sql)
+        self.assertIn("FOR SELECT TO geo_v2_runtime", self.sql)
+        self.assertIn("FOR INSERT TO geo_v2_runtime", self.sql)
         self.assertNotIn("TO PUBLIC", self.sql)
         for table_name in self.tables:
             with self.subTest(table_name=table_name):
@@ -162,7 +162,7 @@ class SchemaV2CollectionScoringContractsTest(unittest.TestCase):
                 self.assertIn("replay_nonce integer", block)
                 self.assertIn("cancel_requested_at timestamptz", block)
                 for operation in ("claim", "heartbeat", "complete", "fail"):
-                    self.assertIn(f"geno_v2_{operation}_{singular}", self.sql)
+                    self.assertIn(f"geo_v2_{operation}_{singular}", self.sql)
 
         self.assertEqual(self.sql.count("FOR UPDATE OF "), 5)
         self.assertEqual(self.sql.count("SKIP LOCKED"), 5)
@@ -172,12 +172,12 @@ class SchemaV2CollectionScoringContractsTest(unittest.TestCase):
         self.assertGreaterEqual(self.sql.count("lease_owner = btrim(p_worker_id)"), 12)
         self.assertIn("MUST NOT hold that transaction open", self.sql)
         self.assertIn("USING ERRCODE = '55000'", self.sql)
-        self.assertIn("geno_v2_ack_collection_job_cancel", self.sql)
-        self.assertIn("geno_v2_ack_visibility_score_run_cancel", self.sql)
-        self.assertIn("geno_v2_ack_retest_run_cancel", self.sql)
-        self.assertIn("geno_v2_replay_collection_job", self.sql)
-        self.assertIn("geno_v2_replay_visibility_score_run", self.sql)
-        self.assertIn("geno_v2_replay_retest_run", self.sql)
+        self.assertIn("geo_v2_ack_collection_job_cancel", self.sql)
+        self.assertIn("geo_v2_ack_visibility_score_run_cancel", self.sql)
+        self.assertIn("geo_v2_ack_retest_run_cancel", self.sql)
+        self.assertIn("geo_v2_replay_collection_job", self.sql)
+        self.assertIn("geo_v2_replay_visibility_score_run", self.sql)
+        self.assertIn("geo_v2_replay_retest_run", self.sql)
         self.assertEqual(self.sql.count("EXCEPTION WHEN unique_violation"), 3)
 
     def test_dispatch_outbox_is_an_atomic_typed_wakeup_projection(self) -> None:
@@ -200,41 +200,41 @@ class SchemaV2CollectionScoringContractsTest(unittest.TestCase):
         for table_name in ("collection_jobs", "visibility_score_runs", "retest_runs"):
             self.assertIn(f"AFTER INSERT ON {table_name}", self.sql)
         for operation in ("claim", "heartbeat", "complete", "fail"):
-            self.assertIn(f"geno_v2_{operation}_durable_job_dispatch", self.sql)
-        self.assertIn("geno_v2_enqueue_durable_job_dispatch", self.sql)
-        self.assertNotIn("geno_v2_replay_durable_job_dispatch", self.sql)
-        self.assertNotIn("geno_v2_cancel_durable_job_dispatch", self.sql)
+            self.assertIn(f"geo_v2_{operation}_durable_job_dispatch", self.sql)
+        self.assertIn("geo_v2_enqueue_durable_job_dispatch", self.sql)
+        self.assertNotIn("geo_v2_replay_durable_job_dispatch", self.sql)
+        self.assertNotIn("geo_v2_cancel_durable_job_dispatch", self.sql)
         self.assertIn("runtime has forbidden durable dispatch outbox DML", self.sql)
 
     def test_worker_and_result_boundaries_are_independent_of_user_sessions(self) -> None:
         for role_name in (
-            "geno_v2_worker",
-            "geno_v2_job_owner",
-            "geno_v2_result_owner",
-            "geno_v2_job_command_owner",
+            "geo_v2_worker",
+            "geo_v2_job_owner",
+            "geo_v2_result_owner",
+            "geo_v2_job_command_owner",
         ):
             self.assertIn(f"'{role_name}'", self.sql)
         self.assertIn("NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE", self.sql)
-        self.assertIn("ALTER ROLE geno_v2_worker_login PASSWORD NULL", self.sql)
-        self.assertIn("GRANT geno_v2_worker TO geno_v2_worker_login", self.sql)
+        self.assertIn("ALTER ROLE geo_v2_worker_login PASSWORD NULL", self.sql)
+        self.assertIn("GRANT geo_v2_worker TO geo_v2_worker_login", self.sql)
         self.assertIn("WITH ADMIN FALSE, INHERIT FALSE, SET TRUE", self.sql)
         self.assertIn("Schema v2 job roles must have no role memberships", self.sql)
-        self.assertIn("OWNER TO geno_v2_job_owner", self.sql)
-        self.assertIn("OWNER TO geno_v2_result_owner", self.sql)
-        self.assertIn("TO geno_v2_worker", self.sql)
+        self.assertIn("OWNER TO geo_v2_job_owner", self.sql)
+        self.assertIn("OWNER TO geo_v2_result_owner", self.sql)
+        self.assertIn("TO geo_v2_worker", self.sql)
         self.assertNotIn("prompt.import", self.sql)
 
         worker_region = self.sql[
-            self.sql.index("CREATE FUNCTION geno_v2_claim_collection_job") :
+            self.sql.index("CREATE FUNCTION geo_v2_claim_collection_job") :
             self.sql.index("CREATE TRIGGER visibility_weight_profiles_guard_used_update")
         ]
         for permission_name in ("'collection.run'", "'score.configure'", "'retest.run'"):
-            self.assertNotIn(permission_name, worker_region.split("CREATE FUNCTION geno_v2_request_")[0])
+            self.assertNotIn(permission_name, worker_region.split("CREATE FUNCTION geo_v2_request_")[0])
 
         self.assertIn("FOR UPDATE;", self.sql)
-        self.assertIn("public.geno_v2_persist_collection_result(\n        locked_job", self.sql)
-        self.assertIn("public.geno_v2_persist_visibility_score_result(\n        locked_run", self.sql)
-        self.assertIn("public.geno_v2_persist_retest_result(\n        locked_run", self.sql)
+        self.assertIn("public.geo_v2_persist_collection_result(\n        locked_job", self.sql)
+        self.assertIn("public.geo_v2_persist_visibility_score_result(\n        locked_run", self.sql)
+        self.assertIn("public.geo_v2_persist_retest_result(\n        locked_run", self.sql)
         self.assertNotRegex(
             self.sql,
             r"jsonb_build_object\('lease_token'|input_refs[^\n]*lease_token",
@@ -273,7 +273,7 @@ class SchemaV2CollectionScoringContractsTest(unittest.TestCase):
             "action_tasks",
         )
         result_grant = self.sql.split("GRANT INSERT ON answer_runs", 1)[1].split(
-            "TO geno_v2_result_owner;", 1
+            "TO geo_v2_result_owner;", 1
         )[0]
         for table_name in generated_tables:
             with self.subTest(table_name=table_name):
@@ -284,10 +284,10 @@ class SchemaV2CollectionScoringContractsTest(unittest.TestCase):
                     )
                 else:
                     self.assertIn(table_name, result_grant)
-        self.assertIn("geno_v2_refresh_collection_run_summary", self.sql)
-        self.assertIn("geno_v2_claim_artifact_finalize", self.sql)
+        self.assertIn("geo_v2_refresh_collection_run_summary", self.sql)
+        self.assertIn("geo_v2_claim_artifact_finalize", self.sql)
         self.assertIn("artifact_status = ''finalized''", self.sql)
-        self.assertIn("geno_v2_require_finalized_score_evidence", self.sql)
+        self.assertIn("geo_v2_require_finalized_score_evidence", self.sql)
         self.assertIn("asset.artifact_status = 'finalized'", self.sql)
         self.assertIn("GRANT INSERT ON durable_job_dispatch_outbox", self.sql)
 

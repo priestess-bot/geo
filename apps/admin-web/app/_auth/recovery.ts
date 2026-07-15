@@ -13,10 +13,10 @@ import type { InvitationRequest, InvitationSurface } from "./contracts";
 
 const RECOVERY_VERSION = 1 as const;
 const RECOVERY_TTL_SECONDS = 10 * 60;
-const RECOVERY_AAD = Buffer.from("geno-auth-recovery:v1", "utf8");
+const RECOVERY_AAD = Buffer.from("geo-auth-recovery:v1", "utf8");
 const COOKIE_NAMES: Record<InvitationSurface, string> = {
-  admin: "GENO_ADMIN_REDEEM_RECOVERY",
-  customer: "GENO_CUSTOMER_REDEEM_RECOVERY"
+  admin: "GEO_ADMIN_REDEEM_RECOVERY",
+  customer: "GEO_CUSTOMER_REDEEM_RECOVERY"
 };
 
 export interface RedemptionRecoveryPayload {
@@ -218,13 +218,13 @@ export function upstreamSetCookies(headers: Headers): string[] {
 
 export function hasCompleteSessionDelivery(cookies: string[]): boolean {
   return (
-    cookies.some((cookie) => /^GENO_RUNTIME_SESSION=/i.test(cookie))
-    && cookies.some((cookie) => /^GENO_CSRF_TOKEN=/i.test(cookie))
+    cookies.some((cookie) => /^GEO_RUNTIME_SESSION=/i.test(cookie))
+    && cookies.some((cookie) => /^GEO_CSRF_TOKEN=/i.test(cookie))
   );
 }
 
 export function sessionTokenFromDelivery(cookies: string[]): string | null {
-  const header = cookies.find((cookie) => /^GENO_RUNTIME_SESSION=/i.test(cookie));
+  const header = cookies.find((cookie) => /^GEO_RUNTIME_SESSION=/i.test(cookie));
   if (!header) {
     return null;
   }
@@ -242,14 +242,14 @@ export function validateRecoveryConfiguration(): { secureCookies: boolean } {
 }
 
 function recoverySecret(): string {
-  const directSecret = process.env.GENO_AUTH_RECOVERY_COOKIE_SECRET || "";
-  const secretFile = (process.env.GENO_AUTH_RECOVERY_COOKIE_SECRET_FILE || "").trim();
+  const directSecret = process.env.GEO_AUTH_RECOVERY_COOKIE_SECRET || "";
+  const secretFile = (process.env.GEO_AUTH_RECOVERY_COOKIE_SECRET_FILE || "").trim();
   if (directSecret && secretFile) {
     throw new Error("recovery secret must use exactly one source");
   }
   const secret = secretFile ? readFileSync(secretFile, "utf8").trimEnd() : directSecret;
   if (Buffer.byteLength(secret, "utf8") < 32) {
-    throw new Error("GENO_AUTH_RECOVERY_COOKIE_SECRET must contain at least 32 bytes");
+    throw new Error("GEO_AUTH_RECOVERY_COOKIE_SECRET must contain at least 32 bytes");
   }
   return secret;
 }
@@ -317,7 +317,7 @@ function validatePayload(value: unknown): RedemptionRecoveryPayload {
 
 function stableIdempotencyKey(surface: InvitationSurface, frozenRequestHash: string): string {
   return createHmac("sha256", recoverySecret())
-    .update(`geno-auth-idempotency:v${RECOVERY_VERSION}\0${surface}\0${frozenRequestHash}`, "utf8")
+    .update(`geo-auth-idempotency:v${RECOVERY_VERSION}\0${surface}\0${frozenRequestHash}`, "utf8")
     .digest("base64url");
 }
 
@@ -349,7 +349,7 @@ function safeEqual(left: string, right: string): boolean {
 }
 
 function secureCookiesEnabled(): boolean {
-  const configured = process.env.GENO_RUNTIME_SESSION_COOKIE_SECURE;
+  const configured = process.env.GEO_RUNTIME_SESSION_COOKIE_SECURE;
   if (configured === undefined || configured.trim() === "") {
     return process.env.NODE_ENV === "production";
   }
@@ -363,5 +363,5 @@ function secureCookiesEnabled(): boolean {
     }
     return false;
   }
-  throw new Error("GENO_RUNTIME_SESSION_COOKIE_SECURE must be a strict boolean");
+  throw new Error("GEO_RUNTIME_SESSION_COOKIE_SECURE must be a strict boolean");
 }

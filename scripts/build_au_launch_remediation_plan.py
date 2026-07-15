@@ -93,9 +93,9 @@ def _p0a_environment_item(blockers: list[str]) -> dict[str, Any]:
         ],
         "verification_commands": [
             _command(
-                "PYTHONPATH=packages/geno_core:apps/api "
+                "PYTHONPATH=packages/geo_core:apps/api "
                 "python3 scripts/verify_au_p0a_env_report.py "
-                "${GENO_AU_P0A_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-env-latest.json} "
+                "${GEO_AU_P0A_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-env-latest.json} "
                 "--require-ready-environment"
             ),
             _command("make au-p0a-status"),
@@ -130,9 +130,9 @@ def _p0a_preflight_item() -> dict[str, Any]:
             _command("make verify-api-preflight"),
             _command("make preflight-manifest"),
             _command(
-                "PYTHONPATH=packages/geno_core:apps/api "
+                "PYTHONPATH=packages/geo_core:apps/api "
                 "python3 scripts/verify_preflight_payload.py "
-                "${GENO_API_PREFLIGHT_OUTPUT_PATH:-docs/runtime_preflight/api-preflight-latest.json} "
+                "${GEO_API_PREFLIGHT_OUTPUT_PATH:-docs/runtime_preflight/api-preflight-latest.json} "
                 "--require-design-partner-ready"
             ),
         ],
@@ -157,14 +157,14 @@ def _p0a_small_batch_item() -> dict[str, Any]:
         "required_inputs": ["P0a preflight design-partner gate pass"],
         "commands": [
             _command(
-                "PYTHONPATH=packages/geno_core:apps/api "
+                "PYTHONPATH=packages/geo_core:apps/api "
                 "python3 workers/collector_worker/run_collection_slice.py --mode api "
                 "--prompt-limit 5 --cities Sydney --sample-size 3 --require-ready-collectors "
                 "--require-p0a-readiness --require-no-collection-failures --persist --persist-analysis "
                 "--preflight-output-path docs/runtime_preflight/au-p0a-small-batch.json"
             ),
             _command(
-                "PYTHONPATH=packages/geno_core:apps/api "
+                "PYTHONPATH=packages/geo_core:apps/api "
                 "python3 scripts/build_preflight_manifest.py docs/runtime_preflight/au-p0a-small-batch.json "
                 "--manifest-path docs/runtime_preflight/au-p0a-small-batch-manifest.json "
                 "--require-design-partner-ready"
@@ -191,7 +191,7 @@ def _p0a_full_batch_item() -> dict[str, Any]:
         "required_inputs": ["P0a small batch design-partner gate pass"],
         "commands": [
             _command(
-                "PYTHONPATH=packages/geno_core:apps/api "
+                "PYTHONPATH=packages/geo_core:apps/api "
                 "python3 workers/collector_worker/run_collection_slice.py --mode api "
                 "--prompt-limit 100 --cities Australia,Sydney,Melbourne,Brisbane --sample-size 3 "
                 "--require-ready-collectors --require-p0a-readiness --require-no-collection-failures "
@@ -199,7 +199,7 @@ def _p0a_full_batch_item() -> dict[str, Any]:
                 "--preflight-output-path docs/runtime_preflight/au-p0a-full-batch.json"
             ),
             _command(
-                "PYTHONPATH=packages/geno_core:apps/api "
+                "PYTHONPATH=packages/geo_core:apps/api "
                 "python3 scripts/build_preflight_manifest.py docs/runtime_preflight/au-p0a-full-batch.json "
                 "--manifest-path docs/runtime_preflight/au-p0a-full-batch-manifest.json "
                 "--require-design-partner-ready"
@@ -241,9 +241,9 @@ def _p0b_playwright_env_item() -> dict[str, Any]:
         "verification_commands": [
             _command("make verify-au-p0b-google-execution-checklist"),
             _command(
-                "PYTHONPATH=packages/geno_core:apps/api "
+                "PYTHONPATH=packages/geo_core:apps/api "
                 "python3 scripts/verify_au_p0b_google_playwright_env_report.py "
-                "${GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-playwright-env-latest.json} "
+                "${GEO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-playwright-env-latest.json} "
                 "--require-ready-smoke"
             )
         ],
@@ -269,9 +269,9 @@ def _p0b_playwright_smoke_item() -> dict[str, Any]:
         "commands": [_command("make au-p0b-google-playwright-smoke")],
         "verification_commands": [
             _command(
-                "PYTHONPATH=packages/geno_core:apps/api "
+                "PYTHONPATH=packages/geo_core:apps/api "
                 "python3 scripts/verify_au_p0b_google_playwright_smoke.py "
-                "${GENO_AU_P0B_GOOGLE_PLAYWRIGHT_SMOKE_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-playwright-smoke-latest.json} "
+                "${GEO_AU_P0B_GOOGLE_PLAYWRIGHT_SMOKE_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-playwright-smoke-latest.json} "
                 "--require-success"
             )
         ],
@@ -345,9 +345,9 @@ def _p0b_full_spike_item() -> dict[str, Any]:
             _command("make verify-au-p0b-google-status"),
             _command("make verify-au-p0b-google-execution-checklist"),
             _command(
-                "PYTHONPATH=packages/geno_core:apps/api "
+                "PYTHONPATH=packages/geo_core:apps/api "
                 "python3 scripts/verify_au_p0b_google_evidence_package.py "
-                "${GENO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-evidence-package-latest.json} "
+                "${GEO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-evidence-package-latest.json} "
                 "--require-google-main-scoring-allowed"
             ),
             _command("make verify-au-launch-status"),
@@ -540,12 +540,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build an AU launch blocker remediation plan JSON")
     parser.add_argument(
         "--launch-status-path",
-        default=os.environ.get("GENO_AU_LAUNCH_STATUS_OUTPUT_PATH", DEFAULT_LAUNCH_STATUS_PATH),
+        default=os.environ.get("GEO_AU_LAUNCH_STATUS_OUTPUT_PATH", DEFAULT_LAUNCH_STATUS_PATH),
         help="Path to the AU launch status JSON.",
     )
     parser.add_argument(
         "--output-path",
-        default=os.environ.get("GENO_AU_LAUNCH_REMEDIATION_PLAN_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_LAUNCH_REMEDIATION_PLAN_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to write the remediation plan JSON.",
     )
     parser.add_argument("--generated-at", default=None, help="Override generated_at timestamp for deterministic tests.")

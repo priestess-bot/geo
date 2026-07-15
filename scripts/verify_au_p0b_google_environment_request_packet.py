@@ -162,7 +162,7 @@ def _validate_environment_item(item: dict[str, Any], errors: list[str]) -> str:
     if item.get("secret_redacted") is not True:
         errors.append(f"environment_item_secret_redaction_missing:{name}")
     accepted_methods = {str(value) for value in _as_list(item.get("accepted_injection_methods"))}
-    if not {"process_environment", "GENO_AU_P0B_GOOGLE_ENV_FILE", ".env.au-p0b-google"}.issubset(accepted_methods):
+    if not {"process_environment", "GEO_AU_P0B_GOOGLE_ENV_FILE", ".env.au-p0b-google"}.issubset(accepted_methods):
         errors.append(f"environment_item_injection_methods_incomplete:{name}")
     if item.get("present") is True:
         if not isinstance(item.get("value_length"), int) or item.get("value_length") <= 0:
@@ -204,7 +204,7 @@ def _validate_selector_item(item: dict[str, Any], errors: list[str]) -> str:
     if item.get("secret_redacted") is not True:
         errors.append(f"selector_item_secret_redaction_missing:{group}")
     accepted_methods = {str(value) for value in _as_list(item.get("accepted_injection_methods"))}
-    if not {"process_environment", "GENO_AU_P0B_GOOGLE_ENV_FILE", ".env.au-p0b-google"}.issubset(accepted_methods):
+    if not {"process_environment", "GEO_AU_P0B_GOOGLE_ENV_FILE", ".env.au-p0b-google"}.issubset(accepted_methods):
         errors.append(f"selector_item_injection_methods_incomplete:{group}")
     if item.get("present") is True:
         if not item.get("selected_name"):
@@ -244,7 +244,7 @@ def _validate_file_item(item: dict[str, Any], environment_missing: set[str], err
     if item.get("secret_redacted") is not True:
         errors.append(f"file_item_secret_redaction_missing:{name}")
     accepted_methods = {str(value) for value in _as_list(item.get("accepted_injection_methods"))}
-    if not {"process_environment", "GENO_AU_P0B_GOOGLE_ENV_FILE", ".env.au-p0b-google"}.issubset(accepted_methods):
+    if not {"process_environment", "GEO_AU_P0B_GOOGLE_ENV_FILE", ".env.au-p0b-google"}.issubset(accepted_methods):
         errors.append(f"file_item_injection_methods_incomplete:{name}")
     return _file_issue(item, environment_missing)
 
@@ -545,7 +545,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "path",
         nargs="?",
-        default=os.environ.get("GENO_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to the AU P0b Google environment request packet JSON.",
     )
     parser.add_argument(

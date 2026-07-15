@@ -16,7 +16,7 @@ from xml.sax.saxutils import escape
 
 import httpx
 
-from geno_core.knowledge_pipeline import DEFAULT_EMBEDDING_DIMENSION, DEFAULT_QDRANT_COLLECTION
+from geo_core.knowledge_pipeline import DEFAULT_EMBEDDING_DIMENSION, DEFAULT_QDRANT_COLLECTION
 
 
 ACTOR_ID = "runtime-console"
@@ -504,7 +504,7 @@ def _run_worker_until_pipeline_ready(
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
     root = Path(__file__).resolve().parents[1]
-    headers = {"X-GENO-Actor-Id": ACTOR_ID}
+    headers = {"X-GEO-Actor-Id": ACTOR_ID}
     _wait_api(args.api_base, headers=headers)
     run_id = f"knowledge-live-{uuid4().hex}"
     started_at = datetime.now(UTC)
@@ -1140,7 +1140,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
     unauthorized = httpx.get(
         f"{args.api_base}/v1/knowledge/source-assets/runtime",
-        headers={"X-GENO-Actor-Id": f"unauthorized-{unique}"},
+        headers={"X-GEO-Actor-Id": f"unauthorized-{unique}"},
         params={"project_id": project_id, "limit": 1},
         timeout=30,
     )
@@ -1893,10 +1893,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run the real GEO knowledge production pipeline E2E.")
-    parser.add_argument("--api-base", default=os.getenv("GENO_LIVE_API_BASE", "http://localhost:18003"))
+    parser.add_argument("--api-base", default=os.getenv("GEO_LIVE_API_BASE", "http://localhost:18003"))
     parser.add_argument("--qdrant-url", default=os.getenv("QDRANT_URL", "http://localhost:18006"))
     parser.add_argument("--qdrant-collection", default=os.getenv("QDRANT_COLLECTION", DEFAULT_QDRANT_COLLECTION))
-    parser.add_argument("--compose-project", default=os.getenv("GENO_COMPOSE_PROJECT", "geno-auto"))
+    parser.add_argument("--compose-project", default=os.getenv("GEO_COMPOSE_PROJECT", "geo-auto"))
     parser.add_argument("--compose-env-file", default="tmp/docker-compose.auto-ports.env")
     parser.add_argument("--worker-timeout", type=int, default=1800)
     parser.add_argument("--artifact", default="/tmp/geo-knowledge-live-e2e.json")

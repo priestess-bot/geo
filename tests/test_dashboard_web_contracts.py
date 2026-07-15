@@ -17,7 +17,7 @@ class DashboardWebContractsTest(unittest.TestCase):
         self.assertIn("/development-board", page_source)
         self.assertIn("不再作为默认服务维护", page_source)
         self.assertNotIn("dashboard-data.json", page_source)
-        self.assertNotIn("GENO 工程进展 Dashboard", page_source)
+        self.assertNotIn("GEO 工程进展 Dashboard", page_source)
         self.assertIn("GEO Dashboard 已合并", layout_source)
         self.assertIn(".retiredShell", css_source)
 

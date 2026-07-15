@@ -299,37 +299,37 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build an AU P0a status report across local gates")
     parser.add_argument(
         "--runbook-path",
-        default=os.environ.get("GENO_AU_P0A_RUNBOOK_OUTPUT_PATH", DEFAULT_RUNBOOK_PATH),
+        default=os.environ.get("GEO_AU_P0A_RUNBOOK_OUTPUT_PATH", DEFAULT_RUNBOOK_PATH),
         help="Path to the generated AU P0a runbook JSON.",
     )
     parser.add_argument(
         "--readiness-path",
-        default=os.environ.get("GENO_AU_P0A_READINESS_OUTPUT_PATH", DEFAULT_READINESS_PATH),
+        default=os.environ.get("GEO_AU_P0A_READINESS_OUTPUT_PATH", DEFAULT_READINESS_PATH),
         help="Path to the latest AU P0a readiness JSON.",
     )
     parser.add_argument(
         "--environment-path",
-        default=os.environ.get("GENO_AU_P0A_ENV_OUTPUT_PATH", DEFAULT_ENV_REPORT_PATH),
+        default=os.environ.get("GEO_AU_P0A_ENV_OUTPUT_PATH", DEFAULT_ENV_REPORT_PATH),
         help="Path to the latest AU P0a environment report JSON.",
     )
     parser.add_argument(
         "--runbook-execution-path",
-        default=os.environ.get("GENO_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH", DEFAULT_RUNBOOK_EXECUTION_PATH),
+        default=os.environ.get("GEO_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH", DEFAULT_RUNBOOK_EXECUTION_PATH),
         help="Path to the latest AU P0a runbook execution dry-run JSON.",
     )
     parser.add_argument(
         "--package-path",
-        default=os.environ.get("GENO_AU_P0A_PACKAGE_OUTPUT_PATH", DEFAULT_PACKAGE_PATH),
+        default=os.environ.get("GEO_AU_P0A_PACKAGE_OUTPUT_PATH", DEFAULT_PACKAGE_PATH),
         help="Path to the latest AU P0a evidence package JSON.",
     )
     parser.add_argument(
         "--output-path",
-        default=os.environ.get("GENO_AU_P0A_STATUS_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_P0A_STATUS_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to write the status report JSON.",
     )
     parser.add_argument(
         "--env-file",
-        default=os.environ.get("GENO_AU_P0A_ENV_FILE", DEFAULT_ENV_FILE),
+        default=os.environ.get("GEO_AU_P0A_ENV_FILE", DEFAULT_ENV_FILE),
         help="Optional env file to use when status report recomputes readiness phases.",
     )
     parser.add_argument(

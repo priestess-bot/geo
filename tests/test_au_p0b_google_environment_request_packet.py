@@ -120,7 +120,7 @@ class AuP0bGoogleEnvironmentRequestPacketTest(unittest.TestCase):
                 "required_missing_keys": ["OPENAI_API_KEY", "PERPLEXITY_API_KEY"],
                 "allowed_update_surfaces": [
                     "process_environment",
-                    "GENO_AU_P0A_ENV_FILE",
+                    "GEO_AU_P0A_ENV_FILE",
                     DEFAULT_ENV_FILE,
                 ],
                 "next_action": "populate_required_environment",

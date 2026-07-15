@@ -3,7 +3,7 @@
 -- narrow job functions, and sealed LOGIN placeholder are installed by 0020.
 -- This file adds only the worker startup proof and closes the catalog boundary.
 
-CREATE FUNCTION geno_v2_worker_login_startup_ready(p_credential_version text)
+CREATE FUNCTION geo_v2_worker_login_startup_ready(p_credential_version text)
 RETURNS boolean
 LANGUAGE sql
 STABLE
@@ -14,8 +14,8 @@ AS $worker_login_startup_ready$
         SELECT
             p_credential_version IS NOT NULL
             AND p_credential_version ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'
-            AND session_user = 'geno_v2_worker_login'
-            AND current_setting('role', true) = 'geno_v2_worker'
+            AND session_user = 'geo_v2_worker_login'
+            AND current_setting('role', true) = 'geo_v2_worker'
             AND attempt.status = 'succeeded'
             AND attempt.operation IN ('provision', 'rotate')
             AND receipt.login_kind = 'worker'
@@ -28,7 +28,7 @@ AS $worker_login_startup_ready$
             AND EXISTS (
                 SELECT 1
                 FROM pg_roles AS role_row
-                WHERE role_row.rolname = 'geno_v2_worker_login'
+                WHERE role_row.rolname = 'geo_v2_worker_login'
                   AND role_row.rolcanlogin
                   AND NOT role_row.rolsuper
                   AND NOT role_row.rolcreatedb
@@ -47,24 +47,24 @@ AS $worker_login_startup_ready$
     ), false);
 $worker_login_startup_ready$;
 
-ALTER FUNCTION geno_v2_worker_login_startup_ready(text)
-    OWNER TO geno_v2_authz_owner;
-REVOKE ALL ON FUNCTION geno_v2_worker_login_startup_ready(text)
-    FROM PUBLIC, geno_v2_runtime, geno_v2_worker_login;
-GRANT EXECUTE ON FUNCTION geno_v2_worker_login_startup_ready(text)
-    TO geno_v2_worker;
+ALTER FUNCTION geo_v2_worker_login_startup_ready(text)
+    OWNER TO geo_v2_authz_owner;
+REVOKE ALL ON FUNCTION geo_v2_worker_login_startup_ready(text)
+    FROM PUBLIC, geo_v2_runtime, geo_v2_worker_login;
+GRANT EXECUTE ON FUNCTION geo_v2_worker_login_startup_ready(text)
+    TO geo_v2_worker;
 
 REVOKE ALL ON auth_login_provision_attempts,
     auth_login_provision_receipts
-    FROM PUBLIC, geno_v2_runtime, geno_v2_worker, geno_v2_worker_login;
+    FROM PUBLIC, geo_v2_runtime, geo_v2_worker, geo_v2_worker_login;
 
 -- A baseline install never activates a deployment identity. The external
 -- provisioner may enable LOGIN only after it has recorded a preparing attempt.
-ALTER ROLE geno_v2_worker_login
+ALTER ROLE geo_v2_worker_login
     NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT
     NOREPLICATION NOBYPASSRLS PASSWORD NULL;
-ALTER ROLE geno_v2_worker_login RESET ALL;
-ALTER ROLE geno_v2_worker_login IN DATABASE geno_v2 RESET ALL;
+ALTER ROLE geo_v2_worker_login RESET ALL;
+ALTER ROLE geo_v2_worker_login IN DATABASE geo_v2 RESET ALL;
 
 INSERT INTO audit_events (
     event_type, actor_type, actor_id, target_type, target_id,
@@ -87,12 +87,12 @@ DECLARE
     runtime_oid oid;
     worker_oid oid;
     worker_login_oid oid;
-    readiness_oid oid := 'geno_v2_worker_login_startup_ready(text)'::regprocedure;
+    readiness_oid oid := 'geo_v2_worker_login_startup_ready(text)'::regprocedure;
 BEGIN
-    SELECT oid INTO authz_owner_oid FROM pg_roles WHERE rolname = 'geno_v2_authz_owner';
-    SELECT oid INTO runtime_oid FROM pg_roles WHERE rolname = 'geno_v2_runtime';
-    SELECT oid INTO worker_oid FROM pg_roles WHERE rolname = 'geno_v2_worker';
-    SELECT oid INTO worker_login_oid FROM pg_roles WHERE rolname = 'geno_v2_worker_login';
+    SELECT oid INTO authz_owner_oid FROM pg_roles WHERE rolname = 'geo_v2_authz_owner';
+    SELECT oid INTO runtime_oid FROM pg_roles WHERE rolname = 'geo_v2_runtime';
+    SELECT oid INTO worker_oid FROM pg_roles WHERE rolname = 'geo_v2_worker';
+    SELECT oid INTO worker_login_oid FROM pg_roles WHERE rolname = 'geo_v2_worker_login';
 
     IF authz_owner_oid IS NULL OR runtime_oid IS NULL OR worker_oid IS NULL
        OR worker_login_oid IS NULL

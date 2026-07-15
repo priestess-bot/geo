@@ -18,7 +18,7 @@ class AuP0aReadinessTest(unittest.TestCase):
         return {
             "PERPLEXITY_API_KEY": "test-perplexity",
             "OPENAI_API_KEY": "test-openai",
-            "DATABASE_URL": "postgresql://geno:test@localhost:5432/geno",
+            "DATABASE_URL": "postgresql://geo:test@localhost:5432/geo",
         }
 
     def _write_env_file(self, temp_dir: str) -> Path:
@@ -367,7 +367,7 @@ class AuP0aReadinessTest(unittest.TestCase):
             runbook_path, _runbook = self._write_runbook(temp_dir)
             output_path = Path(temp_dir) / "readiness.json"
             env = self._env()
-            env["GENO_AU_P0A_REQUIRE_DB_CHECK"] = "1"
+            env["GEO_AU_P0A_REQUIRE_DB_CHECK"] = "1"
             result = subprocess.run(
                 [
                     sys.executable,

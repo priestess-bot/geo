@@ -448,7 +448,7 @@ BEGIN
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', table_name);
     EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', table_name);
     EXECUTE format('DROP POLICY IF EXISTS %I ON %I', table_name || '_runtime_project_isolation', table_name);
-    EXECUTE format('CREATE POLICY %I ON %I USING (geno_runtime_can_access_project(project_id)) WITH CHECK (geno_runtime_can_access_project(project_id))', table_name || '_runtime_project_isolation', table_name);
+    EXECUTE format('CREATE POLICY %I ON %I USING (geo_runtime_can_access_project(project_id)) WITH CHECK (geo_runtime_can_access_project(project_id))', table_name || '_runtime_project_isolation', table_name);
   END LOOP;
 END $$;
 
@@ -461,8 +461,8 @@ CREATE POLICY geo_publishers_runtime_review ON geo_publishers
   FOR UPDATE USING (
     EXISTS (
       SELECT 1 FROM project_members pm
-      WHERE pm.project_id = geno_runtime_project_id()
-        AND lower(btrim(pm.user_id)) = lower(btrim(geno_runtime_actor_id()))
+      WHERE pm.project_id = geo_runtime_project_id()
+        AND lower(btrim(pm.user_id)) = lower(btrim(geo_runtime_actor_id()))
         AND pm.status = 'active' AND pm.role IN ('owner', 'admin')
     )
   ) WITH CHECK (true);
@@ -493,15 +493,15 @@ CREATE TRIGGER geo_placement_package_immutable_content
 DROP POLICY IF EXISTS project_members_insert_initial_owner ON project_members;
 CREATE POLICY project_members_insert_initial_owner ON project_members
   FOR INSERT WITH CHECK (
-    project_id = geno_runtime_project_id()
-    AND user_id = geno_runtime_actor_id()
+    project_id = geo_runtime_project_id()
+    AND user_id = geo_runtime_actor_id()
     AND role IN ('owner', 'admin')
     AND status = 'active'
     AND tenant_id = (SELECT tenant_id FROM projects p WHERE p.id = project_members.project_id)
     AND NOT EXISTS (SELECT 1 FROM project_members existing WHERE existing.project_id = project_members.project_id)
   );
 
-CREATE OR REPLACE FUNCTION geno_runtime_resolve_header_member(p_project_id uuid, p_actor_id text)
+CREATE OR REPLACE FUNCTION geo_runtime_resolve_header_member(p_project_id uuid, p_actor_id text)
 RETURNS TABLE(tenant_id uuid, role text)
 LANGUAGE sql
 STABLE
@@ -515,13 +515,13 @@ AS $$
     AND pm.status = 'active'
   LIMIT 1;
 $$;
-REVOKE ALL ON FUNCTION geno_runtime_resolve_header_member(uuid, text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION geno_runtime_resolve_header_member(uuid, text) TO geno_runtime_app;
+REVOKE ALL ON FUNCTION geo_runtime_resolve_header_member(uuid, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION geo_runtime_resolve_header_member(uuid, text) TO geo_runtime_app;
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON geo_products, geo_campaigns_runtime,
   geo_campaign_queries, geo_observations, geo_publishers, geo_destinations,
   geo_placement_opportunities, geo_prompt_templates, geo_prompt_template_versions,
   geo_placement_packages, geo_placement_submissions, geo_placement_verifications,
-  geo_measurement_windows, geo_measurements TO geno_runtime_app;
-REVOKE INSERT, DELETE ON geo_publishers FROM geno_runtime_app;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO geno_runtime_app;
+  geo_measurement_windows, geo_measurements TO geo_runtime_app;
+REVOKE INSERT, DELETE ON geo_publishers FROM geo_runtime_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO geo_runtime_app;

@@ -2,7 +2,7 @@
 -- lifecycle constraints below are complete; no transport or provisioning
 -- behavior belongs in this baseline.
 
-CREATE FUNCTION geno_v2_lock_auth_write_control()
+CREATE FUNCTION geo_v2_lock_auth_write_control()
 RETURNS boolean
 LANGUAGE plpgsql
 VOLATILE
@@ -20,7 +20,7 @@ BEGIN
 END;
 $lock_auth_write_control$;
 
-CREATE OR REPLACE FUNCTION geno_v2_require_auth_writes_enabled()
+CREATE OR REPLACE FUNCTION geo_v2_require_auth_writes_enabled()
 RETURNS void
 LANGUAGE plpgsql
 VOLATILE
@@ -28,7 +28,7 @@ SECURITY DEFINER
 SET search_path = pg_catalog
 AS $require_auth_writes$
 BEGIN
-    IF NOT public.geno_v2_lock_auth_write_control() THEN
+    IF NOT public.geo_v2_lock_auth_write_control() THEN
         RAISE EXCEPTION 'auth_writes_temporarily_disabled'
             USING ERRCODE = '42501',
                   DETAIL = 'Privilege-expanding auth writes are disabled.';
@@ -36,14 +36,14 @@ BEGIN
 END;
 $require_auth_writes$;
 
-ALTER FUNCTION geno_v2_lock_auth_write_control()
-    OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_require_auth_writes_enabled()
-    OWNER TO geno_v2_authz_owner;
-REVOKE ALL ON FUNCTION geno_v2_lock_auth_write_control() FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_v2_require_auth_writes_enabled() FROM PUBLIC;
+ALTER FUNCTION geo_v2_lock_auth_write_control()
+    OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_require_auth_writes_enabled()
+    OWNER TO geo_v2_authz_owner;
+REVOKE ALL ON FUNCTION geo_v2_lock_auth_write_control() FROM PUBLIC;
+REVOKE ALL ON FUNCTION geo_v2_require_auth_writes_enabled() FROM PUBLIC;
 GRANT UPDATE (writes_enabled) ON auth_runtime_write_controls
-    TO geno_v2_authz_owner;
+    TO geo_v2_authz_owner;
 
 ALTER TABLE auth_invitation_redemption_attempts
     DROP CONSTRAINT auth_attempts_idempotency_unique;
@@ -85,7 +85,7 @@ ALTER TABLE runtime_session_reauth_queue
     REFERENCES runtime_sessions(id, tenant_id, actor_id)
     ON UPDATE RESTRICT ON DELETE RESTRICT;
 
-CREATE OR REPLACE FUNCTION geno_v2_guard_runtime_reauth_state()
+CREATE OR REPLACE FUNCTION geo_v2_guard_runtime_reauth_state()
 RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = pg_catalog
@@ -125,8 +125,8 @@ BEGIN
 END;
 $guard_reauth$;
 
-ALTER FUNCTION geno_v2_guard_runtime_reauth_state() OWNER TO geno_v2_authz_owner;
-REVOKE ALL ON FUNCTION geno_v2_guard_runtime_reauth_state() FROM PUBLIC;
+ALTER FUNCTION geo_v2_guard_runtime_reauth_state() OWNER TO geo_v2_authz_owner;
+REVOKE ALL ON FUNCTION geo_v2_guard_runtime_reauth_state() FROM PUBLIC;
 
 COMMENT ON CONSTRAINT auth_attempts_idempotency_unique
     ON auth_invitation_redemption_attempts IS
@@ -136,7 +136,7 @@ COMMENT ON TABLE auth_invitation_redemption_attempts IS
 COMMENT ON COLUMN runtime_session_reauth_queue.resolved_by_session_id IS
     'Active same-tenant, same-actor session that resolved this immutable reauthentication item.';
 
-CREATE FUNCTION geno_v2_auth_redeem_request_hash(
+CREATE FUNCTION geo_v2_auth_redeem_request_hash(
     p_invitation_id uuid,
     p_invite_token_hash text,
     p_requested_surface text
@@ -160,7 +160,7 @@ AS $request_hash$
     ), 'hex');
 $request_hash$;
 
-CREATE FUNCTION geno_v2_consume_auth_preflight_bucket(
+CREATE FUNCTION geo_v2_consume_auth_preflight_bucket(
     p_bucket_key text,
     p_limit integer,
     p_window_seconds integer,
@@ -225,7 +225,7 @@ BEGIN
 END;
 $consume_bucket$;
 
-CREATE FUNCTION geno_v2_lock_auth_command_context(
+CREATE FUNCTION geo_v2_lock_auth_command_context(
     p_required boolean,
     p_lock_projects_for_update boolean
 )
@@ -356,7 +356,7 @@ BEGIN
 END;
 $command_context$;
 
-CREATE FUNCTION geno_v2_lock_auth_command_project(
+CREATE FUNCTION geo_v2_lock_auth_command_project(
     p_tenant_id uuid,
     p_project_id uuid
 )
@@ -388,7 +388,7 @@ BEGIN
 END;
 $lock_command_project$;
 
-CREATE FUNCTION geno_v2_auth_context_has_project_permission(
+CREATE FUNCTION geo_v2_auth_context_has_project_permission(
     p_project_scopes jsonb,
     p_project_id uuid,
     p_required_permission text
@@ -408,7 +408,7 @@ AS $context_permission$
     );
 $context_permission$;
 
-CREATE FUNCTION geno_v2_write_auth_command_audit(
+CREATE FUNCTION geo_v2_write_auth_command_audit(
     p_event_type text,
     p_tenant_id uuid,
     p_project_id uuid,
@@ -467,7 +467,7 @@ BEGIN
 END;
 $command_audit$;
 
-CREATE FUNCTION geno_v2_preflight_auth_invitation(
+CREATE FUNCTION geo_v2_preflight_auth_invitation(
     p_invitation_id uuid,
     p_invite_token_hash text,
     p_requested_surface text,
@@ -533,7 +533,7 @@ BEGIN
 
     SELECT consumed.bucket_count, consumed.rate_limited, consumed.retry_after_seconds
     INTO invitation_request_count, invitation_limited, invitation_retry
-    FROM public.geno_v2_consume_auth_preflight_bucket(
+    FROM public.geo_v2_consume_auth_preflight_bucket(
         invitation_bucket_key,
         invitation_limit,
         window_seconds,
@@ -541,7 +541,7 @@ BEGIN
     ) AS consumed;
     SELECT consumed.bucket_count, consumed.rate_limited, consumed.retry_after_seconds
     INTO source_request_count, source_limited, source_retry
-    FROM public.geno_v2_consume_auth_preflight_bucket(
+    FROM public.geo_v2_consume_auth_preflight_bucket(
         source_bucket_key,
         source_limit,
         window_seconds,
@@ -575,7 +575,7 @@ BEGIN
         RETURN;
     END IF;
 
-    IF NOT public.geno_v2_lock_auth_command_project(
+    IF NOT public.geo_v2_lock_auth_command_project(
         invitation_row.tenant_id,
         invitation_row.project_id
     ) THEN
@@ -608,7 +608,7 @@ BEGIN
             )
         WHERE invitation.id = invitation_row.id
         RETURNING invitation.* INTO invitation_row;
-        PERFORM public.geno_v2_write_auth_command_audit(
+        PERFORM public.geo_v2_write_auth_command_audit(
             'auth.invitation.expired',
             invitation_row.tenant_id,
             invitation_row.project_id,
@@ -667,7 +667,7 @@ BEGIN
 END;
 $preflight$;
 
-CREATE FUNCTION geno_v2_create_project_member_invitation(
+CREATE FUNCTION geo_v2_create_project_member_invitation(
     p_invitation_id uuid,
     p_project_id uuid,
     p_email text,
@@ -717,10 +717,10 @@ BEGIN
         RAISE EXCEPTION 'auth_command_invalid_argument'
             USING ERRCODE = 'GA001';
     END IF;
-    PERFORM public.geno_v2_require_auth_writes_enabled();
+    PERFORM public.geo_v2_require_auth_writes_enabled();
     SELECT * INTO command_context
-    FROM public.geno_v2_lock_auth_command_context(true, true);
-    IF NOT public.geno_v2_auth_context_has_project_permission(
+    FROM public.geo_v2_lock_auth_command_context(true, true);
+    IF NOT public.geo_v2_auth_context_has_project_permission(
         command_context.project_scopes,
         p_project_id,
         'member.manage'
@@ -728,7 +728,7 @@ BEGIN
         RAISE EXCEPTION 'auth_command_not_authorized'
             USING ERRCODE = 'GA003';
     END IF;
-    IF NOT public.geno_v2_lock_auth_command_project(
+    IF NOT public.geo_v2_lock_auth_command_project(
         command_context.tenant_id,
         p_project_id
     ) OR NOT EXISTS (
@@ -776,7 +776,7 @@ BEGIN
                 )
             WHERE invitation.id = existing_invitation.id
             RETURNING invitation.* INTO inserted_invitation;
-            PERFORM public.geno_v2_write_auth_command_audit(
+            PERFORM public.geo_v2_write_auth_command_audit(
                 'auth.invitation.expired',
                 inserted_invitation.tenant_id,
                 inserted_invitation.project_id,
@@ -829,7 +829,7 @@ BEGIN
                     invitation.updated_at + interval '1 microsecond'
                 )
             WHERE invitation.id = existing_invitation.id;
-            PERFORM public.geno_v2_write_auth_command_audit(
+            PERFORM public.geo_v2_write_auth_command_audit(
                 'auth.invitation.expired',
                 existing_invitation.tenant_id,
                 existing_invitation.project_id,
@@ -918,7 +918,7 @@ BEGIN
             result_code := 'replayed';
         ELSE
             result_code := 'created';
-            PERFORM public.geno_v2_write_auth_command_audit(
+            PERFORM public.geo_v2_write_auth_command_audit(
                 'auth.invitation.created',
                 command_context.tenant_id,
                 p_project_id,
@@ -950,7 +950,7 @@ BEGIN
 END;
 $create_invitation$;
 
-CREATE FUNCTION geno_v2_revoke_project_member_invitation(
+CREATE FUNCTION geo_v2_revoke_project_member_invitation(
     p_invitation_id uuid,
     p_reason_code text
 )
@@ -981,7 +981,7 @@ BEGIN
             USING ERRCODE = 'GA001';
     END IF;
     SELECT * INTO command_context
-    FROM public.geno_v2_lock_auth_command_context(true, true);
+    FROM public.geo_v2_lock_auth_command_context(true, true);
 
     SELECT invitation.* INTO invitation_row
     FROM public.project_member_invitations AS invitation
@@ -989,7 +989,7 @@ BEGIN
     FOR UPDATE;
     IF NOT FOUND
        OR invitation_row.tenant_id <> command_context.tenant_id
-       OR NOT public.geno_v2_auth_context_has_project_permission(
+       OR NOT public.geo_v2_auth_context_has_project_permission(
            command_context.project_scopes,
            invitation_row.project_id,
            'member.manage'
@@ -1021,7 +1021,7 @@ BEGIN
         )
     WHERE invitation.id = p_invitation_id
     RETURNING invitation.* INTO invitation_row;
-    PERFORM public.geno_v2_write_auth_command_audit(
+    PERFORM public.geo_v2_write_auth_command_audit(
         'auth.invitation.revoked',
         invitation_row.tenant_id,
         invitation_row.project_id,
@@ -1043,7 +1043,7 @@ BEGIN
 END;
 $revoke_invitation$;
 
-CREATE FUNCTION geno_v2_expire_project_member_invitation(p_invitation_id uuid)
+CREATE FUNCTION geo_v2_expire_project_member_invitation(p_invitation_id uuid)
 RETURNS TABLE (
     result_code text,
     invitation_id uuid,
@@ -1067,7 +1067,7 @@ BEGIN
             USING ERRCODE = 'GA001';
     END IF;
     SELECT * INTO command_context
-    FROM public.geno_v2_lock_auth_command_context(true, true);
+    FROM public.geo_v2_lock_auth_command_context(true, true);
 
     SELECT invitation.* INTO invitation_row
     FROM public.project_member_invitations AS invitation
@@ -1075,7 +1075,7 @@ BEGIN
     FOR UPDATE;
     IF NOT FOUND
        OR invitation_row.tenant_id <> command_context.tenant_id
-       OR NOT public.geno_v2_auth_context_has_project_permission(
+       OR NOT public.geo_v2_auth_context_has_project_permission(
            command_context.project_scopes,
            invitation_row.project_id,
            'member.manage'
@@ -1111,7 +1111,7 @@ BEGIN
         )
     WHERE invitation.id = p_invitation_id
     RETURNING invitation.* INTO invitation_row;
-    PERFORM public.geno_v2_write_auth_command_audit(
+    PERFORM public.geo_v2_write_auth_command_audit(
         'auth.invitation.expired',
         invitation_row.tenant_id,
         invitation_row.project_id,
@@ -1133,7 +1133,7 @@ BEGIN
 END;
 $expire_invitation$;
 
-CREATE FUNCTION geno_v2_build_locked_auth_scope(
+CREATE FUNCTION geo_v2_build_locked_auth_scope(
     p_tenant_id uuid,
     p_actor_id text
 )
@@ -1242,7 +1242,7 @@ BEGIN
                     SELECT DISTINCT permission.permission_name
                     FROM backed_roles AS backed
                     CROSS JOIN LATERAL unnest(
-                        public.geno_v2_permissions_for_role(backed.role_name)
+                        public.geo_v2_permissions_for_role(backed.role_name)
                     ) AS permission(permission_name)
                     WHERE backed.project_id = scoped.project_id
                 ) AS permission_item
@@ -1282,7 +1282,7 @@ BEGIN
         SELECT DISTINCT permission.permission_name
         FROM backed_roles AS backed
         CROSS JOIN LATERAL unnest(
-            public.geno_v2_permissions_for_role(backed.role_name)
+            public.geo_v2_permissions_for_role(backed.role_name)
         ) AS permission(permission_name)
     )
     SELECT
@@ -1315,7 +1315,7 @@ BEGIN
 END;
 $build_scope$;
 
-CREATE FUNCTION geno_v2_redeem_auth_invitation(
+CREATE FUNCTION geo_v2_redeem_auth_invitation(
     p_attempt_id uuid,
     p_session_id uuid,
     p_invitation_id uuid,
@@ -1375,8 +1375,8 @@ BEGIN
         RAISE EXCEPTION 'auth_command_invalid_argument'
             USING ERRCODE = 'GA001';
     END IF;
-    auth_writes_enabled := public.geno_v2_lock_auth_write_control();
-    request_fingerprint := public.geno_v2_auth_redeem_request_hash(
+    auth_writes_enabled := public.geo_v2_lock_auth_write_control();
+    request_fingerprint := public.geo_v2_auth_redeem_request_hash(
         p_invitation_id,
         p_invite_token_hash,
         p_requested_surface
@@ -1390,7 +1390,7 @@ BEGIN
         RETURN NEXT;
         RETURN;
     END IF;
-    IF NOT public.geno_v2_lock_auth_command_project(
+    IF NOT public.geo_v2_lock_auth_command_project(
         invitation_row.tenant_id,
         invitation_row.project_id
     ) THEN
@@ -1466,7 +1466,7 @@ BEGIN
                 security_state_changed := true;
             END IF;
             IF security_state_changed THEN
-                PERFORM public.geno_v2_write_auth_command_audit(
+                PERFORM public.geo_v2_write_auth_command_audit(
                     'auth.redemption.delivery_erased',
                     invitation_row.tenant_id,
                     invitation_row.project_id,
@@ -1505,7 +1505,7 @@ BEGIN
                     attempt.updated_at + interval '1 microsecond'
                 )
             WHERE attempt.id = attempt_row.id;
-            PERFORM public.geno_v2_write_auth_command_audit(
+            PERFORM public.geo_v2_write_auth_command_audit(
                 'auth.redemption.delivery_erased',
                 invitation_row.tenant_id,
                 invitation_row.project_id,
@@ -1535,7 +1535,7 @@ BEGIN
                     attempt.updated_at + interval '1 microsecond'
                 )
             WHERE attempt.id = attempt_row.id;
-            PERFORM public.geno_v2_write_auth_command_audit(
+            PERFORM public.geo_v2_write_auth_command_audit(
                 'auth.redemption.delivery_erased',
                 invitation_row.tenant_id,
                 invitation_row.project_id,
@@ -1568,7 +1568,7 @@ BEGIN
             )
         WHERE attempt.id = attempt_row.id
         RETURNING attempt.* INTO attempt_row;
-        PERFORM public.geno_v2_write_auth_command_audit(
+        PERFORM public.geo_v2_write_auth_command_audit(
             'auth.redemption.replayed',
             invitation_row.tenant_id,
             invitation_row.project_id,
@@ -1611,7 +1611,7 @@ BEGIN
                 invitation.updated_at + interval '1 microsecond'
             )
         WHERE invitation.id = invitation_row.id;
-        PERFORM public.geno_v2_write_auth_command_audit(
+        PERFORM public.geo_v2_write_auth_command_audit(
             'auth.invitation.expired',
             invitation_row.tenant_id,
             invitation_row.project_id,
@@ -1724,7 +1724,7 @@ BEGIN
     END;
 
     SELECT * INTO scope_snapshot
-    FROM public.geno_v2_build_locked_auth_scope(
+    FROM public.geo_v2_build_locked_auth_scope(
         invitation_row.tenant_id,
         invitation_row.email
     );
@@ -1775,7 +1775,7 @@ BEGIN
     END IF;
 
     SELECT * INTO scope_snapshot
-    FROM public.geno_v2_build_locked_auth_scope(
+    FROM public.geo_v2_build_locked_auth_scope(
         invitation_row.tenant_id,
         invitation_row.email
     );
@@ -1895,7 +1895,7 @@ BEGIN
         resolved_reauth_count := resolved_reauth_count + 1;
     END LOOP;
     IF resolved_reauth_count > 0 THEN
-        PERFORM public.geno_v2_write_auth_command_audit(
+        PERFORM public.geo_v2_write_auth_command_audit(
             'auth.reauthentication.resolved',
             invitation_row.tenant_id,
             NULL,
@@ -1911,7 +1911,7 @@ BEGIN
             NULL
         );
     END IF;
-    PERFORM public.geno_v2_write_auth_command_audit(
+    PERFORM public.geo_v2_write_auth_command_audit(
         'auth.invitation.redeemed',
         invitation_row.tenant_id,
         invitation_row.project_id,
@@ -1946,7 +1946,7 @@ BEGIN
 END;
 $redeem$;
 
-CREATE FUNCTION geno_v2_confirm_current_auth_delivery()
+CREATE FUNCTION geo_v2_confirm_current_auth_delivery()
 RETURNS TABLE (
     result_code text,
     attempt_id uuid,
@@ -1968,7 +1968,7 @@ DECLARE
 BEGIN
     correlation_id := gen_random_uuid();
     SELECT * INTO command_context
-    FROM public.geno_v2_lock_auth_command_context(false, false);
+    FROM public.geo_v2_lock_auth_command_context(false, false);
     IF NOT FOUND THEN
         result_code := 'session_unavailable';
         RETURN NEXT;
@@ -2024,7 +2024,7 @@ BEGIN
         )
     WHERE attempt.id = attempt_row.id
     RETURNING attempt.* INTO attempt_row;
-    PERFORM public.geno_v2_write_auth_command_audit(
+    PERFORM public.geo_v2_write_auth_command_audit(
         'auth.redemption.delivery_confirmed',
         session_row.tenant_id,
         NULL,
@@ -2048,7 +2048,7 @@ BEGIN
 END;
 $confirm_delivery$;
 
-CREATE FUNCTION geno_v2_erase_current_auth_delivery_secret()
+CREATE FUNCTION geo_v2_erase_current_auth_delivery_secret()
 RETURNS TABLE (
     result_code text,
     attempt_id uuid,
@@ -2069,7 +2069,7 @@ DECLARE
 BEGIN
     correlation_id := gen_random_uuid();
     SELECT * INTO command_context
-    FROM public.geno_v2_lock_auth_command_context(false, false);
+    FROM public.geo_v2_lock_auth_command_context(false, false);
     IF NOT FOUND THEN
         result_code := 'session_unavailable';
         RETURN NEXT;
@@ -2122,7 +2122,7 @@ BEGIN
         )
     WHERE attempt.id = attempt_row.id
     RETURNING attempt.* INTO attempt_row;
-    PERFORM public.geno_v2_write_auth_command_audit(
+    PERFORM public.geo_v2_write_auth_command_audit(
         'auth.redemption.delivery_erased',
         session_row.tenant_id,
         NULL,
@@ -2145,7 +2145,7 @@ BEGIN
 END;
 $erase_delivery$;
 
-CREATE FUNCTION geno_v2_logout_current_session()
+CREATE FUNCTION geo_v2_logout_current_session()
 RETURNS TABLE (
     result_code text,
     session_id uuid,
@@ -2165,7 +2165,7 @@ DECLARE
 BEGIN
     correlation_id := gen_random_uuid();
     SELECT * INTO command_context
-    FROM public.geno_v2_lock_auth_command_context(false, false);
+    FROM public.geo_v2_lock_auth_command_context(false, false);
     IF NOT FOUND THEN
         result_code := 'no_active_session';
         RETURN NEXT;
@@ -2216,7 +2216,7 @@ BEGIN
         RETURN NEXT;
         RETURN;
     END IF;
-    PERFORM public.geno_v2_write_auth_command_audit(
+    PERFORM public.geo_v2_write_auth_command_audit(
         'auth.logout',
         session_row.tenant_id,
         NULL,
@@ -2235,7 +2235,7 @@ BEGIN
 END;
 $logout$;
 
-CREATE FUNCTION geno_v2_resolve_current_reauth_queue()
+CREATE FUNCTION geo_v2_resolve_current_reauth_queue()
 RETURNS TABLE (
     result_code text,
     session_id uuid,
@@ -2255,7 +2255,7 @@ BEGIN
     correlation_id := gen_random_uuid();
     resolved_count := 0;
     SELECT * INTO command_context
-    FROM public.geno_v2_lock_auth_command_context(false, false);
+    FROM public.geo_v2_lock_auth_command_context(false, false);
     IF NOT FOUND THEN
         result_code := 'no_pending';
         RETURN NEXT;
@@ -2283,7 +2283,7 @@ BEGIN
         RETURN NEXT;
         RETURN;
     END IF;
-    PERFORM public.geno_v2_write_auth_command_audit(
+    PERFORM public.geo_v2_write_auth_command_audit(
         'auth.reauthentication.resolved',
         command_context.tenant_id,
         NULL,
@@ -2303,172 +2303,172 @@ BEGIN
 END;
 $resolve_reauth$;
 
-ALTER FUNCTION geno_v2_auth_redeem_request_hash(uuid, text, text)
-    OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_consume_auth_preflight_bucket(
+ALTER FUNCTION geo_v2_auth_redeem_request_hash(uuid, text, text)
+    OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_consume_auth_preflight_bucket(
     text, integer, integer, timestamptz
-) OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_lock_auth_command_context(boolean, boolean)
-    OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_lock_auth_command_project(uuid, uuid)
-    OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_auth_context_has_project_permission(jsonb, uuid, text)
-    OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_write_auth_command_audit(
+) OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_lock_auth_command_context(boolean, boolean)
+    OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_lock_auth_command_project(uuid, uuid)
+    OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_auth_context_has_project_permission(jsonb, uuid, text)
+    OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_write_auth_command_audit(
     text, uuid, uuid, text, text, text, text, jsonb, jsonb, text
-) OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_preflight_auth_invitation(uuid, text, text, text)
-    OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_create_project_member_invitation(
+) OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_preflight_auth_invitation(uuid, text, text, text)
+    OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_create_project_member_invitation(
     uuid, uuid, text, text, text, timestamptz
-) OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_revoke_project_member_invitation(uuid, text)
-    OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_expire_project_member_invitation(uuid)
-    OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_build_locked_auth_scope(uuid, text)
-    OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_redeem_auth_invitation(
+) OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_revoke_project_member_invitation(uuid, text)
+    OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_expire_project_member_invitation(uuid)
+    OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_build_locked_auth_scope(uuid, text)
+    OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_redeem_auth_invitation(
     uuid, uuid, uuid, text, text, text, text, timestamptz,
     bytea, text, bytea, timestamptz
-) OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_confirm_current_auth_delivery()
-    OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_erase_current_auth_delivery_secret()
-    OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_logout_current_session() OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_resolve_current_reauth_queue()
-    OWNER TO geno_v2_authz_owner;
+) OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_confirm_current_auth_delivery()
+    OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_erase_current_auth_delivery_secret()
+    OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_logout_current_session() OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_resolve_current_reauth_queue()
+    OWNER TO geo_v2_authz_owner;
 
-GRANT EXECUTE ON FUNCTION public.digest(bytea, text) TO geno_v2_authz_owner;
+GRANT EXECUTE ON FUNCTION public.digest(bytea, text) TO geo_v2_authz_owner;
 
 GRANT INSERT (
     id, tenant_id, project_id, email, role, status, invite_token_hash,
     audience, allowed_surfaces, policy_version, invited_by, expires_at,
     created_at, updated_at
-) ON project_member_invitations TO geno_v2_authz_owner;
+) ON project_member_invitations TO geo_v2_authz_owner;
 GRANT UPDATE (
     status, accepted_by_attempt_id, accepted_at, revoked_at, revoke_reason, updated_at
-) ON project_member_invitations TO geno_v2_authz_owner;
+) ON project_member_invitations TO geo_v2_authz_owner;
 GRANT INSERT (
     id, tenant_id, project_id, invitation_id, requested_surface,
     idempotency_key_hash, request_hash, token_fingerprint, status,
     created_at, updated_at
-) ON auth_invitation_redemption_attempts TO geno_v2_authz_owner;
+) ON auth_invitation_redemption_attempts TO geo_v2_authz_owner;
 GRANT UPDATE (
     session_id, status, replay_count, delivery_ciphertext, delivery_key_id,
     delivery_nonce, delivery_expires_at, delivery_confirmed_at,
     secret_erased_at, updated_at
-) ON auth_invitation_redemption_attempts TO geno_v2_authz_owner;
+) ON auth_invitation_redemption_attempts TO geo_v2_authz_owner;
 GRANT INSERT (
     id, session_token_hash, actor_id, actor_type, tenant_id, project_ids,
     roles, permissions, tenant_roles, project_scopes, scope_version,
     authz_policy_version, redemption_attempt_id, auth_method, status,
     issued_by, issued_at, expires_at, metadata, created_at, updated_at
-) ON runtime_sessions TO geno_v2_authz_owner;
+) ON runtime_sessions TO geo_v2_authz_owner;
 GRANT INSERT (
     tenant_id, project_id, user_id, role, status, invited_by, created_at, updated_at
-) ON project_members TO geno_v2_authz_owner;
+) ON project_members TO geo_v2_authz_owner;
 GRANT UPDATE (status) ON tenants, projects, tenant_members, project_members,
-    runtime_project_access_grants TO geno_v2_authz_owner;
-GRANT SELECT, INSERT, UPDATE ON auth_preflight_rate_limits TO geno_v2_authz_owner;
-GRANT SELECT ON runtime_session_reauth_queue TO geno_v2_authz_owner;
+    runtime_project_access_grants TO geo_v2_authz_owner;
+GRANT SELECT, INSERT, UPDATE ON auth_preflight_rate_limits TO geo_v2_authz_owner;
+GRANT SELECT ON runtime_session_reauth_queue TO geo_v2_authz_owner;
 GRANT UPDATE (status, resolved_at, resolved_by_session_id)
-    ON runtime_session_reauth_queue TO geno_v2_authz_owner;
-GRANT INSERT ON audit_events TO geno_v2_authz_owner;
+    ON runtime_session_reauth_queue TO geo_v2_authz_owner;
+GRANT INSERT ON audit_events TO geo_v2_authz_owner;
 
-REVOKE ALL ON FUNCTION geno_v2_auth_redeem_request_hash(uuid, text, text)
+REVOKE ALL ON FUNCTION geo_v2_auth_redeem_request_hash(uuid, text, text)
     FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_v2_consume_auth_preflight_bucket(
+REVOKE ALL ON FUNCTION geo_v2_consume_auth_preflight_bucket(
     text, integer, integer, timestamptz
 ) FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_v2_lock_auth_command_context(boolean, boolean)
+REVOKE ALL ON FUNCTION geo_v2_lock_auth_command_context(boolean, boolean)
     FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_v2_lock_auth_command_project(uuid, uuid)
+REVOKE ALL ON FUNCTION geo_v2_lock_auth_command_project(uuid, uuid)
     FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_v2_auth_context_has_project_permission(jsonb, uuid, text)
+REVOKE ALL ON FUNCTION geo_v2_auth_context_has_project_permission(jsonb, uuid, text)
     FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_v2_write_auth_command_audit(
+REVOKE ALL ON FUNCTION geo_v2_write_auth_command_audit(
     text, uuid, uuid, text, text, text, text, jsonb, jsonb, text
 ) FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_v2_build_locked_auth_scope(uuid, text) FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_v2_preflight_auth_invitation(uuid, text, text, text)
+REVOKE ALL ON FUNCTION geo_v2_build_locked_auth_scope(uuid, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION geo_v2_preflight_auth_invitation(uuid, text, text, text)
     FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_v2_create_project_member_invitation(
+REVOKE ALL ON FUNCTION geo_v2_create_project_member_invitation(
     uuid, uuid, text, text, text, timestamptz
 ) FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_v2_revoke_project_member_invitation(uuid, text)
+REVOKE ALL ON FUNCTION geo_v2_revoke_project_member_invitation(uuid, text)
     FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_v2_expire_project_member_invitation(uuid) FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_v2_redeem_auth_invitation(
+REVOKE ALL ON FUNCTION geo_v2_expire_project_member_invitation(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION geo_v2_redeem_auth_invitation(
     uuid, uuid, uuid, text, text, text, text, timestamptz,
     bytea, text, bytea, timestamptz
 ) FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_v2_confirm_current_auth_delivery() FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_v2_erase_current_auth_delivery_secret() FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_v2_logout_current_session() FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_v2_resolve_current_reauth_queue() FROM PUBLIC;
+REVOKE ALL ON FUNCTION geo_v2_confirm_current_auth_delivery() FROM PUBLIC;
+REVOKE ALL ON FUNCTION geo_v2_erase_current_auth_delivery_secret() FROM PUBLIC;
+REVOKE ALL ON FUNCTION geo_v2_logout_current_session() FROM PUBLIC;
+REVOKE ALL ON FUNCTION geo_v2_resolve_current_reauth_queue() FROM PUBLIC;
 
-GRANT EXECUTE ON FUNCTION geno_v2_preflight_auth_invitation(uuid, text, text, text)
-    TO geno_v2_runtime;
-GRANT EXECUTE ON FUNCTION geno_v2_create_project_member_invitation(
+GRANT EXECUTE ON FUNCTION geo_v2_preflight_auth_invitation(uuid, text, text, text)
+    TO geo_v2_runtime;
+GRANT EXECUTE ON FUNCTION geo_v2_create_project_member_invitation(
     uuid, uuid, text, text, text, timestamptz
-) TO geno_v2_runtime;
-GRANT EXECUTE ON FUNCTION geno_v2_revoke_project_member_invitation(uuid, text)
-    TO geno_v2_runtime;
-GRANT EXECUTE ON FUNCTION geno_v2_expire_project_member_invitation(uuid)
-    TO geno_v2_runtime;
-GRANT EXECUTE ON FUNCTION geno_v2_redeem_auth_invitation(
+) TO geo_v2_runtime;
+GRANT EXECUTE ON FUNCTION geo_v2_revoke_project_member_invitation(uuid, text)
+    TO geo_v2_runtime;
+GRANT EXECUTE ON FUNCTION geo_v2_expire_project_member_invitation(uuid)
+    TO geo_v2_runtime;
+GRANT EXECUTE ON FUNCTION geo_v2_redeem_auth_invitation(
     uuid, uuid, uuid, text, text, text, text, timestamptz,
     bytea, text, bytea, timestamptz
-) TO geno_v2_runtime;
-GRANT EXECUTE ON FUNCTION geno_v2_confirm_current_auth_delivery()
-    TO geno_v2_runtime;
-GRANT EXECUTE ON FUNCTION geno_v2_erase_current_auth_delivery_secret()
-    TO geno_v2_runtime;
-GRANT EXECUTE ON FUNCTION geno_v2_logout_current_session() TO geno_v2_runtime;
-GRANT EXECUTE ON FUNCTION geno_v2_resolve_current_reauth_queue()
-    TO geno_v2_runtime;
+) TO geo_v2_runtime;
+GRANT EXECUTE ON FUNCTION geo_v2_confirm_current_auth_delivery()
+    TO geo_v2_runtime;
+GRANT EXECUTE ON FUNCTION geo_v2_erase_current_auth_delivery_secret()
+    TO geo_v2_runtime;
+GRANT EXECUTE ON FUNCTION geo_v2_logout_current_session() TO geo_v2_runtime;
+GRANT EXECUTE ON FUNCTION geo_v2_resolve_current_reauth_queue()
+    TO geo_v2_runtime;
 
-COMMENT ON FUNCTION geno_v2_preflight_auth_invitation(uuid, text, text, text) IS
+COMMENT ON FUNCTION geo_v2_preflight_auth_invitation(uuid, text, text, text) IS
     'Fixed v1 dual-bucket preflight: 600 seconds, invitation limit 20, source-HMAC limit 100.';
-COMMENT ON FUNCTION geno_v2_redeem_auth_invitation(
+COMMENT ON FUNCTION geo_v2_redeem_auth_invitation(
     uuid, uuid, uuid, text, text, text, text, timestamptz,
     bytea, text, bytea, timestamptz
 ) IS
     'Atomic invitation redemption; exact replay returns only the original attempt, session, and encrypted delivery fields.';
-COMMENT ON FUNCTION geno_v2_lock_auth_command_context(boolean, boolean) IS
+COMMENT ON FUNCTION geo_v2_lock_auth_command_context(boolean, boolean) IS
     'Authz-owner lock helper; locks authorization sources before validating and locking the current session.';
-COMMENT ON FUNCTION geno_v2_lock_auth_write_control() IS
+COMMENT ON FUNCTION geo_v2_lock_auth_write_control() IS
     'First lock for auth commands; returns the write state while holding the singleton FOR SHARE through transaction end.';
-COMMENT ON FUNCTION geno_v2_lock_auth_command_project(uuid, uuid) IS
+COMMENT ON FUNCTION geo_v2_lock_auth_command_project(uuid, uuid) IS
     'Authz-owner Tenant-then-all-Projects UUID-ordered NO KEY UPDATE lock; verifies the target and remains compatible with grant FKs.';
-COMMENT ON FUNCTION geno_v2_build_locked_auth_scope(uuid, text) IS
+COMMENT ON FUNCTION geo_v2_build_locked_auth_scope(uuid, text) IS
     'Authz-owner complete tenant scope snapshot builder with deterministic source row locks.';
 
 DO $auth_command_catalog_assert$
 DECLARE
     public_command_oids oid[] := ARRAY[
-        'public.geno_v2_preflight_auth_invitation(uuid,text,text,text)'::regprocedure::oid,
-        'public.geno_v2_create_project_member_invitation(uuid,uuid,text,text,text,timestamptz)'::regprocedure::oid,
-        'public.geno_v2_revoke_project_member_invitation(uuid,text)'::regprocedure::oid,
-        'public.geno_v2_expire_project_member_invitation(uuid)'::regprocedure::oid,
-        'public.geno_v2_redeem_auth_invitation(uuid,uuid,uuid,text,text,text,text,timestamptz,bytea,text,bytea,timestamptz)'::regprocedure::oid,
-        'public.geno_v2_confirm_current_auth_delivery()'::regprocedure::oid,
-        'public.geno_v2_erase_current_auth_delivery_secret()'::regprocedure::oid,
-        'public.geno_v2_logout_current_session()'::regprocedure::oid,
-        'public.geno_v2_resolve_current_reauth_queue()'::regprocedure::oid
+        'public.geo_v2_preflight_auth_invitation(uuid,text,text,text)'::regprocedure::oid,
+        'public.geo_v2_create_project_member_invitation(uuid,uuid,text,text,text,timestamptz)'::regprocedure::oid,
+        'public.geo_v2_revoke_project_member_invitation(uuid,text)'::regprocedure::oid,
+        'public.geo_v2_expire_project_member_invitation(uuid)'::regprocedure::oid,
+        'public.geo_v2_redeem_auth_invitation(uuid,uuid,uuid,text,text,text,text,timestamptz,bytea,text,bytea,timestamptz)'::regprocedure::oid,
+        'public.geo_v2_confirm_current_auth_delivery()'::regprocedure::oid,
+        'public.geo_v2_erase_current_auth_delivery_secret()'::regprocedure::oid,
+        'public.geo_v2_logout_current_session()'::regprocedure::oid,
+        'public.geo_v2_resolve_current_reauth_queue()'::regprocedure::oid
     ];
     internal_helper_oids oid[] := ARRAY[
-        'public.geno_v2_lock_auth_write_control()'::regprocedure::oid,
-        'public.geno_v2_require_auth_writes_enabled()'::regprocedure::oid,
-        'public.geno_v2_auth_redeem_request_hash(uuid,text,text)'::regprocedure::oid,
-        'public.geno_v2_consume_auth_preflight_bucket(text,integer,integer,timestamptz)'::regprocedure::oid,
-        'public.geno_v2_lock_auth_command_context(boolean,boolean)'::regprocedure::oid,
-        'public.geno_v2_lock_auth_command_project(uuid,uuid)'::regprocedure::oid,
-        'public.geno_v2_auth_context_has_project_permission(jsonb,uuid,text)'::regprocedure::oid,
-        'public.geno_v2_write_auth_command_audit(text,uuid,uuid,text,text,text,text,jsonb,jsonb,text)'::regprocedure::oid,
-        'public.geno_v2_build_locked_auth_scope(uuid,text)'::regprocedure::oid
+        'public.geo_v2_lock_auth_write_control()'::regprocedure::oid,
+        'public.geo_v2_require_auth_writes_enabled()'::regprocedure::oid,
+        'public.geo_v2_auth_redeem_request_hash(uuid,text,text)'::regprocedure::oid,
+        'public.geo_v2_consume_auth_preflight_bucket(text,integer,integer,timestamptz)'::regprocedure::oid,
+        'public.geo_v2_lock_auth_command_context(boolean,boolean)'::regprocedure::oid,
+        'public.geo_v2_lock_auth_command_project(uuid,uuid)'::regprocedure::oid,
+        'public.geo_v2_auth_context_has_project_permission(jsonb,uuid,text)'::regprocedure::oid,
+        'public.geo_v2_write_auth_command_audit(text,uuid,uuid,text,text,text,text,jsonb,jsonb,text)'::regprocedure::oid,
+        'public.geo_v2_build_locked_auth_scope(uuid,text)'::regprocedure::oid
     ];
     all_command_oids oid[];
     authz_owner_oid oid;
@@ -2478,9 +2478,9 @@ DECLARE
     sensitive_table text;
 BEGIN
     all_command_oids := public_command_oids || internal_helper_oids;
-    SELECT oid INTO authz_owner_oid FROM pg_roles WHERE rolname = 'geno_v2_authz_owner';
-    SELECT oid INTO runtime_oid FROM pg_roles WHERE rolname = 'geno_v2_runtime';
-    SELECT oid INTO api_login_oid FROM pg_roles WHERE rolname = 'geno_v2_api_login';
+    SELECT oid INTO authz_owner_oid FROM pg_roles WHERE rolname = 'geo_v2_authz_owner';
+    SELECT oid INTO runtime_oid FROM pg_roles WHERE rolname = 'geo_v2_runtime';
+    SELECT oid INTO api_login_oid FROM pg_roles WHERE rolname = 'geo_v2_api_login';
     IF authz_owner_oid IS NULL OR runtime_oid IS NULL OR api_login_oid IS NULL THEN
         RAISE EXCEPTION 'auth_command_catalog_verification_failed'
             USING ERRCODE = '55000';

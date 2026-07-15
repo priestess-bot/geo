@@ -162,12 +162,12 @@ class SchemaV2WorkerLoginProvisionPostgresTest(unittest.TestCase):
             with connection.cursor() as cursor:
                 cursor.execute(
                     "SELECT rolcanlogin, rolpassword IS NULL FROM pg_authid "
-                    "WHERE rolname = 'geno_v2_worker_login'"
+                    "WHERE rolname = 'geo_v2_worker_login'"
                 )
                 self.assertEqual(cursor.fetchone(), (False, True))
                 cursor.execute(
                     "SELECT rolcanlogin, rolpassword IS NULL FROM pg_authid "
-                    "WHERE rolname = 'geno_v2_api_login'"
+                    "WHERE rolname = 'geo_v2_api_login'"
                 )
                 self.assertEqual(cursor.fetchone(), (False, True))
                 cursor.execute(
@@ -198,7 +198,7 @@ class SchemaV2WorkerLoginProvisionPostgresTest(unittest.TestCase):
 
             with self._installer() as connection:
                 with connection.cursor() as cursor:
-                    cursor.execute("GRANT SELECT ON collection_jobs TO geno_v2_worker")
+                    cursor.execute("GRANT SELECT ON collection_jobs TO geo_v2_worker")
             try:
                 with self.assertRaisesRegex(
                     provisioner.LoginProvisionError,
@@ -208,21 +208,21 @@ class SchemaV2WorkerLoginProvisionPostgresTest(unittest.TestCase):
             finally:
                 with self._installer() as connection:
                     with connection.cursor() as cursor:
-                        cursor.execute("REVOKE SELECT ON collection_jobs FROM geno_v2_worker")
+                        cursor.execute("REVOKE SELECT ON collection_jobs FROM geo_v2_worker")
 
             with self._installer() as connection:
                 with connection.cursor() as cursor:
                     cursor.execute(
-                        "CREATE FUNCTION geno_v2_complete_durable_job_dispatch(text) "
+                        "CREATE FUNCTION geo_v2_complete_durable_job_dispatch(text) "
                         "RETURNS integer LANGUAGE sql AS 'SELECT 1'"
                     )
                     cursor.execute(
                         "REVOKE ALL ON FUNCTION "
-                        "geno_v2_complete_durable_job_dispatch(text) FROM PUBLIC"
+                        "geo_v2_complete_durable_job_dispatch(text) FROM PUBLIC"
                     )
                     cursor.execute(
                         "GRANT EXECUTE ON FUNCTION "
-                        "geno_v2_complete_durable_job_dispatch(text) TO geno_v2_worker"
+                        "geo_v2_complete_durable_job_dispatch(text) TO geo_v2_worker"
                     )
             try:
                 with self.assertRaisesRegex(
@@ -234,7 +234,7 @@ class SchemaV2WorkerLoginProvisionPostgresTest(unittest.TestCase):
                 with self._installer() as connection:
                     with connection.cursor() as cursor:
                         cursor.execute(
-                            "DROP FUNCTION geno_v2_complete_durable_job_dispatch(text)"
+                            "DROP FUNCTION geo_v2_complete_durable_job_dispatch(text)"
                         )
 
             with self._installer() as connection:
@@ -247,7 +247,7 @@ class SchemaV2WorkerLoginProvisionPostgresTest(unittest.TestCase):
                     self.assertEqual(cursor.fetchone(), ("preparing",))
                     cursor.execute(
                         "SELECT rolcanlogin, rolpassword IS NULL FROM pg_authid "
-                        "WHERE rolname = 'geno_v2_api_login'"
+                        "WHERE rolname = 'geo_v2_api_login'"
                     )
                     self.assertEqual(cursor.fetchone(), (False, True))
                     cursor.execute(
@@ -256,12 +256,12 @@ class SchemaV2WorkerLoginProvisionPostgresTest(unittest.TestCase):
                         "FROM pg_auth_members AS membership "
                         "JOIN pg_roles AS parent ON parent.oid = membership.roleid "
                         "JOIN pg_roles AS child ON child.oid = membership.member "
-                        "WHERE parent.rolname = 'geno_v2_worker_login' "
-                        "OR child.rolname = 'geno_v2_worker_login'"
+                        "WHERE parent.rolname = 'geo_v2_worker_login' "
+                        "OR child.rolname = 'geo_v2_worker_login'"
                     )
                     self.assertEqual(
                         cursor.fetchall(),
-                        [("geno_v2_worker", "geno_v2_worker_login", False, False, True)],
+                        [("geo_v2_worker", "geo_v2_worker_login", False, False, True)],
                     )
 
             project_id, dispatch_id = self._insert_dispatch_fixture()
@@ -286,13 +286,13 @@ class SchemaV2WorkerLoginProvisionPostgresTest(unittest.TestCase):
                             "VALUES ('worker', 'provision', 'forbidden-v1', 'forbidden')"
                         )
                     worker_connection.rollback()
-                    cursor.execute("SET LOCAL ROLE geno_v2_worker")
+                    cursor.execute("SET LOCAL ROLE geo_v2_worker")
                     with self.assertRaises(psycopg.errors.InsufficientPrivilege):
                         cursor.execute("SELECT count(*) FROM public.collection_jobs")
                     worker_connection.rollback()
-                    cursor.execute("SET LOCAL ROLE geno_v2_worker")
+                    cursor.execute("SET LOCAL ROLE geo_v2_worker")
                     with self.assertRaises(psycopg.errors.InsufficientPrivilege):
-                        cursor.execute("SET LOCAL ROLE geno_v2_runtime")
+                        cursor.execute("SET LOCAL ROLE geo_v2_runtime")
                     worker_connection.rollback()
                     cursor.execute(
                         "SELECT current_user, session_user, "
@@ -308,10 +308,10 @@ class SchemaV2WorkerLoginProvisionPostgresTest(unittest.TestCase):
 
                     worker_id = "worker-real-login-gate"
                     with worker_connection.transaction():
-                        cursor.execute("SET LOCAL ROLE geno_v2_worker")
+                        cursor.execute("SET LOCAL ROLE geo_v2_worker")
                         cursor.execute(
                             "SELECT id, lease_token, status "
-                            "FROM geno_v2_claim_durable_job_dispatch(%s, %s, %s, %s)",
+                            "FROM geo_v2_claim_durable_job_dispatch(%s, %s, %s, %s)",
                             (worker_id, 30, project_id, dispatch_id),
                         )
                         claimed_id, lease_token, status = cursor.fetchone()
@@ -319,18 +319,18 @@ class SchemaV2WorkerLoginProvisionPostgresTest(unittest.TestCase):
                         self.assertEqual(status, "dispatching")
 
                     with worker_connection.transaction():
-                        cursor.execute("SET LOCAL ROLE geno_v2_worker")
+                        cursor.execute("SET LOCAL ROLE geo_v2_worker")
                         cursor.execute(
-                            "SELECT status FROM geno_v2_heartbeat_durable_job_dispatch("
+                            "SELECT status FROM geo_v2_heartbeat_durable_job_dispatch("
                             "%s, %s, %s, %s)",
                             (dispatch_id, worker_id, lease_token, 30),
                         )
                         self.assertEqual(cursor.fetchone(), ("dispatching",))
 
                     with worker_connection.transaction():
-                        cursor.execute("SET LOCAL ROLE geno_v2_worker")
+                        cursor.execute("SET LOCAL ROLE geo_v2_worker")
                         cursor.execute(
-                            "SELECT status FROM geno_v2_complete_durable_job_dispatch("
+                            "SELECT status FROM geo_v2_complete_durable_job_dispatch("
                             "%s, %s, %s)",
                             (dispatch_id, worker_id, lease_token),
                         )
@@ -477,7 +477,7 @@ class SchemaV2WorkerLoginProvisionPostgresTest(unittest.TestCase):
                         "SELECT auth.rolcanlogin, auth.rolpassword IS NULL, "
                         "role_row.rolconfig IS NULL FROM pg_authid AS auth "
                         "JOIN pg_roles AS role_row ON role_row.oid = auth.oid "
-                        "WHERE auth.rolname = 'geno_v2_worker_login'"
+                        "WHERE auth.rolname = 'geo_v2_worker_login'"
                     )
                     self.assertEqual(cursor.fetchone(), (False, True, True))
                     cursor.execute(

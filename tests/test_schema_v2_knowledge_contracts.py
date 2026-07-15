@@ -108,7 +108,7 @@ class SchemaV2KnowledgeContractsTest(unittest.TestCase):
             self.sql,
             r"ALTER TABLE (?:public\.)?%I FORCE ROW LEVEL SECURITY",
         )
-        self.assertIn("public.geno_v2_session_has_project_permission", self.sql)
+        self.assertIn("public.geo_v2_session_has_project_permission", self.sql)
         self.assertNotIn("TO PUBLIC", self.sql)
 
     def test_project_owned_references_use_composite_foreign_keys(self) -> None:
@@ -209,7 +209,7 @@ class SchemaV2KnowledgeContractsTest(unittest.TestCase):
         ):
             self.assertIn(status, jobs)
 
-        create = self.functions["geno_v2_create_knowledge_job"]
+        create = self.functions["geo_v2_create_knowledge_job"]
         self.assertIn("knowledge_job_input_snapshots", create)
         self.assertIn("required_quality_definition_ids", create)
         self.assertIn("governance_version_ids", create)
@@ -218,33 +218,33 @@ class SchemaV2KnowledgeContractsTest(unittest.TestCase):
         self.assertIn("unsupported top-level fields", create)
 
         for name in (
-            "geno_v2_claim_knowledge_job",
-            "geno_v2_heartbeat_knowledge_job",
-            "geno_v2_begin_finalizing_knowledge_job",
-            "geno_v2_complete_knowledge_job",
-            "geno_v2_fail_knowledge_job",
-            "geno_v2_ack_knowledge_job_cancel",
-            "geno_v2_replay_knowledge_job",
+            "geo_v2_claim_knowledge_job",
+            "geo_v2_heartbeat_knowledge_job",
+            "geo_v2_begin_finalizing_knowledge_job",
+            "geo_v2_complete_knowledge_job",
+            "geo_v2_fail_knowledge_job",
+            "geo_v2_ack_knowledge_job_cancel",
+            "geo_v2_replay_knowledge_job",
         ):
             self.assertIn(name, self.functions)
-        self.assertIn("FOR UPDATE OF job SKIP LOCKED", self.functions["geno_v2_claim_knowledge_job"])
-        self.assertIn("lease_expires_at <= statement_timestamp()", self.functions["geno_v2_claim_knowledge_job"])
+        self.assertIn("FOR UPDATE OF job SKIP LOCKED", self.functions["geo_v2_claim_knowledge_job"])
+        self.assertIn("lease_expires_at <= statement_timestamp()", self.functions["geo_v2_claim_knowledge_job"])
         self.assertIn("lease_token = p_lease_token", self.sql)
         self.assertIn("knowledge job lease is lost or cancellation is pending", self.sql)
         self.assertIn("knowledge result hash does not match canonical payload", self.sql)
 
     def test_upstream_artifacts_and_quality_are_fail_closed(self) -> None:
-        ready = self.functions["geno_v2_knowledge_job_inputs_ready"]
+        ready = self.functions["geo_v2_knowledge_job_inputs_ready"]
         self.assertIn("upstream.status <> 'succeeded'", ready)
         self.assertIn("artifact.artifact_status <> 'finalized'", ready)
         self.assertIn("governance.external_model_use_allowed", ready)
         self.assertIn("governance.confidentiality = 'restricted'", ready)
         self.assertIn("source_asset.current_governance_version_id", ready)
 
-        complete = self.functions["geno_v2_complete_knowledge_job"]
-        self.assertIn("geno_v2_knowledge_quality_certificate_complete", complete)
+        complete = self.functions["geo_v2_complete_knowledge_job"]
+        self.assertIn("geo_v2_knowledge_quality_certificate_complete", complete)
         self.assertIn("knowledge job artifacts are not finalized", complete)
-        certificate = self.functions["geno_v2_knowledge_quality_certificate_complete"]
+        certificate = self.functions["geo_v2_knowledge_quality_certificate_complete"]
         self.assertIn("hard_block", certificate)
         self.assertIn("knowledge_risk_acceptances", certificate)
         self.assertIn("target_kind", certificate)
@@ -264,7 +264,7 @@ class SchemaV2KnowledgeContractsTest(unittest.TestCase):
             "AFTER INSERT ON knowledge_pipeline_jobs",
         ):
             self.assertIn(marker, self.sql)
-        enqueue = self.functions["geno_v2_enqueue_durable_job_dispatch"]
+        enqueue = self.functions["geo_v2_enqueue_durable_job_dispatch"]
         self.assertIn("'knowledge_' || NEW.job_type", enqueue)
         self.assertIn("knowledge_pipeline_job_id", enqueue)
         self.assertIn("canonical_payload_hash", enqueue)
@@ -282,11 +282,11 @@ class SchemaV2KnowledgeContractsTest(unittest.TestCase):
                 self.assertIn("SET search_path = pg_catalog", self.functions[name])
 
         for role_name in (
-            "geno_v2_job_owner",
-            "geno_v2_result_owner",
-            "geno_v2_job_command_owner",
-            "geno_v2_authz_owner",
-            "geno_v2_worker",
+            "geo_v2_job_owner",
+            "geo_v2_result_owner",
+            "geo_v2_job_command_owner",
+            "geo_v2_authz_owner",
+            "geo_v2_worker",
         ):
             self.assertIn(role_name, self.sql)
         for marker in (
@@ -300,16 +300,16 @@ class SchemaV2KnowledgeContractsTest(unittest.TestCase):
 
         self.assertRegex(
             self.sql,
-            r"(?s)GRANT EXECUTE ON FUNCTION geno_v2_claim_knowledge_job\(text, integer, uuid, text\).*?TO geno_v2_worker",
+            r"(?s)GRANT EXECUTE ON FUNCTION geo_v2_claim_knowledge_job\(text, integer, uuid, text\).*?TO geo_v2_worker",
         )
         self.assertRegex(
             self.sql,
-            r"(?s)GRANT EXECUTE ON FUNCTION geno_v2_create_knowledge_job\(.*?\).*?TO geno_v2_runtime",
+            r"(?s)GRANT EXECUTE ON FUNCTION geo_v2_create_knowledge_job\(.*?\).*?TO geo_v2_runtime",
         )
-        self.assertNotRegex(self.sql, r"GRANT (?:SELECT|INSERT|UPDATE|DELETE).*?TO geno_v2_worker")
+        self.assertNotRegex(self.sql, r"GRANT (?:SELECT|INSERT|UPDATE|DELETE).*?TO geo_v2_worker")
 
     def test_review_and_approved_projection_preserve_governance_lineage(self) -> None:
-        review = self.functions["geno_v2_review_knowledge_fact_candidate"]
+        review = self.functions["geo_v2_review_knowledge_fact_candidate"]
         for marker in (
             "producer_row.status <> 'succeeded'",
             "candidate submitter cannot approve or reject",
@@ -321,7 +321,7 @@ class SchemaV2KnowledgeContractsTest(unittest.TestCase):
         ):
             self.assertIn(marker, review)
 
-        approved = self.functions["geno_v2_read_approved_knowledge"]
+        approved = self.functions["geo_v2_read_approved_knowledge"]
         for marker in (
             "fact.status = 'active'",
             "version_row.id = fact.current_version_id",
@@ -332,9 +332,9 @@ class SchemaV2KnowledgeContractsTest(unittest.TestCase):
             "p_publication_channel",
         ):
             self.assertIn(marker, approved)
-        self.assertIn("geno_v2_create_knowledge_governance_version", self.functions)
-        self.assertIn("geno_v2_set_knowledge_source_status", self.functions)
-        self.assertIn("geno_v2_withdraw_knowledge_fact", self.functions)
+        self.assertIn("geo_v2_create_knowledge_governance_version", self.functions)
+        self.assertIn("geo_v2_set_knowledge_source_status", self.functions)
+        self.assertIn("geo_v2_withdraw_knowledge_fact", self.functions)
 
 
 if __name__ == "__main__":

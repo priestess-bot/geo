@@ -93,7 +93,7 @@ def build_au_p0b_google_spike_runbook(
     smoke_path = f"{artifact_root}/au-p0b-google-playwright-smoke-latest.json"
     manual_backfill_verification_path = f"{artifact_root}/au-p0b-google-manual-backfill-verification-latest.json"
     planned_runs = _planned_runs(prompt_count, geo_cities, sample_size, DEFAULT_SURFACE_COUNT)
-    python_env = {"PYTHONPATH": "packages/geno_core:apps/api"}
+    python_env = {"PYTHONPATH": "packages/geo_core:apps/api"}
     runbook: dict[str, Any] = {
         "runbook_version": RUNBOOK_VERSION,
         "generated_at": generated_at or _utc_now_iso(),
@@ -135,7 +135,7 @@ def build_au_p0b_google_spike_runbook(
             "OBJECT_STORE_BUCKET",
             "OBJECT_STORE_ACCESS_KEY",
             "OBJECT_STORE_SECRET_KEY",
-            "GENO_BROWSER_ARTIFACT_DIR",
+            "GEO_BROWSER_ARTIFACT_DIR",
         ),
         "artifact_paths": {
             "playwright_env_json": playwright_env_path,
@@ -179,7 +179,7 @@ def build_au_p0b_google_spike_runbook(
                     "OBJECT_STORE_BUCKET",
                     "OBJECT_STORE_ACCESS_KEY",
                     "OBJECT_STORE_SECRET_KEY",
-                    "GENO_BROWSER_ARTIFACT_DIR",
+                    "GEO_BROWSER_ARTIFACT_DIR",
                 ),
                 "stop_on_failure": True,
                 "notes": (
@@ -279,7 +279,7 @@ def build_au_p0b_google_spike_runbook(
                 title="Check Google spike collector readiness without external collection",
                 command=_make_command("au-p0b-google-spike-health"),
                 env={
-                    "GENO_AU_P0B_GOOGLE_SPIKE_HEALTH_OUTPUT_PATH": health_path,
+                    "GEO_AU_P0B_GOOGLE_SPIKE_HEALTH_OUTPUT_PATH": health_path,
                 },
                 output_paths=(health_path,),
                 planned_runs=planned_runs,
@@ -289,8 +289,8 @@ def build_au_p0b_google_spike_runbook(
                 title="Build audit manifest for the Google spike health check",
                 command=_make_command("au-p0b-google-spike-health-manifest"),
                 env={
-                    "GENO_AU_P0B_GOOGLE_SPIKE_HEALTH_OUTPUT_PATH": health_path,
-                    "GENO_AU_P0B_GOOGLE_SPIKE_HEALTH_MANIFEST_PATH": health_manifest_path,
+                    "GEO_AU_P0B_GOOGLE_SPIKE_HEALTH_OUTPUT_PATH": health_path,
+                    "GEO_AU_P0B_GOOGLE_SPIKE_HEALTH_MANIFEST_PATH": health_manifest_path,
                 },
                 output_paths=(health_manifest_path,),
             ),
@@ -299,8 +299,8 @@ def build_au_p0b_google_spike_runbook(
                 title="Run the full Google spike matrix and require both Google gates",
                 command=_make_command("au-p0b-google-spike"),
                 env={
-                    **({"GENO_AU_P0B_GOOGLE_SPIKE_PERSIST_ARGS": ""} if not persist else {}),
-                    "GENO_AU_P0B_GOOGLE_SPIKE_OUTPUT_PATH": spike_path,
+                    **({"GEO_AU_P0B_GOOGLE_SPIKE_PERSIST_ARGS": ""} if not persist else {}),
+                    "GEO_AU_P0B_GOOGLE_SPIKE_OUTPUT_PATH": spike_path,
                 },
                 output_paths=(spike_path,),
                 planned_runs=planned_runs,
@@ -314,8 +314,8 @@ def build_au_p0b_google_spike_runbook(
                 title="Build audit manifest for the Google spike payload",
                 command=_make_command("au-p0b-google-spike-manifest"),
                 env={
-                    "GENO_AU_P0B_GOOGLE_SPIKE_OUTPUT_PATH": spike_path,
-                    "GENO_AU_P0B_GOOGLE_SPIKE_MANIFEST_PATH": spike_manifest_path,
+                    "GEO_AU_P0B_GOOGLE_SPIKE_OUTPUT_PATH": spike_path,
+                    "GEO_AU_P0B_GOOGLE_SPIKE_MANIFEST_PATH": spike_manifest_path,
                 },
                 output_paths=(spike_manifest_path,),
             ),
@@ -340,16 +340,16 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build a command runbook for the AU P0b Google spike")
     parser.add_argument(
         "--output-path",
-        default=os.environ.get("GENO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to write the generated Google spike runbook JSON.",
     )
     parser.add_argument(
         "--artifact-dir",
-        default=os.environ.get("GENO_AU_P0B_GOOGLE_ARTIFACT_DIR", DEFAULT_ARTIFACT_DIR),
+        default=os.environ.get("GEO_AU_P0B_GOOGLE_ARTIFACT_DIR", DEFAULT_ARTIFACT_DIR),
         help="Directory for generated Google spike evidence JSON files.",
     )
-    parser.add_argument("--prompt-count", type=int, default=int(os.environ.get("GENO_AU_P0B_GOOGLE_PROMPT_COUNT", "30")))
-    parser.add_argument("--sample-size", type=int, default=int(os.environ.get("GENO_AU_P0B_GOOGLE_SAMPLE_SIZE", "2")))
+    parser.add_argument("--prompt-count", type=int, default=int(os.environ.get("GEO_AU_P0B_GOOGLE_PROMPT_COUNT", "30")))
+    parser.add_argument("--sample-size", type=int, default=int(os.environ.get("GEO_AU_P0B_GOOGLE_SAMPLE_SIZE", "2")))
     parser.add_argument("--no-persist", action="store_true", help="Omit --persist from the Google spike collection command.")
     parser.add_argument("--generated-at", default=None, help="Override generated_at timestamp for deterministic tests.")
     return parser.parse_args()

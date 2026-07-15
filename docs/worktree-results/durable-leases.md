@@ -44,49 +44,49 @@ Do not deploy the branch without these shared-file changes:
 ```yaml
 task-worker-knowledge:
   environment:
-    GENO_KNOWLEDGE_WORKER_LEASE_SECONDS: ${GENO_KNOWLEDGE_WORKER_LEASE_SECONDS:-600}
-    GENO_KNOWLEDGE_WORKER_MAX_JOBS: ${GENO_KNOWLEDGE_WORKER_MAX_JOBS:-25}
-    GENO_KNOWLEDGE_DRAMATIQ_DRAIN_CYCLES: ${GENO_KNOWLEDGE_DRAMATIQ_DRAIN_CYCLES:-20}
+    GEO_KNOWLEDGE_WORKER_LEASE_SECONDS: ${GEO_KNOWLEDGE_WORKER_LEASE_SECONDS:-600}
+    GEO_KNOWLEDGE_WORKER_MAX_JOBS: ${GEO_KNOWLEDGE_WORKER_MAX_JOBS:-25}
+    GEO_KNOWLEDGE_DRAMATIQ_DRAIN_CYCLES: ${GEO_KNOWLEDGE_DRAMATIQ_DRAIN_CYCLES:-20}
 
 task-worker-runtime:
   environment:
-    GENO_COLLECTION_JOB_LEASE_SECONDS: ${GENO_COLLECTION_JOB_LEASE_SECONDS:-3600}
-    GENO_COLLECTION_JOB_TIMEOUT_SECONDS: ${GENO_COLLECTION_JOB_TIMEOUT_SECONDS:-3600}
-    GENO_COLLECTION_CHILD_TERMINATE_GRACE_SECONDS: ${GENO_COLLECTION_CHILD_TERMINATE_GRACE_SECONDS:-10}
-    GENO_COLLECTION_RETRY_BACKOFF_SECONDS: ${GENO_COLLECTION_RETRY_BACKOFF_SECONDS:-120}
-    GENO_COLLECTION_PROVIDER_CONCURRENCY: ${GENO_COLLECTION_PROVIDER_CONCURRENCY:-1}
+    GEO_COLLECTION_JOB_LEASE_SECONDS: ${GEO_COLLECTION_JOB_LEASE_SECONDS:-3600}
+    GEO_COLLECTION_JOB_TIMEOUT_SECONDS: ${GEO_COLLECTION_JOB_TIMEOUT_SECONDS:-3600}
+    GEO_COLLECTION_CHILD_TERMINATE_GRACE_SECONDS: ${GEO_COLLECTION_CHILD_TERMINATE_GRACE_SECONDS:-10}
+    GEO_COLLECTION_RETRY_BACKOFF_SECONDS: ${GEO_COLLECTION_RETRY_BACKOFF_SECONDS:-120}
+    GEO_COLLECTION_PROVIDER_CONCURRENCY: ${GEO_COLLECTION_PROVIDER_CONCURRENCY:-1}
 
 task-recovery-dispatcher:
   environment:
-    DATABASE_URL: postgresql://geno_runtime_app:geno_runtime_app@postgres:5432/geno
+    DATABASE_URL: postgresql://geo_runtime_app:geo_runtime_app@postgres:5432/geo
   command:
     - python
     - workers/task_queue/run_recovery_dispatcher.py
     - --interval-seconds
-    - ${GENO_TASK_RECOVERY_INTERVAL_SECONDS:-30}
+    - ${GEO_TASK_RECOVERY_INTERVAL_SECONDS:-30}
 ```
 
 The heartbeat interval is internally capped at one third of the lease. Keep the Knowledge
 lease above the longest expected external operation plus scheduling jitter. Keep the
 Collection Dramatiq time limit (currently 3900 seconds) above
-`GENO_COLLECTION_JOB_TIMEOUT_SECONDS + GENO_COLLECTION_CHILD_TERMINATE_GRACE_SECONDS`.
-Never set `GENO_DURABLE_JOB_AFTER_*_FAILPOINT` or
-`GENO_COLLECTION_TEST_BYPASS_RATE_LIMIT` outside a test deployment.
+`GEO_COLLECTION_JOB_TIMEOUT_SECONDS + GEO_COLLECTION_CHILD_TERMINATE_GRACE_SECONDS`.
+Never set `GEO_DURABLE_JOB_AFTER_*_FAILPOINT` or
+`GEO_COLLECTION_TEST_BYPASS_RATE_LIMIT` outside a test deployment.
 
 Add these Make targets in the integration branch:
 
 ```make
 test-durable-leases:
-	GENO_DURABLE_JOB_TEST_DATABASE_URL="$${GENO_DURABLE_JOB_TEST_DATABASE_URL:?required}" \
-		PYTHONPATH=packages/geno_core:apps/api:. python3 -m pytest -q \
+	GEO_DURABLE_JOB_TEST_DATABASE_URL="$${GEO_DURABLE_JOB_TEST_DATABASE_URL:?required}" \
+		PYTHONPATH=packages/geo_core:apps/api:. python3 -m pytest -q \
 		tests/test_durable_job_lease_contracts.py \
 		tests/test_durable_job_lease_postgres.py \
 		tests/test_api_contracts.py::ApiContractsTest::test_terminal_collection_job_cancel_maps_state_conflict_to_409 \
 		tests/test_api_contracts.py::ApiContractsTest::test_missing_collection_job_cancel_remains_404
 
 smoke-durable-lease-recovery:
-	PYTHONPATH=packages/geno_core:apps/api:. python3 scripts/verify_durable_job_lease_recovery.py \
-		--database-url "$${GENO_DURABLE_JOB_TEST_DATABASE_URL}" \
+	PYTHONPATH=packages/geo_core:apps/api:. python3 scripts/verify_durable_job_lease_recovery.py \
+		--database-url "$${GEO_DURABLE_JOB_TEST_DATABASE_URL}" \
 		--compose-project "$${COMPOSE_PROJECT_NAME:-geo-durable-leases}" \
 		--artifact-path tmp/durable-job-lease-recovery/latest.json \
 		--run-actor-kill-tests
@@ -126,7 +126,7 @@ Suggested alert inputs exposed by `/metrics`:
 - growth in `reclaimed`, `dead_lettered`, `lease_lost`, `stale_completion`, heartbeat failure,
   and cancellation counters;
 - stale recovery worker heartbeat or a cursor whose recovery slots stop advancing;
-- `geno_durable_job_snapshot_ok == 0`.
+- `geo_durable_job_snapshot_ok == 0`.
 
 Initial alert thresholds should be derived from the configured lease and dispatcher interval:
 expired work older than `lease + 2 * dispatcher interval` is actionable; any sustained

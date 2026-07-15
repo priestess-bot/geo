@@ -3,8 +3,8 @@ from __future__ import annotations
 import unittest
 from datetime import UTC, datetime
 
-from geno_core.models import RuntimeMembershipScope, RuntimeTenantMemberInput
-from geno_core.repository import PostgresEvidenceRepository
+from geo_core.models import RuntimeMembershipScope, RuntimeTenantMemberInput
+from geo_core.repository import PostgresEvidenceRepository
 
 
 class RecordingCursor:

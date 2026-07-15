@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from datetime import UTC, datetime
 
-from geno_core.models import (
+from geo_core.models import (
     RuntimeEntityAliasAssignmentDispatchApplyResult,
     RuntimeEntityAliasAssignmentDispatchPlan,
     RuntimeEntityAliasCandidateReview,

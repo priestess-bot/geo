@@ -33,7 +33,7 @@ ALTER TABLE auth_invitation_redemption_attempts
     ADD CONSTRAINT auth_attempts_confirmation_requires_erasure
     CHECK (delivery_confirmed_at IS NULL OR secret_erased_at IS NOT NULL);
 
-CREATE FUNCTION geno_v2_guard_project_member_invitation_state()
+CREATE FUNCTION geo_v2_guard_project_member_invitation_state()
 RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = pg_catalog
@@ -83,7 +83,7 @@ BEGIN
 END;
 $guard_invitation$;
 
-CREATE FUNCTION geno_v2_guard_auth_redemption_attempt_state()
+CREATE FUNCTION geo_v2_guard_auth_redemption_attempt_state()
 RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = pg_catalog
@@ -195,7 +195,7 @@ BEGIN
 END;
 $guard_attempt$;
 
-CREATE OR REPLACE FUNCTION geno_v2_guard_runtime_session_update()
+CREATE OR REPLACE FUNCTION geo_v2_guard_runtime_session_update()
 RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = pg_catalog
@@ -239,7 +239,7 @@ BEGIN
 END;
 $guard_session_update$;
 
-CREATE FUNCTION geno_v2_guard_runtime_reauth_state()
+CREATE FUNCTION geo_v2_guard_runtime_reauth_state()
 RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = pg_catalog
@@ -273,7 +273,7 @@ BEGIN
 END;
 $guard_reauth$;
 
-CREATE FUNCTION geno_v2_guard_auth_write_control_state()
+CREATE FUNCTION geo_v2_guard_auth_write_control_state()
 RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = pg_catalog
@@ -296,7 +296,7 @@ BEGIN
 END;
 $guard_write_control$;
 
-CREATE FUNCTION geno_v2_guard_auth_preflight_rate_limit_state()
+CREATE FUNCTION geo_v2_guard_auth_preflight_rate_limit_state()
 RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = pg_catalog
@@ -336,7 +336,7 @@ BEGIN
 END;
 $guard_preflight$;
 
-CREATE FUNCTION geno_v2_require_auth_writes_enabled()
+CREATE FUNCTION geo_v2_require_auth_writes_enabled()
 RETURNS void
 LANGUAGE plpgsql
 STABLE
@@ -356,7 +356,7 @@ BEGIN
 END;
 $require_auth_writes$;
 
-CREATE FUNCTION geno_v2_revoke_affected_sessions(
+CREATE FUNCTION geo_v2_revoke_affected_sessions(
     affected_tenant_id uuid,
     affected_actor_id text,
     affected_project_id uuid,
@@ -438,7 +438,7 @@ BEGIN
 END;
 $revoke_sessions$;
 
-CREATE FUNCTION geno_v2_lock_runtime_session_authz_sources()
+CREATE FUNCTION geo_v2_lock_runtime_session_authz_sources()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -499,7 +499,7 @@ BEGIN
 END;
 $lock_session_sources$;
 
-CREATE FUNCTION geno_v2_revoke_sessions_for_authz_change()
+CREATE FUNCTION geo_v2_revoke_sessions_for_authz_change()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -517,7 +517,7 @@ BEGIN
             RETURN NEW;
         END IF;
         IF TG_OP <> 'INSERT' AND OLD.status = 'active' THEN
-            PERFORM public.geno_v2_revoke_affected_sessions(
+            PERFORM public.geo_v2_revoke_affected_sessions(
                 OLD.tenant_id, OLD.user_id, NULL, 'tenant_member_scope_changed'
             );
         END IF;
@@ -526,7 +526,7 @@ BEGIN
                 OR OLD.status <> 'active'
                 OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id
                 OR NEW.user_id IS DISTINCT FROM OLD.user_id) THEN
-            PERFORM public.geno_v2_revoke_affected_sessions(
+            PERFORM public.geo_v2_revoke_affected_sessions(
                 NEW.tenant_id, NEW.user_id, NULL, 'tenant_member_scope_changed'
             );
         END IF;
@@ -540,7 +540,7 @@ BEGIN
             RETURN NEW;
         END IF;
         IF TG_OP <> 'INSERT' AND OLD.status = 'active' THEN
-            PERFORM public.geno_v2_revoke_affected_sessions(
+            PERFORM public.geo_v2_revoke_affected_sessions(
                 OLD.tenant_id,
                 OLD.user_id,
                 OLD.project_id,
@@ -552,7 +552,7 @@ BEGIN
                 OR OLD.status <> 'active'
                 OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id
                 OR NEW.user_id IS DISTINCT FROM OLD.user_id) THEN
-            PERFORM public.geno_v2_revoke_affected_sessions(
+            PERFORM public.geo_v2_revoke_affected_sessions(
                 NEW.tenant_id,
                 NEW.user_id,
                 NEW.project_id,
@@ -573,7 +573,7 @@ BEGIN
             RETURN NEW;
         END IF;
         IF TG_OP <> 'INSERT' THEN
-            PERFORM public.geno_v2_revoke_affected_sessions(
+            PERFORM public.geo_v2_revoke_affected_sessions(
                 OLD.tenant_id,
                 OLD.actor_id,
                 OLD.project_id,
@@ -584,7 +584,7 @@ BEGIN
            AND (TG_OP = 'INSERT'
                 OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id
                 OR NEW.actor_id IS DISTINCT FROM OLD.actor_id) THEN
-            PERFORM public.geno_v2_revoke_affected_sessions(
+            PERFORM public.geo_v2_revoke_affected_sessions(
                 NEW.tenant_id,
                 NEW.actor_id,
                 NEW.project_id,
@@ -595,7 +595,7 @@ BEGIN
         IF TG_OP = 'UPDATE'
            AND (OLD.status = 'archived') IS DISTINCT FROM (NEW.status = 'archived') THEN
             IF NEW.status = 'archived' THEN
-                PERFORM public.geno_v2_revoke_affected_sessions(
+                PERFORM public.geo_v2_revoke_affected_sessions(
                     NEW.tenant_id, NULL, NEW.id, 'project_archived'
                 );
             ELSE
@@ -606,7 +606,7 @@ BEGIN
                       AND member.project_id = NEW.id
                       AND member.status = 'active'
                 LOOP
-                    PERFORM public.geno_v2_revoke_affected_sessions(
+                    PERFORM public.geo_v2_revoke_affected_sessions(
                         NEW.tenant_id,
                         member_row.user_id,
                         NEW.id,
@@ -617,7 +617,7 @@ BEGIN
         END IF;
     ELSIF TG_TABLE_NAME = 'tenants' THEN
         IF TG_OP = 'UPDATE' AND OLD.status = 'active' AND NEW.status = 'disabled' THEN
-            PERFORM public.geno_v2_revoke_affected_sessions(
+            PERFORM public.geo_v2_revoke_affected_sessions(
                 NEW.id, NULL, NULL, 'tenant_disabled'
             );
         END IF;
@@ -629,72 +629,72 @@ BEGIN
 END;
 $revoke_for_authz_change$;
 
-ALTER FUNCTION geno_v2_guard_project_member_invitation_state()
-    OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_guard_auth_redemption_attempt_state()
-    OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_guard_runtime_session_update() OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_guard_runtime_reauth_state() OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_guard_auth_write_control_state() OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_guard_auth_preflight_rate_limit_state()
-    OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_require_auth_writes_enabled() OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_revoke_affected_sessions(uuid, text, uuid, text)
-    OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_revoke_sessions_for_authz_change()
-    OWNER TO geno_v2_authz_owner;
+ALTER FUNCTION geo_v2_guard_project_member_invitation_state()
+    OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_guard_auth_redemption_attempt_state()
+    OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_guard_runtime_session_update() OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_guard_runtime_reauth_state() OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_guard_auth_write_control_state() OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_guard_auth_preflight_rate_limit_state()
+    OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_require_auth_writes_enabled() OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_revoke_affected_sessions(uuid, text, uuid, text)
+    OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_revoke_sessions_for_authz_change()
+    OWNER TO geo_v2_authz_owner;
 
 GRANT UPDATE (status, revoked_at, revoked_by, revoke_reason, updated_at)
-    ON runtime_sessions TO geno_v2_authz_owner;
-GRANT INSERT ON runtime_session_reauth_queue TO geno_v2_authz_owner;
-GRANT SELECT (session_id) ON runtime_session_reauth_queue TO geno_v2_authz_owner;
-GRANT SELECT ON auth_runtime_write_controls TO geno_v2_authz_owner;
+    ON runtime_sessions TO geo_v2_authz_owner;
+GRANT INSERT ON runtime_session_reauth_queue TO geo_v2_authz_owner;
+GRANT SELECT (session_id) ON runtime_session_reauth_queue TO geo_v2_authz_owner;
+GRANT SELECT ON auth_runtime_write_controls TO geo_v2_authz_owner;
 
-REVOKE ALL ON FUNCTION geno_v2_guard_project_member_invitation_state() FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_v2_guard_auth_redemption_attempt_state() FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_v2_guard_runtime_session_update() FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_v2_guard_runtime_reauth_state() FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_v2_guard_auth_write_control_state() FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_v2_guard_auth_preflight_rate_limit_state() FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_v2_require_auth_writes_enabled() FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_v2_revoke_affected_sessions(uuid, text, uuid, text)
+REVOKE ALL ON FUNCTION geo_v2_guard_project_member_invitation_state() FROM PUBLIC;
+REVOKE ALL ON FUNCTION geo_v2_guard_auth_redemption_attempt_state() FROM PUBLIC;
+REVOKE ALL ON FUNCTION geo_v2_guard_runtime_session_update() FROM PUBLIC;
+REVOKE ALL ON FUNCTION geo_v2_guard_runtime_reauth_state() FROM PUBLIC;
+REVOKE ALL ON FUNCTION geo_v2_guard_auth_write_control_state() FROM PUBLIC;
+REVOKE ALL ON FUNCTION geo_v2_guard_auth_preflight_rate_limit_state() FROM PUBLIC;
+REVOKE ALL ON FUNCTION geo_v2_require_auth_writes_enabled() FROM PUBLIC;
+REVOKE ALL ON FUNCTION geo_v2_revoke_affected_sessions(uuid, text, uuid, text)
     FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_v2_lock_runtime_session_authz_sources() FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_v2_revoke_sessions_for_authz_change() FROM PUBLIC;
+REVOKE ALL ON FUNCTION geo_v2_lock_runtime_session_authz_sources() FROM PUBLIC;
+REVOKE ALL ON FUNCTION geo_v2_revoke_sessions_for_authz_change() FROM PUBLIC;
 
 CREATE TRIGGER project_invitations_guard_state
 BEFORE INSERT OR UPDATE OR DELETE ON project_member_invitations
-FOR EACH ROW EXECUTE FUNCTION geno_v2_guard_project_member_invitation_state();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_guard_project_member_invitation_state();
 
 CREATE TRIGGER auth_attempts_guard_state
 BEFORE INSERT OR UPDATE OR DELETE ON auth_invitation_redemption_attempts
-FOR EACH ROW EXECUTE FUNCTION geno_v2_guard_auth_redemption_attempt_state();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_guard_auth_redemption_attempt_state();
 
 DROP TRIGGER runtime_sessions_guard_update ON runtime_sessions;
 CREATE TRIGGER runtime_sessions_guard_update
 BEFORE UPDATE OR DELETE ON runtime_sessions
-FOR EACH ROW EXECUTE FUNCTION geno_v2_guard_runtime_session_update();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_guard_runtime_session_update();
 
 CREATE TRIGGER runtime_sessions_authz_source_lock
 BEFORE INSERT ON runtime_sessions
-FOR EACH ROW EXECUTE FUNCTION geno_v2_lock_runtime_session_authz_sources();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_lock_runtime_session_authz_sources();
 
 CREATE TRIGGER runtime_reauth_guard_state
 BEFORE INSERT OR UPDATE OR DELETE ON runtime_session_reauth_queue
-FOR EACH ROW EXECUTE FUNCTION geno_v2_guard_runtime_reauth_state();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_guard_runtime_reauth_state();
 
 CREATE TRIGGER auth_write_controls_guard_state
 BEFORE UPDATE OR DELETE ON auth_runtime_write_controls
-FOR EACH ROW EXECUTE FUNCTION geno_v2_guard_auth_write_control_state();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_guard_auth_write_control_state();
 
 CREATE TRIGGER auth_preflight_guard_state
 BEFORE INSERT OR UPDATE OR DELETE ON auth_preflight_rate_limits
-FOR EACH ROW EXECUTE FUNCTION geno_v2_guard_auth_preflight_rate_limit_state();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_guard_auth_preflight_rate_limit_state();
 
 DROP TRIGGER tenant_members_sync_project_grants ON tenant_members;
 CREATE TRIGGER tenant_members_sync_project_grants
 AFTER INSERT OR DELETE ON tenant_members
-FOR EACH ROW EXECUTE FUNCTION geno_v2_sync_tenant_member_project_grants();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_sync_tenant_member_project_grants();
 CREATE TRIGGER tenant_members_sync_project_grants_update
 AFTER UPDATE OF tenant_id, user_id, role, status ON tenant_members
 FOR EACH ROW
@@ -704,12 +704,12 @@ WHEN (
     OR OLD.role IS DISTINCT FROM NEW.role
     OR OLD.status IS DISTINCT FROM NEW.status
 )
-EXECUTE FUNCTION geno_v2_sync_tenant_member_project_grants();
+EXECUTE FUNCTION geo_v2_sync_tenant_member_project_grants();
 
 DROP TRIGGER projects_sync_tenant_grants ON projects;
 CREATE TRIGGER projects_sync_tenant_grants
 AFTER INSERT OR DELETE ON projects
-FOR EACH ROW EXECUTE FUNCTION geno_v2_sync_project_tenant_grants();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_sync_project_tenant_grants();
 CREATE TRIGGER projects_sync_tenant_grants_update
 AFTER UPDATE OF tenant_id, status ON projects
 FOR EACH ROW
@@ -717,41 +717,41 @@ WHEN (
     OLD.tenant_id IS DISTINCT FROM NEW.tenant_id
     OR (OLD.status = 'archived') IS DISTINCT FROM (NEW.status = 'archived')
 )
-EXECUTE FUNCTION geno_v2_sync_project_tenant_grants();
+EXECUTE FUNCTION geo_v2_sync_project_tenant_grants();
 
 DROP TRIGGER tenants_sync_status_grants ON tenants;
 CREATE TRIGGER tenants_sync_status_grants
 AFTER UPDATE OF status ON tenants
 FOR EACH ROW
 WHEN (OLD.status IS DISTINCT FROM NEW.status)
-EXECUTE FUNCTION geno_v2_sync_tenant_status_grants();
+EXECUTE FUNCTION geo_v2_sync_tenant_status_grants();
 
 CREATE TRIGGER tenant_members_revoke_sessions
 BEFORE INSERT OR UPDATE OF tenant_id, user_id, role, status OR DELETE ON tenant_members
-FOR EACH ROW EXECUTE FUNCTION geno_v2_revoke_sessions_for_authz_change();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_revoke_sessions_for_authz_change();
 
 CREATE TRIGGER project_members_revoke_sessions
 BEFORE INSERT OR UPDATE OF tenant_id, project_id, user_id, role, status OR DELETE
 ON project_members
-FOR EACH ROW EXECUTE FUNCTION geno_v2_revoke_sessions_for_authz_change();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_revoke_sessions_for_authz_change();
 
 CREATE TRIGGER runtime_grants_revoke_sessions
 BEFORE INSERT OR UPDATE OR DELETE ON runtime_project_access_grants
-FOR EACH ROW EXECUTE FUNCTION geno_v2_revoke_sessions_for_authz_change();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_revoke_sessions_for_authz_change();
 
 CREATE TRIGGER projects_revoke_sessions
 BEFORE UPDATE OF status ON projects
-FOR EACH ROW EXECUTE FUNCTION geno_v2_revoke_sessions_for_authz_change();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_revoke_sessions_for_authz_change();
 
 CREATE TRIGGER tenants_revoke_sessions
 BEFORE UPDATE OF status ON tenants
-FOR EACH ROW EXECUTE FUNCTION geno_v2_revoke_sessions_for_authz_change();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_revoke_sessions_for_authz_change();
 
-COMMENT ON FUNCTION geno_v2_require_auth_writes_enabled() IS
+COMMENT ON FUNCTION geo_v2_require_auth_writes_enabled() IS
     'Future privilege-expanding auth commands must call this fail-closed helper.';
-COMMENT ON FUNCTION geno_v2_revoke_affected_sessions(uuid, text, uuid, text) IS
+COMMENT ON FUNCTION geo_v2_revoke_affected_sessions(uuid, text, uuid, text) IS
     'Revocation, logout, and secret erasure remain available while auth writes are disabled.';
-COMMENT ON FUNCTION geno_v2_lock_runtime_session_authz_sources() IS
+COMMENT ON FUNCTION geo_v2_lock_runtime_session_authz_sources() IS
     'Installer-owned trigger helper; schema owner is retained for FOR SHARE lock privileges.';
 COMMENT ON TABLE auth_runtime_write_controls IS
     'Privilege-expanding auth commands remain disabled after the 0012 state-guard slice.';

@@ -59,7 +59,7 @@ def _verify_success_payload(payload: dict[str, Any], errors: list[str]) -> None:
     answer_run = _as_dict(evidence.get("answer_run"))
     raw_answer = _as_dict(evidence.get("raw_answer"))
     raw_payload = _as_dict(raw_answer.get("raw_payload"))
-    browser_capture = _as_dict(raw_payload.get("_geno_browser_capture"))
+    browser_capture = _as_dict(raw_payload.get("_geo_browser_capture"))
     asset_hashes = _as_dict(payload.get("evidence_asset_hashes"))
     evidence_asset_hashes = _as_dict(evidence.get("evidence_asset_hashes"))
     audit_events = evidence.get("audit_events") if isinstance(evidence.get("audit_events"), list) else []
@@ -170,7 +170,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "path",
         nargs="?",
-        default=os.environ.get("GENO_AU_P0B_GOOGLE_PLAYWRIGHT_SMOKE_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_P0B_GOOGLE_PLAYWRIGHT_SMOKE_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to the Google Playwright smoke JSON payload.",
     )
     parser.add_argument(

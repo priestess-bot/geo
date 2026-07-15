@@ -10,8 +10,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from geno_core.object_store import ObjectStoreError, S3CompatibleObjectStore
-from geno_core.runtime import RuntimePersistenceError, build_object_store_from_env
+from geo_core.object_store import ObjectStoreError, S3CompatibleObjectStore
+from geo_core.runtime import RuntimePersistenceError, build_object_store_from_env
 from scripts.verify_production_object_store import (
     APPLICATION_CONSUMERS,
     BASE_COMPOSE,
@@ -42,7 +42,7 @@ class ProductionObjectStoreClientTests(unittest.TestCase):
             body: bytes,
         ) -> tuple[int, dict[str, str], bytes]:
             requests.append((method, url, body))
-            if method == "HEAD" and url.endswith("/geno-reports"):
+            if method == "HEAD" and url.endswith("/geo-reports"):
                 return 200, {}, b""
             if method == "PUT" and url.endswith("/ready/object.txt"):
                 return 200, {"ETag": '"ready"'}, b""
@@ -50,7 +50,7 @@ class ProductionObjectStoreClientTests(unittest.TestCase):
 
         store = S3CompatibleObjectStore(
             endpoint="http://minio:9000",
-            bucket="geno-reports",
+            bucket="geo-reports",
             access_key="application-user",
             secret_key="application-secret",
             auto_create_bucket=False,
@@ -65,7 +65,7 @@ class ProductionObjectStoreClientTests(unittest.TestCase):
         self.assertEqual(stored.content_hash, hashlib.sha256(b"ready").hexdigest())
         self.assertEqual([request[0] for request in requests], ["HEAD", "PUT"])
         self.assertFalse(
-            any(method == "PUT" and url.endswith("/geno-reports") for method, url, _ in requests)
+            any(method == "PUT" and url.endswith("/geo-reports") for method, url, _ in requests)
         )
 
     def test_failed_head_bucket_prevents_object_upload(self) -> None:
@@ -82,7 +82,7 @@ class ProductionObjectStoreClientTests(unittest.TestCase):
 
         store = S3CompatibleObjectStore(
             endpoint="http://minio:9000",
-            bucket="geno-reports",
+            bucket="geo-reports",
             access_key="application-user",
             secret_key="application-secret",
             auto_create_bucket=False,
@@ -101,7 +101,7 @@ class ProductionObjectStoreClientTests(unittest.TestCase):
             store = build_object_store_from_env(
                 {
                     "OBJECT_STORE_ENDPOINT": "http://minio:9000",
-                    "OBJECT_STORE_BUCKET": "geno-reports",
+                    "OBJECT_STORE_BUCKET": "geo-reports",
                     "OBJECT_STORE_ACCESS_KEY_FILE": str(access_path),
                     "OBJECT_STORE_SECRET_KEY_FILE": str(secret_path),
                     "OBJECT_STORE_AUTO_CREATE_BUCKET": "false",
@@ -175,7 +175,7 @@ class ProductionObjectStoreComposeTests(unittest.TestCase):
 
     def test_missing_required_secret_file_variable_fails_compose_preflight(self) -> None:
         env = _config_only_env()
-        env.pop("GENO_OBJECT_STORE_BACKUP_SECRET_KEY_SECRET_FILE")
+        env.pop("GEO_OBJECT_STORE_BACKUP_SECRET_KEY_SECRET_FILE")
         result = subprocess.run(
             [
                 "docker",
@@ -197,7 +197,7 @@ class ProductionObjectStoreComposeTests(unittest.TestCase):
             text=True,
         )
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("GENO_OBJECT_STORE_BACKUP_SECRET_KEY_SECRET_FILE", result.stderr)
+        self.assertIn("GEO_OBJECT_STORE_BACKUP_SECRET_KEY_SECRET_FILE", result.stderr)
 
     def test_backup_smoke_does_not_create_bucket_or_delete_source(self) -> None:
         smoke = (ROOT / "infra/minio/backup-restore-smoke.sh").read_text(encoding="utf-8")
@@ -234,7 +234,7 @@ class ProductionObjectStoreReceiptTests(unittest.TestCase):
             "volume_id": "vol-encrypted-1",
             "provider": "test-platform",
             "encryption_enabled": True,
-            "key_alias": "alias/geno-minio-production",
+            "key_alias": "alias/geo-minio-production",
             "policy_version": "encrypted-volume-v1",
             "rotation_owner": "security-platform",
             "recovery_owner": "platform-oncall",
@@ -299,16 +299,16 @@ class ProductionObjectStoreReceiptTests(unittest.TestCase):
             }
             env = _config_only_env()
             variable_names = {
-                "minio_root_user": "GENO_MINIO_ROOT_USER_SECRET_FILE",
-                "minio_root_password": "GENO_MINIO_ROOT_PASSWORD_SECRET_FILE",
-                "object_store_application_access_key": "GENO_OBJECT_STORE_APPLICATION_ACCESS_KEY_SECRET_FILE",
-                "object_store_application_secret_key": "GENO_OBJECT_STORE_APPLICATION_SECRET_KEY_SECRET_FILE",
-                "object_store_backup_access_key": "GENO_OBJECT_STORE_BACKUP_ACCESS_KEY_SECRET_FILE",
-                "object_store_backup_secret_key": "GENO_OBJECT_STORE_BACKUP_SECRET_KEY_SECRET_FILE",
-                "object_store_restore_access_key": "GENO_OBJECT_STORE_RESTORE_ACCESS_KEY_SECRET_FILE",
-                "object_store_restore_secret_key": "GENO_OBJECT_STORE_RESTORE_SECRET_KEY_SECRET_FILE",
-                "object_store_retention_access_key": "GENO_OBJECT_STORE_RETENTION_ACCESS_KEY_SECRET_FILE",
-                "object_store_retention_secret_key": "GENO_OBJECT_STORE_RETENTION_SECRET_KEY_SECRET_FILE",
+                "minio_root_user": "GEO_MINIO_ROOT_USER_SECRET_FILE",
+                "minio_root_password": "GEO_MINIO_ROOT_PASSWORD_SECRET_FILE",
+                "object_store_application_access_key": "GEO_OBJECT_STORE_APPLICATION_ACCESS_KEY_SECRET_FILE",
+                "object_store_application_secret_key": "GEO_OBJECT_STORE_APPLICATION_SECRET_KEY_SECRET_FILE",
+                "object_store_backup_access_key": "GEO_OBJECT_STORE_BACKUP_ACCESS_KEY_SECRET_FILE",
+                "object_store_backup_secret_key": "GEO_OBJECT_STORE_BACKUP_SECRET_KEY_SECRET_FILE",
+                "object_store_restore_access_key": "GEO_OBJECT_STORE_RESTORE_ACCESS_KEY_SECRET_FILE",
+                "object_store_restore_secret_key": "GEO_OBJECT_STORE_RESTORE_SECRET_KEY_SECRET_FILE",
+                "object_store_retention_access_key": "GEO_OBJECT_STORE_RETENTION_ACCESS_KEY_SECRET_FILE",
+                "object_store_retention_secret_key": "GEO_OBJECT_STORE_RETENTION_SECRET_KEY_SECRET_FILE",
             }
             for name, value in secret_values.items():
                 path = root / name
@@ -322,9 +322,9 @@ class ProductionObjectStoreReceiptTests(unittest.TestCase):
             receipt_payloads = {
                 "bootstrap": {
                     "schema_version": "production-object-store-bootstrap-v1",
-                    "policy_version": "geno-object-store-policy-v1",
-                    "reports_bucket": "geno-reports",
-                    "backup_bucket": "geno-backups",
+                    "policy_version": "geo-object-store-policy-v1",
+                    "reports_bucket": "geo-reports",
+                    "backup_bucket": "geo-backups",
                     "policy_hashes": {
                         "application": "1" * 64,
                         "backup": "2" * 64,
@@ -367,7 +367,7 @@ class ProductionObjectStoreReceiptTests(unittest.TestCase):
                             "container_id": f"container-{index}",
                             "sha256": "7" * 64,
                             "credential_fingerprint": application_fingerprint,
-                            "execution_path": "geno_core.runtime.build_object_store_from_env",
+                            "execution_path": "geo_core.runtime.build_object_store_from_env",
                             "credential_source": "OBJECT_STORE_ACCESS_KEY_FILE",
                             "auto_create_bucket": False,
                         }
@@ -385,7 +385,7 @@ class ProductionObjectStoreReceiptTests(unittest.TestCase):
                     "volume_id": "volume-1",
                     "provider": "test-platform",
                     "encryption_enabled": True,
-                    "key_alias": "alias/geno",
+                    "key_alias": "alias/geo",
                     "policy_version": "encrypted-volume-v1",
                     "rotation_owner": "security-platform",
                     "recovery_owner": "platform-oncall",

@@ -132,11 +132,11 @@ def verify_preflight_payload(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Verify a GENO provider preflight JSON payload")
+    parser = argparse.ArgumentParser(description="Verify a GEO provider preflight JSON payload")
     parser.add_argument(
         "path",
         nargs="?",
-        default=os.environ.get("GENO_API_PREFLIGHT_OUTPUT_PATH", DEFAULT_PREFLIGHT_PATH),
+        default=os.environ.get("GEO_API_PREFLIGHT_OUTPUT_PATH", DEFAULT_PREFLIGHT_PATH),
         help="Path to the preflight JSON payload.",
     )
     parser.add_argument(

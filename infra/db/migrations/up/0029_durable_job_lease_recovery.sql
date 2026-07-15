@@ -257,7 +257,7 @@ CREATE TABLE IF NOT EXISTS durable_job_recovery_cursors (
   updated_at timestamptz NOT NULL DEFAULT now(),
   CHECK (queue_name IN ('knowledge_fresh', 'knowledge_recovery', 'collection_recovery'))
 );
-GRANT SELECT, INSERT, UPDATE ON durable_job_recovery_cursors TO geno_runtime_app;
+GRANT SELECT, INSERT, UPDATE ON durable_job_recovery_cursors TO geo_runtime_app;
 
 CREATE TABLE IF NOT EXISTS durable_job_metric_counters (
   queue_name text NOT NULL,
@@ -284,4 +284,4 @@ ALTER TABLE durable_job_metric_counters
     'heartbeat_success', 'heartbeat_failure', 'lease_lost',
     'stale_completion', 'cancelled', 'dead_lettered'
   ));
-GRANT SELECT, INSERT, UPDATE ON durable_job_metric_counters TO geno_runtime_app;
+GRANT SELECT, INSERT, UPDATE ON durable_job_metric_counters TO geo_runtime_app;

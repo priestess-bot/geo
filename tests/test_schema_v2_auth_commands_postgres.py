@@ -143,7 +143,7 @@ class SchemaV2AuthCommandsPostgresTest(unittest.TestCase):
             ),
         )
         cursor.execute(
-            "SELECT geno_v2_auth_redeem_request_hash(%s, %s, %s)",
+            "SELECT geo_v2_auth_redeem_request_hash(%s, %s, %s)",
             (invitation_id, invite_hash, surface),
         )
         request_hash = cursor.fetchone()[0]
@@ -167,7 +167,7 @@ class SchemaV2AuthCommandsPostgresTest(unittest.TestCase):
         )
         cursor.execute(
             "SELECT project_ids, tenant_roles, project_scopes, flat_roles, "
-            "flat_permissions FROM geno_v2_build_locked_auth_scope(%s, %s)",
+            "flat_permissions FROM geo_v2_build_locked_auth_scope(%s, %s)",
             (cls.tenant_id, actor_id),
         )
         project_ids, tenant_roles, project_scopes, roles, permissions = cursor.fetchone()
@@ -227,7 +227,7 @@ class SchemaV2AuthCommandsPostgresTest(unittest.TestCase):
         connect_parameters = {"application_name": application_name} if application_name else {}
         with psycopg.connect(**connect_parameters) as connection:
             with connection.cursor() as cursor:
-                cursor.execute("SET LOCAL ROLE geno_v2_runtime")
+                cursor.execute("SET LOCAL ROLE geo_v2_runtime")
                 cursor.execute(
                     "SELECT set_config('app.session_token_hash', %s, true)",
                     (session_hash,),
@@ -299,7 +299,7 @@ class SchemaV2AuthCommandsPostgresTest(unittest.TestCase):
         expires_at = expires_at or datetime.now(UTC) + timedelta(days=1)
         project_id = project_id or cls.project_ids[0]
         row = cls._runtime_call(
-            "SELECT * FROM geno_v2_create_project_member_invitation(" "%s, %s, %s, %s, %s, %s)",
+            "SELECT * FROM geo_v2_create_project_member_invitation(" "%s, %s, %s, %s, %s, %s)",
             (invitation_id, project_id, actor_id, role, invite_hash, expires_at),
             session_hash=session_hash or cls.admin_session_hash,
         )
@@ -321,7 +321,7 @@ class SchemaV2AuthCommandsPostgresTest(unittest.TestCase):
         application_name: str | None = None,
     ) -> tuple[object, ...]:
         return cls._runtime_call(
-            "SELECT * FROM geno_v2_redeem_auth_invitation("
+            "SELECT * FROM geo_v2_redeem_auth_invitation("
             "%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
             (
                 attempt_id or uuid4(),
@@ -361,7 +361,7 @@ class SchemaV2AuthCommandsPostgresTest(unittest.TestCase):
         source = _digest(f"source-{uuid4()}")
         for expected_count in range(1, 21):
             row = self._runtime_call(
-                "SELECT * FROM geno_v2_preflight_auth_invitation(%s, %s, %s, %s)",
+                "SELECT * FROM geo_v2_preflight_auth_invitation(%s, %s, %s, %s)",
                 (invitation_id, invite_hash, "admin", source),
             )
             self.assertEqual(
@@ -378,7 +378,7 @@ class SchemaV2AuthCommandsPostgresTest(unittest.TestCase):
             self.assertEqual(row[6], expected_count)
             self.assertEqual(row[8], None)
         limited = self._runtime_call(
-            "SELECT * FROM geno_v2_preflight_auth_invitation(%s, %s, %s, %s)",
+            "SELECT * FROM geo_v2_preflight_auth_invitation(%s, %s, %s, %s)",
             (invitation_id, invite_hash, "admin", source),
         )
         self.assertEqual(limited[0:6], ("rate_limited", "invalid", "admin", None, None, None))
@@ -396,7 +396,7 @@ class SchemaV2AuthCommandsPostgresTest(unittest.TestCase):
                 )
                 before = cursor.fetchone()
         wrong = self._runtime_call(
-            "SELECT * FROM geno_v2_preflight_auth_invitation(%s, %s, %s, %s)",
+            "SELECT * FROM geo_v2_preflight_auth_invitation(%s, %s, %s, %s)",
             (wrong_id, _digest("wrong-token"), "admin", _digest(f"source-{uuid4()}")),
         )
         self.assertEqual(wrong[0:6], ("invalid", "invalid", "admin", None, None, None))
@@ -421,7 +421,7 @@ class SchemaV2AuthCommandsPostgresTest(unittest.TestCase):
         )
         for _ in range(2):
             expired = self._runtime_call(
-                "SELECT * FROM geno_v2_preflight_auth_invitation(%s, %s, %s, %s)",
+                "SELECT * FROM geo_v2_preflight_auth_invitation(%s, %s, %s, %s)",
                 (expired_id, expired_hash, "admin", _digest(f"source-{uuid4()}")),
             )
             self.assertEqual(expired[0], "invalid")
@@ -457,7 +457,7 @@ class SchemaV2AuthCommandsPostgresTest(unittest.TestCase):
         def expire_from_preflight() -> str:
             race_barrier.wait(timeout=5)
             return self._runtime_call(
-                "SELECT * FROM geno_v2_preflight_auth_invitation(%s, %s, %s, %s)",
+                "SELECT * FROM geo_v2_preflight_auth_invitation(%s, %s, %s, %s)",
                 (race_id, race_hash, "admin", _digest(f"source-{uuid4()}")),
             )[0]
 
@@ -784,7 +784,7 @@ class SchemaV2AuthCommandsPostgresTest(unittest.TestCase):
 
             def create_invitation() -> tuple[object, ...]:
                 return self._runtime_call(
-                    "SELECT * FROM geno_v2_create_project_member_invitation("
+                    "SELECT * FROM geo_v2_create_project_member_invitation("
                     "%s, %s, %s, %s, %s, %s)",
                     (
                         invitation_id,
@@ -900,7 +900,7 @@ class SchemaV2AuthCommandsPostgresTest(unittest.TestCase):
 
             def create_invitation() -> tuple[object, ...]:
                 return self._runtime_call(
-                    "SELECT * FROM geno_v2_create_project_member_invitation("
+                    "SELECT * FROM geo_v2_create_project_member_invitation("
                     "%s, %s, %s, 'reviewer', %s, %s)",
                     (
                         uuid4(),
@@ -1022,18 +1022,18 @@ class SchemaV2AuthCommandsPostgresTest(unittest.TestCase):
                 "auth_writes_temporarily_disabled",
             )
             revoked = self._runtime_call(
-                "SELECT * FROM geno_v2_revoke_project_member_invitation(%s, %s)",
+                "SELECT * FROM geo_v2_revoke_project_member_invitation(%s, %s)",
                 (pending_id, "member_invitation_security"),
                 session_hash=self.admin_session_hash,
             )
             self.assertEqual(revoked[0:3], ("revoked", pending_id, "revoked"))
             expired_invitation = self._runtime_call(
-                "SELECT * FROM geno_v2_expire_project_member_invitation(%s)",
+                "SELECT * FROM geo_v2_expire_project_member_invitation(%s)",
                 (expirable_id,),
                 session_hash=self.admin_session_hash,
             )
             expired_again = self._runtime_call(
-                "SELECT * FROM geno_v2_expire_project_member_invitation(%s)",
+                "SELECT * FROM geo_v2_expire_project_member_invitation(%s)",
                 (expirable_id,),
                 session_hash=self.admin_session_hash,
             )
@@ -1133,7 +1133,7 @@ class SchemaV2AuthCommandsPostgresTest(unittest.TestCase):
 
         confirmed_session, confirmed_hash = create_session("confirm")
         confirmed_rows = call_twice(
-            "SELECT * FROM geno_v2_confirm_current_auth_delivery()", confirmed_hash
+            "SELECT * FROM geo_v2_confirm_current_auth_delivery()", confirmed_hash
         )
         self.assertEqual(
             {row[0] for row in confirmed_rows},
@@ -1144,7 +1144,7 @@ class SchemaV2AuthCommandsPostgresTest(unittest.TestCase):
 
         erased_session, erased_hash = create_session("erase")
         erased_rows = call_twice(
-            "SELECT * FROM geno_v2_erase_current_auth_delivery_secret()", erased_hash
+            "SELECT * FROM geo_v2_erase_current_auth_delivery_secret()", erased_hash
         )
         self.assertEqual(
             {row[0] for row in erased_rows},
@@ -1154,7 +1154,7 @@ class SchemaV2AuthCommandsPostgresTest(unittest.TestCase):
         self.assertEqual(erased_rows[0][1], erased_session[1])
 
         logout_session, logout_hash = create_session("logout")
-        logout_rows = call_twice("SELECT * FROM geno_v2_logout_current_session()", logout_hash)
+        logout_rows = call_twice("SELECT * FROM geo_v2_logout_current_session()", logout_hash)
         self.assertEqual(
             {row[0] for row in logout_rows},
             {"logged_out", "no_active_session"},
@@ -1180,11 +1180,11 @@ class SchemaV2AuthCommandsPostgresTest(unittest.TestCase):
                     (admin_session_id, self.tenant_id, admin_actor, "test_reauthentication"),
                 )
         resolved = self._runtime_call(
-            "SELECT * FROM geno_v2_resolve_current_reauth_queue()",
+            "SELECT * FROM geo_v2_resolve_current_reauth_queue()",
             session_hash=self.admin_session_hash,
         )
         resolved_again = self._runtime_call(
-            "SELECT * FROM geno_v2_resolve_current_reauth_queue()",
+            "SELECT * FROM geo_v2_resolve_current_reauth_queue()",
             session_hash=self.admin_session_hash,
         )
         self.assertEqual(resolved[0:3], ("resolved", admin_session_id, 1))
@@ -1192,15 +1192,15 @@ class SchemaV2AuthCommandsPostgresTest(unittest.TestCase):
 
     def test_09_runtime_acl_and_final_write_state_are_exact(self) -> None:
         public_functions = (
-            "geno_v2_preflight_auth_invitation(uuid,text,text,text)",
-            "geno_v2_create_project_member_invitation(uuid,uuid,text,text,text,timestamp with time zone)",
-            "geno_v2_revoke_project_member_invitation(uuid,text)",
-            "geno_v2_expire_project_member_invitation(uuid)",
-            "geno_v2_redeem_auth_invitation(uuid,uuid,uuid,text,text,text,text,timestamp with time zone,bytea,text,bytea,timestamp with time zone)",
-            "geno_v2_confirm_current_auth_delivery()",
-            "geno_v2_erase_current_auth_delivery_secret()",
-            "geno_v2_logout_current_session()",
-            "geno_v2_resolve_current_reauth_queue()",
+            "geo_v2_preflight_auth_invitation(uuid,text,text,text)",
+            "geo_v2_create_project_member_invitation(uuid,uuid,text,text,text,timestamp with time zone)",
+            "geo_v2_revoke_project_member_invitation(uuid,text)",
+            "geo_v2_expire_project_member_invitation(uuid)",
+            "geo_v2_redeem_auth_invitation(uuid,uuid,uuid,text,text,text,text,timestamp with time zone,bytea,text,bytea,timestamp with time zone)",
+            "geo_v2_confirm_current_auth_delivery()",
+            "geo_v2_erase_current_auth_delivery_secret()",
+            "geo_v2_logout_current_session()",
+            "geo_v2_resolve_current_reauth_queue()",
         )
         sensitive_tables = (
             "project_member_invitations",
@@ -1214,22 +1214,22 @@ class SchemaV2AuthCommandsPostgresTest(unittest.TestCase):
             with connection.cursor() as cursor:
                 for signature in public_functions:
                     cursor.execute(
-                        "SELECT has_function_privilege('geno_v2_runtime', %s, 'EXECUTE'), "
+                        "SELECT has_function_privilege('geo_v2_runtime', %s, 'EXECUTE'), "
                         "has_function_privilege('public', %s, 'EXECUTE')",
                         (signature, signature),
                     )
                     self.assertEqual(cursor.fetchone(), (True, False), signature)
                 for table in sensitive_tables:
                     cursor.execute(
-                        "SELECT has_table_privilege('geno_v2_runtime', %s, 'INSERT'), "
-                        "has_table_privilege('geno_v2_runtime', %s, 'UPDATE'), "
-                        "has_table_privilege('geno_v2_runtime', %s, 'DELETE')",
+                        "SELECT has_table_privilege('geo_v2_runtime', %s, 'INSERT'), "
+                        "has_table_privilege('geo_v2_runtime', %s, 'UPDATE'), "
+                        "has_table_privilege('geo_v2_runtime', %s, 'DELETE')",
                         (table, table, table),
                     )
                     self.assertEqual(cursor.fetchone(), (False, False, False), table)
                 cursor.execute(
                     "SELECT rolcanlogin, rolpassword IS NULL FROM pg_authid "
-                    "WHERE rolname = 'geno_v2_api_login'"
+                    "WHERE rolname = 'geo_v2_api_login'"
                 )
                 self.assertEqual(cursor.fetchone(), (False, True))
                 cursor.execute(
@@ -1237,11 +1237,11 @@ class SchemaV2AuthCommandsPostgresTest(unittest.TestCase):
                 )
                 self.assertEqual(cursor.fetchone()[0], True)
                 cursor.execute(
-                    "SELECT has_table_privilege('geno_v2_authz_owner', "
+                    "SELECT has_table_privilege('geo_v2_authz_owner', "
                     "'auth_runtime_write_controls', 'UPDATE'), "
-                    "has_column_privilege('geno_v2_authz_owner', "
+                    "has_column_privilege('geo_v2_authz_owner', "
                     "'auth_runtime_write_controls', 'writes_enabled', 'UPDATE'), "
-                    "has_column_privilege('geno_v2_authz_owner', "
+                    "has_column_privilege('geo_v2_authz_owner', "
                     "'auth_runtime_write_controls', 'reason', 'UPDATE')"
                 )
                 self.assertEqual(cursor.fetchone(), (False, True, False))

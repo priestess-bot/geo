@@ -205,14 +205,14 @@ CRITICAL_COLUMNS = {
 }
 
 EXPECTED_FUNCTIONS = (
-    "geno_runtime_rls_enabled",
-    "geno_runtime_actor_id",
-    "geno_runtime_project_id",
-    "geno_runtime_project_ids",
-    "geno_runtime_roles",
-    "geno_runtime_invitation_token_hash",
-    "geno_runtime_can_access_project",
-    "geno_runtime_can_accept_project_invitation",
+    "geo_runtime_rls_enabled",
+    "geo_runtime_actor_id",
+    "geo_runtime_project_id",
+    "geo_runtime_project_ids",
+    "geo_runtime_roles",
+    "geo_runtime_invitation_token_hash",
+    "geo_runtime_can_access_project",
+    "geo_runtime_can_accept_project_invitation",
 )
 
 EXPECTED_RLS_TABLES = (
@@ -359,10 +359,10 @@ def _assert_columns(connection: psycopg.Connection[Any]) -> dict[str, tuple[str,
 def _assert_runtime_role_and_functions(connection: psycopg.Connection[Any]) -> dict[str, Any]:
     role = _query_one(
         connection,
-        "SELECT rolname, rolbypassrls FROM pg_roles WHERE rolname = 'geno_runtime_app'",
+        "SELECT rolname, rolbypassrls FROM pg_roles WHERE rolname = 'geo_runtime_app'",
     )
     if role["rolbypassrls"]:
-        raise AssertionError("geno_runtime_app must not bypass row level security")
+        raise AssertionError("geo_runtime_app must not bypass row level security")
 
     rows = _query_all(
         connection,
@@ -525,7 +525,7 @@ def _assert_runtime_rls_isolation(admin_url: str, runtime_url: str) -> dict[str,
                         (fixture["visible_project_id"],),
                     )
                     cursor.execute("SELECT set_config('app.roles', 'project_owner', false)")
-                    cursor.execute("SELECT geno_runtime_rls_enabled() AS enabled")
+                    cursor.execute("SELECT geo_runtime_rls_enabled() AS enabled")
                     rls_enabled = bool(cursor.fetchone()["enabled"])
                     cursor.execute("SELECT count(*)::int AS count FROM projects")
                     visible_projects = int(cursor.fetchone()["count"])
@@ -546,8 +546,8 @@ def _assert_runtime_rls_isolation(admin_url: str, runtime_url: str) -> dict[str,
                         (fixture["isolated_project_id"],),
                     )
                     isolated_prompts_visible = int(cursor.fetchone()["count"])
-            if runtime_user != "geno_runtime_app":
-                raise AssertionError(f"Expected runtime user geno_runtime_app, got {runtime_user}")
+            if runtime_user != "geo_runtime_app":
+                raise AssertionError(f"Expected runtime user geo_runtime_app, got {runtime_user}")
             if not rls_enabled:
                 raise AssertionError("Runtime RLS GUC did not enable project access control")
             if visible_projects != 1 or fixture_project_visible != 1:

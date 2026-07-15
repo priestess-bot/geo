@@ -3,13 +3,13 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 import pytest
 
-from geno_core.auth import (
+from geo_core.auth import (
     AuthContractError,
     AuthSessionV2Repository,
     InvitationSurface,
     InvitationSurfaceCompatibility,
 )
-from geno_core.repository import PostgresEvidenceRepository
+from geo_core.repository import PostgresEvidenceRepository
 
 
 class ScriptedCursor:

@@ -305,12 +305,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Dry-run or execute the generated AU P0a runbook")
     parser.add_argument(
         "--runbook-path",
-        default=os.environ.get("GENO_AU_P0A_RUNBOOK_OUTPUT_PATH", DEFAULT_RUNBOOK_PATH),
+        default=os.environ.get("GEO_AU_P0A_RUNBOOK_OUTPUT_PATH", DEFAULT_RUNBOOK_PATH),
         help="Path to the generated AU P0a runbook JSON.",
     )
     parser.add_argument(
         "--output-path",
-        default=os.environ.get("GENO_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to write the runbook execution JSON.",
     )
     parser.add_argument(
@@ -320,12 +320,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--stop-after-step",
-        default=os.environ.get("GENO_AU_P0A_STOP_AFTER_STEP", ""),
+        default=os.environ.get("GEO_AU_P0A_STOP_AFTER_STEP", ""),
         help="Stop after recording/executing the named step id.",
     )
     parser.add_argument(
         "--env-file",
-        default=os.environ.get("GENO_AU_P0A_ENV_FILE", DEFAULT_ENV_FILE),
+        default=os.environ.get("GEO_AU_P0A_ENV_FILE", DEFAULT_ENV_FILE),
         help="Optional env file to parse without shell evaluation. Missing files are allowed.",
     )
     parser.add_argument("--generated-at", default=None, help="Override generated_at timestamp for deterministic tests.")

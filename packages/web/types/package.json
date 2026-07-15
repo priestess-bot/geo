@@ -1,0 +1,17 @@
+{
+  "name": "@geo/types",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./internal": "./src/internal.ts",
+    "./customer": "./src/customer.ts",
+    "./common": "./src/common.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "5.7.3"
+  }
+}

@@ -152,25 +152,25 @@ ALTER TABLE faq_answer_candidates FORCE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS knowledge_documents_runtime_project_isolation ON knowledge_documents;
 CREATE POLICY knowledge_documents_runtime_project_isolation ON knowledge_documents
-  USING (geno_runtime_can_access_project(project_id))
-  WITH CHECK (geno_runtime_can_access_project(project_id));
+  USING (geo_runtime_can_access_project(project_id))
+  WITH CHECK (geo_runtime_can_access_project(project_id));
 
 DROP POLICY IF EXISTS knowledge_document_versions_runtime_project_isolation ON knowledge_document_versions;
 CREATE POLICY knowledge_document_versions_runtime_project_isolation ON knowledge_document_versions
-  USING (geno_runtime_can_access_project(project_id))
-  WITH CHECK (geno_runtime_can_access_project(project_id));
+  USING (geo_runtime_can_access_project(project_id))
+  WITH CHECK (geo_runtime_can_access_project(project_id));
 
 DROP POLICY IF EXISTS knowledge_generation_jobs_runtime_project_isolation ON knowledge_generation_jobs;
 CREATE POLICY knowledge_generation_jobs_runtime_project_isolation ON knowledge_generation_jobs
-  USING (geno_runtime_can_access_project(project_id))
-  WITH CHECK (geno_runtime_can_access_project(project_id));
+  USING (geo_runtime_can_access_project(project_id))
+  WITH CHECK (geo_runtime_can_access_project(project_id));
 
 DROP POLICY IF EXISTS prompt_candidates_runtime_project_isolation ON prompt_candidates;
 CREATE POLICY prompt_candidates_runtime_project_isolation ON prompt_candidates
-  USING (geno_runtime_can_access_project(project_id))
-  WITH CHECK (geno_runtime_can_access_project(project_id));
+  USING (geo_runtime_can_access_project(project_id))
+  WITH CHECK (geo_runtime_can_access_project(project_id));
 
 DROP POLICY IF EXISTS faq_answer_candidates_runtime_project_isolation ON faq_answer_candidates;
 CREATE POLICY faq_answer_candidates_runtime_project_isolation ON faq_answer_candidates
-  USING (geno_runtime_can_access_project(project_id))
-  WITH CHECK (geno_runtime_can_access_project(project_id));
+  USING (geo_runtime_can_access_project(project_id))
+  WITH CHECK (geo_runtime_can_access_project(project_id));

@@ -251,9 +251,9 @@ def build_au_p0a_credential_fulfillment(
         "next_action": _next_action(env_ready=env_ready, missing=missing_required, mismatched=mismatched),
         "next_command": "make au-p0a-env" if missing_required else "make verify-au-p0a-credential-fulfillment",
         "strict_gate_command": (
-            "PYTHONPATH=packages/geno_core:apps/api python3 "
+            "PYTHONPATH=packages/geo_core:apps/api python3 "
             "scripts/verify_au_p0a_credential_fulfillment.py "
-            "${GENO_AU_P0A_CREDENTIAL_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-fulfillment-latest.json} "
+            "${GEO_AU_P0A_CREDENTIAL_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-fulfillment-latest.json} "
             "--require-fulfilled"
         ),
         "raw_secret_values_allowed": False,
@@ -316,13 +316,13 @@ def build_au_p0a_credential_fulfillment(
         ],
         "hard_gate_commands": [
             "make verify-au-p0a-credential-fulfillment",
-            "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_credential_fulfillment.py "
-            "${GENO_AU_P0A_CREDENTIAL_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-fulfillment-latest.json} "
+            "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_p0a_credential_fulfillment.py "
+            "${GEO_AU_P0A_CREDENTIAL_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-fulfillment-latest.json} "
             "--require-fulfilled",
-            "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_env_report.py "
-            "${GENO_AU_P0A_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-env-latest.json} --require-ready-environment",
-            "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_credential_request_packet.py "
-            "${GENO_AU_P0A_CREDENTIAL_REQUEST_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-request-latest.json} "
+            "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_p0a_env_report.py "
+            "${GEO_AU_P0A_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-env-latest.json} --require-ready-environment",
+            "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_p0a_credential_request_packet.py "
+            "${GEO_AU_P0A_CREDENTIAL_REQUEST_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-request-latest.json} "
             "--require-credentials-ready",
         ],
         "runtime_endpoints": {
@@ -346,17 +346,17 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build an AU P0a credential fulfillment JSON")
     parser.add_argument(
         "--credential-request-path",
-        default=os.environ.get("GENO_AU_P0A_CREDENTIAL_REQUEST_OUTPUT_PATH", DEFAULT_CREDENTIAL_REQUEST_PATH),
+        default=os.environ.get("GEO_AU_P0A_CREDENTIAL_REQUEST_OUTPUT_PATH", DEFAULT_CREDENTIAL_REQUEST_PATH),
         help="Path to the AU P0a credential request packet JSON.",
     )
     parser.add_argument(
         "--env-report-path",
-        default=os.environ.get("GENO_AU_P0A_ENV_OUTPUT_PATH", DEFAULT_ENV_REPORT_PATH),
+        default=os.environ.get("GEO_AU_P0A_ENV_OUTPUT_PATH", DEFAULT_ENV_REPORT_PATH),
         help="Path to the AU P0a environment report JSON.",
     )
     parser.add_argument(
         "--output-path",
-        default=os.environ.get("GENO_AU_P0A_CREDENTIAL_FULFILLMENT_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_P0A_CREDENTIAL_FULFILLMENT_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to write the AU P0a credential fulfillment JSON.",
     )
     parser.add_argument("--generated-at", default=None, help="Override generated_at timestamp for deterministic tests.")

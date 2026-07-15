@@ -130,11 +130,11 @@ def build_au_p0a_runbook(
     small_manifest_path = f"{artifact_root}/au-p0a-small-batch-manifest.json"
     full_batch_path = f"{artifact_root}/au-p0a-full-batch.json"
     full_manifest_path = f"{artifact_root}/au-p0a-full-batch-manifest.json"
-    python_env = {"PYTHONPATH": "packages/geno_core:apps/api"}
-    preflight_env = {"GENO_API_PREFLIGHT_OUTPUT_PATH": preflight_path}
+    python_env = {"PYTHONPATH": "packages/geo_core:apps/api"}
+    preflight_env = {"GEO_API_PREFLIGHT_OUTPUT_PATH": preflight_path}
     manifest_env = {
-        "GENO_API_PREFLIGHT_OUTPUT_PATH": preflight_path,
-        "GENO_API_PREFLIGHT_MANIFEST_PATH": preflight_manifest_path,
+        "GEO_API_PREFLIGHT_OUTPUT_PATH": preflight_path,
+        "GEO_API_PREFLIGHT_MANIFEST_PATH": preflight_manifest_path,
     }
     small_planned_runs = _planned_runs(small_prompt_limit, small_cities, sample_size)
     full_planned_runs = _planned_runs(full_prompt_limit, full_cities, sample_size)
@@ -296,19 +296,19 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build a command runbook for the AU P0a real provider batch")
     parser.add_argument(
         "--output-path",
-        default=os.environ.get("GENO_AU_P0A_RUNBOOK_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_P0A_RUNBOOK_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to write the generated runbook JSON.",
     )
     parser.add_argument(
         "--artifact-dir",
-        default=os.environ.get("GENO_AU_P0A_ARTIFACT_DIR", DEFAULT_ARTIFACT_DIR),
+        default=os.environ.get("GEO_AU_P0A_ARTIFACT_DIR", DEFAULT_ARTIFACT_DIR),
         help="Directory for generated runtime preflight and batch evidence JSON files.",
     )
-    parser.add_argument("--small-prompt-limit", type=int, default=int(os.environ.get("GENO_AU_P0A_SMALL_PROMPT_LIMIT", "5")))
-    parser.add_argument("--full-prompt-limit", type=int, default=int(os.environ.get("GENO_AU_P0A_FULL_PROMPT_LIMIT", "100")))
-    parser.add_argument("--sample-size", type=int, default=int(os.environ.get("GENO_AU_P0A_SAMPLE_SIZE", "3")))
-    parser.add_argument("--small-cities", default=os.environ.get("GENO_AU_P0A_SMALL_CITIES", ",".join(DEFAULT_SMALL_CITIES)))
-    parser.add_argument("--cities", default=os.environ.get("GENO_AU_P0A_CITIES", ",".join(DEFAULT_CITIES)))
+    parser.add_argument("--small-prompt-limit", type=int, default=int(os.environ.get("GEO_AU_P0A_SMALL_PROMPT_LIMIT", "5")))
+    parser.add_argument("--full-prompt-limit", type=int, default=int(os.environ.get("GEO_AU_P0A_FULL_PROMPT_LIMIT", "100")))
+    parser.add_argument("--sample-size", type=int, default=int(os.environ.get("GEO_AU_P0A_SAMPLE_SIZE", "3")))
+    parser.add_argument("--small-cities", default=os.environ.get("GEO_AU_P0A_SMALL_CITIES", ",".join(DEFAULT_SMALL_CITIES)))
+    parser.add_argument("--cities", default=os.environ.get("GEO_AU_P0A_CITIES", ",".join(DEFAULT_CITIES)))
     parser.add_argument("--no-persist", action="store_true", help="Omit --persist from small/full batch commands.")
     parser.add_argument("--no-persist-analysis", action="store_true", help="Omit --persist-analysis from small/full batch commands.")
     parser.add_argument("--generated-at", default=None, help="Override generated_at timestamp for deterministic tests.")

@@ -9,4 +9,4 @@ DROP TABLE IF EXISTS customer_portal_tokens;
 DROP INDEX IF EXISTS idx_project_member_invitations_viewer_email_global_unique;
 DROP INDEX IF EXISTS idx_project_members_viewer_user_global_unique;
 
-DROP FUNCTION IF EXISTS geno_runtime_portal_token_hash();
+DROP FUNCTION IF EXISTS geo_runtime_portal_token_hash();

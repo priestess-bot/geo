@@ -517,7 +517,7 @@ Codex 不允许：
 后端目标结构：
 
 ```text
-apps/api/geno_api/
+apps/api/geo_api/
   domains/
     auth/
     tenants/
@@ -550,7 +550,7 @@ apps/api/geno_api/
 核心包目标结构：
 
 ```text
-packages/geno_core/geno_core/
+packages/geo_core/geo_core/
   repositories/
     tenant_repository.py
     access_control_repository.py
@@ -1680,9 +1680,9 @@ make enablement-v1-e2e
 ### 13.2 Gate W1 命令
 
 ```bash
-python3 -m ruff check apps/api/geno_api packages/geno_core/geno_core workers scripts tests
-PYTHONDONTWRITEBYTECODE=1 python3 -m compileall apps/api/geno_api packages/geno_core/geno_core workers scripts tests
-PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=packages/geno_core:apps/api python3 -m unittest discover -s tests
+python3 -m ruff check apps/api/geo_api packages/geo_core/geo_core workers scripts tests
+PYTHONDONTWRITEBYTECODE=1 python3 -m compileall apps/api/geo_api packages/geo_core/geo_core workers scripts tests
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=packages/geo_core:apps/api python3 -m unittest discover -s tests
 npm --prefix apps/admin-web run typecheck
 npm --prefix apps/customer-web run typecheck
 npm --prefix apps/admin-web run build
@@ -1698,7 +1698,7 @@ git diff --check
 
 ```bash
 make rls-smoke
-PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=packages/geno_core:apps/api python3 -m unittest \
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=packages/geo_core:apps/api python3 -m unittest \
   tests/security/test_rbac_matrix.py \
   tests/security/test_customer_portal_access.py \
   tests/security/test_scope_derivation.py
@@ -1707,7 +1707,7 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=packages/geno_core:apps/api python3 -m unit
 ### 13.4 Gate W3/W4 命令
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=packages/geno_core:apps/api python3 -m unittest \
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=packages/geo_core:apps/api python3 -m unittest \
   tests/connectors/test_connector_contract.py \
   tests/connectors/test_google_manual_backfill.py \
   tests/evidence/test_traceability_chain.py \
@@ -1724,7 +1724,7 @@ make connector-real-smoke
 ### 13.5 Gate W5/W6 命令
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=packages/geno_core:apps/api python3 -m unittest \
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=packages/geo_core:apps/api python3 -m unittest \
   tests/analysis \
   tests/scoring \
   tests/reports \
@@ -1734,7 +1734,7 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=packages/geno_core:apps/api python3 -m unit
 ### 13.6 Gate W7/W8 命令
 
 ```bash
-PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=packages/geno_core:apps/api python3 -m unittest \
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=packages/geo_core:apps/api python3 -m unittest \
   tests/actions \
   tests/retest \
   tests/knowledge \
@@ -1922,8 +1922,8 @@ Dependencies:
 None
 
 Affected modules:
-apps/api/geno_api/main.py
-apps/api/geno_api/domains/*
+apps/api/geo_api/main.py
+apps/api/geo_api/domains/*
 tests/api/*
 
 Database changes:
@@ -1980,8 +1980,8 @@ Dependencies:
 W1-I01 preferred
 
 Affected modules:
-packages/geno_core/geno_core/repository.py
-packages/geno_core/geno_core/repositories/*
+packages/geo_core/geo_core/repository.py
+packages/geo_core/geo_core/repositories/*
 tests/repositories/*
 
 Database changes:
@@ -2039,8 +2039,8 @@ Dependencies:
 None
 
 Affected modules:
-apps/api/geno_api/domains/projects/*
-packages/geno_core/geno_core/repositories/project_repository.py
+apps/api/geo_api/domains/projects/*
+packages/geo_core/geo_core/repositories/project_repository.py
 apps/admin-web/*
 tests/projects/*
 
@@ -2101,8 +2101,8 @@ Dependencies:
 W1-I01
 
 Affected modules:
-apps/api/geno_api/core/auth_context.py
-apps/api/geno_api/domains/auth/*
+apps/api/geo_api/core/auth_context.py
+apps/api/geo_api/domains/auth/*
 tests/auth/*
 tests/security/*
 
@@ -2159,8 +2159,8 @@ W2-I01a
 
 Affected modules:
 db/migrations/*
-packages/geno_core/geno_core/repositories/access_control_repository.py
-packages/geno_core/geno_core/repositories/session_repository.py
+packages/geo_core/geo_core/repositories/access_control_repository.py
+packages/geo_core/geo_core/repositories/session_repository.py
 tests/auth/*
 
 Database changes:
@@ -2226,7 +2226,7 @@ W2-I03a
 W2-I03b
 
 Affected modules:
-apps/api/geno_api/domains/*
+apps/api/geo_api/domains/*
 tests/security/*
 
 Database changes:
@@ -2283,7 +2283,7 @@ Dependencies:
 W2-I01a
 
 Affected modules:
-apps/api/geno_api/core/auth_context.py
+apps/api/geo_api/core/auth_context.py
 workers/*
 tests/auth/*
 
@@ -2338,8 +2338,8 @@ Dependencies:
 W2-I01a
 
 Affected modules:
-packages/geno_core/geno_core/repositories/audit_repository.py
-apps/api/geno_api/domains/auth/*
+packages/geo_core/geo_core/repositories/audit_repository.py
+apps/api/geo_api/domains/auth/*
 tests/audit/*
 
 Database changes:
@@ -2401,9 +2401,9 @@ W2-I03a
 W2-I03b
 
 Affected modules:
-apps/api/geno_api/domains/auth/*
+apps/api/geo_api/domains/auth/*
 apps/customer-web/*
-packages/geno_core/geno_core/repositories/access_control_repository.py
+packages/geo_core/geo_core/repositories/access_control_repository.py
 tests/customer/*
 tests/security/*
 
@@ -2470,8 +2470,8 @@ Dependencies:
 W2-I01a
 
 Affected modules:
-apps/api/geno_api/core/permissions.py
-packages/geno_core/geno_core/repositories/access_control_repository.py
+apps/api/geo_api/core/permissions.py
+packages/geo_core/geo_core/repositories/access_control_repository.py
 tests/security/*
 
 Database changes:
@@ -2530,7 +2530,7 @@ W2-I03a
 
 Affected modules:
 db/migrations/*
-packages/geno_core/geno_core/repositories/access_control_repository.py
+packages/geo_core/geo_core/repositories/access_control_repository.py
 tests/security/*
 
 Database changes:
@@ -2644,10 +2644,10 @@ W2-I01a preferred
 W2-I03a preferred
 
 Affected modules:
-apps/api/geno_api/domains/connectors/*
-apps/api/geno_api/core/redaction.py
-packages/geno_core/geno_core/repositories/connector_repository.py
-packages/geno_core/geno_core/security/secrets.py
+apps/api/geo_api/domains/connectors/*
+apps/api/geo_api/core/redaction.py
+packages/geo_core/geo_core/repositories/connector_repository.py
+packages/geo_core/geo_core/security/secrets.py
 tests/security/*
 tests/connectors/*
 
@@ -2717,8 +2717,8 @@ W1-I01
 W3-I00
 
 Affected modules:
-packages/geno_core/geno_core/contracts/connector.py
-apps/api/geno_api/domains/connectors/*
+packages/geo_core/geo_core/contracts/connector.py
+apps/api/geo_api/domains/connectors/*
 workers/collector*
 tests/connectors/*
 
@@ -2782,7 +2782,7 @@ W4-I01a preferred
 Affected modules:
 connectors/openai*
 workers/collector*
-apps/api/geno_api/domains/collection/*
+apps/api/geo_api/domains/collection/*
 tests/connectors/test_openai*
 tests/evidence/*
 
@@ -2855,8 +2855,8 @@ W4-I01a preferred
 Affected modules:
 connectors/perplexity*
 workers/collector*
-apps/api/geno_api/domains/collection/*
-packages/geno_core/geno_core/contracts/connector.py
+apps/api/geo_api/domains/collection/*
+packages/geo_core/geo_core/contracts/connector.py
 tests/connectors/test_perplexity*
 tests/evidence/*
 
@@ -2938,9 +2938,9 @@ Dependencies:
 W4-I01a
 
 Affected modules:
-apps/api/geno_api/domains/collection/google_manual*
+apps/api/geo_api/domains/collection/google_manual*
 apps/admin-web/*
-packages/geno_core/geno_core/repositories/evidence_repository.py
+packages/geo_core/geo_core/repositories/evidence_repository.py
 tests/connectors/test_google_manual_backfill.py
 
 Database changes:
@@ -3012,7 +3012,7 @@ Dependencies:
 W2-I01a preferred
 
 Affected modules:
-packages/geno_core/geno_core/repositories/evidence_repository.py
+packages/geo_core/geo_core/repositories/evidence_repository.py
 db/migrations/*
 tests/evidence/*
 
@@ -3071,7 +3071,7 @@ W4-I01a
 
 Affected modules:
 storage/*
-packages/geno_core/geno_core/contracts/evidence.py
+packages/geo_core/geo_core/contracts/evidence.py
 tests/evidence/*
 
 Database changes:
@@ -3132,7 +3132,7 @@ W4-I01a
 W4-I01b
 
 Affected modules:
-apps/api/geno_api/domains/evidence/*
+apps/api/geo_api/domains/evidence/*
 tests/evidence/*
 tests/security/*
 
@@ -3251,8 +3251,8 @@ W4-I01a
 
 Affected modules:
 workers/parser*
-packages/geno_core/geno_core/contracts/analysis.py
-packages/geno_core/geno_core/repositories/analysis_repository.py
+packages/geo_core/geo_core/contracts/analysis.py
+packages/geo_core/geo_core/repositories/analysis_repository.py
 apps/admin-web/analysis/*
 tests/analysis/*
 
@@ -3315,8 +3315,8 @@ Dependencies:
 W5-I01
 
 Affected modules:
-packages/geno_core/geno_core/contracts/scoring.py
-packages/geno_core/geno_core/repositories/scoring_repository.py
+packages/geo_core/geo_core/contracts/scoring.py
+packages/geo_core/geo_core/repositories/scoring_repository.py
 tests/scoring/*
 
 Database changes:
@@ -3368,8 +3368,8 @@ W5-I02a
 
 Affected modules:
 workers/scoring*
-packages/geno_core/geno_core/repositories/scoring_repository.py
-apps/api/geno_api/domains/scoring/*
+packages/geo_core/geo_core/repositories/scoring_repository.py
+apps/api/geo_api/domains/scoring/*
 tests/scoring/*
 
 Database changes:
@@ -3424,7 +3424,7 @@ W4-I01d
 
 Affected modules:
 workers/scoring*
-packages/geno_core/geno_core/repositories/scoring_repository.py
+packages/geo_core/geo_core/repositories/scoring_repository.py
 tests/scoring/*
 tests/evidence/*
 
@@ -3479,8 +3479,8 @@ W5-I02c
 W2-I03a
 
 Affected modules:
-apps/api/geno_api/domains/reports/*
-packages/geno_core/geno_core/repositories/report_repository.py
+apps/api/geo_api/domains/reports/*
+packages/geo_core/geo_core/repositories/report_repository.py
 tests/reports/*
 
 Database changes:
@@ -3644,7 +3644,7 @@ W6-I01a
 W2-I03a
 
 Affected modules:
-apps/api/geno_api/domains/reports/*
+apps/api/geo_api/domains/reports/*
 apps/admin-web/reports/*
 tests/reports/*
 
@@ -3705,7 +3705,7 @@ W6-I01d
 W4-I01c
 
 Affected modules:
-apps/api/geno_api/domains/reports/*
+apps/api/geo_api/domains/reports/*
 apps/customer-web/reports/*
 tests/customer/*
 
@@ -3818,8 +3818,8 @@ W5-I02c
 W6-I01f preferred
 
 Affected modules:
-apps/api/geno_api/domains/actions/*
-packages/geno_core/geno_core/repositories/action_repository.py
+apps/api/geo_api/domains/actions/*
+packages/geo_core/geo_core/repositories/action_repository.py
 apps/admin-web/actions/*
 apps/customer-web/actions/*
 tests/actions/*
@@ -3892,9 +3892,9 @@ W5-I02c
 W6-I01f
 
 Affected modules:
-apps/api/geno_api/domains/actions/*
-apps/api/geno_api/domains/collection/*
-apps/api/geno_api/domains/reports/*
+apps/api/geo_api/domains/actions/*
+apps/api/geo_api/domains/collection/*
+apps/api/geo_api/domains/reports/*
 workers/retest*
 tests/retest/*
 
@@ -3957,8 +3957,8 @@ W4-I01a
 W2-I03a
 
 Affected modules:
-apps/api/geno_api/domains/knowledge/*
-packages/geno_core/geno_core/repositories/knowledge_repository.py
+apps/api/geo_api/domains/knowledge/*
+packages/geo_core/geo_core/repositories/knowledge_repository.py
 apps/admin-web/knowledge/*
 tests/knowledge/*
 
@@ -4024,8 +4024,8 @@ W7-I01
 W8-I01
 
 Affected modules:
-apps/api/geno_api/domains/content/*
-packages/geno_core/geno_core/repositories/content_repository.py
+apps/api/geo_api/domains/content/*
+packages/geo_core/geo_core/repositories/content_repository.py
 apps/admin-web/content/*
 tests/content/*
 
@@ -4088,8 +4088,8 @@ W8-I02
 W7-I02 preferred
 
 Affected modules:
-apps/api/geno_api/domains/distribution/*
-packages/geno_core/geno_core/repositories/distribution_repository.py
+apps/api/geo_api/domains/distribution/*
+packages/geo_core/geo_core/repositories/distribution_repository.py
 apps/admin-web/distribution/*
 tests/distribution/*
 
@@ -4148,8 +4148,8 @@ Dependencies:
 None
 
 Affected modules:
-apps/api/geno_api/core/metrics.py
-apps/api/geno_api/core/logging.py
+apps/api/geo_api/core/metrics.py
+apps/api/geo_api/core/logging.py
 workers/*
 docker-compose*
 observability/*

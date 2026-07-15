@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from geno_core.models import RuntimeAlertNotificationResult, RuntimeProject, RuntimeProjectPage
+from geo_core.models import RuntimeAlertNotificationResult, RuntimeProject, RuntimeProjectPage
 from workers.notification_worker.run_runtime_alert_notifications import (
     enqueue_runtime_alert_notifications_for_projects,
 )

@@ -8,7 +8,7 @@ from types import ModuleType
 import unittest
 from unittest.mock import patch
 
-from geno_core.knowledge_pipeline import (
+from geo_core.knowledge_pipeline import (
     DEFAULT_EMBEDDING_MODEL,
     JOB_TABLES,
     KnowledgePipelineRepository,
@@ -20,7 +20,7 @@ from geno_core.knowledge_pipeline import (
     precheck_knowledge_source,
     source_config_text,
 )
-from geno_core.knowledge_application import deepseek_generate_knowledge_application
+from geo_core.knowledge_application import deepseek_generate_knowledge_application
 from workers.knowledge_worker.run_knowledge_pipeline import (
     CRAWL_MIN_SUCCESS_PAGES,
     CRAWL_MIN_SUCCESS_RATIO,
@@ -122,7 +122,7 @@ class KnowledgePipelineContractTest(unittest.TestCase):
 
     def test_prompt_generation_uses_runtime_prompt_table_and_failure_recovery_rolls_back(self) -> None:
         worker = Path("workers/knowledge_worker/run_knowledge_pipeline.py").read_text(encoding="utf-8")
-        repository = Path("packages/geno_core/geno_core/knowledge_pipeline.py").read_text(encoding="utf-8")
+        repository = Path("packages/geo_core/geo_core/knowledge_pipeline.py").read_text(encoding="utf-8")
         self.assertIn("SELECT text FROM prompt_questions", worker)
         self.assertNotIn("SELECT text FROM prompts ", worker)
         fail_job = repository[repository.index("    def fail_job(") : repository.index("    def run_ready_pipeline_once(")]
@@ -137,13 +137,13 @@ class KnowledgePipelineContractTest(unittest.TestCase):
         self.assertIn("job_statuses={job_statuses}", script)
 
     def test_pipeline_scheduler_never_runs_unstarted_or_already_running_pipeline(self) -> None:
-        repository = Path("packages/geno_core/geno_core/knowledge_pipeline.py").read_text(encoding="utf-8")
+        repository = Path("packages/geo_core/geo_core/knowledge_pipeline.py").read_text(encoding="utf-8")
         self.assertIn("AND status IN ('queued', 'running', 'waiting_human_review')", repository)
         self.assertIn("WHERE status = 'queued'", repository)
         self.assertNotIn("WHERE status IN ('queued', 'running')", repository)
 
     def test_full_rebuild_enqueues_prompt_and_content_generation_after_fact_review(self) -> None:
-        repository = Path("packages/geno_core/geno_core/knowledge_pipeline.py").read_text(encoding="utf-8")
+        repository = Path("packages/geo_core/geo_core/knowledge_pipeline.py").read_text(encoding="utf-8")
         self.assertIn('in {"full_ingestion", "full_rebuild"}', repository)
         self.assertIn('{"full_ingestion", "full_rebuild", "prompt_generation"}', repository)
         self.assertIn('{"full_ingestion", "full_rebuild", "content_generation"}', repository)
@@ -438,8 +438,8 @@ class KnowledgePipelineContractTest(unittest.TestCase):
         self.assertNotIn("delivery policy'", rendered)
 
     def test_upload_contract_reuses_duplicate_objects_and_details_are_aggregated(self) -> None:
-        api_source = Path("apps/api/geno_api/main.py").read_text(encoding="utf-8")
-        repository_source = Path("packages/geno_core/geno_core/knowledge_pipeline.py").read_text(encoding="utf-8")
+        api_source = Path("apps/api/geo_api/main.py").read_text(encoding="utf-8")
+        repository_source = Path("packages/geo_core/geo_core/knowledge_pipeline.py").read_text(encoding="utf-8")
         live_e2e_source = Path("scripts/run_knowledge_pipeline_live_e2e.py").read_text(encoding="utf-8")
         full_smoke_source = Path("scripts/run_geo_production_full_pipeline_smoke.py").read_text(encoding="utf-8")
         self.assertIn("knowledge_repository.reuse_source_asset(", api_source)
@@ -483,7 +483,7 @@ class KnowledgePipelineContractTest(unittest.TestCase):
         KnowledgePipelineRepository(connection).set_maintenance_scope(worker_id="knowledge-worker")
         rendered = "\n".join(statement for statement, _ in connection.statements)
         self.assertIn("app.rls_enabled", rendered)
-        self.assertIn("geno.runtime_project_access_control", rendered)
+        self.assertIn("geo.runtime_project_access_control", rendered)
         self.assertIn("'false'", rendered)
 
     def test_pipeline_job_tables_include_generation_jobs_but_no_global_queue(self) -> None:

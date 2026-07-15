@@ -73,7 +73,7 @@ async function main() {
           ETag: '"job-v1"',
           Location: "/v1/jobs/job-1",
           "Retry-After": "3",
-          "X-GENO-Request-Id": "request-1"
+          "X-GEO-Request-Id": "request-1"
         }
       });
     }
@@ -121,7 +121,7 @@ async function main() {
       }
     }), {
       status: 409,
-      headers: { "Content-Type": "application/json", "X-GENO-Request-Id": "request-nested" }
+      headers: { "Content-Type": "application/json", "X-GEO-Request-Id": "request-nested" }
     })
   );
   assert(!nestedConflict.ok && nestedConflict.status === 409, "nested error was not a failure");

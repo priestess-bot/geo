@@ -292,7 +292,7 @@ def _validate_handoff_environment_items(tasks: list[object], errors: list[str]) 
         if task.get("env_file_key") != name:
             errors.append(f"environment_handoff_item_env_key_mismatch:{name}")
         accepted_methods = {str(value) for value in _as_list(task.get("accepted_injection_methods"))}
-        if not {"process_environment", "GENO_AU_P0B_GOOGLE_ENV_FILE", ".env.au-p0b-google"}.issubset(
+        if not {"process_environment", "GEO_AU_P0B_GOOGLE_ENV_FILE", ".env.au-p0b-google"}.issubset(
             accepted_methods
         ):
             errors.append(f"environment_handoff_item_injection_methods_incomplete:{name}")
@@ -337,7 +337,7 @@ def _validate_handoff_selector_items(tasks: list[object], errors: list[str]) -> 
         if task.get("secret_redacted") is not True:
             errors.append(f"environment_handoff_selector_secret_redaction_missing:{group}")
         accepted_methods = {str(value) for value in _as_list(task.get("accepted_injection_methods"))}
-        if not {"process_environment", "GENO_AU_P0B_GOOGLE_ENV_FILE", ".env.au-p0b-google"}.issubset(
+        if not {"process_environment", "GEO_AU_P0B_GOOGLE_ENV_FILE", ".env.au-p0b-google"}.issubset(
             accepted_methods
         ):
             errors.append(f"environment_handoff_selector_injection_methods_incomplete:{group}")
@@ -1109,7 +1109,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "path",
         nargs="?",
-        default=os.environ.get("GENO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to the AU P0b Google execution checklist JSON.",
     )
     parser.add_argument(

@@ -27,7 +27,7 @@ class SchemaV2GeoPlacementContractsTest(unittest.TestCase):
 
     def test_project_owned_tables_force_rls_and_deny_runtime_table_dml(self) -> None:
         self.assertIn("FORCE ROW LEVEL SECURITY", SQL)
-        self.assertIn("geno_v2_runtime, geno_v2_worker", SQL)
+        self.assertIn("geo_v2_runtime, geo_v2_worker", SQL)
 
 
 if __name__ == "__main__":

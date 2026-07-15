@@ -102,33 +102,33 @@ def run_scheduler(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Plan and optionally execute scheduled browser fidelity sampling")
-    parser.add_argument("--run-date", default=os.environ.get("GENO_BROWSER_FIDELITY_RUN_DATE"))
-    parser.add_argument("--cadence", default=os.environ.get("GENO_BROWSER_FIDELITY_CADENCE", "weekly"))
+    parser.add_argument("--run-date", default=os.environ.get("GEO_BROWSER_FIDELITY_RUN_DATE"))
+    parser.add_argument("--cadence", default=os.environ.get("GEO_BROWSER_FIDELITY_CADENCE", "weekly"))
     parser.add_argument(
         "--prompt-count",
         type=int,
-        default=int(os.environ.get("GENO_BROWSER_FIDELITY_PROMPT_COUNT", "10")),
+        default=int(os.environ.get("GEO_BROWSER_FIDELITY_PROMPT_COUNT", "10")),
     )
     parser.add_argument(
         "--city-count",
         type=int,
-        default=int(os.environ.get("GENO_BROWSER_FIDELITY_CITY_COUNT", "2")),
+        default=int(os.environ.get("GEO_BROWSER_FIDELITY_CITY_COUNT", "2")),
     )
     parser.add_argument(
         "--sample-size",
         type=int,
-        default=int(os.environ.get("GENO_BROWSER_FIDELITY_SAMPLE_SIZE", "1")),
+        default=int(os.environ.get("GEO_BROWSER_FIDELITY_SAMPLE_SIZE", "1")),
     )
-    parser.add_argument("--selection-seed", default=os.environ.get("GENO_BROWSER_FIDELITY_SELECTION_SEED"))
+    parser.add_argument("--selection-seed", default=os.environ.get("GEO_BROWSER_FIDELITY_SELECTION_SEED"))
     parser.add_argument(
         "--persist-plan",
         action="store_true",
-        default=_env_truthy("GENO_BROWSER_FIDELITY_PERSIST_PLAN", default=False),
+        default=_env_truthy("GEO_BROWSER_FIDELITY_PERSIST_PLAN", default=False),
     )
     parser.add_argument(
         "--execute",
         action="store_true",
-        default=_env_truthy("GENO_BROWSER_FIDELITY_EXECUTE", default=False),
+        default=_env_truthy("GEO_BROWSER_FIDELITY_EXECUTE", default=False),
     )
     return parser.parse_args()
 

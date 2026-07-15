@@ -33,6 +33,7 @@ deepseek_api_key.txt
 # Python
 __pycache__/
 *.py[cod]
+*.egg-info/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/

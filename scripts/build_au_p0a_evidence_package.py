@@ -307,13 +307,13 @@ def build_au_p0a_evidence_package(
     runbook, runbook_entry = _runbook_artifact(runbook_path)
     artifact_paths = _artifact_paths(runbook)
     effective_readiness_path = readiness_path or Path(
-        os.environ.get("GENO_AU_P0A_READINESS_OUTPUT_PATH", "docs/runtime_preflight/au-p0a-readiness-latest.json")
+        os.environ.get("GEO_AU_P0A_READINESS_OUTPUT_PATH", "docs/runtime_preflight/au-p0a-readiness-latest.json")
     )
     effective_environment_path = environment_path or Path(
-        os.environ.get("GENO_AU_P0A_ENV_OUTPUT_PATH", DEFAULT_ENV_REPORT_PATH)
+        os.environ.get("GEO_AU_P0A_ENV_OUTPUT_PATH", DEFAULT_ENV_REPORT_PATH)
     )
     effective_runbook_execution_path = runbook_execution_path or Path(
-        os.environ.get("GENO_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH", DEFAULT_RUNBOOK_EXECUTION_PATH)
+        os.environ.get("GEO_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH", DEFAULT_RUNBOOK_EXECUTION_PATH)
     )
     readiness_entry = _readiness_artifact(effective_readiness_path)
 
@@ -387,27 +387,27 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build a package manifest for AU P0a real-batch evidence")
     parser.add_argument(
         "--runbook-path",
-        default=os.environ.get("GENO_AU_P0A_RUNBOOK_OUTPUT_PATH", DEFAULT_RUNBOOK_PATH),
+        default=os.environ.get("GEO_AU_P0A_RUNBOOK_OUTPUT_PATH", DEFAULT_RUNBOOK_PATH),
         help="Path to the generated AU P0a runbook JSON.",
     )
     parser.add_argument(
         "--readiness-path",
-        default=os.environ.get("GENO_AU_P0A_READINESS_OUTPUT_PATH", "docs/runtime_preflight/au-p0a-readiness-latest.json"),
+        default=os.environ.get("GEO_AU_P0A_READINESS_OUTPUT_PATH", "docs/runtime_preflight/au-p0a-readiness-latest.json"),
         help="Path to the latest AU P0a readiness JSON.",
     )
     parser.add_argument(
         "--environment-path",
-        default=os.environ.get("GENO_AU_P0A_ENV_OUTPUT_PATH", DEFAULT_ENV_REPORT_PATH),
+        default=os.environ.get("GEO_AU_P0A_ENV_OUTPUT_PATH", DEFAULT_ENV_REPORT_PATH),
         help="Path to the latest AU P0a environment report JSON.",
     )
     parser.add_argument(
         "--runbook-execution-path",
-        default=os.environ.get("GENO_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH", DEFAULT_RUNBOOK_EXECUTION_PATH),
+        default=os.environ.get("GEO_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH", DEFAULT_RUNBOOK_EXECUTION_PATH),
         help="Path to the latest AU P0a runbook execution dry-run JSON.",
     )
     parser.add_argument(
         "--output-path",
-        default=os.environ.get("GENO_AU_P0A_PACKAGE_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_P0A_PACKAGE_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to write the AU P0a evidence package JSON.",
     )
     parser.add_argument("--generated-at", default=None, help="Override generated_at timestamp for deterministic tests.")

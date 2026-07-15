@@ -8,12 +8,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from geno_core.bootstrap import build_au_project_bootstrap
-from geno_core.collection import collect_prompt_once
-from geno_core.collectors import PlaywrightAIModeCollector, PlaywrightGoogleAIOCollector
-from geno_core.contracts import CollectorBackend
-from geno_core.google_spike import select_google_spike_prompts
-from geno_core.models import RawEvidenceRecord
+from geo_core.bootstrap import build_au_project_bootstrap
+from geo_core.collection import collect_prompt_once
+from geo_core.collectors import PlaywrightAIModeCollector, PlaywrightGoogleAIOCollector
+from geo_core.contracts import CollectorBackend
+from geo_core.google_spike import select_google_spike_prompts
+from geo_core.models import RawEvidenceRecord
 
 
 SMOKE_VERSION = "au_p0b_google_playwright_smoke_v1"

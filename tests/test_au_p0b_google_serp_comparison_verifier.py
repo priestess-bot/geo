@@ -20,7 +20,7 @@ class AuP0bGoogleSerpComparisonVerifierTest(unittest.TestCase):
         env = os.environ.copy()
         for key in unset_env:
             env.pop(key, None)
-        env["PYTHONPATH"] = "packages/geno_core:apps/api"
+        env["PYTHONPATH"] = "packages/geo_core:apps/api"
         return subprocess.run(
             [sys.executable, "workers/collector_worker/run_collection_slice.py", *args],
             capture_output=True,

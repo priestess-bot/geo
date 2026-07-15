@@ -14,8 +14,8 @@ import psycopg
 from psycopg.pq import TransactionStatus
 from psycopg.types.json import Jsonb
 
-from geno_core.auth_delivery import AuthDeliveryKeyring
-from geno_core.schema_v2 import (
+from geo_core.auth_delivery import AuthDeliveryKeyring
+from geo_core.schema_v2 import (
     SchemaV2AnonymousAuthCommandError,
     SchemaV2AnonymousAuthResultError,
     SchemaV2AnonymousAuthUnitOfWork,
@@ -171,8 +171,8 @@ class SchemaV2AnonymousAuthUowPostgresTest(unittest.TestCase):
         return build_redemption_material(
             raw_session_token,
             raw_csrf_token,
-            session_cookie_name="geno-session",
-            csrf_cookie_name="geno-csrf",
+            session_cookie_name="geo-session",
+            csrf_cookie_name="geo-csrf",
             session_expires_at=session_expires_at or datetime.now(UTC) + timedelta(days=1),
             secure=True,
             attempt_id=attempt_id,
@@ -375,8 +375,8 @@ class SchemaV2AnonymousAuthUowPostgresTest(unittest.TestCase):
             self.assertEqual(scopes[self.project_ids[1]].roles, ("analyst",))
             self.assertIn("analysis.read", scopes[self.project_ids[1]].permissions)
             delivery = result.encrypted_delivery.decrypt()  # type: ignore[union-attr]
-            self.assertIn(f"geno-session={raw_session_token}", delivery.cookie_headers[0])
-            self.assertIn(f"geno-csrf={raw_csrf_token}", delivery.cookie_headers[1])
+            self.assertIn(f"geo-session={raw_session_token}", delivery.cookie_headers[0])
+            self.assertIn(f"geo-csrf={raw_csrf_token}", delivery.cookie_headers[1])
             self.assertNotIn(raw_session_token, repr(result))
             self.assertEqual(connection.info.transaction_status, TransactionStatus.IDLE)
             self.assertTrue(anonymous_uow.connection_reusable)
@@ -390,7 +390,7 @@ class SchemaV2AnonymousAuthUowPostgresTest(unittest.TestCase):
             connection.rollback()
             self.assertEqual(current_user, session_user)
             self.assertEqual(current_role, session_user)
-            self.assertNotEqual(current_role, "geno_v2_runtime")
+            self.assertNotEqual(current_role, "geo_v2_runtime")
             self.assertIn(token_guc, (None, ""))
 
             with SchemaV2ApiSessionUnitOfWork(
@@ -418,7 +418,7 @@ class SchemaV2AnonymousAuthUowPostgresTest(unittest.TestCase):
             connection.rollback()
             self.assertEqual(current_user, session_user)
             self.assertEqual(current_role, session_user)
-            self.assertNotEqual(current_role, "geno_v2_runtime")
+            self.assertNotEqual(current_role, "geo_v2_runtime")
             self.assertIn(token_guc, (None, ""))
             self.assertEqual(connection.info.transaction_status, TransactionStatus.IDLE)
 
@@ -480,8 +480,8 @@ class SchemaV2AnonymousAuthUowPostgresTest(unittest.TestCase):
         self.assertEqual(deliveries[0], deliveries[1])
         self.assertTrue(
             any(
-                f"geno-session={raw_session}" in deliveries[0].cookie_headers[0]
-                and f"geno-csrf={raw_csrf}" in deliveries[0].cookie_headers[1]
+                f"geo-session={raw_session}" in deliveries[0].cookie_headers[0]
+                and f"geo-csrf={raw_csrf}" in deliveries[0].cookie_headers[1]
                 for raw_session, raw_csrf in (rows[0][1], rows[1][1])
             )
         )
@@ -617,7 +617,7 @@ class SchemaV2AnonymousAuthUowPostgresTest(unittest.TestCase):
         with psycopg.connect() as connection:
             failed_uow = SchemaV2AnonymousAuthUnitOfWork(connection)
             with patch(
-                "geno_core.schema_v2.anonymous_auth_uow._parse_preflight_rows",
+                "geo_core.schema_v2.anonymous_auth_uow._parse_preflight_rows",
                 side_effect=SchemaV2AnonymousAuthResultError(),
             ):
                 with self.assertRaises(SchemaV2AnonymousAuthResultError):
@@ -649,7 +649,7 @@ class SchemaV2AnonymousAuthUowPostgresTest(unittest.TestCase):
                 with self.subTest(table=table):
                     with connection.cursor() as cursor:
                         cursor.execute("BEGIN")
-                        cursor.execute("SET LOCAL ROLE geno_v2_runtime")
+                        cursor.execute("SET LOCAL ROLE geo_v2_runtime")
                         cursor.execute("SELECT set_config('app.session_token_hash', '', true)")
                         with self.assertRaises(psycopg.errors.InsufficientPrivilege):
                             cursor.execute(f"SELECT * FROM {table} LIMIT 1")

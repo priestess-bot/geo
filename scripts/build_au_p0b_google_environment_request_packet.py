@@ -437,8 +437,8 @@ def build_au_p0b_google_environment_request_packet(
         "make verify-au-p0b-google-environment-request",
         "make au-p0b-google-playwright-env",
         "make verify-au-p0b-google-playwright-env",
-        "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0b_google_playwright_env_report.py "
-        "${GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-playwright-env-latest.json} --require-ready-smoke",
+        "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_p0b_google_playwright_env_report.py "
+        "${GEO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-playwright-env-latest.json} --require-ready-smoke",
     ]
 
     payload: dict[str, Any] = {
@@ -550,19 +550,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--p0b-google-execution-checklist-path",
         default=os.environ.get(
-            "GENO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH",
+            "GEO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH",
             DEFAULT_P0B_GOOGLE_EXECUTION_CHECKLIST_PATH,
         ),
         help="Path to the AU P0b Google execution checklist JSON.",
     )
     parser.add_argument(
         "--output-path",
-        default=os.environ.get("GENO_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to write the AU P0b Google environment request packet JSON.",
     )
     parser.add_argument(
         "--p0a-env-report-path",
-        default=os.environ.get("GENO_AU_P0A_ENV_OUTPUT_PATH", DEFAULT_P0A_ENV_REPORT_PATH),
+        default=os.environ.get("GEO_AU_P0A_ENV_OUTPUT_PATH", DEFAULT_P0A_ENV_REPORT_PATH),
         help="Path to the AU P0a environment report used only for redacted cross-stage reuse hints.",
     )
     parser.add_argument("--generated-at", default=None, help="Override generated_at timestamp for deterministic tests.")

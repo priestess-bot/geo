@@ -101,16 +101,16 @@ def build_preflight_manifest(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Build an audit manifest for a GENO provider preflight JSON payload")
+    parser = argparse.ArgumentParser(description="Build an audit manifest for a GEO provider preflight JSON payload")
     parser.add_argument(
         "path",
         nargs="?",
-        default=os.environ.get("GENO_API_PREFLIGHT_OUTPUT_PATH", DEFAULT_PREFLIGHT_PATH),
+        default=os.environ.get("GEO_API_PREFLIGHT_OUTPUT_PATH", DEFAULT_PREFLIGHT_PATH),
         help="Path to the preflight JSON payload.",
     )
     parser.add_argument(
         "--manifest-path",
-        default=os.environ.get("GENO_API_PREFLIGHT_MANIFEST_PATH", DEFAULT_MANIFEST_PATH),
+        default=os.environ.get("GEO_API_PREFLIGHT_MANIFEST_PATH", DEFAULT_MANIFEST_PATH),
         help="Path to write the preflight evidence manifest.",
     )
     parser.add_argument(

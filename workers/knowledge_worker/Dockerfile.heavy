@@ -103,11 +103,11 @@ RUN python -m venv /opt/venvs/bge \
     && /opt/venvs/bge/bin/pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.6.0 \
     && /opt/venvs/bge/bin/pip install --no-cache-dir -r /app/requirements/bge-requirements.txt
 
-COPY packages/geno_core ./packages/geno_core
+COPY packages/geo_core ./packages/geo_core
 COPY apps/api ./apps/api
 COPY workers ./workers
 
-ENV PYTHONPATH=/app:/app/packages/geno_core:/app/apps/api \
+ENV PYTHONPATH=/app:/app/packages/geo_core:/app/apps/api \
     GEO_KNOWLEDGE_COMPONENT_RUNNER=/app/scripts/run_knowledge_component.py
 
 CMD ["python", "workers/knowledge_worker/run_knowledge_pipeline.py", "--loop-once"]

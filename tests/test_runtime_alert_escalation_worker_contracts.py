@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from datetime import UTC, datetime, timedelta
 
-from geno_core.models import RuntimeAlertEvent, RuntimeAlertItem, RuntimeAlertPage, RuntimeProject, RuntimeProjectPage
+from geo_core.models import RuntimeAlertEvent, RuntimeAlertItem, RuntimeAlertPage, RuntimeProject, RuntimeProjectPage
 from workers.notification_worker.run_runtime_alert_escalations import (
     _parse_severity_thresholds,
     escalate_runtime_alerts_for_projects,

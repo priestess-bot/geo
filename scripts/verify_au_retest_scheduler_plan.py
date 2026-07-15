@@ -200,7 +200,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "path",
         nargs="?",
-        default=os.environ.get("GENO_AU_RETEST_SCHEDULER_PLAN_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_RETEST_SCHEDULER_PLAN_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
     )
     return parser.parse_args()
 

@@ -15,10 +15,10 @@ from io import StringIO
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from geno_core.bootstrap import build_au_project_bootstrap
-from geno_core.collection import collect_prompt_once
-from geno_core.collectors import JsonHttpResponse, PerplexitySonarCollector, PlaywrightChatGPTSearchCollector
-from geno_core.object_store import StoredObject
+from geo_core.bootstrap import build_au_project_bootstrap
+from geo_core.collection import collect_prompt_once
+from geo_core.collectors import JsonHttpResponse, PerplexitySonarCollector, PlaywrightChatGPTSearchCollector
+from geo_core.object_store import StoredObject
 
 
 class FakeWorkerRepository:
@@ -219,7 +219,7 @@ class WorkerCliTest(unittest.TestCase):
             env.pop(key, None)
         if extra_env:
             env.update(extra_env)
-        env["PYTHONPATH"] = "packages/geno_core:apps/api"
+        env["PYTHONPATH"] = "packages/geo_core:apps/api"
         return subprocess.run(
             [sys.executable, "workers/collector_worker/run_collection_slice.py", *args],
             capture_output=True,
@@ -238,7 +238,7 @@ class WorkerCliTest(unittest.TestCase):
         old_argv = sys.argv[:]
         try:
             sys.argv = ["workers/collector_worker/run_collection_slice.py", *args]
-            with patch("geno_core.runtime.build_repository_from_env", return_value=repository), patch(
+            with patch("geo_core.runtime.build_repository_from_env", return_value=repository), patch(
                 "workers.collector_worker.run_collection_slice.build_repository_from_env",
                 return_value=repository,
             ), redirect_stdout(stdout), redirect_stderr(stderr):
@@ -477,9 +477,9 @@ class WorkerCliTest(unittest.TestCase):
                 "--include-browser-fidelity-playwright",
                 "--require-ready-collectors",
                 unset_env=(
-                    "GENO_BROWSER_COLLECTOR_ENABLED",
-                    "GENO_BROWSER_PROMPT_SELECTOR",
-                    "GENO_BROWSER_ANSWER_SELECTOR",
+                    "GEO_BROWSER_COLLECTOR_ENABLED",
+                    "GEO_BROWSER_PROMPT_SELECTOR",
+                    "GEO_BROWSER_ANSWER_SELECTOR",
                 ),
             )
         self.assertEqual(result.returncode, 3)
@@ -701,7 +701,7 @@ class WorkerCliTest(unittest.TestCase):
                 "GOOGLE_PLAYWRIGHT_ENABLED": "1",
                 "GOOGLE_PLAYWRIGHT_PROMPT_SELECTOR": "#prompt",
                 "GOOGLE_PLAYWRIGHT_ANSWER_SELECTOR": ".answer",
-                "MANUAL_BACKFILL_PATH": "/tmp/geno-missing-manual-google-spike.jsonl",
+                "MANUAL_BACKFILL_PATH": "/tmp/geo-missing-manual-google-spike.jsonl",
             },
         )
         self.assertEqual(result.returncode, 3)
@@ -859,8 +859,8 @@ class WorkerCliTest(unittest.TestCase):
             def put_object(self, *, key: str, content: str | bytes, content_type: str) -> StoredObject:
                 payload = content.encode("utf-8") if isinstance(content, str) else content
                 return StoredObject(
-                    uri=f"s3://geno-reports/{key}",
-                    bucket="geno-reports",
+                    uri=f"s3://geo-reports/{key}",
+                    bucket="geo-reports",
                     key=key,
                     content_type=content_type,
                     content_hash=__import__("hashlib").sha256(payload).hexdigest(),
@@ -903,7 +903,7 @@ class WorkerCliTest(unittest.TestCase):
             )
 
         saved_asset = repository.raw_evidence_records[0].evidence_assets[0]
-        self.assertTrue(saved_asset.url.startswith("s3://geno-reports/evidence/"))
+        self.assertTrue(saved_asset.url.startswith("s3://geo-reports/evidence/"))
         self.assertEqual(len(saved_asset.content_hash), 64)
         self.assertEqual(payload["api_snapshot_artifacts"]["enabled"], True)
         self.assertEqual(len(payload["api_snapshot_artifacts"]["stored_snapshot_assets"]), 1)
@@ -985,8 +985,8 @@ class WorkerCliTest(unittest.TestCase):
             def put_object(self, *, key: str, content: str | bytes, content_type: str) -> StoredObject:
                 payload = content.encode("utf-8") if isinstance(content, str) else content
                 return StoredObject(
-                    uri=f"s3://geno-reports/{key}",
-                    bucket="geno-reports",
+                    uri=f"s3://geo-reports/{key}",
+                    bucket="geo-reports",
                     key=key,
                     content_type=content_type,
                     content_hash=__import__("hashlib").sha256(payload).hexdigest(),
@@ -1038,7 +1038,7 @@ class WorkerCliTest(unittest.TestCase):
 
         saved_assets = repository.raw_evidence_records[0].evidence_assets
         self.assertEqual({asset.asset_type for asset in saved_assets}, {"html_snapshot", "screenshot"})
-        self.assertTrue(all(asset.url.startswith("s3://geno-reports/evidence/") for asset in saved_assets))
+        self.assertTrue(all(asset.url.startswith("s3://geo-reports/evidence/") for asset in saved_assets))
         self.assertTrue(all(len(str(asset.content_hash)) == 64 for asset in saved_assets))
         self.assertEqual(payload["browser_capture_artifacts"]["enabled"], True)
         self.assertEqual(len(payload["browser_capture_artifacts"]["stored_browser_assets"]), 2)

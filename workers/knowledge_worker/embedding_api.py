@@ -6,13 +6,13 @@ from typing import Any
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from geno_core.knowledge_pipeline import (
+from geo_core.knowledge_pipeline import (
     DEFAULT_EMBEDDING_DIMENSION,
     DEFAULT_EMBEDDING_MODEL,
     DEFAULT_EMBEDDING_MODEL_VERSION,
     LocalBgeM3Embedder,
 )
-from geno_core.runtime import validate_runtime_schema_compatibility
+from geo_core.runtime import validate_runtime_schema_compatibility
 
 
 app = FastAPI(title="GEO Knowledge Embedding API", version="1.0.0")

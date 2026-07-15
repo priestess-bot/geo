@@ -1,7 +1,7 @@
 {
   "manifest_version": 1,
   "schema_generation": 2,
-  "database_name": "geno_v2",
+  "database_name": "geo_v2",
   "baseline_version": "2.0.0-b2",
   "baseline_hash": "f6c451e0149467a94874753ec57797568c5525f96fcf60a63a686a77a9aee519",
   "minimum_app_version": "0.1.0",

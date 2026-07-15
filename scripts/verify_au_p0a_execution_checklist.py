@@ -166,7 +166,7 @@ def _validate_credential_handoff(
         if item.get("env_file_key") != name:
             errors.append(f"credential_handoff_item_env_key_mismatch:{name}")
         accepted_methods = {str(value) for value in _as_list(item.get("accepted_injection_methods"))}
-        if not {"process_environment", "GENO_AU_P0A_ENV_FILE", ".env.au-p0a"}.issubset(accepted_methods):
+        if not {"process_environment", "GEO_AU_P0A_ENV_FILE", ".env.au-p0a"}.issubset(accepted_methods):
             errors.append(f"credential_handoff_item_injection_methods_incomplete:{name}")
 
 
@@ -481,7 +481,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "path",
         nargs="?",
-        default=os.environ.get("GENO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to the AU P0a execution checklist JSON.",
     )
     parser.add_argument(

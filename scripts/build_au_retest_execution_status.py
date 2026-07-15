@@ -386,15 +386,15 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build the AU retest execution status JSON.")
     parser.add_argument(
         "--plan-path",
-        default=os.environ.get("GENO_AU_RETEST_SCHEDULER_PLAN_OUTPUT_PATH", DEFAULT_RETEST_PLAN_PATH),
+        default=os.environ.get("GEO_AU_RETEST_SCHEDULER_PLAN_OUTPUT_PATH", DEFAULT_RETEST_PLAN_PATH),
     )
     parser.add_argument(
         "--output-path",
-        default=os.environ.get("GENO_AU_RETEST_EXECUTION_STATUS_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_RETEST_EXECUTION_STATUS_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
     )
     parser.add_argument(
         "--artifact-base-dir",
-        default=os.environ.get("GENO_AU_RETEST_ARTIFACT_BASE_DIR", "."),
+        default=os.environ.get("GEO_AU_RETEST_ARTIFACT_BASE_DIR", "."),
     )
     parser.add_argument("--generated-at", default=None)
     return parser.parse_args()

@@ -36,17 +36,17 @@ POST_CONTENT_COMPLETION_VALIDATION_COMMANDS = [
     "make au-p0b-google-manual-backfill-fulfillment",
     "make verify-au-p0b-google-manual-backfill-fulfillment",
     (
-        "PYTHONPATH=packages/geno_core:apps/api python3 "
+        "PYTHONPATH=packages/geo_core:apps/api python3 "
         "scripts/verify_au_p0b_google_manual_backfill_fulfillment.py "
-        "${GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-manual-backfill-fulfillment-latest.json} "
+        "${GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-manual-backfill-fulfillment-latest.json} "
         "--require-fulfilled"
     ),
     "make au-p0b-google-manual-backfill-clearance",
     "make verify-au-p0b-google-manual-backfill-clearance",
     (
-        "PYTHONPATH=packages/geno_core:apps/api python3 "
+        "PYTHONPATH=packages/geo_core:apps/api python3 "
         "scripts/verify_au_p0b_google_manual_backfill_clearance.py "
-        "${GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_CLEARANCE_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-manual-backfill-clearance-latest.json} "
+        "${GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_CLEARANCE_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-manual-backfill-clearance-latest.json} "
         "--require-cleared"
     ),
     "make au-delivery-evidence-refresh",
@@ -547,15 +547,15 @@ def build_au_p0b_google_manual_backfill_fulfillment(
     verification_summary = _as_dict(manual_backfill_verification.get("summary"))
     verification_errors = _strings(manual_backfill_verification.get("errors"))
     strict_gate_command = (
-        "PYTHONPATH=packages/geno_core:apps/api python3 "
+        "PYTHONPATH=packages/geo_core:apps/api python3 "
         "scripts/verify_au_p0b_google_manual_backfill_fulfillment.py "
-        "${GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-manual-backfill-fulfillment-latest.json} "
+        "${GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-manual-backfill-fulfillment-latest.json} "
         "--require-fulfilled"
     )
     request_strict_gate_command = (
-        "PYTHONPATH=packages/geno_core:apps/api python3 "
+        "PYTHONPATH=packages/geo_core:apps/api python3 "
         "scripts/verify_au_p0b_google_manual_backfill_request_packet.py "
-        "${GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_REQUEST_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-manual-backfill-request-latest.json} "
+        "${GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_REQUEST_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-manual-backfill-request-latest.json} "
         "--require-manual-backfill-ready"
     )
     target_jsonl_path = str(
@@ -785,7 +785,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--manual-backfill-request-path",
         default=os.environ.get(
-            "GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_REQUEST_OUTPUT_PATH",
+            "GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_REQUEST_OUTPUT_PATH",
             DEFAULT_MANUAL_BACKFILL_REQUEST_PATH,
         ),
         help="Path to the AU P0b Google manual backfill request packet JSON.",
@@ -793,7 +793,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--manual-backfill-verification-path",
         default=os.environ.get(
-            "GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_VERIFICATION_PATH",
+            "GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_VERIFICATION_PATH",
             DEFAULT_MANUAL_BACKFILL_VERIFICATION_PATH,
         ),
         help="Path to the AU P0b Google manual backfill verification JSON.",
@@ -805,7 +805,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--output-path",
-        default=os.environ.get("GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to write the AU P0b Google manual backfill fulfillment JSON.",
     )
     parser.add_argument("--generated-at", default=None, help="Override generated_at timestamp for deterministic tests.")

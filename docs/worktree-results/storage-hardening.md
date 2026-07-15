@@ -20,8 +20,8 @@
 
 ## 改动文件
 
-- `packages/geno_core/geno_core/object_store.py`
-- `packages/geno_core/geno_core/runtime.py`
+- `packages/geo_core/geo_core/object_store.py`
+- `packages/geo_core/geo_core/runtime.py`
 - `infra/docker-compose.yml`
 - `infra/docker-compose.production.yml`
 - `infra/object-store.production.env.example`
@@ -50,8 +50,8 @@
 
 ## MinIO policy 合同
 
-- bootstrap 独占创建 `geno-reports` / `geno-backups`，启用 versioning、导入 lifecycle、创建用户与 versioned policy，并写无 Secret 的 `bootstrap.json`。
-- application 仅可 list/head/get/put `geno-reports`；delete、CreateBucket、admin 和访问 backup bucket 均有 live negative check。
+- bootstrap 独占创建 `geo-reports` / `geo-backups`，启用 versioning、导入 lifecycle、创建用户与 versioned policy，并写无 Secret 的 `bootstrap.json`。
+- application 仅可 list/head/get/put `geo-reports`；delete、CreateBucket、admin 和访问 backup bucket 均有 live negative check。
 - backup 可读 source；正式 `production/<environment>/` 可 put/list/get 不可 delete；当次 `smoke/<run_id>/` 可 put/list/get/delete；跨 run delete 被拒绝。
 - restore 只能读批准 backup prefix 并写/delete 当次 `restore-smoke/<run_id>/`；跨 run 写入被拒绝。
 - retention policy 只允许批准 prefix 的删除。restore/retention 用户由 smoke 临时创建，结束后删除，并以再次访问失败生成 `ephemeral-cleanup.json`。
@@ -62,16 +62,16 @@
 production overlay 要求以下 host-side Secret file path 变量，文件内容不会展开到 merged Compose：
 
 ```text
-GENO_MINIO_ROOT_USER_SECRET_FILE
-GENO_MINIO_ROOT_PASSWORD_SECRET_FILE
-GENO_OBJECT_STORE_APPLICATION_ACCESS_KEY_SECRET_FILE
-GENO_OBJECT_STORE_APPLICATION_SECRET_KEY_SECRET_FILE
-GENO_OBJECT_STORE_BACKUP_ACCESS_KEY_SECRET_FILE
-GENO_OBJECT_STORE_BACKUP_SECRET_KEY_SECRET_FILE
-GENO_OBJECT_STORE_RESTORE_ACCESS_KEY_SECRET_FILE
-GENO_OBJECT_STORE_RESTORE_SECRET_KEY_SECRET_FILE
-GENO_OBJECT_STORE_RETENTION_ACCESS_KEY_SECRET_FILE
-GENO_OBJECT_STORE_RETENTION_SECRET_KEY_SECRET_FILE
+GEO_MINIO_ROOT_USER_SECRET_FILE
+GEO_MINIO_ROOT_PASSWORD_SECRET_FILE
+GEO_OBJECT_STORE_APPLICATION_ACCESS_KEY_SECRET_FILE
+GEO_OBJECT_STORE_APPLICATION_SECRET_KEY_SECRET_FILE
+GEO_OBJECT_STORE_BACKUP_ACCESS_KEY_SECRET_FILE
+GEO_OBJECT_STORE_BACKUP_SECRET_KEY_SECRET_FILE
+GEO_OBJECT_STORE_RESTORE_ACCESS_KEY_SECRET_FILE
+GEO_OBJECT_STORE_RESTORE_SECRET_KEY_SECRET_FILE
+GEO_OBJECT_STORE_RETENTION_ACCESS_KEY_SECRET_FILE
+GEO_OBJECT_STORE_RETENTION_SECRET_KEY_SECRET_FILE
 ```
 
 正式 verifier 还要求这些文件位于仓库外、不是 symlink、mode 为 `0400`/`0600`、内容非默认且五类 access identity 互不相同；全部 credential value 禁止复用。
@@ -79,7 +79,7 @@ GENO_OBJECT_STORE_RETENTION_SECRET_KEY_SECRET_FILE
 其他必需配置：
 
 ```text
-GENO_MINIO_ENCRYPTED_VOLUME_NAME
+GEO_MINIO_ENCRYPTED_VOLUME_NAME
 OBJECT_STORE_BACKUP_PREFIX=production/<environment>/
 OBJECT_STORE_BACKUP_SMOKE_PREFIX=smoke/<run_id>/
 OBJECT_STORE_RESTORE_PREFIX=restore-smoke/<run_id>/
@@ -99,16 +99,16 @@ MINIO_BOOTSTRAP_ENABLE_EPHEMERAL=0|1
 通过：
 
 ```text
-PYTHONPATH=packages/geno_core:apps/api python3 -m unittest tests.test_production_object_store_contracts
+PYTHONPATH=packages/geo_core:apps/api python3 -m unittest tests.test_production_object_store_contracts
 13 tests, OK
 
-PYTHONPATH=packages/geno_core:apps/api python3 -m unittest tests.test_infra_contracts
+PYTHONPATH=packages/geo_core:apps/api python3 -m unittest tests.test_infra_contracts
 20 tests, OK
 
-PYTHONPATH=packages/geno_core:apps/api python3 -m unittest <8 个 object-store/runtime focused core tests>
+PYTHONPATH=packages/geo_core:apps/api python3 -m unittest <8 个 object-store/runtime focused core tests>
 8 tests, OK
 
-PYTHONPATH=packages/geno_core:apps/api python3 -m unittest tests.test_report_export_worker_contracts
+PYTHONPATH=packages/geo_core:apps/api python3 -m unittest tests.test_report_export_worker_contracts
 3 tests, OK
 
 python3 scripts/verify_backup_smoke.py
@@ -120,7 +120,7 @@ pass；全部 profile merged Compose、caller inventory、consumer/non-consumer 
 python3 -m ruff check <任务书文件 + runner>
 pass
 
-python3 -m compileall -q packages/geno_core/geno_core scripts tests
+python3 -m compileall -q packages/geo_core/geo_core scripts tests
 pass
 
 sh -n infra/minio/bootstrap.sh infra/minio/backup-restore-smoke.sh infra/minio/application-roundtrip-smoke.sh

@@ -64,7 +64,7 @@ class ProductionV1GateContractsTest(unittest.TestCase):
         self.assertIn("TRANSFORMERS_OFFLINE=1", makefile)
         self.assertIn("knowledge-worker-runtime-image: knowledge-heavy-components-smoke", makefile)
         self.assertIn("workers/knowledge_worker/Dockerfile.runtime", makefile)
-        self.assertIn('GENO_KNOWLEDGE_WORKER_IMAGE="$(KNOWLEDGE_WORKER_IMAGE)"', makefile)
+        self.assertIn('GEO_KNOWLEDGE_WORKER_IMAGE="$(KNOWLEDGE_WORKER_IMAGE)"', makefile)
         self.assertIn("geo-production-full-pipeline-smoke", makefile)
         self.assertIn("frontend-knowledge-click-smoke", makefile)
 
@@ -155,7 +155,7 @@ class ProductionV1GateContractsTest(unittest.TestCase):
             self.assertIn(step, gate_script)
         self.assertIn('"/v1/projects/runtime"', smoke_script)
         self.assertNotIn("/v1/projects/runtime/au/dtc-ecommerce", smoke_script)
-        self.assertIn("geno-full-lifecycle-secret-do-not-log", smoke_script)
+        self.assertIn("geo-full-lifecycle-secret-do-not-log", smoke_script)
         self.assertIn("full_lifecycle_no_skipped_critical_steps", gate_script)
         self.assertIn("connector_secret_masking", gate_script)
         self.assertIn("deepseek_collection_analysis_scoring", gate_script)

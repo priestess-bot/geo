@@ -54,8 +54,8 @@ def _read_auto_ports() -> dict[str, str]:
 def _base_urls(admin_url: str | None, customer_url: str | None) -> dict[str, str]:
     ports = _read_auto_ports()
     return {
-        "admin": admin_url or f"http://localhost:{ports.get('GENO_ADMIN_WEB_HOST_PORT', '18005')}",
-        "customer": customer_url or f"http://localhost:{ports.get('GENO_CUSTOMER_WEB_HOST_PORT', '18004')}",
+        "admin": admin_url or f"http://localhost:{ports.get('GEO_ADMIN_WEB_HOST_PORT', '18005')}",
+        "customer": customer_url or f"http://localhost:{ports.get('GEO_CUSTOMER_WEB_HOST_PORT', '18004')}",
     }
 
 

@@ -46,8 +46,8 @@ def _read_auto_ports() -> dict[str, str]:
 def _base_urls(admin_url: str | None, api_base: str | None) -> tuple[str, str]:
     ports = _read_auto_ports()
     return (
-        (admin_url or f"http://localhost:{ports.get('GENO_ADMIN_WEB_HOST_PORT', '18005')}").rstrip("/"),
-        (api_base or f"http://localhost:{ports.get('GENO_API_HOST_PORT', '18003')}").rstrip("/"),
+        (admin_url or f"http://localhost:{ports.get('GEO_ADMIN_WEB_HOST_PORT', '18005')}").rstrip("/"),
+        (api_base or f"http://localhost:{ports.get('GEO_API_HOST_PORT', '18003')}").rstrip("/"),
     )
 
 
@@ -67,7 +67,7 @@ def _project_id(explicit: str | None, artifact_path: Path) -> str:
 def _api_records(api_base: str, path: str, project_id: str, **filters: object) -> list[dict[str, Any]]:
     response = httpx.get(
         f"{api_base}{path}",
-        headers={"X-GENO-Actor-Id": ACTOR_ID},
+        headers={"X-GEO-Actor-Id": ACTOR_ID},
         params={"project_id": project_id, "limit": 100, **filters},
         timeout=30,
     )
@@ -414,7 +414,7 @@ def main() -> int:
     parser.add_argument("--pipeline-artifact", default=str(DEFAULT_PIPELINE_ARTIFACT))
     parser.add_argument("--admin-url")
     parser.add_argument("--api-base")
-    parser.add_argument("--compose-project", default="geno-auto")
+    parser.add_argument("--compose-project", default="geo-auto")
     parser.add_argument("--compose-env-file", default="tmp/docker-compose.auto-ports.env")
     parser.add_argument("--worker-timeout", type=int, default=1800)
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT))

@@ -5,9 +5,9 @@ import json
 import os
 import sys
 
-from geno_core.models import RuntimeProjectSessionScope, RuntimeSessionInput
-from geno_core.rbac import normalize_role, permissions_for_role, portal_capabilities_for_roles
-from geno_core.repository import PostgresEvidenceRepository
+from geo_core.models import RuntimeProjectSessionScope, RuntimeSessionInput
+from geo_core.rbac import normalize_role, permissions_for_role, portal_capabilities_for_roles
+from geo_core.repository import PostgresEvidenceRepository
 
 
 def _database_url(value: str | None) -> str:

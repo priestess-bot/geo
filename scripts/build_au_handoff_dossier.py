@@ -762,8 +762,8 @@ def _customer_handoff_readiness_audit(
             "make verify-au-external-dependency-clearance",
             "make au-handoff-dossier",
             "make verify-au-handoff-dossier",
-            "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_launch_status.py ${GENO_AU_LAUNCH_STATUS_OUTPUT_PATH:-docs/runtime_preflight/au-launch-status-latest.json} --require-ready",
-            "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_handoff_dossier.py ${GENO_AU_HANDOFF_DOSSIER_OUTPUT_PATH:-docs/runtime_preflight/au-handoff-dossier-latest.json} --require-customer-ready",
+            "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_launch_status.py ${GEO_AU_LAUNCH_STATUS_OUTPUT_PATH:-docs/runtime_preflight/au-launch-status-latest.json} --require-ready",
+            "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_handoff_dossier.py ${GEO_AU_HANDOFF_DOSSIER_OUTPUT_PATH:-docs/runtime_preflight/au-handoff-dossier-latest.json} --require-customer-ready",
         ],
         "customer_gates": customer_gates,
         "structural_gates": structural_gates,
@@ -1251,40 +1251,40 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build an AU customer handoff dossier JSON and Markdown")
     parser.add_argument(
         "--launch-status-path",
-        default=os.environ.get("GENO_AU_LAUNCH_STATUS_OUTPUT_PATH", DEFAULT_LAUNCH_STATUS_PATH),
+        default=os.environ.get("GEO_AU_LAUNCH_STATUS_OUTPUT_PATH", DEFAULT_LAUNCH_STATUS_PATH),
         help="Path to the AU launch status JSON.",
     )
     parser.add_argument(
         "--remediation-plan-path",
-        default=os.environ.get("GENO_AU_LAUNCH_REMEDIATION_PLAN_OUTPUT_PATH", DEFAULT_REMEDIATION_PLAN_PATH),
+        default=os.environ.get("GEO_AU_LAUNCH_REMEDIATION_PLAN_OUTPUT_PATH", DEFAULT_REMEDIATION_PLAN_PATH),
         help="Path to the AU launch remediation plan JSON.",
     )
     parser.add_argument(
         "--p0a-environment-checklist-path",
-        default=os.environ.get("GENO_AU_P0A_ENVIRONMENT_CHECKLIST_OUTPUT_PATH", DEFAULT_P0A_ENVIRONMENT_CHECKLIST_PATH),
+        default=os.environ.get("GEO_AU_P0A_ENVIRONMENT_CHECKLIST_OUTPUT_PATH", DEFAULT_P0A_ENVIRONMENT_CHECKLIST_PATH),
         help="Path to the AU P0a environment checklist JSON.",
     )
     parser.add_argument(
         "--p0a-execution-checklist-path",
-        default=os.environ.get("GENO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH", DEFAULT_P0A_EXECUTION_CHECKLIST_PATH),
+        default=os.environ.get("GEO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH", DEFAULT_P0A_EXECUTION_CHECKLIST_PATH),
         help="Path to the AU P0a execution checklist JSON.",
     )
     parser.add_argument(
         "--p0b-google-execution-checklist-path",
         default=os.environ.get(
-            "GENO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH",
+            "GEO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH",
             DEFAULT_P0B_GOOGLE_EXECUTION_CHECKLIST_PATH,
         ),
         help="Path to the AU P0b Google execution checklist JSON.",
     )
     parser.add_argument(
         "--output-path",
-        default=os.environ.get("GENO_AU_HANDOFF_DOSSIER_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_HANDOFF_DOSSIER_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to write the AU handoff dossier JSON.",
     )
     parser.add_argument(
         "--markdown-output-path",
-        default=os.environ.get("GENO_AU_HANDOFF_DOSSIER_MARKDOWN_PATH", DEFAULT_MARKDOWN_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_HANDOFF_DOSSIER_MARKDOWN_PATH", DEFAULT_MARKDOWN_OUTPUT_PATH),
         help="Path to write the human-readable AU handoff dossier Markdown.",
     )
     parser.add_argument("--generated-at", default=None, help="Override generated_at timestamp for deterministic tests.")

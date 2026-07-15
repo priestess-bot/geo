@@ -31,20 +31,20 @@ RECOMMENDED_ENV = (
 POST_UPDATE_VALIDATION_COMMANDS = (
     "make au-p0a-env",
     "make verify-au-p0a-env",
-    "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_env_report.py "
-    "${GENO_AU_P0A_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-env-latest.json} --require-ready-environment",
+    "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_p0a_env_report.py "
+    "${GEO_AU_P0A_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-env-latest.json} --require-ready-environment",
     "make au-p0a-credential-fulfillment",
     "make verify-au-p0a-credential-fulfillment",
-    "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_credential_fulfillment.py "
-    "${GENO_AU_P0A_CREDENTIAL_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-fulfillment-latest.json} --require-fulfilled",
+    "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_p0a_credential_fulfillment.py "
+    "${GEO_AU_P0A_CREDENTIAL_FULFILLMENT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-fulfillment-latest.json} --require-fulfilled",
     "make au-p0a-credential-clearance",
     "make verify-au-p0a-credential-clearance",
-    "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_credential_clearance.py "
-    "${GENO_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-clearance-latest.json} --require-cleared",
+    "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_p0a_credential_clearance.py "
+    "${GEO_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-clearance-latest.json} --require-cleared",
     "make au-p0a-credential-update-receipt",
     "make verify-au-p0a-credential-update-receipt",
-    "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_credential_update_receipt.py "
-    "${GENO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-update-receipt-latest.json} --require-complete",
+    "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_p0a_credential_update_receipt.py "
+    "${GEO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-update-receipt-latest.json} --require-complete",
     "make au-delivery-evidence-refresh",
 )
 
@@ -352,7 +352,7 @@ def _credential_update_handoff(
         "required_missing_keys": missing_required,
         "allowed_update_surfaces": [
             "process_environment",
-            "GENO_AU_P0A_ENV_FILE",
+            "GEO_AU_P0A_ENV_FILE",
             DEFAULT_ENV_FILE,
         ],
         "next_action": next_action,
@@ -515,17 +515,17 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build a redacted AU P0a environment readiness report")
     parser.add_argument(
         "--runbook-path",
-        default=os.environ.get("GENO_AU_P0A_RUNBOOK_OUTPUT_PATH", DEFAULT_RUNBOOK_PATH),
+        default=os.environ.get("GEO_AU_P0A_RUNBOOK_OUTPUT_PATH", DEFAULT_RUNBOOK_PATH),
         help="Path to the generated AU P0a runbook JSON.",
     )
     parser.add_argument(
         "--env-file",
-        default=os.environ.get("GENO_AU_P0A_ENV_FILE", DEFAULT_ENV_FILE),
+        default=os.environ.get("GEO_AU_P0A_ENV_FILE", DEFAULT_ENV_FILE),
         help="Optional env file to parse without shell evaluation. Missing files are allowed.",
     )
     parser.add_argument(
         "--output-path",
-        default=os.environ.get("GENO_AU_P0A_ENV_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_P0A_ENV_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to write the redacted environment report JSON.",
     )
     parser.add_argument(

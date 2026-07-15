@@ -9,19 +9,19 @@ from urllib.parse import unquote, urlparse
 
 import httpx
 
-from geno_core.email_delivery import (
+from geo_core.email_delivery import (
     DEFAULT_RUNTIME_EMAIL_SMTP_ENV_PREFIX,
     runtime_smtp_config_from_env,
     send_runtime_email_message,
 )
-from geno_core.models import RuntimeNotificationDeliveryStatusInput
-from geno_core.repository import PostgresEvidenceRepository
-from geno_core.runtime import (
+from geo_core.models import RuntimeNotificationDeliveryStatusInput
+from geo_core.repository import PostgresEvidenceRepository
+from geo_core.runtime import (
     build_repository_from_env,
     close_repository_connection,
     validate_runtime_schema_compatibility,
 )
-from geno_core.webhook_signing import (
+from geo_core.webhook_signing import (
     RUNTIME_NOTIFICATION_WEBHOOK_DELIVERY_ID_HEADER,
     RUNTIME_NOTIFICATION_WEBHOOK_NOTIFICATION_ID_HEADER,
     RUNTIME_NOTIFICATION_WEBHOOK_PAYLOAD_HASH_HEADER,
@@ -31,9 +31,9 @@ from geno_core.webhook_signing import (
 
 
 WORKER_ID = "notification-worker"
-DEFAULT_SIGNING_SECRET_ENV = "GENO_NOTIFICATION_WEBHOOK_SIGNING_SECRET"
+DEFAULT_SIGNING_SECRET_ENV = "GEO_NOTIFICATION_WEBHOOK_SIGNING_SECRET"
 DEFAULT_SIGNING_SECRET_KEY_ID = "primary"
-DEFAULT_SECONDARY_SIGNING_SECRET_ENV = "GENO_NOTIFICATION_WEBHOOK_SIGNING_SECRET_PREVIOUS"
+DEFAULT_SECONDARY_SIGNING_SECRET_ENV = "GEO_NOTIFICATION_WEBHOOK_SIGNING_SECRET_PREVIOUS"
 DEFAULT_SMTP_ENV_PREFIX = DEFAULT_RUNTIME_EMAIL_SMTP_ENV_PREFIX
 
 
@@ -121,8 +121,8 @@ def _send_email_delivery(
     headers = payload.get("headers") if isinstance(payload.get("headers"), dict) else {}
     result = send_runtime_email_message(
         recipients=tuple(recipient_addresses),
-        subject=str(payload.get("subject") or "GENO runtime notification"),
-        text=str(payload.get("text") or "GENO runtime notification"),
+        subject=str(payload.get("subject") or "GEO runtime notification"),
+        text=str(payload.get("text") or "GEO runtime notification"),
         headers={str(key): str(value) for key, value in headers.items()},
         smtp_env_prefix=smtp_env_prefix,
         email_sender=email_sender,
@@ -354,7 +354,7 @@ def process_next_notification_delivery(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Process queued GENO runtime notification deliveries")
+    parser = argparse.ArgumentParser(description="Process queued GEO runtime notification deliveries")
     parser.add_argument("--max-deliveries", type=int, default=1, help="Maximum queued deliveries to process before exiting.")
     parser.add_argument("--worker-id", default=WORKER_ID, help="Actor id used in notification delivery audit events.")
     parser.add_argument("--max-attempts", type=int, default=3, help="Dead-letter a delivery after this many attempts.")

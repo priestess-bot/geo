@@ -16,22 +16,22 @@ from fastapi.testclient import TestClient
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from geno_core.auth import (
+from geo_core.auth import (
     AuthContractError,
     AuthSessionV2Repository,
     InvitationRedeemRecoveryStatus,
     InvitationSurface,
     InvitationSurfaceCompatibility,
 )
-from geno_core.auth_delivery import AuthDeliveryKeyring
-from geno_core.models import RuntimeProjectMemberInvitationEmailInput
-from geno_core.repository import PostgresEvidenceRepository
+from geo_core.auth_delivery import AuthDeliveryKeyring
+from geo_core.models import RuntimeProjectMemberInvitationEmailInput
+from geo_core.repository import PostgresEvidenceRepository
 
 
-OWNER_URL = os.getenv("AUTH_TEST_DATABASE_URL", "postgresql://geno:geno@localhost:55433/geno")
+OWNER_URL = os.getenv("AUTH_TEST_DATABASE_URL", "postgresql://geo:geo@localhost:55433/geo")
 APP_URL = os.getenv(
     "AUTH_TEST_APP_DATABASE_URL",
-    "postgresql://geno_runtime_app:geno_runtime_app@localhost:55433/geno",
+    "postgresql://geo_runtime_app:geo_runtime_app@localhost:55433/geo",
 )
 TEST_KEY = b"auth-core-postgres-test-key-0001"
 
@@ -56,11 +56,11 @@ pytestmark = pytest.mark.skipif(not _database_is_ready(), reason="Auth Session v
 @pytest.fixture(autouse=True)
 def auth_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(
-        "GENO_AUTH_DELIVERY_MASTER_KEY",
+        "GEO_AUTH_DELIVERY_MASTER_KEY",
         base64.urlsafe_b64encode(TEST_KEY).decode("ascii"),
     )
-    monkeypatch.setenv("GENO_AUTH_DELIVERY_KEY_ID", "postgres-test-key")
-    monkeypatch.setenv("GENO_RUNTIME_SESSION_COOKIE_SECURE", "false")
+    monkeypatch.setenv("GEO_AUTH_DELIVERY_KEY_ID", "postgres-test-key")
+    monkeypatch.setenv("GEO_RUNTIME_SESSION_COOKIE_SECURE", "false")
     monkeypatch.setenv("AUTH_WRITES_ENABLED", "1")
     with _connect(OWNER_URL) as connection, connection.cursor() as cursor:
         cursor.execute(
@@ -164,14 +164,14 @@ def _set_redemption_context(
                set_config('app.project_id', '', true),
                set_config('app.project_ids', '', true),
                set_config('app.tenant_id', '', true),
-               set_config('geno.runtime_project_access_control', '1', true),
-               set_config('geno.runtime_actor_id', '', true),
-               set_config('geno.runtime_project_id', '', true),
-               set_config('geno.runtime_tenant_id', '', true),
-               set_config('geno.runtime_invitation_token_hash', %s, true),
-               set_config('geno.runtime_idempotency_key_hash', %s, true),
-               set_config('geno.runtime_requested_surface', %s, true),
-               set_config('geno.runtime_session_token_hash', '', true)
+               set_config('geo.runtime_project_access_control', '1', true),
+               set_config('geo.runtime_actor_id', '', true),
+               set_config('geo.runtime_project_id', '', true),
+               set_config('geo.runtime_tenant_id', '', true),
+               set_config('geo.runtime_invitation_token_hash', %s, true),
+               set_config('geo.runtime_idempotency_key_hash', %s, true),
+               set_config('geo.runtime_requested_surface', %s, true),
+               set_config('geo.runtime_session_token_hash', '', true)
         """,
         (_invitation_token_hash(invitation), _idempotency_hash(idempotency_key), surface),
     )
@@ -350,10 +350,10 @@ def test_viewer_runtime_context_cannot_update_project_membership() -> None:
                    set_config('app.project_id', %s, true),
                    set_config('app.project_ids', %s, true),
                    set_config('app.tenant_id', %s, true),
-                   set_config('geno.runtime_project_access_control', '1', true),
-                   set_config('geno.runtime_actor_id', %s, true),
-                   set_config('geno.runtime_project_id', %s, true),
-                   set_config('geno.runtime_tenant_id', %s, true)
+                   set_config('geo.runtime_project_access_control', '1', true),
+                   set_config('geo.runtime_actor_id', %s, true),
+                   set_config('geo.runtime_project_id', %s, true),
+                   set_config('geo.runtime_tenant_id', %s, true)
             """,
             (
                 viewer,
@@ -504,7 +504,7 @@ def test_auth_write_kill_switch_blocks_invitation_email(
                     invite_token=invitation["token"],
                     accept_base_url="https://customer.example.test/invite",
                     sent_by="auth-test",
-                    smtp_env_prefix="GENO_TEST_SMTP",
+                    smtp_env_prefix="GEO_TEST_SMTP",
                 )
             )
         assert caught.value.code == "auth_writes_temporarily_disabled"
@@ -605,11 +605,11 @@ def test_redeem_replays_identical_delivery_and_confirm_erases_ciphertext() -> No
                            current_setting('app.project_id', true) AS app_project,
                            current_setting('app.project_ids', true) AS app_projects,
                            current_setting('app.tenant_id', true) AS app_tenant,
-                           current_setting('geno.runtime_project_access_control', true) AS runtime_rls,
-                           current_setting('geno.runtime_actor_id', true) AS runtime_actor,
-                           current_setting('geno.runtime_project_id', true) AS runtime_project,
-                           current_setting('geno.runtime_tenant_id', true) AS runtime_tenant,
-                           current_setting('geno.runtime_session_token_hash', true) AS session_hash
+                           current_setting('geo.runtime_project_access_control', true) AS runtime_rls,
+                           current_setting('geo.runtime_actor_id', true) AS runtime_actor,
+                           current_setting('geo.runtime_project_id', true) AS runtime_project,
+                           current_setting('geo.runtime_tenant_id', true) AS runtime_tenant,
+                           current_setting('geo.runtime_session_token_hash', true) AS session_hash
                     """
                 )
                 assert cursor.fetchone() == {
@@ -702,9 +702,9 @@ def test_force_rls_tenant_grant_and_scope_change_revocations() -> None:
                 SELECT set_config('app.rls_enabled', '1', true),
                        set_config('app.tenant_id', %s, true),
                        set_config('app.actor_id', %s, true),
-                       set_config('geno.runtime_project_access_control', '1', true),
-                       set_config('geno.runtime_tenant_id', %s, true),
-                       set_config('geno.runtime_actor_id', %s, true)
+                       set_config('geo.runtime_project_access_control', '1', true),
+                       set_config('geo.runtime_tenant_id', %s, true),
+                       set_config('geo.runtime_actor_id', %s, true)
                 """,
                 (first["tenant_id"], actor, first["tenant_id"], actor),
             )
@@ -860,9 +860,9 @@ def test_db_kill_switch_maps_generic_member_write_to_stable_http_503(monkeypatch
             )
         owner.commit()
         monkeypatch.setenv("DATABASE_URL", APP_URL)
-        monkeypatch.setenv("GENO_RUNTIME_PROJECT_ACCESS_CONTROL", "0")
+        monkeypatch.setenv("GEO_RUNTIME_PROJECT_ACCESS_CONTROL", "0")
         monkeypatch.setenv("AUTH_WRITES_ENABLED", "1")
-        from geno_api.main import app
+        from geo_api.main import app
 
         try:
             response = TestClient(app).post(
@@ -913,14 +913,14 @@ def test_preflight_with_existing_session_is_csrf_exempt_and_rate_limited(
         )
 
     monkeypatch.setenv("DATABASE_URL", APP_URL)
-    monkeypatch.setenv("GENO_RUNTIME_PROJECT_ACCESS_CONTROL", "1")
-    monkeypatch.setenv("GENO_RUNTIME_AUTH_MODE", "session")
-    monkeypatch.setenv("GENO_AUTH_PREFLIGHT_RATE_LIMIT", "20")
-    from geno_api.main import app
+    monkeypatch.setenv("GEO_RUNTIME_PROJECT_ACCESS_CONTROL", "1")
+    monkeypatch.setenv("GEO_RUNTIME_AUTH_MODE", "session")
+    monkeypatch.setenv("GEO_AUTH_PREFLIGHT_RATE_LIMIT", "20")
+    from geo_api.main import app
 
     response = TestClient(app).post(
         "/v1/auth/invitations/preflight",
-        headers={"X-GENO-Session-Token": raw_token},
+        headers={"X-GEO-Session-Token": raw_token},
         json={
             "invitation_id": invitation["invitation_id"],
             "invite_token": invitation["token"],
@@ -954,8 +954,8 @@ def test_auth_me_confirms_delivery_only_with_matching_csrf(
             parsed = SimpleCookie()
             parsed.load(header)
             cookies.update({name: morsel.value for name, morsel in parsed.items()})
-        session_token = cookies["GENO_RUNTIME_SESSION"]
-        csrf_token = cookies["GENO_CSRF_TOKEN"]
+        session_token = cookies["GEO_RUNTIME_SESSION"]
+        csrf_token = cookies["GEO_CSRF_TOKEN"]
 
         def delivery_state() -> dict[str, object]:
             with owner.cursor() as cursor:
@@ -975,14 +975,14 @@ def test_auth_me_confirms_delivery_only_with_matching_csrf(
         assert delivery_state() == {"confirmed": False, "erased": False}
 
         monkeypatch.setenv("DATABASE_URL", APP_URL)
-        monkeypatch.setenv("GENO_RUNTIME_PROJECT_ACCESS_CONTROL", "1")
-        monkeypatch.setenv("GENO_RUNTIME_AUTH_MODE", "session")
-        from geno_api.main import app
+        monkeypatch.setenv("GEO_RUNTIME_PROJECT_ACCESS_CONTROL", "1")
+        monkeypatch.setenv("GEO_RUNTIME_AUTH_MODE", "session")
+        from geo_api.main import app
 
         client = TestClient(app)
         no_csrf = client.get(
             "/v1/auth/me",
-            headers={"X-GENO-Session-Token": session_token},
+            headers={"X-GEO-Session-Token": session_token},
         )
         assert no_csrf.status_code == 200
         assert delivery_state() == {"confirmed": False, "erased": False}
@@ -990,10 +990,10 @@ def test_auth_me_confirms_delivery_only_with_matching_csrf(
         wrong_csrf = client.get(
             "/v1/auth/me",
             headers={
-                "X-GENO-Session-Token": session_token,
-                "X-GENO-CSRF-Token": "wrong-token",
+                "X-GEO-Session-Token": session_token,
+                "X-GEO-CSRF-Token": "wrong-token",
             },
-            cookies={"GENO_CSRF_TOKEN": csrf_token},
+            cookies={"GEO_CSRF_TOKEN": csrf_token},
         )
         assert wrong_csrf.status_code == 200
         assert delivery_state() == {"confirmed": False, "erased": False}
@@ -1001,10 +1001,10 @@ def test_auth_me_confirms_delivery_only_with_matching_csrf(
         confirmed = client.get(
             "/v1/auth/me",
             headers={
-                "X-GENO-Session-Token": session_token,
-                "X-GENO-CSRF-Token": csrf_token,
+                "X-GEO-Session-Token": session_token,
+                "X-GEO-CSRF-Token": csrf_token,
             },
-            cookies={"GENO_CSRF_TOKEN": csrf_token},
+            cookies={"GEO_CSRF_TOKEN": csrf_token},
         )
         assert confirmed.status_code == 200
         assert delivery_state() == {"confirmed": True, "erased": True}
@@ -1012,9 +1012,9 @@ def test_auth_me_confirms_delivery_only_with_matching_csrf(
 
 def test_authz_helpers_have_fixed_owner_acl_and_search_path() -> None:
     helper_names = {
-        "geno_authz_has_project_permission",
-        "geno_runtime_can_recover_project_invitation",
-        "geno_runtime_can_recover_redemption_attempt",
+        "geo_authz_has_project_permission",
+        "geo_runtime_can_recover_project_invitation",
+        "geo_runtime_can_recover_redemption_attempt",
     }
     with _connect(OWNER_URL) as owner, owner.cursor() as cursor:
         cursor.execute(
@@ -1033,7 +1033,7 @@ def test_authz_helpers_have_fixed_owner_acl_and_search_path() -> None:
     assert {str(row["proname"]) for row in rows} == helper_names
     for row in rows:
         assert row["prosecdef"] is True
-        assert row["owner"] == "geno_rls_authz_owner"
+        assert row["owner"] == "geo_rls_authz_owner"
         assert "SET search_path TO 'pg_catalog'" in str(row["definition"])
         assert row["public_execute"] is False
 

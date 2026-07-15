@@ -1346,7 +1346,7 @@ ALTER TABLE durable_job_dispatch_outbox
             AND retest_run_id IS NULL)
     );
 
-CREATE OR REPLACE FUNCTION geno_v2_enqueue_durable_job_dispatch()
+CREATE OR REPLACE FUNCTION geo_v2_enqueue_durable_job_dispatch()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -1408,9 +1408,9 @@ $enqueue_durable_dispatch$;
 
 CREATE TRIGGER knowledge_jobs_enqueue_dispatch
 AFTER INSERT ON knowledge_pipeline_jobs
-FOR EACH ROW EXECUTE FUNCTION geno_v2_enqueue_durable_job_dispatch();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_enqueue_durable_job_dispatch();
 
-CREATE FUNCTION geno_v2_reject_knowledge_immutable_update()
+CREATE FUNCTION geo_v2_reject_knowledge_immutable_update()
 RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = pg_catalog
@@ -1421,7 +1421,7 @@ BEGIN
 END;
 $reject_knowledge_immutable$;
 
-CREATE FUNCTION geno_v2_guard_knowledge_asset_head()
+CREATE FUNCTION geo_v2_guard_knowledge_asset_head()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -1470,7 +1470,7 @@ BEGIN
 END;
 $guard_knowledge_asset_head$;
 
-CREATE FUNCTION geno_v2_guard_candidate_transition()
+CREATE FUNCTION geo_v2_guard_candidate_transition()
 RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = pg_catalog
@@ -1498,7 +1498,7 @@ BEGIN
 END;
 $guard_candidate_transition$;
 
-CREATE FUNCTION geno_v2_guard_fact_head()
+CREATE FUNCTION geo_v2_guard_fact_head()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -1532,17 +1532,17 @@ END;
 $guard_fact_head$;
 
 CREATE TRIGGER knowledge_asset_head_guard BEFORE UPDATE ON knowledge_source_assets
-FOR EACH ROW EXECUTE FUNCTION geno_v2_guard_knowledge_asset_head();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_guard_knowledge_asset_head();
 CREATE TRIGGER knowledge_asset_head_delete BEFORE DELETE ON knowledge_source_assets
-FOR EACH ROW EXECUTE FUNCTION geno_v2_reject_knowledge_immutable_update();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_reject_knowledge_immutable_update();
 CREATE TRIGGER knowledge_candidate_guard BEFORE UPDATE ON knowledge_fact_candidates
-FOR EACH ROW EXECUTE FUNCTION geno_v2_guard_candidate_transition();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_guard_candidate_transition();
 CREATE TRIGGER knowledge_candidate_delete BEFORE DELETE ON knowledge_fact_candidates
-FOR EACH ROW EXECUTE FUNCTION geno_v2_reject_knowledge_immutable_update();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_reject_knowledge_immutable_update();
 CREATE TRIGGER knowledge_fact_head_guard BEFORE UPDATE ON knowledge_facts
-FOR EACH ROW EXECUTE FUNCTION geno_v2_guard_fact_head();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_guard_fact_head();
 CREATE TRIGGER knowledge_fact_head_delete BEFORE DELETE ON knowledge_facts
-FOR EACH ROW EXECUTE FUNCTION geno_v2_reject_knowledge_immutable_update();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_reject_knowledge_immutable_update();
 
 DO $knowledge_immutable_triggers$
 DECLARE table_name text;
@@ -1562,14 +1562,14 @@ BEGIN
     ] LOOP
         EXECUTE format(
             'CREATE TRIGGER %I BEFORE UPDATE OR DELETE ON public.%I '
-            'FOR EACH ROW EXECUTE FUNCTION public.geno_v2_reject_knowledge_immutable_update()',
+            'FOR EACH ROW EXECUTE FUNCTION public.geo_v2_reject_knowledge_immutable_update()',
             table_name || '_immutable', table_name
         );
     END LOOP;
 END;
 $knowledge_immutable_triggers$;
 
-CREATE FUNCTION geno_v2_require_finalized_knowledge_artifact()
+CREATE FUNCTION geo_v2_require_finalized_knowledge_artifact()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -1592,12 +1592,12 @@ $require_finalized_knowledge_artifact$;
 
 CREATE TRIGGER knowledge_revision_artifact_guard
 BEFORE INSERT ON knowledge_source_revision_artifacts
-FOR EACH ROW EXECUTE FUNCTION geno_v2_require_finalized_knowledge_artifact();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_require_finalized_knowledge_artifact();
 CREATE TRIGGER knowledge_parser_artifact_guard
 BEFORE INSERT ON knowledge_parser_artifacts
-FOR EACH ROW EXECUTE FUNCTION geno_v2_require_finalized_knowledge_artifact();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_require_finalized_knowledge_artifact();
 
-CREATE FUNCTION geno_v2_require_finalized_parser_input()
+CREATE FUNCTION geo_v2_require_finalized_parser_input()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -1621,9 +1621,9 @@ $require_finalized_parser_input$;
 
 CREATE TRIGGER knowledge_chunk_input_finalize_guard
 BEFORE INSERT ON knowledge_chunk_job_inputs
-FOR EACH ROW EXECUTE FUNCTION geno_v2_require_finalized_parser_input();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_require_finalized_parser_input();
 
-CREATE FUNCTION geno_v2_validate_knowledge_subject()
+CREATE FUNCTION geo_v2_validate_knowledge_subject()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -1659,18 +1659,18 @@ $validate_knowledge_subject$;
 
 CREATE CONSTRAINT TRIGGER knowledge_source_subject_entity_kind
 AFTER INSERT ON knowledge_source_subjects DEFERRABLE INITIALLY IMMEDIATE
-FOR EACH ROW EXECUTE FUNCTION geno_v2_validate_knowledge_subject();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_validate_knowledge_subject();
 CREATE CONSTRAINT TRIGGER knowledge_chunk_subject_entity_kind
 AFTER INSERT ON knowledge_chunk_subjects DEFERRABLE INITIALLY IMMEDIATE
-FOR EACH ROW EXECUTE FUNCTION geno_v2_validate_knowledge_subject();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_validate_knowledge_subject();
 CREATE CONSTRAINT TRIGGER knowledge_candidate_subject_entity_kind
 AFTER INSERT ON knowledge_fact_candidates DEFERRABLE INITIALLY IMMEDIATE
-FOR EACH ROW EXECUTE FUNCTION geno_v2_validate_knowledge_subject();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_validate_knowledge_subject();
 CREATE CONSTRAINT TRIGGER knowledge_fact_subject_entity_kind
 AFTER INSERT ON knowledge_facts DEFERRABLE INITIALLY IMMEDIATE
-FOR EACH ROW EXECUTE FUNCTION geno_v2_validate_knowledge_subject();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_validate_knowledge_subject();
 
-CREATE FUNCTION geno_v2_validate_knowledge_job_result_type()
+CREATE FUNCTION geo_v2_validate_knowledge_job_result_type()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -1691,9 +1691,9 @@ $validate_knowledge_job_result_type$;
 
 CREATE CONSTRAINT TRIGGER knowledge_revision_job_type
 AFTER INSERT ON knowledge_source_asset_revisions DEFERRABLE INITIALLY IMMEDIATE
-FOR EACH ROW EXECUTE FUNCTION geno_v2_validate_knowledge_job_result_type('import_or_crawl');
+FOR EACH ROW EXECUTE FUNCTION geo_v2_validate_knowledge_job_result_type('import_or_crawl');
 
-CREATE FUNCTION geno_v2_validate_knowledge_revision_job_type()
+CREATE FUNCTION geo_v2_validate_knowledge_revision_job_type()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -1714,24 +1714,24 @@ $validate_knowledge_revision_job_type$;
 DROP TRIGGER knowledge_revision_job_type ON knowledge_source_asset_revisions;
 CREATE CONSTRAINT TRIGGER knowledge_revision_job_type
 AFTER INSERT ON knowledge_source_asset_revisions DEFERRABLE INITIALLY IMMEDIATE
-FOR EACH ROW EXECUTE FUNCTION geno_v2_validate_knowledge_revision_job_type();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_validate_knowledge_revision_job_type();
 CREATE CONSTRAINT TRIGGER knowledge_parser_job_type
 AFTER INSERT ON knowledge_parser_runs DEFERRABLE INITIALLY IMMEDIATE
-FOR EACH ROW EXECUTE FUNCTION geno_v2_validate_knowledge_job_result_type('parse');
+FOR EACH ROW EXECUTE FUNCTION geo_v2_validate_knowledge_job_result_type('parse');
 CREATE CONSTRAINT TRIGGER knowledge_chunk_job_type
 AFTER INSERT ON knowledge_chunks DEFERRABLE INITIALLY IMMEDIATE
-FOR EACH ROW EXECUTE FUNCTION geno_v2_validate_knowledge_job_result_type('chunk');
+FOR EACH ROW EXECUTE FUNCTION geo_v2_validate_knowledge_job_result_type('chunk');
 CREATE CONSTRAINT TRIGGER knowledge_chunk_input_job_type
 AFTER INSERT ON knowledge_chunk_job_inputs DEFERRABLE INITIALLY IMMEDIATE
-FOR EACH ROW EXECUTE FUNCTION geno_v2_validate_knowledge_job_result_type('chunk');
+FOR EACH ROW EXECUTE FUNCTION geo_v2_validate_knowledge_job_result_type('chunk');
 CREATE CONSTRAINT TRIGGER knowledge_embedding_job_type
 AFTER INSERT ON knowledge_chunk_embeddings DEFERRABLE INITIALLY IMMEDIATE
-FOR EACH ROW EXECUTE FUNCTION geno_v2_validate_knowledge_job_result_type('embed');
+FOR EACH ROW EXECUTE FUNCTION geo_v2_validate_knowledge_job_result_type('embed');
 CREATE CONSTRAINT TRIGGER knowledge_candidate_job_type
 AFTER INSERT ON knowledge_fact_candidates DEFERRABLE INITIALLY IMMEDIATE
-FOR EACH ROW EXECUTE FUNCTION geno_v2_validate_knowledge_job_result_type('fact_extract');
+FOR EACH ROW EXECUTE FUNCTION geo_v2_validate_knowledge_job_result_type('fact_extract');
 
-CREATE FUNCTION geno_v2_validate_knowledge_job_stage()
+CREATE FUNCTION geo_v2_validate_knowledge_job_stage()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -1754,9 +1754,9 @@ $validate_knowledge_job_stage$;
 
 CREATE CONSTRAINT TRIGGER knowledge_job_stage_contract
 AFTER INSERT ON knowledge_pipeline_jobs DEFERRABLE INITIALLY IMMEDIATE
-FOR EACH ROW EXECUTE FUNCTION geno_v2_validate_knowledge_job_stage();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_validate_knowledge_job_stage();
 
-CREATE FUNCTION geno_v2_knowledge_job_inputs_ready(p_job_id uuid)
+CREATE FUNCTION geo_v2_knowledge_job_inputs_ready(p_job_id uuid)
 RETURNS boolean
 LANGUAGE plpgsql
 STABLE
@@ -1954,14 +1954,14 @@ BEGIN
 END;
 $knowledge_job_inputs_ready$;
 
-CREATE FUNCTION geno_v2_require_ready_knowledge_job_inputs()
+CREATE FUNCTION geo_v2_require_ready_knowledge_job_inputs()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = pg_catalog
 AS $require_ready_knowledge_job_inputs$
 BEGIN
-    IF NOT public.geno_v2_knowledge_job_inputs_ready(NEW.knowledge_job_id) THEN
+    IF NOT public.geo_v2_knowledge_job_inputs_ready(NEW.knowledge_job_id) THEN
         RAISE EXCEPTION 'knowledge job upstream inputs are not succeeded and finalized'
             USING ERRCODE = '55000';
     END IF;
@@ -1969,7 +1969,7 @@ BEGIN
 END;
 $require_ready_knowledge_job_inputs$;
 
-CREATE FUNCTION geno_v2_read_knowledge_job_input(
+CREATE FUNCTION geo_v2_read_knowledge_job_input(
     p_job_id uuid, p_worker_id text, p_lease_token uuid
 )
 RETURNS jsonb
@@ -1995,7 +1995,7 @@ BEGIN
     WHERE input_snapshot.knowledge_job_id = job_row.id
       AND input_snapshot.project_id = job_row.project_id
       AND input_snapshot.snapshot_hash = job_row.input_hash;
-    IF NOT FOUND OR NOT public.geno_v2_knowledge_job_inputs_ready(job_row.id) THEN
+    IF NOT FOUND OR NOT public.geo_v2_knowledge_job_inputs_ready(job_row.id) THEN
         RAISE EXCEPTION 'knowledge job input snapshot is missing or no longer eligible'
             USING ERRCODE = '55000';
     END IF;
@@ -2012,15 +2012,15 @@ $read_knowledge_job_input$;
 
 CREATE CONSTRAINT TRIGGER knowledge_parse_input_ready
 AFTER INSERT ON knowledge_parse_job_inputs DEFERRABLE INITIALLY DEFERRED
-FOR EACH ROW EXECUTE FUNCTION geno_v2_require_ready_knowledge_job_inputs();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_require_ready_knowledge_job_inputs();
 CREATE CONSTRAINT TRIGGER knowledge_chunk_input_ready
 AFTER INSERT ON knowledge_chunk_job_inputs DEFERRABLE INITIALLY DEFERRED
-FOR EACH ROW EXECUTE FUNCTION geno_v2_require_ready_knowledge_job_inputs();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_require_ready_knowledge_job_inputs();
 CREATE CONSTRAINT TRIGGER knowledge_chunk_set_input_ready
 AFTER INSERT ON knowledge_chunk_set_job_inputs DEFERRABLE INITIALLY DEFERRED
-FOR EACH ROW EXECUTE FUNCTION geno_v2_require_ready_knowledge_job_inputs();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_require_ready_knowledge_job_inputs();
 
-CREATE FUNCTION geno_v2_persist_knowledge_job_result(
+CREATE FUNCTION geo_v2_persist_knowledge_job_result(
     p_job knowledge_pipeline_jobs,
     p_result jsonb
 )
@@ -2718,7 +2718,7 @@ BEGIN
 END;
 $persist_knowledge_result$;
 
-CREATE FUNCTION geno_v2_claim_knowledge_job(
+CREATE FUNCTION geo_v2_claim_knowledge_job(
     p_worker_id text,
     p_lease_seconds integer,
     p_project_id uuid DEFAULT NULL,
@@ -2777,7 +2777,7 @@ BEGIN
           AND (p_project_id IS NULL OR job.project_id = p_project_id)
           AND (p_job_type IS NULL OR job.job_type = p_job_type)
     LOOP
-        PERFORM public.geno_v2_refresh_knowledge_pipeline_state(affected_run_id);
+        PERFORM public.geo_v2_refresh_knowledge_pipeline_state(affected_run_id);
     END LOOP;
 
     UPDATE public.knowledge_pipeline_jobs AS job
@@ -2816,7 +2816,7 @@ BEGIN
             OR (job.status = 'finalizing' AND job.lease_expires_at <= statement_timestamp())
         )
           AND job.cancel_requested_at IS NULL
-          AND public.geno_v2_knowledge_job_inputs_ready(job.id)
+          AND public.geo_v2_knowledge_job_inputs_ready(job.id)
           AND (
               job.import_source_id IS NULL OR EXISTS (
                   SELECT 1 FROM public.knowledge_import_sources AS source_input
@@ -2861,7 +2861,7 @@ BEGIN
 END;
 $claim_knowledge_job$;
 
-CREATE FUNCTION geno_v2_heartbeat_knowledge_job(
+CREATE FUNCTION geo_v2_heartbeat_knowledge_job(
     p_job_id uuid, p_worker_id text, p_lease_token uuid, p_lease_seconds integer
 )
 RETURNS knowledge_pipeline_jobs
@@ -2891,7 +2891,7 @@ BEGIN
 END;
 $heartbeat_knowledge_job$;
 
-CREATE FUNCTION geno_v2_begin_finalizing_knowledge_job(
+CREATE FUNCTION geo_v2_begin_finalizing_knowledge_job(
     p_job_id uuid, p_worker_id text, p_lease_token uuid,
     p_result_hash text, p_result jsonb
 )
@@ -2936,7 +2936,7 @@ BEGIN
        OR target_row.lease_expires_at <= statement_timestamp() THEN
         RAISE EXCEPTION 'knowledge job lease is lost' USING ERRCODE = '55000';
     END IF;
-    PERFORM public.geno_v2_persist_knowledge_job_result(target_row, p_result);
+    PERFORM public.geo_v2_persist_knowledge_job_result(target_row, p_result);
     UPDATE public.knowledge_pipeline_jobs AS job
     SET status = 'finalizing', finalizing_result_hash = p_result_hash,
         updated_at = statement_timestamp()
@@ -2945,7 +2945,7 @@ BEGIN
 END;
 $begin_finalizing_knowledge_job$;
 
-CREATE FUNCTION geno_v2_knowledge_quality_certificate_complete(p_job_id uuid)
+CREATE FUNCTION geo_v2_knowledge_quality_certificate_complete(p_job_id uuid)
 RETURNS boolean
 LANGUAGE sql
 STABLE
@@ -3078,7 +3078,7 @@ AS $knowledge_quality_certificate_complete$
        );
 $knowledge_quality_certificate_complete$;
 
-CREATE FUNCTION geno_v2_refresh_knowledge_pipeline_state(p_pipeline_run_id uuid)
+CREATE FUNCTION geo_v2_refresh_knowledge_pipeline_state(p_pipeline_run_id uuid)
 RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -3187,7 +3187,7 @@ BEGIN
 END;
 $refresh_knowledge_pipeline_state$;
 
-CREATE FUNCTION geno_v2_complete_knowledge_job(
+CREATE FUNCTION geo_v2_complete_knowledge_job(
     p_job_id uuid, p_worker_id text, p_lease_token uuid
 )
 RETURNS knowledge_pipeline_jobs
@@ -3251,7 +3251,7 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'knowledge job artifacts are not finalized' USING ERRCODE = '55000';
     END IF;
-    IF NOT public.geno_v2_knowledge_quality_certificate_complete(target_row.id) THEN
+    IF NOT public.geo_v2_knowledge_quality_certificate_complete(target_row.id) THEN
         RAISE EXCEPTION 'required knowledge quality gates are incomplete or blocked'
             USING ERRCODE = '55000';
     END IF;
@@ -3261,12 +3261,12 @@ BEGIN
         heartbeat_at = NULL, completed_at = statement_timestamp(),
         completed_by = btrim(p_worker_id), updated_at = statement_timestamp()
     WHERE job.id = target_row.id RETURNING job.* INTO target_row;
-    PERFORM public.geno_v2_refresh_knowledge_pipeline_state(target_row.pipeline_run_id);
+    PERFORM public.geo_v2_refresh_knowledge_pipeline_state(target_row.pipeline_run_id);
     RETURN target_row;
 END;
 $complete_knowledge_job$;
 
-CREATE FUNCTION geno_v2_fail_knowledge_job(
+CREATE FUNCTION geo_v2_fail_knowledge_job(
     p_job_id uuid, p_worker_id text, p_lease_token uuid,
     p_error_code text, p_error_message text, p_retryable boolean,
     p_retry_delay_seconds integer DEFAULT 0
@@ -3318,12 +3318,12 @@ BEGIN
                             THEN NULL ELSE btrim(p_worker_id) END,
         updated_at = statement_timestamp()
     WHERE job.id = p_job_id RETURNING job.* INTO target_row;
-    PERFORM public.geno_v2_refresh_knowledge_pipeline_state(target_row.pipeline_run_id);
+    PERFORM public.geo_v2_refresh_knowledge_pipeline_state(target_row.pipeline_run_id);
     RETURN target_row;
 END;
 $fail_knowledge_job$;
 
-CREATE FUNCTION geno_v2_ack_knowledge_job_cancel(
+CREATE FUNCTION geo_v2_ack_knowledge_job_cancel(
     p_job_id uuid, p_worker_id text, p_lease_token uuid
 )
 RETURNS knowledge_pipeline_jobs
@@ -3346,12 +3346,12 @@ BEGIN
     IF NOT FOUND THEN
         RAISE EXCEPTION 'knowledge cancellation lease is lost' USING ERRCODE = '55000';
     END IF;
-    PERFORM public.geno_v2_refresh_knowledge_pipeline_state(target_row.pipeline_run_id);
+    PERFORM public.geo_v2_refresh_knowledge_pipeline_state(target_row.pipeline_run_id);
     RETURN target_row;
 END;
 $ack_knowledge_cancel$;
 
-CREATE FUNCTION geno_v2_create_knowledge_quality_definition(
+CREATE FUNCTION geo_v2_create_knowledge_quality_definition(
     p_definition_id uuid, p_project_id uuid, p_definition_key text,
     p_version integer, p_job_type text, p_target_kind text,
     p_severity_on_failure text, p_rule_contract jsonb
@@ -3366,13 +3366,13 @@ DECLARE tenant_scope uuid; actor_id text;
 BEGIN
     SELECT project.tenant_id INTO tenant_scope FROM public.projects AS project
     WHERE project.id = p_project_id AND project.status <> 'archived';
-    IF NOT FOUND OR NOT public.geno_v2_session_has_project_permission(
+    IF NOT FOUND OR NOT public.geo_v2_session_has_project_permission(
         p_project_id, tenant_scope, 'system.admin'
     ) THEN
         RAISE EXCEPTION 'knowledge project is not accessible' USING ERRCODE = '42501';
     END IF;
     SELECT context.actor_id INTO actor_id
-    FROM public.geno_v2_resolve_session_context() AS context;
+    FROM public.geo_v2_resolve_session_context() AS context;
     INSERT INTO public.knowledge_quality_definitions (
         id, tenant_id, project_id, definition_key, version, job_type,
         target_kind, severity_on_failure, rule_contract, policy_class,
@@ -3386,7 +3386,7 @@ BEGIN
 END;
 $create_knowledge_quality_definition$;
 
-CREATE FUNCTION geno_v2_create_knowledge_governance_version(
+CREATE FUNCTION geo_v2_create_knowledge_governance_version(
     p_source_asset_id uuid, p_governance_version_id uuid,
     p_expected_current_governance_id uuid, p_governance jsonb,
     p_reason text
@@ -3415,7 +3415,7 @@ BEGIN
     FROM public.knowledge_source_assets AS asset
     WHERE asset.id = p_source_asset_id
     FOR UPDATE;
-    IF NOT FOUND OR NOT public.geno_v2_session_has_project_permission(
+    IF NOT FOUND OR NOT public.geo_v2_session_has_project_permission(
         source_asset.project_id, source_asset.tenant_id, 'knowledge.review'
     ) THEN
         RAISE EXCEPTION 'knowledge source is not accessible' USING ERRCODE = '42501';
@@ -3436,7 +3436,7 @@ BEGIN
         RAISE EXCEPTION 'knowledge governance head is missing' USING ERRCODE = '23503';
     END IF;
     SELECT context.actor_id, context.tenant_id INTO actor_id, tenant_scope
-    FROM public.geno_v2_resolve_session_context() AS context;
+    FROM public.geo_v2_resolve_session_context() AS context;
     IF actor_id = (
         SELECT source_input.requested_by
         FROM public.knowledge_source_asset_revisions AS revision
@@ -3552,7 +3552,7 @@ BEGIN
 END;
 $create_knowledge_governance_version$;
 
-CREATE FUNCTION geno_v2_set_knowledge_source_status(
+CREATE FUNCTION geo_v2_set_knowledge_source_status(
     p_source_asset_id uuid, p_status text, p_reason text
 )
 RETURNS knowledge_source_assets
@@ -3569,13 +3569,13 @@ BEGIN
     END IF;
     SELECT * INTO source_asset FROM public.knowledge_source_assets AS asset
     WHERE asset.id = p_source_asset_id FOR UPDATE;
-    IF NOT FOUND OR NOT public.geno_v2_session_has_project_permission(
+    IF NOT FOUND OR NOT public.geo_v2_session_has_project_permission(
         source_asset.project_id, source_asset.tenant_id, 'knowledge.review'
     ) THEN
         RAISE EXCEPTION 'knowledge source is not accessible' USING ERRCODE = '42501';
     END IF;
     SELECT context.actor_id INTO actor_id
-    FROM public.geno_v2_resolve_session_context() AS context;
+    FROM public.geo_v2_resolve_session_context() AS context;
     UPDATE public.knowledge_source_assets AS asset
     SET status = p_status, updated_at = statement_timestamp()
     WHERE asset.id = source_asset.id RETURNING asset.* INTO source_asset;
@@ -3593,7 +3593,7 @@ BEGIN
 END;
 $set_knowledge_source_status$;
 
-CREATE FUNCTION geno_v2_withdraw_knowledge_fact(
+CREATE FUNCTION geo_v2_withdraw_knowledge_fact(
     p_fact_id uuid, p_reason text
 )
 RETURNS knowledge_facts
@@ -3610,13 +3610,13 @@ BEGIN
     SELECT * INTO fact_row FROM public.knowledge_facts AS fact
     WHERE fact.id = p_fact_id FOR UPDATE;
     IF NOT FOUND OR fact_row.status <> 'active'
-       OR NOT public.geno_v2_session_has_project_permission(
+       OR NOT public.geo_v2_session_has_project_permission(
            fact_row.project_id, fact_row.tenant_id, 'knowledge.review'
        ) THEN
         RAISE EXCEPTION 'knowledge fact is not withdrawable' USING ERRCODE = '42501';
     END IF;
     SELECT context.actor_id INTO actor_id
-    FROM public.geno_v2_resolve_session_context() AS context;
+    FROM public.geo_v2_resolve_session_context() AS context;
     UPDATE public.knowledge_facts AS fact
     SET status = 'withdrawn', updated_at = statement_timestamp()
     WHERE fact.id = fact_row.id RETURNING fact.* INTO fact_row;
@@ -3634,7 +3634,7 @@ BEGIN
 END;
 $withdraw_knowledge_fact$;
 
-CREATE FUNCTION geno_v2_create_knowledge_job(
+CREATE FUNCTION geo_v2_create_knowledge_job(
     p_job_id uuid, p_project_id uuid, p_pipeline_run_id uuid,
     p_pipeline_stage_id uuid, p_import_source_id uuid,
     p_job_type text, p_idempotency_key text, p_input_snapshot jsonb,
@@ -3717,13 +3717,13 @@ BEGIN
     END IF;
     SELECT project.tenant_id INTO tenant_scope FROM public.projects AS project
     WHERE project.id = p_project_id AND project.status <> 'archived';
-    IF NOT FOUND OR NOT public.geno_v2_session_has_project_permission(
+    IF NOT FOUND OR NOT public.geo_v2_session_has_project_permission(
         p_project_id, tenant_scope, 'knowledge.import'
     ) THEN
         RAISE EXCEPTION 'knowledge project is not accessible' USING ERRCODE = '42501';
     END IF;
     SELECT context.actor_id INTO actor_id
-    FROM public.geno_v2_resolve_session_context() AS context;
+    FROM public.geo_v2_resolve_session_context() AS context;
     computed_request_hash := encode(public.digest(p_input_snapshot::text, 'sha256'), 'hex');
     PERFORM pg_catalog.pg_advisory_xact_lock(
         pg_catalog.hashtextextended(
@@ -4135,7 +4135,7 @@ BEGIN
 END;
 $create_knowledge_job$;
 
-CREATE FUNCTION geno_v2_request_knowledge_job_cancel(
+CREATE FUNCTION geo_v2_request_knowledge_job_cancel(
     p_job_id uuid, p_reason text
 )
 RETURNS knowledge_pipeline_jobs
@@ -4150,13 +4150,13 @@ BEGIN
     END IF;
     SELECT * INTO target_row FROM public.knowledge_pipeline_jobs AS job
     WHERE job.id = p_job_id FOR UPDATE;
-    IF NOT FOUND OR NOT public.geno_v2_session_has_project_permission(
+    IF NOT FOUND OR NOT public.geo_v2_session_has_project_permission(
         target_row.project_id, target_row.tenant_id, 'knowledge.import'
     ) THEN
         RAISE EXCEPTION 'knowledge job is not accessible' USING ERRCODE = '42501';
     END IF;
     SELECT context.actor_id INTO actor_id
-    FROM public.geno_v2_resolve_session_context() AS context;
+    FROM public.geo_v2_resolve_session_context() AS context;
     IF target_row.status = 'queued' THEN
         UPDATE public.knowledge_pipeline_jobs AS job
         SET status = 'cancelled', cancel_requested_at = statement_timestamp(),
@@ -4176,12 +4176,12 @@ BEGIN
         RAISE EXCEPTION 'only active knowledge jobs can be cancelled'
             USING ERRCODE = '55000';
     END IF;
-    PERFORM public.geno_v2_refresh_knowledge_pipeline_state(target_row.pipeline_run_id);
+    PERFORM public.geo_v2_refresh_knowledge_pipeline_state(target_row.pipeline_run_id);
     RETURN target_row;
 END;
 $request_knowledge_cancel$;
 
-CREATE FUNCTION geno_v2_replay_knowledge_job(
+CREATE FUNCTION geo_v2_replay_knowledge_job(
     p_source_job_id uuid, p_new_job_id uuid, p_idempotency_key text
 )
 RETURNS knowledge_pipeline_jobs
@@ -4199,7 +4199,7 @@ BEGIN
     END IF;
     SELECT * INTO source_row FROM public.knowledge_pipeline_jobs AS job
     WHERE job.id = p_source_job_id FOR UPDATE;
-    IF NOT FOUND OR NOT public.geno_v2_session_has_project_permission(
+    IF NOT FOUND OR NOT public.geo_v2_session_has_project_permission(
         source_row.project_id, source_row.tenant_id, 'knowledge.import'
     ) THEN
         RAISE EXCEPTION 'knowledge job is not accessible' USING ERRCODE = '42501';
@@ -4221,7 +4221,7 @@ BEGIN
         RAISE EXCEPTION 'knowledge replay idempotency conflict' USING ERRCODE = '23505';
     END IF;
     SELECT context.actor_id INTO actor_id
-    FROM public.geno_v2_resolve_session_context() AS context;
+    FROM public.geo_v2_resolve_session_context() AS context;
     BEGIN
         INSERT INTO public.knowledge_pipeline_jobs (
             id, tenant_id, project_id, pipeline_run_id, pipeline_stage_id,
@@ -4296,7 +4296,7 @@ BEGIN
 END;
 $replay_knowledge_job$;
 
-CREATE FUNCTION geno_v2_retry_knowledge_pipeline_stage(
+CREATE FUNCTION geo_v2_retry_knowledge_pipeline_stage(
     p_pipeline_stage_id uuid, p_new_job_id uuid, p_idempotency_key text
 )
 RETURNS knowledge_pipeline_jobs
@@ -4315,7 +4315,7 @@ BEGIN
         RAISE EXCEPTION 'knowledge stage has no retryable terminal job'
             USING ERRCODE = '55000';
     END IF;
-    result_row := public.geno_v2_replay_knowledge_job(
+    result_row := public.geo_v2_replay_knowledge_job(
         source_job_id, p_new_job_id, p_idempotency_key
     );
     UPDATE public.knowledge_pipeline_stages AS stage
@@ -4326,7 +4326,7 @@ BEGIN
 END;
 $retry_knowledge_stage$;
 
-CREATE FUNCTION geno_v2_guard_knowledge_risk_acceptance()
+CREATE FUNCTION geo_v2_guard_knowledge_risk_acceptance()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -4348,9 +4348,9 @@ $guard_knowledge_risk_acceptance$;
 
 CREATE TRIGGER knowledge_risk_acceptance_guard
 BEFORE INSERT ON knowledge_risk_acceptances
-FOR EACH ROW EXECUTE FUNCTION geno_v2_guard_knowledge_risk_acceptance();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_guard_knowledge_risk_acceptance();
 
-CREATE FUNCTION geno_v2_accept_knowledge_risk(
+CREATE FUNCTION geo_v2_accept_knowledge_risk(
     p_acceptance_id uuid, p_finding_id uuid, p_reason text
 )
 RETURNS knowledge_risk_acceptances
@@ -4363,7 +4363,7 @@ DECLARE finding_row public.knowledge_quality_findings%ROWTYPE;
 BEGIN
     SELECT * INTO finding_row FROM public.knowledge_quality_findings AS finding
     WHERE finding.id = p_finding_id;
-    IF NOT FOUND OR NOT public.geno_v2_session_has_project_permission(
+    IF NOT FOUND OR NOT public.geo_v2_session_has_project_permission(
         finding_row.project_id, finding_row.tenant_id, 'knowledge.review'
     ) THEN
         RAISE EXCEPTION 'knowledge finding is not accessible' USING ERRCODE = '42501';
@@ -4372,7 +4372,7 @@ BEGIN
         RAISE EXCEPTION 'risk acceptance reason must be nonempty' USING ERRCODE = '22023';
     END IF;
     SELECT context.actor_id INTO actor_id
-    FROM public.geno_v2_resolve_session_context() AS context;
+    FROM public.geo_v2_resolve_session_context() AS context;
     INSERT INTO public.knowledge_risk_acceptances (
         id, tenant_id, project_id, quality_finding_id,
         accepted_by, acceptance_reason
@@ -4384,7 +4384,7 @@ BEGIN
 END;
 $accept_knowledge_risk$;
 
-CREATE FUNCTION geno_v2_validate_candidate_review_consistency()
+CREATE FUNCTION geo_v2_validate_candidate_review_consistency()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -4419,7 +4419,7 @@ BEGIN
 END;
 $validate_candidate_review_consistency$;
 
-CREATE FUNCTION geno_v2_validate_fact_source_governance_lineage()
+CREATE FUNCTION geo_v2_validate_fact_source_governance_lineage()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -4486,19 +4486,19 @@ $validate_fact_source_governance_lineage$;
 
 CREATE CONSTRAINT TRIGGER knowledge_fact_source_governance_lineage
 AFTER INSERT ON knowledge_fact_version_sources DEFERRABLE INITIALLY IMMEDIATE
-FOR EACH ROW EXECUTE FUNCTION geno_v2_validate_fact_source_governance_lineage();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_validate_fact_source_governance_lineage();
 CREATE CONSTRAINT TRIGGER knowledge_candidate_source_exact_lineage
 AFTER INSERT ON knowledge_fact_candidate_sources DEFERRABLE INITIALLY IMMEDIATE
-FOR EACH ROW EXECUTE FUNCTION geno_v2_validate_fact_source_governance_lineage();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_validate_fact_source_governance_lineage();
 
 CREATE CONSTRAINT TRIGGER knowledge_candidate_review_consistency
 AFTER UPDATE ON knowledge_fact_candidates DEFERRABLE INITIALLY DEFERRED
-FOR EACH ROW EXECUTE FUNCTION geno_v2_validate_candidate_review_consistency();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_validate_candidate_review_consistency();
 CREATE CONSTRAINT TRIGGER knowledge_review_candidate_consistency
 AFTER INSERT ON knowledge_fact_candidate_reviews DEFERRABLE INITIALLY DEFERRED
-FOR EACH ROW EXECUTE FUNCTION geno_v2_validate_candidate_review_consistency();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_validate_candidate_review_consistency();
 
-CREATE FUNCTION geno_v2_review_knowledge_fact_candidate(
+CREATE FUNCTION geo_v2_review_knowledge_fact_candidate(
     p_candidate_id uuid, p_review_id uuid, p_fact_id uuid,
     p_fact_version_id uuid, p_decision text, p_notes text DEFAULT NULL,
     p_expected_current_version_id uuid DEFAULT NULL,
@@ -4545,13 +4545,13 @@ BEGIN
     END IF;
     SELECT * INTO candidate_row FROM public.knowledge_fact_candidates AS candidate
     WHERE candidate.id = p_candidate_id FOR UPDATE;
-    IF NOT FOUND OR NOT public.geno_v2_session_has_project_permission(
+    IF NOT FOUND OR NOT public.geo_v2_session_has_project_permission(
         candidate_row.project_id, candidate_row.tenant_id, 'knowledge.review'
     ) THEN
         RAISE EXCEPTION 'knowledge candidate is not accessible' USING ERRCODE = '42501';
     END IF;
     SELECT context.actor_id INTO actor_id
-    FROM public.geno_v2_resolve_session_context() AS context;
+    FROM public.geo_v2_resolve_session_context() AS context;
     IF candidate_row.status <> 'pending_review' THEN
         IF EXISTS (
             SELECT 1 FROM public.knowledge_fact_candidate_reviews AS review
@@ -4591,7 +4591,7 @@ BEGIN
     FOR SHARE;
     IF NOT FOUND OR producer_row.job_type <> 'fact_extract'
        OR producer_row.status <> 'succeeded'
-       OR NOT public.geno_v2_knowledge_quality_certificate_complete(producer_row.id)
+       OR NOT public.geo_v2_knowledge_quality_certificate_complete(producer_row.id)
        OR NOT EXISTS (
            SELECT 1
            FROM public.knowledge_job_artifacts AS link
@@ -4861,12 +4861,12 @@ BEGIN
         updated_at = statement_timestamp()
     WHERE candidate.id = candidate_row.id
     RETURNING candidate.* INTO candidate_row;
-    PERFORM public.geno_v2_refresh_knowledge_pipeline_state(producer_row.pipeline_run_id);
+    PERFORM public.geo_v2_refresh_knowledge_pipeline_state(producer_row.pipeline_run_id);
     RETURN candidate_row;
 END;
 $review_knowledge_candidate$;
 
-CREATE FUNCTION geno_v2_read_approved_knowledge(
+CREATE FUNCTION geo_v2_read_approved_knowledge(
     p_project_id uuid, p_publication_channel text DEFAULT NULL
 )
 RETURNS TABLE (
@@ -4886,14 +4886,14 @@ DECLARE tenant_scope uuid; internal_consumer boolean;
 BEGIN
     SELECT project.tenant_id INTO tenant_scope FROM public.projects AS project
     WHERE project.id = p_project_id AND project.status <> 'archived';
-    IF NOT FOUND OR NOT public.geno_v2_session_has_project_permission(
+    IF NOT FOUND OR NOT public.geo_v2_session_has_project_permission(
         p_project_id, tenant_scope, 'knowledge.read_approved'
     ) THEN
         RAISE EXCEPTION 'approved knowledge is not accessible' USING ERRCODE = '42501';
     END IF;
-    internal_consumer := public.geno_v2_session_has_project_permission(
+    internal_consumer := public.geo_v2_session_has_project_permission(
         p_project_id, tenant_scope, 'knowledge.read'
-    ) OR public.geno_v2_session_has_project_permission(
+    ) OR public.geo_v2_session_has_project_permission(
         p_project_id, tenant_scope, 'content.generate'
     );
     IF NOT internal_consumer
@@ -5033,7 +5033,7 @@ BEGIN
 END;
 $read_approved_knowledge$;
 
-CREATE FUNCTION geno_v2_validate_chunk_set_input_kind()
+CREATE FUNCTION geo_v2_validate_chunk_set_input_kind()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -5052,7 +5052,7 @@ BEGIN
 END;
 $validate_chunk_set_input_kind$;
 
-CREATE FUNCTION geno_v2_validate_job_quality_definition()
+CREATE FUNCTION geo_v2_validate_job_quality_definition()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -5076,16 +5076,16 @@ $validate_job_quality_definition$;
 
 CREATE CONSTRAINT TRIGGER knowledge_import_subject_entity_kind
 AFTER INSERT ON knowledge_import_source_subjects DEFERRABLE INITIALLY IMMEDIATE
-FOR EACH ROW EXECUTE FUNCTION geno_v2_validate_knowledge_subject();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_validate_knowledge_subject();
 CREATE CONSTRAINT TRIGGER knowledge_parse_input_job_type
 AFTER INSERT ON knowledge_parse_job_inputs DEFERRABLE INITIALLY IMMEDIATE
-FOR EACH ROW EXECUTE FUNCTION geno_v2_validate_knowledge_job_result_type('parse');
+FOR EACH ROW EXECUTE FUNCTION geo_v2_validate_knowledge_job_result_type('parse');
 CREATE CONSTRAINT TRIGGER knowledge_chunk_set_input_job_type
 AFTER INSERT ON knowledge_chunk_set_job_inputs DEFERRABLE INITIALLY IMMEDIATE
-FOR EACH ROW EXECUTE FUNCTION geno_v2_validate_chunk_set_input_kind();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_validate_chunk_set_input_kind();
 CREATE CONSTRAINT TRIGGER knowledge_job_quality_definition_type
 AFTER INSERT ON knowledge_job_quality_definitions DEFERRABLE INITIALLY IMMEDIATE
-FOR EACH ROW EXECUTE FUNCTION geno_v2_validate_job_quality_definition();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_validate_job_quality_definition();
 
 DO $knowledge_more_immutable_triggers$
 DECLARE table_name text;
@@ -5101,7 +5101,7 @@ BEGIN
     ] LOOP
         EXECUTE format(
             'CREATE TRIGGER %I BEFORE UPDATE OR DELETE ON public.%I '
-            'FOR EACH ROW EXECUTE FUNCTION public.geno_v2_reject_knowledge_immutable_update()',
+            'FOR EACH ROW EXECUTE FUNCTION public.geo_v2_reject_knowledge_immutable_update()',
             table_name || '_immutable', table_name
         );
     END LOOP;
@@ -5154,8 +5154,8 @@ BEGIN
         EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', table_name);
         EXECUTE format('ALTER TABLE public.%I FORCE ROW LEVEL SECURITY', table_name);
         EXECUTE format(
-            'CREATE POLICY %I ON public.%I FOR SELECT TO geno_v2_runtime '
-            'USING (public.geno_v2_session_has_project_permission('
+            'CREATE POLICY %I ON public.%I FOR SELECT TO geo_v2_runtime '
+            'USING (public.geo_v2_session_has_project_permission('
             'project_id, tenant_id, ''knowledge.read''))',
             table_name || '_runtime_internal_read', table_name
         );
@@ -5163,79 +5163,79 @@ BEGIN
 END;
 $knowledge_rls$;
 
-ALTER FUNCTION geno_v2_persist_knowledge_job_result(knowledge_pipeline_jobs, jsonb)
-    OWNER TO geno_v2_result_owner;
-ALTER FUNCTION geno_v2_claim_knowledge_job(text, integer, uuid, text)
-    OWNER TO geno_v2_job_owner;
-ALTER FUNCTION geno_v2_heartbeat_knowledge_job(uuid, text, uuid, integer)
-    OWNER TO geno_v2_job_owner;
-ALTER FUNCTION geno_v2_begin_finalizing_knowledge_job(uuid, text, uuid, text, jsonb)
-    OWNER TO geno_v2_job_owner;
-ALTER FUNCTION geno_v2_complete_knowledge_job(uuid, text, uuid)
-    OWNER TO geno_v2_job_owner;
-ALTER FUNCTION geno_v2_fail_knowledge_job(uuid, text, uuid, text, text, boolean, integer)
-    OWNER TO geno_v2_job_owner;
-ALTER FUNCTION geno_v2_ack_knowledge_job_cancel(uuid, text, uuid)
-    OWNER TO geno_v2_job_owner;
-ALTER FUNCTION geno_v2_knowledge_job_inputs_ready(uuid) OWNER TO geno_v2_job_owner;
-ALTER FUNCTION geno_v2_require_ready_knowledge_job_inputs()
-    OWNER TO geno_v2_job_owner;
-ALTER FUNCTION geno_v2_read_knowledge_job_input(uuid, text, uuid)
-    OWNER TO geno_v2_job_owner;
-ALTER FUNCTION geno_v2_knowledge_quality_certificate_complete(uuid)
-    OWNER TO geno_v2_job_owner;
-ALTER FUNCTION geno_v2_refresh_knowledge_pipeline_state(uuid)
-    OWNER TO geno_v2_job_owner;
+ALTER FUNCTION geo_v2_persist_knowledge_job_result(knowledge_pipeline_jobs, jsonb)
+    OWNER TO geo_v2_result_owner;
+ALTER FUNCTION geo_v2_claim_knowledge_job(text, integer, uuid, text)
+    OWNER TO geo_v2_job_owner;
+ALTER FUNCTION geo_v2_heartbeat_knowledge_job(uuid, text, uuid, integer)
+    OWNER TO geo_v2_job_owner;
+ALTER FUNCTION geo_v2_begin_finalizing_knowledge_job(uuid, text, uuid, text, jsonb)
+    OWNER TO geo_v2_job_owner;
+ALTER FUNCTION geo_v2_complete_knowledge_job(uuid, text, uuid)
+    OWNER TO geo_v2_job_owner;
+ALTER FUNCTION geo_v2_fail_knowledge_job(uuid, text, uuid, text, text, boolean, integer)
+    OWNER TO geo_v2_job_owner;
+ALTER FUNCTION geo_v2_ack_knowledge_job_cancel(uuid, text, uuid)
+    OWNER TO geo_v2_job_owner;
+ALTER FUNCTION geo_v2_knowledge_job_inputs_ready(uuid) OWNER TO geo_v2_job_owner;
+ALTER FUNCTION geo_v2_require_ready_knowledge_job_inputs()
+    OWNER TO geo_v2_job_owner;
+ALTER FUNCTION geo_v2_read_knowledge_job_input(uuid, text, uuid)
+    OWNER TO geo_v2_job_owner;
+ALTER FUNCTION geo_v2_knowledge_quality_certificate_complete(uuid)
+    OWNER TO geo_v2_job_owner;
+ALTER FUNCTION geo_v2_refresh_knowledge_pipeline_state(uuid)
+    OWNER TO geo_v2_job_owner;
 
-ALTER FUNCTION geno_v2_create_knowledge_quality_definition(
+ALTER FUNCTION geo_v2_create_knowledge_quality_definition(
     uuid, uuid, text, integer, text, text, text, jsonb
-) OWNER TO geno_v2_job_command_owner;
-ALTER FUNCTION geno_v2_create_knowledge_governance_version(
+) OWNER TO geo_v2_job_command_owner;
+ALTER FUNCTION geo_v2_create_knowledge_governance_version(
     uuid, uuid, uuid, jsonb, text
-) OWNER TO geno_v2_job_command_owner;
-ALTER FUNCTION geno_v2_set_knowledge_source_status(uuid, text, text)
-    OWNER TO geno_v2_job_command_owner;
-ALTER FUNCTION geno_v2_withdraw_knowledge_fact(uuid, text)
-    OWNER TO geno_v2_job_command_owner;
-ALTER FUNCTION geno_v2_create_knowledge_job(
+) OWNER TO geo_v2_job_command_owner;
+ALTER FUNCTION geo_v2_set_knowledge_source_status(uuid, text, text)
+    OWNER TO geo_v2_job_command_owner;
+ALTER FUNCTION geo_v2_withdraw_knowledge_fact(uuid, text)
+    OWNER TO geo_v2_job_command_owner;
+ALTER FUNCTION geo_v2_create_knowledge_job(
     uuid, uuid, uuid, uuid, uuid, text, text, jsonb, uuid
-) OWNER TO geno_v2_job_command_owner;
-ALTER FUNCTION geno_v2_request_knowledge_job_cancel(uuid, text)
-    OWNER TO geno_v2_job_command_owner;
-ALTER FUNCTION geno_v2_replay_knowledge_job(uuid, uuid, text)
-    OWNER TO geno_v2_job_command_owner;
-ALTER FUNCTION geno_v2_retry_knowledge_pipeline_stage(uuid, uuid, text)
-    OWNER TO geno_v2_job_command_owner;
-ALTER FUNCTION geno_v2_accept_knowledge_risk(uuid, uuid, text)
-    OWNER TO geno_v2_job_command_owner;
-ALTER FUNCTION geno_v2_review_knowledge_fact_candidate(
+) OWNER TO geo_v2_job_command_owner;
+ALTER FUNCTION geo_v2_request_knowledge_job_cancel(uuid, text)
+    OWNER TO geo_v2_job_command_owner;
+ALTER FUNCTION geo_v2_replay_knowledge_job(uuid, uuid, text)
+    OWNER TO geo_v2_job_command_owner;
+ALTER FUNCTION geo_v2_retry_knowledge_pipeline_stage(uuid, uuid, text)
+    OWNER TO geo_v2_job_command_owner;
+ALTER FUNCTION geo_v2_accept_knowledge_risk(uuid, uuid, text)
+    OWNER TO geo_v2_job_command_owner;
+ALTER FUNCTION geo_v2_review_knowledge_fact_candidate(
     uuid, uuid, uuid, uuid, text, text, uuid, text
-) OWNER TO geno_v2_job_command_owner;
-ALTER FUNCTION geno_v2_read_approved_knowledge(uuid, text) OWNER TO geno_v2_authz_owner;
+) OWNER TO geo_v2_job_command_owner;
+ALTER FUNCTION geo_v2_read_approved_knowledge(uuid, text) OWNER TO geo_v2_authz_owner;
 
-ALTER FUNCTION geno_v2_guard_knowledge_asset_head() OWNER TO geno_v2_result_owner;
-ALTER FUNCTION geno_v2_reject_knowledge_immutable_update()
-    OWNER TO geno_v2_result_owner;
-ALTER FUNCTION geno_v2_reject_knowledge_immutable_update() SECURITY DEFINER;
-ALTER FUNCTION geno_v2_guard_candidate_transition()
-    OWNER TO geno_v2_job_command_owner;
-ALTER FUNCTION geno_v2_guard_candidate_transition() SECURITY DEFINER;
-ALTER FUNCTION geno_v2_guard_fact_head() OWNER TO geno_v2_result_owner;
-ALTER FUNCTION geno_v2_require_finalized_knowledge_artifact() OWNER TO geno_v2_result_owner;
-ALTER FUNCTION geno_v2_require_finalized_parser_input() OWNER TO geno_v2_result_owner;
-ALTER FUNCTION geno_v2_validate_knowledge_subject() OWNER TO geno_v2_result_owner;
-ALTER FUNCTION geno_v2_validate_knowledge_job_result_type() OWNER TO geno_v2_result_owner;
-ALTER FUNCTION geno_v2_validate_knowledge_revision_job_type() OWNER TO geno_v2_result_owner;
-ALTER FUNCTION geno_v2_validate_knowledge_job_stage()
-    OWNER TO geno_v2_job_command_owner;
-ALTER FUNCTION geno_v2_validate_chunk_set_input_kind() OWNER TO geno_v2_result_owner;
-ALTER FUNCTION geno_v2_validate_job_quality_definition() OWNER TO geno_v2_result_owner;
-ALTER FUNCTION geno_v2_guard_knowledge_risk_acceptance()
-    OWNER TO geno_v2_job_command_owner;
-ALTER FUNCTION geno_v2_validate_candidate_review_consistency()
-    OWNER TO geno_v2_job_command_owner;
-ALTER FUNCTION geno_v2_validate_fact_source_governance_lineage()
-    OWNER TO geno_v2_result_owner;
+ALTER FUNCTION geo_v2_guard_knowledge_asset_head() OWNER TO geo_v2_result_owner;
+ALTER FUNCTION geo_v2_reject_knowledge_immutable_update()
+    OWNER TO geo_v2_result_owner;
+ALTER FUNCTION geo_v2_reject_knowledge_immutable_update() SECURITY DEFINER;
+ALTER FUNCTION geo_v2_guard_candidate_transition()
+    OWNER TO geo_v2_job_command_owner;
+ALTER FUNCTION geo_v2_guard_candidate_transition() SECURITY DEFINER;
+ALTER FUNCTION geo_v2_guard_fact_head() OWNER TO geo_v2_result_owner;
+ALTER FUNCTION geo_v2_require_finalized_knowledge_artifact() OWNER TO geo_v2_result_owner;
+ALTER FUNCTION geo_v2_require_finalized_parser_input() OWNER TO geo_v2_result_owner;
+ALTER FUNCTION geo_v2_validate_knowledge_subject() OWNER TO geo_v2_result_owner;
+ALTER FUNCTION geo_v2_validate_knowledge_job_result_type() OWNER TO geo_v2_result_owner;
+ALTER FUNCTION geo_v2_validate_knowledge_revision_job_type() OWNER TO geo_v2_result_owner;
+ALTER FUNCTION geo_v2_validate_knowledge_job_stage()
+    OWNER TO geo_v2_job_command_owner;
+ALTER FUNCTION geo_v2_validate_chunk_set_input_kind() OWNER TO geo_v2_result_owner;
+ALTER FUNCTION geo_v2_validate_job_quality_definition() OWNER TO geo_v2_result_owner;
+ALTER FUNCTION geo_v2_guard_knowledge_risk_acceptance()
+    OWNER TO geo_v2_job_command_owner;
+ALTER FUNCTION geo_v2_validate_candidate_review_consistency()
+    OWNER TO geo_v2_job_command_owner;
+ALTER FUNCTION geo_v2_validate_fact_source_governance_lineage()
+    OWNER TO geo_v2_result_owner;
 
 DO $knowledge_revoke_function_public$
 DECLARE function_row record;
@@ -5246,38 +5246,38 @@ BEGIN
         JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = procedure.pronamespace
         WHERE namespace.nspname = 'public'
           AND procedure.proname = ANY(ARRAY[
-              'geno_v2_persist_knowledge_job_result',
-              'geno_v2_claim_knowledge_job', 'geno_v2_heartbeat_knowledge_job',
-              'geno_v2_begin_finalizing_knowledge_job', 'geno_v2_complete_knowledge_job',
-              'geno_v2_fail_knowledge_job', 'geno_v2_ack_knowledge_job_cancel',
-              'geno_v2_read_knowledge_job_input',
-              'geno_v2_knowledge_quality_certificate_complete',
-              'geno_v2_refresh_knowledge_pipeline_state',
-              'geno_v2_create_knowledge_quality_definition',
-              'geno_v2_create_knowledge_governance_version',
-              'geno_v2_set_knowledge_source_status',
-              'geno_v2_withdraw_knowledge_fact',
-              'geno_v2_create_knowledge_job', 'geno_v2_request_knowledge_job_cancel',
-              'geno_v2_replay_knowledge_job', 'geno_v2_retry_knowledge_pipeline_stage',
-              'geno_v2_accept_knowledge_risk',
-              'geno_v2_review_knowledge_fact_candidate',
-              'geno_v2_read_approved_knowledge',
-              'geno_v2_reject_knowledge_immutable_update',
-              'geno_v2_guard_knowledge_asset_head',
-              'geno_v2_guard_candidate_transition', 'geno_v2_guard_fact_head',
-              'geno_v2_require_finalized_knowledge_artifact',
-              'geno_v2_require_finalized_parser_input',
-              'geno_v2_validate_knowledge_subject',
-              'geno_v2_validate_knowledge_job_result_type',
-              'geno_v2_validate_knowledge_revision_job_type',
-              'geno_v2_validate_knowledge_job_stage',
-              'geno_v2_knowledge_job_inputs_ready',
-              'geno_v2_require_ready_knowledge_job_inputs',
-              'geno_v2_guard_knowledge_risk_acceptance',
-              'geno_v2_validate_candidate_review_consistency',
-              'geno_v2_validate_fact_source_governance_lineage',
-              'geno_v2_validate_chunk_set_input_kind',
-              'geno_v2_validate_job_quality_definition'
+              'geo_v2_persist_knowledge_job_result',
+              'geo_v2_claim_knowledge_job', 'geo_v2_heartbeat_knowledge_job',
+              'geo_v2_begin_finalizing_knowledge_job', 'geo_v2_complete_knowledge_job',
+              'geo_v2_fail_knowledge_job', 'geo_v2_ack_knowledge_job_cancel',
+              'geo_v2_read_knowledge_job_input',
+              'geo_v2_knowledge_quality_certificate_complete',
+              'geo_v2_refresh_knowledge_pipeline_state',
+              'geo_v2_create_knowledge_quality_definition',
+              'geo_v2_create_knowledge_governance_version',
+              'geo_v2_set_knowledge_source_status',
+              'geo_v2_withdraw_knowledge_fact',
+              'geo_v2_create_knowledge_job', 'geo_v2_request_knowledge_job_cancel',
+              'geo_v2_replay_knowledge_job', 'geo_v2_retry_knowledge_pipeline_stage',
+              'geo_v2_accept_knowledge_risk',
+              'geo_v2_review_knowledge_fact_candidate',
+              'geo_v2_read_approved_knowledge',
+              'geo_v2_reject_knowledge_immutable_update',
+              'geo_v2_guard_knowledge_asset_head',
+              'geo_v2_guard_candidate_transition', 'geo_v2_guard_fact_head',
+              'geo_v2_require_finalized_knowledge_artifact',
+              'geo_v2_require_finalized_parser_input',
+              'geo_v2_validate_knowledge_subject',
+              'geo_v2_validate_knowledge_job_result_type',
+              'geo_v2_validate_knowledge_revision_job_type',
+              'geo_v2_validate_knowledge_job_stage',
+              'geo_v2_knowledge_job_inputs_ready',
+              'geo_v2_require_ready_knowledge_job_inputs',
+              'geo_v2_guard_knowledge_risk_acceptance',
+              'geo_v2_validate_candidate_review_consistency',
+              'geo_v2_validate_fact_source_governance_lineage',
+              'geo_v2_validate_chunk_set_input_kind',
+              'geo_v2_validate_job_quality_definition'
           ])
     LOOP
         EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC', function_row.signature);
@@ -5305,7 +5305,7 @@ REVOKE ALL ON
     knowledge_fact_version_sources, knowledge_quality_definitions,
     knowledge_job_quality_definitions, knowledge_quality_runs,
     knowledge_quality_findings, knowledge_risk_acceptances
-FROM PUBLIC, geno_v2_runtime, geno_v2_worker;
+FROM PUBLIC, geo_v2_runtime, geo_v2_worker;
 
 GRANT SELECT ON
     knowledge_pipeline_jobs, knowledge_import_sources,
@@ -5321,7 +5321,7 @@ GRANT SELECT ON
     knowledge_job_quality_definitions,
     knowledge_quality_definitions, knowledge_quality_runs,
     knowledge_quality_findings, evidence_assets, product_entities
-TO geno_v2_result_owner;
+TO geo_v2_result_owner;
 
 GRANT SELECT ON
     knowledge_pipeline_jobs, knowledge_pipeline_job_dependencies,
@@ -5337,7 +5337,7 @@ GRANT SELECT ON
     knowledge_quality_definitions, knowledge_quality_findings,
     knowledge_risk_acceptances, knowledge_fact_candidates,
     evidence_assets
-TO geno_v2_job_owner;
+TO geo_v2_job_owner;
 
 GRANT SELECT ON
     projects, knowledge_pipeline_runs, knowledge_pipeline_stages,
@@ -5357,7 +5357,7 @@ GRANT SELECT ON
     knowledge_source_governance_versions, knowledge_source_governance_channels,
     knowledge_source_revision_artifacts, knowledge_source_subjects,
     evidence_assets
-TO geno_v2_job_command_owner;
+TO geo_v2_job_command_owner;
 
 GRANT INSERT ON
     knowledge_job_artifacts, knowledge_source_assets,
@@ -5370,12 +5370,12 @@ GRANT INSERT ON
     knowledge_chunk_embeddings, knowledge_fact_candidates,
     knowledge_fact_candidate_sources, knowledge_quality_runs,
     knowledge_quality_findings
-TO geno_v2_result_owner;
-GRANT UPDATE ON knowledge_source_assets TO geno_v2_result_owner;
+TO geo_v2_result_owner;
+GRANT UPDATE ON knowledge_source_assets TO geo_v2_result_owner;
 
 GRANT SELECT, UPDATE ON
     knowledge_pipeline_jobs, knowledge_pipeline_stages, knowledge_pipeline_runs
-TO geno_v2_job_owner;
+TO geo_v2_job_owner;
 
 GRANT INSERT ON
     knowledge_pipeline_runs, knowledge_pipeline_stages,
@@ -5390,12 +5390,12 @@ GRANT INSERT ON
     knowledge_risk_acceptances, knowledge_fact_candidate_reviews,
     knowledge_facts, knowledge_fact_versions, knowledge_fact_version_sources,
     evidence_assets, artifact_finalize_outbox, audit_events
-TO geno_v2_job_command_owner;
+TO geo_v2_job_command_owner;
 GRANT UPDATE ON
     knowledge_pipeline_runs, knowledge_pipeline_stages,
     knowledge_pipeline_jobs, knowledge_source_assets,
     knowledge_fact_candidates, knowledge_facts
-TO geno_v2_job_command_owner;
+TO geo_v2_job_command_owner;
 
 GRANT SELECT ON knowledge_facts, knowledge_fact_versions,
     knowledge_fact_version_sources, knowledge_chunks, knowledge_blocks,
@@ -5403,123 +5403,123 @@ GRANT SELECT ON knowledge_facts, knowledge_fact_versions,
     knowledge_source_assets, knowledge_source_governance_versions,
     knowledge_source_governance_channels, knowledge_source_revision_artifacts,
     knowledge_pipeline_jobs, evidence_assets
-TO geno_v2_authz_owner;
+TO geo_v2_authz_owner;
 
 GRANT EXECUTE ON FUNCTION digest(text, text)
-    TO geno_v2_job_owner, geno_v2_job_command_owner;
+    TO geo_v2_job_owner, geo_v2_job_command_owner;
 
-GRANT EXECUTE ON FUNCTION geno_v2_persist_knowledge_job_result(
+GRANT EXECUTE ON FUNCTION geo_v2_persist_knowledge_job_result(
     knowledge_pipeline_jobs, jsonb
-) TO geno_v2_job_owner;
-GRANT EXECUTE ON FUNCTION geno_v2_claim_knowledge_job(text, integer, uuid, text)
-    TO geno_v2_worker;
-GRANT EXECUTE ON FUNCTION geno_v2_heartbeat_knowledge_job(uuid, text, uuid, integer)
-    TO geno_v2_worker;
-GRANT EXECUTE ON FUNCTION geno_v2_begin_finalizing_knowledge_job(
+) TO geo_v2_job_owner;
+GRANT EXECUTE ON FUNCTION geo_v2_claim_knowledge_job(text, integer, uuid, text)
+    TO geo_v2_worker;
+GRANT EXECUTE ON FUNCTION geo_v2_heartbeat_knowledge_job(uuid, text, uuid, integer)
+    TO geo_v2_worker;
+GRANT EXECUTE ON FUNCTION geo_v2_begin_finalizing_knowledge_job(
     uuid, text, uuid, text, jsonb
-) TO geno_v2_worker;
-GRANT EXECUTE ON FUNCTION geno_v2_complete_knowledge_job(uuid, text, uuid)
-    TO geno_v2_worker;
-GRANT EXECUTE ON FUNCTION geno_v2_fail_knowledge_job(
+) TO geo_v2_worker;
+GRANT EXECUTE ON FUNCTION geo_v2_complete_knowledge_job(uuid, text, uuid)
+    TO geo_v2_worker;
+GRANT EXECUTE ON FUNCTION geo_v2_fail_knowledge_job(
     uuid, text, uuid, text, text, boolean, integer
-) TO geno_v2_worker;
-GRANT EXECUTE ON FUNCTION geno_v2_ack_knowledge_job_cancel(uuid, text, uuid)
-    TO geno_v2_worker;
-GRANT EXECUTE ON FUNCTION geno_v2_read_knowledge_job_input(uuid, text, uuid)
-    TO geno_v2_worker;
-GRANT EXECUTE ON FUNCTION geno_v2_knowledge_quality_certificate_complete(uuid)
-    TO geno_v2_job_command_owner;
-GRANT EXECUTE ON FUNCTION geno_v2_refresh_knowledge_pipeline_state(uuid)
-    TO geno_v2_job_command_owner;
+) TO geo_v2_worker;
+GRANT EXECUTE ON FUNCTION geo_v2_ack_knowledge_job_cancel(uuid, text, uuid)
+    TO geo_v2_worker;
+GRANT EXECUTE ON FUNCTION geo_v2_read_knowledge_job_input(uuid, text, uuid)
+    TO geo_v2_worker;
+GRANT EXECUTE ON FUNCTION geo_v2_knowledge_quality_certificate_complete(uuid)
+    TO geo_v2_job_command_owner;
+GRANT EXECUTE ON FUNCTION geo_v2_refresh_knowledge_pipeline_state(uuid)
+    TO geo_v2_job_command_owner;
 
-GRANT EXECUTE ON FUNCTION geno_v2_create_knowledge_quality_definition(
+GRANT EXECUTE ON FUNCTION geo_v2_create_knowledge_quality_definition(
     uuid, uuid, text, integer, text, text, text, jsonb
-) TO geno_v2_runtime;
-GRANT EXECUTE ON FUNCTION geno_v2_create_knowledge_governance_version(
+) TO geo_v2_runtime;
+GRANT EXECUTE ON FUNCTION geo_v2_create_knowledge_governance_version(
     uuid, uuid, uuid, jsonb, text
-) TO geno_v2_runtime;
-GRANT EXECUTE ON FUNCTION geno_v2_set_knowledge_source_status(uuid, text, text)
-    TO geno_v2_runtime;
-GRANT EXECUTE ON FUNCTION geno_v2_withdraw_knowledge_fact(uuid, text)
-    TO geno_v2_runtime;
-GRANT EXECUTE ON FUNCTION geno_v2_create_knowledge_job(
+) TO geo_v2_runtime;
+GRANT EXECUTE ON FUNCTION geo_v2_set_knowledge_source_status(uuid, text, text)
+    TO geo_v2_runtime;
+GRANT EXECUTE ON FUNCTION geo_v2_withdraw_knowledge_fact(uuid, text)
+    TO geo_v2_runtime;
+GRANT EXECUTE ON FUNCTION geo_v2_create_knowledge_job(
     uuid, uuid, uuid, uuid, uuid, text, text, jsonb, uuid
-) TO geno_v2_runtime;
-GRANT EXECUTE ON FUNCTION geno_v2_request_knowledge_job_cancel(uuid, text)
-    TO geno_v2_runtime;
-GRANT EXECUTE ON FUNCTION geno_v2_replay_knowledge_job(uuid, uuid, text)
-    TO geno_v2_runtime;
-GRANT EXECUTE ON FUNCTION geno_v2_retry_knowledge_pipeline_stage(uuid, uuid, text)
-    TO geno_v2_runtime;
-GRANT EXECUTE ON FUNCTION geno_v2_accept_knowledge_risk(uuid, uuid, text)
-    TO geno_v2_runtime;
-GRANT EXECUTE ON FUNCTION geno_v2_review_knowledge_fact_candidate(
+) TO geo_v2_runtime;
+GRANT EXECUTE ON FUNCTION geo_v2_request_knowledge_job_cancel(uuid, text)
+    TO geo_v2_runtime;
+GRANT EXECUTE ON FUNCTION geo_v2_replay_knowledge_job(uuid, uuid, text)
+    TO geo_v2_runtime;
+GRANT EXECUTE ON FUNCTION geo_v2_retry_knowledge_pipeline_stage(uuid, uuid, text)
+    TO geo_v2_runtime;
+GRANT EXECUTE ON FUNCTION geo_v2_accept_knowledge_risk(uuid, uuid, text)
+    TO geo_v2_runtime;
+GRANT EXECUTE ON FUNCTION geo_v2_review_knowledge_fact_candidate(
     uuid, uuid, uuid, uuid, text, text, uuid, text
-) TO geno_v2_runtime;
-GRANT EXECUTE ON FUNCTION geno_v2_read_approved_knowledge(uuid, text)
-    TO geno_v2_runtime;
+) TO geo_v2_runtime;
+GRANT EXECUTE ON FUNCTION geo_v2_read_approved_knowledge(uuid, text)
+    TO geo_v2_runtime;
 
 DO $verify_knowledge_function_boundary$
 DECLARE
     procedure_row record;
     expected_owner text;
     expected_names text[] := ARRAY[
-        'geno_v2_enqueue_durable_job_dispatch',
-        'geno_v2_reject_knowledge_immutable_update',
-        'geno_v2_guard_knowledge_asset_head',
-        'geno_v2_guard_candidate_transition', 'geno_v2_guard_fact_head',
-        'geno_v2_require_finalized_knowledge_artifact',
-        'geno_v2_require_finalized_parser_input',
-        'geno_v2_validate_knowledge_subject',
-        'geno_v2_validate_knowledge_job_result_type',
-        'geno_v2_validate_knowledge_revision_job_type',
-        'geno_v2_validate_knowledge_job_stage',
-        'geno_v2_knowledge_job_inputs_ready',
-        'geno_v2_require_ready_knowledge_job_inputs',
-        'geno_v2_read_knowledge_job_input',
-        'geno_v2_persist_knowledge_job_result',
-        'geno_v2_claim_knowledge_job', 'geno_v2_heartbeat_knowledge_job',
-        'geno_v2_begin_finalizing_knowledge_job',
-        'geno_v2_knowledge_quality_certificate_complete',
-        'geno_v2_refresh_knowledge_pipeline_state',
-        'geno_v2_complete_knowledge_job', 'geno_v2_fail_knowledge_job',
-        'geno_v2_ack_knowledge_job_cancel',
-        'geno_v2_create_knowledge_quality_definition',
-        'geno_v2_create_knowledge_governance_version',
-        'geno_v2_set_knowledge_source_status',
-        'geno_v2_withdraw_knowledge_fact',
-        'geno_v2_create_knowledge_job',
-        'geno_v2_request_knowledge_job_cancel',
-        'geno_v2_replay_knowledge_job',
-        'geno_v2_retry_knowledge_pipeline_stage',
-        'geno_v2_guard_knowledge_risk_acceptance',
-        'geno_v2_accept_knowledge_risk',
-        'geno_v2_validate_candidate_review_consistency',
-        'geno_v2_validate_fact_source_governance_lineage',
-        'geno_v2_review_knowledge_fact_candidate',
-        'geno_v2_read_approved_knowledge',
-        'geno_v2_validate_chunk_set_input_kind',
-        'geno_v2_validate_job_quality_definition'
+        'geo_v2_enqueue_durable_job_dispatch',
+        'geo_v2_reject_knowledge_immutable_update',
+        'geo_v2_guard_knowledge_asset_head',
+        'geo_v2_guard_candidate_transition', 'geo_v2_guard_fact_head',
+        'geo_v2_require_finalized_knowledge_artifact',
+        'geo_v2_require_finalized_parser_input',
+        'geo_v2_validate_knowledge_subject',
+        'geo_v2_validate_knowledge_job_result_type',
+        'geo_v2_validate_knowledge_revision_job_type',
+        'geo_v2_validate_knowledge_job_stage',
+        'geo_v2_knowledge_job_inputs_ready',
+        'geo_v2_require_ready_knowledge_job_inputs',
+        'geo_v2_read_knowledge_job_input',
+        'geo_v2_persist_knowledge_job_result',
+        'geo_v2_claim_knowledge_job', 'geo_v2_heartbeat_knowledge_job',
+        'geo_v2_begin_finalizing_knowledge_job',
+        'geo_v2_knowledge_quality_certificate_complete',
+        'geo_v2_refresh_knowledge_pipeline_state',
+        'geo_v2_complete_knowledge_job', 'geo_v2_fail_knowledge_job',
+        'geo_v2_ack_knowledge_job_cancel',
+        'geo_v2_create_knowledge_quality_definition',
+        'geo_v2_create_knowledge_governance_version',
+        'geo_v2_set_knowledge_source_status',
+        'geo_v2_withdraw_knowledge_fact',
+        'geo_v2_create_knowledge_job',
+        'geo_v2_request_knowledge_job_cancel',
+        'geo_v2_replay_knowledge_job',
+        'geo_v2_retry_knowledge_pipeline_stage',
+        'geo_v2_guard_knowledge_risk_acceptance',
+        'geo_v2_accept_knowledge_risk',
+        'geo_v2_validate_candidate_review_consistency',
+        'geo_v2_validate_fact_source_governance_lineage',
+        'geo_v2_review_knowledge_fact_candidate',
+        'geo_v2_read_approved_knowledge',
+        'geo_v2_validate_chunk_set_input_kind',
+        'geo_v2_validate_job_quality_definition'
     ];
     runtime_entrypoints text[] := ARRAY[
-        'geno_v2_create_knowledge_quality_definition',
-        'geno_v2_create_knowledge_governance_version',
-        'geno_v2_set_knowledge_source_status',
-        'geno_v2_withdraw_knowledge_fact',
-        'geno_v2_create_knowledge_job',
-        'geno_v2_request_knowledge_job_cancel',
-        'geno_v2_replay_knowledge_job',
-        'geno_v2_retry_knowledge_pipeline_stage',
-        'geno_v2_accept_knowledge_risk',
-        'geno_v2_review_knowledge_fact_candidate',
-        'geno_v2_read_approved_knowledge'
+        'geo_v2_create_knowledge_quality_definition',
+        'geo_v2_create_knowledge_governance_version',
+        'geo_v2_set_knowledge_source_status',
+        'geo_v2_withdraw_knowledge_fact',
+        'geo_v2_create_knowledge_job',
+        'geo_v2_request_knowledge_job_cancel',
+        'geo_v2_replay_knowledge_job',
+        'geo_v2_retry_knowledge_pipeline_stage',
+        'geo_v2_accept_knowledge_risk',
+        'geo_v2_review_knowledge_fact_candidate',
+        'geo_v2_read_approved_knowledge'
     ];
     worker_entrypoints text[] := ARRAY[
-        'geno_v2_claim_knowledge_job', 'geno_v2_heartbeat_knowledge_job',
-        'geno_v2_begin_finalizing_knowledge_job',
-        'geno_v2_complete_knowledge_job', 'geno_v2_fail_knowledge_job',
-        'geno_v2_ack_knowledge_job_cancel',
-        'geno_v2_read_knowledge_job_input'
+        'geo_v2_claim_knowledge_job', 'geo_v2_heartbeat_knowledge_job',
+        'geo_v2_begin_finalizing_knowledge_job',
+        'geo_v2_complete_knowledge_job', 'geo_v2_fail_knowledge_job',
+        'geo_v2_ack_knowledge_job_cancel',
+        'geo_v2_read_knowledge_job_input'
     ];
 BEGIN
     IF (
@@ -5541,33 +5541,33 @@ BEGIN
           AND procedure.proname = ANY(expected_names)
     LOOP
         expected_owner := CASE
-            WHEN procedure_row.proname = 'geno_v2_read_approved_knowledge'
-                THEN 'geno_v2_authz_owner'
+            WHEN procedure_row.proname = 'geo_v2_read_approved_knowledge'
+                THEN 'geo_v2_authz_owner'
             WHEN procedure_row.proname = ANY(ARRAY[
-                'geno_v2_claim_knowledge_job', 'geno_v2_heartbeat_knowledge_job',
-                'geno_v2_begin_finalizing_knowledge_job',
-                'geno_v2_knowledge_quality_certificate_complete',
-                'geno_v2_refresh_knowledge_pipeline_state',
-                'geno_v2_complete_knowledge_job', 'geno_v2_fail_knowledge_job',
-                'geno_v2_ack_knowledge_job_cancel',
-                'geno_v2_knowledge_job_inputs_ready',
-                'geno_v2_require_ready_knowledge_job_inputs',
-                'geno_v2_read_knowledge_job_input'
-            ]) THEN 'geno_v2_job_owner'
+                'geo_v2_claim_knowledge_job', 'geo_v2_heartbeat_knowledge_job',
+                'geo_v2_begin_finalizing_knowledge_job',
+                'geo_v2_knowledge_quality_certificate_complete',
+                'geo_v2_refresh_knowledge_pipeline_state',
+                'geo_v2_complete_knowledge_job', 'geo_v2_fail_knowledge_job',
+                'geo_v2_ack_knowledge_job_cancel',
+                'geo_v2_knowledge_job_inputs_ready',
+                'geo_v2_require_ready_knowledge_job_inputs',
+                'geo_v2_read_knowledge_job_input'
+            ]) THEN 'geo_v2_job_owner'
             WHEN procedure_row.proname = ANY(ARRAY[
-                'geno_v2_persist_knowledge_job_result',
-                'geno_v2_reject_knowledge_immutable_update',
-                'geno_v2_guard_knowledge_asset_head', 'geno_v2_guard_fact_head',
-                'geno_v2_require_finalized_knowledge_artifact',
-                'geno_v2_require_finalized_parser_input',
-                'geno_v2_validate_knowledge_subject',
-                'geno_v2_validate_knowledge_job_result_type',
-                'geno_v2_validate_knowledge_revision_job_type',
-                'geno_v2_validate_chunk_set_input_kind',
-                'geno_v2_validate_job_quality_definition',
-                'geno_v2_validate_fact_source_governance_lineage'
-            ]) THEN 'geno_v2_result_owner'
-            ELSE 'geno_v2_job_command_owner'
+                'geo_v2_persist_knowledge_job_result',
+                'geo_v2_reject_knowledge_immutable_update',
+                'geo_v2_guard_knowledge_asset_head', 'geo_v2_guard_fact_head',
+                'geo_v2_require_finalized_knowledge_artifact',
+                'geo_v2_require_finalized_parser_input',
+                'geo_v2_validate_knowledge_subject',
+                'geo_v2_validate_knowledge_job_result_type',
+                'geo_v2_validate_knowledge_revision_job_type',
+                'geo_v2_validate_chunk_set_input_kind',
+                'geo_v2_validate_job_quality_definition',
+                'geo_v2_validate_fact_source_governance_lineage'
+            ]) THEN 'geo_v2_result_owner'
+            ELSE 'geo_v2_job_command_owner'
         END;
         IF procedure_row.owner_name <> expected_owner
            OR NOT procedure_row.prosecdef
@@ -5576,10 +5576,10 @@ BEGIN
                 procedure_row.oid::regprocedure;
         END IF;
         IF has_function_privilege(
-            'geno_v2_runtime', procedure_row.oid, 'EXECUTE'
+            'geo_v2_runtime', procedure_row.oid, 'EXECUTE'
         ) IS DISTINCT FROM (procedure_row.proname = ANY(runtime_entrypoints))
            OR has_function_privilege(
-               'geno_v2_worker', procedure_row.oid, 'EXECUTE'
+               'geo_v2_worker', procedure_row.oid, 'EXECUTE'
            ) IS DISTINCT FROM (procedure_row.proname = ANY(worker_entrypoints)) THEN
             RAISE EXCEPTION 'Knowledge function % runtime/worker ACL drifted',
                 procedure_row.oid::regprocedure;
@@ -5595,22 +5595,22 @@ BEGIN
             WHERE acl.privilege_type = 'EXECUTE'
               AND acl.grantee <> procedure_row.proowner
               AND NOT (
-                  grantee_role.rolname = 'geno_v2_runtime'
+                  grantee_role.rolname = 'geo_v2_runtime'
                   AND procedure_row.proname = ANY(runtime_entrypoints)
               )
               AND NOT (
-                  grantee_role.rolname = 'geno_v2_worker'
+                  grantee_role.rolname = 'geo_v2_worker'
                   AND procedure_row.proname = ANY(worker_entrypoints)
               )
               AND NOT (
-                  grantee_role.rolname = 'geno_v2_job_owner'
-                  AND procedure_row.proname = 'geno_v2_persist_knowledge_job_result'
+                  grantee_role.rolname = 'geo_v2_job_owner'
+                  AND procedure_row.proname = 'geo_v2_persist_knowledge_job_result'
               )
               AND NOT (
-                  grantee_role.rolname = 'geno_v2_job_command_owner'
+                  grantee_role.rolname = 'geo_v2_job_command_owner'
                   AND procedure_row.proname = ANY(ARRAY[
-                      'geno_v2_knowledge_quality_certificate_complete',
-                      'geno_v2_refresh_knowledge_pipeline_state'
+                      'geo_v2_knowledge_quality_certificate_complete',
+                      'geo_v2_refresh_knowledge_pipeline_state'
                   ])
               )
         ) THEN
@@ -5623,8 +5623,8 @@ $verify_knowledge_function_boundary$;
 
 DO $verify_knowledge_owner_role_isolation$
 DECLARE owner_role_names text[] := ARRAY[
-    'geno_v2_job_owner', 'geno_v2_result_owner',
-    'geno_v2_job_command_owner', 'geno_v2_authz_owner'
+    'geo_v2_job_owner', 'geo_v2_result_owner',
+    'geo_v2_job_command_owner', 'geo_v2_authz_owner'
 ];
 BEGIN
     IF EXISTS (
@@ -5689,9 +5689,9 @@ BEGIN
         END IF;
         FOREACH privilege_name IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE'] LOOP
             IF has_table_privilege(
-                'geno_v2_runtime', format('public.%I', table_name), privilege_name
+                'geo_v2_runtime', format('public.%I', table_name), privilege_name
             ) OR has_table_privilege(
-                'geno_v2_worker', format('public.%I', table_name), privilege_name
+                'geo_v2_worker', format('public.%I', table_name), privilege_name
             ) THEN
                 RAISE EXCEPTION 'runtime or worker has forbidden % on %', privilege_name, table_name;
             END IF;
@@ -5704,7 +5704,7 @@ BEGIN
             coalesce(procedure.proacl, acldefault('f', procedure.proowner))
         ) AS acl
         WHERE namespace.nspname = 'public'
-          AND procedure.proname LIKE 'geno_v2_%knowledge%'
+          AND procedure.proname LIKE 'geo_v2_%knowledge%'
           AND acl.grantee = 0 AND acl.privilege_type = 'EXECUTE'
     ) THEN
         RAISE EXCEPTION 'PUBLIC can execute a Schema v2 Knowledge function';
@@ -5822,28 +5822,28 @@ DECLARE
 BEGIN
     FOREACH table_name IN ARRAY domain_tables LOOP
         FOREACH role_name IN ARRAY ARRAY[
-            'geno_v2_job_owner', 'geno_v2_result_owner', 'geno_v2_job_command_owner'
+            'geo_v2_job_owner', 'geo_v2_result_owner', 'geo_v2_job_command_owner'
         ] LOOP
             FOREACH privilege_name IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE'] LOOP
                 expected := CASE
-                    WHEN role_name = 'geno_v2_result_owner' AND privilege_name = 'SELECT'
+                    WHEN role_name = 'geo_v2_result_owner' AND privilege_name = 'SELECT'
                         THEN table_name = ANY(result_select)
-                    WHEN role_name = 'geno_v2_result_owner' AND privilege_name = 'INSERT'
+                    WHEN role_name = 'geo_v2_result_owner' AND privilege_name = 'INSERT'
                         THEN table_name = ANY(result_insert)
-                    WHEN role_name = 'geno_v2_result_owner' AND privilege_name = 'UPDATE'
+                    WHEN role_name = 'geo_v2_result_owner' AND privilege_name = 'UPDATE'
                         THEN table_name = 'knowledge_source_assets'
-                    WHEN role_name = 'geno_v2_job_owner' AND privilege_name = 'SELECT'
+                    WHEN role_name = 'geo_v2_job_owner' AND privilege_name = 'SELECT'
                         THEN table_name = ANY(job_select)
-                    WHEN role_name = 'geno_v2_job_owner' AND privilege_name = 'UPDATE'
+                    WHEN role_name = 'geo_v2_job_owner' AND privilege_name = 'UPDATE'
                         THEN table_name = ANY(ARRAY[
                             'knowledge_pipeline_jobs', 'knowledge_pipeline_stages',
                             'knowledge_pipeline_runs'
                         ])
-                    WHEN role_name = 'geno_v2_job_command_owner' AND privilege_name = 'SELECT'
+                    WHEN role_name = 'geo_v2_job_command_owner' AND privilege_name = 'SELECT'
                         THEN table_name = ANY(command_select)
-                    WHEN role_name = 'geno_v2_job_command_owner' AND privilege_name = 'INSERT'
+                    WHEN role_name = 'geo_v2_job_command_owner' AND privilege_name = 'INSERT'
                         THEN table_name = ANY(command_insert)
-                    WHEN role_name = 'geno_v2_job_command_owner' AND privilege_name = 'UPDATE'
+                    WHEN role_name = 'geo_v2_job_command_owner' AND privilege_name = 'UPDATE'
                         THEN table_name = ANY(ARRAY[
                             'knowledge_pipeline_runs', 'knowledge_pipeline_stages',
                             'knowledge_pipeline_jobs', 'knowledge_source_assets',
@@ -5868,5 +5868,5 @@ COMMENT ON TABLE knowledge_pipeline_jobs IS
     'Unified Knowledge durable queue. Expired running work may re-execute; expired finalizing work only resumes finalize.';
 COMMENT ON TABLE knowledge_source_governance_versions IS
     'Immutable source governance snapshot. Authority ordering is A(4) > B(3) > C(2) > D(1).';
-COMMENT ON FUNCTION geno_v2_read_approved_knowledge(uuid, text) IS
+COMMENT ON FUNCTION geo_v2_read_approved_knowledge(uuid, text) IS
     'Safe Approved Knowledge projection; never returns source URI, locator, or internal governance metadata.';

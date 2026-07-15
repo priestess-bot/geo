@@ -168,9 +168,9 @@ def _verification_commands() -> list[dict[str, str]]:
         {
             "id": "hard_env_gate",
             "shell": (
-                "PYTHONPATH=packages/geno_core:apps/api "
+                "PYTHONPATH=packages/geo_core:apps/api "
                 "python3 scripts/verify_au_p0a_env_report.py "
-                "${GENO_AU_P0A_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-env-latest.json} "
+                "${GEO_AU_P0A_ENV_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-env-latest.json} "
                 "--require-ready-environment"
             ),
             "purpose": "Fail until PERPLEXITY_API_KEY, OPENAI_API_KEY and DATABASE_URL are present.",
@@ -182,7 +182,7 @@ def _verification_commands() -> list[dict[str, str]]:
         },
         {
             "id": "readiness_with_db",
-            "shell": "GENO_AU_P0A_REQUIRE_DB_CHECK=1 make au-p0a-readiness",
+            "shell": "GEO_AU_P0A_REQUIRE_DB_CHECK=1 make au-p0a-readiness",
             "purpose": "Optionally verify DATABASE_URL with a read-only PostgreSQL check before real batches.",
         },
         {"id": "refresh_status", "shell": "make au-p0a-status && make verify-au-p0a-status", "purpose": "Refresh P0a status blockers."},
@@ -317,27 +317,27 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build an AU P0a environment setup checklist JSON")
     parser.add_argument(
         "--runbook-path",
-        default=os.environ.get("GENO_AU_P0A_RUNBOOK_OUTPUT_PATH", DEFAULT_RUNBOOK_PATH),
+        default=os.environ.get("GEO_AU_P0A_RUNBOOK_OUTPUT_PATH", DEFAULT_RUNBOOK_PATH),
         help="Path to the AU P0a runbook JSON.",
     )
     parser.add_argument(
         "--environment-path",
-        default=os.environ.get("GENO_AU_P0A_ENV_OUTPUT_PATH", DEFAULT_ENV_REPORT_PATH),
+        default=os.environ.get("GEO_AU_P0A_ENV_OUTPUT_PATH", DEFAULT_ENV_REPORT_PATH),
         help="Path to the AU P0a environment report JSON.",
     )
     parser.add_argument(
         "--status-path",
-        default=os.environ.get("GENO_AU_P0A_STATUS_OUTPUT_PATH", DEFAULT_STATUS_PATH),
+        default=os.environ.get("GEO_AU_P0A_STATUS_OUTPUT_PATH", DEFAULT_STATUS_PATH),
         help="Path to the AU P0a status report JSON.",
     )
     parser.add_argument(
         "--env-file",
-        default=os.environ.get("GENO_AU_P0A_ENV_FILE", DEFAULT_ENV_FILE),
+        default=os.environ.get("GEO_AU_P0A_ENV_FILE", DEFAULT_ENV_FILE),
         help="Optional env file to parse if the environment report is missing.",
     )
     parser.add_argument(
         "--output-path",
-        default=os.environ.get("GENO_AU_P0A_ENVIRONMENT_CHECKLIST_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_P0A_ENVIRONMENT_CHECKLIST_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to write the AU P0a environment checklist JSON.",
     )
     parser.add_argument(

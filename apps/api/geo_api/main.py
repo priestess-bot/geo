@@ -1,0 +1,12427 @@
+from __future__ import annotations
+
+import base64
+import csv
+import hashlib
+import hmac
+import io
+import json
+import logging
+import email
+import os
+import re
+import secrets
+import threading
+import time
+import uuid
+from collections.abc import Mapping
+from contextvars import ContextVar
+from dataclasses import asdict, is_dataclass, replace
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+from urllib.parse import urlencode, urlparse
+
+import httpx
+from fastapi import FastAPI, Header, HTTPException, Query, Request
+from pydantic import BaseModel, Field
+from fastapi.responses import JSONResponse, Response
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric import padding, rsa
+from cryptography.hazmat.primitives import hashes
+
+from geo_api.access_logging import persist_runtime_http_access_log
+from geo_api.auth_context import AuthContext, build_anonymous_auth_context, build_user_auth_context
+from geo_api.auth_routes import register_auth_routes
+from geo_api.ops_routes import register_ops_routes
+from geo_api.runtime_access_routes import register_runtime_access_routes
+from geo_api.runtime_metrics import (
+    observe_api_request,
+    reset_runtime_metrics,  # noqa: F401 - re-exported for API contract tests and runtime reset helpers.
+)
+from geo_core.action_plan import (
+    build_action_plan_audit_event,
+    build_action_recommendations,
+    build_retest_schedule,
+    build_retest_comparison_audit_event,
+    compare_retest_windows,
+)
+from geo_core.collection_jobs import CollectionJobStore
+from geo_core.durable_jobs import JobStateConflictError
+from geo_core.analysis_pipeline import analyze_and_score_records
+from geo_core.audit import build_audit_event
+from geo_core.auth_delivery import AuthDeliveryError, AuthDeliveryKeyring, auth_session_cookie_secure
+from geo_core.bootstrap import DEFAULT_AU_COMPETITORS, build_au_project_bootstrap, build_project_bootstrap
+from geo_core.collection import (
+    build_manual_backfill_record,
+    build_p0a_collection_plan,
+    run_collection_slice,
+    run_fixture_collection_slice,
+)
+from geo_core.collectors import (
+    FixtureGoogleAIModeCollector,
+    FixtureGoogleAIOCollector,
+    FixtureOpenAIWebSearchCollector,
+    FixturePerplexitySonarCollector,
+)
+from geo_core.google_spike import (
+    build_google_spike_plan,
+    evaluate_google_spike_gate,
+    evaluate_google_spike_readiness_gate,
+    select_google_spike_prompts,
+)
+from geo_core.graph import build_citation_graph
+from geo_core.geo_placement import GeoPlacementError, GeoPlacementRepository
+from geo_core.industry import build_au_dtc_ecommerce_profile
+from geo_core.knowledge import (
+    build_content_drafts,
+    build_content_engine_audit_event,
+    build_integration_connectors,
+    build_localized_knowledge_facts,
+    build_manual_distribution_records,
+    search_knowledge_facts,
+)
+from geo_core.knowledge_application import load_deepseek_api_key, normalize_knowledge_url
+from geo_core.knowledge_pipeline import (
+    DEFAULT_EMBEDDING_DIMENSION,
+    DEFAULT_EMBEDDING_MODEL,
+    DEFAULT_EMBEDDING_MODEL_VERSION,
+    DEFAULT_QDRANT_COLLECTION,
+    KnowledgeImportCreateInput,
+    KnowledgePipelineCreateInput,
+    QdrantKnowledgeStore,
+    archive_knowledge_source_asset,
+    close_knowledge_repository,
+    connect_knowledge_pipeline_repository,
+    precheck_knowledge_source,
+    source_config_text,
+)
+from geo_core.market import build_au_market_profile
+from geo_core.models import (
+    CollectionFailureRecord,
+    EntityAliasCandidateAssignmentActionInput,
+    EntityAliasCandidateAssignmentBatchActionInput,
+    EntityAliasCandidateAssignmentInput,
+    EntityAliasCandidateAssignmentReassignmentInput,
+    EntityAliasAssignmentDispatchApplyInput,
+    EntityAliasAssignmentDispatchPlanInput,
+    EntityAliasCandidateReviewInput,
+    EntityAliasInput,
+    RuntimeAlertEventInput,
+    RuntimeActionRecommendationUpdateInput,
+    RuntimeConnectorSecretInput,
+    RuntimeContentDraftReviewInput,
+    RuntimeEntityAliasBatchConfirmResult,
+    RuntimeHumanReviewInput,
+    RuntimeKnowledgeApplicationRequest,
+    RuntimeKnowledgeDocumentCrawlInput,
+    RuntimeKnowledgeDocumentExtractionInput,
+    RuntimeKnowledgeDocumentInput,
+    RuntimeKnowledgeFactReviewInput,
+    ManualBackfillInput,
+    RuntimeManualDistributionBackfillInput,
+    RuntimeKnowledgeFactImportInput,
+    RuntimeProjectBrandAssetInput,
+    RuntimeProjectBrandAssetScanInput,
+    RuntimeProjectBrandKitInput,
+    RuntimeProjectBrandEntityInput,
+    RuntimeProjectCompetitorEntityInput,
+    RuntimeProjectBrandAssetActivationInput,
+    RuntimeProjectBrandLogoUpload,
+    RuntimeProjectMemberDeleteInput,
+    RuntimeProjectMemberInput,
+    RuntimeProjectMemberInvitationActionInput,
+    RuntimeProjectMemberInvitationEmailInput,
+    RuntimeProjectMemberInvitationInput,
+    RuntimeProjectActionInput,
+    RawEvidenceRecord,
+    RuntimeProjectLaunchConfigInput,
+    RuntimeProjectUpdateInput,
+    RuntimePromptImportInput,
+    RuntimePromptCandidateImportInput,
+    RuntimePromptCandidateReviewInput,
+    RuntimePromptUpdateInput,
+    RuntimeNotificationEmailFeedbackInput,
+    RuntimeNotificationEmailFeedbackProjectSuppressionInput,
+    RuntimeNotificationEmailSuppressionInput,
+    RuntimeNotificationEmailPreferenceResubscribeInput,
+    RuntimeNotificationEmailPreferenceUnsubscribeInput,
+    RuntimeNotificationEmailFeedbackSuppressionInput,
+    RuntimeNotificationSubscriptionInput,
+    RuntimeNotificationStatusInput,
+    RuntimeReportExportJobInput,
+    RuntimeReportExportJobStatusInput,
+    RuntimeReportManagementInput,
+    RuntimeSavedViewInput,
+    RuntimeScoreWeightConfigInput,
+    RuntimeScoreWeightProfileInput,
+)
+from geo_core.object_store import ObjectStoreError, archive_project_brand_logo, parse_s3_uri
+from geo_core.prompt_import import prompt_import_file_to_csv
+from geo_core.report import MarkdownCsvReportExporter
+from geo_core.rbac import normalize_role
+from geo_core.runtime import (
+    RuntimePersistenceError,
+    build_object_store_from_env,
+    build_repository_from_env,
+    close_repository_connection,
+    close_runtime_postgres_pool,
+    validate_runtime_schema_compatibility,
+)
+from geo_core.scoring import get_score_formula, list_score_formulas, normalize_score_weights
+from geo_core.task_queue import dispatch_background_task, task_queue_broker_url, task_queue_enabled
+from geo_core.traceability import build_traceability_bundle
+from geo_core.email_preferences import (
+    RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_MANAGE_ACTION,
+    RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_UNSUBSCRIBE_ACTION,
+    verify_runtime_notification_email_preference_token,
+)
+from geo_core.email_feedback_adapters import (
+    RUNTIME_NOTIFICATION_EMAIL_PROVIDER_FEEDBACK_ADAPTER_VERSION,
+    parse_runtime_notification_email_provider_feedback,
+)
+from geo_core.email_feedback_signatures import verify_runtime_notification_email_provider_signature
+from geo_core.webhook_signing import (
+    RUNTIME_NOTIFICATION_WEBHOOK_DELIVERY_ID_HEADER,
+    RUNTIME_NOTIFICATION_WEBHOOK_NOTIFICATION_ID_HEADER,
+    RUNTIME_NOTIFICATION_WEBHOOK_PAYLOAD_HASH_HEADER,
+    runtime_notification_webhook_payload_hash,
+    verify_runtime_notification_webhook_signature,
+)
+from workers.collector_worker.run_collection_slice import (
+    _collectors as worker_collectors,
+    _load_runtime_project_bootstrap,
+    _persist_records as persist_worker_collection_records,
+)
+from scripts.build_au_launch_status import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_LAUNCH_STATUS_OUTPUT_PATH,
+    DEFAULT_P0A_STATUS_PATH,
+    DEFAULT_P0B_GOOGLE_EXECUTION_PATH,
+    DEFAULT_P0B_GOOGLE_PACKAGE_PATH,
+    DEFAULT_P0B_GOOGLE_RUNBOOK_PATH,
+    DEFAULT_P0B_GOOGLE_STATUS_PATH,
+    DEFAULT_P0C_REPORT_PACKAGE_PATH,
+    build_au_launch_status,
+)
+from scripts.build_au_launch_remediation_plan import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_LAUNCH_REMEDIATION_PLAN_OUTPUT_PATH,
+    build_au_launch_remediation_plan,
+)
+from scripts.build_au_handoff_dossier import (
+    DEFAULT_MARKDOWN_OUTPUT_PATH as DEFAULT_AU_HANDOFF_DOSSIER_MARKDOWN_OUTPUT_PATH,
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_HANDOFF_DOSSIER_OUTPUT_PATH,
+    build_au_handoff_dossier,
+)
+from scripts.build_au_customer_handoff_readiness import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_CUSTOMER_HANDOFF_READINESS_OUTPUT_PATH,
+    build_au_customer_handoff_readiness,
+)
+from scripts.build_au_customer_handoff_clearance import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_CUSTOMER_HANDOFF_CLEARANCE_OUTPUT_PATH,
+    build_au_customer_handoff_clearance,
+)
+from scripts.build_au_customer_handoff_package import (
+    DEFAULT_HANDOFF_DOSSIER_MARKDOWN_PATH as DEFAULT_AU_HANDOFF_DOSSIER_MARKDOWN_PATH,
+    DEFAULT_MARKDOWN_OUTPUT_PATH as DEFAULT_AU_CUSTOMER_HANDOFF_PACKAGE_MARKDOWN_OUTPUT_PATH,
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_CUSTOMER_HANDOFF_PACKAGE_OUTPUT_PATH,
+    build_au_customer_handoff_package,
+)
+from scripts.build_au_next_work_item_packet import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_NEXT_WORK_ITEM_OUTPUT_PATH,
+    build_au_next_work_item_packet,
+)
+from scripts.build_au_delivery_progress import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_DELIVERY_PROGRESS_OUTPUT_PATH,
+    build_au_delivery_progress,
+)
+from scripts.build_au_p0a_credential_request_packet import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0A_CREDENTIAL_REQUEST_OUTPUT_PATH,
+    build_au_p0a_credential_request_packet,
+)
+from scripts.build_au_p0a_credential_fulfillment import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0A_CREDENTIAL_FULFILLMENT_OUTPUT_PATH,
+    build_au_p0a_credential_fulfillment,
+)
+from scripts.build_au_p0a_credential_clearance import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH,
+    build_au_p0a_credential_clearance,
+)
+from scripts.build_au_p0a_credential_update_receipt import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH,
+    build_au_p0a_credential_update_receipt,
+)
+from scripts.build_au_p0a_real_batch_request_packet import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0A_REAL_BATCH_REQUEST_OUTPUT_PATH,
+    build_au_p0a_real_batch_request_packet,
+)
+from scripts.build_au_p0a_real_batch_fulfillment import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0A_REAL_BATCH_FULFILLMENT_OUTPUT_PATH,
+    build_au_p0a_real_batch_fulfillment,
+)
+from scripts.build_au_p0a_real_batch_clearance import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0A_REAL_BATCH_CLEARANCE_OUTPUT_PATH,
+    build_au_p0a_real_batch_clearance,
+)
+from scripts.build_au_external_dependency_handoff import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH,
+    build_au_external_dependency_handoff,
+)
+from scripts.run_au_external_dependency_clearance import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH,
+    run_au_external_dependency_clearance,
+)
+from scripts.build_au_broader_platform_registry import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_BROADER_PLATFORM_REGISTRY_OUTPUT_PATH,
+    build_au_broader_platform_registry,
+)
+from scripts.build_au_retest_execution_status import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_RETEST_EXECUTION_STATUS_OUTPUT_PATH,
+    build_au_retest_execution_status,
+)
+from scripts.build_au_retest_scheduler_plan import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_RETEST_SCHEDULER_PLAN_OUTPUT_PATH,
+    build_au_retest_scheduler_plan,
+)
+from scripts.build_au_p0a_environment_checklist import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0A_ENVIRONMENT_CHECKLIST_OUTPUT_PATH,
+    build_au_p0a_environment_checklist,
+)
+from scripts.build_au_p0a_execution_checklist import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH,
+    build_au_p0a_execution_checklist,
+)
+from scripts.build_au_p0a_env_report import (
+    DEFAULT_ENV_FILE as DEFAULT_AU_P0A_ENV_FILE,
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0A_ENV_OUTPUT_PATH,
+)
+from scripts.build_au_p0a_evidence_package import DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0A_PACKAGE_OUTPUT_PATH
+from scripts.build_au_p0a_runbook import DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0A_RUNBOOK_OUTPUT_PATH
+from scripts.run_au_p0a_runbook import DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH
+from scripts.verify_au_p0a_readiness import DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0A_READINESS_OUTPUT_PATH
+from scripts.build_au_p0b_google_execution_checklist import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH,
+    build_au_p0b_google_execution_checklist,
+)
+from scripts.build_au_p0b_google_environment_request_packet import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH,
+    build_au_p0b_google_environment_request_packet,
+)
+from scripts.build_au_p0b_google_environment_fulfillment import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0B_GOOGLE_ENVIRONMENT_FULFILLMENT_OUTPUT_PATH,
+    build_au_p0b_google_environment_fulfillment,
+)
+from scripts.build_au_p0b_google_environment_clearance import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0B_GOOGLE_ENVIRONMENT_CLEARANCE_OUTPUT_PATH,
+    build_au_p0b_google_environment_clearance,
+)
+from scripts.build_au_p0b_google_manual_backfill_request_packet import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0B_GOOGLE_MANUAL_BACKFILL_REQUEST_OUTPUT_PATH,
+    build_au_p0b_google_manual_backfill_request_packet,
+)
+from scripts.build_au_p0b_google_manual_backfill_fulfillment import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH,
+    build_au_p0b_google_manual_backfill_fulfillment,
+)
+from scripts.build_au_p0b_google_manual_backfill_clearance import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0B_GOOGLE_MANUAL_BACKFILL_CLEARANCE_OUTPUT_PATH,
+    build_au_p0b_google_manual_backfill_clearance,
+)
+from scripts.build_au_p0b_google_phase_execution_request_packet import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0B_GOOGLE_PHASE_EXECUTION_REQUEST_OUTPUT_PATH,
+    build_au_p0b_google_phase_execution_request_packet,
+)
+from scripts.build_au_p0b_google_phase_execution_fulfillment import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0B_GOOGLE_PHASE_EXECUTION_FULFILLMENT_OUTPUT_PATH,
+    build_au_p0b_google_phase_execution_fulfillment,
+)
+from scripts.build_au_p0b_google_phase_execution_clearance import (
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0B_GOOGLE_PHASE_EXECUTION_CLEARANCE_OUTPUT_PATH,
+    build_au_p0b_google_phase_execution_clearance,
+)
+from scripts.build_au_p0b_google_playwright_env_report import (
+    DEFAULT_ENV_FILE as DEFAULT_AU_P0B_GOOGLE_ENV_FILE,
+    DEFAULT_OUTPUT_PATH as DEFAULT_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH,
+    build_google_playwright_env_report,
+)
+
+app = FastAPI(title="GEO Production API", version="1.0.0")
+register_ops_routes(app)
+
+
+@app.on_event("shutdown")
+def close_runtime_resources() -> None:
+    close_runtime_postgres_pool()
+
+RUNTIME_PROJECT_ACCESS_CONTROL_ENV = "GEO_RUNTIME_PROJECT_ACCESS_CONTROL"
+DEPLOYMENT_ENVIRONMENT_ENV = "GEO_DEPLOYMENT_ENVIRONMENT"
+RUNTIME_ACTOR_HEADER = "X-GEO-Actor-Id"
+RUNTIME_AUTH_MODE_ENV = "GEO_RUNTIME_AUTH_MODE"
+RUNTIME_AUTH_MODE_HEADER = "header"
+RUNTIME_AUTH_MODE_JWT = "jwt"
+RUNTIME_AUTH_MODE_JWKS = "jwks"
+RUNTIME_AUTH_MODE_SESSION = "session"
+RUNTIME_AUTH_MODES = {
+    RUNTIME_AUTH_MODE_HEADER,
+    RUNTIME_AUTH_MODE_JWT,
+    RUNTIME_AUTH_MODE_JWKS,
+    RUNTIME_AUTH_MODE_SESSION,
+}
+RUNTIME_SESSION_COOKIE_NAME = "GEO_RUNTIME_SESSION"
+RUNTIME_SESSION_HEADER = "X-GEO-Session-Token"
+RUNTIME_SESSION_COOKIE_SECURE_ENV = "GEO_RUNTIME_SESSION_COOKIE_SECURE"
+RUNTIME_CSRF_COOKIE_NAME = "GEO_CSRF_TOKEN"
+RUNTIME_CSRF_HEADER = "X-GEO-CSRF-Token"
+DEFAULT_RUNTIME_SESSION_TTL_SECONDS = 604800
+RUNTIME_JWT_SECRET_ENV = "GEO_RUNTIME_JWT_SECRET"
+RUNTIME_JWKS_JSON_ENV = "GEO_RUNTIME_JWKS_JSON"
+RUNTIME_JWKS_URL_ENV = "GEO_RUNTIME_JWKS_URL"
+RUNTIME_OIDC_DISCOVERY_URL_ENV = "GEO_RUNTIME_OIDC_DISCOVERY_URL"
+RUNTIME_JWKS_CACHE_TTL_SECONDS_ENV = "GEO_RUNTIME_JWKS_CACHE_TTL_SECONDS"
+RUNTIME_JWKS_STALE_IF_ERROR_SECONDS_ENV = "GEO_RUNTIME_JWKS_STALE_IF_ERROR_SECONDS"
+RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS_ENV = "GEO_RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS"
+RUNTIME_OIDC_DISCOVERY_STALE_IF_ERROR_SECONDS_ENV = "GEO_RUNTIME_OIDC_DISCOVERY_STALE_IF_ERROR_SECONDS"
+RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS_ENV = "GEO_RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS"
+DEFAULT_RUNTIME_JWKS_CACHE_TTL_SECONDS = 300.0
+DEFAULT_RUNTIME_JWKS_STALE_IF_ERROR_SECONDS = 0.0
+DEFAULT_RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS = 300.0
+DEFAULT_RUNTIME_OIDC_DISCOVERY_STALE_IF_ERROR_SECONDS = 0.0
+DEFAULT_RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS = 2.0
+RUNTIME_JWT_ALGORITHM_ENV = "GEO_RUNTIME_JWT_ALGORITHM"
+RUNTIME_JWT_ACTOR_CLAIM_ENV = "GEO_RUNTIME_JWT_ACTOR_CLAIM"
+RUNTIME_JWT_ISSUER_ENV = "GEO_RUNTIME_JWT_ISSUER"
+RUNTIME_JWT_AUDIENCE_ENV = "GEO_RUNTIME_JWT_AUDIENCE"
+RUNTIME_JWT_CLOCK_SKEW_SECONDS_ENV = "GEO_RUNTIME_JWT_CLOCK_SKEW_SECONDS"
+RUNTIME_PROJECT_ACCESS_CONTROL_ENABLED_VALUES = {"1", "true", "yes", "on"}
+DEV_TOOLS_ENABLED_ENV = "GEO_DEV_TOOLS_ENABLED"
+REPORT_ARTIFACT_SIGNING_SECRET_ENV = "GEO_REPORT_ARTIFACT_SIGNING_SECRET"
+REPORT_ARTIFACT_SIGNED_URL_TTL_SECONDS_ENV = "GEO_REPORT_ARTIFACT_SIGNED_URL_TTL_SECONDS"
+DEFAULT_REPORT_ARTIFACT_SIGNED_URL_TTL_SECONDS = 900.0
+MAX_REPORT_ARTIFACT_SIGNED_URL_TTL_SECONDS = 86400.0
+RUNTIME_CUSTOMER_PORTAL_ACCESS_HEADER = "X-GEO-Customer-Portal-Access"
+RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_SECRET_ENV = "GEO_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_SECRET"
+RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_SECRET_ID_ENV = "GEO_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_SECRET_ID"
+RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_TOLERANCE_SECONDS_ENV = (
+    "GEO_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_TOLERANCE_SECONDS"
+)
+DEFAULT_RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_TOLERANCE_SECONDS = 300.0
+RUNTIME_NOTIFICATION_EMAIL_PROVIDER_WEBHOOK_SECRET_HEADER = "x-geo-provider-webhook-secret"
+RUNTIME_NOTIFICATION_EMAIL_PROVIDER_WEBHOOK_DELIVERY_ID_HEADER = "x-geo-provider-delivery-id"
+RUNTIME_NOTIFICATION_EMAIL_PROVIDER_SIGNATURE_TOLERANCE_SECONDS_ENV = (
+    "GEO_NOTIFICATION_EMAIL_PROVIDER_SIGNATURE_TOLERANCE_SECONDS"
+)
+RUNTIME_NOTIFICATION_EMAIL_SENDGRID_PUBLIC_KEY_ENV = "GEO_NOTIFICATION_EMAIL_SENDGRID_PUBLIC_KEY"
+RUNTIME_NOTIFICATION_EMAIL_MAILGUN_SIGNING_KEY_ENV = "GEO_NOTIFICATION_EMAIL_MAILGUN_SIGNING_KEY"
+RUNTIME_NOTIFICATION_EMAIL_POSTMARK_BASIC_USERNAME_ENV = "GEO_NOTIFICATION_EMAIL_POSTMARK_BASIC_USERNAME"
+RUNTIME_NOTIFICATION_EMAIL_POSTMARK_BASIC_PASSWORD_ENV = "GEO_NOTIFICATION_EMAIL_POSTMARK_BASIC_PASSWORD"
+RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET_ENV = "GEO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET"
+PROJECT_MANAGE_ROLES = ("owner", "admin")
+GEO_CONTENT_WRITE_ROLES = ("owner", "admin", "content_operator")
+GEO_REVIEW_ROLES = ("owner", "admin", "reviewer")
+GEO_VERIFICATION_ROLES = ("owner", "admin", "reviewer", "analyst", "content_operator")
+KNOWLEDGE_RISK_ACCEPT_ROLES = ("owner", "admin", "project_admin", "internal_operator", "compliance_reviewer")
+PROJECT_ANALYZE_ROLES = ("owner", "admin", "analyst")
+CUSTOMER_PORTAL_REPORT_READY_STATUS = "client_ready"
+CUSTOMER_PORTAL_ROLES = {"viewer", "client_viewer"}
+REPORT_MANAGEMENT_STATUS_ALIASES = {
+    "pending_review": "internal_review",
+    "approved": "internal_review",
+    "published": CUSTOMER_PORTAL_REPORT_READY_STATUS,
+    "revoked": "archived",
+}
+_RUNTIME_JWT_ACTOR_ID: ContextVar[str | None] = ContextVar("geo_runtime_jwt_actor_id", default=None)
+_RUNTIME_SESSION_AUTH_CONTEXT: ContextVar[AuthContext | None] = ContextVar(
+    "geo_runtime_session_auth_context",
+    default=None,
+)
+REQUEST_ID_HEADER = "X-GEO-Request-Id"
+RUNTIME_ACCESS_LOGGER = logging.getLogger("geo_api.access")
+_RUNTIME_JWKS_CACHE_LOCK = threading.Lock()
+_RUNTIME_JWKS_CACHE_URL: str | None = None
+_RUNTIME_JWKS_CACHE: dict[str, Any] | None = None
+_RUNTIME_JWKS_CACHE_EXPIRES_AT = 0.0
+_RUNTIME_OIDC_DISCOVERY_CACHE_LOCK = threading.Lock()
+_RUNTIME_OIDC_DISCOVERY_CACHE_URL: str | None = None
+_RUNTIME_OIDC_DISCOVERY_CACHE: dict[str, Any] | None = None
+_RUNTIME_OIDC_DISCOVERY_CACHE_EXPIRES_AT = 0.0
+
+
+def runtime_project_access_control_enabled() -> bool:
+    return (
+        os.getenv(RUNTIME_PROJECT_ACCESS_CONTROL_ENV, "").strip().lower()
+        in RUNTIME_PROJECT_ACCESS_CONTROL_ENABLED_VALUES
+    )
+
+
+def dev_tools_enabled() -> bool:
+    return os.getenv(DEV_TOOLS_ENABLED_ENV, "").strip().lower() in RUNTIME_PROJECT_ACCESS_CONTROL_ENABLED_VALUES
+
+
+def runtime_session_cookie_secure() -> bool:
+    try:
+        return auth_session_cookie_secure()
+    except AuthDeliveryError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+def require_dev_tools_enabled() -> None:
+    if not dev_tools_enabled():
+        raise HTTPException(status_code=404, detail=f"developer-only endpoint requires {DEV_TOOLS_ENABLED_ENV}=1")
+
+
+def runtime_auth_mode() -> str:
+    mode = os.getenv(RUNTIME_AUTH_MODE_ENV, RUNTIME_AUTH_MODE_HEADER).strip().lower() or RUNTIME_AUTH_MODE_HEADER
+    if mode not in RUNTIME_AUTH_MODES:
+        raise HTTPException(status_code=503, detail=f"{RUNTIME_AUTH_MODE_ENV} must be header, jwt, jwks, or session")
+    return mode
+
+
+def validate_production_runtime_security() -> None:
+    deployment = os.getenv(DEPLOYMENT_ENVIRONMENT_ENV, "development").strip().lower() or "development"
+    if deployment not in {"production", "prod"}:
+        return
+    errors: list[str] = []
+    if not runtime_project_access_control_enabled():
+        errors.append(f"{RUNTIME_PROJECT_ACCESS_CONTROL_ENV}=1 is required")
+    auth_mode = runtime_auth_mode()
+    if auth_mode == RUNTIME_AUTH_MODE_HEADER:
+        errors.append(f"{RUNTIME_AUTH_MODE_ENV}=header is forbidden")
+    try:
+        secure_cookie = auth_session_cookie_secure()
+    except AuthDeliveryError as exc:
+        errors.append(str(exc))
+        secure_cookie = False
+    if not secure_cookie:
+        errors.append(f"{RUNTIME_SESSION_COOKIE_SECURE_ENV}=1 is required")
+    try:
+        AuthDeliveryKeyring.from_env()
+    except AuthDeliveryError as exc:
+        errors.append(f"auth delivery keyring is invalid: {exc}")
+    connector_key = os.getenv("GEO_CONNECTOR_SECRET_MASTER_KEY", "").strip()
+    if not connector_key or connector_key == "geo-local-connector-secret-master-key":
+        errors.append("GEO_CONNECTOR_SECRET_MASTER_KEY must be a non-default secret")
+    if not os.getenv(REPORT_ARTIFACT_SIGNING_SECRET_ENV, "").strip():
+        errors.append(f"{REPORT_ARTIFACT_SIGNING_SECRET_ENV} is required")
+    if not os.getenv("GEO_PDF_RENDERER_URL", "").strip():
+        errors.append("GEO_PDF_RENDERER_URL is required")
+    if os.getenv("GEO_REPORT_PDF_RENDERER_REQUIRED", "").strip().lower() not in RUNTIME_PROJECT_ACCESS_CONTROL_ENABLED_VALUES:
+        errors.append("GEO_REPORT_PDF_RENDERER_REQUIRED=1 is required")
+    if not task_queue_enabled():
+        errors.append("GEO_TASK_QUEUE_ENABLED=1 is required")
+    if not task_queue_broker_url():
+        errors.append("GEO_TASK_QUEUE_BROKER_URL is required")
+    if dev_tools_enabled():
+        errors.append(f"{DEV_TOOLS_ENABLED_ENV} must be disabled")
+    if errors:
+        raise RuntimeError("unsafe Production runtime configuration: " + "; ".join(errors))
+
+
+@app.on_event("startup")
+def validate_production_startup() -> None:
+    validate_production_runtime_security()
+    validate_runtime_schema_compatibility()
+
+
+def _runtime_jwt_secret() -> str:
+    secret = os.getenv(RUNTIME_JWT_SECRET_ENV, "").strip()
+    if not secret:
+        raise HTTPException(status_code=503, detail=f"{RUNTIME_JWT_SECRET_ENV} is required when {RUNTIME_AUTH_MODE_ENV}=jwt")
+    return secret
+
+
+def _validate_runtime_jwks(jwks: object, *, source: str) -> dict[str, Any]:
+    if not isinstance(jwks, dict) or not isinstance(jwks.get("keys"), list):
+        raise HTTPException(status_code=503, detail=f"{source} must contain a JWKS keys array")
+    if not jwks["keys"]:
+        raise HTTPException(status_code=503, detail=f"{source} must contain at least one JWKS key")
+    return jwks
+
+
+def _validate_runtime_http_url(value: str, *, source: str) -> str:
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise HTTPException(status_code=503, detail=f"{source} must be an http or https URL")
+    return value
+
+
+def _runtime_jwks_url() -> str:
+    jwks_url = os.getenv(RUNTIME_JWKS_URL_ENV, "").strip()
+    if not jwks_url:
+        return ""
+    return _validate_runtime_http_url(jwks_url, source=RUNTIME_JWKS_URL_ENV)
+
+
+def _runtime_oidc_discovery_url() -> str:
+    discovery_url = os.getenv(RUNTIME_OIDC_DISCOVERY_URL_ENV, "").strip()
+    if discovery_url:
+        return _validate_runtime_http_url(discovery_url, source=RUNTIME_OIDC_DISCOVERY_URL_ENV)
+    issuer = os.getenv(RUNTIME_JWT_ISSUER_ENV, "").strip()
+    if not issuer:
+        return ""
+    _validate_runtime_http_url(
+        issuer,
+        source=f"{RUNTIME_JWT_ISSUER_ENV} when used for OIDC discovery",
+    )
+    return f"{issuer.rstrip('/')}/.well-known/openid-configuration"
+
+
+def _non_negative_float_env(key: str, default: float) -> float:
+    raw_value = os.getenv(key, str(default)).strip() or str(default)
+    try:
+        value = float(raw_value)
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=f"{key} must be a non-negative number") from exc
+    if value < 0:
+        raise HTTPException(status_code=503, detail=f"{key} must be a non-negative number")
+    return value
+
+
+def _positive_float_env(key: str, default: float) -> float:
+    raw_value = os.getenv(key, str(default)).strip() or str(default)
+    try:
+        value = float(raw_value)
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=f"{key} must be a positive number") from exc
+    if value <= 0:
+        raise HTTPException(status_code=503, detail=f"{key} must be a positive number")
+    return value
+
+
+def _runtime_jwks_cache_ttl_seconds() -> float:
+    return _non_negative_float_env(RUNTIME_JWKS_CACHE_TTL_SECONDS_ENV, DEFAULT_RUNTIME_JWKS_CACHE_TTL_SECONDS)
+
+
+def _runtime_jwks_stale_if_error_seconds() -> float:
+    return _non_negative_float_env(
+        RUNTIME_JWKS_STALE_IF_ERROR_SECONDS_ENV,
+        DEFAULT_RUNTIME_JWKS_STALE_IF_ERROR_SECONDS,
+    )
+
+
+def _runtime_oidc_discovery_cache_ttl_seconds() -> float:
+    return _non_negative_float_env(
+        RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS_ENV,
+        DEFAULT_RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS,
+    )
+
+
+def _runtime_oidc_discovery_stale_if_error_seconds() -> float:
+    return _non_negative_float_env(
+        RUNTIME_OIDC_DISCOVERY_STALE_IF_ERROR_SECONDS_ENV,
+        DEFAULT_RUNTIME_OIDC_DISCOVERY_STALE_IF_ERROR_SECONDS,
+    )
+
+
+def _runtime_jwks_fetch_timeout_seconds() -> float:
+    return _positive_float_env(RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS_ENV, DEFAULT_RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS)
+
+
+def _report_artifact_signing_secret() -> str:
+    secret = os.getenv(REPORT_ARTIFACT_SIGNING_SECRET_ENV, "").strip()
+    if not secret:
+        raise HTTPException(status_code=503, detail=f"{REPORT_ARTIFACT_SIGNING_SECRET_ENV} is required")
+    return secret
+
+
+def _report_artifact_signed_url_ttl_seconds() -> int:
+    ttl = _positive_float_env(
+        REPORT_ARTIFACT_SIGNED_URL_TTL_SECONDS_ENV,
+        DEFAULT_REPORT_ARTIFACT_SIGNED_URL_TTL_SECONDS,
+    )
+    if ttl > MAX_REPORT_ARTIFACT_SIGNED_URL_TTL_SECONDS:
+        raise HTTPException(
+            status_code=503,
+            detail=f"{REPORT_ARTIFACT_SIGNED_URL_TTL_SECONDS_ENV} must be <= {int(MAX_REPORT_ARTIFACT_SIGNED_URL_TTL_SECONDS)}",
+        )
+    return int(ttl)
+
+
+def _runtime_notification_email_feedback_webhook_secret() -> str:
+    secret = os.getenv(RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_SECRET_ENV, "")
+    if not secret:
+        raise HTTPException(
+            status_code=503,
+            detail=f"{RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_SECRET_ENV} is required",
+        )
+    return secret
+
+
+def _runtime_notification_email_feedback_webhook_secret_id() -> str:
+    return os.getenv(RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_SECRET_ID_ENV, "email-feedback-webhook").strip() or "email-feedback-webhook"
+
+
+def _runtime_notification_email_feedback_webhook_tolerance_seconds() -> int:
+    return int(
+        _positive_float_env(
+            RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_TOLERANCE_SECONDS_ENV,
+            DEFAULT_RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_TOLERANCE_SECONDS,
+        )
+    )
+
+
+def _runtime_notification_email_preference_token_secret() -> str:
+    secret = os.getenv(RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET_ENV, "")
+    if not secret:
+        raise HTTPException(
+            status_code=503,
+            detail=f"{RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET_ENV} is required",
+        )
+    return secret
+
+
+def _verify_runtime_notification_email_preference_token(
+    *,
+    token: str,
+    action: str,
+) -> object:
+    return _verify_runtime_notification_email_preference_token_for_actions(token=token, actions=(action,))
+
+
+def _verify_runtime_notification_email_preference_token_for_actions(
+    *,
+    token: str,
+    actions: tuple[str, ...],
+) -> object:
+    secret = _runtime_notification_email_preference_token_secret()
+    verifications = [
+        verify_runtime_notification_email_preference_token(
+            secret=secret,
+            token=token,
+            action=action,
+        )
+        for action in actions
+    ]
+    for verification in verifications:
+        if verification.valid and verification.claims is not None:
+            return verification
+    first_error = next(
+        (verification for verification in verifications if verification.reason != "action_mismatch"),
+        verifications[0],
+    )
+    status_code = 410 if any(verification.reason == "token_expired" for verification in verifications) else 401
+    raise HTTPException(
+        status_code=status_code,
+        detail=f"runtime notification email preference token invalid: {first_error.reason}",
+    )
+
+def _verify_runtime_notification_email_feedback_webhook(
+    *,
+    request: Request,
+    body: bytes,
+) -> dict[str, object]:
+    secret = _runtime_notification_email_feedback_webhook_secret()
+    secret_id = _runtime_notification_email_feedback_webhook_secret_id()
+    verification = verify_runtime_notification_webhook_signature(
+        headers=dict(request.headers),
+        body=body,
+        secret=secret,
+        secret_id=secret_id,
+        tolerance_seconds=_runtime_notification_email_feedback_webhook_tolerance_seconds(),
+    )
+    if not verification.valid:
+        raise HTTPException(
+            status_code=401,
+            detail=f"runtime notification email feedback webhook signature invalid: {verification.reason}",
+        )
+    return {
+        "source": "runtime_notification_email_feedback_webhook",
+        "signature_reason": verification.reason,
+        "signature_payload_hash": verification.payload_hash,
+        "signature_key_id": verification.signature_key_id,
+        "matched_secret_id": verification.matched_secret_id,
+        "checked_secret_count": verification.checked_secret_count,
+        "signature_age_seconds": verification.age_seconds,
+        "delivery_id_header": request.headers.get(RUNTIME_NOTIFICATION_WEBHOOK_DELIVERY_ID_HEADER),
+        "notification_id_header": request.headers.get(RUNTIME_NOTIFICATION_WEBHOOK_NOTIFICATION_ID_HEADER),
+        "payload_hash_header": request.headers.get(RUNTIME_NOTIFICATION_WEBHOOK_PAYLOAD_HASH_HEADER),
+    }
+
+
+def _verify_runtime_notification_email_provider_feedback_webhook(request: Request, *, body: bytes) -> dict[str, object]:
+    secret = _runtime_notification_email_feedback_webhook_secret()
+    provided = request.headers.get(RUNTIME_NOTIFICATION_EMAIL_PROVIDER_WEBHOOK_SECRET_HEADER, "")
+    if not provided or not hmac.compare_digest(provided, secret):
+        raise HTTPException(status_code=401, detail="runtime notification email provider feedback webhook secret invalid")
+    return {
+        "source": "runtime_notification_email_provider_feedback_webhook",
+        "provider_webhook_secret_header_present": True,
+        "provider_webhook_secret_id": _runtime_notification_email_feedback_webhook_secret_id(),
+        "provider_webhook_payload_hash": runtime_notification_webhook_payload_hash(body),
+        "provider_webhook_delivery_id_header": request.headers.get(
+            RUNTIME_NOTIFICATION_EMAIL_PROVIDER_WEBHOOK_DELIVERY_ID_HEADER
+        ),
+    }
+
+
+def _verify_runtime_notification_email_provider_native_signature(
+    *,
+    provider: str,
+    request: Request,
+    body: bytes,
+    payload: object,
+) -> dict[str, object]:
+    verification = verify_runtime_notification_email_provider_signature(
+        provider=provider,
+        headers=dict(request.headers),
+        body=body,
+        payload=payload,
+        sendgrid_public_key=os.getenv(RUNTIME_NOTIFICATION_EMAIL_SENDGRID_PUBLIC_KEY_ENV, ""),
+        mailgun_signing_key=os.getenv(RUNTIME_NOTIFICATION_EMAIL_MAILGUN_SIGNING_KEY_ENV, ""),
+        postmark_basic_username=os.getenv(RUNTIME_NOTIFICATION_EMAIL_POSTMARK_BASIC_USERNAME_ENV, ""),
+        postmark_basic_password=os.getenv(RUNTIME_NOTIFICATION_EMAIL_POSTMARK_BASIC_PASSWORD_ENV, ""),
+        tolerance_seconds=int(
+            _positive_float_env(
+                RUNTIME_NOTIFICATION_EMAIL_PROVIDER_SIGNATURE_TOLERANCE_SECONDS_ENV,
+                DEFAULT_RUNTIME_NOTIFICATION_EMAIL_FEEDBACK_WEBHOOK_TOLERANCE_SECONDS,
+            )
+        ),
+    )
+    if not verification.valid:
+        raise HTTPException(
+            status_code=401,
+            detail=f"runtime notification email provider native signature invalid: {verification.reason}",
+        )
+    return verification.metadata()
+
+
+def _report_artifact_signature_payload(
+    *,
+    report_export_id: str,
+    artifact_type: str,
+    template: str,
+    client_name: str | None,
+    prepared_by: str | None,
+    platform: str | None,
+    city: str | None,
+    intent_type: str | None,
+    status: str | None,
+    sort: str | None,
+    expires_at: int,
+    actor_id: str | None,
+    customer_portal_access: bool = False,
+) -> dict[str, object]:
+    return {
+        "actor_id": actor_id or "",
+        "city": city or "",
+        "client_name": client_name or "",
+        "customer_portal_access": bool(customer_portal_access),
+        "expires_at": expires_at,
+        "intent_type": intent_type or "",
+        "platform": platform or "",
+        "prepared_by": prepared_by or "",
+        "report_export_id": report_export_id.strip(),
+        "sort": sort or "",
+        "status": status or "",
+        "template": template,
+        "type": artifact_type,
+    }
+
+
+def _canonical_report_artifact_signature_payload(payload: dict[str, object]) -> bytes:
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+
+def _sign_report_artifact_payload(payload: dict[str, object]) -> str:
+    digest = hmac.new(
+        _report_artifact_signing_secret().encode("utf-8"),
+        _canonical_report_artifact_signature_payload(payload),
+        hashlib.sha256,
+    ).digest()
+    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+
+
+def _verify_report_artifact_signature(payload: dict[str, object], signature: str | None) -> None:
+    if not signature:
+        raise HTTPException(status_code=401, detail="report artifact signature is required")
+    try:
+        expires_at = int(payload["expires_at"])
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=401, detail="report artifact signed URL is invalid") from exc
+    if expires_at < int(time.time()):
+        raise HTTPException(status_code=401, detail="report artifact signed URL has expired")
+    expected = _sign_report_artifact_payload(payload)
+    if not hmac.compare_digest(signature, expected):
+        raise HTTPException(status_code=401, detail="report artifact signature is invalid")
+
+
+def _is_truthy_header(value: str | None) -> bool:
+    return (value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _context_is_customer_portal_viewer(context: AuthContext) -> bool:
+    roles = {role.strip().lower() for role in context.roles if role.strip()}
+    return bool(roles & CUSTOMER_PORTAL_ROLES)
+
+
+def _absolute_url_for_request(request: Request, path: str, query: dict[str, object]) -> str:
+    base_url = str(request.base_url).rstrip("/")
+    query_string = urlencode(
+        {
+            key: str(value)
+            for key, value in query.items()
+            if value is not None and str(value) != ""
+        }
+    )
+    return f"{base_url}{path}?{query_string}" if query_string else f"{base_url}{path}"
+
+
+def _runtime_jwks_from_json(raw_value: str) -> dict[str, Any]:
+    try:
+        jwks = json.loads(raw_value)
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=f"{RUNTIME_JWKS_JSON_ENV} must be valid JWKS JSON") from exc
+    return _validate_runtime_jwks(jwks, source=RUNTIME_JWKS_JSON_ENV)
+
+
+def _runtime_stale_jwks_if_allowed(jwks_url: str) -> dict[str, Any] | None:
+    stale_seconds = _runtime_jwks_stale_if_error_seconds()
+    if stale_seconds <= 0:
+        return None
+    now = time.time()
+    with _RUNTIME_JWKS_CACHE_LOCK:
+        if (
+            _RUNTIME_JWKS_CACHE_URL == jwks_url
+            and _RUNTIME_JWKS_CACHE is not None
+            and now < _RUNTIME_JWKS_CACHE_EXPIRES_AT + stale_seconds
+        ):
+            return _RUNTIME_JWKS_CACHE
+    return None
+
+
+def _runtime_jwks_from_url(jwks_url: str) -> dict[str, Any]:
+    global _RUNTIME_JWKS_CACHE_URL, _RUNTIME_JWKS_CACHE, _RUNTIME_JWKS_CACHE_EXPIRES_AT
+    now = time.time()
+    with _RUNTIME_JWKS_CACHE_LOCK:
+        if _RUNTIME_JWKS_CACHE_URL == jwks_url and _RUNTIME_JWKS_CACHE is not None and now < _RUNTIME_JWKS_CACHE_EXPIRES_AT:
+            return _RUNTIME_JWKS_CACHE
+    try:
+        response = httpx.get(
+            jwks_url,
+            timeout=_runtime_jwks_fetch_timeout_seconds(),
+            follow_redirects=True,
+        )
+        response.raise_for_status()
+        jwks = response.json()
+    except httpx.TimeoutException as exc:
+        stale_jwks = _runtime_stale_jwks_if_allowed(jwks_url)
+        if stale_jwks is not None:
+            return stale_jwks
+        raise HTTPException(status_code=503, detail="runtime JWKS URL fetch timed out") from exc
+    except httpx.HTTPStatusError as exc:
+        stale_jwks = _runtime_stale_jwks_if_allowed(jwks_url)
+        if stale_jwks is not None:
+            return stale_jwks
+        raise HTTPException(status_code=503, detail=f"runtime JWKS URL returned status {exc.response.status_code}") from exc
+    except (httpx.HTTPError, ValueError) as exc:
+        stale_jwks = _runtime_stale_jwks_if_allowed(jwks_url)
+        if stale_jwks is not None:
+            return stale_jwks
+        raise HTTPException(status_code=503, detail="runtime JWKS URL fetch failed") from exc
+
+    try:
+        validated_jwks = _validate_runtime_jwks(jwks, source=RUNTIME_JWKS_URL_ENV)
+    except HTTPException:
+        stale_jwks = _runtime_stale_jwks_if_allowed(jwks_url)
+        if stale_jwks is not None:
+            return stale_jwks
+        raise
+    cache_expires_at = time.time() + _runtime_jwks_cache_ttl_seconds()
+    with _RUNTIME_JWKS_CACHE_LOCK:
+        _RUNTIME_JWKS_CACHE_URL = jwks_url
+        _RUNTIME_JWKS_CACHE = validated_jwks
+        _RUNTIME_JWKS_CACHE_EXPIRES_AT = cache_expires_at
+    return validated_jwks
+
+
+def _runtime_stale_oidc_discovery_document_if_allowed(discovery_url: str) -> dict[str, Any] | None:
+    stale_seconds = _runtime_oidc_discovery_stale_if_error_seconds()
+    if stale_seconds <= 0:
+        return None
+    now = time.time()
+    with _RUNTIME_OIDC_DISCOVERY_CACHE_LOCK:
+        if (
+            _RUNTIME_OIDC_DISCOVERY_CACHE_URL == discovery_url
+            and _RUNTIME_OIDC_DISCOVERY_CACHE is not None
+            and now < _RUNTIME_OIDC_DISCOVERY_CACHE_EXPIRES_AT + stale_seconds
+        ):
+            return _RUNTIME_OIDC_DISCOVERY_CACHE
+    return None
+
+
+def _runtime_oidc_discovery_document(discovery_url: str) -> dict[str, Any]:
+    global _RUNTIME_OIDC_DISCOVERY_CACHE_URL, _RUNTIME_OIDC_DISCOVERY_CACHE, _RUNTIME_OIDC_DISCOVERY_CACHE_EXPIRES_AT
+    now = time.time()
+    with _RUNTIME_OIDC_DISCOVERY_CACHE_LOCK:
+        if (
+            _RUNTIME_OIDC_DISCOVERY_CACHE_URL == discovery_url
+            and _RUNTIME_OIDC_DISCOVERY_CACHE is not None
+            and now < _RUNTIME_OIDC_DISCOVERY_CACHE_EXPIRES_AT
+        ):
+            return _RUNTIME_OIDC_DISCOVERY_CACHE
+    try:
+        response = httpx.get(
+            discovery_url,
+            timeout=_runtime_jwks_fetch_timeout_seconds(),
+            follow_redirects=True,
+        )
+        response.raise_for_status()
+        document = response.json()
+    except httpx.TimeoutException as exc:
+        stale_document = _runtime_stale_oidc_discovery_document_if_allowed(discovery_url)
+        if stale_document is not None:
+            return stale_document
+        raise HTTPException(status_code=503, detail="runtime OIDC discovery fetch timed out") from exc
+    except httpx.HTTPStatusError as exc:
+        stale_document = _runtime_stale_oidc_discovery_document_if_allowed(discovery_url)
+        if stale_document is not None:
+            return stale_document
+        raise HTTPException(
+            status_code=503,
+            detail=f"runtime OIDC discovery returned status {exc.response.status_code}",
+        ) from exc
+    except (httpx.HTTPError, ValueError) as exc:
+        stale_document = _runtime_stale_oidc_discovery_document_if_allowed(discovery_url)
+        if stale_document is not None:
+            return stale_document
+        raise HTTPException(status_code=503, detail="runtime OIDC discovery fetch failed") from exc
+
+    if not isinstance(document, dict):
+        stale_document = _runtime_stale_oidc_discovery_document_if_allowed(discovery_url)
+        if stale_document is not None:
+            return stale_document
+        raise HTTPException(status_code=503, detail="runtime OIDC discovery document must be a JSON object")
+    jwks_uri = document.get("jwks_uri")
+    if not isinstance(jwks_uri, str) or not jwks_uri.strip():
+        stale_document = _runtime_stale_oidc_discovery_document_if_allowed(discovery_url)
+        if stale_document is not None:
+            return stale_document
+        raise HTTPException(status_code=503, detail="runtime OIDC discovery document must contain jwks_uri")
+    validated_document = dict(document)
+    try:
+        validated_document["jwks_uri"] = _validate_runtime_http_url(
+            jwks_uri.strip(),
+            source="runtime OIDC discovery jwks_uri",
+        )
+    except HTTPException:
+        stale_document = _runtime_stale_oidc_discovery_document_if_allowed(discovery_url)
+        if stale_document is not None:
+            return stale_document
+        raise
+    cache_expires_at = time.time() + _runtime_oidc_discovery_cache_ttl_seconds()
+    with _RUNTIME_OIDC_DISCOVERY_CACHE_LOCK:
+        _RUNTIME_OIDC_DISCOVERY_CACHE_URL = discovery_url
+        _RUNTIME_OIDC_DISCOVERY_CACHE = validated_document
+        _RUNTIME_OIDC_DISCOVERY_CACHE_EXPIRES_AT = cache_expires_at
+    return validated_document
+
+
+def _runtime_jwks_from_oidc_discovery() -> dict[str, Any]:
+    discovery_url = _runtime_oidc_discovery_url()
+    if not discovery_url:
+        return {}
+    discovery_document = _runtime_oidc_discovery_document(discovery_url)
+    return _runtime_jwks_from_url(str(discovery_document["jwks_uri"]))
+
+
+def _ensure_runtime_jwks_configured() -> None:
+    raw_value = os.getenv(RUNTIME_JWKS_JSON_ENV, "").strip()
+    if raw_value:
+        _runtime_jwks_from_json(raw_value)
+        return
+    if _runtime_jwks_url():
+        _runtime_jwks_cache_ttl_seconds()
+        _runtime_jwks_stale_if_error_seconds()
+        _runtime_jwks_fetch_timeout_seconds()
+        return
+    if _runtime_oidc_discovery_url():
+        _runtime_jwks_cache_ttl_seconds()
+        _runtime_jwks_stale_if_error_seconds()
+        _runtime_oidc_discovery_cache_ttl_seconds()
+        _runtime_oidc_discovery_stale_if_error_seconds()
+        _runtime_jwks_fetch_timeout_seconds()
+        return
+    raise HTTPException(
+        status_code=503,
+        detail=(
+            f"{RUNTIME_JWKS_JSON_ENV}, {RUNTIME_JWKS_URL_ENV}, {RUNTIME_OIDC_DISCOVERY_URL_ENV}, "
+            f"or URL-form {RUNTIME_JWT_ISSUER_ENV} is required when {RUNTIME_AUTH_MODE_ENV}=jwks"
+        ),
+    )
+
+
+def _runtime_jwks() -> dict[str, Any]:
+    raw_value = os.getenv(RUNTIME_JWKS_JSON_ENV, "").strip()
+    if raw_value:
+        return _runtime_jwks_from_json(raw_value)
+    jwks_url = _runtime_jwks_url()
+    if jwks_url:
+        return _runtime_jwks_from_url(jwks_url)
+    oidc_jwks = _runtime_jwks_from_oidc_discovery()
+    if oidc_jwks:
+        return oidc_jwks
+    raise HTTPException(
+        status_code=503,
+        detail=(
+            f"{RUNTIME_JWKS_JSON_ENV}, {RUNTIME_JWKS_URL_ENV}, {RUNTIME_OIDC_DISCOVERY_URL_ENV}, "
+            f"or URL-form {RUNTIME_JWT_ISSUER_ENV} is required when {RUNTIME_AUTH_MODE_ENV}=jwks"
+        ),
+    )
+
+
+def reset_runtime_auth_caches() -> None:
+    global _RUNTIME_JWKS_CACHE_URL, _RUNTIME_JWKS_CACHE, _RUNTIME_JWKS_CACHE_EXPIRES_AT
+    global _RUNTIME_OIDC_DISCOVERY_CACHE_URL, _RUNTIME_OIDC_DISCOVERY_CACHE, _RUNTIME_OIDC_DISCOVERY_CACHE_EXPIRES_AT
+    with _RUNTIME_JWKS_CACHE_LOCK:
+        _RUNTIME_JWKS_CACHE_URL = None
+        _RUNTIME_JWKS_CACHE = None
+        _RUNTIME_JWKS_CACHE_EXPIRES_AT = 0.0
+    with _RUNTIME_OIDC_DISCOVERY_CACHE_LOCK:
+        _RUNTIME_OIDC_DISCOVERY_CACHE_URL = None
+        _RUNTIME_OIDC_DISCOVERY_CACHE = None
+        _RUNTIME_OIDC_DISCOVERY_CACHE_EXPIRES_AT = 0.0
+
+
+def _base64url_decode(value: str) -> bytes:
+    padding = "=" * (-len(value) % 4)
+    return base64.urlsafe_b64decode((value + padding).encode("ascii"))
+
+
+def _json_from_base64url(value: str) -> dict[str, object]:
+    try:
+        decoded = _base64url_decode(value)
+        payload = json.loads(decoded.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise HTTPException(status_code=401, detail="invalid runtime JWT payload") from exc
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=401, detail="invalid runtime JWT payload")
+    return payload
+
+
+def _int_from_base64url(value: object, *, field: str) -> int:
+    if not isinstance(value, str) or not value:
+        raise HTTPException(status_code=503, detail=f"runtime JWKS RSA key is missing {field}")
+    try:
+        return int.from_bytes(_base64url_decode(value), "big")
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=f"runtime JWKS RSA key has invalid {field}") from exc
+
+
+def _runtime_jwt_clock_skew_seconds() -> int:
+    raw_value = os.getenv(RUNTIME_JWT_CLOCK_SKEW_SECONDS_ENV, "30").strip() or "30"
+    try:
+        return max(0, int(raw_value))
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=f"{RUNTIME_JWT_CLOCK_SKEW_SECONDS_ENV} must be an integer") from exc
+
+
+def _validate_runtime_jwt_claims(payload: dict[str, object]) -> str:
+    try:
+        now = time.time()
+        clock_skew = _runtime_jwt_clock_skew_seconds()
+        exp = payload.get("exp")
+        if exp is not None and now > float(exp) + clock_skew:
+            raise HTTPException(status_code=401, detail="runtime JWT has expired")
+        nbf = payload.get("nbf")
+        if nbf is not None and now + clock_skew < float(nbf):
+            raise HTTPException(status_code=401, detail="runtime JWT is not active yet")
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=401, detail="invalid runtime JWT temporal claim") from exc
+    issuer = os.getenv(RUNTIME_JWT_ISSUER_ENV, "").strip()
+    if issuer and payload.get("iss") != issuer:
+        raise HTTPException(status_code=401, detail="runtime JWT issuer is not allowed")
+    audience = os.getenv(RUNTIME_JWT_AUDIENCE_ENV, "").strip()
+    if audience:
+        token_audience = payload.get("aud")
+        allowed = token_audience if isinstance(token_audience, list) else [token_audience]
+        if audience not in allowed:
+            raise HTTPException(status_code=401, detail="runtime JWT audience is not allowed")
+    actor_claim = os.getenv(RUNTIME_JWT_ACTOR_CLAIM_ENV, "sub").strip() or "sub"
+    actor_id = str(payload.get(actor_claim, "")).strip()
+    if not actor_id:
+        raise HTTPException(status_code=401, detail=f"runtime JWT claim {actor_claim} is required")
+    return actor_id
+
+
+def _verify_runtime_hs256_jwt(parts: list[str], header: dict[str, object]) -> dict[str, object]:
+    algorithm = os.getenv(RUNTIME_JWT_ALGORITHM_ENV, "HS256").strip().upper() or "HS256"
+    if algorithm != "HS256":
+        raise HTTPException(status_code=503, detail="only HS256 runtime JWT verification is currently supported")
+    if str(header.get("alg", "")).upper() != algorithm:
+        raise HTTPException(status_code=401, detail="runtime JWT algorithm is not allowed")
+    expected_signature = hmac.new(
+        _runtime_jwt_secret().encode("utf-8"),
+        f"{parts[0]}.{parts[1]}".encode("ascii"),
+        hashlib.sha256,
+    ).digest()
+    try:
+        actual_signature = _base64url_decode(parts[2])
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail="invalid runtime JWT signature") from exc
+    if not hmac.compare_digest(actual_signature, expected_signature):
+        raise HTTPException(status_code=401, detail="invalid runtime JWT signature")
+    return _json_from_base64url(parts[1])
+
+
+def _select_runtime_jwks_key(header: dict[str, object]) -> dict[str, object]:
+    kid = str(header.get("kid", "")).strip()
+    keys = _runtime_jwks()["keys"]
+    matches: list[dict[str, object]] = []
+    for key in keys:
+        if not isinstance(key, dict):
+            continue
+        if key.get("kty") != "RSA":
+            continue
+        if key.get("use") not in {None, "sig"}:
+            continue
+        if kid and key.get("kid") != kid:
+            continue
+        if key.get("alg") not in {None, "RS256"}:
+            continue
+        matches.append(key)
+    if not matches:
+        raise HTTPException(status_code=401, detail="runtime JWT signing key is not trusted")
+    if not kid and len(matches) > 1:
+        raise HTTPException(status_code=401, detail="runtime JWT kid is required when JWKS has multiple RSA signing keys")
+    return matches[0]
+
+
+def _verify_runtime_jwks_jwt(parts: list[str], header: dict[str, object]) -> dict[str, object]:
+    if str(header.get("alg", "")).upper() != "RS256":
+        raise HTTPException(status_code=401, detail="runtime JWT algorithm is not allowed")
+    key = _select_runtime_jwks_key(header)
+    try:
+        public_key = rsa.RSAPublicNumbers(
+            e=_int_from_base64url(key.get("e"), field="e"),
+            n=_int_from_base64url(key.get("n"), field="n"),
+        ).public_key()
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail="runtime JWKS RSA key is invalid") from exc
+    try:
+        signature = _base64url_decode(parts[2])
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail="invalid runtime JWT signature") from exc
+    try:
+        public_key.verify(
+            signature,
+            f"{parts[0]}.{parts[1]}".encode("ascii"),
+            padding.PKCS1v15(),
+            hashes.SHA256(),
+        )
+    except InvalidSignature as exc:
+        raise HTTPException(status_code=401, detail="invalid runtime JWT signature") from exc
+    return _json_from_base64url(parts[1])
+
+
+def decode_runtime_jwt_actor(authorization: str | None) -> str:
+    auth_mode = runtime_auth_mode()
+    if not authorization or not authorization.strip().lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=401,
+            detail=f"Authorization Bearer JWT is required when runtime auth mode is {auth_mode}",
+        )
+    token = authorization.strip()[7:].strip()
+    parts = token.split(".")
+    if len(parts) != 3:
+        raise HTTPException(status_code=401, detail="invalid runtime JWT")
+    header = _json_from_base64url(parts[0])
+    if auth_mode == RUNTIME_AUTH_MODE_JWKS:
+        payload = _verify_runtime_jwks_jwt(parts, header)
+    else:
+        payload = _verify_runtime_hs256_jwt(parts, header)
+    return _validate_runtime_jwt_claims(payload)
+
+
+@app.middleware("http")
+async def runtime_jwt_actor_middleware(request: Request, call_next):
+    actor_token = _RUNTIME_JWT_ACTOR_ID.set(None)
+    try:
+        if runtime_project_access_control_enabled() and runtime_auth_mode() in {RUNTIME_AUTH_MODE_JWT, RUNTIME_AUTH_MODE_JWKS}:
+            authorization = request.headers.get("authorization")
+            if authorization:
+                _RUNTIME_JWT_ACTOR_ID.set(decode_runtime_jwt_actor(authorization))
+        return await call_next(request)
+    except HTTPException as exc:
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+    finally:
+        _RUNTIME_JWT_ACTOR_ID.reset(actor_token)
+
+
+def _runtime_session_token_from_request(request: Request) -> str:
+    header_token = request.headers.get(RUNTIME_SESSION_HEADER, "").strip()
+    if header_token:
+        return header_token
+    return request.cookies.get(RUNTIME_SESSION_COOKIE_NAME, "").strip()
+
+
+def _session_record_items(record: dict[str, Any], key: str) -> tuple[str, ...]:
+    value = record.get(key) or ()
+    if isinstance(value, str):
+        return (value,) if value.strip() else ()
+    return tuple(str(item).strip() for item in value if str(item).strip())
+
+
+def build_auth_context_from_runtime_session(session_record: dict[str, Any]) -> AuthContext:
+    actor_id = str(session_record.get("actor_id") or "").strip()
+    if not actor_id:
+        raise HTTPException(status_code=401, detail="runtime session is missing actor_id")
+    return build_user_auth_context(
+        actor_id=actor_id,
+        auth_method="session",
+        tenant_id=str(session_record["tenant_id"]) if session_record.get("tenant_id") else None,
+        project_ids=_session_record_items(session_record, "project_ids"),
+        roles=_session_record_items(session_record, "roles"),
+        permissions=_session_record_items(session_record, "permissions"),
+        project_scopes=tuple(
+            dict(item)
+            for item in (session_record.get("project_scopes") or ())
+            if isinstance(item, dict)
+        ),
+        tenant_roles=_session_record_items(session_record, "tenant_roles"),
+        scope_version=str(session_record.get("scope_version") or "") or None,
+        authz_policy_version=str(session_record.get("authz_policy_version") or "") or None,
+        session_id=str(session_record["id"]) if session_record.get("id") else None,
+    )
+
+
+def _public_session_payload(session_record: dict[str, Any]) -> dict[str, object]:
+    return {
+        key: value
+        for key, value in session_record.items()
+        if key != "session_token_hash" and value is not None
+    }
+
+
+def _set_runtime_session_cookie(response: Response, raw_session_token: str, *, max_age: int) -> None:
+    csrf_token = secrets.token_urlsafe(32)
+    response.set_cookie(
+        key=RUNTIME_SESSION_COOKIE_NAME,
+        value=raw_session_token,
+        max_age=max_age,
+        httponly=True,
+        secure=runtime_session_cookie_secure(),
+        samesite="lax",
+        path="/",
+    )
+    response.set_cookie(
+        key=RUNTIME_CSRF_COOKIE_NAME,
+        value=csrf_token,
+        max_age=max_age,
+        httponly=False,
+        secure=runtime_session_cookie_secure(),
+        samesite="lax",
+        path="/",
+    )
+
+
+def _clear_runtime_session_cookie(response: Response) -> None:
+    response.delete_cookie(
+        key=RUNTIME_SESSION_COOKIE_NAME,
+        httponly=True,
+        secure=runtime_session_cookie_secure(),
+        samesite="lax",
+        path="/",
+    )
+    response.delete_cookie(
+        key=RUNTIME_CSRF_COOKIE_NAME,
+        httponly=False,
+        secure=runtime_session_cookie_secure(),
+        samesite="lax",
+        path="/",
+    )
+
+
+def _runtime_session_csrf_exempt_path(path: str) -> bool:
+    return path in {"/v1/auth/invitations/preflight", "/v1/auth/invitations/redeem"}
+
+
+def _assert_runtime_session_csrf(request: Request) -> None:
+    if request.method.upper() not in {"POST", "PUT", "PATCH", "DELETE"}:
+        return
+    if _runtime_session_csrf_exempt_path(request.url.path):
+        return
+    header_token = request.headers.get(RUNTIME_CSRF_HEADER, "").strip()
+    cookie_token = request.cookies.get(RUNTIME_CSRF_COOKIE_NAME, "").strip()
+    if not header_token or not cookie_token:
+        raise HTTPException(status_code=403, detail=f"{RUNTIME_CSRF_HEADER} header and {RUNTIME_CSRF_COOKIE_NAME} cookie are required")
+    if not hmac.compare_digest(header_token, cookie_token):
+        raise HTTPException(status_code=403, detail="runtime CSRF token is invalid")
+
+
+@app.middleware("http")
+async def runtime_session_auth_middleware(request: Request, call_next):
+    context_token = _RUNTIME_SESSION_AUTH_CONTEXT.set(None)
+    try:
+        if runtime_project_access_control_enabled() and runtime_auth_mode() == RUNTIME_AUTH_MODE_SESSION:
+            raw_session_token = _runtime_session_token_from_request(request)
+            if raw_session_token:
+                try:
+                    _assert_runtime_session_csrf(request)
+                except HTTPException as exc:
+                    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+                try:
+                    repository = build_repository_from_env()
+                    try:
+                        session = repository.validate_runtime_session(raw_session_token)
+                    finally:
+                        close_repository_connection(repository)
+                except RuntimePersistenceError as exc:
+                    return JSONResponse(status_code=503, content={"detail": str(exc)})
+                except ValueError as exc:
+                    return JSONResponse(status_code=401, content={"detail": str(exc)})
+                _RUNTIME_SESSION_AUTH_CONTEXT.set(build_auth_context_from_runtime_session(session.session))
+        return await call_next(request)
+    finally:
+        _RUNTIME_SESSION_AUTH_CONTEXT.reset(context_token)
+
+
+def _route_template_for_metrics(request: Request) -> str:
+    route = request.scope.get("route")
+    route_path = getattr(route, "path", "")
+    if route_path:
+        return str(route_path)
+    return "__unmatched__"
+
+
+def _request_id_from_headers(request: Request) -> str:
+    raw_request_id = request.headers.get(REQUEST_ID_HEADER) or request.headers.get("X-Request-Id") or ""
+    request_id = raw_request_id.strip()
+    allowed_chars = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._:-")
+    if 1 <= len(request_id) <= 128 and all(char in allowed_chars for char in request_id):
+        return request_id
+    return uuid.uuid4().hex
+
+
+def _emit_runtime_access_log(
+    *,
+    request_id: str,
+    method: str,
+    path: str,
+    route: str,
+    status_code: int,
+    duration_seconds: float,
+    client_host: str | None,
+    error_type: str | None = None,
+) -> None:
+    payload: dict[str, object] = {
+        "event_type": "runtime_api_request",
+        "log_version": "runtime_access_log_v1",
+        "request_id": request_id,
+        "method": method.upper(),
+        "path": path,
+        "route": route,
+        "status_code": status_code,
+        "duration_ms": round(duration_seconds * 1000, 3),
+        "client_host": client_host or "",
+    }
+    if error_type:
+        payload["error_type"] = error_type
+    RUNTIME_ACCESS_LOGGER.info(json.dumps(payload, sort_keys=True, separators=(",", ":")))
+
+
+def _runtime_access_log_persistence_configured() -> bool:
+    return bool(os.environ.get("DATABASE_URL", "").strip())
+
+
+def _runtime_access_log_persistence_required() -> bool:
+    return os.environ.get("GEO_RUNTIME_ACCESS_LOG_REQUIRE_DB", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+@app.middleware("http")
+async def runtime_metrics_middleware(request: Request, call_next):
+    if request.url.path == "/metrics":
+        return await call_next(request)
+    request_id = _request_id_from_headers(request)
+    start_time = time.perf_counter()
+    status_code = 500
+    error_type: str | None = None
+    request_body = b""
+    response_body = b""
+    response_headers: Mapping[str, str] = {}
+    response_raw_headers: list[tuple[bytes, bytes]] = []
+    response_media_type: str | None = None
+    try:
+        request_body = await request.body()
+
+        async def receive() -> dict[str, object]:
+            return {"type": "http.request", "body": request_body, "more_body": False}
+
+        request._receive = receive  # type: ignore[attr-defined]
+        response = await call_next(request)
+        status_code = response.status_code
+        response_headers = dict(response.headers)
+        response_raw_headers = list(response.raw_headers)
+        response_media_type = response.media_type
+        chunks: list[bytes] = []
+        async for chunk in response.body_iterator:
+            chunk_bytes = chunk if isinstance(chunk, bytes) else str(chunk).encode("utf-8")
+            chunks.append(chunk_bytes)
+        response_body = b"".join(chunks)
+        response = Response(
+            content=response_body,
+            status_code=response.status_code,
+            media_type=response_media_type,
+        )
+        response.raw_headers = response_raw_headers
+        response.headers[REQUEST_ID_HEADER] = request_id
+        return response
+    except Exception as exc:
+        error_type = type(exc).__name__
+        raise
+    finally:
+        duration_seconds = max(0.0, time.perf_counter() - start_time)
+        route_path = _route_template_for_metrics(request)
+        observe_api_request(
+            method=request.method,
+            path=route_path,
+            status_code=status_code,
+            duration_seconds=duration_seconds,
+        )
+        _emit_runtime_access_log(
+            request_id=request_id,
+            method=request.method,
+            path=request.url.path,
+            route=route_path,
+            status_code=status_code,
+            duration_seconds=duration_seconds,
+            client_host=request.client.host if request.client else None,
+            error_type=error_type,
+        )
+        if _runtime_access_log_persistence_configured():
+            try:
+                persist_runtime_http_access_log(
+                    request=request,
+                    request_id=request_id,
+                    route_path=route_path,
+                    status_code=status_code,
+                    duration_seconds=duration_seconds,
+                    request_body=request_body,
+                    response_body=response_body,
+                    response_headers=response_headers,
+                    response_media_type=response_media_type,
+                    actor_header=RUNTIME_ACTOR_HEADER,
+                    jwt_actor_id=_RUNTIME_JWT_ACTOR_ID.get(),
+                    error_type=error_type,
+                )
+            except Exception as exc:
+                RUNTIME_ACCESS_LOGGER.warning(
+                    json.dumps(
+                        {
+                            "event_type": "runtime_http_access_log_persist_failed",
+                            "request_id": request_id,
+                            "error_type": type(exc).__name__,
+                            "error": str(exc),
+                        },
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    )
+                )
+        elif _runtime_access_log_persistence_required():
+            RUNTIME_ACCESS_LOGGER.warning(
+                json.dumps(
+                    {
+                        "event_type": "runtime_http_access_log_persist_skipped",
+                        "request_id": request_id,
+                        "reason": "DATABASE_URL is not configured",
+                    },
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+            )
+
+
+def build_runtime_auth_context(x_geo_actor_id: str | None = None) -> AuthContext:
+    auth_mode = runtime_auth_mode()
+    if runtime_project_access_control_enabled() and auth_mode == RUNTIME_AUTH_MODE_SESSION:
+        context = _RUNTIME_SESSION_AUTH_CONTEXT.get()
+        if context is None:
+            raise HTTPException(
+                status_code=401,
+                detail=f"{RUNTIME_SESSION_COOKIE_NAME} cookie or {RUNTIME_SESSION_HEADER} header is required when runtime auth mode is session",
+            )
+        return context
+    if runtime_project_access_control_enabled() and auth_mode in {RUNTIME_AUTH_MODE_JWT, RUNTIME_AUTH_MODE_JWKS}:
+        if auth_mode == RUNTIME_AUTH_MODE_JWT:
+            _runtime_jwt_secret()
+        else:
+            _ensure_runtime_jwks_configured()
+        actor_id = _RUNTIME_JWT_ACTOR_ID.get()
+        if not actor_id:
+            raise HTTPException(
+                status_code=401,
+                detail=f"Authorization Bearer JWT is required when runtime auth mode is {auth_mode}",
+            )
+        return build_user_auth_context(actor_id=actor_id, auth_method=auth_mode)
+    actor_id = x_geo_actor_id.strip() if x_geo_actor_id else ""
+    if runtime_project_access_control_enabled() and not actor_id:
+        raise HTTPException(
+            status_code=401,
+            detail=f"{RUNTIME_ACTOR_HEADER} is required when runtime project access control is enabled",
+        )
+    if actor_id:
+        return build_user_auth_context(actor_id=actor_id, auth_method="header")
+    return build_anonymous_auth_context(auth_method="header")
+
+
+def require_runtime_actor_id(x_geo_actor_id: str | None = None) -> str | None:
+    return build_runtime_auth_context(x_geo_actor_id).actor_id
+
+
+def effective_runtime_actor_id(actor_id: str | None, fallback: str | None = None) -> str:
+    for candidate in (actor_id, fallback, os.getenv("GEO_RUNTIME_DEFAULT_ACTOR_ID"), "runtime-console"):
+        normalized = str(candidate or "").strip()
+        if normalized:
+            return normalized
+    return "runtime-console"
+
+
+def _auth_context_role_allowed(
+    context: AuthContext,
+    allowed_roles: tuple[str, ...] | None,
+    *,
+    project_id: str | None = None,
+) -> bool:
+    if not allowed_roles:
+        return True
+    allowed = {normalize_role(role) for role in allowed_roles}
+    if project_id and context.project_scopes:
+        project_scope = context.project_scope(project_id)
+        if project_scope is None:
+            return False
+        scope_roles = project_scope.get("roles") or ()
+        return any(normalize_role(str(role)) in allowed for role in scope_roles)
+    return any(normalize_role(role) in allowed for role in context.roles)
+
+
+def _assert_auth_context_project_access(
+    context: AuthContext,
+    *,
+    project_id: str,
+    allowed_roles: tuple[str, ...] | None,
+) -> bool:
+    if not context.project_ids:
+        return False
+    if project_id not in context.project_ids:
+        raise HTTPException(status_code=403, detail="actor does not have access to project")
+    if not _auth_context_role_allowed(context, allowed_roles, project_id=project_id):
+        allowed = ", ".join(allowed_roles or ())
+        raise HTTPException(status_code=403, detail=f"actor role cannot perform this action; requires {allowed}")
+    return True
+
+
+def apply_runtime_project_db_context(
+    repository: object,
+    *,
+    actor_id: str | None,
+    project_id: str | None = None,
+    tenant_id: str | None = None,
+    project_ids: tuple[str, ...] = (),
+) -> None:
+    if not runtime_project_access_control_enabled():
+        return
+    if not actor_id:
+        raise HTTPException(
+            status_code=401,
+            detail=f"{RUNTIME_ACTOR_HEADER} is required when runtime project access control is enabled",
+        )
+    set_context = getattr(repository, "set_runtime_project_access_context", None)
+    if callable(set_context):
+        try:
+            set_context(
+                actor_id=actor_id,
+                project_id=project_id.strip() if project_id else None,
+                tenant_id=tenant_id,
+                project_ids=project_ids,
+            )
+        except TypeError:
+            set_context(actor_id=actor_id, project_id=project_id.strip() if project_id else None)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+def assert_runtime_project_access(
+    repository: object,
+    *,
+    project_id: str | None,
+    actor_id: str | None,
+    require_project_id: bool = True,
+    allowed_roles: tuple[str, ...] | None = None,
+) -> None:
+    if not runtime_project_access_control_enabled():
+        return
+    normalized_project_id = project_id.strip() if project_id else ""
+    if require_project_id and not normalized_project_id:
+        raise HTTPException(
+            status_code=400,
+            detail="project_id is required when runtime project access control is enabled",
+        )
+    if not normalized_project_id:
+        return
+    if not actor_id:
+        raise HTTPException(
+            status_code=401,
+            detail=f"{RUNTIME_ACTOR_HEADER} is required when runtime project access control is enabled",
+        )
+    context = build_runtime_auth_context(actor_id)
+    if _assert_auth_context_project_access(
+        context,
+        project_id=normalized_project_id,
+        allowed_roles=allowed_roles,
+    ):
+        apply_runtime_project_db_context(
+            repository,
+            actor_id=context.actor_id,
+            project_id=normalized_project_id,
+            tenant_id=context.tenant_id,
+            project_ids=context.project_ids,
+        )
+        return
+    get_project_member_role = getattr(repository, "get_project_member_role", None)
+    if callable(get_project_member_role):
+        role = get_project_member_role(project_id=normalized_project_id, actor_id=actor_id)
+        if role is None:
+            raise HTTPException(status_code=403, detail="actor does not have access to project")
+        if allowed_roles and role not in allowed_roles:
+            allowed = ", ".join(allowed_roles)
+            raise HTTPException(status_code=403, detail=f"actor role {role} cannot perform this action; requires {allowed}")
+        get_project_member_tenant_id = getattr(repository, "get_project_member_tenant_id", None)
+        tenant_id = (
+            get_project_member_tenant_id(project_id=normalized_project_id, actor_id=actor_id)
+            if callable(get_project_member_tenant_id)
+            else None
+        )
+        apply_runtime_project_db_context(
+            repository,
+            actor_id=actor_id,
+            project_id=normalized_project_id,
+            tenant_id=tenant_id,
+        )
+        return
+    if allowed_roles:
+        raise HTTPException(
+            status_code=503,
+            detail="runtime project role checks require repository.get_project_member_role",
+        )
+    user_can_access_project = getattr(repository, "user_can_access_project", None)
+    if not callable(user_can_access_project):
+        raise HTTPException(
+            status_code=503,
+            detail="runtime project access control requires repository.user_can_access_project",
+        )
+    if not user_can_access_project(project_id=normalized_project_id, actor_id=actor_id):
+        raise HTTPException(status_code=403, detail="actor does not have access to project")
+    apply_runtime_project_db_context(
+        repository,
+        actor_id=actor_id,
+        project_id=normalized_project_id,
+    )
+
+
+def _assert_runtime_customer_report_download_allowed(
+    repository: object,
+    *,
+    report_export_id: str,
+    project_id: str | None,
+    context: AuthContext,
+    customer_portal_access: bool,
+) -> None:
+    is_customer_viewer = customer_portal_access or _context_is_customer_portal_viewer(context)
+    if not is_customer_viewer and project_id and context.actor_id:
+        get_project_member_role = getattr(repository, "get_project_member_role", None)
+        if callable(get_project_member_role):
+            role = str(get_project_member_role(project_id=project_id, actor_id=context.actor_id) or "").strip().lower()
+            is_customer_viewer = role in CUSTOMER_PORTAL_ROLES
+    if not is_customer_viewer:
+        return
+    get_status = getattr(repository, "get_report_export_latest_management_status", None)
+    if not callable(get_status):
+        raise HTTPException(
+            status_code=503,
+            detail="customer report download requires repository.get_report_export_latest_management_status",
+        )
+    try:
+        latest_status = get_status(report_export_id=report_export_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if latest_status != CUSTOMER_PORTAL_REPORT_READY_STATUS:
+        raise HTTPException(
+            status_code=403,
+            detail="customer report download requires a published report",
+        )
+
+
+def _normalize_report_management_status(status: str) -> str:
+    normalized = status.strip().lower()
+    return REPORT_MANAGEMENT_STATUS_ALIASES.get(normalized, normalized)
+
+
+def _evidence_asset_payload(asset: object) -> dict[str, object]:
+    if is_dataclass(asset):
+        return asdict(asset)
+    if isinstance(asset, Mapping):
+        return dict(asset)
+    return {}
+
+
+def _runtime_record_payload(record: object) -> dict[str, object]:
+    if is_dataclass(record):
+        return asdict(record)
+    if isinstance(record, Mapping):
+        return dict(record)
+    if hasattr(record, "__dict__"):
+        return {str(key): value for key, value in vars(record).items() if not str(key).startswith("_")}
+    return {}
+
+
+def _evidence_asset_public_summary(asset: object) -> dict[str, object]:
+    payload = _evidence_asset_payload(asset)
+    metadata = payload.get("metadata") if isinstance(payload.get("metadata"), Mapping) else {}
+    return {
+        "id": payload.get("id"),
+        "tenant_id": payload.get("tenant_id"),
+        "project_id": payload.get("project_id"),
+        "answer_run_id": payload.get("answer_run_id"),
+        "asset_type": payload.get("asset_type"),
+        "content_hash": payload.get("content_hash"),
+        "content_type": payload.get("content_type"),
+        "byte_size": payload.get("byte_size"),
+        "storage_backend": payload.get("storage_backend"),
+        "visibility": payload.get("visibility"),
+        "created_by": payload.get("created_by"),
+        "created_at": payload.get("created_at"),
+        "updated_at": payload.get("updated_at"),
+        "metadata": {
+            key: value
+            for key, value in dict(metadata).items()
+            if key not in {"bucket", "storage_key", "url", "raw_url", "direct_url"}
+        },
+        "download_proxy": f"/v1/evidence-assets/runtime/{payload.get('id')}/download",
+    }
+
+
+def _assert_runtime_evidence_asset_access(
+    repository: object,
+    *,
+    asset: object,
+    context: AuthContext,
+    customer_portal_access: bool,
+    require_raw: bool,
+) -> None:
+    payload = _evidence_asset_payload(asset)
+    project_id = str(payload.get("project_id") or "").strip()
+    if not project_id:
+        raise HTTPException(status_code=403, detail="evidence asset is missing project scope")
+    role = ""
+    get_project_member_role = getattr(repository, "get_project_member_role", None)
+    if callable(get_project_member_role) and context.actor_id:
+        role = str(get_project_member_role(project_id=project_id, actor_id=context.actor_id) or "").strip().lower()
+    is_customer_viewer = customer_portal_access or _context_is_customer_portal_viewer(context) or role in CUSTOMER_PORTAL_ROLES
+    if require_raw and is_customer_viewer:
+        raise HTTPException(status_code=403, detail="customer portal users cannot download raw evidence assets")
+    allowed_roles = PROJECT_ANALYZE_ROLES if require_raw else None
+    assert_runtime_project_access(
+        repository,
+        project_id=project_id,
+        actor_id=context.actor_id,
+        allowed_roles=allowed_roles,
+        require_project_id=True,
+    )
+
+
+def _download_runtime_evidence_asset_object(asset: object) -> tuple[bytes, str]:
+    payload = _evidence_asset_payload(asset)
+    url = str(payload.get("url") or "").strip()
+    if not url.startswith("s3://"):
+        raise HTTPException(status_code=409, detail="evidence asset is not stored behind the object-store proxy")
+    try:
+        bucket, key = parse_s3_uri(url)
+        store = build_object_store_from_env()
+        if bucket != store.bucket:
+            raise HTTPException(status_code=409, detail="evidence asset bucket does not match configured object store")
+        content_hash = str(payload.get("content_hash") or "").strip() or None
+        downloaded = store.get_object(key=key, expected_hash=content_hash)
+    except ObjectStoreError as exc:
+        raise HTTPException(status_code=502, detail=f"evidence object store read failed: {exc}") from exc
+    return downloaded.content, downloaded.content_type
+
+
+register_runtime_access_routes(
+    app,
+    runtime_actor_header=RUNTIME_ACTOR_HEADER,
+    project_manage_roles=PROJECT_MANAGE_ROLES,
+    require_runtime_actor_id=require_runtime_actor_id,
+    assert_runtime_project_access=assert_runtime_project_access,
+    runtime_project_access_control_enabled=runtime_project_access_control_enabled,
+    resolve_auth_context=build_runtime_auth_context,
+    apply_runtime_project_db_context=apply_runtime_project_db_context,
+    build_repository=lambda: build_repository_from_env(),
+    close_repository=lambda repository: close_repository_connection(repository),
+)
+
+register_auth_routes(
+    app,
+    build_repository=lambda: build_repository_from_env(),
+    close_repository=lambda repository: close_repository_connection(repository),
+    resolve_auth_context=build_runtime_auth_context,
+    runtime_actor_header=RUNTIME_ACTOR_HEADER,
+    session_cookie_name=RUNTIME_SESSION_COOKIE_NAME,
+    csrf_cookie_name=RUNTIME_CSRF_COOKIE_NAME,
+    csrf_header_name=RUNTIME_CSRF_HEADER,
+    cookie_secure=runtime_session_cookie_secure,
+)
+
+
+class RuntimeSavedViewRequest(BaseModel):
+    project_id: str
+    name: str = Field(min_length=1, max_length=120)
+    view_type: str = Field(default="runtime_evidence", min_length=1, max_length=80)
+    filters: dict[str, object] = Field(default_factory=dict)
+    sort: str = Field(default="collected_at_desc", max_length=80)
+    query_path: str = Field(min_length=1, max_length=1000)
+    export_path: str = Field(min_length=1, max_length=1000)
+    created_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+
+
+class ProjectBrandKitRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    client_name: str = Field(min_length=1, max_length=160)
+    prepared_by: str = Field(default="GEO SaaS AU", min_length=1, max_length=160)
+    logo_url: str | None = Field(default=None, max_length=1000)
+    primary_color: str | None = Field(default=None, max_length=40)
+    secondary_color: str | None = Field(default=None, max_length=40)
+    footer_text: str | None = Field(default=None, max_length=500)
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+
+
+class ProjectBrandAssetActivationRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    asset_url: str = Field(min_length=1, max_length=1000)
+    activated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class ProjectBrandAssetRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    asset_type: str = Field(default="image", min_length=1, max_length=80)
+    asset_url: str = Field(min_length=1, max_length=1000)
+    category: str = Field(default="uncategorized", min_length=1, max_length=120)
+    preview_url: str | None = Field(default=None, max_length=1000)
+    source_filename: str | None = Field(default=None, max_length=240)
+    source_content_type: str | None = Field(default=None, max_length=160)
+    content_hash: str | None = Field(default=None, max_length=160)
+    storage_version: str | None = Field(default=None, max_length=240)
+    status: str = Field(default="active", min_length=1, max_length=40)
+    uploaded_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    metadata: dict[str, object] = Field(default_factory=dict)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class ProjectBrandAssetScanRequest(BaseModel):
+    scan_status: str = Field(default="pending", min_length=1, max_length=40)
+    scanned_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    scan_method_version: str = Field(default="manual_asset_scan_v1", min_length=1, max_length=120)
+    scan_notes: str | None = Field(default=None, max_length=1000)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class ScoreWeightConfigRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    formula_version: str = Field(default="au_visibility_v1", min_length=1, max_length=80)
+    weights: dict[str, float]
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    notes: str | None = Field(default=None, max_length=500)
+
+
+class ScoreWeightProfileRequest(BaseModel):
+    profile_key: str = Field(min_length=1, max_length=120)
+    name: str = Field(min_length=1, max_length=160)
+    description: str | None = Field(default=None, max_length=1000)
+    base_formula_version: str = Field(default="au_visibility_v1", min_length=1, max_length=80)
+    weights: dict[str, float]
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    status: str = Field(default="active", min_length=1, max_length=40)
+
+
+class HumanReviewRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    target_type: str = Field(min_length=1, max_length=120)
+    target_id: str = Field(min_length=1, max_length=240)
+    review_status: str = Field(default="approved", min_length=1, max_length=80)
+    decision: str = Field(min_length=1, max_length=240)
+    reviewer_id: str = Field(default="runtime-console", min_length=1, max_length=120)
+    notes: str | None = Field(default=None, max_length=2000)
+    payload: dict[str, object] = Field(default_factory=dict)
+
+
+class RuntimePromptImportRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    csv_content: str = Field(min_length=1, max_length=120000)
+    imported_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    max_rows: int = Field(default=100, ge=1, le=200)
+
+
+class RuntimeKnowledgeFactImportRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    csv_content: str = Field(min_length=1, max_length=120000)
+    imported_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    max_rows: int = Field(default=100, ge=1, le=200)
+    default_market_code: str = Field(default="GLOBAL", min_length=1, max_length=20)
+
+
+class RuntimePromptUpdateRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    prompt_id: str = Field(min_length=1)
+    text: str = Field(min_length=1, max_length=2000)
+    intent_type: str = Field(min_length=1, max_length=120)
+    city: str = Field(min_length=1, max_length=120)
+    language: str = Field(default="en-AU", min_length=1, max_length=80)
+    target_brand: str = Field(min_length=1, max_length=240)
+    competitors: list[str] = Field(default_factory=list, max_length=10)
+    priority: int = Field(default=1, ge=0, le=100000)
+    intent_weight: float = Field(default=1.0, gt=0, le=100)
+    prompt_version: str = Field(default="au_dtc_ecommerce_v1", min_length=1, max_length=120)
+    status: str = Field(default="active", min_length=1, max_length=80)
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class ManualBackfillRequest(BaseModel):
+    prompt_question_id: str = Field(min_length=1)
+    platform: str = Field(default="google", min_length=1, max_length=80)
+    surface: str = Field(default="google_ai_mode", min_length=1, max_length=120)
+    answer_text: str = Field(min_length=1, max_length=20000)
+    citation_urls: list[str] = Field(default_factory=list, max_length=20)
+    screenshot_url: str | None = Field(default=None, max_length=1000)
+    html_snapshot_url: str | None = Field(default=None, max_length=1000)
+    answer_present: bool = True
+    surface_triggered: bool = True
+    sample_index: int = Field(default=1, ge=1, le=50)
+    sample_size: int = Field(default=1, ge=1, le=50)
+    device: str = Field(default="desktop", min_length=1, max_length=80)
+    account_state: str | None = Field(default=None, max_length=120)
+    submitted_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+class ManualBackfillCsvImportRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    csv_content: str = Field(min_length=1, max_length=500000)
+    submitted_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    max_rows: int = Field(default=120, ge=1, le=500)
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+def _split_manual_backfill_citation_urls(raw_value: object) -> list[str]:
+    value = str(raw_value or "").strip()
+    if not value:
+        return []
+    return [item.strip() for item in re.split(r"[\n\r,|]+", value) if item.strip()]
+
+
+def _parse_manual_backfill_bool(raw_value: object, *, default: bool, field_name: str, row_number: int) -> bool:
+    value = str(raw_value or "").strip().lower()
+    if value == "":
+        return default
+    if value in {"1", "true", "yes", "y"}:
+        return True
+    if value in {"0", "false", "no", "n"}:
+        return False
+    raise ValueError(f"row {row_number} {field_name} must be a boolean")
+
+
+def _parse_manual_backfill_int(
+    raw_value: object,
+    *,
+    default: int,
+    field_name: str,
+    row_number: int,
+    min_value: int = 1,
+    max_value: int = 50,
+) -> int:
+    value = str(raw_value or "").strip()
+    if value == "":
+        return default
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise ValueError(f"row {row_number} {field_name} must be an integer") from exc
+    if parsed < min_value or parsed > max_value:
+        raise ValueError(f"row {row_number} {field_name} must be between {min_value} and {max_value}")
+    return parsed
+
+
+def _manual_backfill_payload_from_csv_row(
+    row: Mapping[str, object],
+    *,
+    row_number: int,
+    submitted_by: str,
+    import_notes: str | None,
+) -> ManualBackfillRequest:
+    prompt_question_id = str(row.get("prompt_question_id") or "").strip()
+    answer_text = str(row.get("answer_text") or "").strip()
+    if not prompt_question_id:
+        raise ValueError(f"row {row_number} prompt_question_id is required")
+    if not answer_text:
+        raise ValueError(f"row {row_number} answer_text is required")
+    row_submitted_by = str(row.get("submitted_by") or "").strip() or submitted_by
+    row_notes = str(row.get("notes") or "").strip()
+    notes = row_notes or import_notes
+    return ManualBackfillRequest(
+        prompt_question_id=prompt_question_id,
+        platform=str(row.get("platform") or "google").strip() or "google",
+        surface=str(row.get("surface") or "google_ai_mode").strip() or "google_ai_mode",
+        answer_text=answer_text,
+        citation_urls=_split_manual_backfill_citation_urls(row.get("citation_urls")),
+        screenshot_url=str(row.get("screenshot_url") or "").strip() or None,
+        html_snapshot_url=str(row.get("html_snapshot_url") or "").strip() or None,
+        answer_present=_parse_manual_backfill_bool(
+            row.get("answer_present"),
+            default=True,
+            field_name="answer_present",
+            row_number=row_number,
+        ),
+        surface_triggered=_parse_manual_backfill_bool(
+            row.get("surface_triggered"),
+            default=True,
+            field_name="surface_triggered",
+            row_number=row_number,
+        ),
+        sample_index=_parse_manual_backfill_int(
+            row.get("sample_index"),
+            default=1,
+            field_name="sample_index",
+            row_number=row_number,
+        ),
+        sample_size=_parse_manual_backfill_int(
+            row.get("sample_size"),
+            default=1,
+            field_name="sample_size",
+            row_number=row_number,
+        ),
+        device=str(row.get("device") or "desktop").strip() or "desktop",
+        account_state=str(row.get("account_state") or "").strip() or None,
+        submitted_by=row_submitted_by,
+        notes=notes.strip() if notes else None,
+    )
+
+
+def _parse_manual_backfill_csv_import(payload: ManualBackfillCsvImportRequest) -> list[tuple[int, ManualBackfillRequest]]:
+    try:
+        reader = csv.DictReader(io.StringIO(payload.csv_content.strip()))
+    except csv.Error as exc:
+        raise HTTPException(status_code=400, detail=f"CSV parse error: {exc}") from exc
+    if not reader.fieldnames:
+        raise HTTPException(status_code=400, detail="CSV header is required")
+    normalized_fieldnames = {field.strip() for field in reader.fieldnames if field}
+    required_fields = {"prompt_question_id", "answer_text"}
+    missing_fields = sorted(required_fields - normalized_fieldnames)
+    if missing_fields:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "manual backfill CSV missing required columns", "missing_fields": missing_fields},
+        )
+    records: list[tuple[int, ManualBackfillRequest]] = []
+    for csv_index, row in enumerate(reader, start=2):
+        if len(records) >= payload.max_rows:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "manual backfill CSV exceeds max_rows",
+                    "max_rows": payload.max_rows,
+                    "first_excess_row": csv_index,
+                },
+            )
+        normalized_row = {str(key or "").strip(): value for key, value in row.items()}
+        if not any(str(value or "").strip() for value in normalized_row.values()):
+            continue
+        try:
+            records.append(
+                (
+                    csv_index,
+                    _manual_backfill_payload_from_csv_row(
+                        normalized_row,
+                        row_number=csv_index,
+                        submitted_by=payload.submitted_by.strip(),
+                        import_notes=payload.notes.strip() if payload.notes else None,
+                    ),
+                )
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail={"row": csv_index, "error": str(exc)}) from exc
+    if not records:
+        raise HTTPException(status_code=400, detail="manual backfill CSV has no data rows")
+    return records
+
+
+def _build_runtime_manual_backfill_record(payload: ManualBackfillRequest, prompt: Mapping[str, object]) -> Any:
+    citation_urls = tuple(url.strip() for url in payload.citation_urls if url.strip())
+    return build_manual_backfill_record(
+        ManualBackfillInput(
+            project_id=str(prompt["project_id"]),
+            prompt_question_id=str(prompt["id"]),
+            prompt_text=str(prompt["text"]),
+            market_code=str(prompt["market_code"]),
+            city=str(prompt["city"]),
+            language=str(prompt["language"]),
+            platform=payload.platform.strip(),
+            surface=payload.surface.strip(),
+            answer_text=payload.answer_text.strip(),
+            citation_urls=citation_urls,
+            screenshot_url=payload.screenshot_url.strip() if payload.screenshot_url else None,
+            html_snapshot_url=payload.html_snapshot_url.strip() if payload.html_snapshot_url else None,
+            answer_present=payload.answer_present,
+            surface_triggered=payload.surface_triggered,
+            sample_index=payload.sample_index,
+            sample_size=payload.sample_size,
+            device=payload.device.strip(),
+            account_state=payload.account_state.strip() if payload.account_state else None,
+            submitted_by=payload.submitted_by.strip(),
+            notes=payload.notes.strip() if payload.notes else None,
+        )
+    )
+
+
+def _manual_backfill_batch_audit_event(
+    *,
+    project_id: str,
+    submitted_by: str,
+    notes: str | None,
+    records: list[Any],
+    requested_count: int,
+) -> tuple[dict[str, object], Any]:
+    prompt_question_ids = [record.answer_run.prompt_question_id for record in records]
+    answer_run_ids = [record.answer_run.id for record in records]
+    raw_answer_ids = [record.raw_answer.id for record in records]
+    citation_count = sum(len(record.citations) for record in records)
+    evidence_asset_count = sum(len(record.evidence_assets) for record in records)
+    audit_summary = {
+        "event_type": "manual_backfill_batch_imported",
+        "method_version": "manual_backfill_csv_import_v1",
+        "project_id": project_id,
+        "submitted_by": submitted_by,
+        "requested_count": requested_count,
+        "imported_count": len(records),
+        "prompt_question_ids": prompt_question_ids,
+        "answer_run_ids": answer_run_ids,
+        "raw_answer_ids": raw_answer_ids,
+        "citation_count": citation_count,
+        "evidence_asset_count": evidence_asset_count,
+        "platforms": sorted({record.answer_run.platform for record in records}),
+        "surfaces": sorted({record.answer_run.surface for record in records}),
+        "notes": notes,
+        "individual_audit_event_type": "manual_backfill_recorded",
+    }
+    return (
+        audit_summary,
+        build_audit_event(
+            event_type="manual_backfill_batch_imported",
+            project_id=project_id,
+            actor_type="user",
+            actor_id=submitted_by,
+            target_type="manual_backfill_batch",
+            target_id=str(uuid.uuid5(uuid.NAMESPACE_URL, "|".join(answer_run_ids))),
+            before=None,
+            after=audit_summary,
+            input_refs={"prompt_question_ids": prompt_question_ids},
+            output_refs={"answer_run_ids": answer_run_ids, "raw_answer_ids": raw_answer_ids},
+            method_version="manual_backfill_csv_import_v1",
+            reason=notes or "batch import manual backfill CSV into auditable raw evidence",
+        ),
+    )
+
+
+class EntityAliasConfirmRequest(BaseModel):
+    entity_id: str = Field(min_length=1)
+    entity_kind: str = Field(min_length=1, max_length=40)
+    alias: str = Field(min_length=1, max_length=240)
+    alias_type: str = Field(default="alias", min_length=1, max_length=80)
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+    confirmed_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+class EntityAliasBatchConfirmRequest(BaseModel):
+    aliases: list[EntityAliasConfirmRequest] = Field(min_length=1, max_length=25)
+    confirmed_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    notes: str | None = Field(default=None, max_length=2000)
+    continue_on_error: bool = False
+
+
+class EntityAliasCandidateReviewRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    candidate_id: str = Field(min_length=1, max_length=160)
+    entity_id: str = Field(min_length=1)
+    entity_kind: str = Field(min_length=1, max_length=40)
+    alias: str = Field(min_length=1, max_length=240)
+    alias_type: str = Field(default="alias", min_length=1, max_length=80)
+    decision: str = Field(min_length=1, max_length=40)
+    reviewed_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    source: str | None = Field(default=None, max_length=120)
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    reason: str | None = Field(default=None, max_length=500)
+    notes: str | None = Field(default=None, max_length=2000)
+    evidence_answer_run_ids: list[str] = Field(default_factory=list, max_length=10)
+    evidence_urls: list[str] = Field(default_factory=list, max_length=10)
+    payload: dict[str, object] = Field(default_factory=dict)
+
+
+class EntityAliasCandidateBatchReviewRequest(BaseModel):
+    reviews: list[EntityAliasCandidateReviewRequest] = Field(min_length=1, max_length=25)
+    reviewed_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    notes: str | None = Field(default=None, max_length=2000)
+    continue_on_error: bool = False
+
+
+class EntityAliasCandidateAssignmentRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    candidate_id: str = Field(min_length=1, max_length=160)
+    assigned_to: str = Field(min_length=1, max_length=120)
+    assigned_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    assignment_status: str = Field(default="assigned", min_length=1, max_length=40)
+    priority: str = Field(default="normal", min_length=1, max_length=40)
+    due_at: str | None = Field(default=None, max_length=80)
+    assignment_note: str | None = Field(default=None, max_length=1000)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class EntityAliasCandidateAssignmentActionRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    candidate_id: str = Field(min_length=1, max_length=160)
+    action: str = Field(min_length=1, max_length=40)
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    note: str | None = Field(default=None, max_length=1000)
+    force: bool = False
+
+
+class EntityAliasCandidateAssignmentBatchActionRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    candidate_ids: list[str] = Field(min_length=1, max_length=50)
+    action: str = Field(min_length=1, max_length=40)
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    note: str | None = Field(default=None, max_length=1000)
+    force: bool = False
+    continue_on_error: bool = True
+
+
+class EntityAliasCandidateAssignmentReassignmentRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    assigned_to: str = Field(min_length=1, max_length=120)
+    reassigned_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    from_assigned_to: str | None = Field(default=None, min_length=1, max_length=120)
+    from_assignment_status: str | None = Field(default=None, min_length=1, max_length=40)
+    from_priority: str | None = Field(default=None, min_length=1, max_length=40)
+    due_before: str | None = Field(default=None, min_length=1, max_length=80)
+    assignment_status: str = Field(default="assigned", min_length=1, max_length=40)
+    priority: str = Field(default="high", min_length=1, max_length=40)
+    due_at: str | None = Field(default=None, max_length=80)
+    assignment_note: str | None = Field(default=None, max_length=1000)
+    reason: str | None = Field(default=None, max_length=500)
+    limit: int = Field(default=50, ge=1, le=200)
+
+
+class EntityAliasAssignmentDispatchApplyRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    reviewer_ids: list[str] = Field(default_factory=list, max_length=50)
+    include_statuses: list[str] = Field(default_factory=lambda: ["unassigned", "escalated"], max_length=6)
+    max_per_reviewer: int = Field(default=10, ge=1, le=200)
+    due_soon_before: str | None = Field(default=None, min_length=1, max_length=80)
+    limit: int = Field(default=50, ge=1, le=200)
+    applied_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    assignment_status: str = Field(default="assigned", min_length=1, max_length=40)
+    priority: str | None = Field(default=None, min_length=1, max_length=40)
+    due_at: str | None = Field(default=None, max_length=80)
+    assignment_note: str | None = Field(default=None, max_length=1000)
+    reason: str | None = Field(default=None, max_length=500)
+    continue_on_error: bool = True
+
+
+class EntityAliasAssignmentNotificationRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    assigned_to: str | None = Field(default=None, min_length=1, max_length=120)
+    priority: str | None = Field(default=None, min_length=1, max_length=40)
+    due_before: str | None = Field(default=None, min_length=1, max_length=80)
+    created_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class EntityAliasAssignmentEscalationRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    assigned_to: str | None = Field(default=None, min_length=1, max_length=120)
+    priority: str | None = Field(default=None, min_length=1, max_length=40)
+    due_before: str | None = Field(default=None, min_length=1, max_length=80)
+    escalated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class RuntimeProjectCreateRequest(BaseModel):
+    tenant_name: str = Field(default="Customer Organization", min_length=1, max_length=160)
+    project_name: str = Field(default="Brand GEO Project", min_length=1, max_length=160)
+    target_brand: str = Field(default="Customer Brand", min_length=1, max_length=160)
+    category: str = Field(default="Products and services", min_length=1, max_length=200)
+    market_code: str = Field(default="GLOBAL", min_length=2, max_length=12)
+    market_name: str = Field(default="Global", min_length=1, max_length=120)
+    locale: str = Field(default="en", min_length=1, max_length=40)
+    timezone: str = Field(default="UTC", min_length=1, max_length=120)
+    currency: str = Field(default="USD", min_length=3, max_length=8)
+    primary_language: str = Field(default="English", min_length=1, max_length=80)
+    cities: list[str] = Field(default_factory=list, max_length=50)
+    industry_code: str = Field(default="general", min_length=1, max_length=80)
+    industry_name: str = Field(default="General", min_length=1, max_length=160)
+    prompt_version: str = Field(default="project_prompts_v1", min_length=1, max_length=120)
+    score_formula_version: str = Field(default="visibility_v1.0", min_length=1, max_length=120)
+    competitors: list[str] = Field(default_factory=list, max_length=5)
+    brand_official_domains: list[str] = Field(default_factory=list, max_length=5)
+    brand_parent_company: str | None = Field(default=None, max_length=160)
+    brand_product_lines: list[str] = Field(default_factory=list, max_length=10)
+    owner_user_id: str = Field(default="runtime-console", min_length=1, max_length=120)
+    customer_email: str | None = Field(default=None, max_length=320)
+    competitor_domains: list[str] = Field(default_factory=list, max_length=5)
+    collection_mode: str = Field(default="api", min_length=1, max_length=40)
+    launch_status: str = Field(default="draft", min_length=1, max_length=40)
+    schedule: dict[str, object] = Field(default_factory=dict)
+    external_connectors: dict[str, object] = Field(default_factory=dict)
+    create_customer_invitation: bool = True
+
+
+class RuntimeProjectUpdateRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    tenant_name: str | None = Field(default=None, min_length=1, max_length=160)
+    name: str | None = Field(default=None, min_length=1, max_length=160)
+    target_brand: str | None = Field(default=None, min_length=1, max_length=160)
+    category: str | None = Field(default=None, min_length=1, max_length=200)
+    status: str | None = Field(default=None, min_length=1, max_length=40)
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class RuntimeProjectActionRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    action: str = Field(min_length=1, max_length=40)
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class ConnectorSecretRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    provider: str = Field(min_length=1, max_length=80)
+    raw_secret: str = Field(min_length=1, max_length=4000)
+    purpose: str = Field(default="api_key", min_length=1, max_length=80)
+    metadata: dict[str, object] = Field(default_factory=dict)
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class ConnectorTestRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    provider: str = Field(min_length=1, max_length=80)
+    mode: str = Field(default="official_api", min_length=1, max_length=80)
+    model: str = Field(default="", max_length=120)
+    raw_secret: str | None = Field(default=None, min_length=1, max_length=4000)
+    secret_ref: str | None = Field(default=None, min_length=1, max_length=240)
+    tested_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+def allowed_connector_models(provider: str, mode: str) -> set[str]:
+    provider = provider.strip().lower()
+    mode = mode.strip().lower()
+    matrix: dict[tuple[str, str], set[str]] = {
+        ("openai", "official_api"): {"gpt-4.1-mini", "gpt-4o-mini"},
+        ("openai", "deepseek_fallback"): {"deepseek-v4-flash"},
+        ("openai", "disabled"): {"disabled"},
+        ("perplexity", "official_api"): {"sonar", "sonar-pro"},
+        ("perplexity", "deepseek_fallback"): {"deepseek-v4-flash"},
+        ("perplexity", "disabled"): {"disabled"},
+        ("google_ai_mode", "manual_backfill"): {"google_ai_mode_manual_backfill", "google_ai_mode"},
+        ("google_ai_mode", "browser_or_serp"): {"google_ai_mode_browser", "serp_provider"},
+        ("google_ai_mode", "disabled"): {"disabled"},
+    }
+    return matrix.get((provider, mode), set())
+
+
+def assert_connector_model_allowed(provider: str, mode: str, model: str) -> None:
+    allowed = allowed_connector_models(provider, mode)
+    if not allowed:
+        raise HTTPException(status_code=400, detail="连接器运行模式不支持。")
+    if model not in allowed:
+        raise HTTPException(status_code=400, detail=f"模型/服务 {model} 不适用于当前连接器运行模式。")
+
+
+def default_connector_model(provider: str, mode: str) -> str:
+    allowed = sorted(allowed_connector_models(provider, mode))
+    if provider == "openai" and mode == "official_api":
+        return "gpt-4.1-mini"
+    if provider == "perplexity" and mode == "official_api":
+        return "sonar"
+    if provider == "google_ai_mode" and mode == "manual_backfill":
+        return "google_ai_mode_manual_backfill"
+    return allowed[0] if allowed else ""
+
+
+class ProjectMemberRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    user_id: str = Field(min_length=1, max_length=120)
+    role: str = Field(default="viewer", min_length=1, max_length=40)
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class ProjectBrandEntityRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    canonical_name: str = Field(min_length=1, max_length=160)
+    official_domains: list[str] = Field(default_factory=list, max_length=5)
+    parent_company: str | None = Field(default=None, max_length=160)
+    product_lines: list[str] = Field(default_factory=list, max_length=10)
+    status: str = Field(default="active", min_length=1, max_length=40)
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class ProjectCompetitorEntityRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    competitor_id: str | None = Field(default=None, max_length=80)
+    canonical_name: str = Field(min_length=1, max_length=160)
+    official_domains: list[str] = Field(default_factory=list, max_length=5)
+    parent_company: str | None = Field(default=None, max_length=160)
+    product_lines: list[str] = Field(default_factory=list, max_length=10)
+    status: str = Field(default="active", min_length=1, max_length=40)
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class ProjectMemberDeleteRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    user_id: str = Field(min_length=1, max_length=120)
+    deleted_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class ProjectMemberInvitationRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    email: str = Field(min_length=1, max_length=320)
+    role: str = Field(default="viewer", min_length=1, max_length=40)
+    invited_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    expires_at: str | None = Field(default=None, max_length=80)
+    metadata: dict[str, object] = Field(default_factory=dict)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class ProjectMemberInvitationActionRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    invitation_id: str = Field(min_length=1, max_length=80)
+    action: str = Field(min_length=1, max_length=40)
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class ProjectMemberInvitationAcceptRequest(BaseModel):
+    invitation_id: str = Field(min_length=1, max_length=80)
+    invite_token: str = Field(min_length=1, max_length=160)
+    accepted_by: str | None = Field(default=None, max_length=320)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class ProjectMemberInvitationEmailRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    invitation_id: str = Field(min_length=1, max_length=80)
+    invite_token: str = Field(min_length=1, max_length=160)
+    accept_base_url: str = Field(min_length=1, max_length=1000)
+    sent_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    smtp_env_prefix: str = Field(default="GEO_NOTIFICATION_SMTP", min_length=1, max_length=120)
+    subject: str | None = Field(default=None, max_length=200)
+    message: str | None = Field(default=None, max_length=2000)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class RuntimeFidelityCheckRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    report_export_id: str | None = Field(default=None, min_length=1)
+    checked_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+
+
+class RuntimeActionRecommendationUpdateRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    status: str = Field(min_length=1, max_length=80)
+    owner_id: str | None = Field(default=None, max_length=120)
+    customer_visible: bool | None = None
+    visibility_note: str | None = Field(default=None, max_length=1000)
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class RuntimeContentDraftReviewRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    review_status: str = Field(min_length=1, max_length=80)
+    reviewer_id: str = Field(default="runtime-console", min_length=1, max_length=120)
+    decision: str = Field(default="content draft reviewed", min_length=1, max_length=500)
+    notes: str | None = Field(default=None, max_length=1000)
+    payload: dict[str, object] = Field(default_factory=dict)
+
+
+class RuntimeManualDistributionBackfillRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    target_url: str = Field(min_length=1, max_length=2000)
+    status: str = Field(default="url_backfilled", min_length=1, max_length=80)
+    checked_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    notes: str | None = Field(default=None, max_length=1000)
+
+
+class RuntimeKnowledgeDocumentRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    source_type: str = Field(min_length=1, max_length=40)
+    source_url: str | None = Field(default=None, max_length=2000)
+    title: str | None = Field(default=None, max_length=300)
+    raw_text: str | None = Field(default=None, max_length=200000)
+    imported_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    metadata: dict[str, object] = Field(default_factory=dict)
+
+
+class RuntimeKnowledgeDocumentCrawlRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    crawled_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    max_pages: int = Field(default=3, ge=1, le=20)
+    max_bytes: int = Field(default=2_000_000, ge=1000, le=10_000_000)
+    timeout_seconds: float = Field(default=20.0, ge=1.0, le=120.0)
+
+
+class RuntimeKnowledgeDocumentExtractionRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    extracted_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    max_facts: int = Field(default=20, ge=1, le=50)
+    auto_approve: bool = False
+    secret_ref: str | None = Field(default=None, max_length=300)
+    model: str = Field(default="deepseek-v4-flash", min_length=1, max_length=120)
+
+
+class RuntimeKnowledgeFactReviewRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    review_status: str = Field(min_length=1, max_length=80)
+    reviewed_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    decision: str = Field(default="knowledge fact reviewed", min_length=1, max_length=500)
+    notes: str | None = Field(default=None, max_length=1000)
+    merged_into_fact_id: str | None = Field(default=None, max_length=80)
+
+
+class RuntimeKnowledgeQualityRiskAcceptRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    reason: str = Field(min_length=1, max_length=1000)
+    expires_at: datetime
+
+
+class RuntimeKnowledgeApplicationGenerateRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    generation_type: str = Field(default="all", min_length=1, max_length=80)
+    content_type: str = Field(default="faq", min_length=1, max_length=80)
+    target_platform: str = Field(default="chatgpt", min_length=1, max_length=80)
+    intent_type: str | None = Field(default=None, max_length=120)
+    city: str | None = Field(default=None, max_length=120)
+    competitor: str | None = Field(default=None, max_length=160)
+    quantity: int = Field(default=10, ge=1, le=50)
+    action_id: str | None = Field(default=None, max_length=80)
+    prompt_ids: list[str] = Field(default_factory=list, max_length=50)
+    requested_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    secret_ref: str | None = Field(default=None, max_length=300)
+    model: str = Field(default="deepseek-v4-flash", min_length=1, max_length=120)
+    prompt_template_id: str = Field(default="brand_visibility_prompt_v1", min_length=1, max_length=160)
+    prompt_template_version: str = Field(default="v1", min_length=1, max_length=80)
+    knowledge_source_policy: str = Field(default="approved_only", min_length=1, max_length=80)
+
+
+class RuntimeKnowledgePipelineRunRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    run_type: str = Field(default="full_ingestion", min_length=1, max_length=80)
+    entry_source: str = Field(default="mixed", min_length=1, max_length=40)
+    market_code: str = Field(default="GLOBAL", min_length=1, max_length=20)
+    locale: str = Field(default="en", min_length=1, max_length=40)
+    city: str | None = Field(default=None, max_length=120)
+    created_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    metadata: dict[str, object] = Field(default_factory=dict)
+
+
+class RuntimeKnowledgeImportJobRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    pipeline_run_id: str = Field(min_length=1)
+    source_mode: str = Field(min_length=1, max_length=40)
+    requested_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    source_config: dict[str, object] = Field(default_factory=dict)
+    priority: int = Field(default=0, ge=-1000, le=1000)
+
+
+class RuntimeKnowledgeUrlSeedsRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    urls: list[str] = Field(min_length=1, max_length=100)
+    crawl_mode: str = Field(default="single_url", pattern="^(single_url|url_batch|site_depth|sitemap)$")
+    crawl_depth: int = Field(default=0, ge=0, le=5)
+    max_pages: int = Field(default=10, ge=1, le=500)
+    include_patterns: list[str] = Field(default_factory=list, max_length=100)
+    exclude_patterns: list[str] = Field(default_factory=list, max_length=100)
+    respect_robots: bool = True
+
+
+class RuntimeKnowledgeChunkDisableRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    reason: str = Field(min_length=3, max_length=1000)
+
+
+class RuntimeKnowledgeFactExtractionJobRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    source_pipeline_run_id: str = Field(min_length=1)
+    import_job_id: str | None = Field(default=None, max_length=80)
+    fact_kinds: list[str] = Field(default_factory=lambda: ["brand", "competitor", "market", "source"], max_length=20)
+    max_facts: int = Field(default=20, ge=1, le=200)
+    model: str = Field(default="deepseek-v4-flash", min_length=1, max_length=120)
+    prompt_version: str = Field(default="knowledge_fact_extraction_v1", min_length=1, max_length=120)
+    chunk_filter: dict[str, object] = Field(default_factory=dict)
+
+
+class RuntimeKnowledgePromptGenerationJobRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    template_key: str = Field(default="brand_visibility_prompt_v1", min_length=1, max_length=160)
+    template_version: str = Field(default="v1", min_length=1, max_length=80)
+    target_platform: str = Field(default="chatgpt", min_length=1, max_length=80)
+    intent_type: str = Field(default="brand_visibility", min_length=1, max_length=120)
+    city: str | None = Field(default=None, max_length=120)
+    requested_count: int = Field(default=10, ge=1, le=50)
+    model: str = Field(default="deepseek-v4-flash", min_length=1, max_length=120)
+    source_fact_filter: dict[str, object] = Field(default_factory=dict)
+    source_chunk_filter: dict[str, object] = Field(default_factory=dict)
+
+
+class RuntimeKnowledgePromptTemplateRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    template_key: str = Field(min_length=3, max_length=160)
+    template_version: str = Field(default="v1", min_length=1, max_length=80)
+    name: str = Field(min_length=1, max_length=200)
+    template_body: str = Field(min_length=20, max_length=20000)
+    status: str = Field(default="draft", pattern="^(draft|published|archived)$")
+    description: str = Field(default="", max_length=1000)
+    system_prompt: str | None = Field(default=None, max_length=20000)
+    user_prompt_template: str | None = Field(default=None, max_length=20000)
+    input_variables: list[str] = Field(default_factory=list, max_length=100)
+    output_schema: dict[str, object] = Field(default_factory=dict)
+    model_config_payload: dict[str, object] = Field(default_factory=dict, alias="model_config")
+    evaluation_set: list[dict[str, object]] = Field(default_factory=list, max_length=100)
+    metadata: dict[str, object] = Field(default_factory=dict)
+
+
+class RuntimeKnowledgeContentGenerationJobRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    content_type: str = Field(default="faq", min_length=1, max_length=80)
+    target_platform: str = Field(default="website", min_length=1, max_length=80)
+    target_city: str | None = Field(default=None, max_length=120)
+    target_audience: str = Field(default="general customer", min_length=1, max_length=300)
+    source_action_id: str | None = Field(default=None, max_length=80)
+    source_report_id: str | None = Field(default=None, max_length=80)
+    source_retest_id: str | None = Field(default=None, max_length=80)
+    source_gap_type: str | None = Field(default=None, max_length=120)
+    tone: str = Field(default="clear", min_length=1, max_length=80)
+    required_citations: int = Field(default=1, ge=1, le=20)
+    forbidden_claims: list[str] = Field(default_factory=list, max_length=100)
+    model: str = Field(default="deepseek-v4-flash", min_length=1, max_length=120)
+    template_version: str = Field(default="geo_content_draft_v1", min_length=1, max_length=120)
+
+
+class GeoProductRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    name: str = Field(min_length=1, max_length=200)
+    canonical_url: str = Field(min_length=8, max_length=2000)
+    category: str = Field(min_length=1, max_length=160)
+    market_code: str = Field(default="AU", min_length=2, max_length=20)
+    brand_entity_id: str | None = Field(default=None, max_length=80)
+    facts: dict[str, object] = Field(default_factory=dict)
+
+
+class GeoCampaignRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    product_id: str = Field(min_length=1, max_length=80)
+    name: str = Field(min_length=1, max_length=200)
+    market_code: str = Field(default="AU", min_length=2, max_length=20)
+    forbidden_claims: list[str] = Field(default_factory=list, max_length=100)
+
+
+class GeoCampaignQueryRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    query_text: str = Field(min_length=3, max_length=1000)
+    platform: str = Field(pattern="^(chatgpt_search|google)$")
+    device: str = Field(default="desktop", min_length=1, max_length=40)
+    sample_size: int = Field(default=3, ge=1, le=10)
+
+
+class GeoObservationImportRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    campaign_query_id: str = Field(min_length=1, max_length=80)
+    observation_phase: str = Field(default="baseline", pattern="^(baseline|t28|t56|t84|ad_hoc)$")
+    sample_index: int = Field(default=1, ge=1, le=10)
+    observed_at: str | None = Field(default=None, max_length=80)
+    raw_answer: str = Field(min_length=1, max_length=50000)
+    citations: list[dict[str, object]] = Field(default_factory=list, max_length=100)
+    artifact_url: str | None = Field(default=None, max_length=2000)
+    visible_model: str | None = Field(default=None, max_length=200)
+
+
+class GeoDestinationRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    publisher_id: str = Field(min_length=1, max_length=80)
+    name: str = Field(min_length=1, max_length=200)
+    destination_url: str = Field(min_length=8, max_length=2000)
+    task_type: str = Field(min_length=1, max_length=80)
+    task_key: str = Field(min_length=3, max_length=160)
+    ownership_kind: str = Field(min_length=1, max_length=80)
+    operation_mode: str = Field(default="manual_submission", pattern="^(observed_only|manual_submission)$")
+    public_disclosure_required: bool = True
+    policy_snapshot: dict[str, object] = Field(default_factory=dict)
+
+
+class GeoPublisherReviewRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    status: str = Field(pattern="^(approved|restricted|prohibited)$")
+    policy_snapshot: dict[str, object]
+
+
+class GeoOpportunityRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    campaign_id: str = Field(min_length=1, max_length=80)
+    destination_id: str = Field(min_length=1, max_length=80)
+    campaign_query_id: str | None = Field(default=None, max_length=80)
+    title: str = Field(min_length=1, max_length=300)
+    rationale: str = Field(min_length=1, max_length=4000)
+    priority: str = Field(default="medium", pattern="^(low|medium|high|critical)$")
+
+
+class GeoPromptTemplateRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    task_key: str = Field(min_length=3, max_length=160)
+    name: str = Field(min_length=1, max_length=200)
+
+
+class GeoPromptVersionRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    version_number: int = Field(default=1, ge=1, le=1000)
+    system_template: str = Field(min_length=1, max_length=20000)
+    user_template: str = Field(min_length=1, max_length=20000)
+    output_schema: dict[str, object] = Field(default_factory=dict)
+    status: str = Field(default="draft", pattern="^(draft|published|archived)$")
+
+
+class GeoPackageGenerateRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    prompt_template_version_id: str = Field(min_length=1, max_length=80)
+    evidence: list[dict[str, object]] = Field(min_length=1, max_length=100)
+    title: str | None = Field(default=None, max_length=300)
+    rendered_text: str | None = Field(default=None, max_length=50000)
+    disclosure_text: str | None = Field(default=None, max_length=4000)
+    claim_inventory: list[dict[str, object]] = Field(default_factory=list, max_length=200)
+    forbidden_claims: list[str] = Field(default_factory=list, max_length=100)
+    generate_with_model: bool = True
+    model: str = Field(default="deepseek-chat", min_length=1, max_length=120)
+    idempotency_key: str | None = Field(default=None, min_length=8, max_length=200)
+
+
+class GeoPackageRevisionRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    base_content_hash: str = Field(pattern="^[0-9a-f]{64}$")
+    rendered_text: str = Field(min_length=1, max_length=50000)
+    claim_inventory: list[dict[str, object]] = Field(min_length=1, max_length=200)
+    reason: str = Field(min_length=1, max_length=2000)
+
+
+class GeoPackageReviewRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    decision: str = Field(pattern="^(approved|needs_revision|blocked)$")
+    claim_inventory_complete: bool = False
+    qc_score: float | None = Field(default=None, ge=0, le=100)
+    review_notes: str = Field(default="", max_length=4000)
+
+
+class GeoSubmissionRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    submission_evidence_url: str | None = Field(default=None, max_length=2000)
+    external_reference: str | None = Field(default=None, max_length=500)
+    notes: str = Field(default="", max_length=4000)
+
+
+class GeoPublishedUrlRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    published_url: str = Field(min_length=8, max_length=2000)
+
+
+class GeoVerificationRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    status: str = Field(default="failed", pattern="^(verified|failed|unreachable)$")
+    content_match: bool = False
+    disclosure_match: bool = False
+    details: dict[str, object] = Field(default_factory=dict)
+
+
+class RuntimePromptCandidateReviewRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    review_status: str = Field(min_length=1, max_length=80)
+    reviewed_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    decision: str = Field(default="prompt candidate reviewed", min_length=1, max_length=500)
+    notes: str | None = Field(default=None, max_length=1000)
+    edited_text: str | None = Field(default=None, min_length=3, max_length=5000)
+
+
+class RuntimePromptCandidateImportRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    imported_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    prompt_candidate_ids: list[str] = Field(default_factory=list, max_length=200)
+    prompt_version: str | None = Field(default=None, max_length=160)
+
+
+class RuntimeReportManagementEventRequest(BaseModel):
+    status: str = Field(min_length=1, max_length=80)
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    note: str | None = Field(default=None, max_length=500)
+
+
+class RuntimeAlertEventRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    alert_type: str = Field(min_length=1, max_length=120)
+    source: str = Field(min_length=1, max_length=120)
+    source_id: str = Field(min_length=1, max_length=240)
+    status: str = Field(default="acknowledged", min_length=1, max_length=80)
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    note: str | None = Field(default=None, max_length=500)
+    metadata: dict[str, object] = Field(default_factory=dict)
+
+
+class RuntimeAlertNotificationRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    alert_type: str | None = Field(default=None, min_length=1, max_length=120)
+    severity: str | None = Field(default=None, min_length=1, max_length=80)
+    created_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+    include_resolved: bool = False
+
+
+class RuntimeReportExportJobRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    report_export_id: str | None = Field(default=None, min_length=1)
+    artifact_type: str = Field(default="pdf", min_length=1, max_length=40)
+    template: str = Field(default="standard", min_length=1, max_length=40)
+    filters: dict[str, object] = Field(default_factory=dict)
+    sort: str = Field(default="collected_at_desc", min_length=1, max_length=80)
+    requested_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class RuntimeReportExportJobStatusRequest(BaseModel):
+    status: str = Field(min_length=1, max_length=80)
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    report_export_id: str | None = Field(default=None, min_length=1)
+    artifact_url: str | None = Field(default=None, max_length=1000)
+    error_message: str | None = Field(default=None, max_length=2000)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class RuntimeFixtureCollectionRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    prompt_limit: int = Field(default=1, ge=1, le=10)
+    cities: list[str] = Field(default_factory=lambda: ["Global"], min_length=1, max_length=20)
+    sample_size: int = Field(default=3, ge=1, le=3)
+    persist_analysis: bool = True
+    score_formula_version: str = Field(default="visibility_v1.0", min_length=1, max_length=120)
+    requested_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class RuntimeCollectionJobRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    prompt_limit: int = Field(default=10, ge=1, le=200)
+    sample_size: int = Field(default=1, ge=1, le=20)
+    cities: list[str] = Field(default_factory=list, max_length=20)
+    max_attempts: int = Field(default=3, ge=1, le=10)
+    requested_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class RuntimeNotificationStatusRequest(BaseModel):
+    status: str = Field(min_length=1, max_length=40)
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class RuntimeNotificationSubscriptionRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    endpoint_url: str = Field(min_length=1, max_length=1000)
+    channel: str = Field(default="webhook", min_length=1, max_length=40)
+    event_types: list[str] = Field(default_factory=lambda: ["report_export_job"])
+    severity_threshold: str = Field(default="info", min_length=1, max_length=40)
+    status: str = Field(default="active", min_length=1, max_length=40)
+    metadata: dict[str, object] = Field(default_factory=dict)
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class RuntimeNotificationEmailFeedbackRequest(BaseModel):
+    feedback_type: str = Field(min_length=1, max_length=40)
+    recipient: str | None = Field(default=None, max_length=320)
+    recipient_hash: str | None = Field(default=None, min_length=64, max_length=64)
+    provider: str | None = Field(default=None, max_length=120)
+    provider_event_id: str | None = Field(default=None, max_length=500)
+    provider_event_id_hash: str | None = Field(default=None, min_length=64, max_length=64)
+    occurred_at: datetime | None = None
+    metadata: dict[str, object] = Field(default_factory=dict)
+    recorded_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class RuntimeNotificationEmailFeedbackWebhookRequest(BaseModel):
+    delivery_id: str = Field(min_length=1)
+    feedback_type: str = Field(min_length=1, max_length=40)
+    recipient: str | None = Field(default=None, max_length=320)
+    recipient_hash: str | None = Field(default=None, min_length=64, max_length=64)
+    provider: str | None = Field(default="geo", max_length=120)
+    provider_event_id: str | None = Field(default=None, max_length=500)
+    provider_event_id_hash: str | None = Field(default=None, min_length=64, max_length=64)
+    occurred_at: datetime | None = None
+    metadata: dict[str, object] = Field(default_factory=dict)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class RuntimeNotificationEmailFeedbackSuppressionRequest(BaseModel):
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class RuntimeNotificationEmailFeedbackProjectSuppressionRequest(BaseModel):
+    metadata: dict[str, object] = Field(default_factory=dict)
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class RuntimeNotificationEmailSuppressionRequest(BaseModel):
+    project_id: str = Field(min_length=1, max_length=120)
+    recipient_hash: str = Field(min_length=64, max_length=64)
+    status: str = Field(default="active", min_length=1, max_length=40)
+    source: str = Field(default="manual", min_length=1, max_length=80)
+    source_ref: str | None = Field(default=None, max_length=500)
+    metadata: dict[str, object] = Field(default_factory=dict)
+    updated_by: str = Field(default="runtime-console", min_length=1, max_length=120)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class RuntimeNotificationEmailPreferenceUnsubscribeRequest(BaseModel):
+    token: str = Field(min_length=1, max_length=4000)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class RuntimeNotificationEmailPreferenceResubscribeRequest(BaseModel):
+    token: str = Field(min_length=1, max_length=4000)
+    reason: str | None = Field(default=None, max_length=500)
+
+
+@app.get("/v1/launch-status/au")
+def au_launch_status() -> dict[str, object]:
+    return _build_au_launch_status_from_env()
+
+
+def _build_au_launch_status_from_env() -> dict[str, object]:
+    return build_au_launch_status(
+        p0a_status_path=Path(os.getenv("GEO_AU_P0A_STATUS_OUTPUT_PATH", DEFAULT_P0A_STATUS_PATH)),
+        p0b_google_status_path=Path(
+            os.getenv("GEO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH", DEFAULT_P0B_GOOGLE_STATUS_PATH)
+        ),
+        p0b_google_package_path=Path(
+            os.getenv("GEO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH", DEFAULT_P0B_GOOGLE_PACKAGE_PATH)
+        ),
+        p0b_google_runbook_path=Path(
+            os.getenv("GEO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH", DEFAULT_P0B_GOOGLE_RUNBOOK_PATH)
+        ),
+        p0b_google_execution_path=Path(
+            os.getenv("GEO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH", DEFAULT_P0B_GOOGLE_EXECUTION_PATH)
+        ),
+        p0c_report_package_path=Path(
+            os.getenv("GEO_AU_P0C_REPORT_PACKAGE_OUTPUT_PATH", DEFAULT_P0C_REPORT_PACKAGE_PATH)
+        ),
+        output_path=Path(os.getenv("GEO_AU_LAUNCH_STATUS_OUTPUT_PATH", DEFAULT_AU_LAUNCH_STATUS_OUTPUT_PATH)),
+    )
+
+
+@app.get("/v1/launch-remediation-plan/au")
+def au_launch_remediation_plan() -> dict[str, object]:
+    return _build_au_launch_remediation_plan_from_env()
+
+
+@app.get("/v1/p0a-environment-checklist/au")
+def au_p0a_environment_checklist() -> dict[str, object]:
+    return build_au_p0a_environment_checklist(
+        runbook_path=Path(os.getenv("GEO_AU_P0A_RUNBOOK_OUTPUT_PATH", DEFAULT_AU_P0A_RUNBOOK_OUTPUT_PATH)),
+        environment_path=Path(os.getenv("GEO_AU_P0A_ENV_OUTPUT_PATH", DEFAULT_AU_P0A_ENV_OUTPUT_PATH)),
+        status_path=Path(os.getenv("GEO_AU_P0A_STATUS_OUTPUT_PATH", DEFAULT_P0A_STATUS_PATH)),
+        env_file_path=Path(os.getenv("GEO_AU_P0A_ENV_FILE", DEFAULT_AU_P0A_ENV_FILE)),
+        output_path=Path(
+            os.getenv(
+                "GEO_AU_P0A_ENVIRONMENT_CHECKLIST_OUTPUT_PATH",
+                DEFAULT_AU_P0A_ENVIRONMENT_CHECKLIST_OUTPUT_PATH,
+            )
+        ),
+    )
+
+
+@app.get("/v1/p0a-execution-checklist/au")
+def au_p0a_execution_checklist() -> dict[str, object]:
+    return build_au_p0a_execution_checklist(
+        runbook_path=Path(os.getenv("GEO_AU_P0A_RUNBOOK_OUTPUT_PATH", DEFAULT_AU_P0A_RUNBOOK_OUTPUT_PATH)),
+        environment_path=Path(os.getenv("GEO_AU_P0A_ENV_OUTPUT_PATH", DEFAULT_AU_P0A_ENV_OUTPUT_PATH)),
+        runbook_execution_path=Path(
+            os.getenv("GEO_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH", DEFAULT_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH)
+        ),
+        readiness_path=Path(os.getenv("GEO_AU_P0A_READINESS_OUTPUT_PATH", DEFAULT_AU_P0A_READINESS_OUTPUT_PATH)),
+        package_path=Path(os.getenv("GEO_AU_P0A_PACKAGE_OUTPUT_PATH", DEFAULT_AU_P0A_PACKAGE_OUTPUT_PATH)),
+        status_path=Path(os.getenv("GEO_AU_P0A_STATUS_OUTPUT_PATH", DEFAULT_P0A_STATUS_PATH)),
+        env_file_path=Path(os.getenv("GEO_AU_P0A_ENV_FILE", DEFAULT_AU_P0A_ENV_FILE)),
+        output_path=Path(
+            os.getenv(
+                "GEO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH",
+                DEFAULT_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH,
+            )
+        ),
+    )
+
+
+@app.get("/v1/p0a-credential-request/au")
+def au_p0a_credential_request() -> dict[str, object]:
+    p0a_execution_checklist_path = Path(
+        os.getenv(
+            "GEO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH",
+            DEFAULT_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH,
+        )
+    )
+    return build_au_p0a_credential_request_packet(
+        p0a_execution_checklist_path=p0a_execution_checklist_path,
+        p0a_execution_checklist=au_p0a_execution_checklist(),
+        output_path=Path(
+            os.getenv(
+                "GEO_AU_P0A_CREDENTIAL_REQUEST_OUTPUT_PATH",
+                DEFAULT_AU_P0A_CREDENTIAL_REQUEST_OUTPUT_PATH,
+            )
+        ),
+    )
+
+
+@app.get("/v1/p0a-credential-fulfillment/au")
+def au_p0a_credential_fulfillment() -> dict[str, object]:
+    credential_request_path = Path(
+        os.getenv(
+            "GEO_AU_P0A_CREDENTIAL_REQUEST_OUTPUT_PATH",
+            DEFAULT_AU_P0A_CREDENTIAL_REQUEST_OUTPUT_PATH,
+        )
+    )
+    env_report_path = Path(os.getenv("GEO_AU_P0A_ENV_OUTPUT_PATH", DEFAULT_AU_P0A_ENV_OUTPUT_PATH))
+    return build_au_p0a_credential_fulfillment(
+        credential_request_path=credential_request_path,
+        env_report_path=env_report_path,
+        credential_request=au_p0a_credential_request(),
+        output_path=Path(
+            os.getenv(
+                "GEO_AU_P0A_CREDENTIAL_FULFILLMENT_OUTPUT_PATH",
+                DEFAULT_AU_P0A_CREDENTIAL_FULFILLMENT_OUTPUT_PATH,
+            )
+        ),
+    )
+
+
+@app.get("/v1/p0a-credential-clearance/au")
+def au_p0a_credential_clearance() -> dict[str, object]:
+    return _build_au_p0a_credential_clearance_from_env()
+
+
+def _build_au_p0a_credential_clearance_from_env(
+    *,
+    external_dependency_clearance: dict[str, object] | None = None,
+) -> dict[str, object]:
+    credential_request_path = Path(
+        os.getenv(
+            "GEO_AU_P0A_CREDENTIAL_REQUEST_OUTPUT_PATH",
+            DEFAULT_AU_P0A_CREDENTIAL_REQUEST_OUTPUT_PATH,
+        )
+    )
+    env_report_path = Path(os.getenv("GEO_AU_P0A_ENV_OUTPUT_PATH", DEFAULT_AU_P0A_ENV_OUTPUT_PATH))
+    credential_fulfillment_path = Path(
+        os.getenv(
+            "GEO_AU_P0A_CREDENTIAL_FULFILLMENT_OUTPUT_PATH",
+            DEFAULT_AU_P0A_CREDENTIAL_FULFILLMENT_OUTPUT_PATH,
+        )
+    )
+    external_dependency_clearance_path = Path(
+        os.getenv(
+            "GEO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH",
+            DEFAULT_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH,
+        )
+    )
+    credential_request = au_p0a_credential_request()
+    credential_fulfillment = build_au_p0a_credential_fulfillment(
+        credential_request_path=credential_request_path,
+        env_report_path=env_report_path,
+        credential_request=credential_request,
+        output_path=credential_fulfillment_path,
+    )
+    return build_au_p0a_credential_clearance(
+        credential_request_path=credential_request_path,
+        env_report_path=env_report_path,
+        credential_fulfillment_path=credential_fulfillment_path,
+        external_dependency_clearance_path=external_dependency_clearance_path,
+        credential_request=credential_request,
+        credential_fulfillment=credential_fulfillment,
+        external_dependency_clearance=external_dependency_clearance or au_external_dependency_clearance(),
+        output_path=Path(
+            os.getenv(
+                "GEO_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH",
+                DEFAULT_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH,
+            )
+        ),
+    )
+
+
+@app.get("/v1/p0a-credential-update-receipt/au")
+def au_p0a_credential_update_receipt() -> dict[str, object]:
+    credential_request_path = Path(
+        os.getenv(
+            "GEO_AU_P0A_CREDENTIAL_REQUEST_OUTPUT_PATH",
+            DEFAULT_AU_P0A_CREDENTIAL_REQUEST_OUTPUT_PATH,
+        )
+    )
+    env_report_path = Path(os.getenv("GEO_AU_P0A_ENV_OUTPUT_PATH", DEFAULT_AU_P0A_ENV_OUTPUT_PATH))
+    credential_fulfillment_path = Path(
+        os.getenv(
+            "GEO_AU_P0A_CREDENTIAL_FULFILLMENT_OUTPUT_PATH",
+            DEFAULT_AU_P0A_CREDENTIAL_FULFILLMENT_OUTPUT_PATH,
+        )
+    )
+    credential_clearance_path = Path(
+        os.getenv(
+            "GEO_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH",
+            DEFAULT_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH,
+        )
+    )
+    credential_request = au_p0a_credential_request()
+    credential_fulfillment = build_au_p0a_credential_fulfillment(
+        credential_request_path=credential_request_path,
+        env_report_path=env_report_path,
+        credential_request=credential_request,
+        output_path=credential_fulfillment_path,
+    )
+    credential_clearance = _build_au_p0a_credential_clearance_from_env()
+    return build_au_p0a_credential_update_receipt(
+        credential_request_path=credential_request_path,
+        env_report_path=env_report_path,
+        credential_fulfillment_path=credential_fulfillment_path,
+        credential_clearance_path=credential_clearance_path,
+        credential_request=credential_request,
+        credential_fulfillment=credential_fulfillment,
+        credential_clearance=credential_clearance,
+        output_path=Path(
+            os.getenv(
+                "GEO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH",
+                DEFAULT_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH,
+            )
+        ),
+    )
+
+
+@app.get("/v1/p0a-real-batch-request/au")
+def au_p0a_real_batch_request() -> dict[str, object]:
+    p0a_execution_checklist_path = Path(
+        os.getenv(
+            "GEO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH",
+            DEFAULT_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH,
+        )
+    )
+    return build_au_p0a_real_batch_request_packet(
+        p0a_execution_checklist_path=p0a_execution_checklist_path,
+        p0a_execution_checklist=au_p0a_execution_checklist(),
+        output_path=Path(
+            os.getenv(
+                "GEO_AU_P0A_REAL_BATCH_REQUEST_OUTPUT_PATH",
+                DEFAULT_AU_P0A_REAL_BATCH_REQUEST_OUTPUT_PATH,
+            )
+        ),
+    )
+
+
+@app.get("/v1/p0a-real-batch-fulfillment/au")
+def au_p0a_real_batch_fulfillment() -> dict[str, object]:
+    real_batch_request_path = Path(
+        os.getenv(
+            "GEO_AU_P0A_REAL_BATCH_REQUEST_OUTPUT_PATH",
+            DEFAULT_AU_P0A_REAL_BATCH_REQUEST_OUTPUT_PATH,
+        )
+    )
+    p0a_execution_checklist_path = Path(
+        os.getenv(
+            "GEO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH",
+            DEFAULT_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH,
+        )
+    )
+    return build_au_p0a_real_batch_fulfillment(
+        real_batch_request_path=real_batch_request_path,
+        p0a_execution_checklist_path=p0a_execution_checklist_path,
+        real_batch_request=au_p0a_real_batch_request(),
+        p0a_execution_checklist=au_p0a_execution_checklist(),
+        output_path=Path(
+            os.getenv(
+                "GEO_AU_P0A_REAL_BATCH_FULFILLMENT_OUTPUT_PATH",
+                DEFAULT_AU_P0A_REAL_BATCH_FULFILLMENT_OUTPUT_PATH,
+            )
+        ),
+    )
+
+
+@app.get("/v1/p0a-real-batch-clearance/au")
+def au_p0a_real_batch_clearance() -> dict[str, object]:
+    return _build_au_p0a_real_batch_clearance_from_env()
+
+
+def _build_au_p0a_real_batch_clearance_from_env(
+    *,
+    external_dependency_clearance: dict[str, object] | None = None,
+) -> dict[str, object]:
+    real_batch_request_path = Path(
+        os.getenv(
+            "GEO_AU_P0A_REAL_BATCH_REQUEST_OUTPUT_PATH",
+            DEFAULT_AU_P0A_REAL_BATCH_REQUEST_OUTPUT_PATH,
+        )
+    )
+    p0a_execution_checklist_path = Path(
+        os.getenv(
+            "GEO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH",
+            DEFAULT_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH,
+        )
+    )
+    real_batch_fulfillment_path = Path(
+        os.getenv(
+            "GEO_AU_P0A_REAL_BATCH_FULFILLMENT_OUTPUT_PATH",
+            DEFAULT_AU_P0A_REAL_BATCH_FULFILLMENT_OUTPUT_PATH,
+        )
+    )
+    external_dependency_clearance_path = Path(
+        os.getenv(
+            "GEO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH",
+            DEFAULT_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH,
+        )
+    )
+    p0a_execution_checklist = au_p0a_execution_checklist()
+    real_batch_request = build_au_p0a_real_batch_request_packet(
+        p0a_execution_checklist_path=p0a_execution_checklist_path,
+        p0a_execution_checklist=p0a_execution_checklist,
+        output_path=real_batch_request_path,
+    )
+    real_batch_fulfillment = build_au_p0a_real_batch_fulfillment(
+        real_batch_request_path=real_batch_request_path,
+        p0a_execution_checklist_path=p0a_execution_checklist_path,
+        real_batch_request=real_batch_request,
+        p0a_execution_checklist=p0a_execution_checklist,
+        output_path=real_batch_fulfillment_path,
+    )
+    return build_au_p0a_real_batch_clearance(
+        real_batch_request_path=real_batch_request_path,
+        p0a_execution_checklist_path=p0a_execution_checklist_path,
+        real_batch_fulfillment_path=real_batch_fulfillment_path,
+        external_dependency_clearance_path=external_dependency_clearance_path,
+        real_batch_request=real_batch_request,
+        p0a_execution_checklist=p0a_execution_checklist,
+        real_batch_fulfillment=real_batch_fulfillment,
+        external_dependency_clearance=external_dependency_clearance or au_external_dependency_clearance(),
+        output_path=Path(
+            os.getenv(
+                "GEO_AU_P0A_REAL_BATCH_CLEARANCE_OUTPUT_PATH",
+                DEFAULT_AU_P0A_REAL_BATCH_CLEARANCE_OUTPUT_PATH,
+            )
+        ),
+    )
+
+
+@app.get("/v1/p0b-google-execution-checklist/au")
+def au_p0b_google_execution_checklist() -> dict[str, object]:
+    return build_au_p0b_google_execution_checklist(
+        runbook_path=Path(os.getenv("GEO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH", DEFAULT_P0B_GOOGLE_RUNBOOK_PATH)),
+        execution_path=Path(
+            os.getenv("GEO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH", DEFAULT_P0B_GOOGLE_EXECUTION_PATH)
+        ),
+        playwright_env_path=Path(
+            os.getenv("GEO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH", DEFAULT_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH)
+        ),
+        status_report_path=Path(os.getenv("GEO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH", DEFAULT_P0B_GOOGLE_STATUS_PATH)),
+        package_path=Path(os.getenv("GEO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH", DEFAULT_P0B_GOOGLE_PACKAGE_PATH)),
+        env_file_path=Path(os.getenv("GEO_AU_P0B_GOOGLE_ENV_FILE", DEFAULT_AU_P0B_GOOGLE_ENV_FILE)),
+        output_path=Path(
+            os.getenv(
+                "GEO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH",
+                DEFAULT_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH,
+            )
+        ),
+    )
+
+
+@app.get("/v1/p0b-google-environment-request/au")
+def au_p0b_google_environment_request() -> dict[str, object]:
+    p0b_google_execution_checklist_path = Path(
+        os.getenv(
+            "GEO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH",
+            DEFAULT_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH,
+        )
+    )
+    return build_au_p0b_google_environment_request_packet(
+        p0b_google_execution_checklist_path=p0b_google_execution_checklist_path,
+        p0b_google_execution_checklist=au_p0b_google_execution_checklist(),
+        p0a_env_report_path=Path(os.getenv("GEO_AU_P0A_ENV_OUTPUT_PATH", DEFAULT_AU_P0A_ENV_OUTPUT_PATH)),
+        output_path=Path(
+            os.getenv(
+                "GEO_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH",
+                DEFAULT_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH,
+            )
+        ),
+    )
+
+
+@app.get("/v1/p0b-google-environment-fulfillment/au")
+def au_p0b_google_environment_fulfillment() -> dict[str, object]:
+    environment_request_path = Path(
+        os.getenv(
+            "GEO_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH",
+            DEFAULT_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH,
+        )
+    )
+    playwright_env_report_path = Path(
+        os.getenv(
+            "GEO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH",
+            DEFAULT_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH,
+        )
+    )
+    return build_au_p0b_google_environment_fulfillment(
+        environment_request_path=environment_request_path,
+        playwright_env_report_path=playwright_env_report_path,
+        playwright_env_file_path=Path(os.getenv("GEO_AU_P0B_GOOGLE_ENV_FILE", DEFAULT_AU_P0B_GOOGLE_ENV_FILE)),
+        environment_request=au_p0b_google_environment_request(),
+        output_path=Path(
+            os.getenv(
+                "GEO_AU_P0B_GOOGLE_ENVIRONMENT_FULFILLMENT_OUTPUT_PATH",
+                DEFAULT_AU_P0B_GOOGLE_ENVIRONMENT_FULFILLMENT_OUTPUT_PATH,
+            )
+        ),
+    )
+
+
+@app.get("/v1/p0b-google-environment-clearance/au")
+def au_p0b_google_environment_clearance() -> dict[str, object]:
+    return _build_au_p0b_google_environment_clearance_from_env()
+
+
+def _build_au_p0b_google_environment_clearance_from_env(
+    *,
+    external_dependency_clearance: dict[str, object] | None = None,
+) -> dict[str, object]:
+    environment_request_path = Path(
+        os.getenv(
+            "GEO_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH",
+            DEFAULT_AU_P0B_GOOGLE_ENVIRONMENT_REQUEST_OUTPUT_PATH,
+        )
+    )
+    playwright_env_report_path = Path(
+        os.getenv(
+            "GEO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH",
+            DEFAULT_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH,
+        )
+    )
+    environment_fulfillment_path = Path(
+        os.getenv(
+            "GEO_AU_P0B_GOOGLE_ENVIRONMENT_FULFILLMENT_OUTPUT_PATH",
+            DEFAULT_AU_P0B_GOOGLE_ENVIRONMENT_FULFILLMENT_OUTPUT_PATH,
+        )
+    )
+    external_dependency_clearance_path = Path(
+        os.getenv(
+            "GEO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH",
+            DEFAULT_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH,
+        )
+    )
+    playwright_env_file_path = Path(os.getenv("GEO_AU_P0B_GOOGLE_ENV_FILE", DEFAULT_AU_P0B_GOOGLE_ENV_FILE))
+    environment_request = au_p0b_google_environment_request()
+    playwright_env_report = build_google_playwright_env_report(
+        output_path=playwright_env_report_path,
+        env_file_path=playwright_env_file_path,
+    )
+    environment_fulfillment = build_au_p0b_google_environment_fulfillment(
+        environment_request_path=environment_request_path,
+        playwright_env_report_path=playwright_env_report_path,
+        playwright_env_file_path=playwright_env_file_path,
+        environment_request=environment_request,
+        playwright_env_report=playwright_env_report,
+        output_path=environment_fulfillment_path,
+    )
+    return build_au_p0b_google_environment_clearance(
+        environment_request_path=environment_request_path,
+        playwright_env_report_path=playwright_env_report_path,
+        environment_fulfillment_path=environment_fulfillment_path,
+        external_dependency_clearance_path=external_dependency_clearance_path,
+        playwright_env_file_path=playwright_env_file_path,
+        environment_request=environment_request,
+        playwright_env_report=playwright_env_report,
+        environment_fulfillment=environment_fulfillment,
+        external_dependency_clearance=external_dependency_clearance or au_external_dependency_clearance(),
+        output_path=Path(
+            os.getenv(
+                "GEO_AU_P0B_GOOGLE_ENVIRONMENT_CLEARANCE_OUTPUT_PATH",
+                DEFAULT_AU_P0B_GOOGLE_ENVIRONMENT_CLEARANCE_OUTPUT_PATH,
+            )
+        ),
+    )
+
+
+@app.get("/v1/p0b-google-manual-backfill-request/au")
+def au_p0b_google_manual_backfill_request() -> dict[str, object]:
+    p0b_google_execution_checklist_path = Path(
+        os.getenv(
+            "GEO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH",
+            DEFAULT_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH,
+        )
+    )
+    return build_au_p0b_google_manual_backfill_request_packet(
+        p0b_google_execution_checklist_path=p0b_google_execution_checklist_path,
+        p0b_google_execution_checklist=au_p0b_google_execution_checklist(),
+        output_path=Path(
+            os.getenv(
+                "GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_REQUEST_OUTPUT_PATH",
+                DEFAULT_AU_P0B_GOOGLE_MANUAL_BACKFILL_REQUEST_OUTPUT_PATH,
+            )
+        ),
+    )
+
+
+@app.get("/v1/p0b-google-manual-backfill-fulfillment/au")
+def au_p0b_google_manual_backfill_fulfillment() -> dict[str, object]:
+    manual_backfill_request_path = Path(
+        os.getenv(
+            "GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_REQUEST_OUTPUT_PATH",
+            DEFAULT_AU_P0B_GOOGLE_MANUAL_BACKFILL_REQUEST_OUTPUT_PATH,
+        )
+    )
+    return build_au_p0b_google_manual_backfill_fulfillment(
+        manual_backfill_request_path=manual_backfill_request_path,
+        manual_backfill_verification_path=Path(
+            os.getenv(
+                "GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_VERIFICATION_PATH",
+                "docs/runtime_preflight/au-p0b-google-manual-backfill-verification-latest.json",
+            )
+        ),
+        manual_jsonl_path=Path(
+            os.getenv("MANUAL_BACKFILL_PATH", "docs/runtime_preflight/au-p0b-google-manual-backfill-template.jsonl")
+        ),
+        manual_backfill_request=au_p0b_google_manual_backfill_request(),
+        output_path=Path(
+            os.getenv(
+                "GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH",
+                DEFAULT_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH,
+            )
+        ),
+    )
+
+
+@app.get("/v1/p0b-google-manual-backfill-clearance/au")
+def au_p0b_google_manual_backfill_clearance() -> dict[str, object]:
+    return _build_au_p0b_google_manual_backfill_clearance_from_env()
+
+
+def _build_au_p0b_google_manual_backfill_clearance_from_env(
+    *,
+    external_dependency_clearance: dict[str, object] | None = None,
+) -> dict[str, object]:
+    manual_backfill_request_path = Path(
+        os.getenv(
+            "GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_REQUEST_OUTPUT_PATH",
+            DEFAULT_AU_P0B_GOOGLE_MANUAL_BACKFILL_REQUEST_OUTPUT_PATH,
+        )
+    )
+    manual_backfill_verification_path = Path(
+        os.getenv(
+            "GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_VERIFICATION_PATH",
+            "docs/runtime_preflight/au-p0b-google-manual-backfill-verification-latest.json",
+        )
+    )
+    manual_jsonl_path = Path(
+        os.getenv("MANUAL_BACKFILL_PATH", "docs/runtime_preflight/au-p0b-google-manual-backfill-template.jsonl")
+    )
+    manual_backfill_fulfillment_path = Path(
+        os.getenv(
+            "GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH",
+            DEFAULT_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH,
+        )
+    )
+    manual_backfill_request = au_p0b_google_manual_backfill_request()
+    manual_backfill_fulfillment = build_au_p0b_google_manual_backfill_fulfillment(
+        manual_backfill_request_path=manual_backfill_request_path,
+        manual_backfill_verification_path=manual_backfill_verification_path,
+        manual_jsonl_path=manual_jsonl_path,
+        manual_backfill_request=manual_backfill_request,
+        output_path=manual_backfill_fulfillment_path,
+    )
+    return build_au_p0b_google_manual_backfill_clearance(
+        manual_backfill_request_path=manual_backfill_request_path,
+        manual_backfill_verification_path=manual_backfill_verification_path,
+        manual_backfill_fulfillment_path=manual_backfill_fulfillment_path,
+        external_dependency_clearance_path=Path(
+            os.getenv(
+                "GEO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH",
+                DEFAULT_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH,
+            )
+        ),
+        manual_jsonl_path=manual_jsonl_path,
+        manual_backfill_request=manual_backfill_request,
+        manual_backfill_fulfillment=manual_backfill_fulfillment,
+        external_dependency_clearance=external_dependency_clearance or au_external_dependency_clearance(),
+        output_path=Path(
+            os.getenv(
+                "GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_CLEARANCE_OUTPUT_PATH",
+                DEFAULT_AU_P0B_GOOGLE_MANUAL_BACKFILL_CLEARANCE_OUTPUT_PATH,
+            )
+        ),
+    )
+
+
+@app.get("/v1/p0b-google-phase-execution-request/au")
+def au_p0b_google_phase_execution_request() -> dict[str, object]:
+    p0b_google_execution_checklist_path = Path(
+        os.getenv(
+            "GEO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH",
+            DEFAULT_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH,
+        )
+    )
+    return build_au_p0b_google_phase_execution_request_packet(
+        p0b_google_execution_checklist_path=p0b_google_execution_checklist_path,
+        p0b_google_execution_checklist=au_p0b_google_execution_checklist(),
+        output_path=Path(
+            os.getenv(
+                "GEO_AU_P0B_GOOGLE_PHASE_EXECUTION_REQUEST_OUTPUT_PATH",
+                DEFAULT_AU_P0B_GOOGLE_PHASE_EXECUTION_REQUEST_OUTPUT_PATH,
+            )
+        ),
+    )
+
+
+@app.get("/v1/p0b-google-phase-execution-fulfillment/au")
+def au_p0b_google_phase_execution_fulfillment() -> dict[str, object]:
+    p0b_google_execution_checklist_path = Path(
+        os.getenv(
+            "GEO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH",
+            DEFAULT_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH,
+        )
+    )
+    phase_execution_request_path = Path(
+        os.getenv(
+            "GEO_AU_P0B_GOOGLE_PHASE_EXECUTION_REQUEST_OUTPUT_PATH",
+            DEFAULT_AU_P0B_GOOGLE_PHASE_EXECUTION_REQUEST_OUTPUT_PATH,
+        )
+    )
+    p0b_google_execution_checklist = au_p0b_google_execution_checklist()
+    phase_execution_request = build_au_p0b_google_phase_execution_request_packet(
+        p0b_google_execution_checklist_path=p0b_google_execution_checklist_path,
+        p0b_google_execution_checklist=p0b_google_execution_checklist,
+        output_path=phase_execution_request_path,
+    )
+    return build_au_p0b_google_phase_execution_fulfillment(
+        phase_execution_request_path=phase_execution_request_path,
+        p0b_google_execution_checklist_path=p0b_google_execution_checklist_path,
+        phase_execution_request=phase_execution_request,
+        p0b_google_execution_checklist=p0b_google_execution_checklist,
+        output_path=Path(
+            os.getenv(
+                "GEO_AU_P0B_GOOGLE_PHASE_EXECUTION_FULFILLMENT_OUTPUT_PATH",
+                DEFAULT_AU_P0B_GOOGLE_PHASE_EXECUTION_FULFILLMENT_OUTPUT_PATH,
+            )
+        ),
+    )
+
+
+@app.get("/v1/p0b-google-phase-execution-clearance/au")
+def au_p0b_google_phase_execution_clearance() -> dict[str, object]:
+    return _build_au_p0b_google_phase_execution_clearance_from_env()
+
+
+def _build_au_p0b_google_phase_execution_clearance_from_env(
+    *,
+    external_dependency_clearance: dict[str, object] | None = None,
+) -> dict[str, object]:
+    p0b_google_execution_checklist_path = Path(
+        os.getenv(
+            "GEO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH",
+            DEFAULT_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH,
+        )
+    )
+    phase_execution_request_path = Path(
+        os.getenv(
+            "GEO_AU_P0B_GOOGLE_PHASE_EXECUTION_REQUEST_OUTPUT_PATH",
+            DEFAULT_AU_P0B_GOOGLE_PHASE_EXECUTION_REQUEST_OUTPUT_PATH,
+        )
+    )
+    phase_execution_fulfillment_path = Path(
+        os.getenv(
+            "GEO_AU_P0B_GOOGLE_PHASE_EXECUTION_FULFILLMENT_OUTPUT_PATH",
+            DEFAULT_AU_P0B_GOOGLE_PHASE_EXECUTION_FULFILLMENT_OUTPUT_PATH,
+        )
+    )
+    p0b_google_execution_checklist = au_p0b_google_execution_checklist()
+    phase_execution_request = build_au_p0b_google_phase_execution_request_packet(
+        p0b_google_execution_checklist_path=p0b_google_execution_checklist_path,
+        p0b_google_execution_checklist=p0b_google_execution_checklist,
+        output_path=phase_execution_request_path,
+    )
+    phase_execution_fulfillment = build_au_p0b_google_phase_execution_fulfillment(
+        phase_execution_request_path=phase_execution_request_path,
+        p0b_google_execution_checklist_path=p0b_google_execution_checklist_path,
+        phase_execution_request=phase_execution_request,
+        p0b_google_execution_checklist=p0b_google_execution_checklist,
+        output_path=phase_execution_fulfillment_path,
+    )
+    return build_au_p0b_google_phase_execution_clearance(
+        phase_execution_request_path=phase_execution_request_path,
+        p0b_google_execution_checklist_path=p0b_google_execution_checklist_path,
+        phase_execution_fulfillment_path=phase_execution_fulfillment_path,
+        external_dependency_clearance_path=Path(
+            os.getenv(
+                "GEO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH",
+                DEFAULT_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH,
+            )
+        ),
+        phase_execution_request=phase_execution_request,
+        p0b_google_execution_checklist=p0b_google_execution_checklist,
+        phase_execution_fulfillment=phase_execution_fulfillment,
+        external_dependency_clearance=external_dependency_clearance or au_external_dependency_clearance(),
+        output_path=Path(
+            os.getenv(
+                "GEO_AU_P0B_GOOGLE_PHASE_EXECUTION_CLEARANCE_OUTPUT_PATH",
+                DEFAULT_AU_P0B_GOOGLE_PHASE_EXECUTION_CLEARANCE_OUTPUT_PATH,
+            )
+        ),
+    )
+
+
+@app.get("/v1/au-broader-platform-registry")
+def au_broader_platform_registry() -> dict[str, object]:
+    return build_au_broader_platform_registry(
+        output_path=Path(
+            os.getenv(
+                "GEO_AU_BROADER_PLATFORM_REGISTRY_OUTPUT_PATH",
+                DEFAULT_AU_BROADER_PLATFORM_REGISTRY_OUTPUT_PATH,
+            )
+        )
+    )
+
+
+@app.get("/v1/au-retest-scheduler-plan")
+def au_retest_scheduler_plan() -> dict[str, object]:
+    return build_au_retest_scheduler_plan(
+        output_path=Path(
+            os.getenv(
+                "GEO_AU_RETEST_SCHEDULER_PLAN_OUTPUT_PATH",
+                DEFAULT_AU_RETEST_SCHEDULER_PLAN_OUTPUT_PATH,
+            )
+        ),
+        project_id=os.getenv("GEO_AU_RETEST_PROJECT_ID", "au-dtc-design-partner"),
+    )
+
+
+@app.get("/v1/au-retest-execution-status")
+def au_retest_execution_status() -> dict[str, object]:
+    return build_au_retest_execution_status(
+        plan_path=Path(
+            os.getenv(
+                "GEO_AU_RETEST_SCHEDULER_PLAN_OUTPUT_PATH",
+                DEFAULT_AU_RETEST_SCHEDULER_PLAN_OUTPUT_PATH,
+            )
+        ),
+        output_path=Path(
+            os.getenv(
+                "GEO_AU_RETEST_EXECUTION_STATUS_OUTPUT_PATH",
+                DEFAULT_AU_RETEST_EXECUTION_STATUS_OUTPUT_PATH,
+            )
+        ),
+        artifact_base_dir=Path(os.getenv("GEO_AU_RETEST_ARTIFACT_BASE_DIR", ".")),
+    )
+
+
+def _build_au_launch_remediation_plan_from_env() -> dict[str, object]:
+    launch_status_path = Path(os.getenv("GEO_AU_LAUNCH_STATUS_OUTPUT_PATH", DEFAULT_AU_LAUNCH_STATUS_OUTPUT_PATH))
+    launch_status = _build_au_launch_status_from_env()
+    return build_au_launch_remediation_plan(
+        launch_status=launch_status,
+        launch_status_path=launch_status_path,
+        output_path=Path(
+            os.getenv(
+                "GEO_AU_LAUNCH_REMEDIATION_PLAN_OUTPUT_PATH",
+                DEFAULT_AU_LAUNCH_REMEDIATION_PLAN_OUTPUT_PATH,
+            )
+        ),
+    )
+
+
+@app.get("/v1/handoff-dossier/au")
+def au_handoff_dossier() -> dict[str, object]:
+    launch_status_path = Path(os.getenv("GEO_AU_LAUNCH_STATUS_OUTPUT_PATH", DEFAULT_AU_LAUNCH_STATUS_OUTPUT_PATH))
+    remediation_plan_path = Path(
+        os.getenv(
+            "GEO_AU_LAUNCH_REMEDIATION_PLAN_OUTPUT_PATH",
+            DEFAULT_AU_LAUNCH_REMEDIATION_PLAN_OUTPUT_PATH,
+        )
+    )
+    p0a_environment_checklist_path = Path(
+        os.getenv(
+            "GEO_AU_P0A_ENVIRONMENT_CHECKLIST_OUTPUT_PATH",
+            DEFAULT_AU_P0A_ENVIRONMENT_CHECKLIST_OUTPUT_PATH,
+        )
+    )
+    p0a_execution_checklist_path = Path(
+        os.getenv(
+            "GEO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH",
+            DEFAULT_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH,
+        )
+    )
+    p0b_google_execution_checklist_path = Path(
+        os.getenv(
+            "GEO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH",
+            DEFAULT_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH,
+        )
+    )
+    launch_status = _build_au_launch_status_from_env()
+    remediation_plan = build_au_launch_remediation_plan(
+        launch_status=launch_status,
+        launch_status_path=launch_status_path,
+        output_path=remediation_plan_path,
+    )
+    p0a_environment_checklist = au_p0a_environment_checklist()
+    p0a_execution_checklist = au_p0a_execution_checklist()
+    p0b_google_execution_checklist = au_p0b_google_execution_checklist()
+    return build_au_handoff_dossier(
+        launch_status_path=launch_status_path,
+        remediation_plan_path=remediation_plan_path,
+        p0a_environment_checklist_path=p0a_environment_checklist_path,
+        p0a_execution_checklist_path=p0a_execution_checklist_path,
+        p0b_google_execution_checklist_path=p0b_google_execution_checklist_path,
+        launch_status=launch_status,
+        remediation_plan=remediation_plan,
+        p0a_environment_checklist=p0a_environment_checklist,
+        p0a_execution_checklist=p0a_execution_checklist,
+        p0b_google_execution_checklist=p0b_google_execution_checklist,
+        output_path=Path(os.getenv("GEO_AU_HANDOFF_DOSSIER_OUTPUT_PATH", DEFAULT_AU_HANDOFF_DOSSIER_OUTPUT_PATH)),
+        markdown_output_path=Path(
+            os.getenv("GEO_AU_HANDOFF_DOSSIER_MARKDOWN_PATH", DEFAULT_AU_HANDOFF_DOSSIER_MARKDOWN_OUTPUT_PATH)
+        ),
+    )
+
+
+@app.get("/v1/customer-handoff-readiness/au")
+def au_customer_handoff_readiness() -> dict[str, object]:
+    handoff_dossier_path = Path(
+        os.getenv("GEO_AU_HANDOFF_DOSSIER_OUTPUT_PATH", DEFAULT_AU_HANDOFF_DOSSIER_OUTPUT_PATH)
+    )
+    return build_au_customer_handoff_readiness(
+        handoff_dossier_path=handoff_dossier_path,
+        handoff_dossier=au_handoff_dossier(),
+        output_path=Path(
+            os.getenv(
+                "GEO_AU_CUSTOMER_HANDOFF_READINESS_OUTPUT_PATH",
+                DEFAULT_AU_CUSTOMER_HANDOFF_READINESS_OUTPUT_PATH,
+            )
+        ),
+    )
+
+
+@app.get("/v1/next-work-item/au")
+def au_next_work_item() -> dict[str, object]:
+    handoff_dossier_path = Path(
+        os.getenv("GEO_AU_HANDOFF_DOSSIER_OUTPUT_PATH", DEFAULT_AU_HANDOFF_DOSSIER_OUTPUT_PATH)
+    )
+    external_dependency_handoff_path = Path(
+        os.getenv(
+            "GEO_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH",
+            DEFAULT_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH,
+        )
+    )
+    return build_au_next_work_item_packet(
+        handoff_dossier_path=handoff_dossier_path,
+        external_dependency_handoff_path=external_dependency_handoff_path,
+        handoff_dossier=au_handoff_dossier(),
+        external_dependency_handoff=_build_au_external_dependency_handoff_from_env(),
+        output_path=Path(os.getenv("GEO_AU_NEXT_WORK_ITEM_OUTPUT_PATH", DEFAULT_AU_NEXT_WORK_ITEM_OUTPUT_PATH)),
+    )
+
+
+@app.get("/v1/delivery-progress/au")
+def au_delivery_progress() -> dict[str, object]:
+    launch_status_path = Path(os.getenv("GEO_AU_LAUNCH_STATUS_OUTPUT_PATH", DEFAULT_AU_LAUNCH_STATUS_OUTPUT_PATH))
+    handoff_dossier_path = Path(
+        os.getenv("GEO_AU_HANDOFF_DOSSIER_OUTPUT_PATH", DEFAULT_AU_HANDOFF_DOSSIER_OUTPUT_PATH)
+    )
+    customer_handoff_readiness_path = Path(
+        os.getenv(
+            "GEO_AU_CUSTOMER_HANDOFF_READINESS_OUTPUT_PATH",
+            DEFAULT_AU_CUSTOMER_HANDOFF_READINESS_OUTPUT_PATH,
+        )
+    )
+    next_work_item_path = Path(os.getenv("GEO_AU_NEXT_WORK_ITEM_OUTPUT_PATH", DEFAULT_AU_NEXT_WORK_ITEM_OUTPUT_PATH))
+    external_dependency_handoff_path = Path(
+        os.getenv(
+            "GEO_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH",
+            DEFAULT_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH,
+        )
+    )
+    external_dependency_clearance_path = Path(
+        os.getenv(
+            "GEO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH",
+            DEFAULT_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH,
+        )
+    )
+    p0a_credential_clearance_path = Path(
+        os.getenv(
+            "GEO_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH",
+            DEFAULT_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH,
+        )
+    )
+    p0a_credential_update_receipt_path = Path(
+        os.getenv(
+            "GEO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH",
+            DEFAULT_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH,
+        )
+    )
+    p0a_real_batch_clearance_path = Path(
+        os.getenv(
+            "GEO_AU_P0A_REAL_BATCH_CLEARANCE_OUTPUT_PATH",
+            DEFAULT_AU_P0A_REAL_BATCH_CLEARANCE_OUTPUT_PATH,
+        )
+    )
+    p0b_google_environment_clearance_path = Path(
+        os.getenv(
+            "GEO_AU_P0B_GOOGLE_ENVIRONMENT_CLEARANCE_OUTPUT_PATH",
+            DEFAULT_AU_P0B_GOOGLE_ENVIRONMENT_CLEARANCE_OUTPUT_PATH,
+        )
+    )
+    p0b_google_manual_backfill_clearance_path = Path(
+        os.getenv(
+            "GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_CLEARANCE_OUTPUT_PATH",
+            DEFAULT_AU_P0B_GOOGLE_MANUAL_BACKFILL_CLEARANCE_OUTPUT_PATH,
+        )
+    )
+    p0b_google_phase_execution_clearance_path = Path(
+        os.getenv(
+            "GEO_AU_P0B_GOOGLE_PHASE_EXECUTION_CLEARANCE_OUTPUT_PATH",
+            DEFAULT_AU_P0B_GOOGLE_PHASE_EXECUTION_CLEARANCE_OUTPUT_PATH,
+        )
+    )
+    launch_status = _build_au_launch_status_from_env()
+    handoff_dossier = au_handoff_dossier()
+    external_dependency_handoff = _build_au_external_dependency_handoff_from_env()
+    external_dependency_clearance = run_au_external_dependency_clearance(
+        handoff_path=external_dependency_handoff_path,
+        handoff=external_dependency_handoff,
+        output_path=external_dependency_clearance_path,
+    )
+    p0a_credential_clearance = _build_au_p0a_credential_clearance_from_env(
+        external_dependency_clearance=external_dependency_clearance
+    )
+    p0a_credential_update_receipt = build_au_p0a_credential_update_receipt(
+        credential_clearance_path=p0a_credential_clearance_path,
+        credential_clearance=p0a_credential_clearance,
+        output_path=p0a_credential_update_receipt_path,
+    )
+    p0a_real_batch_clearance = _build_au_p0a_real_batch_clearance_from_env(
+        external_dependency_clearance=external_dependency_clearance
+    )
+    p0b_google_environment_clearance = _build_au_p0b_google_environment_clearance_from_env(
+        external_dependency_clearance=external_dependency_clearance
+    )
+    p0b_google_manual_backfill_clearance = _build_au_p0b_google_manual_backfill_clearance_from_env(
+        external_dependency_clearance=external_dependency_clearance
+    )
+    p0b_google_phase_execution_clearance = _build_au_p0b_google_phase_execution_clearance_from_env(
+        external_dependency_clearance=external_dependency_clearance
+    )
+    return build_au_delivery_progress(
+        launch_status_path=launch_status_path,
+        handoff_dossier_path=handoff_dossier_path,
+        customer_handoff_readiness_path=customer_handoff_readiness_path,
+        next_work_item_path=next_work_item_path,
+        external_dependency_handoff_path=external_dependency_handoff_path,
+        external_dependency_clearance_path=external_dependency_clearance_path,
+        p0a_credential_clearance_path=p0a_credential_clearance_path,
+        p0a_credential_update_receipt_path=p0a_credential_update_receipt_path,
+        p0a_real_batch_clearance_path=p0a_real_batch_clearance_path,
+        p0b_google_environment_clearance_path=p0b_google_environment_clearance_path,
+        p0b_google_manual_backfill_clearance_path=p0b_google_manual_backfill_clearance_path,
+        p0b_google_phase_execution_clearance_path=p0b_google_phase_execution_clearance_path,
+        launch_status=launch_status,
+        handoff_dossier=handoff_dossier,
+        customer_handoff_readiness=build_au_customer_handoff_readiness(
+            handoff_dossier_path=handoff_dossier_path,
+            handoff_dossier=handoff_dossier,
+            output_path=customer_handoff_readiness_path,
+        ),
+        next_work_item=build_au_next_work_item_packet(
+            handoff_dossier_path=handoff_dossier_path,
+            external_dependency_handoff_path=external_dependency_handoff_path,
+            handoff_dossier=handoff_dossier,
+            external_dependency_handoff=external_dependency_handoff,
+            output_path=next_work_item_path,
+        ),
+        external_dependency_handoff=external_dependency_handoff,
+        external_dependency_clearance=external_dependency_clearance,
+        p0a_credential_clearance=p0a_credential_clearance,
+        p0a_credential_update_receipt=p0a_credential_update_receipt,
+        p0a_real_batch_clearance=p0a_real_batch_clearance,
+        p0b_google_environment_clearance=p0b_google_environment_clearance,
+        p0b_google_manual_backfill_clearance=p0b_google_manual_backfill_clearance,
+        p0b_google_phase_execution_clearance=p0b_google_phase_execution_clearance,
+        output_path=Path(os.getenv("GEO_AU_DELIVERY_PROGRESS_OUTPUT_PATH", DEFAULT_AU_DELIVERY_PROGRESS_OUTPUT_PATH)),
+    )
+
+
+@app.get("/v1/customer-handoff-clearance/au")
+def au_customer_handoff_clearance() -> dict[str, object]:
+    handoff_dossier_path = Path(
+        os.getenv("GEO_AU_HANDOFF_DOSSIER_OUTPUT_PATH", DEFAULT_AU_HANDOFF_DOSSIER_OUTPUT_PATH)
+    )
+    customer_handoff_readiness_path = Path(
+        os.getenv(
+            "GEO_AU_CUSTOMER_HANDOFF_READINESS_OUTPUT_PATH",
+            DEFAULT_AU_CUSTOMER_HANDOFF_READINESS_OUTPUT_PATH,
+        )
+    )
+    delivery_progress_path = Path(
+        os.getenv("GEO_AU_DELIVERY_PROGRESS_OUTPUT_PATH", DEFAULT_AU_DELIVERY_PROGRESS_OUTPUT_PATH)
+    )
+    external_dependency_handoff_path = Path(
+        os.getenv(
+            "GEO_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH",
+            DEFAULT_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH,
+        )
+    )
+    external_dependency_clearance_path = Path(
+        os.getenv(
+            "GEO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH",
+            DEFAULT_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH,
+        )
+    )
+    p0a_credential_clearance_path = Path(
+        os.getenv(
+            "GEO_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH",
+            DEFAULT_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH,
+        )
+    )
+    p0a_credential_update_receipt_path = Path(
+        os.getenv(
+            "GEO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH",
+            DEFAULT_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH,
+        )
+    )
+    p0a_real_batch_clearance_path = Path(
+        os.getenv(
+            "GEO_AU_P0A_REAL_BATCH_CLEARANCE_OUTPUT_PATH",
+            DEFAULT_AU_P0A_REAL_BATCH_CLEARANCE_OUTPUT_PATH,
+        )
+    )
+    p0b_google_environment_clearance_path = Path(
+        os.getenv(
+            "GEO_AU_P0B_GOOGLE_ENVIRONMENT_CLEARANCE_OUTPUT_PATH",
+            DEFAULT_AU_P0B_GOOGLE_ENVIRONMENT_CLEARANCE_OUTPUT_PATH,
+        )
+    )
+    p0b_google_manual_backfill_clearance_path = Path(
+        os.getenv(
+            "GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_CLEARANCE_OUTPUT_PATH",
+            DEFAULT_AU_P0B_GOOGLE_MANUAL_BACKFILL_CLEARANCE_OUTPUT_PATH,
+        )
+    )
+    p0b_google_phase_execution_clearance_path = Path(
+        os.getenv(
+            "GEO_AU_P0B_GOOGLE_PHASE_EXECUTION_CLEARANCE_OUTPUT_PATH",
+            DEFAULT_AU_P0B_GOOGLE_PHASE_EXECUTION_CLEARANCE_OUTPUT_PATH,
+        )
+    )
+    handoff_dossier = au_handoff_dossier()
+    customer_handoff_readiness = build_au_customer_handoff_readiness(
+        handoff_dossier_path=handoff_dossier_path,
+        handoff_dossier=handoff_dossier,
+        output_path=customer_handoff_readiness_path,
+    )
+    external_dependency_handoff = _build_au_external_dependency_handoff_from_env()
+    external_dependency_clearance = run_au_external_dependency_clearance(
+        handoff_path=external_dependency_handoff_path,
+        handoff=external_dependency_handoff,
+        output_path=external_dependency_clearance_path,
+    )
+    p0a_credential_clearance = _build_au_p0a_credential_clearance_from_env(
+        external_dependency_clearance=external_dependency_clearance
+    )
+    p0a_credential_update_receipt = build_au_p0a_credential_update_receipt(
+        credential_clearance_path=p0a_credential_clearance_path,
+        credential_clearance=p0a_credential_clearance,
+        output_path=p0a_credential_update_receipt_path,
+    )
+    p0a_real_batch_clearance = _build_au_p0a_real_batch_clearance_from_env(
+        external_dependency_clearance=external_dependency_clearance
+    )
+    p0b_google_environment_clearance = _build_au_p0b_google_environment_clearance_from_env(
+        external_dependency_clearance=external_dependency_clearance
+    )
+    p0b_google_manual_backfill_clearance = _build_au_p0b_google_manual_backfill_clearance_from_env(
+        external_dependency_clearance=external_dependency_clearance
+    )
+    p0b_google_phase_execution_clearance = _build_au_p0b_google_phase_execution_clearance_from_env(
+        external_dependency_clearance=external_dependency_clearance
+    )
+    delivery_progress = build_au_delivery_progress(
+        handoff_dossier_path=handoff_dossier_path,
+        customer_handoff_readiness_path=customer_handoff_readiness_path,
+        external_dependency_handoff_path=external_dependency_handoff_path,
+        external_dependency_clearance_path=external_dependency_clearance_path,
+        p0a_credential_clearance_path=p0a_credential_clearance_path,
+        p0a_credential_update_receipt_path=p0a_credential_update_receipt_path,
+        p0a_real_batch_clearance_path=p0a_real_batch_clearance_path,
+        p0b_google_environment_clearance_path=p0b_google_environment_clearance_path,
+        p0b_google_manual_backfill_clearance_path=p0b_google_manual_backfill_clearance_path,
+        p0b_google_phase_execution_clearance_path=p0b_google_phase_execution_clearance_path,
+        handoff_dossier=handoff_dossier,
+        customer_handoff_readiness=customer_handoff_readiness,
+        external_dependency_handoff=external_dependency_handoff,
+        external_dependency_clearance=external_dependency_clearance,
+        p0a_credential_clearance=p0a_credential_clearance,
+        p0a_credential_update_receipt=p0a_credential_update_receipt,
+        p0a_real_batch_clearance=p0a_real_batch_clearance,
+        p0b_google_environment_clearance=p0b_google_environment_clearance,
+        p0b_google_manual_backfill_clearance=p0b_google_manual_backfill_clearance,
+        p0b_google_phase_execution_clearance=p0b_google_phase_execution_clearance,
+        output_path=delivery_progress_path,
+    )
+    return build_au_customer_handoff_clearance(
+        handoff_dossier_path=handoff_dossier_path,
+        customer_handoff_readiness_path=customer_handoff_readiness_path,
+        delivery_progress_path=delivery_progress_path,
+        external_dependency_handoff_path=external_dependency_handoff_path,
+        external_dependency_clearance_path=external_dependency_clearance_path,
+        p0a_credential_clearance_path=p0a_credential_clearance_path,
+        p0a_credential_update_receipt_path=p0a_credential_update_receipt_path,
+        p0a_real_batch_clearance_path=p0a_real_batch_clearance_path,
+        p0b_google_environment_clearance_path=p0b_google_environment_clearance_path,
+        p0b_google_manual_backfill_clearance_path=p0b_google_manual_backfill_clearance_path,
+        p0b_google_phase_execution_clearance_path=p0b_google_phase_execution_clearance_path,
+        handoff_dossier=handoff_dossier,
+        customer_handoff_readiness=customer_handoff_readiness,
+        delivery_progress=delivery_progress,
+        external_dependency_handoff=external_dependency_handoff,
+        external_dependency_clearance=external_dependency_clearance,
+        p0a_credential_clearance=p0a_credential_clearance,
+        p0a_credential_update_receipt=p0a_credential_update_receipt,
+        p0a_real_batch_clearance=p0a_real_batch_clearance,
+        p0b_google_environment_clearance=p0b_google_environment_clearance,
+        p0b_google_manual_backfill_clearance=p0b_google_manual_backfill_clearance,
+        p0b_google_phase_execution_clearance=p0b_google_phase_execution_clearance,
+        output_path=Path(
+            os.getenv(
+                "GEO_AU_CUSTOMER_HANDOFF_CLEARANCE_OUTPUT_PATH",
+                DEFAULT_AU_CUSTOMER_HANDOFF_CLEARANCE_OUTPUT_PATH,
+            )
+        ),
+    )
+
+
+@app.get("/v1/customer-handoff-package/au")
+def au_customer_handoff_package() -> dict[str, object]:
+    return build_au_customer_handoff_package(
+        handoff_dossier_path=Path(
+            os.getenv("GEO_AU_HANDOFF_DOSSIER_OUTPUT_PATH", DEFAULT_AU_HANDOFF_DOSSIER_OUTPUT_PATH)
+        ),
+        handoff_dossier_markdown_path=Path(
+            os.getenv("GEO_AU_HANDOFF_DOSSIER_MARKDOWN_PATH", DEFAULT_AU_HANDOFF_DOSSIER_MARKDOWN_PATH)
+        ),
+        customer_handoff_readiness_path=Path(
+            os.getenv(
+                "GEO_AU_CUSTOMER_HANDOFF_READINESS_OUTPUT_PATH",
+                DEFAULT_AU_CUSTOMER_HANDOFF_READINESS_OUTPUT_PATH,
+            )
+        ),
+        next_work_item_path=Path(
+            os.getenv("GEO_AU_NEXT_WORK_ITEM_OUTPUT_PATH", DEFAULT_AU_NEXT_WORK_ITEM_OUTPUT_PATH)
+        ),
+        delivery_progress_path=Path(
+            os.getenv("GEO_AU_DELIVERY_PROGRESS_OUTPUT_PATH", DEFAULT_AU_DELIVERY_PROGRESS_OUTPUT_PATH)
+        ),
+        customer_handoff_clearance_path=Path(
+            os.getenv(
+                "GEO_AU_CUSTOMER_HANDOFF_CLEARANCE_OUTPUT_PATH",
+                DEFAULT_AU_CUSTOMER_HANDOFF_CLEARANCE_OUTPUT_PATH,
+            )
+        ),
+        external_dependency_handoff_path=Path(
+            os.getenv(
+                "GEO_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH",
+                DEFAULT_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH,
+            )
+        ),
+        external_dependency_clearance_path=Path(
+            os.getenv(
+                "GEO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH",
+                DEFAULT_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH,
+            )
+        ),
+        p0a_credential_clearance_path=Path(
+            os.getenv(
+                "GEO_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH",
+                DEFAULT_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH,
+            )
+        ),
+        p0a_credential_update_receipt_path=Path(
+            os.getenv(
+                "GEO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH",
+                DEFAULT_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH,
+            )
+        ),
+        p0a_real_batch_clearance_path=Path(
+            os.getenv(
+                "GEO_AU_P0A_REAL_BATCH_CLEARANCE_OUTPUT_PATH",
+                DEFAULT_AU_P0A_REAL_BATCH_CLEARANCE_OUTPUT_PATH,
+            )
+        ),
+        p0b_google_environment_clearance_path=Path(
+            os.getenv(
+                "GEO_AU_P0B_GOOGLE_ENVIRONMENT_CLEARANCE_OUTPUT_PATH",
+                DEFAULT_AU_P0B_GOOGLE_ENVIRONMENT_CLEARANCE_OUTPUT_PATH,
+            )
+        ),
+        p0b_google_manual_backfill_clearance_path=Path(
+            os.getenv(
+                "GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_CLEARANCE_OUTPUT_PATH",
+                DEFAULT_AU_P0B_GOOGLE_MANUAL_BACKFILL_CLEARANCE_OUTPUT_PATH,
+            )
+        ),
+        p0b_google_phase_execution_clearance_path=Path(
+            os.getenv(
+                "GEO_AU_P0B_GOOGLE_PHASE_EXECUTION_CLEARANCE_OUTPUT_PATH",
+                DEFAULT_AU_P0B_GOOGLE_PHASE_EXECUTION_CLEARANCE_OUTPUT_PATH,
+            )
+        ),
+        p0a_evidence_package_path=Path(
+            os.getenv("GEO_AU_P0A_PACKAGE_OUTPUT_PATH", DEFAULT_AU_P0A_PACKAGE_OUTPUT_PATH)
+        ),
+        p0b_google_evidence_package_path=Path(
+            os.getenv("GEO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH", DEFAULT_P0B_GOOGLE_PACKAGE_PATH)
+        ),
+        p0c_report_package_path=Path(
+            os.getenv("GEO_AU_P0C_REPORT_PACKAGE_OUTPUT_PATH", DEFAULT_P0C_REPORT_PACKAGE_PATH)
+        ),
+        output_path=Path(
+            os.getenv(
+                "GEO_AU_CUSTOMER_HANDOFF_PACKAGE_OUTPUT_PATH",
+                DEFAULT_AU_CUSTOMER_HANDOFF_PACKAGE_OUTPUT_PATH,
+            )
+        ),
+        markdown_output_path=Path(
+            os.getenv(
+                "GEO_AU_CUSTOMER_HANDOFF_PACKAGE_MARKDOWN_PATH",
+                DEFAULT_AU_CUSTOMER_HANDOFF_PACKAGE_MARKDOWN_OUTPUT_PATH,
+            )
+        ),
+    )
+
+
+@app.get("/v1/external-dependency-handoff/au")
+def au_external_dependency_handoff() -> dict[str, object]:
+    return _build_au_external_dependency_handoff_from_env()
+
+
+def _build_au_external_dependency_handoff_from_env() -> dict[str, object]:
+    launch_status_path = Path(os.getenv("GEO_AU_LAUNCH_STATUS_OUTPUT_PATH", DEFAULT_AU_LAUNCH_STATUS_OUTPUT_PATH))
+    remediation_plan_path = Path(
+        os.getenv(
+            "GEO_AU_LAUNCH_REMEDIATION_PLAN_OUTPUT_PATH",
+            DEFAULT_AU_LAUNCH_REMEDIATION_PLAN_OUTPUT_PATH,
+        )
+    )
+    p0a_environment_checklist_path = Path(
+        os.getenv(
+            "GEO_AU_P0A_ENVIRONMENT_CHECKLIST_OUTPUT_PATH",
+            DEFAULT_AU_P0A_ENVIRONMENT_CHECKLIST_OUTPUT_PATH,
+        )
+    )
+    p0a_execution_checklist_path = Path(
+        os.getenv(
+            "GEO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH",
+            DEFAULT_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH,
+        )
+    )
+    p0b_google_execution_checklist_path = Path(
+        os.getenv(
+            "GEO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH",
+            DEFAULT_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH,
+        )
+    )
+    launch_status = _build_au_launch_status_from_env()
+    remediation_plan = build_au_launch_remediation_plan(
+        launch_status=launch_status,
+        launch_status_path=launch_status_path,
+        output_path=remediation_plan_path,
+    )
+    return build_au_external_dependency_handoff(
+        launch_status_path=launch_status_path,
+        remediation_plan_path=remediation_plan_path,
+        p0a_environment_checklist_path=p0a_environment_checklist_path,
+        p0a_execution_checklist_path=p0a_execution_checklist_path,
+        p0b_google_execution_checklist_path=p0b_google_execution_checklist_path,
+        launch_status=launch_status,
+        remediation_plan=remediation_plan,
+        p0a_environment_checklist=au_p0a_environment_checklist(),
+        p0a_execution_checklist=au_p0a_execution_checklist(),
+        p0b_google_execution_checklist=au_p0b_google_execution_checklist(),
+        p0b_google_manual_backfill_fulfillment_path=Path(
+            os.getenv(
+                "GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH",
+                DEFAULT_AU_P0B_GOOGLE_MANUAL_BACKFILL_FULFILLMENT_OUTPUT_PATH,
+            )
+        ),
+        p0b_google_manual_backfill_fulfillment=au_p0b_google_manual_backfill_fulfillment(),
+        output_path=Path(
+            os.getenv(
+                "GEO_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH",
+                DEFAULT_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH,
+            )
+        ),
+    )
+
+
+@app.get("/v1/external-dependency-clearance/au")
+def au_external_dependency_clearance() -> dict[str, object]:
+    handoff_path = Path(
+        os.getenv(
+            "GEO_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH",
+            DEFAULT_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH,
+        )
+    )
+    return run_au_external_dependency_clearance(
+        handoff_path=handoff_path,
+        handoff=_build_au_external_dependency_handoff_from_env(),
+        output_path=Path(
+            os.getenv(
+                "GEO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH",
+                DEFAULT_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH,
+            )
+        ),
+    )
+
+
+@app.get("/v1/market-profiles/au")
+def au_market_profile() -> dict[str, object]:
+    return asdict(build_au_market_profile())
+
+
+@app.get("/v1/industry-profiles/au/dtc-ecommerce")
+def au_dtc_industry_profile() -> dict[str, object]:
+    return asdict(build_au_dtc_ecommerce_profile())
+
+
+@app.get("/v1/prompt-packs/au/dtc-ecommerce")
+def au_dtc_prompt_pack() -> dict[str, object]:
+    bootstrap = build_au_project_bootstrap()
+    return {
+        "prompt_version": bootstrap.project.prompt_version,
+        "market_code": bootstrap.project.market_code,
+        "industry_code": bootstrap.project.industry_code,
+        "target_brand": bootstrap.project.target_brand,
+        "category": bootstrap.project.category,
+        "count": len(bootstrap.prompt_questions),
+        "prompts": [asdict(prompt) for prompt in bootstrap.prompt_questions],
+    }
+
+
+@app.get("/v1/project-bootstraps/au/dtc-ecommerce")
+def au_dtc_project_bootstrap() -> dict[str, object]:
+    return asdict(build_au_project_bootstrap())
+
+
+def _create_runtime_project_response(
+    request: RuntimeProjectCreateRequest,
+    *,
+    actor_id: str | None,
+    au_market_profile: bool,
+) -> dict[str, object]:
+    owner_user_id = actor_id if runtime_project_access_control_enabled() and actor_id else request.owner_user_id.strip()
+    competitors = tuple(item.strip() for item in request.competitors if item.strip())
+    if not competitors and au_market_profile:
+        competitors = DEFAULT_AU_COMPETITORS
+    if not competitors:
+        raise HTTPException(status_code=400, detail="competitors must contain 1-5 entries")
+    brand_official_domains = tuple(item.strip() for item in request.brand_official_domains if item.strip())
+    if not brand_official_domains and not au_market_profile:
+        raise HTTPException(status_code=400, detail="brand_official_domains must contain a primary domain")
+    primary_domain = brand_official_domains[0] if brand_official_domains else "example.com"
+    customer_email = request.customer_email.strip().lower() if request.customer_email else "customer@example.com"
+    customer_email_supplied = bool(request.customer_email and request.customer_email.strip())
+    if not customer_email_supplied and not au_market_profile:
+        raise HTTPException(status_code=400, detail="customer_email is required")
+    if customer_email_supplied and "@" not in customer_email:
+        raise HTTPException(status_code=400, detail="customer_email must be a valid email address")
+    launch_status = request.launch_status.strip().lower()
+    if launch_status not in {"draft", "ready", "active", "paused"}:
+        raise HTTPException(status_code=400, detail="launch_status must be draft, ready, active, or paused")
+    brand_product_lines = tuple(item.strip() for item in request.brand_product_lines if item.strip())
+    competitor_domains = tuple(item.strip().lower() for item in request.competitor_domains if item.strip())
+    competitor_official_domains = {
+        competitor: (competitor_domains[index],)
+        for index, competitor in enumerate(competitors)
+        if index < len(competitor_domains) and competitor_domains[index]
+    }
+    try:
+        if au_market_profile:
+            bootstrap = build_au_project_bootstrap(
+                tenant_name=request.tenant_name.strip(),
+                project_name=request.project_name.strip(),
+                target_brand=request.target_brand.strip(),
+                category=request.category.strip(),
+                competitors=competitors,
+                brand_official_domains=brand_official_domains,
+                brand_parent_company=request.brand_parent_company.strip() if request.brand_parent_company else None,
+                brand_product_lines=brand_product_lines,
+                competitor_official_domains=competitor_official_domains,
+                owner_user_id=owner_user_id,
+            )
+        else:
+            bootstrap = build_project_bootstrap(
+                tenant_name=request.tenant_name.strip(),
+                project_name=request.project_name.strip(),
+                target_brand=request.target_brand.strip(),
+                category=request.category.strip(),
+                market_code=request.market_code.strip(),
+                market_name=request.market_name.strip(),
+                locale=request.locale.strip(),
+                timezone=request.timezone.strip(),
+                currency=request.currency.strip(),
+                primary_language=request.primary_language.strip(),
+                cities=tuple(request.cities),
+                industry_code=request.industry_code.strip(),
+                industry_name=request.industry_name.strip(),
+                prompt_version=request.prompt_version.strip(),
+                competitors=competitors,
+                brand_official_domains=brand_official_domains,
+                brand_parent_company=request.brand_parent_company.strip() if request.brand_parent_company else None,
+                brand_product_lines=brand_product_lines,
+                competitor_official_domains=competitor_official_domains,
+                owner_user_id=owner_user_id,
+            )
+        bootstrap = replace(bootstrap, project=replace(bootstrap.project, status="paused"))
+        score_formula = get_score_formula("au_visibility_v1" if au_market_profile else request.score_formula_version)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        apply_runtime_project_db_context(
+            repository,
+            actor_id=actor_id,
+            project_id=bootstrap.project.id,
+        )
+        repository.save_project_bootstrap(bootstrap)
+        launch_config = None
+        if hasattr(repository, "save_project_launch_config"):
+            launch_config = repository.save_project_launch_config(
+                RuntimeProjectLaunchConfigInput(
+                    project_id=bootstrap.project.id,
+                    customer_email=customer_email,
+                    primary_domain=primary_domain,
+                    competitor_domains=competitor_domains,
+                    locale=bootstrap.market_profile.locale,
+                    country_code=bootstrap.market_profile.market_code,
+                    timezone=bootstrap.market_profile.timezone,
+                    collection_mode=request.collection_mode.strip(),
+                    schedule=request.schedule,
+                    external_connectors=request.external_connectors,
+                    scoring_profile=score_formula.formula_version,
+                    status=launch_status,
+                    created_by=owner_user_id,
+                    updated_by=owner_user_id,
+                    config_version="au_launch_config_v1" if au_market_profile else "project_launch_config_v1",
+                    metadata={
+                        "created_from": "runtime_project_create",
+                        "market_code": bootstrap.project.market_code,
+                        "industry_code": bootstrap.project.industry_code,
+                    },
+                    reason="runtime_project_create_launch_config",
+                )
+            )
+        brand_kit = None
+        if hasattr(repository, "save_project_brand_kit"):
+            brand_kit = repository.save_project_brand_kit(
+                RuntimeProjectBrandKitInput(
+                    project_id=bootstrap.project.id,
+                    client_name=request.target_brand.strip(),
+                    prepared_by=owner_user_id,
+                    footer_text=f"{request.target_brand.strip()} GEO visibility report",
+                    updated_by=owner_user_id,
+                )
+            )
+        score_weight_config = None
+        if hasattr(repository, "save_score_weight_config"):
+            score_weight_config = repository.save_score_weight_config(
+                RuntimeScoreWeightConfigInput(
+                    project_id=bootstrap.project.id,
+                    formula_version=score_formula.formula_version,
+                    weights=dict(score_formula.weights),
+                    updated_by=owner_user_id,
+                    notes=f"Default {bootstrap.project.market_code} launch scoring profile",
+                )
+            )
+        customer_invitation: dict[str, object] | None = None
+        if request.create_customer_invitation and customer_email_supplied and hasattr(
+            repository, "create_runtime_project_member_invitation"
+        ):
+            invitation = repository.create_runtime_project_member_invitation(
+                RuntimeProjectMemberInvitationInput(
+                    project_id=bootstrap.project.id,
+                    email=customer_email,
+                    role="viewer",
+                    invited_by=owner_user_id,
+                    metadata={"created_from": "runtime_project_create"},
+                    reason="runtime_project_create_customer_invitation",
+                )
+            )
+            customer_invitation = asdict(invitation)
+            customer_invitation["invite_token"] = invitation.invitation.get("invite_token")
+            customer_invitation["invitation_id"] = invitation.invitation.get("id")
+            customer_invitation["status"] = invitation.invitation.get("status")
+            customer_invitation["email"] = invitation.invitation.get("email")
+        return {
+            "tenant_id": bootstrap.tenant.id,
+            "project_id": bootstrap.project.id,
+            "market_code": bootstrap.project.market_code,
+            "industry_code": bootstrap.project.industry_code,
+            "prompt_count": len(bootstrap.prompt_questions),
+            "competitor_count": len(bootstrap.competitors),
+            "audit_event_ids": [event.id for event in bootstrap.audit_events],
+            "bootstrap": asdict(bootstrap),
+            "launch_config": asdict(launch_config) if launch_config is not None else None,
+            "brand_kit": asdict(brand_kit) if brand_kit is not None else None,
+            "score_weight_config": asdict(score_weight_config) if score_weight_config is not None else None,
+            "customer_invitation": customer_invitation,
+        }
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/projects/runtime")
+def create_runtime_project(
+    payload: RuntimeProjectCreateRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    return _create_runtime_project_response(
+        payload,
+        actor_id=require_runtime_actor_id(x_geo_actor_id),
+        au_market_profile=False,
+    )
+
+
+@app.post("/v1/projects/runtime/au/dtc-ecommerce")
+def create_runtime_au_dtc_project(
+    payload: RuntimeProjectCreateRequest | None = None,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    return _create_runtime_project_response(
+        payload or RuntimeProjectCreateRequest(),
+        actor_id=require_runtime_actor_id(x_geo_actor_id),
+        au_market_profile=True,
+    )
+
+
+@app.patch("/v1/projects/runtime")
+def update_runtime_project(
+    payload: RuntimeProjectUpdateRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        if payload.status is not None:
+            raise HTTPException(
+                status_code=400,
+                detail="project status can only be changed through /v1/projects/runtime/action",
+            )
+        try:
+            project = repository.update_runtime_project(
+                RuntimeProjectUpdateInput(
+                    project_id=payload.project_id.strip(),
+                    tenant_name=payload.tenant_name.strip() if payload.tenant_name is not None else None,
+                    name=payload.name.strip() if payload.name is not None else None,
+                    target_brand=payload.target_brand.strip() if payload.target_brand is not None else None,
+                    category=payload.category.strip() if payload.category is not None else None,
+                    status=payload.status.strip().lower() if payload.status is not None else None,
+                    updated_by=actor_id or payload.updated_by.strip(),
+                    reason=payload.reason.strip() if payload.reason else None,
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "project not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(project)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/projects/runtime/action")
+def action_runtime_project(
+    payload: RuntimeProjectActionRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        try:
+            project = repository.apply_runtime_project_action(
+                RuntimeProjectActionInput(
+                    project_id=payload.project_id.strip(),
+                    action=payload.action.strip().lower(),
+                    updated_by=actor_id or payload.updated_by.strip(),
+                    reason=payload.reason.strip() if payload.reason else None,
+                )
+            )
+        except ValueError as exc:
+            conflict_messages = {
+                "project already active",
+                "project already archived",
+                "project already paused",
+                "project is not archived",
+                "archived project cannot be paused",
+                "archived project cannot be started",
+            }
+            if str(exc) == "project not found":
+                status_code = 404
+            elif str(exc) in conflict_messages or str(exc).startswith("project cannot start:"):
+                status_code = 409
+            else:
+                status_code = 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(project)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/project-entities/runtime/brand")
+def save_runtime_project_brand_entity(
+    payload: ProjectBrandEntityRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        try:
+            entity = repository.save_runtime_project_brand_entity(
+                RuntimeProjectBrandEntityInput(
+                    project_id=payload.project_id.strip(),
+                    canonical_name=payload.canonical_name.strip(),
+                    official_domains=tuple(item.strip() for item in payload.official_domains if item.strip()),
+                    parent_company=payload.parent_company.strip() if payload.parent_company else None,
+                    product_lines=tuple(item.strip() for item in payload.product_lines if item.strip()),
+                    status=payload.status.strip().lower(),
+                    updated_by=actor_id or payload.updated_by.strip(),
+                    reason=payload.reason.strip() if payload.reason else None,
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "project not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(entity)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/project-entities/runtime/competitors")
+def save_runtime_project_competitor_entity(
+    payload: ProjectCompetitorEntityRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        try:
+            entity = repository.save_runtime_project_competitor_entity(
+                RuntimeProjectCompetitorEntityInput(
+                    project_id=payload.project_id.strip(),
+                    competitor_id=payload.competitor_id.strip() if payload.competitor_id else None,
+                    canonical_name=payload.canonical_name.strip(),
+                    official_domains=tuple(item.strip() for item in payload.official_domains if item.strip()),
+                    parent_company=payload.parent_company.strip() if payload.parent_company else None,
+                    product_lines=tuple(item.strip() for item in payload.product_lines if item.strip()),
+                    status=payload.status.strip().lower(),
+                    updated_by=actor_id or payload.updated_by.strip(),
+                    reason=payload.reason.strip() if payload.reason else None,
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) in {"project not found", "competitor not found"} else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(entity)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/projects/runtime/lifecycle-events")
+def runtime_project_lifecycle_events(
+    project_id: str = Query(min_length=1),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            allowed_roles=None,
+        )
+        try:
+            events = repository.list_runtime_project_lifecycle_events(
+                project_id=project_id.strip(),
+                limit=limit,
+                offset=offset,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return asdict(events)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/projects/runtime/lifecycle-events/export.csv")
+def runtime_project_lifecycle_events_export_csv(
+    project_id: str = Query(min_length=1),
+    limit: int = Query(default=200, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> Response:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            allowed_roles=None,
+        )
+        try:
+            export = repository.export_runtime_project_lifecycle_events_csv(
+                project_id=project_id.strip(),
+                limit=limit,
+                offset=offset,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return Response(
+            content=export.content,
+            media_type=export.media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{export.filename}"',
+                "X-GEO-Project-Lifecycle-Export-Hash": export.content_hash,
+                "X-GEO-Project-Lifecycle-Project-Id": export.project_id,
+                "X-GEO-Project-Lifecycle-Method-Version": export.method_version,
+                "X-GEO-Project-Lifecycle-Row-Count": str(export.row_count),
+                "X-GEO-Project-Lifecycle-Total-Count": str(export.total_count),
+            },
+        )
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/audit-events/runtime")
+def runtime_audit_events(
+    project_id: str = Query(min_length=1),
+    event_type: str | None = None,
+    target_type: str | None = None,
+    actor_id: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    runtime_actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=project_id,
+            actor_id=runtime_actor_id,
+            allowed_roles=None,
+        )
+        try:
+            events = repository.list_runtime_audit_events(
+                project_id=project_id.strip(),
+                event_type=event_type,
+                target_type=target_type,
+                actor_id=actor_id,
+                limit=limit,
+                offset=offset,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return asdict(events)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/audit-events/runtime/export.csv")
+def runtime_audit_events_export_csv(
+    project_id: str = Query(min_length=1),
+    event_type: str | None = None,
+    target_type: str | None = None,
+    actor_id: str | None = None,
+    limit: int = Query(default=200, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> Response:
+    runtime_actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=project_id,
+            actor_id=runtime_actor_id,
+            allowed_roles=None,
+        )
+        try:
+            export = repository.export_runtime_audit_events_csv(
+                project_id=project_id.strip(),
+                event_type=event_type,
+                target_type=target_type,
+                actor_id=actor_id,
+                limit=limit,
+                offset=offset,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return Response(
+            content=export.content,
+            media_type=export.media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{export.filename}"',
+                "X-GEO-Audit-Export-Hash": export.content_hash,
+                "X-GEO-Audit-Method-Version": export.method_version,
+                "X-GEO-Audit-Row-Count": str(export.row_count),
+                "X-GEO-Audit-Total-Count": str(export.total_count),
+                "X-GEO-Audit-Project-Id": str(export.filters.get("project_id", "")),
+            },
+        )
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/connectors/runtime/secrets")
+def runtime_connector_secrets(
+    project_id: str = Query(min_length=1),
+    provider: str | None = Query(default=None, min_length=1, max_length=80),
+    include_inactive: bool = False,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        list_secrets = getattr(repository, "list_connector_secrets", None)
+        if not callable(list_secrets):
+            raise HTTPException(status_code=503, detail="connector secret listing is unavailable")
+        records = list_secrets(
+            project_id=project_id.strip(),
+            provider=provider.strip() if provider else None,
+            include_inactive=include_inactive,
+        )
+        return {"records": records, "total_count": len(records)}
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/connectors/runtime/secrets")
+def save_runtime_connector_secret(
+    payload: ConnectorSecretRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        try:
+            secret_record = repository.save_connector_secret(
+                RuntimeConnectorSecretInput(
+                    project_id=payload.project_id.strip(),
+                    provider=payload.provider.strip(),
+                    purpose=payload.purpose.strip(),
+                    raw_secret=payload.raw_secret,
+                    metadata=payload.metadata,
+                    updated_by=actor_id or payload.updated_by.strip(),
+                    reason=payload.reason.strip() if payload.reason else None,
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "project not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(secret_record)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.patch("/v1/connectors/runtime/secrets")
+def rotate_runtime_connector_secret(
+    payload: ConnectorSecretRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    return save_runtime_connector_secret(payload=payload, x_geo_actor_id=x_geo_actor_id)
+
+
+@app.get("/v1/connectors/runtime/secrets/reveal")
+def reveal_runtime_connector_secret(
+    project_id: str = Query(min_length=1),
+    secret_ref: str = Query(min_length=1, max_length=240),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        if not hasattr(repository, "resolve_connector_secret"):
+            raise HTTPException(status_code=503, detail="connector secret reveal is unavailable")
+        raw_secret = repository.resolve_connector_secret(secret_ref=secret_ref.strip())
+        return {"secret_ref": secret_ref.strip(), "raw_secret": raw_secret}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/connectors/runtime/test")
+def test_runtime_connector(
+    payload: ConnectorTestRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    provider = payload.provider.strip().lower()
+    mode = payload.mode.strip().lower()
+    model = payload.model.strip() or default_connector_model(provider, mode)
+    if provider not in {"openai", "perplexity", "google_ai_mode"}:
+        raise HTTPException(status_code=400, detail="provider must be openai, perplexity, or google_ai_mode")
+    assert_connector_model_allowed(provider, mode, model)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        secret_ref = payload.secret_ref.strip() if payload.secret_ref else None
+        if payload.raw_secret:
+            secret_record = repository.save_connector_secret(
+                RuntimeConnectorSecretInput(
+                    project_id=payload.project_id.strip(),
+                    provider=provider,
+                    purpose="api_key",
+                    raw_secret=payload.raw_secret,
+                    metadata={"created_from": "runtime_connector_test", "mode": mode, "model": model},
+                    updated_by=actor_id or payload.tested_by.strip(),
+                    reason=payload.reason.strip() if payload.reason else "runtime_connector_test_secret_save",
+                )
+            )
+            secret_ref = str(secret_record.connector_secret.get("secret_ref") or "")
+        if provider == "google_ai_mode" and mode == "manual_backfill":
+            status = "manual_ready"
+            message = "Google AI Mode 使用手工补录路径，已标记为可用。"
+        elif mode == "disabled":
+            status = "paused"
+            message = "连接器已停用。"
+        elif model == "deepseek-v4-flash":
+            api_key = payload.raw_secret or None
+            if not api_key and secret_ref and hasattr(repository, "resolve_connector_secret"):
+                api_key = repository.resolve_connector_secret(secret_ref=secret_ref)
+            if not api_key:
+                api_key = load_deepseek_api_key()
+            if not api_key:
+                raise HTTPException(status_code=400, detail="DeepSeek API key is required for this connector test")
+            status = "active"
+            message = "DeepSeek v4 Flash 代替连接验证通过。"
+        else:
+            if not payload.raw_secret and not secret_ref:
+                raise HTTPException(status_code=400, detail="raw_secret or secret_ref is required for connector test")
+            status = "ready"
+            message = "密钥已保存；官方连接器真实采集由 connector-real-smoke 验证。"
+        return {
+            "connector_test": {
+                "project_id": payload.project_id,
+                "provider": provider,
+                "mode": mode,
+                "model": model,
+                "status": status,
+                "message": message,
+                "secret_ref": secret_ref or None,
+            }
+        }
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/project-members/runtime")
+def runtime_project_members(
+    project_id: str = Query(min_length=1),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        page = repository.list_runtime_project_members(project_id=project_id, limit=limit, offset=offset)
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/project-members/runtime/export.csv")
+def export_runtime_project_members_csv(
+    project_id: str = Query(min_length=1),
+    limit: int = Query(default=200, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> Response:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        try:
+            export = repository.export_runtime_project_members_csv(
+                project_id=project_id.strip(),
+                limit=limit,
+                offset=offset,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return Response(
+            content=export.content,
+            media_type=export.media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{export.filename}"',
+                "X-GEO-Project-Member-Export-Hash": export.content_hash,
+                "X-GEO-Project-Member-Project-Id": str(export.filters.get("project_id", "")),
+                "X-GEO-Project-Member-Row-Count": str(export.row_count),
+                "X-GEO-Project-Member-Total-Count": str(export.total_count),
+            },
+        )
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/project-members/runtime")
+def save_runtime_project_member(
+    payload: ProjectMemberRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        try:
+            member = repository.save_runtime_project_member(
+                RuntimeProjectMemberInput(
+                    project_id=payload.project_id.strip(),
+                    user_id=payload.user_id.strip(),
+                    role=payload.role.strip().lower(),
+                    updated_by=actor_id or payload.updated_by.strip(),
+                    reason=payload.reason.strip() if payload.reason else None,
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "project not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(member)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.delete("/v1/project-members/runtime")
+def delete_runtime_project_member(
+    payload: ProjectMemberDeleteRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        try:
+            member = repository.delete_runtime_project_member(
+                RuntimeProjectMemberDeleteInput(
+                    project_id=payload.project_id.strip(),
+                    user_id=payload.user_id.strip(),
+                    deleted_by=actor_id or payload.deleted_by.strip(),
+                    reason=payload.reason.strip() if payload.reason else None,
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "project member not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(member)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/project-member-invitations/runtime")
+def runtime_project_member_invitations(
+    project_id: str = Query(min_length=1),
+    status: str | None = Query(default=None, min_length=1, max_length=40),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        page = repository.list_runtime_project_member_invitations(
+            project_id=project_id,
+            status=status.strip().lower() if status else None,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/project-member-invitations/runtime/export.csv")
+def export_runtime_project_member_invitations_csv(
+    project_id: str = Query(min_length=1),
+    status: str | None = Query(default=None, min_length=1, max_length=40),
+    limit: int = Query(default=200, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> Response:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        try:
+            export = repository.export_runtime_project_member_invitations_csv(
+                project_id=project_id.strip(),
+                status=status.strip().lower() if status else None,
+                limit=limit,
+                offset=offset,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return Response(
+            content=export.content,
+            media_type=export.media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{export.filename}"',
+                "X-GEO-Project-Member-Invitation-Export-Hash": export.content_hash,
+                "X-GEO-Project-Member-Invitation-Project-Id": str(export.filters.get("project_id", "")),
+                "X-GEO-Project-Member-Invitation-Status": str(export.filters.get("status", "")),
+                "X-GEO-Project-Member-Invitation-Row-Count": str(export.row_count),
+                "X-GEO-Project-Member-Invitation-Total-Count": str(export.total_count),
+            },
+        )
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/project-member-invitations/runtime")
+def create_runtime_project_member_invitation(
+    payload: ProjectMemberInvitationRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        expires_at: datetime | None = None
+        if payload.expires_at:
+            try:
+                expires_at = datetime.fromisoformat(payload.expires_at.strip().replace("Z", "+00:00"))
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail="expires_at must be ISO-8601 datetime") from exc
+        try:
+            invitation = repository.create_runtime_project_member_invitation(
+                RuntimeProjectMemberInvitationInput(
+                    project_id=payload.project_id.strip(),
+                    email=payload.email.strip(),
+                    role=payload.role.strip().lower(),
+                    invited_by=actor_id or payload.invited_by.strip(),
+                    expires_at=expires_at,
+                    metadata=payload.metadata,
+                    reason=payload.reason.strip() if payload.reason else None,
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "project not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(invitation)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/project-member-invitations/runtime/action")
+def action_runtime_project_member_invitation(
+    payload: ProjectMemberInvitationActionRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        try:
+            invitation = repository.apply_runtime_project_member_invitation_action(
+                RuntimeProjectMemberInvitationActionInput(
+                    project_id=payload.project_id.strip(),
+                    invitation_id=payload.invitation_id.strip(),
+                    action=payload.action.strip().lower(),
+                    updated_by=actor_id or payload.updated_by.strip(),
+                    reason=payload.reason.strip() if payload.reason else None,
+                )
+            )
+        except ValueError as exc:
+            message = str(exc)
+            if message == "project member invitation not found":
+                status_code = 404
+            elif message.startswith("cannot "):
+                status_code = 409
+            else:
+                status_code = 400
+            raise HTTPException(status_code=status_code, detail=message) from exc
+        return asdict(invitation)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/project-member-invitations/runtime/email")
+def email_runtime_project_member_invitation(
+    payload: ProjectMemberInvitationEmailRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        try:
+            invitation = repository.send_runtime_project_member_invitation_email(
+                RuntimeProjectMemberInvitationEmailInput(
+                    project_id=payload.project_id.strip(),
+                    invitation_id=payload.invitation_id.strip(),
+                    invite_token=payload.invite_token.strip(),
+                    accept_base_url=payload.accept_base_url.strip(),
+                    sent_by=actor_id or payload.sent_by.strip(),
+                    smtp_env_prefix=payload.smtp_env_prefix.strip(),
+                    subject=payload.subject.strip() if payload.subject else None,
+                    message=payload.message.strip() if payload.message else None,
+                    reason=payload.reason.strip() if payload.reason else None,
+                )
+            )
+        except ValueError as exc:
+            message = str(exc)
+            if message == "project member invitation not found":
+                status_code = 404
+            elif message.startswith("cannot ") or message == "project member invitation expired":
+                status_code = 409
+            else:
+                status_code = 400
+            raise HTTPException(status_code=status_code, detail=message) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        return asdict(invitation)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/project-member-invitations/runtime/accept")
+def accept_runtime_project_member_invitation(
+    _payload: ProjectMemberInvitationAcceptRequest,
+) -> dict[str, object]:
+    raise HTTPException(
+        status_code=410,
+        detail="legacy invitation redemption is retired; use /v1/auth/invitations/redeem",
+    )
+
+
+@app.get("/v1/entity-aliases/runtime")
+def runtime_entity_aliases(
+    project_id: str | None = None,
+    entity_kind: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        page = repository.list_runtime_entity_aliases(
+            project_id=project_id,
+            entity_kind=entity_kind,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/entity-aliases/runtime/candidates")
+def runtime_entity_alias_candidates(
+    project_id: str,
+    entity_kind: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        page = repository.list_runtime_entity_alias_candidates(
+            project_id=project_id,
+            entity_kind=entity_kind,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/entity-aliases/runtime/candidates/reviews")
+def runtime_entity_alias_candidate_reviews(
+    project_id: str = Query(min_length=1),
+    decision: str | None = Query(default=None, min_length=1, max_length=40),
+    entity_kind: str | None = Query(default=None, min_length=1, max_length=40),
+    assigned_to: str | None = Query(default=None, min_length=1, max_length=120),
+    assignment_status: str | None = Query(default=None, min_length=1, max_length=40),
+    priority: str | None = Query(default=None, min_length=1, max_length=40),
+    due_before: str | None = Query(default=None, min_length=1, max_length=80),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        page = repository.list_entity_alias_candidate_reviews(
+            project_id=project_id.strip(),
+            decision=decision.strip() if decision else None,
+            entity_kind=entity_kind.strip() if entity_kind else None,
+            assigned_to=assigned_to.strip() if assigned_to else None,
+            assignment_status=assignment_status.strip() if assignment_status else None,
+            priority=priority.strip() if priority else None,
+            due_before=_parse_optional_datetime(due_before),
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/entity-aliases/runtime/candidates/assignment-stats")
+def runtime_entity_alias_candidate_assignment_stats(
+    project_id: str = Query(min_length=1),
+    due_soon_before: str | None = Query(default=None, min_length=1, max_length=80),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        stats = repository.get_entity_alias_candidate_assignment_queue_stats(
+            project_id=project_id.strip(),
+            due_soon_before=_parse_optional_datetime(due_soon_before),
+        )
+        return asdict(stats)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/entity-aliases/runtime/candidates/assignment-workbench")
+def runtime_entity_alias_assignment_workbench(
+    project_id: str = Query(min_length=1),
+    reviewer_id: str | None = Query(default=None, min_length=1, max_length=120),
+    due_soon_before: str | None = Query(default=None, min_length=1, max_length=80),
+    limit: int = Query(default=25, ge=1, le=200),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        workbench = repository.get_entity_alias_assignment_workbench(
+            project_id=project_id.strip(),
+            reviewer_id=reviewer_id.strip() if reviewer_id else None,
+            due_soon_before=_parse_optional_datetime(due_soon_before),
+            limit=limit,
+        )
+        return asdict(workbench)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/entity-aliases/runtime/candidates/assignment-workload")
+def runtime_entity_alias_assignment_workload(
+    project_id: str = Query(min_length=1),
+    due_soon_before: str | None = Query(default=None, min_length=1, max_length=80),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        workload = repository.get_entity_alias_assignment_workload_summary(
+            project_id=project_id.strip(),
+            due_soon_before=_parse_optional_datetime(due_soon_before),
+        )
+        return asdict(workload)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/entity-aliases/runtime/candidates/assignment-dispatch-plan")
+def runtime_entity_alias_assignment_dispatch_plan(
+    project_id: str = Query(min_length=1),
+    reviewer_ids: str | None = Query(default=None, max_length=1200),
+    include_statuses: str = Query(default="unassigned,escalated", min_length=1, max_length=200),
+    max_per_reviewer: int = Query(default=10, ge=1, le=200),
+    due_soon_before: str | None = Query(default=None, min_length=1, max_length=80),
+    limit: int = Query(default=50, ge=1, le=200),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        try:
+            plan = repository.build_entity_alias_assignment_dispatch_plan(
+                EntityAliasAssignmentDispatchPlanInput(
+                    project_id=project_id.strip(),
+                    reviewer_ids=_parse_csv_tuple(reviewer_ids),
+                    include_statuses=_parse_csv_tuple(include_statuses),
+                    max_per_reviewer=max_per_reviewer,
+                    due_soon_before=_parse_optional_datetime(due_soon_before),
+                    limit=limit,
+                )
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return asdict(plan)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/entity-aliases/runtime/candidates/assignment-dispatch-apply")
+def apply_runtime_entity_alias_assignment_dispatch_plan(
+    payload: EntityAliasAssignmentDispatchApplyRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id.strip(),
+            actor_id=actor_id,
+            allowed_roles=PROJECT_ANALYZE_ROLES,
+        )
+        try:
+            result = repository.apply_entity_alias_assignment_dispatch_plan(
+                EntityAliasAssignmentDispatchApplyInput(
+                    project_id=payload.project_id.strip(),
+                    reviewer_ids=tuple(item.strip() for item in payload.reviewer_ids if item.strip()),
+                    include_statuses=tuple(item.strip() for item in payload.include_statuses if item.strip()),
+                    max_per_reviewer=payload.max_per_reviewer,
+                    due_soon_before=_parse_optional_datetime(payload.due_soon_before),
+                    limit=payload.limit,
+                    applied_by=actor_id or payload.applied_by.strip(),
+                    assignment_status=payload.assignment_status.strip(),
+                    priority=payload.priority.strip() if payload.priority else None,
+                    due_at=_parse_optional_datetime(payload.due_at),
+                    assignment_note=payload.assignment_note.strip() if payload.assignment_note else None,
+                    reason=payload.reason.strip() if payload.reason else None,
+                    continue_on_error=payload.continue_on_error,
+                )
+            )
+        except ValueError as exc:
+            detail = str(exc)
+            if detail == "project not found":
+                status_code = 404
+            elif detail.startswith("entity alias candidate review status changed") or detail.startswith("completed "):
+                status_code = 409
+            else:
+                status_code = 400
+            raise HTTPException(status_code=status_code, detail=detail) from exc
+        return asdict(result)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/entity-aliases/runtime/candidates/assignment-notifications")
+def enqueue_runtime_entity_alias_assignment_notifications(
+    payload: EntityAliasAssignmentNotificationRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id.strip(),
+            actor_id=actor_id,
+            allowed_roles=PROJECT_ANALYZE_ROLES,
+        )
+        try:
+            record = repository.enqueue_entity_alias_assignment_overdue_notifications(
+                project_id=payload.project_id.strip(),
+                assigned_to=payload.assigned_to.strip() if payload.assigned_to else None,
+                priority=payload.priority.strip() if payload.priority else None,
+                due_before=_parse_optional_datetime(payload.due_before),
+                created_by=actor_id or payload.created_by.strip(),
+                reason=payload.reason.strip() if payload.reason else None,
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "project not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(record)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/entity-aliases/runtime/candidates/assignment-escalations")
+def escalate_runtime_entity_alias_assignment_overdue_reviews(
+    payload: EntityAliasAssignmentEscalationRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id.strip(),
+            actor_id=actor_id,
+            allowed_roles=PROJECT_ANALYZE_ROLES,
+        )
+        try:
+            record = repository.escalate_entity_alias_assignment_overdue_reviews(
+                project_id=payload.project_id.strip(),
+                assigned_to=payload.assigned_to.strip() if payload.assigned_to else None,
+                priority=payload.priority.strip() if payload.priority else None,
+                due_before=_parse_optional_datetime(payload.due_before),
+                escalated_by=actor_id or payload.escalated_by.strip(),
+                reason=payload.reason.strip() if payload.reason else None,
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "project not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(record)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/entity-aliases/runtime/candidates/review")
+def review_runtime_entity_alias_candidate(
+    payload: EntityAliasCandidateReviewRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id.strip(),
+            actor_id=actor_id,
+            allowed_roles=PROJECT_ANALYZE_ROLES,
+        )
+        try:
+            record = repository.record_entity_alias_candidate_review(
+                _entity_alias_candidate_review_input(payload, reviewed_by=actor_id)
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) in {"project not found", "entity not found"} else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(record)
+    finally:
+        close_repository_connection(repository)
+
+
+def _entity_alias_candidate_review_input(
+    payload: EntityAliasCandidateReviewRequest,
+    *,
+    reviewed_by: str | None = None,
+    notes: str | None = None,
+) -> EntityAliasCandidateReviewInput:
+    effective_reviewed_by = reviewed_by.strip() if reviewed_by else payload.reviewed_by.strip()
+    effective_notes = notes.strip() if notes else payload.notes.strip() if payload.notes else None
+    return EntityAliasCandidateReviewInput(
+        project_id=payload.project_id.strip(),
+        candidate_id=payload.candidate_id.strip(),
+        entity_id=payload.entity_id.strip(),
+        entity_kind=payload.entity_kind.strip(),
+        alias=payload.alias.strip(),
+        alias_type=payload.alias_type.strip(),
+        decision=payload.decision.strip(),
+        reviewed_by=effective_reviewed_by,
+        source=payload.source.strip() if payload.source else None,
+        confidence=payload.confidence,
+        reason=payload.reason.strip() if payload.reason else None,
+        notes=effective_notes,
+        evidence_answer_run_ids=tuple(item.strip() for item in payload.evidence_answer_run_ids if item.strip()),
+        evidence_urls=tuple(item.strip() for item in payload.evidence_urls if item.strip()),
+        payload=payload.payload,
+    )
+
+
+@app.post("/v1/entity-aliases/runtime/candidates/review-batch")
+def review_runtime_entity_alias_candidates_batch(
+    payload: EntityAliasCandidateBatchReviewRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        project_ids = {review.project_id.strip() for review in payload.reviews if review.project_id.strip()}
+        if not project_ids:
+            raise HTTPException(status_code=400, detail="project_id is required")
+        if len(project_ids) > 1:
+            raise HTTPException(
+                status_code=400,
+                detail={"error": "reviews must belong to one project", "project_ids": sorted(project_ids)},
+            )
+        project_id = next(iter(project_ids))
+        assert_runtime_project_access(
+            repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_ANALYZE_ROLES,
+        )
+        try:
+            result = repository.record_entity_alias_candidate_reviews(
+                tuple(
+                    _entity_alias_candidate_review_input(
+                        review,
+                        reviewed_by=effective_runtime_actor_id(actor_id, payload.reviewed_by),
+                        notes=payload.notes,
+                    )
+                    for review in payload.reviews
+                ),
+                reviewed_by=effective_runtime_actor_id(actor_id, payload.reviewed_by),
+                notes=payload.notes.strip() if payload.notes else None,
+                continue_on_error=payload.continue_on_error,
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) in {"project not found", "entity not found"} else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(result)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/entity-aliases/runtime/candidates/assign")
+def assign_runtime_entity_alias_candidate_review(
+    payload: EntityAliasCandidateAssignmentRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id.strip(),
+            actor_id=actor_id,
+            allowed_roles=PROJECT_ANALYZE_ROLES,
+        )
+        try:
+            record = repository.assign_entity_alias_candidate_review(
+                EntityAliasCandidateAssignmentInput(
+                    project_id=payload.project_id.strip(),
+                    candidate_id=payload.candidate_id.strip(),
+                    assigned_to=payload.assigned_to.strip(),
+                    assigned_by=actor_id or payload.assigned_by.strip(),
+                    assignment_status=payload.assignment_status.strip(),
+                    priority=payload.priority.strip(),
+                    due_at=_parse_optional_datetime(payload.due_at),
+                    assignment_note=payload.assignment_note.strip() if payload.assignment_note else None,
+                    reason=payload.reason.strip() if payload.reason else None,
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "entity alias candidate review not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(record)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/entity-aliases/runtime/candidates/assignment-action")
+def action_runtime_entity_alias_candidate_assignment(
+    payload: EntityAliasCandidateAssignmentActionRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id.strip(),
+            actor_id=actor_id,
+            allowed_roles=PROJECT_ANALYZE_ROLES,
+        )
+        try:
+            record = repository.apply_entity_alias_candidate_assignment_action(
+                EntityAliasCandidateAssignmentActionInput(
+                    project_id=payload.project_id.strip(),
+                    candidate_id=payload.candidate_id.strip(),
+                    action=payload.action.strip(),
+                    updated_by=actor_id or payload.updated_by.strip(),
+                    note=payload.note.strip() if payload.note else None,
+                    force=payload.force,
+                )
+            )
+        except ValueError as exc:
+            detail = str(exc)
+            if detail == "entity alias candidate review not found":
+                status_code = 404
+            elif detail in {
+                "entity alias candidate review is already assigned",
+                "entity alias candidate review is assigned to another reviewer",
+                "completed entity alias candidate review cannot be claimed or released",
+            }:
+                status_code = 409
+            else:
+                status_code = 400
+            raise HTTPException(status_code=status_code, detail=detail) from exc
+        return asdict(record)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/entity-aliases/runtime/candidates/assignment-actions")
+def action_runtime_entity_alias_candidate_assignments_batch(
+    payload: EntityAliasCandidateAssignmentBatchActionRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id.strip(),
+            actor_id=actor_id,
+            allowed_roles=PROJECT_ANALYZE_ROLES,
+        )
+        try:
+            result = repository.apply_entity_alias_candidate_assignment_batch_action(
+                EntityAliasCandidateAssignmentBatchActionInput(
+                    project_id=payload.project_id.strip(),
+                    candidate_ids=tuple(item.strip() for item in payload.candidate_ids),
+                    action=payload.action.strip(),
+                    updated_by=actor_id or payload.updated_by.strip(),
+                    note=payload.note.strip() if payload.note else None,
+                    force=payload.force,
+                    continue_on_error=payload.continue_on_error,
+                )
+            )
+        except ValueError as exc:
+            detail = str(exc)
+            if detail == "entity alias candidate review not found":
+                status_code = 404
+            elif detail in {
+                "entity alias candidate review is already assigned",
+                "entity alias candidate review is assigned to another reviewer",
+                "completed entity alias candidate review cannot be claimed or released",
+            }:
+                status_code = 409
+            else:
+                status_code = 400
+            raise HTTPException(status_code=status_code, detail=detail) from exc
+        return asdict(result)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/entity-aliases/runtime/candidates/assignment-reassignments")
+def reassign_runtime_entity_alias_candidate_assignments(
+    payload: EntityAliasCandidateAssignmentReassignmentRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id.strip(),
+            actor_id=actor_id,
+            allowed_roles=PROJECT_ANALYZE_ROLES,
+        )
+        try:
+            record = repository.reassign_entity_alias_candidate_reviews(
+                EntityAliasCandidateAssignmentReassignmentInput(
+                    project_id=payload.project_id.strip(),
+                    assigned_to=payload.assigned_to.strip(),
+                    reassigned_by=actor_id or payload.reassigned_by.strip(),
+                    from_assigned_to=payload.from_assigned_to.strip() if payload.from_assigned_to else None,
+                    from_assignment_status=payload.from_assignment_status.strip()
+                    if payload.from_assignment_status
+                    else None,
+                    from_priority=payload.from_priority.strip() if payload.from_priority else None,
+                    due_before=_parse_optional_datetime(payload.due_before),
+                    assignment_status=payload.assignment_status.strip(),
+                    priority=payload.priority.strip(),
+                    due_at=_parse_optional_datetime(payload.due_at),
+                    assignment_note=payload.assignment_note.strip() if payload.assignment_note else None,
+                    reason=payload.reason.strip() if payload.reason else None,
+                    limit=payload.limit,
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "project not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(record)
+    finally:
+        close_repository_connection(repository)
+
+
+def _parse_optional_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    normalized = value.strip()
+    if not normalized:
+        return None
+    if normalized.endswith("Z"):
+        normalized = f"{normalized[:-1]}+00:00"
+    try:
+        return datetime.fromisoformat(normalized)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="due_at must be an ISO 8601 datetime") from exc
+
+
+def _parse_csv_tuple(value: str | None) -> tuple[str, ...]:
+    if not value:
+        return ()
+    return tuple(dict.fromkeys(item.strip() for item in value.split(",") if item.strip()))
+
+
+@app.post("/v1/entity-aliases/runtime/confirm")
+def confirm_runtime_entity_alias(
+    payload: EntityAliasConfirmRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        try:
+            record = _confirm_runtime_entity_alias_record(
+                repository,
+                payload=payload,
+                actor_id=actor_id,
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "entity not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(record)
+    finally:
+        close_repository_connection(repository)
+
+
+def _confirm_runtime_entity_alias_record(
+    repository: Any,
+    *,
+    payload: EntityAliasConfirmRequest,
+    actor_id: str | None,
+    confirmed_by: str | None = None,
+    notes: str | None = None,
+) -> Any:
+    if runtime_project_access_control_enabled():
+        apply_runtime_project_db_context(repository, actor_id=actor_id)
+        project_id = repository.get_entity_project_id(
+            entity_id=payload.entity_id.strip(),
+            entity_kind=payload.entity_kind.strip(),
+        )
+        if project_id is None:
+            raise ValueError("entity not found")
+        assert_runtime_project_access(
+            repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_ANALYZE_ROLES,
+        )
+    effective_confirmed_by = (confirmed_by or payload.confirmed_by).strip()
+    effective_notes = notes if notes is not None else payload.notes
+    return repository.confirm_entity_alias(
+        EntityAliasInput(
+            entity_id=payload.entity_id.strip(),
+            entity_kind=payload.entity_kind.strip(),
+            alias=payload.alias.strip(),
+            alias_type=payload.alias_type.strip(),
+            confidence=payload.confidence,
+            confirmed_by=effective_confirmed_by,
+            notes=effective_notes.strip() if effective_notes else None,
+        )
+    )
+
+
+def _validate_runtime_entity_alias_payload(
+    repository: Any,
+    *,
+    payload: EntityAliasConfirmRequest,
+    actor_id: str | None,
+) -> str | None:
+    get_project_id = getattr(repository, "get_entity_project_id", None)
+    if get_project_id is None:
+        return None
+    if runtime_project_access_control_enabled():
+        apply_runtime_project_db_context(repository, actor_id=actor_id)
+    project_id = get_project_id(
+        entity_id=payload.entity_id.strip(),
+        entity_kind=payload.entity_kind.strip(),
+    )
+    if project_id is None:
+        raise ValueError("entity not found")
+    project_id = str(project_id)
+    assert_runtime_project_access(
+        repository,
+        project_id=project_id,
+        actor_id=actor_id,
+        allowed_roles=PROJECT_ANALYZE_ROLES,
+    )
+    return project_id
+
+
+@app.post("/v1/entity-aliases/runtime/confirm-batch")
+def confirm_runtime_entity_alias_batch(
+    payload: EntityAliasBatchConfirmRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        records = []
+        errors: list[dict[str, object]] = []
+        skipped_error_indexes: set[int] = set()
+        validated_project_ids: set[str] = set()
+        confirmed_by = payload.confirmed_by.strip()
+        notes = payload.notes.strip() if payload.notes else None
+        for index, item in enumerate(payload.aliases):
+            try:
+                project_id = _validate_runtime_entity_alias_payload(repository, payload=item, actor_id=actor_id)
+                if project_id:
+                    validated_project_ids.add(project_id)
+            except ValueError as exc:
+                error = {
+                    "index": index,
+                    "entity_id": item.entity_id.strip(),
+                    "entity_kind": item.entity_kind.strip(),
+                    "alias": item.alias.strip(),
+                    "error": str(exc),
+                }
+                if payload.continue_on_error:
+                    errors.append(error)
+                    skipped_error_indexes.add(index)
+                    continue
+                status_code = 404 if str(exc) == "entity not found" else 400
+                raise HTTPException(status_code=status_code, detail=error) from exc
+        if len(validated_project_ids) > 1:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "aliases must belong to one project",
+                    "project_ids": sorted(validated_project_ids),
+                },
+            )
+        for index, item in enumerate(payload.aliases):
+            if index in skipped_error_indexes:
+                continue
+            try:
+                records.append(
+                    _confirm_runtime_entity_alias_record(
+                        repository,
+                        payload=item,
+                        actor_id=actor_id,
+                        confirmed_by=confirmed_by,
+                        notes=notes or item.notes,
+                    )
+                )
+            except ValueError as exc:
+                error = {
+                    "index": index,
+                    "entity_id": item.entity_id.strip(),
+                    "entity_kind": item.entity_kind.strip(),
+                    "alias": item.alias.strip(),
+                    "error": str(exc),
+                }
+                errors.append(error)
+                if not payload.continue_on_error:
+                    status_code = 404 if str(exc) == "entity not found" else 400
+                    raise HTTPException(status_code=status_code, detail=error) from exc
+        audit_summary = {
+            "event_type": "entity_alias_batch_confirmed",
+            "method_version": "entity_alias_confirm_batch_v1",
+            "confirmed_by": confirmed_by,
+            "entity_alias_ids": [str(record.entity_alias["id"]) for record in records],
+            "entity_ids": [str(record.entity_alias["entity_id"]) for record in records],
+            "entity_kinds": sorted({str(record.entity_alias["entity_kind"]) for record in records}),
+            "requested_count": len(payload.aliases),
+            "confirmed_count": len(records),
+            "failed_count": len(errors),
+            "notes": notes,
+            "individual_audit_event_type": "entity_alias_confirmed",
+        }
+        if records and hasattr(repository, "save_audit_events"):
+            project_id = str(records[0].entity["project_id"])
+            repository.save_audit_events(
+                (
+                    build_audit_event(
+                        event_type="entity_alias_batch_confirmed",
+                        project_id=project_id,
+                        actor_type="user",
+                        actor_id=confirmed_by,
+                        target_type="entity_alias_batch",
+                        target_id=str(uuid.uuid5(uuid.NAMESPACE_URL, "|".join(audit_summary["entity_alias_ids"]))),
+                        before=None,
+                        after=audit_summary,
+                        input_refs={"entity_ids": audit_summary["entity_ids"]},
+                        output_refs={"entity_alias_ids": audit_summary["entity_alias_ids"]},
+                        method_version="entity_alias_confirm_batch_v1",
+                        reason=notes or "batch confirm entity aliases for parser disambiguation",
+                    ),
+                )
+            )
+        result = RuntimeEntityAliasBatchConfirmResult(
+            batch_version="entity_alias_confirm_batch_v1",
+            requested_count=len(payload.aliases),
+            confirmed_count=len(records),
+            failed_count=len(errors),
+            records=tuple(records),
+            errors=tuple(errors),
+            audit_summary=audit_summary,
+        )
+        return asdict(result)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/prompts/runtime")
+def runtime_prompts(
+    project_id: str | None = None,
+    market_code: str | None = None,
+    intent_type: str | None = None,
+    city: str | None = None,
+    status: str | None = None,
+    limit: int = Query(default=100, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        page = repository.list_runtime_prompts(
+            project_id=project_id,
+            market_code=market_code,
+            intent_type=intent_type,
+            city=city,
+            status=status,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/prompts/runtime/export.csv")
+def runtime_prompts_export_csv(
+    project_id: str | None = None,
+    market_code: str | None = None,
+    intent_type: str | None = None,
+    city: str | None = None,
+    status: str | None = None,
+    limit: int = Query(default=200, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> Response:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        export = repository.export_runtime_prompts_csv(
+            project_id=project_id.strip() if project_id else None,
+            market_code=market_code.strip() if market_code else None,
+            intent_type=intent_type.strip() if intent_type else None,
+            city=city.strip() if city else None,
+            status=status.strip() if status else None,
+            limit=limit,
+            offset=offset,
+        )
+        return Response(
+            content=export.content,
+            media_type=export.media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{export.filename}"',
+                "X-GEO-Prompt-Export-Hash": export.content_hash,
+                "X-GEO-Prompt-Project-Id": str(export.filters.get("project_id", "")),
+                "X-GEO-Prompt-Market-Code": str(export.filters.get("market_code", "")),
+                "X-GEO-Prompt-Intent-Type": str(export.filters.get("intent_type", "")),
+                "X-GEO-Prompt-City": str(export.filters.get("city", "")),
+                "X-GEO-Prompt-Status": str(export.filters.get("status", "")),
+                "X-GEO-Prompt-Row-Count": str(export.row_count),
+                "X-GEO-Prompt-Total-Count": str(export.total_count),
+            },
+        )
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/prompts/runtime/imports")
+def runtime_prompt_imports(
+    project_id: str | None = None,
+    source_format: str | None = None,
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        page = repository.list_runtime_prompt_imports(
+            project_id=project_id,
+            source_format=source_format,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.patch("/v1/prompts/runtime")
+def update_runtime_prompt(
+    payload: RuntimePromptUpdateRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        prompt = repository.update_runtime_prompt(
+            RuntimePromptUpdateInput(
+                project_id=payload.project_id.strip(),
+                prompt_id=payload.prompt_id.strip(),
+                text=payload.text.strip(),
+                intent_type=payload.intent_type.strip(),
+                city=payload.city.strip(),
+                language=payload.language.strip(),
+                target_brand=payload.target_brand.strip(),
+                competitors=tuple(item.strip() for item in payload.competitors if item.strip()),
+                priority=payload.priority,
+                intent_weight=payload.intent_weight,
+                prompt_version=payload.prompt_version.strip(),
+                status=payload.status.strip(),
+                updated_by=effective_runtime_actor_id(actor_id, payload.updated_by),
+                reason=payload.reason,
+            )
+        )
+        return {"prompt": prompt}
+    except ValueError as exc:
+        status_code = 404 if str(exc) == "prompt not found" else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/prompts/runtime/import.csv")
+def import_runtime_prompts_csv(
+    payload: RuntimePromptImportRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        result = repository.import_runtime_prompts_csv(
+            RuntimePromptImportInput(
+                project_id=payload.project_id.strip(),
+                csv_content=payload.csv_content,
+                imported_by=effective_runtime_actor_id(actor_id, payload.imported_by),
+                max_rows=payload.max_rows,
+            )
+        )
+        return asdict(result)
+    except ValueError as exc:
+        status_code = 404 if str(exc) == "project not found" else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/prompts/runtime/import.file")
+async def import_runtime_prompts_file(
+    request: Request,
+    project_id: str = Query(min_length=1),
+    filename: str = Query(min_length=1, max_length=240),
+    imported_by: str = Query(default="runtime-console", min_length=1, max_length=120),
+    max_rows: int = Query(default=100, ge=1, le=200),
+    content_type: str | None = Header(default=None),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    file_bytes = await request.body()
+    try:
+        csv_content, source_format = prompt_import_file_to_csv(file_bytes=file_bytes, filename=filename)
+    except UnicodeDecodeError as exc:
+        raise HTTPException(status_code=400, detail="prompt import file must be UTF-8 encoded") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        result = repository.import_runtime_prompts_csv(
+            RuntimePromptImportInput(
+                project_id=project_id.strip(),
+                csv_content=csv_content,
+                imported_by=effective_runtime_actor_id(actor_id, imported_by),
+                max_rows=max_rows,
+                source_filename=filename.strip(),
+                source_format=source_format,
+                source_content_type=content_type,
+            )
+        )
+        return asdict(result)
+    except ValueError as exc:
+        status_code = 404 if str(exc) == "project not found" else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/collection-plans/au/p0a")
+def au_p0a_collection_plan() -> dict[str, object]:
+    bootstrap = build_au_project_bootstrap()
+    return asdict(
+        build_p0a_collection_plan(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            market_profile=bootstrap.market_profile,
+        )
+    )
+
+
+@app.get("/v1/evidence-runs/au/p0a-fixture-slice")
+def au_p0a_fixture_slice() -> dict[str, object]:
+    require_dev_tools_enabled()
+    bootstrap = build_au_project_bootstrap()
+    records = run_fixture_collection_slice(
+        project_id=bootstrap.project.id,
+        prompts=bootstrap.prompt_questions,
+        market_profile=bootstrap.market_profile,
+        collectors=(FixturePerplexitySonarCollector(), FixtureOpenAIWebSearchCollector()),
+    )
+    return {
+        "record_count": len(records),
+        "answer_run_ids": [record.answer_run.id for record in records],
+        "records": [asdict(record) for record in records],
+    }
+
+
+@app.get("/v1/evidence-runs/runtime")
+def runtime_evidence_runs(
+    project_id: str | None = None,
+    platform: str | None = None,
+    city: str | None = None,
+    intent_type: str | None = None,
+    status: str | None = None,
+    sort: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        page = repository.list_runtime_evidence_runs(
+            project_id=project_id,
+            platform=platform,
+            city=city,
+            intent_type=intent_type,
+            status=status,
+            sort=sort,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/evidence-assets/runtime/{evidence_asset_id}/summary")
+def runtime_evidence_asset_summary(
+    evidence_asset_id: str,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+    x_geo_customer_portal_access: str | None = Header(default=None, alias=RUNTIME_CUSTOMER_PORTAL_ACCESS_HEADER),
+) -> dict[str, object]:
+    context = build_runtime_auth_context(x_geo_actor_id)
+    customer_portal_access = _is_truthy_header(x_geo_customer_portal_access)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        asset = repository.get_runtime_evidence_asset(evidence_asset_id=evidence_asset_id)
+        if asset is None:
+            raise HTTPException(status_code=404, detail="Runtime evidence asset not found")
+        _assert_runtime_evidence_asset_access(
+            repository,
+            asset=asset,
+            context=context,
+            customer_portal_access=customer_portal_access,
+            require_raw=False,
+        )
+        return _evidence_asset_public_summary(asset)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/evidence-assets/runtime/{evidence_asset_id}/download")
+def runtime_evidence_asset_download(
+    evidence_asset_id: str,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+    x_geo_customer_portal_access: str | None = Header(default=None, alias=RUNTIME_CUSTOMER_PORTAL_ACCESS_HEADER),
+) -> Response:
+    context = build_runtime_auth_context(x_geo_actor_id)
+    customer_portal_access = _is_truthy_header(x_geo_customer_portal_access)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        asset = repository.get_runtime_evidence_asset(evidence_asset_id=evidence_asset_id)
+        if asset is None:
+            raise HTTPException(status_code=404, detail="Runtime evidence asset not found")
+        _assert_runtime_evidence_asset_access(
+            repository,
+            asset=asset,
+            context=context,
+            customer_portal_access=customer_portal_access,
+            require_raw=True,
+        )
+        content, content_type = _download_runtime_evidence_asset_object(asset)
+        summary = _evidence_asset_public_summary(asset)
+        return Response(
+            content=content,
+            media_type=content_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{evidence_asset_id}"',
+                "X-GEO-Evidence-Asset-Id": evidence_asset_id,
+                "X-GEO-Evidence-Asset-Hash": str(summary.get("content_hash") or ""),
+                "X-GEO-Evidence-Asset-Type": str(summary.get("asset_type") or ""),
+                "X-GEO-Evidence-Asset-Proxy": "true",
+            },
+        )
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/collection-jobs/runtime")
+def enqueue_runtime_collection_job(
+    payload: RuntimeCollectionJobRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    repository = build_repository_from_env()
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_ANALYZE_ROLES,
+        )
+        job = CollectionJobStore(repository).enqueue(
+            project_id=payload.project_id.strip(),
+            requested_by=effective_runtime_actor_id(actor_id, payload.requested_by),
+            prompt_limit=payload.prompt_limit,
+            sample_size=payload.sample_size,
+            cities=tuple(payload.cities),
+            max_attempts=payload.max_attempts,
+        )
+        return {"collection_job": job, "queue_dispatch": _dispatch_runtime_task("collection")}
+    except ValueError as exc:
+        status_code = 404 if str(exc) == "project not found" else 409 if "must be running" in str(exc) else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/collection-jobs/runtime")
+def list_runtime_collection_jobs(
+    project_id: str = Query(min_length=1),
+    status: str | None = Query(default=None, max_length=40),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    repository = build_repository_from_env()
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        return CollectionJobStore(repository).list(
+            project_id=project_id.strip(),
+            status=status,
+            limit=limit,
+            offset=offset,
+        )
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/collection-jobs/runtime/{job_id}/cancel")
+def cancel_runtime_collection_job(
+    job_id: str,
+    project_id: str = Query(min_length=1),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    repository = build_repository_from_env()
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_ANALYZE_ROLES,
+        )
+        return {
+            "collection_job": CollectionJobStore(repository).cancel(
+                project_id=project_id.strip(),
+                job_id=job_id.strip(),
+            )
+        }
+    except JobStateConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/collection-runs/runtime")
+def runtime_collection_runs(
+    project_id: str | None = None,
+    run_type: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        page = repository.list_runtime_collection_runs(
+            project_id=project_id,
+            run_type=run_type,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/collection-runs/runtime/export.csv")
+def runtime_collection_runs_export_csv(
+    project_id: str = Query(min_length=1),
+    run_type: str | None = Query(default=None, min_length=1, max_length=80),
+    limit: int = Query(default=200, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> Response:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        try:
+            export = repository.export_runtime_collection_runs_csv(
+                project_id=project_id.strip(),
+                run_type=run_type.strip() if run_type else None,
+                limit=limit,
+                offset=offset,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return Response(
+            content=export.content,
+            media_type=export.media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{export.filename}"',
+                "X-GEO-Collection-Run-Export-Hash": export.content_hash,
+                "X-GEO-Collection-Run-Project-Id": str(export.filters.get("project_id", "")),
+                "X-GEO-Collection-Run-Type": str(export.filters.get("run_type", "")),
+                "X-GEO-Collection-Run-Row-Count": str(export.row_count),
+                "X-GEO-Collection-Run-Total-Count": str(export.total_count),
+            },
+        )
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/collection-runs/runtime/fixture")
+def run_runtime_fixture_collection(
+    payload: RuntimeFixtureCollectionRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    require_dev_tools_enabled()
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+    finally:
+        close_repository_connection(repository)
+    try:
+        bootstrap = _load_runtime_project_bootstrap(payload.project_id.strip())
+        collection_repository = build_repository_from_env()
+        try:
+            apply_runtime_project_db_context(
+                collection_repository,
+                actor_id=actor_id,
+                project_id=bootstrap.project.id,
+            )
+            collection_runs = collection_repository.list_runtime_collection_runs(
+                project_id=bootstrap.project.id,
+                run_type="admin_fixture_e2e",
+                limit=1,
+                offset=0,
+            )
+        finally:
+            close_repository_connection(collection_repository)
+        if bootstrap.prompt_questions:
+            prompt_offset = collection_runs.total_count % len(bootstrap.prompt_questions)
+            rotated_prompts = bootstrap.prompt_questions[prompt_offset:] + bootstrap.prompt_questions[:prompt_offset]
+            if is_dataclass(bootstrap):
+                bootstrap = replace(bootstrap, prompt_questions=rotated_prompts)
+            else:
+                bootstrap.prompt_questions = rotated_prompts
+        else:
+            prompt_offset = 0
+        collectors = worker_collectors("fixture")
+        cities = tuple(city.strip() for city in payload.cities if city.strip())
+        if not cities:
+            raise ValueError("cities must contain at least one non-empty city")
+        records = run_collection_slice(
+            project_id=bootstrap.project.id,
+            prompts=bootstrap.prompt_questions,
+            market_profile=bootstrap.market_profile,
+            collectors=collectors,
+            cities=cities,
+            sample_size=payload.sample_size,
+            prompt_limit=payload.prompt_limit,
+        )
+        successes = tuple(record for record in records if isinstance(record, RawEvidenceRecord))
+        failures = tuple(record for record in records if isinstance(record, CollectionFailureRecord))
+        persistence = persist_worker_collection_records(
+            bootstrap=bootstrap,
+            mode="fixture",
+            run_type="admin_fixture_e2e",
+            planned_runs=payload.prompt_limit * len(collectors) * len(cities) * payload.sample_size,
+            records=records,
+            successes=successes,
+            failures=failures,
+            persist_analysis=payload.persist_analysis,
+            score_formula_version=payload.score_formula_version,
+            judge_gateway="fixture",
+            judge_model="local-fixture-judge",
+            ensure_project_bootstrap=False,
+        )
+        return {
+            "mode": "fixture",
+            "project_id": bootstrap.project.id,
+            "record_count": len(records),
+            "success_count": len(successes),
+            "failure_count": len(failures),
+            "answer_run_ids": [record.answer_run.id for record in successes],
+            "prompt_offset": prompt_offset,
+            "persistence": persistence,
+            "requested_by": actor_id or payload.requested_by,
+            "reason": payload.reason or "admin_fixture_collection_run",
+        }
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/v1/evidence-runs/runtime/export.csv")
+def runtime_evidence_export_csv(
+    project_id: str | None = None,
+    platform: str | None = None,
+    city: str | None = None,
+    intent_type: str | None = None,
+    status: str | None = None,
+    sort: str | None = None,
+    limit: int = Query(default=200, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> Response:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        export = repository.export_runtime_evidence_csv(
+            project_id=project_id,
+            platform=platform,
+            city=city,
+            intent_type=intent_type,
+            status=status,
+            sort=sort,
+            limit=limit,
+            offset=offset,
+        )
+        return Response(
+            content=export.content,
+            media_type=export.media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{export.filename}"',
+                "X-GEO-Evidence-Export-Hash": export.content_hash,
+                "X-GEO-Evidence-Export-Row-Count": str(export.row_count),
+                "X-GEO-Evidence-Export-Total-Count": str(export.total_count),
+                "X-GEO-Evidence-Export-Sort": str(export.filters.get("sort", "collected_at_desc")),
+            },
+        )
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/evidence-runs/runtime/manual-backfill")
+def runtime_manual_backfill(
+    payload: ManualBackfillRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        apply_runtime_project_db_context(repository, actor_id=actor_id)
+        prompt = repository.get_runtime_prompt(payload.prompt_question_id)
+        if not prompt:
+            raise HTTPException(status_code=404, detail="Prompt question not found")
+        assert_runtime_project_access(
+            repository,
+            project_id=str(prompt["project_id"]),
+            actor_id=actor_id,
+            allowed_roles=PROJECT_ANALYZE_ROLES,
+        )
+        record = _build_runtime_manual_backfill_record(
+            payload.model_copy(
+                update={"submitted_by": effective_runtime_actor_id(actor_id, payload.submitted_by)}
+            ),
+            prompt,
+        )
+        repository.save_raw_evidence_records((record,))
+        return {
+            "answer_run_id": record.answer_run.id,
+            "raw_payload_hash": record.raw_answer.raw_payload_hash,
+            "citation_count": len(record.citations),
+            "evidence_asset_count": len(record.evidence_assets),
+            "audit_event_ids": [event.id for event in record.audit_events],
+            "record": asdict(record),
+        }
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/evidence-runs/runtime/manual-backfill/import.csv")
+def runtime_manual_backfill_csv_import(
+    payload: ManualBackfillCsvImportRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        project_id = payload.project_id.strip()
+        submitted_by = effective_runtime_actor_id(actor_id, payload.submitted_by)
+        notes = payload.notes.strip() if payload.notes else None
+        assert_runtime_project_access(
+            repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_ANALYZE_ROLES,
+        )
+        parsed_rows = _parse_manual_backfill_csv_import(
+            payload.model_copy(update={"submitted_by": submitted_by})
+        )
+        records = []
+        for row_number, item in parsed_rows:
+            prompt = repository.get_runtime_prompt(item.prompt_question_id)
+            if not prompt:
+                raise HTTPException(
+                    status_code=404,
+                    detail={"row": row_number, "prompt_question_id": item.prompt_question_id, "error": "Prompt question not found"},
+                )
+            if str(prompt["project_id"]) != project_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "row": row_number,
+                        "prompt_question_id": item.prompt_question_id,
+                        "error": "prompt does not belong to import project",
+                        "project_id": project_id,
+                        "prompt_project_id": str(prompt["project_id"]),
+                    },
+                )
+            records.append(_build_runtime_manual_backfill_record(item, prompt))
+        audit_summary, batch_audit_event = _manual_backfill_batch_audit_event(
+            project_id=project_id,
+            submitted_by=submitted_by,
+            notes=notes,
+            records=records,
+            requested_count=len(parsed_rows),
+        )
+        first_record = records[0]
+        records[0] = replace(first_record, audit_events=(*first_record.audit_events, batch_audit_event))
+        repository.save_raw_evidence_records(tuple(records))
+        return {
+            "import_version": "manual_backfill_csv_import_v1",
+            "project_id": project_id,
+            "requested_count": len(parsed_rows),
+            "imported_count": len(records),
+            "answer_run_ids": [record.answer_run.id for record in records],
+            "raw_payload_hashes": [record.raw_answer.raw_payload_hash for record in records],
+            "citation_count": sum(len(record.citations) for record in records),
+            "evidence_asset_count": sum(len(record.evidence_assets) for record in records),
+            "audit_summary": audit_summary,
+            "batch_audit_event_id": batch_audit_event.id,
+            "records": [asdict(record) for record in records],
+        }
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/runtime-saved-views")
+def runtime_saved_views(
+    project_id: str | None = None,
+    view_type: str | None = None,
+    limit: int = Query(default=20, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        page = repository.list_runtime_saved_views(
+            project_id=project_id,
+            view_type=view_type,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/runtime-saved-views")
+def save_runtime_saved_view(
+    payload: RuntimeSavedViewRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        saved_view = repository.save_runtime_saved_view(
+            RuntimeSavedViewInput(
+                project_id=payload.project_id,
+                name=payload.name.strip(),
+                view_type=payload.view_type,
+                filters=payload.filters,
+                sort=payload.sort,
+                query_path=payload.query_path,
+                export_path=payload.export_path,
+                created_by=actor_id,
+            )
+        )
+        return asdict(saved_view)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/project-brand-kits/runtime")
+def runtime_project_brand_kit(
+    project_id: str = Query(min_length=1),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        brand_kit = repository.get_project_brand_kit(project_id=project_id)
+        if brand_kit is None:
+            raise HTTPException(status_code=404, detail="Project brand kit not found")
+        return asdict(brand_kit)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/project-brand-kits/runtime")
+def save_runtime_project_brand_kit(
+    payload: ProjectBrandKitRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        brand_kit = repository.save_project_brand_kit(
+            RuntimeProjectBrandKitInput(
+                project_id=payload.project_id.strip(),
+                client_name=payload.client_name.strip(),
+                prepared_by=payload.prepared_by.strip(),
+                logo_url=payload.logo_url.strip() if payload.logo_url else None,
+                primary_color=payload.primary_color.strip() if payload.primary_color else None,
+                secondary_color=payload.secondary_color.strip() if payload.secondary_color else None,
+                footer_text=payload.footer_text.strip() if payload.footer_text else None,
+                updated_by=actor_id,
+            )
+        )
+        return asdict(brand_kit)
+    except ValueError as exc:
+        status_code = 404 if str(exc) == "project not found" else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/project-brand-kits/runtime/logo")
+async def upload_runtime_project_brand_logo(
+    request: Request,
+    project_id: str = Query(min_length=1),
+    filename: str = Query(min_length=1, max_length=240),
+    uploaded_by: str = Query(default="runtime-console", min_length=1, max_length=120),
+    content_type: str | None = Header(default=None),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    file_bytes = await request.body()
+    if not file_bytes:
+        raise HTTPException(status_code=400, detail="brand logo file is empty")
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        if repository.list_runtime_projects(project_id=project_id.strip(), limit=1, offset=0).total_count == 0:
+            raise HTTPException(status_code=404, detail="project not found")
+        try:
+            store = build_object_store_from_env()
+            stored = archive_project_brand_logo(
+                project_id=project_id.strip(),
+                filename=filename.strip(),
+                content=file_bytes,
+                content_type=content_type,
+                store=store,
+            )
+        except ObjectStoreError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        brand_kit = repository.upload_project_brand_logo(
+            RuntimeProjectBrandLogoUpload(
+                project_id=project_id.strip(),
+                logo_url=stored.uri,
+                filename=filename.strip(),
+                content_type=stored.content_type,
+                content_hash=stored.content_hash,
+                uploaded_by=uploaded_by.strip(),
+            )
+        )
+        return asdict(brand_kit)
+    except ValueError as exc:
+        status_code = 404 if str(exc) == "project not found" else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/project-brand-kits/runtime/assets")
+def runtime_project_brand_asset_versions(
+    project_id: str = Query(min_length=1),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        page = repository.list_project_brand_asset_versions(
+            project_id=project_id.strip(),
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/project-brand-assets/runtime")
+def runtime_project_brand_assets(
+    project_id: str = Query(min_length=1),
+    asset_type: str | None = Query(default=None, min_length=1, max_length=80),
+    category: str | None = Query(default=None, min_length=1, max_length=120),
+    status: str | None = Query(default=None, min_length=1, max_length=40),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        page = repository.list_project_brand_assets(
+            project_id=project_id.strip(),
+            asset_type=asset_type.strip() if asset_type else None,
+            category=category.strip() if category else None,
+            status=status.strip() if status else None,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/project-brand-assets/runtime")
+def save_runtime_project_brand_asset(
+    payload: ProjectBrandAssetRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        record = repository.save_project_brand_asset(
+            RuntimeProjectBrandAssetInput(
+                project_id=payload.project_id.strip(),
+                asset_type=payload.asset_type.strip(),
+                asset_url=payload.asset_url.strip(),
+                category=payload.category.strip(),
+                preview_url=payload.preview_url.strip() if payload.preview_url else None,
+                source_filename=payload.source_filename.strip() if payload.source_filename else None,
+                source_content_type=payload.source_content_type.strip() if payload.source_content_type else None,
+                content_hash=payload.content_hash.strip() if payload.content_hash else None,
+                storage_version=payload.storage_version.strip() if payload.storage_version else None,
+                status=payload.status.strip(),
+                uploaded_by=actor_id or payload.uploaded_by.strip(),
+                metadata=payload.metadata,
+                reason=payload.reason.strip() if payload.reason else None,
+            )
+        )
+        return asdict(record)
+    except ValueError as exc:
+        status_code = 404 if str(exc) == "project not found" else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/project-brand-assets/runtime/{asset_id}/scan-status")
+def update_runtime_project_brand_asset_scan_status(
+    asset_id: str,
+    payload: ProjectBrandAssetScanRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        project_id = repository.get_project_brand_asset_project_id(asset_id=asset_id.strip())
+        if project_id is None:
+            raise HTTPException(status_code=404, detail="project brand asset not found")
+        assert_runtime_project_access(
+            repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        record = repository.update_project_brand_asset_scan_status(
+            RuntimeProjectBrandAssetScanInput(
+                asset_id=asset_id.strip(),
+                scan_status=payload.scan_status.strip(),
+                scanned_by=actor_id or payload.scanned_by.strip(),
+                scan_method_version=payload.scan_method_version.strip(),
+                scan_notes=payload.scan_notes.strip() if payload.scan_notes else None,
+                reason=payload.reason.strip() if payload.reason else None,
+            )
+        )
+        return asdict(record)
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        status_code = 404 if str(exc) == "project brand asset not found" else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/project-brand-kits/runtime/assets/activate")
+def activate_runtime_project_brand_asset_version(
+    payload: ProjectBrandAssetActivationRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        brand_kit = repository.activate_project_brand_logo_version(
+            RuntimeProjectBrandAssetActivationInput(
+                project_id=payload.project_id.strip(),
+                asset_url=payload.asset_url.strip(),
+                activated_by=actor_id or payload.activated_by.strip(),
+                reason=payload.reason.strip() if payload.reason else None,
+            )
+        )
+        return asdict(brand_kit)
+    except ValueError as exc:
+        status_code = 404 if str(exc) in {"project not found", "brand asset version not found"} else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/score-weight-configs/runtime")
+def runtime_score_weight_config(
+    project_id: str = Query(min_length=1),
+    formula_version: str = Query(default="au_visibility_v1", min_length=1),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        get_profile = getattr(repository, "get_score_weight_profile", None)
+        if callable(get_profile):
+            profile = get_profile(formula_version.strip())
+            if profile is not None:
+                profile_data = profile.score_weight_profile
+                return {
+                    "score_weight_config": {
+                        "id": profile_data.get("id"),
+                        "project_id": project_id,
+                        "formula_version": profile_data.get("profile_key"),
+                        "weights": profile_data.get("weights") or {},
+                        "updated_by": profile_data.get("updated_by") or "system-default",
+                        "notes": profile_data.get("description"),
+                    },
+                    "audit_events": [],
+                }
+        formula = get_score_formula(formula_version)
+        config = repository.get_score_weight_config(project_id=project_id, formula_version=formula.formula_version)
+        if config is None:
+            return {
+                "score_weight_config": {
+                    "id": None,
+                    "project_id": project_id,
+                    "formula_version": formula.formula_version,
+                    "weights": formula.weights,
+                    "updated_by": "system-default",
+                    "notes": f"Default {formula.formula_version} score weights",
+                },
+                "audit_events": [],
+            }
+        return asdict(config)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/score-weight-configs/runtime")
+def save_runtime_score_weight_config(
+    payload: ScoreWeightConfigRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        weights = normalize_score_weights(payload.weights, formula_version=payload.formula_version.strip())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        config = repository.save_score_weight_config(
+            RuntimeScoreWeightConfigInput(
+                project_id=payload.project_id.strip(),
+                formula_version=payload.formula_version.strip(),
+                weights=weights,
+                updated_by=actor_id,
+                notes=payload.notes.strip() if payload.notes else None,
+            )
+        )
+        return asdict(config)
+    except ValueError as exc:
+        status_code = 404 if str(exc) == "project not found" else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/score-weight-profiles/runtime")
+def runtime_score_weight_profiles(
+    include_archived: bool = False,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        list_profiles = getattr(repository, "list_score_weight_profiles", None)
+        if not callable(list_profiles):
+            return {"records": [], "total_count": 0}
+        page = list_profiles(include_archived=include_archived)
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/score-weight-profiles/runtime")
+def save_runtime_score_weight_profile(
+    payload: ScoreWeightProfileRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        weights = normalize_score_weights(payload.weights, formula_version=payload.base_formula_version.strip())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        save_profile = getattr(repository, "save_score_weight_profile", None)
+        if not callable(save_profile):
+            raise HTTPException(status_code=503, detail="score weight profile persistence is unavailable")
+        profile = save_profile(
+            RuntimeScoreWeightProfileInput(
+                profile_key=payload.profile_key.strip(),
+                name=payload.name.strip(),
+                description=payload.description.strip() if payload.description else None,
+                base_formula_version=payload.base_formula_version.strip(),
+                weights=weights,
+                created_by=actor_id or payload.updated_by.strip(),
+                updated_by=actor_id or payload.updated_by.strip(),
+                status=payload.status.strip(),
+            )
+        )
+        return asdict(profile)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/score-formulas/runtime")
+def runtime_score_formulas() -> dict[str, object]:
+    return {"formulas": list_score_formulas()}
+
+
+@app.get("/v1/human-reviews/runtime")
+def runtime_human_reviews(
+    project_id: str | None = None,
+    target_type: str | None = None,
+    review_status: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        page = repository.list_runtime_human_reviews(
+            project_id=project_id,
+            target_type=target_type,
+            review_status=review_status,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/human-reviews/runtime/export.csv")
+def runtime_human_reviews_export_csv(
+    project_id: str = Query(min_length=1),
+    target_type: str | None = Query(default=None, min_length=1, max_length=80),
+    review_status: str | None = Query(default=None, min_length=1, max_length=80),
+    limit: int = Query(default=200, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> Response:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        try:
+            export = repository.export_runtime_human_reviews_csv(
+                project_id=project_id.strip(),
+                target_type=target_type.strip() if target_type else None,
+                review_status=review_status.strip().lower() if review_status else None,
+                limit=limit,
+                offset=offset,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return Response(
+            content=export.content,
+            media_type=export.media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{export.filename}"',
+                "X-GEO-Human-Review-Export-Hash": export.content_hash,
+                "X-GEO-Human-Review-Project-Id": str(export.filters.get("project_id", "")),
+                "X-GEO-Human-Review-Target-Type": str(export.filters.get("target_type", "")),
+                "X-GEO-Human-Review-Status": str(export.filters.get("review_status", "")),
+                "X-GEO-Human-Review-Row-Count": str(export.row_count),
+                "X-GEO-Human-Review-Total-Count": str(export.total_count),
+            },
+        )
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/human-reviews/runtime/queue")
+def runtime_human_review_queue(
+    project_id: str | None = None,
+    target_type: str | None = None,
+    queue_status: str | None = None,
+    limit: int = Query(default=20, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        page = repository.list_runtime_human_review_queue(
+            project_id=project_id,
+            target_type=target_type,
+            queue_status=queue_status,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/human-reviews/runtime")
+def record_runtime_human_review(
+    payload: HumanReviewRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_ANALYZE_ROLES,
+        )
+        record = repository.save_human_review(
+            RuntimeHumanReviewInput(
+                project_id=payload.project_id.strip(),
+                target_type=payload.target_type.strip(),
+                target_id=payload.target_id.strip(),
+                review_status=payload.review_status.strip(),
+                decision=payload.decision.strip(),
+                reviewer_id=actor_id,
+                notes=payload.notes.strip() if payload.notes else None,
+                payload=payload.payload,
+            )
+        )
+        return asdict(record)
+    except ValueError as exc:
+        status_code = 404 if str(exc) in {"project not found", "content draft not found"} else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/visibility-scores/runtime")
+def runtime_visibility_scores(
+    project_id: str | None = None,
+    scope_type: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        page = repository.list_runtime_score_snapshots(
+            project_id=project_id,
+            scope_type=scope_type,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/visibility-scores/runtime/export.csv")
+def runtime_visibility_scores_export_csv(
+    project_id: str = Query(min_length=1),
+    scope_type: str | None = Query(default=None, min_length=1, max_length=80),
+    limit: int = Query(default=200, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> Response:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        try:
+            export = repository.export_runtime_score_snapshots_csv(
+                project_id=project_id.strip(),
+                scope_type=scope_type.strip() if scope_type else None,
+                limit=limit,
+                offset=offset,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return Response(
+            content=export.content,
+            media_type=export.media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{export.filename}"',
+                "X-GEO-Score-Snapshot-Export-Hash": export.content_hash,
+                "X-GEO-Score-Snapshot-Project-Id": str(export.filters.get("project_id", "")),
+                "X-GEO-Score-Snapshot-Scope-Type": str(export.filters.get("scope_type", "")),
+                "X-GEO-Score-Snapshot-Row-Count": str(export.row_count),
+                "X-GEO-Score-Snapshot-Total-Count": str(export.total_count),
+            },
+        )
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/citation-graphs/runtime")
+def runtime_citation_graphs(
+    project_id: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        page = repository.list_runtime_citation_graphs(
+            project_id=project_id,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/citation-graphs/runtime/export.csv")
+def runtime_citation_graphs_export_csv(
+    project_id: str = Query(min_length=1),
+    limit: int = Query(default=200, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> Response:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        try:
+            export = repository.export_runtime_citation_graphs_csv(
+                project_id=project_id.strip(),
+                limit=limit,
+                offset=offset,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return Response(
+            content=export.content,
+            media_type=export.media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{export.filename}"',
+                "X-GEO-Citation-Graph-Export-Hash": export.content_hash,
+                "X-GEO-Citation-Graph-Project-Id": str(export.filters.get("project_id", "")),
+                "X-GEO-Citation-Graph-Row-Count": str(export.row_count),
+                "X-GEO-Citation-Graph-Total-Count": str(export.total_count),
+            },
+        )
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/reports/runtime")
+def runtime_reports(
+    project_id: str | None = None,
+    report_type: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        page = repository.list_runtime_report_exports(
+            project_id=project_id,
+            report_type=report_type,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/reports/runtime/management-events/export.csv")
+def export_runtime_report_management_events_csv(
+    project_id: str = Query(min_length=1),
+    status: str | None = Query(default=None, min_length=1, max_length=40),
+    report_type: str | None = Query(default=None, min_length=1, max_length=80),
+    limit: int = Query(default=200, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> Response:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        try:
+            export = repository.export_runtime_report_management_events_csv(
+                project_id=project_id.strip(),
+                status=status.strip().lower() if status else None,
+                report_type=report_type.strip() if report_type else None,
+                limit=limit,
+                offset=offset,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return Response(
+            content=export.content,
+            media_type=export.media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{export.filename}"',
+                "X-GEO-Report-Management-Export-Hash": export.content_hash,
+                "X-GEO-Report-Management-Project-Id": str(export.filters.get("project_id", "")),
+                "X-GEO-Report-Management-Status": str(export.filters.get("status", "")),
+                "X-GEO-Report-Management-Report-Type": str(export.filters.get("report_type", "")),
+                "X-GEO-Report-Management-Row-Count": str(export.row_count),
+                "X-GEO-Report-Management-Total-Count": str(export.total_count),
+            },
+        )
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/reports/runtime/{report_export_id}/management-events")
+def record_runtime_report_management_event(
+    report_export_id: str,
+    payload: RuntimeReportManagementEventRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        project_id: str | None = None
+        if runtime_project_access_control_enabled():
+            apply_runtime_project_db_context(repository, actor_id=actor_id)
+            project_id = repository.get_report_export_project_id(report_export_id=report_export_id)
+            if project_id is None:
+                raise HTTPException(status_code=404, detail="report_export not found")
+        assert_runtime_project_access(
+            repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            require_project_id=project_id is not None,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        try:
+            report = repository.record_runtime_report_management_event(
+                RuntimeReportManagementInput(
+                    report_export_id=report_export_id,
+                    status=_normalize_report_management_status(payload.status),
+                    updated_by=actor_id or payload.updated_by.strip(),
+                    note=payload.note.strip() if payload.note else None,
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "report_export not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(report)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/fidelity-checks/runtime")
+def runtime_fidelity_checks(
+    project_id: str | None = None,
+    report_export_id: str | None = None,
+    status: str | None = None,
+    limit: int = Query(default=20, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        if runtime_project_access_control_enabled() and report_export_id and not project_id:
+            apply_runtime_project_db_context(repository, actor_id=actor_id)
+            project_id = repository.get_report_export_project_id(report_export_id=report_export_id)
+            if project_id is None:
+                raise HTTPException(status_code=404, detail="report_export not found")
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        page = repository.list_runtime_fidelity_checks(
+            project_id=project_id,
+            report_export_id=report_export_id,
+            status=status,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/fidelity-checks/runtime/export.csv")
+def runtime_fidelity_checks_export_csv(
+    project_id: str | None = None,
+    report_export_id: str | None = None,
+    status: str | None = None,
+    limit: int = Query(default=200, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> Response:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        if runtime_project_access_control_enabled() and report_export_id and not project_id:
+            apply_runtime_project_db_context(repository, actor_id=actor_id)
+            project_id = repository.get_report_export_project_id(report_export_id=report_export_id)
+            if project_id is None:
+                raise HTTPException(status_code=404, detail="report_export not found")
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        export = repository.export_runtime_fidelity_checks_csv(
+            project_id=project_id.strip() if project_id else None,
+            report_export_id=report_export_id.strip() if report_export_id else None,
+            status=status.strip() if status else None,
+            limit=limit,
+            offset=offset,
+        )
+        return Response(
+            content=export.content,
+            media_type=export.media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{export.filename}"',
+                "X-GEO-Fidelity-Check-Export-Hash": export.content_hash,
+                "X-GEO-Fidelity-Check-Project-Id": str(export.filters.get("project_id", "")),
+                "X-GEO-Fidelity-Check-Report-Export-Id": str(export.filters.get("report_export_id", "")),
+                "X-GEO-Fidelity-Check-Status": str(export.filters.get("status", "")),
+                "X-GEO-Fidelity-Check-Row-Count": str(export.row_count),
+                "X-GEO-Fidelity-Check-Total-Count": str(export.total_count),
+            },
+        )
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/fidelity-checks/runtime/trend")
+def runtime_fidelity_trend(
+    project_id: str | None = None,
+    report_export_id: str | None = None,
+    limit: int = Query(default=20, ge=1, le=100),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        if runtime_project_access_control_enabled() and report_export_id and not project_id:
+            apply_runtime_project_db_context(repository, actor_id=actor_id)
+            project_id = repository.get_report_export_project_id(report_export_id=report_export_id)
+            if project_id is None:
+                raise HTTPException(status_code=404, detail="report_export not found")
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        trend = repository.get_runtime_fidelity_trend(
+            project_id=project_id,
+            report_export_id=report_export_id,
+            limit=limit,
+        )
+        return asdict(trend)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/fidelity-checks/runtime")
+def create_runtime_fidelity_check(
+    payload: RuntimeFidelityCheckRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_ANALYZE_ROLES,
+        )
+        check = repository.create_runtime_fidelity_check(
+            project_id=payload.project_id.strip(),
+            report_export_id=payload.report_export_id.strip() if payload.report_export_id else None,
+            checked_by=effective_runtime_actor_id(actor_id, payload.checked_by),
+        )
+        return asdict(check)
+    except ValueError as exc:
+        status_code = 404 if str(exc) in {"project not found", "report_export not found"} else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/reports/runtime/{report_export_id}/artifact")
+def runtime_report_artifact(
+    request: Request,
+    report_export_id: str,
+    artifact_type: str = Query(default="markdown", alias="type", pattern="^(markdown|csv|pdf)$"),
+    template: str = Query(default="standard", pattern="^(standard|white_label)$"),
+    client_name: str | None = None,
+    prepared_by: str | None = None,
+    platform: str | None = None,
+    city: str | None = None,
+    intent_type: str | None = None,
+    status: str | None = None,
+    sort: str | None = None,
+    expires_at: int | None = None,
+    signature: str | None = None,
+    signed_actor_id: str | None = None,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+    x_geo_customer_portal_access: str | None = Header(default=None, alias=RUNTIME_CUSTOMER_PORTAL_ACCESS_HEADER),
+) -> Response:
+    signed_download = expires_at is not None or signature is not None
+    customer_portal_access = _is_truthy_header(x_geo_customer_portal_access)
+    if signed_download:
+        customer_portal_access = customer_portal_access or _is_truthy_header(request.query_params.get("customer_portal_access"))
+        payload = _report_artifact_signature_payload(
+            report_export_id=report_export_id,
+            artifact_type=artifact_type,
+            template=template,
+            client_name=client_name,
+            prepared_by=prepared_by,
+            platform=platform,
+            city=city,
+            intent_type=intent_type,
+            status=status,
+            sort=sort,
+            expires_at=expires_at or 0,
+            actor_id=signed_actor_id,
+            customer_portal_access=customer_portal_access,
+        )
+        _verify_report_artifact_signature(payload, signature)
+        actor_id = signed_actor_id.strip() if signed_actor_id else None
+    else:
+        actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        if runtime_project_access_control_enabled():
+            if signed_download and not actor_id:
+                raise HTTPException(status_code=401, detail="signed_actor_id is required when runtime project access control is enabled")
+            apply_runtime_project_db_context(repository, actor_id=actor_id)
+            project_id = repository.get_report_export_project_id(report_export_id=report_export_id)
+            context = build_runtime_auth_context(actor_id)
+            assert_runtime_project_access(
+                repository,
+                project_id=project_id,
+                actor_id=actor_id,
+                require_project_id=project_id is not None,
+            )
+            _assert_runtime_customer_report_download_allowed(
+                repository,
+                report_export_id=report_export_id,
+                project_id=project_id,
+                context=context,
+                customer_portal_access=customer_portal_access,
+            )
+        artifact = repository.get_runtime_report_artifact(
+            report_export_id=report_export_id,
+            artifact_type=artifact_type,
+            platform=platform,
+            city=city,
+            intent_type=intent_type,
+            status=status,
+            sort=sort,
+            template=template,
+            client_name=client_name,
+            prepared_by=prepared_by,
+        )
+        if artifact is None:
+            raise HTTPException(status_code=404, detail="Runtime report artifact not found")
+        return Response(
+            content=artifact.content,
+            media_type=artifact.media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{artifact.filename}"',
+                "X-GEO-Report-Artifact-Hash": artifact.content_hash,
+                "X-GEO-Report-Artifact-Filter-Hash": artifact.filter_hash,
+                "X-GEO-Report-Artifact-Template": artifact.template,
+                "X-GEO-Report-Artifact-Template-Hash": artifact.template_hash,
+                "X-GEO-Report-Artifact-Sort": artifact.sort,
+                "X-GEO-Report-Artifact-Row-Count": str(artifact.row_count),
+                "X-GEO-Report-Artifact-Total-Count": str(artifact.total_count),
+                "X-GEO-Report-Artifact-Signed": "true" if signed_download else "false",
+            },
+        )
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/reports/runtime/{report_export_id}/artifact/signed-url")
+def runtime_report_artifact_signed_url(
+    request: Request,
+    report_export_id: str,
+    artifact_type: str = Query(default="markdown", alias="type", pattern="^(markdown|csv|pdf)$"),
+    template: str = Query(default="standard", pattern="^(standard|white_label)$"),
+    client_name: str | None = None,
+    prepared_by: str | None = None,
+    platform: str | None = None,
+    city: str | None = None,
+    intent_type: str | None = None,
+    status: str | None = None,
+    sort: str | None = None,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+    x_geo_customer_portal_access: str | None = Header(default=None, alias=RUNTIME_CUSTOMER_PORTAL_ACCESS_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    customer_portal_access = _is_truthy_header(x_geo_customer_portal_access)
+    ttl_seconds = _report_artifact_signed_url_ttl_seconds()
+    expires_at = int(time.time()) + ttl_seconds
+    payload = _report_artifact_signature_payload(
+        report_export_id=report_export_id,
+        artifact_type=artifact_type,
+        template=template,
+        client_name=client_name,
+        prepared_by=prepared_by,
+        platform=platform,
+        city=city,
+        intent_type=intent_type,
+        status=status,
+        sort=sort,
+        expires_at=expires_at,
+        actor_id=actor_id,
+        customer_portal_access=customer_portal_access,
+    )
+    signature = _sign_report_artifact_payload(payload)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        if runtime_project_access_control_enabled():
+            apply_runtime_project_db_context(repository, actor_id=actor_id)
+        project_id = repository.get_report_export_project_id(report_export_id=report_export_id)
+        if project_id is None:
+            raise HTTPException(status_code=404, detail="report_export not found")
+        assert_runtime_project_access(
+            repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            require_project_id=True,
+        )
+        _assert_runtime_customer_report_download_allowed(
+            repository,
+            report_export_id=report_export_id,
+            project_id=project_id,
+            context=build_runtime_auth_context(actor_id),
+            customer_portal_access=customer_portal_access,
+        )
+    finally:
+        close_repository_connection(repository)
+
+    artifact_path = f"/v1/reports/runtime/{report_export_id}/artifact"
+    signed_query = {
+        "type": artifact_type,
+        "template": template,
+        "client_name": client_name,
+        "prepared_by": prepared_by,
+        "platform": platform,
+        "city": city,
+        "intent_type": intent_type,
+        "status": status,
+        "sort": sort,
+        "expires_at": expires_at,
+        "signed_actor_id": actor_id,
+        "customer_portal_access": "1" if customer_portal_access else "",
+        "signature": signature,
+    }
+    download_url = _absolute_url_for_request(request, artifact_path, signed_query)
+    return {
+        "report_export_id": report_export_id,
+        "artifact_type": artifact_type,
+        "template": template,
+        "expires_at": expires_at,
+        "ttl_seconds": ttl_seconds,
+        "download_url": download_url,
+        "signed_url_hash": hashlib.sha256(download_url.encode("utf-8")).hexdigest(),
+        "signature_payload_hash": hashlib.sha256(
+            _canonical_report_artifact_signature_payload(payload)
+        ).hexdigest(),
+        "signature_version": "report_artifact_hmac_sha256_v1",
+    }
+
+
+@app.get("/v1/report-export-jobs/runtime")
+def runtime_report_export_jobs(
+    project_id: str | None = None,
+    status: str | None = None,
+    report_export_id: str | None = None,
+    limit: int = Query(default=20, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        if runtime_project_access_control_enabled() and report_export_id and not project_id:
+            apply_runtime_project_db_context(repository, actor_id=actor_id)
+            project_id = repository.get_report_export_project_id(report_export_id=report_export_id)
+            if project_id is None:
+                raise HTTPException(status_code=404, detail="report_export not found")
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        page = repository.list_runtime_report_export_jobs(
+            project_id=project_id,
+            status=status,
+            report_export_id=report_export_id,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/report-export-jobs/runtime/export.csv")
+def runtime_report_export_jobs_export_csv(
+    project_id: str = Query(min_length=1),
+    status: str | None = None,
+    report_export_id: str | None = None,
+    limit: int = Query(default=200, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> Response:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        if runtime_project_access_control_enabled() and report_export_id:
+            apply_runtime_project_db_context(repository, actor_id=actor_id)
+            report_project_id = repository.get_report_export_project_id(report_export_id=report_export_id)
+            if report_project_id is None:
+                raise HTTPException(status_code=404, detail="report_export not found")
+            if report_project_id != project_id:
+                raise HTTPException(status_code=400, detail="report_export does not belong to project")
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        export = repository.export_runtime_report_export_jobs_csv(
+            project_id=project_id,
+            status=status,
+            report_export_id=report_export_id,
+            limit=limit,
+            offset=offset,
+        )
+        return Response(
+            content=export.content,
+            media_type=export.media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{export.filename}"',
+                "X-GEO-Report-Export-Job-Export-Hash": export.content_hash,
+                "X-GEO-Report-Export-Job-Project-Id": project_id,
+                "X-GEO-Report-Export-Job-Status": status or "",
+                "X-GEO-Report-Export-Job-Report-Export-Id": report_export_id or "",
+                "X-GEO-Report-Export-Job-Row-Count": str(export.row_count),
+                "X-GEO-Report-Export-Job-Total-Count": str(export.total_count),
+            },
+        )
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/report-export-jobs/runtime/stats")
+def runtime_report_export_job_stats(
+    project_id: str | None = None,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        stats = repository.get_runtime_report_export_job_queue_stats(project_id=project_id)
+        return asdict(stats)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/runtime-notifications")
+def runtime_notifications(
+    project_id: str | None = None,
+    status: str | None = None,
+    notification_type: str | None = None,
+    limit: int = Query(default=20, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        page = repository.list_runtime_notifications(
+            project_id=project_id,
+            status=status,
+            notification_type=notification_type,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/runtime-notifications/export.csv")
+def runtime_notifications_export_csv(
+    project_id: str = Query(min_length=1),
+    status: str | None = None,
+    notification_type: str | None = None,
+    limit: int = Query(default=200, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> Response:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        export = repository.export_runtime_notifications_csv(
+            project_id=project_id,
+            status=status,
+            notification_type=notification_type,
+            limit=limit,
+            offset=offset,
+        )
+        return Response(
+            content=export.content,
+            media_type=export.media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{export.filename}"',
+                "X-GEO-Notification-Export-Hash": export.content_hash,
+                "X-GEO-Notification-Project-Id": project_id,
+                "X-GEO-Notification-Status": status or "",
+                "X-GEO-Notification-Type": notification_type or "",
+                "X-GEO-Notification-Row-Count": str(export.row_count),
+                "X-GEO-Notification-Total-Count": str(export.total_count),
+            },
+        )
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/runtime-notification-subscriptions")
+def runtime_notification_subscriptions(
+    project_id: str | None = None,
+    status: str | None = None,
+    limit: int = Query(default=20, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        page = repository.list_runtime_notification_subscriptions(
+            project_id=project_id,
+            status=status,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/runtime-notification-subscriptions/export.csv")
+def runtime_notification_subscriptions_export_csv(
+    project_id: str = Query(min_length=1),
+    status: str | None = None,
+    limit: int = Query(default=200, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> Response:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        export = repository.export_runtime_notification_subscriptions_csv(
+            project_id=project_id,
+            status=status,
+            limit=limit,
+            offset=offset,
+        )
+        return Response(
+            content=export.content,
+            media_type=export.media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{export.filename}"',
+                "X-GEO-Notification-Subscription-Export-Hash": export.content_hash,
+                "X-GEO-Notification-Subscription-Project-Id": project_id,
+                "X-GEO-Notification-Subscription-Status": status or "",
+                "X-GEO-Notification-Subscription-Row-Count": str(export.row_count),
+                "X-GEO-Notification-Subscription-Total-Count": str(export.total_count),
+            },
+        )
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/runtime-notification-subscriptions")
+def save_runtime_notification_subscription(
+    payload: RuntimeNotificationSubscriptionRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        record = repository.save_runtime_notification_subscription(
+            RuntimeNotificationSubscriptionInput(
+                project_id=payload.project_id.strip(),
+                endpoint_url=payload.endpoint_url.strip(),
+                channel=payload.channel.strip(),
+                event_types=tuple(payload.event_types),
+                severity_threshold=payload.severity_threshold.strip(),
+                status=payload.status.strip(),
+                metadata=payload.metadata,
+                updated_by=actor_id or payload.updated_by.strip(),
+                reason=payload.reason.strip() if payload.reason else None,
+            )
+        )
+        return asdict(record)
+    except ValueError as exc:
+        status_code = 404 if str(exc) == "project not found" else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/runtime-notification-email-suppressions")
+def runtime_notification_email_suppressions(
+    project_id: str,
+    status: str | None = None,
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        page = repository.list_runtime_notification_email_suppressions(
+            project_id=project_id,
+            status=status,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/runtime-notification-email-suppressions/export.csv")
+def runtime_notification_email_suppressions_export_csv(
+    project_id: str = Query(min_length=1),
+    status: str | None = None,
+    limit: int = Query(default=200, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> Response:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        try:
+            export = repository.export_runtime_notification_email_suppressions_csv(
+                project_id=project_id,
+                status=status,
+                limit=limit,
+                offset=offset,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return Response(
+            content=export.content,
+            media_type=export.media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{export.filename}"',
+                "X-GEO-Email-Suppression-Export-Hash": export.content_hash,
+                "X-GEO-Email-Suppression-Project-Id": str(export.filters.get("project_id", "")),
+                "X-GEO-Email-Suppression-Status": str(export.filters.get("status", "")),
+                "X-GEO-Email-Suppression-Row-Count": str(export.row_count),
+                "X-GEO-Email-Suppression-Total-Count": str(export.total_count),
+            },
+        )
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/runtime-notification-email-suppressions")
+def save_runtime_notification_email_suppression(
+    payload: RuntimeNotificationEmailSuppressionRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        record = repository.save_runtime_notification_email_suppression(
+            RuntimeNotificationEmailSuppressionInput(
+                project_id=payload.project_id,
+                recipient_hash=payload.recipient_hash,
+                status=payload.status,
+                source=payload.source,
+                source_ref=payload.source_ref,
+                metadata=payload.metadata,
+                updated_by=actor_id or payload.updated_by,
+                reason=payload.reason,
+            )
+        )
+        return asdict(record)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/runtime-notification-deliveries")
+def runtime_notification_deliveries(
+    project_id: str | None = None,
+    notification_id: str | None = None,
+    subscription_id: str | None = None,
+    status: str | None = None,
+    limit: int = Query(default=20, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        page = repository.list_runtime_notification_deliveries(
+            project_id=project_id,
+            notification_id=notification_id,
+            subscription_id=subscription_id,
+            status=status,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/runtime-notification-deliveries/export.csv")
+def runtime_notification_deliveries_export_csv(
+    project_id: str = Query(min_length=1),
+    notification_id: str | None = None,
+    subscription_id: str | None = None,
+    status: str | None = None,
+    limit: int = Query(default=200, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> Response:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        export = repository.export_runtime_notification_deliveries_csv(
+            project_id=project_id,
+            notification_id=notification_id,
+            subscription_id=subscription_id,
+            status=status,
+            limit=limit,
+            offset=offset,
+        )
+        return Response(
+            content=export.content,
+            media_type=export.media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{export.filename}"',
+                "X-GEO-Notification-Delivery-Export-Hash": export.content_hash,
+                "X-GEO-Notification-Delivery-Project-Id": project_id,
+                "X-GEO-Notification-Delivery-Status": status or "",
+                "X-GEO-Notification-Delivery-Row-Count": str(export.row_count),
+                "X-GEO-Notification-Delivery-Total-Count": str(export.total_count),
+            },
+        )
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/runtime-notification-email-feedback-events")
+def runtime_notification_email_feedback_events(
+    project_id: str | None = None,
+    delivery_id: str | None = None,
+    notification_id: str | None = None,
+    subscription_id: str | None = None,
+    feedback_type: str | None = None,
+    provider: str | None = None,
+    limit: int = Query(default=20, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        page = repository.list_runtime_notification_email_feedback_events(
+            project_id=project_id,
+            delivery_id=delivery_id,
+            notification_id=notification_id,
+            subscription_id=subscription_id,
+            feedback_type=feedback_type,
+            provider=provider,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/runtime-notification-deliveries/{delivery_id}/email-feedback")
+def record_runtime_notification_email_feedback(
+    delivery_id: str,
+    payload: RuntimeNotificationEmailFeedbackRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        project_id = repository.get_runtime_notification_delivery_project_id(delivery_id=delivery_id)
+        if project_id is None:
+            raise HTTPException(status_code=404, detail="runtime notification delivery not found")
+        assert_runtime_project_access(
+            repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        record = repository.record_runtime_notification_email_feedback(
+            RuntimeNotificationEmailFeedbackInput(
+                delivery_id=delivery_id,
+                feedback_type=payload.feedback_type,
+                recipient=payload.recipient,
+                recipient_hash=payload.recipient_hash,
+                provider=payload.provider,
+                provider_event_id=payload.provider_event_id,
+                provider_event_id_hash=payload.provider_event_id_hash,
+                occurred_at=payload.occurred_at,
+                metadata=payload.metadata,
+                recorded_by=actor_id or payload.recorded_by,
+                reason=payload.reason,
+            )
+        )
+        return asdict(record)
+    except ValueError as exc:
+        status_code = 404 if str(exc) == "runtime notification delivery not found" else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/runtime-notification-email-feedback-webhooks/geo")
+async def record_runtime_notification_email_feedback_webhook(request: Request) -> dict[str, object]:
+    body = await request.body()
+    signature_metadata = _verify_runtime_notification_email_feedback_webhook(request=request, body=body)
+    try:
+        raw_payload = json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="runtime notification email feedback webhook payload must be JSON") from exc
+    if not isinstance(raw_payload, dict):
+        raise HTTPException(status_code=400, detail="runtime notification email feedback webhook payload must be an object")
+    try:
+        payload = RuntimeNotificationEmailFeedbackWebhookRequest(**raw_payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if request.headers.get(RUNTIME_NOTIFICATION_WEBHOOK_DELIVERY_ID_HEADER) != payload.delivery_id:
+        raise HTTPException(status_code=400, detail="runtime notification email feedback webhook delivery id mismatch")
+    metadata = {
+        **payload.metadata,
+        **signature_metadata,
+        "webhook_payload_version": "runtime_notification_email_feedback_webhook_v1",
+        "provider": payload.provider or "geo",
+    }
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        record = repository.record_runtime_notification_email_feedback(
+            RuntimeNotificationEmailFeedbackInput(
+                delivery_id=payload.delivery_id,
+                feedback_type=payload.feedback_type,
+                recipient=payload.recipient,
+                recipient_hash=payload.recipient_hash,
+                provider=payload.provider or "geo",
+                provider_event_id=payload.provider_event_id,
+                provider_event_id_hash=payload.provider_event_id_hash,
+                occurred_at=payload.occurred_at,
+                metadata=metadata,
+                recorded_by="email-feedback-webhook",
+                reason=payload.reason or "record runtime notification email feedback webhook",
+            )
+        )
+        return asdict(record)
+    except ValueError as exc:
+        status_code = 404 if str(exc) == "runtime notification delivery not found" else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/runtime-notification-email-feedback-webhooks/{provider}")
+async def record_runtime_notification_email_provider_feedback_webhook(
+    provider: str,
+    request: Request,
+) -> dict[str, object]:
+    body = await request.body()
+    provider_metadata = _verify_runtime_notification_email_provider_feedback_webhook(request, body=body)
+    try:
+        raw_payload = json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="runtime notification email provider feedback payload must be JSON") from exc
+    native_signature_metadata = _verify_runtime_notification_email_provider_native_signature(
+        provider=provider,
+        request=request,
+        body=body,
+        payload=raw_payload,
+    )
+    try:
+        parsed = parse_runtime_notification_email_provider_feedback(
+            provider=provider,
+            payload=raw_payload,
+            payload_hash=str(provider_metadata["provider_webhook_payload_hash"]),
+            default_delivery_id=request.headers.get(RUNTIME_NOTIFICATION_EMAIL_PROVIDER_WEBHOOK_DELIVERY_ID_HEADER),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    records: list[dict[str, object]] = []
+    errors: list[dict[str, object]] = []
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        for index, feedback in enumerate(parsed.records):
+            metadata = {
+                **feedback.metadata,
+                **provider_metadata,
+                **native_signature_metadata,
+                "adapter_version": parsed.adapter_version,
+                "provider_feedback_record_index": index,
+                "provider_feedback_record_count": len(parsed.records),
+                "provider_ignored_event_count": parsed.ignored_event_count,
+                "provider_ignored_event_types": list(parsed.ignored_event_types),
+            }
+            try:
+                record = repository.record_runtime_notification_email_feedback(
+                    RuntimeNotificationEmailFeedbackInput(
+                        delivery_id=feedback.delivery_id,
+                        feedback_type=feedback.feedback_type,
+                        recipient=feedback.recipient,
+                        recipient_hash=feedback.recipient_hash,
+                        provider=feedback.provider,
+                        provider_event_id=feedback.provider_event_id,
+                        provider_event_id_hash=feedback.provider_event_id_hash,
+                        occurred_at=feedback.occurred_at,
+                        metadata=metadata,
+                        recorded_by=feedback.recorded_by,
+                        reason=feedback.reason,
+                    )
+                )
+                records.append(asdict(record))
+            except ValueError as exc:
+                errors.append({"index": index, "delivery_id": feedback.delivery_id, "detail": str(exc)})
+        if errors and not records:
+            raise HTTPException(status_code=400, detail={"records": [], "errors": errors})
+        return {
+            "provider": parsed.provider,
+            "adapter_version": RUNTIME_NOTIFICATION_EMAIL_PROVIDER_FEEDBACK_ADAPTER_VERSION,
+            "record_count": len(records),
+            "ignored_event_count": parsed.ignored_event_count,
+            "ignored_event_types": list(parsed.ignored_event_types),
+            "error_count": len(errors),
+            "errors": errors,
+            "records": records,
+            "payload_hash": parsed.payload_hash,
+        }
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/runtime-notification-email-feedback-events/{feedback_event_id}/suppress-recipient")
+def apply_runtime_notification_email_feedback_suppression(
+    feedback_event_id: str,
+    payload: RuntimeNotificationEmailFeedbackSuppressionRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        project_id = repository.get_runtime_notification_email_feedback_project_id(
+            feedback_event_id=feedback_event_id
+        )
+        if project_id is None:
+            raise HTTPException(status_code=404, detail="runtime notification email feedback event not found")
+        assert_runtime_project_access(
+            repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        record = repository.apply_runtime_notification_email_feedback_suppression(
+            RuntimeNotificationEmailFeedbackSuppressionInput(
+                feedback_event_id=feedback_event_id,
+                updated_by=actor_id or payload.updated_by,
+                reason=payload.reason,
+            )
+        )
+        return asdict(record)
+    except ValueError as exc:
+        not_found_errors = {
+            "runtime notification email feedback event not found",
+            "runtime notification subscription not found",
+        }
+        status_code = 404 if str(exc) in not_found_errors else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/runtime-notification-email-feedback-events/{feedback_event_id}/project-suppression")
+def apply_runtime_notification_email_feedback_project_suppression(
+    feedback_event_id: str,
+    payload: RuntimeNotificationEmailFeedbackProjectSuppressionRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        project_id = repository.get_runtime_notification_email_feedback_project_id(
+            feedback_event_id=feedback_event_id
+        )
+        if project_id is None:
+            raise HTTPException(status_code=404, detail="runtime notification email feedback event not found")
+        assert_runtime_project_access(
+            repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        record = repository.apply_runtime_notification_email_feedback_project_suppression(
+            RuntimeNotificationEmailFeedbackProjectSuppressionInput(
+                feedback_event_id=feedback_event_id,
+                metadata=payload.metadata,
+                updated_by=actor_id or payload.updated_by,
+                reason=payload.reason,
+            )
+        )
+        return asdict(record)
+    except ValueError as exc:
+        not_found_errors = {
+            "runtime notification email feedback event not found",
+        }
+        status_code = 404 if str(exc) in not_found_errors else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/runtime-notifications/{notification_id}/status")
+def update_runtime_notification_status(
+    notification_id: str,
+    payload: RuntimeNotificationStatusRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        project_id = repository.get_runtime_notification_project_id(notification_id=notification_id)
+        if project_id is None:
+            raise HTTPException(status_code=404, detail="runtime notification not found")
+        assert_runtime_project_access(
+            repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        record = repository.update_runtime_notification_status(
+            RuntimeNotificationStatusInput(
+                notification_id=notification_id,
+                status=payload.status,
+                updated_by=actor_id or payload.updated_by,
+                reason=payload.reason,
+            )
+        )
+        return asdict(record)
+    except ValueError as exc:
+        status_code = 404 if str(exc) == "runtime notification not found" else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/runtime-notification-email-preferences/unsubscribe")
+async def apply_runtime_notification_email_preference_unsubscribe(
+    request: Request,
+    token: str | None = Query(default=None, min_length=1, max_length=4000),
+    reason: str | None = Query(default=None, max_length=500),
+) -> dict[str, object]:
+    body_payload: RuntimeNotificationEmailPreferenceUnsubscribeRequest | None = None
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        try:
+            raw_body = await request.json()
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=400, detail="invalid JSON body") from exc
+        if raw_body:
+            try:
+                body_payload = RuntimeNotificationEmailPreferenceUnsubscribeRequest(**raw_body)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+    preference_token = (body_payload.token if body_payload else token or "").strip()
+    unsubscribe_reason = (
+        body_payload.reason
+        if body_payload and body_payload.reason
+        else reason or "apply runtime notification email preference unsubscribe token"
+    )
+    if not preference_token:
+        raise HTTPException(status_code=422, detail="token is required")
+    verification = _verify_runtime_notification_email_preference_token_for_actions(
+        token=preference_token,
+        actions=(
+            RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_UNSUBSCRIBE_ACTION,
+            RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_MANAGE_ACTION,
+        ),
+    )
+    claims = verification.claims
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        record = repository.apply_runtime_notification_email_preference_unsubscribe(
+            RuntimeNotificationEmailPreferenceUnsubscribeInput(
+                project_id=claims.project_id,
+                delivery_id=claims.delivery_id,
+                notification_id=claims.notification_id,
+                subscription_id=claims.subscription_id,
+                recipient_hash=claims.recipient_hash,
+                token_hash=verification.token_hash,
+                updated_by="email-preference-token",
+                reason=unsubscribe_reason,
+            )
+        )
+        return asdict(record)
+    except ValueError as exc:
+        not_found_errors = {
+            "runtime notification delivery not found",
+            "runtime notification subscription not found",
+        }
+        status_code = 404 if str(exc) in not_found_errors else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/runtime-notification-email-preferences/status")
+def get_runtime_notification_email_preference_status(
+    token: str = Query(min_length=1, max_length=4000),
+) -> dict[str, object]:
+    verification = _verify_runtime_notification_email_preference_token(
+        token=token,
+        action=RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_MANAGE_ACTION,
+    )
+    claims = verification.claims
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        record = repository.get_runtime_notification_email_preference_status(
+            project_id=claims.project_id,
+            delivery_id=claims.delivery_id,
+            notification_id=claims.notification_id,
+            subscription_id=claims.subscription_id,
+            recipient_hash=claims.recipient_hash,
+            token_hash=verification.token_hash,
+        )
+        return asdict(record)
+    except ValueError as exc:
+        not_found_errors = {
+            "runtime notification delivery not found",
+            "runtime notification subscription not found",
+        }
+        status_code = 404 if str(exc) in not_found_errors else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/runtime-notification-email-preferences/resubscribe")
+async def apply_runtime_notification_email_preference_resubscribe(
+    request: Request,
+    token: str | None = Query(default=None, min_length=1, max_length=4000),
+    reason: str | None = Query(default=None, max_length=500),
+) -> dict[str, object]:
+    body_payload: RuntimeNotificationEmailPreferenceResubscribeRequest | None = None
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        try:
+            raw_body = await request.json()
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=400, detail="invalid JSON body") from exc
+        if raw_body:
+            try:
+                body_payload = RuntimeNotificationEmailPreferenceResubscribeRequest(**raw_body)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+    preference_token = (body_payload.token if body_payload else token or "").strip()
+    resubscribe_reason = (
+        body_payload.reason
+        if body_payload and body_payload.reason
+        else reason or "apply runtime notification email preference resubscribe token"
+    )
+    if not preference_token:
+        raise HTTPException(status_code=422, detail="token is required")
+    verification = _verify_runtime_notification_email_preference_token(
+        token=preference_token,
+        action=RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_MANAGE_ACTION,
+    )
+    claims = verification.claims
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        record = repository.apply_runtime_notification_email_preference_resubscribe(
+            RuntimeNotificationEmailPreferenceResubscribeInput(
+                project_id=claims.project_id,
+                delivery_id=claims.delivery_id,
+                notification_id=claims.notification_id,
+                subscription_id=claims.subscription_id,
+                recipient_hash=claims.recipient_hash,
+                token_hash=verification.token_hash,
+                updated_by="email-preference-token",
+                reason=resubscribe_reason,
+            )
+        )
+        return asdict(record)
+    except ValueError as exc:
+        not_found_errors = {
+            "runtime notification delivery not found",
+            "runtime notification subscription not found",
+        }
+        status_code = 404 if str(exc) in not_found_errors else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/report-export-jobs/runtime")
+def enqueue_runtime_report_export_job(
+    payload: RuntimeReportExportJobRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        job = repository.enqueue_runtime_report_export_job(
+            RuntimeReportExportJobInput(
+                project_id=payload.project_id,
+                report_export_id=payload.report_export_id,
+                artifact_type=payload.artifact_type,
+                template=payload.template,
+                filters=payload.filters,
+                sort=payload.sort,
+                requested_by=actor_id or payload.requested_by,
+                reason=payload.reason,
+            )
+        )
+        return {**asdict(job), "queue_dispatch": _dispatch_runtime_task("report")}
+    except ValueError as exc:
+        status_code = 404 if str(exc) in {"project not found", "report_export not found"} else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/report-export-jobs/runtime/{job_id}/status")
+def update_runtime_report_export_job_status(
+    job_id: str,
+    payload: RuntimeReportExportJobStatusRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        project_id = repository.get_report_export_job_project_id(job_id=job_id)
+        if project_id is None:
+            raise HTTPException(status_code=404, detail="report_export_job not found")
+        assert_runtime_project_access(
+            repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        job = repository.update_runtime_report_export_job_status(
+            RuntimeReportExportJobStatusInput(
+                job_id=job_id,
+                status=payload.status,
+                updated_by=actor_id or payload.updated_by,
+                report_export_id=payload.report_export_id,
+                artifact_url=payload.artifact_url,
+                error_message=payload.error_message,
+                reason=payload.reason,
+            )
+        )
+        return asdict(job)
+    except ValueError as exc:
+        status_code = 404 if str(exc) in {"report_export_job not found", "report_export not found"} else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/action-plans/runtime")
+def runtime_action_plans(
+    project_id: str | None = None,
+    status: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        page = repository.list_runtime_action_plans(
+            project_id=project_id,
+            status=status,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/action-plans/runtime/export.csv")
+def runtime_action_plans_export_csv(
+    project_id: str = Query(min_length=1),
+    status: str | None = Query(default=None, min_length=1, max_length=40),
+    limit: int = Query(default=200, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> Response:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        try:
+            export = repository.export_runtime_action_plans_csv(
+                project_id=project_id.strip(),
+                status=status.strip().lower() if status else None,
+                limit=limit,
+                offset=offset,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return Response(
+            content=export.content,
+            media_type=export.media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{export.filename}"',
+                "X-GEO-Action-Plan-Export-Hash": export.content_hash,
+                "X-GEO-Action-Plan-Project-Id": str(export.filters.get("project_id", "")),
+                "X-GEO-Action-Plan-Status": str(export.filters.get("status", "")),
+                "X-GEO-Action-Plan-Row-Count": str(export.row_count),
+                "X-GEO-Action-Plan-Total-Count": str(export.total_count),
+            },
+        )
+    finally:
+        close_repository_connection(repository)
+
+
+@app.patch("/v1/action-plans/runtime/{action_id}")
+def update_runtime_action_recommendation(
+    action_id: str,
+    payload: RuntimeActionRecommendationUpdateRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        try:
+            record = repository.update_runtime_action_recommendation(
+                RuntimeActionRecommendationUpdateInput(
+                    project_id=payload.project_id,
+                    action_id=action_id,
+                    status=payload.status,
+                    owner_id=payload.owner_id,
+                    customer_visible=payload.customer_visible,
+                    visibility_note=payload.visibility_note,
+                    updated_by=actor_id or payload.updated_by,
+                    reason=payload.reason,
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "action_recommendation not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(record)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/runtime-alerts")
+def runtime_alerts(
+    project_id: str | None = None,
+    alert_type: str | None = None,
+    severity: str | None = None,
+    limit: int = Query(default=20, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        page = repository.list_runtime_alerts(
+            project_id=project_id,
+            alert_type=alert_type,
+            severity=severity,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/runtime-alerts/export.csv")
+def runtime_alerts_export_csv(
+    project_id: str = Query(min_length=1),
+    alert_type: str | None = Query(default=None, min_length=1, max_length=120),
+    severity: str | None = Query(default=None, min_length=1, max_length=40),
+    limit: int = Query(default=200, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> Response:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        try:
+            export = repository.export_runtime_alerts_csv(
+                project_id=project_id.strip(),
+                alert_type=alert_type.strip() if alert_type else None,
+                severity=severity.strip().lower() if severity else None,
+                limit=limit,
+                offset=offset,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return Response(
+            content=export.content,
+            media_type=export.media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{export.filename}"',
+                "X-GEO-Runtime-Alert-Export-Hash": export.content_hash,
+                "X-GEO-Runtime-Alert-Project-Id": str(export.filters.get("project_id", "")),
+                "X-GEO-Runtime-Alert-Type": str(export.filters.get("alert_type", "")),
+                "X-GEO-Runtime-Alert-Severity": str(export.filters.get("severity", "")),
+                "X-GEO-Runtime-Alert-Row-Count": str(export.row_count),
+                "X-GEO-Runtime-Alert-Total-Count": str(export.total_count),
+            },
+        )
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/runtime-alerts/notifications")
+def enqueue_runtime_alert_notifications(
+    payload: RuntimeAlertNotificationRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_ANALYZE_ROLES,
+        )
+        try:
+            record = repository.enqueue_runtime_alert_notifications(
+                project_id=payload.project_id.strip(),
+                alert_type=payload.alert_type.strip() if payload.alert_type else None,
+                severity=payload.severity.strip() if payload.severity else None,
+                created_by=actor_id or payload.created_by.strip(),
+                reason=payload.reason.strip() if payload.reason else None,
+                include_resolved=payload.include_resolved,
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "project not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(record)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/runtime-alerts/{alert_id}/events")
+def record_runtime_alert_event(
+    alert_id: str,
+    payload: RuntimeAlertEventRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_ANALYZE_ROLES,
+        )
+        try:
+            record = repository.record_runtime_alert_event(
+                RuntimeAlertEventInput(
+                    project_id=payload.project_id.strip(),
+                    alert_id=alert_id.strip(),
+                    alert_type=payload.alert_type.strip(),
+                    source=payload.source.strip(),
+                    source_id=payload.source_id.strip(),
+                    status=payload.status.strip(),
+                    updated_by=actor_id or payload.updated_by.strip(),
+                    note=payload.note.strip() if payload.note else None,
+                    metadata=payload.metadata,
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "project not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(record)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/content-engines/runtime")
+def runtime_content_engines(
+    project_id: str | None = None,
+    review_status: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        page = repository.list_runtime_content_engines(
+            project_id=project_id,
+            review_status=review_status,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/content-engines/runtime/export.csv")
+def runtime_content_engines_export_csv(
+    project_id: str = Query(min_length=1),
+    review_status: str | None = Query(default=None, min_length=1, max_length=80),
+    limit: int = Query(default=200, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> Response:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        try:
+            export = repository.export_runtime_content_engines_csv(
+                project_id=project_id.strip(),
+                review_status=review_status.strip() if review_status else None,
+                limit=limit,
+                offset=offset,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return Response(
+            content=export.content,
+            media_type=export.media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{export.filename}"',
+                "X-GEO-Content-Engine-Export-Hash": export.content_hash,
+                "X-GEO-Content-Engine-Project-Id": str(export.filters.get("project_id", "")),
+                "X-GEO-Content-Engine-Review-Status": str(export.filters.get("review_status", "")),
+                "X-GEO-Content-Engine-Row-Count": str(export.row_count),
+                "X-GEO-Content-Engine-Total-Count": str(export.total_count),
+            },
+        )
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/knowledge-facts/runtime/search")
+def runtime_knowledge_fact_search(
+    project_id: str = Query(min_length=1),
+    query: str = Query(min_length=1),
+    market_code: str = Query(default="AU", min_length=1, max_length=20),
+    city: str | None = None,
+    embedding_model: str = Query(default="fixture-knowledge-embedding-v1", min_length=1, max_length=120),
+    limit: int = Query(default=10, ge=1, le=50),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        page = repository.search_runtime_knowledge_facts(
+            project_id=project_id,
+            query=query,
+            market_code=market_code,
+            city=city,
+            embedding_model=embedding_model,
+            limit=limit,
+            offset=offset,
+        )
+        return asdict(page)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.patch("/v1/knowledge/content-drafts/runtime/{content_draft_id}/review")
+@app.patch("/v1/content-drafts/runtime/{content_draft_id}/review", deprecated=True)
+def review_runtime_content_draft(
+    content_draft_id: str,
+    payload: RuntimeContentDraftReviewRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        try:
+            record = repository.review_runtime_content_draft(
+                RuntimeContentDraftReviewInput(
+                    project_id=payload.project_id.strip(),
+                    content_draft_id=content_draft_id.strip(),
+                    review_status=payload.review_status.strip(),
+                    reviewer_id=actor_id or payload.reviewer_id.strip(),
+                    decision=payload.decision.strip(),
+                    notes=payload.notes.strip() if payload.notes else None,
+                    payload=payload.payload,
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "content draft not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        response = _runtime_record_payload(record)
+        response["pipeline_states"] = _refresh_knowledge_pipeline_states(payload.project_id.strip(), actor_id)
+        return response
+    finally:
+        close_repository_connection(repository)
+
+
+@app.patch("/v1/manual-distribution-records/runtime/{distribution_record_id}/backfill")
+def backfill_runtime_manual_distribution_record(
+    distribution_record_id: str,
+    payload: RuntimeManualDistributionBackfillRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        try:
+            record = repository.backfill_runtime_manual_distribution_record(
+                RuntimeManualDistributionBackfillInput(
+                    project_id=payload.project_id.strip(),
+                    distribution_record_id=distribution_record_id.strip(),
+                    target_url=payload.target_url.strip(),
+                    status=payload.status.strip(),
+                    checked_by=actor_id or payload.checked_by.strip(),
+                    notes=payload.notes.strip() if payload.notes else None,
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "manual distribution record not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return _runtime_record_payload(record)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/knowledge-facts/runtime/import.csv")
+def import_runtime_knowledge_facts_csv(
+    payload: RuntimeKnowledgeFactImportRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        result = repository.import_runtime_knowledge_facts_csv(
+            RuntimeKnowledgeFactImportInput(
+                project_id=payload.project_id.strip(),
+                csv_content=payload.csv_content,
+                imported_by=actor_id,
+                max_rows=payload.max_rows,
+                default_market_code=payload.default_market_code.strip(),
+            )
+        )
+        response_payload = asdict(result)
+        knowledge_fact_import = response_payload.get("knowledge_fact_import")
+        if isinstance(knowledge_fact_import, dict):
+            knowledge_fact_count = int(knowledge_fact_import.get("knowledge_fact_count") or 0)
+            knowledge_fact_import.setdefault("fact_count", knowledge_fact_count)
+            response_payload["fact_count"] = knowledge_fact_count
+            response_payload["knowledge_fact_count"] = knowledge_fact_count
+        return response_payload
+    except ValueError as exc:
+        status_code = 404 if str(exc) == "project not found" else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/knowledge-applications/runtime")
+def runtime_knowledge_application(
+    project_id: str = Query(min_length=1),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        try:
+            page = repository.list_runtime_knowledge_application(project_id=project_id.strip(), limit=limit, offset=offset)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return asdict(page)
+    finally:
+        close_repository_connection(repository)
+
+
+def _build_knowledge_pipeline_repository(project_id: str, actor_id: str | None) -> Any:
+    repository = connect_knowledge_pipeline_repository()
+    repository.set_runtime_scope(
+        actor_id=effective_runtime_actor_id(actor_id),
+        project_id=project_id,
+    )
+    return repository
+
+
+def _dispatch_runtime_task(task_name: str) -> dict[str, object]:
+    try:
+        return dispatch_background_task(task_name).to_dict()
+    except RuntimeError as exc:
+        # PostgreSQL job rows are durable; the recovery dispatcher retries
+        # delivery after transient Valkey outages.
+        return {
+            "task_name": task_name,
+            "status": "recovery_pending",
+            "message_id": None,
+            "broker_url_configured": bool(task_queue_broker_url()),
+            "error": str(exc),
+        }
+
+
+def _refresh_knowledge_pipeline_states(project_id: str, actor_id: str | None) -> tuple[dict[str, object], ...]:
+    if not os.getenv("DATABASE_URL", "").strip():
+        return ()
+    repository = _build_knowledge_pipeline_repository(project_id, actor_id)
+    try:
+        return tuple(repository.refresh_project_pipeline_states(project_id=project_id))
+    finally:
+        close_knowledge_repository(repository)
+
+
+@app.post("/v1/knowledge/pipeline-runs/runtime")
+def create_runtime_knowledge_pipeline_run(
+    payload: RuntimeKnowledgePipelineRunRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(access_repository, project_id=payload.project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES)
+        knowledge_repository = _build_knowledge_pipeline_repository(payload.project_id, actor_id)
+        run = knowledge_repository.create_pipeline_run(
+            KnowledgePipelineCreateInput(
+                project_id=payload.project_id.strip(),
+                run_type=payload.run_type.strip(),
+                entry_source=payload.entry_source.strip(),
+                market_code=payload.market_code.strip(),
+                locale=payload.locale.strip(),
+                city=payload.city.strip() if payload.city else None,
+                created_by=actor_id or payload.created_by.strip(),
+                metadata=dict(payload.metadata),
+            )
+        )
+        return {"knowledge_pipeline_run": run}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.post("/v1/knowledge/pipeline-runs/runtime/{pipeline_run_id}/start")
+def start_runtime_knowledge_pipeline_run(
+    pipeline_run_id: str,
+    project_id: str = Query(min_length=1),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(access_repository, project_id=project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES)
+        knowledge_repository = _build_knowledge_pipeline_repository(project_id, actor_id)
+        run = knowledge_repository.start_pipeline_run(pipeline_run_id.strip())
+        return {"knowledge_pipeline_run": run, "queue_dispatch": _dispatch_runtime_task("knowledge")}
+    except ValueError as exc:
+        raise HTTPException(status_code=404 if "not found" in str(exc) else 400, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.get("/v1/knowledge/pipeline-runs/runtime")
+def list_runtime_knowledge_pipeline_runs(
+    project_id: str = Query(min_length=1),
+    run_type: str | None = Query(default=None, max_length=80),
+    status: str | None = Query(default=None, max_length=80),
+    entry_source: str | None = Query(default=None, max_length=80),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(access_repository, project_id=project_id, actor_id=actor_id)
+        knowledge_repository = _build_knowledge_pipeline_repository(project_id, actor_id)
+        return knowledge_repository.list_pipeline_runs(
+            project_id=project_id.strip(),
+            limit=limit,
+            offset=offset,
+            filters={"run_type": run_type, "status": status, "entry_source": entry_source},
+        )
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.get("/v1/knowledge/pipeline-runs/runtime/{pipeline_run_id}")
+def get_runtime_knowledge_pipeline_run(
+    pipeline_run_id: str,
+    project_id: str = Query(min_length=1),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(access_repository, project_id=project_id, actor_id=actor_id)
+        knowledge_repository = _build_knowledge_pipeline_repository(project_id, actor_id)
+        return knowledge_repository.get_pipeline_run_detail(
+            project_id=project_id.strip(), pipeline_run_id=pipeline_run_id.strip()
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.get("/v1/knowledge/pipeline-runs/runtime/{pipeline_run_id}/stages")
+def list_runtime_knowledge_pipeline_stages(
+    pipeline_run_id: str,
+    project_id: str = Query(min_length=1),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(access_repository, project_id=project_id, actor_id=actor_id)
+        knowledge_repository = _build_knowledge_pipeline_repository(project_id, actor_id)
+        return knowledge_repository.list_pipeline_stages(pipeline_run_id.strip())
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.get("/v1/knowledge/pipeline-runs/runtime/{pipeline_run_id}/jobs")
+def list_runtime_knowledge_pipeline_jobs(
+    pipeline_run_id: str,
+    project_id: str = Query(min_length=1),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(access_repository, project_id=project_id, actor_id=actor_id)
+        knowledge_repository = _build_knowledge_pipeline_repository(project_id, actor_id)
+        return knowledge_repository.list_pipeline_jobs(
+            pipeline_run_id=pipeline_run_id.strip(),
+            project_id=project_id.strip(),
+            limit=limit,
+            offset=offset,
+        )
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.post("/v1/knowledge/pipeline-stages/runtime/{stage_id}/retry")
+def retry_runtime_knowledge_pipeline_stage(
+    stage_id: str,
+    project_id: str = Query(min_length=1),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(
+            access_repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        knowledge_repository = _build_knowledge_pipeline_repository(project_id, actor_id)
+        result = knowledge_repository.retry_pipeline_stage(
+            project_id=project_id.strip(),
+            stage_id=stage_id.strip(),
+            retried_by=effective_runtime_actor_id(actor_id),
+        )
+        result["queue_dispatch"] = _dispatch_runtime_task("knowledge")
+        return result
+    except ValueError as exc:
+        raise HTTPException(status_code=404 if "not found" in str(exc) else 409, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.post("/v1/knowledge/import-jobs/runtime")
+def create_runtime_knowledge_import_job(
+    payload: RuntimeKnowledgeImportJobRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(access_repository, project_id=payload.project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES)
+        knowledge_repository = _build_knowledge_pipeline_repository(payload.project_id, actor_id)
+        job = knowledge_repository.create_import_job(
+            KnowledgeImportCreateInput(
+                project_id=payload.project_id.strip(),
+                pipeline_run_id=payload.pipeline_run_id.strip(),
+                source_mode=payload.source_mode.strip(),
+                requested_by=actor_id or payload.requested_by.strip(),
+                source_config=dict(payload.source_config),
+                priority=payload.priority,
+            )
+        )
+        if payload.source_mode in {"pasted_text", "csv"}:
+            source_text = source_config_text(dict(payload.source_config))
+            filename = "knowledge.csv" if payload.source_mode == "csv" else "knowledge.txt"
+            source_precheck = precheck_knowledge_source(
+                filename=filename,
+                content=source_text.encode("utf-8"),
+                content_type="text/csv" if payload.source_mode == "csv" else "text/plain",
+            )
+            knowledge_repository.record_import_precheck(
+                project_id=payload.project_id.strip(),
+                pipeline_run_id=payload.pipeline_run_id.strip(),
+                import_job_id=str(job["id"]),
+                checked_by=effective_runtime_actor_id(actor_id),
+                result=source_precheck,
+            )
+            if not bool(source_precheck.get("accepted")):
+                raise HTTPException(
+                    status_code=422,
+                    detail={"message": "knowledge text source precheck failed", "precheck": source_precheck},
+                )
+        return {"knowledge_import_job": job}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.post("/v1/knowledge/import-jobs/runtime/{import_job_id}/enqueue")
+def enqueue_runtime_knowledge_import_job(
+    import_job_id: str,
+    project_id: str = Query(min_length=1),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(access_repository, project_id=project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES)
+        knowledge_repository = _build_knowledge_pipeline_repository(project_id, actor_id)
+        job = knowledge_repository.enqueue_import_job(import_job_id.strip())
+        return {"knowledge_import_job": job, "queue_dispatch": _dispatch_runtime_task("knowledge")}
+    except ValueError as exc:
+        raise HTTPException(status_code=404 if "not found" in str(exc) else 400, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.post("/v1/knowledge/import-jobs/runtime/{import_job_id}/urls")
+def add_runtime_knowledge_import_urls(
+    import_job_id: str,
+    payload: RuntimeKnowledgeUrlSeedsRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(
+            access_repository,
+            project_id=payload.project_id,
+            actor_id=effective_runtime_actor_id(actor_id),
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        normalized_urls: list[str] = []
+        for url in payload.urls:
+            try:
+                normalized_urls.append(normalize_knowledge_url(url))
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=f"knowledge URL rejected: {url}: {exc}") from exc
+        normalized_urls = list(dict.fromkeys(normalized_urls))
+        knowledge_repository = _build_knowledge_pipeline_repository(payload.project_id, actor_id)
+        import_job = knowledge_repository.configure_import_urls(
+            project_id=payload.project_id.strip(),
+            import_job_id=import_job_id.strip(),
+            actor_id=actor_id,
+            source_mode=(
+                "site_crawl"
+                if payload.crawl_mode in {"site_depth", "sitemap"}
+                else ("url_batch" if payload.crawl_mode == "url_batch" or len(normalized_urls) > 1 else "url")
+            ),
+            source_config={
+                "urls": normalized_urls,
+                "crawl_mode": payload.crawl_mode,
+                "depth_limit": payload.crawl_depth,
+                "max_pages": payload.max_pages,
+                "include_patterns": payload.include_patterns,
+                "exclude_patterns": payload.exclude_patterns,
+                "respect_robots": payload.respect_robots,
+            },
+        )
+        knowledge_repository.record_import_precheck(
+            project_id=payload.project_id.strip(),
+            pipeline_run_id=str(import_job.get("pipeline_run_id") or ""),
+            import_job_id=import_job_id.strip(),
+            checked_by=effective_runtime_actor_id(actor_id),
+            result={
+                "accepted": True,
+                "filename": "url-seeds.json",
+                "content_type": "application/json",
+                "byte_size": len(json.dumps(normalized_urls).encode("utf-8")),
+                "content_hash": hashlib.sha256(json.dumps(normalized_urls, sort_keys=True).encode("utf-8")).hexdigest(),
+                "requires_ocr": False,
+                "table_dense": False,
+                "recommended_adapter": "crawl4ai",
+                "findings": [],
+                "normalized_urls": normalized_urls,
+            },
+        )
+        return {
+            "knowledge_import_job": import_job,
+            "normalized_urls": normalized_urls,
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=404 if "not found" in str(exc) else 400, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.post("/v1/knowledge/import-jobs/runtime/{import_job_id}/files")
+async def upload_runtime_knowledge_import_file(
+    import_job_id: str,
+    request: Request,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    form = await _parse_multipart_form(request)
+    fields = {key: value.decode("utf-8", errors="ignore").strip() for key, value in form["fields"].items()}
+    uploaded = form["files"].get("file")
+    if uploaded is None:
+        raise HTTPException(status_code=400, detail="knowledge file field 'file' is required")
+    project_id = fields.get("project_id", "")
+    pipeline_run_id = fields.get("pipeline_run_id", "")
+    market_code = fields.get("market_code", "GLOBAL")
+    locale = fields.get("locale", "en")
+    city = fields.get("city") or None
+    adapter_engine = fields.get("adapter_engine", "auto")
+    defer_start = fields.get("defer_start", "0").lower() in {"1", "true", "yes"}
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(access_repository, project_id=project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES)
+        content = uploaded["content"]
+        knowledge_repository = _build_knowledge_pipeline_repository(project_id, actor_id)
+        precheck = precheck_knowledge_source(
+            filename=uploaded["filename"] or "knowledge-source",
+            content=content,
+            content_type=uploaded["content_type"] or "application/octet-stream",
+        )
+        precheck["allow_partial"] = defer_start
+        duplicate = knowledge_repository.find_source_asset_by_hash(
+            project_id=project_id.strip(),
+            digest=str(precheck["content_hash"]),
+        )
+        if duplicate:
+            precheck["duplicate_of_asset_id"] = str(duplicate["id"])
+            precheck["findings"] = [
+                *list(precheck.get("findings") or []),
+                {
+                    "code": "duplicate_file",
+                    "severity": "warning",
+                    "message": "The same file content already exists; its stored object will be reused for this pipeline run.",
+                },
+            ]
+        knowledge_repository.record_import_precheck(
+            project_id=project_id.strip(),
+            pipeline_run_id=pipeline_run_id.strip(),
+            import_job_id=import_job_id.strip(),
+            checked_by=effective_runtime_actor_id(actor_id),
+            result=precheck,
+        )
+        if not bool(precheck["accepted"]):
+            raise HTTPException(status_code=422, detail={"message": "knowledge source precheck failed", "precheck": precheck})
+        selected_parser = adapter_engine.strip() or str(precheck["recommended_adapter"])
+        if duplicate:
+            asset = knowledge_repository.reuse_source_asset(
+                existing_asset_id=str(duplicate["id"]),
+                project_id=project_id.strip(),
+                pipeline_run_id=pipeline_run_id.strip(),
+                import_job_id=import_job_id.strip(),
+                title=uploaded["filename"] or "知识库文件",
+                created_by=effective_runtime_actor_id(actor_id),
+                market_code=market_code.strip() or "GLOBAL",
+                locale=locale.strip() or "en",
+                city=city.strip() if city else None,
+                parser_engine=selected_parser,
+                precheck_result=precheck,
+            )
+        else:
+            store = build_object_store_from_env()
+            stored = archive_knowledge_source_asset(
+                project_id=project_id.strip(),
+                pipeline_run_id=pipeline_run_id.strip(),
+                import_job_id=import_job_id.strip(),
+                filename=uploaded["filename"] or "knowledge-source",
+                content=content,
+                content_type=uploaded["content_type"] or "application/octet-stream",
+                store=store,
+            )
+            asset = knowledge_repository.create_asset_from_stored_object(
+                project_id=project_id.strip(),
+                pipeline_run_id=pipeline_run_id.strip(),
+                import_job_id=import_job_id.strip(),
+                asset_type="uploaded_file",
+                stored=stored,
+                title=uploaded["filename"] or "知识库文件",
+                source_uri=uploaded["filename"] or None,
+                created_by=effective_runtime_actor_id(actor_id),
+                market_code=market_code.strip() or "GLOBAL",
+                locale=locale.strip() or "en",
+                city=city.strip() if city else None,
+                metadata={
+                    "byte_size": len(content),
+                    "filename": uploaded["filename"] or "knowledge-source",
+                    "adapter_engine": selected_parser,
+                },
+                filename=uploaded["filename"] or "knowledge-source",
+                parser_engine=selected_parser,
+                parser_version="geo-parser-adapter-v1",
+                precheck_result=precheck,
+            )
+        with knowledge_repository.connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO knowledge_parser_runs (
+                  project_id, pipeline_run_id, import_job_id, source_asset_id,
+                  adapter_engine, adapter_version
+                ) VALUES (%s::uuid, %s::uuid, %s::uuid, %s::uuid, %s, 'geo-parser-adapter-v1')
+                RETURNING id
+                """,
+                (project_id.strip(), pipeline_run_id.strip(), import_job_id.strip(), asset["id"], selected_parser),
+            )
+            parser_run_id = str(cursor.fetchone()[0])
+            if defer_start:
+                cursor.execute(
+                    """
+                    UPDATE knowledge_import_jobs
+                    SET status = 'ready', updated_at = now()
+                    WHERE id = %s::uuid AND project_id = %s::uuid AND status IN ('draft', 'ready')
+                    """,
+                    (import_job_id.strip(), project_id.strip()),
+                )
+            knowledge_repository.connection.commit()
+        if defer_start:
+            import_job = knowledge_repository.get_import_job(
+                project_id=project_id.strip(), import_job_id=import_job_id.strip()
+            )
+            run = knowledge_repository.get_pipeline_run(pipeline_run_id.strip())
+            queue_dispatch: dict[str, object] = {"status": "deferred", "reason": "multi_file_batch"}
+        else:
+            import_job = knowledge_repository.enqueue_import_job(import_job_id.strip())
+            run = knowledge_repository.start_pipeline_run(pipeline_run_id.strip())
+            queue_dispatch = _dispatch_runtime_task("knowledge")
+        return {
+            "knowledge_source_asset": asset,
+            "knowledge_parser_run": {"id": parser_run_id, "status": "queued"},
+            "knowledge_import_job": import_job,
+            "knowledge_pipeline_run": run,
+            "queue_dispatch": queue_dispatch,
+        }
+    except ObjectStoreError as exc:
+        raise HTTPException(status_code=502, detail=f"knowledge object store upload failed: {exc}") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+async def _parse_multipart_form(request: Request) -> dict[str, dict[str, Any]]:
+    content_type = request.headers.get("content-type", "")
+    if "multipart/form-data" not in content_type:
+        raise HTTPException(status_code=415, detail="multipart/form-data is required")
+    body = await request.body()
+    header_blob = f"Content-Type: {content_type}\r\nMIME-Version: 1.0\r\n\r\n".encode("utf-8")
+    message = email.message_from_bytes(header_blob + body)
+    fields: dict[str, bytes] = {}
+    files: dict[str, dict[str, Any]] = {}
+    if not message.is_multipart():
+        raise HTTPException(status_code=400, detail="invalid multipart payload")
+    for part in message.walk():
+        if part.is_multipart():
+            continue
+        disposition = part.get("content-disposition", "")
+        if "form-data" not in disposition:
+            continue
+        name = part.get_param("name", header="content-disposition")
+        if not name:
+            continue
+        payload = part.get_payload(decode=True) or b""
+        filename = part.get_filename()
+        if filename is None:
+            fields[str(name)] = payload
+        else:
+            files[str(name)] = {
+                "filename": filename,
+                "content": payload,
+                "content_type": part.get_content_type() or "application/octet-stream",
+            }
+    return {"fields": fields, "files": files}
+
+
+def _knowledge_table_page(
+    *,
+    project_id: str,
+    actor_id: str | None,
+    table_key: str,
+    limit: int,
+    offset: int,
+    filters: dict[str, str | None] | None = None,
+    quality_flag: str | None = None,
+    query: str | None = None,
+) -> dict[str, object]:
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(access_repository, project_id=project_id, actor_id=actor_id)
+        knowledge_repository = _build_knowledge_pipeline_repository(project_id, actor_id)
+        if table_key == "quality_findings":
+            return knowledge_repository.list_quality_findings(project_id=project_id, limit=limit, offset=offset, filters=filters)
+        if table_key == "source_assets":
+            return knowledge_repository.list_source_assets(project_id=project_id, limit=limit, offset=offset)
+        if table_key == "approved_facts":
+            return knowledge_repository.list_approved_facts(project_id=project_id, limit=limit, offset=offset)
+        if table_key == "fact_extraction_jobs":
+            return knowledge_repository.list_fact_extraction_jobs(project_id=project_id, limit=limit, offset=offset)
+        if table_key == "prompt_generation_jobs":
+            return knowledge_repository.list_prompt_generation_jobs(project_id=project_id, limit=limit, offset=offset)
+        if table_key == "content_generation_jobs":
+            return knowledge_repository.list_content_generation_jobs(project_id=project_id, limit=limit, offset=offset)
+        if table_key == "quality_gate_runs":
+            return knowledge_repository.list_quality_gate_runs(project_id=project_id, limit=limit, offset=offset, filters=filters)
+        if table_key == "trace_refs":
+            return knowledge_repository.list_trace_refs(project_id=project_id, limit=limit, offset=offset, filters=filters)
+        if table_key == "chunks":
+            return knowledge_repository.list_chunks(
+                project_id=project_id, limit=limit, offset=offset,
+                filters=filters, quality_flag=quality_flag, query=query,
+            )
+        if table_key == "parser_runs":
+            return knowledge_repository.list_parser_runs(project_id=project_id, limit=limit, offset=offset)
+        if table_key == "blocks":
+            return knowledge_repository.list_blocks(project_id=project_id, limit=limit, offset=offset)
+        if table_key == "tables":
+            return knowledge_repository.list_tables(project_id=project_id, limit=limit, offset=offset)
+        if table_key == "ocr_spans":
+            return knowledge_repository.list_ocr_spans(project_id=project_id, limit=limit, offset=offset)
+        if table_key == "page_snapshots":
+            return knowledge_repository.list_page_snapshots(project_id=project_id, limit=limit, offset=offset)
+        if table_key == "fact_candidates":
+            return knowledge_repository.list_fact_candidates(project_id=project_id, limit=limit, offset=offset, filters=filters)
+        if table_key == "prompt_candidates":
+            return knowledge_repository.list_prompt_candidates(project_id=project_id, limit=limit, offset=offset, filters=filters)
+        if table_key == "content_drafts":
+            return knowledge_repository.list_content_drafts(project_id=project_id, limit=limit, offset=offset, filters=filters)
+        raise HTTPException(status_code=400, detail="unsupported knowledge table")
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.get("/v1/knowledge/import-jobs/runtime")
+def list_runtime_knowledge_import_jobs(
+    project_id: str = Query(min_length=1),
+    status: str | None = Query(default=None, max_length=80),
+    source_mode: str | None = Query(default=None, max_length=80),
+    created_by: str | None = Query(default=None, max_length=160),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(access_repository, project_id=project_id, actor_id=actor_id)
+        knowledge_repository = _build_knowledge_pipeline_repository(project_id, actor_id)
+        return knowledge_repository.list_import_jobs(
+            project_id=project_id.strip(), limit=limit, offset=offset,
+            filters={"status": status, "source_mode": source_mode, "created_by": created_by},
+        )
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.get("/v1/knowledge/import-jobs/runtime/{import_job_id}")
+def get_runtime_knowledge_import_job(
+    import_job_id: str,
+    project_id: str = Query(min_length=1),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(access_repository, project_id=project_id, actor_id=actor_id)
+        knowledge_repository = _build_knowledge_pipeline_repository(project_id, actor_id)
+        return knowledge_repository.get_import_job_detail(
+            project_id=project_id.strip(), import_job_id=import_job_id.strip()
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.get("/v1/knowledge/source-assets/runtime")
+def list_runtime_knowledge_source_assets(project_id: str = Query(min_length=1), limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0), x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    return _knowledge_table_page(project_id=project_id, actor_id=require_runtime_actor_id(x_geo_actor_id), table_key="source_assets", limit=limit, offset=offset)
+
+
+@app.get("/v1/knowledge/source-assets/runtime/{source_asset_id}/download")
+def download_runtime_knowledge_source_asset(
+    source_asset_id: str,
+    project_id: str = Query(min_length=1),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> Response:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(
+            access_repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_ANALYZE_ROLES,
+        )
+        knowledge_repository = _build_knowledge_pipeline_repository(project_id, actor_id)
+        asset = knowledge_repository.get_source_asset(
+            project_id=project_id.strip(), source_asset_id=source_asset_id.strip()
+        )
+        object_uri = str(asset.get("object_uri") or "").strip()
+        if object_uri:
+            _bucket, key = parse_s3_uri(object_uri)
+            stored = build_object_store_from_env().get_object(
+                key=key,
+                expected_hash=str(asset.get("content_hash") or "") or None,
+            )
+            content = stored.content
+        else:
+            metadata = dict(asset.get("metadata") or {})
+            content = str(metadata.get("text_body") or metadata.get("text_preview") or "").encode("utf-8")
+        filename = re.sub(r"[^A-Za-z0-9._-]+", "-", str(asset.get("filename") or asset.get("title") or source_asset_id)).strip("-") or "knowledge-asset"
+        return Response(
+            content=content,
+            media_type=str(asset.get("content_type") or "application/octet-stream"),
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "X-GEO-Knowledge-Asset-Id": str(asset["id"]),
+                "X-GEO-Knowledge-Content-Hash": str(asset.get("content_hash") or ""),
+            },
+        )
+    except ObjectStoreError as exc:
+        raise HTTPException(status_code=502, detail=f"knowledge asset storage read failed: {exc}") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.get("/v1/knowledge/parser-runs/runtime")
+def list_runtime_knowledge_parser_runs(project_id: str = Query(min_length=1), limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0), x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    return _knowledge_table_page(project_id=project_id, actor_id=require_runtime_actor_id(x_geo_actor_id), table_key="parser_runs", limit=limit, offset=offset)
+
+
+@app.get("/v1/knowledge/blocks/runtime")
+def list_runtime_knowledge_blocks(project_id: str = Query(min_length=1), limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0), x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    return _knowledge_table_page(project_id=project_id, actor_id=require_runtime_actor_id(x_geo_actor_id), table_key="blocks", limit=limit, offset=offset)
+
+
+@app.get("/v1/knowledge/tables/runtime")
+def list_runtime_knowledge_tables(project_id: str = Query(min_length=1), limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0), x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    return _knowledge_table_page(project_id=project_id, actor_id=require_runtime_actor_id(x_geo_actor_id), table_key="tables", limit=limit, offset=offset)
+
+
+@app.get("/v1/knowledge/ocr-spans/runtime")
+def list_runtime_knowledge_ocr_spans(project_id: str = Query(min_length=1), limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0), x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    return _knowledge_table_page(project_id=project_id, actor_id=require_runtime_actor_id(x_geo_actor_id), table_key="ocr_spans", limit=limit, offset=offset)
+
+
+@app.get("/v1/knowledge/page-snapshots/runtime")
+def list_runtime_knowledge_page_snapshots(project_id: str = Query(min_length=1), limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0), x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    return _knowledge_table_page(project_id=project_id, actor_id=require_runtime_actor_id(x_geo_actor_id), table_key="page_snapshots", limit=limit, offset=offset)
+
+
+@app.get("/v1/knowledge/approved-facts/runtime")
+def list_runtime_knowledge_approved_facts(project_id: str = Query(min_length=1), limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0), x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    return _knowledge_table_page(project_id=project_id, actor_id=require_runtime_actor_id(x_geo_actor_id), table_key="approved_facts", limit=limit, offset=offset)
+
+
+@app.get("/v1/knowledge/fact-extraction-jobs/runtime")
+def list_runtime_knowledge_fact_extraction_jobs(project_id: str = Query(min_length=1), limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0), x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    return _knowledge_table_page(project_id=project_id, actor_id=require_runtime_actor_id(x_geo_actor_id), table_key="fact_extraction_jobs", limit=limit, offset=offset)
+
+
+@app.get("/v1/knowledge/prompt-generation-jobs/runtime")
+def list_runtime_knowledge_prompt_generation_jobs(project_id: str = Query(min_length=1), limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0), x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    return _knowledge_table_page(project_id=project_id, actor_id=require_runtime_actor_id(x_geo_actor_id), table_key="prompt_generation_jobs", limit=limit, offset=offset)
+
+
+@app.get("/v1/knowledge/prompt-generation-templates/runtime")
+def list_runtime_knowledge_prompt_generation_templates(
+    project_id: str = Query(min_length=1),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(access_repository, project_id=project_id, actor_id=actor_id)
+        knowledge_repository = _build_knowledge_pipeline_repository(project_id, actor_id)
+        return knowledge_repository.list_prompt_generation_templates(limit=limit, offset=offset)
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.post("/v1/knowledge/prompt-generation-templates/runtime")
+def save_runtime_knowledge_prompt_generation_template(
+    payload: RuntimeKnowledgePromptTemplateRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(
+            access_repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        knowledge_repository = _build_knowledge_pipeline_repository(payload.project_id, actor_id)
+        template = knowledge_repository.create_prompt_generation_template(
+            project_id=payload.project_id.strip(),
+            template_key=payload.template_key,
+            template_version=payload.template_version,
+            name=payload.name,
+            template_body=payload.template_body,
+            status=payload.status,
+            description=payload.description,
+            system_prompt=payload.system_prompt,
+            user_prompt_template=payload.user_prompt_template,
+            input_variables=payload.input_variables,
+            output_schema=dict(payload.output_schema),
+            model_config=dict(payload.model_config_payload),
+            evaluation_set=payload.evaluation_set,
+            created_by=effective_runtime_actor_id(actor_id),
+            metadata=dict(payload.metadata),
+        )
+        return {"prompt_generation_template": template}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.get("/v1/knowledge/content-generation-jobs/runtime")
+def list_runtime_knowledge_content_generation_jobs(project_id: str = Query(min_length=1), limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0), x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    return _knowledge_table_page(project_id=project_id, actor_id=require_runtime_actor_id(x_geo_actor_id), table_key="content_generation_jobs", limit=limit, offset=offset)
+
+
+@app.get("/v1/knowledge/quality-findings/runtime")
+def list_runtime_knowledge_quality_findings(project_id: str = Query(min_length=1), pipeline_run_id: str | None = None, target_type: str | None = None, severity: str | None = None, status: str | None = None, limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0), x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    return _knowledge_table_page(project_id=project_id, actor_id=require_runtime_actor_id(x_geo_actor_id), table_key="quality_findings", limit=limit, offset=offset, filters={"pipeline_run_id": pipeline_run_id, "target_type": target_type, "severity": severity, "status": status})
+
+
+@app.get("/v1/knowledge/quality-gate-runs/runtime")
+def list_runtime_knowledge_quality_gate_runs(project_id: str = Query(min_length=1), pipeline_run_id: str | None = None, stage_id: str | None = None, gate_key: str | None = None, status: str | None = None, limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0), x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    return _knowledge_table_page(project_id=project_id, actor_id=require_runtime_actor_id(x_geo_actor_id), table_key="quality_gate_runs", limit=limit, offset=offset, filters={"pipeline_run_id": pipeline_run_id, "stage_id": stage_id, "gate_key": gate_key, "status": status})
+
+
+@app.post("/v1/knowledge/quality-gate-runs/runtime/{gate_run_id}/accept-risk")
+def accept_runtime_knowledge_quality_gate_risk(
+    gate_run_id: str,
+    payload: RuntimeKnowledgeQualityRiskAcceptRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(
+            access_repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=KNOWLEDGE_RISK_ACCEPT_ROLES,
+        )
+        knowledge_repository = _build_knowledge_pipeline_repository(payload.project_id.strip(), actor_id)
+        return knowledge_repository.accept_quality_gate_risk(
+            project_id=payload.project_id.strip(),
+            gate_run_id=gate_run_id.strip(),
+            accepted_by=effective_runtime_actor_id(actor_id),
+            reason=payload.reason.strip(),
+            expires_at=payload.expires_at,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404 if "not found" in str(exc) else 400, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.get("/v1/knowledge/trace-refs/runtime")
+def list_runtime_knowledge_trace_refs(project_id: str = Query(min_length=1), pipeline_run_id: str | None = None, source_type: str | None = None, source_id: str | None = None, target_type: str | None = None, target_id: str | None = None, limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0), x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    return _knowledge_table_page(project_id=project_id, actor_id=require_runtime_actor_id(x_geo_actor_id), table_key="trace_refs", limit=limit, offset=offset, filters={"pipeline_run_id": pipeline_run_id, "source_type": source_type, "source_id": source_id, "target_type": target_type, "target_id": target_id})
+
+
+@app.get("/v1/knowledge/chunks/runtime")
+def list_runtime_knowledge_chunks(project_id: str = Query(min_length=1), import_job_id: str | None = None, source_asset_id: str | None = None, chunk_type: str | None = None, status: str | None = None, embedding_status: str | None = None, quality_flag: str | None = None, market_code: str | None = None, city: str | None = None, query: str | None = None, limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0), x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    return _knowledge_table_page(project_id=project_id, actor_id=require_runtime_actor_id(x_geo_actor_id), table_key="chunks", limit=limit, offset=offset, filters={"import_job_id": import_job_id, "source_asset_id": source_asset_id, "chunk_type": chunk_type, "status": status, "embedding_status": embedding_status, "market_code": market_code, "city": city}, quality_flag=quality_flag, query=query)
+
+
+@app.get("/v1/knowledge/chunks/runtime/{chunk_id}/trace")
+def get_runtime_knowledge_chunk_trace(
+    chunk_id: str,
+    project_id: str = Query(min_length=1),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(access_repository, project_id=project_id, actor_id=actor_id)
+        knowledge_repository = _build_knowledge_pipeline_repository(project_id, actor_id)
+        return knowledge_repository.get_chunk_trace(project_id=project_id.strip(), chunk_id=chunk_id.strip())
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.post("/v1/knowledge/chunks/runtime/{chunk_id}/disable")
+def disable_runtime_knowledge_chunk(
+    chunk_id: str,
+    payload: RuntimeKnowledgeChunkDisableRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(
+            access_repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        knowledge_repository = _build_knowledge_pipeline_repository(payload.project_id, actor_id)
+        return knowledge_repository.disable_chunk(
+            project_id=payload.project_id.strip(),
+            chunk_id=chunk_id.strip(),
+            disabled_by=effective_runtime_actor_id(actor_id),
+            reason=payload.reason.strip(),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404 if "not found" in str(exc) else 400, detail=str(exc)) from exc
+    except (httpx.HTTPError, RuntimeError) as exc:
+        raise HTTPException(status_code=502, detail=f"knowledge chunk disabled but Qdrant synchronization failed: {exc}") from exc
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.get("/v1/knowledge/chunks/runtime/search")
+def search_runtime_knowledge_chunks(
+    project_id: str = Query(min_length=1),
+    query: str = Query(min_length=1, max_length=2000),
+    market_code: str | None = Query(default=None, max_length=20),
+    city: str | None = Query(default=None, max_length=120),
+    limit: int = Query(default=10, ge=1, le=50),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(access_repository, project_id=project_id, actor_id=actor_id)
+        embedding_url = os.getenv("KNOWLEDGE_EMBEDDING_API_URL", "").strip().rstrip("/")
+        if not embedding_url:
+            raise HTTPException(status_code=503, detail="KNOWLEDGE_EMBEDDING_API_URL is required")
+        try:
+            embedding_response = httpx.post(
+                f"{embedding_url}/v1/embeddings",
+                json={"texts": [query.strip()]},
+                timeout=60,
+            )
+            embedding_response.raise_for_status()
+            embedding_payload = embedding_response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise HTTPException(status_code=503, detail=f"knowledge embedding service unavailable: {exc}") from exc
+        vectors = embedding_payload.get("vectors") or []
+        vector = vectors[0] if vectors else []
+        if len(vector) != DEFAULT_EMBEDDING_DIMENSION:
+            raise HTTPException(status_code=503, detail="knowledge embedding service returned an invalid dimension")
+        backend = str(embedding_payload.get("backend") or "")
+        if "deterministic" in backend:
+            raise HTTPException(status_code=503, detail="deterministic embedding fallback is forbidden")
+        store = QdrantKnowledgeStore(
+            url=os.getenv("QDRANT_URL"),
+            collection=os.getenv("QDRANT_COLLECTION", DEFAULT_QDRANT_COLLECTION),
+        )
+        filters = {
+            "market_code": market_code.strip().upper() if market_code else None,
+            "city": city.strip() if city else None,
+        }
+        try:
+            hits = store.search(
+                vector=[float(value) for value in vector],
+                project_id=project_id,
+                limit=limit,
+                filters=filters,
+            )
+        except (httpx.HTTPError, RuntimeError) as exc:
+            raise HTTPException(status_code=503, detail=f"knowledge vector search unavailable: {exc}") from exc
+        ordered_chunk_ids = [str((hit.get("payload") or {}).get("chunk_id") or "") for hit in hits]
+        knowledge_repository = _build_knowledge_pipeline_repository(project_id, actor_id)
+        chunks = knowledge_repository.get_chunks_by_ids(project_id=project_id, chunk_ids=ordered_chunk_ids)
+        chunks_by_id = {str(chunk.get("id")): chunk for chunk in chunks}
+        records = [
+            {
+                "chunk": chunks_by_id[chunk_id],
+                "score": float(hit.get("score") or 0.0),
+                "qdrant_point_id": str(hit.get("id") or ""),
+                "embedding_model": DEFAULT_EMBEDDING_MODEL,
+                "embedding_model_version": DEFAULT_EMBEDDING_MODEL_VERSION,
+                "embedding_backend": backend,
+            }
+            for hit, chunk_id in zip(hits, ordered_chunk_ids, strict=True)
+            if chunk_id in chunks_by_id
+        ]
+        return {
+            "total_count": len(records),
+            "limit": limit,
+            "offset": 0,
+            "query": query.strip(),
+            "market_code": market_code.strip().upper() if market_code else None,
+            "city": city.strip() if city else None,
+            "embedding_model": DEFAULT_EMBEDDING_MODEL,
+            "embedding_model_version": DEFAULT_EMBEDDING_MODEL_VERSION,
+            "embedding_backend": backend,
+            "records": records,
+        }
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.get("/v1/knowledge/fact-candidates/runtime")
+def list_runtime_knowledge_fact_candidates(project_id: str = Query(min_length=1), pipeline_run_id: str | None = None, fact_kind: str | None = None, status: str | None = None, market_code: str | None = None, city: str | None = None, limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0), x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    return _knowledge_table_page(project_id=project_id, actor_id=require_runtime_actor_id(x_geo_actor_id), table_key="fact_candidates", limit=limit, offset=offset, filters={"pipeline_run_id": pipeline_run_id, "fact_kind": fact_kind, "status": status, "market_code": market_code, "city": city})
+
+
+@app.post("/v1/knowledge/fact-extraction-jobs/runtime")
+def create_runtime_knowledge_fact_extraction_job(
+    payload: RuntimeKnowledgeFactExtractionJobRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(
+            access_repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        knowledge_repository = _build_knowledge_pipeline_repository(payload.project_id, actor_id)
+        knowledge_repository.get_pipeline_run(payload.source_pipeline_run_id.strip())
+        run = knowledge_repository.create_pipeline_run(
+            KnowledgePipelineCreateInput(
+                project_id=payload.project_id.strip(),
+                run_type="fact_refresh",
+                entry_source="mixed",
+                created_by=effective_runtime_actor_id(actor_id),
+                metadata={
+                    "source_pipeline_run_id": payload.source_pipeline_run_id.strip(),
+                    "import_job_id": payload.import_job_id.strip() if payload.import_job_id else None,
+                    "fact_kinds": [value.strip() for value in payload.fact_kinds if value.strip()],
+                    "max_facts": payload.max_facts,
+                    "model": payload.model.strip(),
+                    "prompt_version": payload.prompt_version.strip(),
+                    "chunk_filter": dict(payload.chunk_filter),
+                },
+            )
+        )
+        knowledge_repository.start_pipeline_run(str(run["id"]))
+        jobs = knowledge_repository.list_pipeline_jobs(
+            pipeline_run_id=str(run["id"]), project_id=payload.project_id.strip(), limit=10, offset=0
+        )
+        records = list((jobs.get("job_groups") or {}).get("fact_extraction_jobs", {}).get("records") or [])
+        return {
+            "knowledge_pipeline_run": knowledge_repository.get_pipeline_run(str(run["id"])),
+            "fact_extraction_job": records[0] if records else None,
+            "queue_dispatch": _dispatch_runtime_task("knowledge"),
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=404 if "not found" in str(exc) else 400, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.post("/v1/knowledge/prompt-generation-jobs/runtime")
+def create_runtime_knowledge_prompt_generation_job(
+    payload: RuntimeKnowledgePromptGenerationJobRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(
+            access_repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        knowledge_repository = _build_knowledge_pipeline_repository(payload.project_id, actor_id)
+        if knowledge_repository.list_approved_facts(project_id=payload.project_id.strip(), limit=1, offset=0)["total_count"] <= 0:
+            raise ValueError("no active approved facts are available for Prompt generation")
+        knowledge_repository.get_published_prompt_generation_template(
+            template_key=payload.template_key,
+            template_version=payload.template_version,
+        )
+        run = knowledge_repository.create_pipeline_run(
+            KnowledgePipelineCreateInput(
+                project_id=payload.project_id.strip(),
+                run_type="prompt_generation",
+                entry_source="mixed",
+                city=payload.city.strip() if payload.city else None,
+                created_by=effective_runtime_actor_id(actor_id),
+                metadata={
+                    "template_key": payload.template_key.strip(),
+                    "template_version": payload.template_version.strip(),
+                    "target_platform": payload.target_platform.strip(),
+                    "intent_type": payload.intent_type.strip(),
+                    "city": payload.city.strip() if payload.city else None,
+                    "requested_count": payload.requested_count,
+                    "model": payload.model.strip(),
+                    "source_fact_filter": dict(payload.source_fact_filter),
+                    "source_chunk_filter": dict(payload.source_chunk_filter),
+                },
+            )
+        )
+        knowledge_repository.start_pipeline_run(str(run["id"]))
+        jobs = knowledge_repository.list_pipeline_jobs(
+            pipeline_run_id=str(run["id"]), project_id=payload.project_id.strip(), limit=10, offset=0
+        )
+        records = list((jobs.get("job_groups") or {}).get("prompt_generation_jobs", {}).get("records") or [])
+        if not records:
+            raise ValueError("no active approved facts are available for Prompt generation")
+        return {
+            "knowledge_pipeline_run": knowledge_repository.get_pipeline_run(str(run["id"])),
+            "prompt_generation_job": records[0],
+            "queue_dispatch": _dispatch_runtime_task("knowledge"),
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=409 if "approved facts" in str(exc) else 400, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.post("/v1/knowledge/content-generation-jobs/runtime")
+def create_runtime_knowledge_content_generation_job(
+    payload: RuntimeKnowledgeContentGenerationJobRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(
+            access_repository,
+            project_id=payload.project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        knowledge_repository = _build_knowledge_pipeline_repository(payload.project_id, actor_id)
+        if knowledge_repository.list_approved_facts(project_id=payload.project_id.strip(), limit=1, offset=0)["total_count"] <= 0:
+            raise ValueError("no active approved facts are available for content generation")
+        run = knowledge_repository.create_pipeline_run(
+            KnowledgePipelineCreateInput(
+                project_id=payload.project_id.strip(),
+                run_type="content_generation",
+                entry_source="mixed",
+                city=payload.target_city.strip() if payload.target_city else None,
+                created_by=effective_runtime_actor_id(actor_id),
+                metadata={
+                    "content_type": payload.content_type.strip(),
+                    "target_platform": payload.target_platform.strip(),
+                    "target_city": payload.target_city.strip() if payload.target_city else None,
+                    "target_audience": payload.target_audience.strip(),
+                    "source_action_id": payload.source_action_id.strip() if payload.source_action_id else None,
+                    "source_report_id": payload.source_report_id.strip() if payload.source_report_id else None,
+                    "source_retest_id": payload.source_retest_id.strip() if payload.source_retest_id else None,
+                    "source_gap_type": payload.source_gap_type.strip() if payload.source_gap_type else None,
+                    "tone": payload.tone.strip(),
+                    "required_citations": payload.required_citations,
+                    "forbidden_claims": [value.strip() for value in payload.forbidden_claims if value.strip()],
+                    "model": payload.model.strip(),
+                    "template_version": payload.template_version.strip(),
+                },
+            )
+        )
+        knowledge_repository.start_pipeline_run(str(run["id"]))
+        jobs = knowledge_repository.list_pipeline_jobs(
+            pipeline_run_id=str(run["id"]), project_id=payload.project_id.strip(), limit=10, offset=0
+        )
+        records = list((jobs.get("job_groups") or {}).get("content_generation_jobs", {}).get("records") or [])
+        if not records:
+            raise ValueError("no active approved facts are available for content generation")
+        return {
+            "knowledge_pipeline_run": knowledge_repository.get_pipeline_run(str(run["id"])),
+            "content_generation_job": records[0],
+            "queue_dispatch": _dispatch_runtime_task("knowledge"),
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=409 if "approved facts" in str(exc) else 400, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.patch("/v1/knowledge/fact-candidates/runtime/{fact_candidate_id}/review")
+def review_runtime_knowledge_fact_candidate(
+    fact_candidate_id: str,
+    payload: RuntimeKnowledgeFactReviewRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(access_repository, project_id=payload.project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES)
+        knowledge_repository = _build_knowledge_pipeline_repository(payload.project_id.strip(), actor_id)
+        result = knowledge_repository.review_fact_candidate(
+            project_id=payload.project_id.strip(),
+            fact_candidate_id=fact_candidate_id.strip(),
+            review_status=payload.review_status.strip(),
+            reviewed_by=actor_id or payload.reviewed_by.strip(),
+            notes=payload.notes.strip() if payload.notes else None,
+            merged_into_fact_id=payload.merged_into_fact_id.strip() if payload.merged_into_fact_id else None,
+        )
+        result["queue_dispatch"] = _dispatch_runtime_task("knowledge")
+        return result
+    except ValueError as exc:
+        raise HTTPException(status_code=404 if "not found" in str(exc) else 400, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.get("/v1/knowledge/prompt-candidates/runtime")
+def list_runtime_knowledge_prompt_candidates(project_id: str = Query(min_length=1), pipeline_run_id: str | None = None, target_platform: str | None = None, intent_type: str | None = None, status: str | None = None, limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0), x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    return _knowledge_table_page(project_id=project_id, actor_id=require_runtime_actor_id(x_geo_actor_id), table_key="prompt_candidates", limit=limit, offset=offset, filters={"pipeline_run_id": pipeline_run_id, "target_platform": target_platform, "intent_type": intent_type, "status": status})
+
+
+@app.get("/v1/knowledge/content-drafts/runtime")
+def list_runtime_knowledge_content_drafts(project_id: str = Query(min_length=1), pipeline_run_id: str | None = None, content_type: str | None = None, status: str | None = None, target_city: str | None = None, limit: int = Query(default=50, ge=1, le=200), offset: int = Query(default=0, ge=0), x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    return _knowledge_table_page(project_id=project_id, actor_id=require_runtime_actor_id(x_geo_actor_id), table_key="content_drafts", limit=limit, offset=offset, filters={"pipeline_run_id": pipeline_run_id, "content_type": content_type, "status": status, "target_city": target_city})
+
+
+@app.post("/v1/knowledge/content-drafts/runtime/{content_draft_id}/export.md")
+def export_runtime_knowledge_content_draft(
+    content_draft_id: str,
+    project_id: str = Query(min_length=1),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> Response:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    access_repository = build_repository_from_env()
+    knowledge_repository = None
+    try:
+        assert_runtime_project_access(
+            access_repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            allowed_roles=PROJECT_MANAGE_ROLES,
+        )
+        knowledge_repository = _build_knowledge_pipeline_repository(project_id, actor_id)
+        draft = knowledge_repository.export_content_draft(
+            project_id=project_id.strip(), content_draft_id=content_draft_id.strip(), exported_by=actor_id
+        )
+        filename = re.sub(r"[^A-Za-z0-9._-]+", "-", str(draft.get("title") or "geo-content")).strip("-")
+        return Response(
+            content=str(draft.get("draft_markdown") or ""),
+            media_type="text/markdown; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename or "geo-content"}.md"'},
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404 if "not found" in str(exc) else 409, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(access_repository)
+        if knowledge_repository is not None:
+            close_knowledge_repository(knowledge_repository)
+
+
+@app.post("/v1/knowledge-documents/runtime")
+def create_runtime_knowledge_document(
+    payload: RuntimeKnowledgeDocumentRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=payload.project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES)
+        try:
+            document = repository.create_runtime_knowledge_document(
+                RuntimeKnowledgeDocumentInput(
+                    project_id=payload.project_id.strip(),
+                    source_type=payload.source_type.strip(),
+                    source_url=payload.source_url.strip() if payload.source_url else None,
+                    title=payload.title.strip() if payload.title else None,
+                    raw_text=payload.raw_text,
+                    imported_by=actor_id or payload.imported_by.strip(),
+                    metadata=payload.metadata,
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "project not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(document)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/knowledge-documents/runtime/{knowledge_document_id}/crawl")
+def crawl_runtime_knowledge_document(
+    knowledge_document_id: str,
+    payload: RuntimeKnowledgeDocumentCrawlRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=payload.project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES)
+        try:
+            document = repository.crawl_runtime_knowledge_document(
+                RuntimeKnowledgeDocumentCrawlInput(
+                    project_id=payload.project_id.strip(),
+                    knowledge_document_id=knowledge_document_id.strip(),
+                    crawled_by=actor_id or payload.crawled_by.strip(),
+                    max_pages=payload.max_pages,
+                    max_bytes=payload.max_bytes,
+                    timeout_seconds=payload.timeout_seconds,
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "knowledge document not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(document)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/knowledge-documents/runtime/{knowledge_document_id}/extract-facts")
+def extract_runtime_knowledge_document_facts(
+    knowledge_document_id: str,
+    payload: RuntimeKnowledgeDocumentExtractionRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=payload.project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES)
+        try:
+            result = repository.extract_runtime_knowledge_document_facts(
+                RuntimeKnowledgeDocumentExtractionInput(
+                    project_id=payload.project_id.strip(),
+                    knowledge_document_id=knowledge_document_id.strip(),
+                    extracted_by=actor_id or payload.extracted_by.strip(),
+                    max_facts=payload.max_facts,
+                    auto_approve=payload.auto_approve,
+                    secret_ref=payload.secret_ref.strip() if payload.secret_ref else None,
+                    model=payload.model.strip(),
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) in {"knowledge document not found", "project not found"} else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(result)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.patch("/v1/knowledge-facts/runtime/{knowledge_fact_id}/review")
+def review_runtime_knowledge_fact(
+    knowledge_fact_id: str,
+    payload: RuntimeKnowledgeFactReviewRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=payload.project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES)
+        try:
+            return repository.review_runtime_knowledge_fact(
+                RuntimeKnowledgeFactReviewInput(
+                    project_id=payload.project_id.strip(),
+                    knowledge_fact_id=knowledge_fact_id.strip(),
+                    review_status=payload.review_status.strip(),
+                    reviewed_by=actor_id or payload.reviewed_by.strip(),
+                    decision=payload.decision.strip(),
+                    notes=payload.notes.strip() if payload.notes else None,
+                    edited_text=payload.edited_text.strip() if payload.edited_text else None,
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "knowledge fact not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/knowledge-applications/runtime/generate")
+def generate_runtime_knowledge_application(
+    payload: RuntimeKnowledgeApplicationGenerateRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=payload.project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES)
+        try:
+            result = repository.run_runtime_knowledge_application(
+                RuntimeKnowledgeApplicationRequest(
+                    project_id=payload.project_id.strip(),
+                    generation_type=payload.generation_type.strip(),
+                    content_type=payload.content_type.strip(),
+                    target_platform=payload.target_platform.strip(),
+                    intent_type=payload.intent_type.strip() if payload.intent_type else None,
+                    city=payload.city.strip() if payload.city else None,
+                    competitor=payload.competitor.strip() if payload.competitor else None,
+                    quantity=payload.quantity,
+                    action_id=payload.action_id.strip() if payload.action_id else None,
+                    prompt_ids=tuple(item.strip() for item in payload.prompt_ids if item.strip()),
+                    requested_by=actor_id or payload.requested_by.strip(),
+                    secret_ref=payload.secret_ref.strip() if payload.secret_ref else None,
+                    model=payload.model.strip(),
+                    prompt_template_id=payload.prompt_template_id.strip(),
+                    prompt_template_version=payload.prompt_template_version.strip(),
+                    knowledge_source_policy=payload.knowledge_source_policy.strip(),
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "project not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        return asdict(result)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.patch("/v1/knowledge/prompt-candidates/runtime/{prompt_candidate_id}/review")
+@app.patch("/v1/prompt-candidates/runtime/{prompt_candidate_id}/review", deprecated=True)
+def review_runtime_prompt_candidate(
+    prompt_candidate_id: str,
+    payload: RuntimePromptCandidateReviewRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=payload.project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES)
+        try:
+            result = repository.review_runtime_prompt_candidate(
+                RuntimePromptCandidateReviewInput(
+                    project_id=payload.project_id.strip(),
+                    prompt_candidate_id=prompt_candidate_id.strip(),
+                    review_status=payload.review_status.strip(),
+                    reviewed_by=actor_id or payload.reviewed_by.strip(),
+                    decision=payload.decision.strip(),
+                    notes=payload.notes.strip() if payload.notes else None,
+                    edited_text=payload.edited_text.strip() if payload.edited_text else None,
+                )
+            )
+            result["pipeline_states"] = _refresh_knowledge_pipeline_states(payload.project_id.strip(), actor_id)
+            return result
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "prompt candidate not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/knowledge/prompt-candidates/runtime/import-approved")
+@app.post("/v1/prompt-candidates/runtime/import-approved", deprecated=True)
+def import_runtime_approved_prompt_candidates(
+    payload: RuntimePromptCandidateImportRequest,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(repository, project_id=payload.project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES)
+        try:
+            result = repository.import_runtime_approved_prompt_candidates(
+                RuntimePromptCandidateImportInput(
+                    project_id=payload.project_id.strip(),
+                    imported_by=actor_id or payload.imported_by.strip(),
+                    prompt_candidate_ids=tuple(item.strip() for item in payload.prompt_candidate_ids if item.strip()),
+                    prompt_version=payload.prompt_version.strip() if payload.prompt_version else None,
+                )
+            )
+        except ValueError as exc:
+            status_code = 404 if str(exc) == "project not found" else 400
+            raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+        response = asdict(result)
+        response["pipeline_states"] = _refresh_knowledge_pipeline_states(payload.project_id.strip(), actor_id)
+        return response
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/traceability/runtime")
+def runtime_traceability(
+    project_id: str | None = None,
+    report_export_id: str | None = None,
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        if runtime_project_access_control_enabled() and report_export_id and not project_id:
+            apply_runtime_project_db_context(repository, actor_id=actor_id)
+            project_id = repository.get_report_export_project_id(report_export_id=report_export_id)
+            if project_id is None:
+                raise HTTPException(status_code=404, detail="report_export not found")
+        assert_runtime_project_access(repository, project_id=project_id, actor_id=actor_id)
+        detail = repository.get_runtime_traceability_detail(
+            project_id=project_id,
+            report_export_id=report_export_id,
+        )
+        if detail is None:
+            raise HTTPException(status_code=404, detail="Runtime traceability bundle not found")
+        return asdict(detail)
+    finally:
+        close_repository_connection(repository)
+
+
+@app.get("/v1/traceability/runtime/export.csv")
+def runtime_traceability_export_csv(
+    project_id: str | None = Query(default=None, min_length=1),
+    report_export_id: str | None = Query(default=None, min_length=1),
+    x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER),
+) -> Response:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        resolved_project_id = project_id.strip() if project_id else None
+        normalized_report_export_id = report_export_id.strip() if report_export_id else None
+        if runtime_project_access_control_enabled() and normalized_report_export_id and not resolved_project_id:
+            apply_runtime_project_db_context(repository, actor_id=actor_id)
+            resolved_project_id = repository.get_report_export_project_id(report_export_id=normalized_report_export_id)
+            if resolved_project_id is None:
+                raise HTTPException(status_code=404, detail="report_export not found")
+        assert_runtime_project_access(repository, project_id=resolved_project_id, actor_id=actor_id)
+        try:
+            export = repository.export_runtime_traceability_csv(
+                project_id=resolved_project_id,
+                report_export_id=normalized_report_export_id,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return Response(
+            content=export.content,
+            media_type=export.media_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{export.filename}"',
+                "X-GEO-Traceability-Export-Hash": export.content_hash,
+                "X-GEO-Traceability-Project-Id": str(export.filters.get("project_id", "")),
+                "X-GEO-Traceability-Report-Export-Id": str(export.filters.get("report_export_id", "")),
+                "X-GEO-Traceability-Row-Count": str(export.row_count),
+                "X-GEO-Traceability-Total-Count": str(export.total_count),
+            },
+        )
+    finally:
+        close_repository_connection(repository)
+
+
+def _run_geo_command(
+    *,
+    project_id: str,
+    actor_id: str | None,
+    allowed_roles: tuple[str, ...] | None,
+    command: Any,
+) -> dict[str, object]:
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            allowed_roles=allowed_roles,
+        )
+        try:
+            return command(GeoPlacementRepository(repository.connection), effective_runtime_actor_id(actor_id))
+        except GeoPlacementError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=502, detail=f"GEO model or workflow command failed: {str(exc)}") from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/geo/products")
+def create_geo_product(payload: GeoProductRequest, x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    return _run_geo_command(project_id=payload.project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES,
+        command=lambda geo, actor: {"product": geo.create_product(project_id=payload.project_id, actor_id=actor, payload=payload.model_dump())})
+
+
+@app.get("/v1/geo/products")
+def list_geo_products(project_id: str = Query(min_length=1), x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    return _run_geo_command(project_id=project_id, actor_id=actor_id, allowed_roles=None,
+        command=lambda geo, _actor: geo.list_products(project_id=project_id))
+
+
+@app.post("/v1/geo/campaigns")
+def create_geo_campaign(payload: GeoCampaignRequest, x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    return _run_geo_command(project_id=payload.project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES,
+        command=lambda geo, actor: {"campaign": geo.create_campaign(project_id=payload.project_id, actor_id=actor, payload=payload.model_dump())})
+
+
+@app.get("/v1/geo/campaigns")
+def list_geo_campaigns(project_id: str = Query(min_length=1), x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    return _run_geo_command(project_id=project_id, actor_id=actor_id, allowed_roles=None,
+        command=lambda geo, _actor: geo.list_campaigns(project_id=project_id))
+
+
+@app.post("/v1/geo/campaigns/{campaign_id}/queries")
+def create_geo_campaign_query(campaign_id: str, payload: GeoCampaignQueryRequest, x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    return _run_geo_command(project_id=payload.project_id, actor_id=actor_id, allowed_roles=PROJECT_ANALYZE_ROLES,
+        command=lambda geo, actor: {"campaign_query": geo.create_campaign_query(project_id=payload.project_id, campaign_id=campaign_id, actor_id=actor, payload=payload.model_dump())})
+
+
+@app.get("/v1/geo/campaigns/{campaign_id}/queries")
+def list_geo_campaign_queries(campaign_id: str, project_id: str = Query(min_length=1), x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    return _run_geo_command(project_id=project_id, actor_id=actor_id, allowed_roles=None,
+        command=lambda geo, _actor: geo.list_campaign_queries(project_id=project_id, campaign_id=campaign_id))
+
+
+@app.post("/v1/geo/campaigns/queries/{query_id}/approve")
+def approve_geo_campaign_query(query_id: str, project_id: str = Query(min_length=1), x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    return _run_geo_command(project_id=project_id, actor_id=actor_id, allowed_roles=PROJECT_ANALYZE_ROLES,
+        command=lambda geo, actor: {"campaign_query": geo.approve_campaign_query(project_id=project_id, query_id=query_id, actor_id=actor)})
+
+
+@app.post("/v1/geo/observations/manual-imports")
+def import_geo_observation(payload: GeoObservationImportRequest, x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    return _run_geo_command(project_id=payload.project_id, actor_id=actor_id, allowed_roles=PROJECT_ANALYZE_ROLES,
+        command=lambda geo, actor: {"observation": geo.import_observation(project_id=payload.project_id, actor_id=actor, payload=payload.model_dump())})
+
+
+@app.get("/v1/geo/campaigns/{campaign_id}/observations")
+def list_geo_observations(campaign_id: str, project_id: str = Query(min_length=1), x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    return _run_geo_command(project_id=project_id, actor_id=actor_id, allowed_roles=None,
+        command=lambda geo, _actor: geo.list_observations(project_id=project_id, campaign_id=campaign_id))
+
+
+@app.get("/v1/geo/publishers")
+def list_geo_publishers(project_id: str = Query(min_length=1), x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    return _run_geo_command(project_id=project_id, actor_id=actor_id, allowed_roles=None,
+        command=lambda geo, _actor: geo.list_publishers())
+
+
+@app.post("/v1/geo/publishers/{publisher_id}/review")
+def review_geo_publisher(publisher_id: str, payload: GeoPublisherReviewRequest, x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    return _run_geo_command(project_id=payload.project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES,
+        command=lambda geo, actor: {"publisher": geo.review_publisher(publisher_id=publisher_id, actor_id=actor, status=payload.status, policy_snapshot=payload.policy_snapshot)})
+
+
+@app.post("/v1/geo/destinations")
+def create_geo_destination(payload: GeoDestinationRequest, x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    return _run_geo_command(project_id=payload.project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES,
+        command=lambda geo, actor: {"destination": geo.create_destination(project_id=payload.project_id, actor_id=actor, payload=payload.model_dump())})
+
+
+@app.get("/v1/geo/destinations")
+def list_geo_destinations(project_id: str = Query(min_length=1), x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    return _run_geo_command(project_id=project_id, actor_id=actor_id, allowed_roles=None,
+        command=lambda geo, _actor: geo.list_destinations(project_id=project_id))
+
+
+@app.post("/v1/geo/destinations/{destination_id}/qualify")
+def qualify_geo_destination(destination_id: str, project_id: str = Query(min_length=1), x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    return _run_geo_command(project_id=project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES,
+        command=lambda geo, actor: {"destination": geo.qualify_destination(project_id=project_id, destination_id=destination_id, actor_id=actor)})
+
+
+@app.post("/v1/geo/placement-opportunities")
+def create_geo_placement_opportunity(payload: GeoOpportunityRequest, x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    return _run_geo_command(project_id=payload.project_id, actor_id=actor_id, allowed_roles=PROJECT_ANALYZE_ROLES,
+        command=lambda geo, actor: {"opportunity": geo.create_opportunity(project_id=payload.project_id, actor_id=actor, payload=payload.model_dump())})
+
+
+@app.get("/v1/geo/campaigns/{campaign_id}/placement-opportunities")
+def list_geo_placement_opportunities(campaign_id: str, project_id: str = Query(min_length=1), x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    return _run_geo_command(project_id=project_id, actor_id=actor_id, allowed_roles=None,
+        command=lambda geo, _actor: geo.list_opportunities(project_id=project_id, campaign_id=campaign_id))
+
+
+@app.post("/v1/geo/prompt-templates")
+def create_geo_prompt_template(payload: GeoPromptTemplateRequest, x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    return _run_geo_command(project_id=payload.project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES,
+        command=lambda geo, actor: {"prompt_template": geo.create_prompt_template(project_id=payload.project_id, actor_id=actor, payload=payload.model_dump())})
+
+
+@app.post("/v1/geo/prompt-templates/{template_id}/versions")
+def create_geo_prompt_template_version(template_id: str, payload: GeoPromptVersionRequest, x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    return _run_geo_command(project_id=payload.project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES,
+        command=lambda geo, actor: {"prompt_template_version": geo.create_prompt_version(project_id=payload.project_id, template_id=template_id, actor_id=actor, payload=payload.model_dump())})
+
+
+@app.post("/v1/geo/prompt-templates/{template_id}/publish")
+def publish_geo_prompt_template(template_id: str, project_id: str = Query(min_length=1), version_id: str | None = Query(default=None), x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    return _run_geo_command(project_id=project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES,
+        command=lambda geo, actor: {"prompt_template": geo.publish_prompt_template(project_id=project_id, template_id=template_id, actor_id=actor, version_id=version_id)})
+
+
+@app.get("/v1/geo/prompt-templates")
+def list_geo_prompt_templates(project_id: str = Query(min_length=1), x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    return _run_geo_command(project_id=project_id, actor_id=actor_id, allowed_roles=None,
+        command=lambda geo, _actor: geo.list_prompt_templates(project_id=project_id))
+
+
+@app.post("/v1/geo/placement-opportunities/{opportunity_id}/packages")
+def generate_geo_package(opportunity_id: str, payload: GeoPackageGenerateRequest, x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    return _run_geo_command(project_id=payload.project_id, actor_id=actor_id, allowed_roles=GEO_CONTENT_WRITE_ROLES,
+        command=lambda geo, actor: {"placement_package": geo.generate_package(project_id=payload.project_id, opportunity_id=opportunity_id, actor_id=actor, payload=payload.model_dump())})
+
+
+@app.get("/v1/geo/campaigns/{campaign_id}/placement-packages")
+def list_geo_packages(campaign_id: str, project_id: str = Query(min_length=1), x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    return _run_geo_command(project_id=project_id, actor_id=actor_id, allowed_roles=None,
+        command=lambda geo, _actor: geo.list_packages(project_id=project_id, campaign_id=campaign_id))
+
+
+@app.post("/v1/geo/placement-packages/{package_id}/versions")
+def revise_geo_package(package_id: str, payload: GeoPackageRevisionRequest, x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    return _run_geo_command(project_id=payload.project_id, actor_id=actor_id, allowed_roles=GEO_CONTENT_WRITE_ROLES,
+        command=lambda geo, actor: {"placement_package": geo.revise_package(project_id=payload.project_id, package_id=package_id, actor_id=actor, payload=payload.model_dump())})
+
+
+@app.post("/v1/geo/placement-packages/{package_id}/submit-review")
+def submit_geo_package_review(package_id: str, project_id: str = Query(min_length=1), x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    return _run_geo_command(project_id=project_id, actor_id=actor_id, allowed_roles=GEO_CONTENT_WRITE_ROLES,
+        command=lambda geo, actor: {"placement_package": geo.submit_package_review(project_id=project_id, package_id=package_id, actor_id=actor)})
+
+
+@app.post("/v1/geo/placement-packages/{package_id}/review")
+def review_geo_package(package_id: str, payload: GeoPackageReviewRequest, x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    return _run_geo_command(project_id=payload.project_id, actor_id=actor_id, allowed_roles=GEO_REVIEW_ROLES,
+        command=lambda geo, actor: {"placement_package": geo.review_package(project_id=payload.project_id, package_id=package_id, actor_id=actor, decision=payload.decision, claim_inventory_complete=payload.claim_inventory_complete, qc_score=payload.qc_score, review_notes=payload.review_notes)})
+
+
+@app.post("/v1/geo/placement-packages/{package_id}/submissions")
+def create_geo_submission(package_id: str, payload: GeoSubmissionRequest, x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    return _run_geo_command(project_id=payload.project_id, actor_id=actor_id, allowed_roles=GEO_CONTENT_WRITE_ROLES,
+        command=lambda geo, actor: {"submission": geo.create_submission(project_id=payload.project_id, package_id=package_id, actor_id=actor, payload=payload.model_dump())})
+
+
+@app.post("/v1/geo/submissions/{submission_id}/published-url")
+def set_geo_published_url(submission_id: str, payload: GeoPublishedUrlRequest, x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    return _run_geo_command(project_id=payload.project_id, actor_id=actor_id, allowed_roles=GEO_CONTENT_WRITE_ROLES,
+        command=lambda geo, actor: {"submission": geo.set_published_url(project_id=payload.project_id, submission_id=submission_id, actor_id=actor, published_url=payload.published_url)})
+
+
+@app.post("/v1/geo/submissions/{submission_id}/verify")
+def verify_geo_submission(submission_id: str, payload: GeoVerificationRequest, x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    return _run_geo_command(project_id=payload.project_id, actor_id=actor_id, allowed_roles=GEO_VERIFICATION_ROLES,
+        command=lambda geo, actor: {"verification": geo.verify_submission(project_id=payload.project_id, submission_id=submission_id, actor_id=actor, payload=payload.model_dump())})
+
+
+@app.post("/v1/geo/submissions/{submission_id}/verify-live")
+def verify_geo_submission_live(submission_id: str, project_id: str = Query(min_length=1), x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+
+    def command(geo: GeoPlacementRepository, actor: str) -> dict[str, object]:
+        target = geo.submission_verification_target(project_id=project_id, submission_id=submission_id)
+        if target["status"] != "published_url_pending_verification" or not target["published_url"]:
+            raise GeoPlacementError("a published URL must be recorded before live verification")
+        destination = urlparse(str(target["destination_url"]))
+        published = urlparse(str(target["published_url"]))
+        if published.scheme != "https" or not published.hostname or not destination.hostname:
+            raise GeoPlacementError("live verification requires an HTTPS URL and a qualified HTTPS destination")
+        if published.hostname.lower() != destination.hostname.lower():
+            raise GeoPlacementError("published URL host does not match the qualified destination host")
+        try:
+            response = httpx.get(str(target["published_url"]), timeout=15.0, follow_redirects=True)
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            return {"verification": geo.verify_submission(
+                project_id=project_id, submission_id=submission_id, actor_id=actor,
+                payload={"status": "unreachable", "details": {"error": type(exc).__name__}},
+            )}
+        if len(response.content) > 2_000_000:
+            raise GeoPlacementError("published page exceeds the live verification size limit")
+        page_text = re.sub(r"\\s+", " ", re.sub(r"<[^>]+>", " ", response.text)).strip().lower()
+        body_probe = re.sub(r"\\s+", " ", str(target["rendered_text"]).strip()).lower()[:100]
+        disclosure = re.sub(r"\\s+", " ", str(target.get("disclosure_text") or "").strip()).lower()
+        content_match = bool(body_probe) and body_probe in page_text
+        disclosure_match = not disclosure or disclosure in page_text
+        status = "verified" if content_match and disclosure_match else "failed"
+        return {"verification": geo.verify_submission(
+            project_id=project_id, submission_id=submission_id, actor_id=actor,
+            payload={"status": status, "content_match": content_match, "disclosure_match": disclosure_match,
+                     "details": {"http_status": response.status_code, "final_url": str(response.url), "verification_mode": "live_http"}},
+        )}
+
+    return _run_geo_command(project_id=project_id, actor_id=actor_id, allowed_roles=GEO_VERIFICATION_ROLES, command=command)
+
+
+@app.get("/v1/geo/campaigns/{campaign_id}/submissions")
+def list_geo_submissions(campaign_id: str, project_id: str = Query(min_length=1), x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    return _run_geo_command(project_id=project_id, actor_id=actor_id, allowed_roles=None,
+        command=lambda geo, _actor: geo.list_submissions(project_id=project_id, campaign_id=campaign_id))
+
+
+@app.get("/v1/geo/campaigns/{campaign_id}/measurements")
+def list_geo_measurements(campaign_id: str, project_id: str = Query(min_length=1), x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    return _run_geo_command(project_id=project_id, actor_id=actor_id, allowed_roles=None,
+        command=lambda geo, _actor: geo.list_measurements(project_id=project_id, campaign_id=campaign_id))
+
+
+@app.get("/v1/geo/customer-summary")
+def geo_customer_summary(project_id: str = Query(min_length=1), x_geo_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geo_actor_id)
+    return _run_geo_command(project_id=project_id, actor_id=actor_id, allowed_roles=None,
+        command=lambda geo, _actor: geo.customer_summary(project_id=project_id))
+
+
+@app.get("/v1/google-spikes/au/plan")
+def au_google_spike_plan() -> dict[str, object]:
+    bootstrap = build_au_project_bootstrap()
+    return asdict(build_google_spike_plan(project_id=bootstrap.project.id, prompts=bootstrap.prompt_questions))
+
+
+@app.get("/v1/google-spikes/au/fixture-gate")
+def au_google_spike_fixture_gate() -> dict[str, object]:
+    require_dev_tools_enabled()
+    bootstrap = build_au_project_bootstrap()
+    plan = build_google_spike_plan(project_id=bootstrap.project.id, prompts=bootstrap.prompt_questions)
+    prompts = select_google_spike_prompts(bootstrap.prompt_questions)
+    records = run_collection_slice(
+        project_id=bootstrap.project.id,
+        prompts=prompts,
+        market_profile=bootstrap.market_profile,
+        collectors=(FixtureGoogleAIOCollector(), FixtureGoogleAIModeCollector()),
+        cities=plan.geo_cities,
+        sample_size=plan.sample_size,
+        prompt_limit=plan.prompt_count,
+    )
+    gate = evaluate_google_spike_gate(project_id=bootstrap.project.id, plan=plan, records=records)
+    readiness_gate = evaluate_google_spike_readiness_gate(project_id=bootstrap.project.id, plan=plan, records=records)
+    return {
+        "plan": asdict(plan),
+        "gate": asdict(gate),
+        "readiness_gate": asdict(readiness_gate),
+        "record_count": len(records),
+    }
+
+
+@app.get("/v1/visibility-scores/au/p0a-fixture")
+def au_p0a_fixture_visibility_score() -> dict[str, object]:
+    require_dev_tools_enabled()
+    bootstrap = build_au_project_bootstrap()
+    records = run_fixture_collection_slice(
+        project_id=bootstrap.project.id,
+        prompts=bootstrap.prompt_questions,
+        market_profile=bootstrap.market_profile,
+        collectors=(FixturePerplexitySonarCollector(), FixtureOpenAIWebSearchCollector()),
+        cities=("Australia", "Sydney"),
+        sample_size=1,
+        prompt_limit=10,
+    )
+    result = analyze_and_score_records(
+        project_id=bootstrap.project.id,
+        records=records,
+        brand=bootstrap.brand,
+        competitors=bootstrap.competitors,
+        platform_weights_snapshot={"chatgpt": 0.30, "perplexity": 0.25, "google": 0.45},
+        scope_type="project",
+        scope_value="p0a_fixture",
+    )
+    return {
+        "analysis_count": len(result.analyses),
+        "snapshot": asdict(result.snapshot),
+        "contributions": [asdict(contribution) for contribution in result.contributions],
+        "audit_event": asdict(result.audit_event),
+    }
+
+
+@app.get("/v1/citation-graphs/au/p0a-fixture")
+def au_p0a_fixture_citation_graph() -> dict[str, object]:
+    require_dev_tools_enabled()
+    bootstrap = build_au_project_bootstrap()
+    records = run_fixture_collection_slice(
+        project_id=bootstrap.project.id,
+        prompts=bootstrap.prompt_questions,
+        market_profile=bootstrap.market_profile,
+        collectors=(FixturePerplexitySonarCollector(), FixtureOpenAIWebSearchCollector()),
+        cities=("Australia", "Sydney"),
+        sample_size=1,
+        prompt_limit=10,
+    )
+    analysis_result = analyze_and_score_records(
+        project_id=bootstrap.project.id,
+        records=records,
+        brand=bootstrap.brand,
+        competitors=bootstrap.competitors,
+        platform_weights_snapshot={"chatgpt": 0.30, "perplexity": 0.25, "google": 0.45},
+    )
+    graph = build_citation_graph(
+        project_id=bootstrap.project.id,
+        records=records,
+        analyses=analysis_result.score_input_analyses,
+        competitors=bootstrap.competitors,
+        industry_profile=bootstrap.industry_profile,
+    )
+    return {
+        "node_count": len(graph.nodes),
+        "evidence_link_count": len(graph.evidence_links),
+        "source_gap_count": len(graph.source_gaps),
+        "competitor_count": len(graph.competitor_benchmarks),
+        "nodes": [asdict(node) for node in graph.nodes],
+        "source_gaps": [asdict(gap) for gap in graph.source_gaps],
+        "competitor_benchmarks": [asdict(item) for item in graph.competitor_benchmarks],
+    }
+
+
+@app.get("/v1/reports/au/p0a-fixture")
+def au_p0a_fixture_report() -> dict[str, object]:
+    require_dev_tools_enabled()
+    bootstrap = build_au_project_bootstrap()
+    records = run_fixture_collection_slice(
+        project_id=bootstrap.project.id,
+        prompts=bootstrap.prompt_questions,
+        market_profile=bootstrap.market_profile,
+        collectors=(FixturePerplexitySonarCollector(), FixtureOpenAIWebSearchCollector()),
+        cities=("Australia", "Sydney"),
+        sample_size=1,
+        prompt_limit=10,
+    )
+    analysis_result = analyze_and_score_records(
+        project_id=bootstrap.project.id,
+        records=records,
+        brand=bootstrap.brand,
+        competitors=bootstrap.competitors,
+        platform_weights_snapshot={"chatgpt": 0.30, "perplexity": 0.25, "google": 0.45},
+    )
+    graph = build_citation_graph(
+        project_id=bootstrap.project.id,
+        records=records,
+        analyses=analysis_result.score_input_analyses,
+        competitors=bootstrap.competitors,
+        industry_profile=bootstrap.industry_profile,
+    )
+    google_plan = build_google_spike_plan(project_id=bootstrap.project.id, prompts=bootstrap.prompt_questions)
+    google_gate = evaluate_google_spike_gate(project_id=bootstrap.project.id, plan=google_plan, records=())
+    report = MarkdownCsvReportExporter().export(
+        project_id=bootstrap.project.id,
+        market_code=bootstrap.project.market_code,
+        report_version="p0a-fixture-v1",
+        report_type="design_partner_fixture",
+        prompt_version=bootstrap.project.prompt_version,
+        snapshot=analysis_result.snapshot,
+        contributions=analysis_result.contributions,
+        records=records,
+        graph=graph,
+        platform_weights_snapshot={"chatgpt": 0.30, "perplexity": 0.25, "google": 0.45},
+        google_spike_gate=google_gate,
+        score_input_policy=analysis_result.score_input_policy,
+        audit_events=(analysis_result.audit_event,),
+    )
+    return {
+        "report_export": asdict(report.report_export),
+        "markdown": report.markdown,
+        "csv_content": report.csv_content,
+        "pdf_content_hash": hashlib.sha256(report.pdf_content).hexdigest(),
+        "pdf_size_bytes": len(report.pdf_content),
+        "audit_event": asdict(report.audit_event),
+        "report_evidence_answer_run_ids": list(report.report_evidence_answer_run_ids),
+    }
+
+
+@app.get("/v1/action-plans/au/p0a-fixture")
+def au_p0a_fixture_action_plan() -> dict[str, object]:
+    require_dev_tools_enabled()
+    bootstrap = build_au_project_bootstrap()
+    records = run_fixture_collection_slice(
+        project_id=bootstrap.project.id,
+        prompts=bootstrap.prompt_questions,
+        market_profile=bootstrap.market_profile,
+        collectors=(FixturePerplexitySonarCollector(), FixtureOpenAIWebSearchCollector()),
+        cities=("Australia", "Sydney"),
+        sample_size=1,
+        prompt_limit=10,
+    )
+    analysis_result = analyze_and_score_records(
+        project_id=bootstrap.project.id,
+        records=records,
+        brand=bootstrap.brand,
+        competitors=bootstrap.competitors,
+        platform_weights_snapshot={"chatgpt": 0.30, "perplexity": 0.25, "google": 0.45},
+    )
+    graph = build_citation_graph(
+        project_id=bootstrap.project.id,
+        records=records,
+        analyses=analysis_result.score_input_analyses,
+        competitors=bootstrap.competitors,
+        industry_profile=bootstrap.industry_profile,
+    )
+    actions = build_action_recommendations(
+        project_id=bootstrap.project.id,
+        graph=graph,
+        snapshot=analysis_result.snapshot,
+    )
+    schedule = build_retest_schedule(
+        project_id=bootstrap.project.id,
+        prompt_version=bootstrap.project.prompt_version,
+        sample_size=1,
+        answer_run_ids=tuple(record.answer_run.id for record in records),
+    )
+    audit_event = build_action_plan_audit_event(
+        project_id=bootstrap.project.id,
+        actions=actions,
+        schedule=schedule,
+    )
+    retest_snapshot = analysis_result.snapshot.__class__(
+        **{
+            **asdict(analysis_result.snapshot),
+            "id": f"retest-{analysis_result.snapshot.id}",
+            "final_score": round(analysis_result.snapshot.final_score + 2.5, 4),
+        }
+    )
+    comparison = compare_retest_windows(
+        project_id=bootstrap.project.id,
+        baseline=analysis_result.snapshot,
+        retest=retest_snapshot,
+    )
+    comparison_audit_event = build_retest_comparison_audit_event(
+        project_id=bootstrap.project.id,
+        comparison=comparison,
+    )
+    return {
+        "action_count": len(actions),
+        "actions": [asdict(action) for action in actions],
+        "retest_schedule": asdict(schedule),
+        "retest_comparison": asdict(comparison),
+        "audit_event": asdict(audit_event),
+        "comparison_audit_event": asdict(comparison_audit_event),
+    }
+
+
+@app.get("/v1/content-engines/au/p0a-fixture")
+def au_p0a_fixture_content_engine() -> dict[str, object]:
+    require_dev_tools_enabled()
+    bootstrap = build_au_project_bootstrap()
+    records = run_fixture_collection_slice(
+        project_id=bootstrap.project.id,
+        prompts=bootstrap.prompt_questions,
+        market_profile=bootstrap.market_profile,
+        collectors=(FixturePerplexitySonarCollector(), FixtureOpenAIWebSearchCollector()),
+        cities=("Australia", "Sydney"),
+        sample_size=1,
+        prompt_limit=10,
+    )
+    analysis_result = analyze_and_score_records(
+        project_id=bootstrap.project.id,
+        records=records,
+        brand=bootstrap.brand,
+        competitors=bootstrap.competitors,
+        platform_weights_snapshot={"chatgpt": 0.30, "perplexity": 0.25, "google": 0.45},
+    )
+    graph = build_citation_graph(
+        project_id=bootstrap.project.id,
+        records=records,
+        analyses=analysis_result.score_input_analyses,
+        competitors=bootstrap.competitors,
+        industry_profile=bootstrap.industry_profile,
+    )
+    actions = build_action_recommendations(
+        project_id=bootstrap.project.id,
+        graph=graph,
+        snapshot=analysis_result.snapshot,
+    )
+    answer_run_ids = tuple(record.answer_run.id for record in records)
+    facts = build_localized_knowledge_facts(
+        project_id=bootstrap.project.id,
+        market_code=bootstrap.project.market_code,
+        brand=bootstrap.brand,
+        category=bootstrap.project.category,
+        answer_run_ids=answer_run_ids,
+    )
+    knowledge_results = search_knowledge_facts(
+        facts=facts,
+        query=f"{bootstrap.project.target_brand} {bootstrap.project.category} Australia shipping reviews",
+        market_code=bootstrap.project.market_code,
+        city="Sydney",
+        limit=5,
+    )
+    drafts = build_content_drafts(
+        project_id=bootstrap.project.id,
+        target_brand=bootstrap.project.target_brand,
+        category=bootstrap.project.category,
+        actions=actions,
+        prompts=bootstrap.prompt_questions,
+        knowledge_results=knowledge_results,
+    )
+    connectors = build_integration_connectors(project_id=bootstrap.project.id)
+    distribution_records = build_manual_distribution_records(project_id=bootstrap.project.id, drafts=drafts)
+    audit_event = build_content_engine_audit_event(
+        project_id=bootstrap.project.id,
+        facts=facts,
+        drafts=drafts,
+        connectors=connectors,
+        distribution_records=distribution_records,
+    )
+    return {
+        "knowledge_fact_count": len(facts),
+        "search_results": [asdict(result) for result in knowledge_results],
+        "content_draft_count": len(drafts),
+        "content_drafts": [asdict(draft) for draft in drafts],
+        "integration_connectors": [asdict(connector) for connector in connectors],
+        "manual_distribution_records": [asdict(record) for record in distribution_records],
+        "audit_event": asdict(audit_event),
+    }
+
+
+@app.get("/v1/traceability/au/p0a-fixture")
+def au_p0a_fixture_traceability() -> dict[str, object]:
+    require_dev_tools_enabled()
+    bootstrap = build_au_project_bootstrap()
+    records = run_fixture_collection_slice(
+        project_id=bootstrap.project.id,
+        prompts=bootstrap.prompt_questions,
+        market_profile=bootstrap.market_profile,
+        collectors=(FixturePerplexitySonarCollector(), FixtureOpenAIWebSearchCollector()),
+        cities=("Australia", "Sydney"),
+        sample_size=1,
+        prompt_limit=10,
+    )
+    analysis_result = analyze_and_score_records(
+        project_id=bootstrap.project.id,
+        records=records,
+        brand=bootstrap.brand,
+        competitors=bootstrap.competitors,
+        platform_weights_snapshot={"chatgpt": 0.30, "perplexity": 0.25, "google": 0.45},
+    )
+    graph = build_citation_graph(
+        project_id=bootstrap.project.id,
+        records=records,
+        analyses=analysis_result.score_input_analyses,
+        competitors=bootstrap.competitors,
+        industry_profile=bootstrap.industry_profile,
+    )
+    report = MarkdownCsvReportExporter().export(
+        project_id=bootstrap.project.id,
+        market_code=bootstrap.project.market_code,
+        report_version="p0a-fixture-v1",
+        report_type="design_partner_fixture",
+        prompt_version=bootstrap.project.prompt_version,
+        snapshot=analysis_result.snapshot,
+        contributions=analysis_result.contributions,
+        records=records,
+        graph=graph,
+        platform_weights_snapshot={"chatgpt": 0.30, "perplexity": 0.25, "google": 0.45},
+        score_input_policy=analysis_result.score_input_policy,
+        audit_events=(analysis_result.audit_event,),
+    )
+    actions = build_action_recommendations(
+        project_id=bootstrap.project.id,
+        graph=graph,
+        snapshot=analysis_result.snapshot,
+    )
+    facts = build_localized_knowledge_facts(
+        project_id=bootstrap.project.id,
+        market_code=bootstrap.project.market_code,
+        brand=bootstrap.brand,
+        category=bootstrap.project.category,
+        answer_run_ids=tuple(record.answer_run.id for record in records),
+    )
+    knowledge_results = search_knowledge_facts(
+        facts=facts,
+        query=f"{bootstrap.project.target_brand} {bootstrap.project.category} Australia shipping reviews",
+        market_code=bootstrap.project.market_code,
+        city="Sydney",
+        limit=5,
+    )
+    drafts = build_content_drafts(
+        project_id=bootstrap.project.id,
+        target_brand=bootstrap.project.target_brand,
+        category=bootstrap.project.category,
+        actions=actions,
+        prompts=bootstrap.prompt_questions,
+        knowledge_results=knowledge_results,
+    )
+    bundle = build_traceability_bundle(
+        project_id=bootstrap.project.id,
+        report_export=report.report_export,
+        snapshot=analysis_result.snapshot,
+        contributions=analysis_result.contributions,
+        records=records,
+        graph=graph,
+        actions=actions,
+        content_drafts=drafts,
+        audit_events=tuple(record.audit_events[0] for record in records)
+        + (analysis_result.audit_event, report.audit_event),
+    )
+    return {
+        "traceability_bundle": asdict(bundle),
+        "report_export": asdict(report.report_export),
+        "score_contribution_count": len(analysis_result.contributions),
+        "answer_run_count": len(records),
+    }
+
+
+@app.get("/v1/contracts")
+def contracts() -> dict[str, list[str]]:
+    return {
+        "interfaces": [
+            "CollectorBackend",
+            "LLMGateway",
+            "ParserEngine",
+            "VectorStore",
+            "GraphStore",
+            "GeoProvider",
+            "ScoringFormula",
+            "ReportExporter",
+            "NotConfiguredCollectorBackend",
+            "NotConfiguredParserEngine",
+            "NotConfiguredScoringFormula",
+            "NotConfiguredReportExporter",
+            "RegistryScoringFormula",
+        ],
+        "auditability": [
+            "AuditEvent",
+            "EvidenceLink",
+            "LLMCallLog",
+            "ScoreContribution",
+            "ReportExport",
+            "RuntimeHumanReviewRecord",
+            "RuntimeHumanReviewQueuePage",
+            "RuntimeFidelityCheck",
+            "RuntimeFidelityTrend",
+            "RuntimeAlertItem",
+            "RuntimeAlertPage",
+            "RuntimeAlertEvent",
+            "TraceabilityBundle",
+        ],
+        "m1_bootstrap": [
+            "Tenant",
+            "Project",
+            "ProjectMember",
+            "BrandEntity",
+            "CompetitorEntity",
+            "EntityAlias",
+            "EntityAliasInput",
+            "RuntimeEntityAlias",
+            "RuntimeEntityAliasBatchConfirmResult",
+            "RuntimeEntityAliasCandidate",
+            "RuntimeEntityAliasCandidatePage",
+            "RuntimeEntityAliasCandidateReview",
+            "RuntimeEntityAliasCandidateReviewPage",
+            "RuntimeEntityAliasCandidateAssignmentQueueStats",
+            "RuntimeEntityAliasAssignmentWorkbench",
+            "RuntimeEntityAliasAssignmentWorkloadSummary",
+            "RuntimeEntityAliasAssignmentDispatchPlan",
+            "RuntimeEntityAliasAssignmentDispatchApplyResult",
+            "RuntimeEntityAliasAssignmentNotificationResult",
+            "RuntimeEntityAliasAssignmentEscalationResult",
+            "RuntimeEntityAliasAssignmentReassignmentResult",
+            "RuntimeEntityAliasCandidateBatchReviewResult",
+            "EntityAliasCandidateAssignmentActionInput",
+            "EntityAliasCandidateAssignmentBatchActionInput",
+            "EntityAliasCandidateAssignmentInput",
+            "EntityAliasCandidateAssignmentReassignmentInput",
+            "EntityAliasAssignmentDispatchPlanInput",
+            "EntityAliasAssignmentDispatchApplyInput",
+            "RuntimeEntityAliasAssignmentBatchActionResult",
+            "RuntimeEntityAliasPage",
+            "IndustryProfile",
+            "PromptQuestion",
+            "ProjectBootstrap",
+        ],
+        "m2a_evidence": [
+            "CollectionPlan",
+            "BrowserFidelitySamplingPlan",
+            "AnswerRun",
+            "RawAnswer",
+            "AnswerCitation",
+            "EvidenceAsset",
+            "CollectorLog",
+            "CollectionCost",
+            "CollectionRunSummary",
+            "P0ACollectionReadinessGate",
+            "evaluate_p0a_collection_readiness",
+            "build_browser_fidelity_sampling_plan",
+            "RuntimeFidelityCheck",
+            "RuntimeFidelityCheckPage",
+            "RuntimeFidelityTrend",
+            "RuntimeFidelityTrendPoint",
+            "RawEvidenceRecord",
+            "CollectionFailureRecord",
+            "ManualBackfillInput",
+            "ManualBackfillCsvImportRequest",
+            "manual_backfill_csv_import_v1",
+            "PerplexitySonarCollector",
+            "OpenAIWebSearchCollector",
+            "FixtureChatGPTSearchBrowserCollector",
+            "PlaywrightChatGPTSearchCollector",
+        ],
+        "m2b_google_spike": [
+            "GoogleSpikePlan",
+            "GoogleSpikeGateResult",
+            "GoogleSpikeReadinessGate",
+            "evaluate_google_spike_readiness_gate",
+            "PlaywrightGoogleAIOCollector",
+            "PlaywrightAIModeCollector",
+            "ThirdPartySerpCollector",
+            "ManualBackfillCollector",
+        ],
+        "m3_analysis_scoring": [
+            "RuleBasedAnswerParser",
+            "LLMJudgeAnswerParser",
+            "ComparativeAnswerParser",
+            "parser_ab_compare_v1",
+            "llm_judge_prompt_v1",
+            "FixtureLLMGateway",
+            "LiteLLMGateway",
+            "LLMCallLog",
+            "AnswerAnalysis",
+            "VisibilityScoreSnapshot",
+            "ScoreContribution",
+            "RuntimeScoreWeightConfig",
+            "RuntimeScoreWeightConfigInput",
+            "ScoreWeightConfigRequest",
+            "ScoreFormulaDefinition",
+            "RegistryScoringFormula",
+            "SCORE_FORMULA_REGISTRY",
+            "list_score_formulas",
+            "build_score_input_policy",
+            "rescore_snapshot_with_formula",
+            "RuntimeHumanReviewRecord",
+            "RuntimeHumanReviewPage",
+            "RuntimeHumanReviewQueueItem",
+            "RuntimeHumanReviewQueuePage",
+            "RuntimeHumanReviewInput",
+            "HumanReviewRequest",
+            "au_visibility_v1",
+        ],
+        "m4_graph_benchmark": [
+            "SourceGraphNode",
+            "SourceGraphEvidence",
+            "SourceGap",
+            "CompetitorBenchmark",
+            "CitationGraphResult",
+            "InMemoryPostgresAdjacencyGraphStore",
+            "InMemoryNeo4jCitationGraphStore",
+            "summarize_citation_graph_store",
+        ],
+        "m5_report_export": [
+            "ReportExport",
+            "MarkdownCsvReportExporter",
+            "EvidenceReport",
+        ],
+        "m6_action_retest": [
+            "ActionRecommendation",
+            "RetestSchedule",
+            "RetestComparison",
+        ],
+        "m7_content_integrations": [
+            "LocalizedKnowledgeFact",
+            "KnowledgeSearchResult",
+            "KnowledgeFactEmbedding",
+            "RuntimeKnowledgeSearchResult",
+            "RuntimeKnowledgeSearchPage",
+            "InMemoryPgVectorStore",
+            "InMemoryQdrantVectorStore",
+            "summarize_vector_search",
+            "ContentDraft",
+            "IntegrationConnector",
+            "ManualDistributionRecord",
+        ],
+        "traceability": [
+            "EvidenceLink",
+            "TraceabilityBundle",
+            "build_traceability_bundle",
+        ],
+        "persistence": [
+            "build_repository_from_env",
+            "build_object_store_from_env",
+            "build_runtime_diagnostics",
+            "RuntimeComponentDiagnostic",
+            "RuntimeDiagnostics",
+            "connect_postgres_from_env",
+            "close_repository_connection",
+            "runtime_database_diagnostic",
+            "runtime_object_store_diagnostic",
+            "runtime_auth_diagnostic",
+            "RuntimePersistenceError",
+            "PostgresEvidenceRepository",
+            "save_project_bootstrap",
+            "archive_project_brand_logo",
+            "RuntimeAuditEvent",
+            "RuntimeAuditEventPage",
+            "RuntimeAuditEventExport",
+            "RuntimeProject",
+            "RuntimeProjectPage",
+            "RuntimeProjectLifecycleEvent",
+            "RuntimeProjectLifecycleEventExport",
+            "RuntimeProjectLifecycleEventPage",
+            "RuntimeProjectCreateRequest",
+            "RuntimeProjectActionInput",
+            "RuntimeProjectActionRequest",
+            "RuntimeProjectUpdateInput",
+            "RuntimeProjectUpdateRequest",
+            "RuntimeProjectMember",
+            "RuntimeProjectMemberPage",
+            "RuntimeProjectMemberInput",
+            "ProjectMemberRequest",
+            "RuntimeProjectMemberDeleteInput",
+            "ProjectMemberDeleteRequest",
+            "RuntimeProjectMemberInvitation",
+            "RuntimeProjectMemberInvitationPage",
+            "RuntimeProjectMemberInvitationInput",
+            "RuntimeProjectMemberInvitationActionInput",
+            "RuntimeProjectMemberInvitationAcceptInput",
+            "RuntimeProjectMemberInvitationEmailInput",
+            "ProjectMemberInvitationRequest",
+            "ProjectMemberInvitationActionRequest",
+            "ProjectMemberInvitationAcceptRequest",
+            "ProjectMemberInvitationEmailRequest",
+            "RuntimeProjectBrandKit",
+            "RuntimeProjectBrandKitInput",
+            "RuntimeProjectBrandAsset",
+            "RuntimeProjectBrandAssetPage",
+            "RuntimeProjectBrandAssetInput",
+            "RuntimeProjectBrandAssetScanInput",
+            "RuntimeProjectBrandAssetVersion",
+            "RuntimeProjectBrandAssetVersionPage",
+            "RuntimeProjectBrandAssetActivationInput",
+            "RuntimeProjectBrandLogoUpload",
+            "ProjectBrandKitRequest",
+            "ProjectBrandAssetRequest",
+            "ProjectBrandAssetScanRequest",
+            "ProjectBrandAssetActivationRequest",
+            "RuntimeScoreWeightConfig",
+            "RuntimeScoreWeightConfigInput",
+            "ScoreWeightConfigRequest",
+            "ScoreFormulaDefinition",
+            "RuntimeHumanReviewRecord",
+            "RuntimeHumanReviewPage",
+            "RuntimeHumanReviewQueueItem",
+            "RuntimeHumanReviewQueuePage",
+            "RuntimeHumanReviewInput",
+            "HumanReviewRequest",
+            "RuntimePromptPage",
+            "RuntimePromptImportHistoryItem",
+            "RuntimePromptImportHistoryPage",
+            "RuntimePromptImportInput",
+            "RuntimePromptImportResult",
+            "RuntimePromptImportRequest",
+            "RuntimePromptUpdateInput",
+            "RuntimePromptUpdateRequest",
+            "ManualBackfillCsvImportRequest",
+            "EntityAliasInput",
+            "RuntimeEntityAlias",
+            "RuntimeEntityAliasBatchConfirmResult",
+            "RuntimeEntityAliasCandidate",
+            "RuntimeEntityAliasCandidatePage",
+            "RuntimeEntityAliasCandidateReview",
+            "RuntimeEntityAliasCandidateReviewPage",
+            "RuntimeEntityAliasCandidateAssignmentQueueStats",
+            "RuntimeEntityAliasAssignmentWorkbench",
+            "RuntimeEntityAliasAssignmentWorkloadSummary",
+            "RuntimeEntityAliasAssignmentDispatchPlan",
+            "RuntimeEntityAliasAssignmentDispatchApplyResult",
+            "RuntimeEntityAliasAssignmentEscalationResult",
+            "RuntimeEntityAliasAssignmentReassignmentResult",
+            "RuntimeEntityAliasCandidateBatchReviewResult",
+            "EntityAliasCandidateReviewInput",
+            "EntityAliasCandidateAssignmentActionInput",
+            "EntityAliasCandidateAssignmentBatchActionInput",
+            "EntityAliasCandidateAssignmentInput",
+            "EntityAliasCandidateAssignmentReassignmentInput",
+            "EntityAliasAssignmentDispatchPlanInput",
+            "EntityAliasAssignmentDispatchApplyInput",
+            "RuntimeEntityAliasAssignmentBatchActionResult",
+            "EntityAliasCandidateReviewRequest",
+            "EntityAliasCandidateBatchReviewRequest",
+            "EntityAliasCandidateAssignmentActionRequest",
+            "EntityAliasCandidateAssignmentBatchActionRequest",
+            "EntityAliasCandidateAssignmentRequest",
+            "EntityAliasCandidateAssignmentReassignmentRequest",
+            "EntityAliasAssignmentDispatchApplyRequest",
+            "EntityAliasAssignmentNotificationRequest",
+            "RuntimeEntityAliasPage",
+            "RuntimeEvidenceRun",
+            "RuntimeEvidencePage",
+            "RuntimeEvidenceExport",
+            "RuntimeCollectionRun",
+            "RuntimeCollectionRunPage",
+            "RuntimeFidelityCheck",
+            "RuntimeFidelityCheckPage",
+            "RuntimeFidelityTrend",
+            "RuntimeFidelityTrendPoint",
+            "RuntimeFidelityCheckRequest",
+            "ManualBackfillInput",
+            "RuntimeSavedView",
+            "RuntimeSavedViewPage",
+            "RuntimeSavedViewInput",
+            "RuntimeScoreSnapshot",
+            "RuntimeScoreSnapshotPage",
+            "RuntimeCitationGraph",
+            "RuntimeCitationGraphPage",
+            "RuntimeReportArtifact",
+            "RuntimeReportExport",
+            "RuntimeReportExportPage",
+            "RuntimeReportExportJob",
+            "RuntimeReportExportJobPage",
+            "RuntimeReportExportJobQueueStats",
+            "RuntimeReportExportJobInput",
+            "RuntimeReportExportJobStatusInput",
+            "RuntimeReportExportJobRequest",
+            "RuntimeReportExportJobStatusRequest",
+            "RuntimeNotification",
+            "RuntimeNotificationDelivery",
+            "RuntimeNotificationDeliveryPage",
+            "RuntimeNotificationDeliveryStatusInput",
+            "RuntimeNotificationEmailFeedback",
+            "RuntimeNotificationEmailFeedbackInput",
+            "RuntimeNotificationEmailFeedbackPage",
+            "RuntimeNotificationEmailFeedbackRequest",
+            "RuntimeNotificationEmailFeedbackWebhookRequest",
+            "RuntimeNotificationEmailFeedbackProjectSuppressionInput",
+            "RuntimeNotificationEmailFeedbackProjectSuppressionRequest",
+            "RuntimeNotificationEmailFeedbackSuppressionInput",
+            "RuntimeNotificationEmailFeedbackSuppressionRequest",
+            "RuntimeNotificationEmailProviderFeedbackAdapter",
+            "RuntimeNotificationEmailSuppression",
+            "RuntimeNotificationEmailSuppressionInput",
+            "RuntimeNotificationEmailSuppressionPage",
+            "RuntimeNotificationEmailSuppressionRequest",
+            "RuntimeNotificationEmailPreferenceStatus",
+            "RuntimeNotificationEmailPreferenceResubscribeInput",
+            "RuntimeNotificationEmailPreferenceResubscribeRequest",
+            "RuntimeNotificationEmailPreferenceUnsubscribeInput",
+            "RuntimeNotificationEmailPreferenceUnsubscribeRequest",
+            "RuntimeNotificationPage",
+            "RuntimeNotificationSubscription",
+            "RuntimeNotificationSubscriptionInput",
+            "RuntimeNotificationSubscriptionPage",
+            "RuntimeNotificationSubscriptionRequest",
+            "RuntimeNotificationStatusInput",
+            "RuntimeNotificationStatusRequest",
+            "RuntimeReportManagementInput",
+            "RuntimeReportManagementEventRequest",
+            "RuntimeActionPlan",
+            "RuntimeActionPlanPage",
+            "RuntimeAlertItem",
+            "RuntimeAlertPage",
+            "RuntimeAlertEvent",
+            "RuntimeAlertEventInput",
+            "RuntimeAlertEventRequest",
+            "RuntimeAlertNotificationRequest",
+            "RuntimeAlertNotificationResult",
+            "RuntimeContentDraft",
+            "RuntimeContentEngine",
+            "RuntimeContentEnginePage",
+            "RuntimeKnowledgeFactImportInput",
+            "RuntimeKnowledgeFactImportRequest",
+            "RuntimeKnowledgeSearchResult",
+            "RuntimeKnowledgeSearchPage",
+            "RuntimeTraceabilityDetail",
+            "ProjectBootstrap",
+            "PromptQuestion",
+            "RawEvidenceRecord",
+            "CollectionFailureRecord",
+            "VisibilityScoreSnapshot",
+            "ReportExport",
+            "TraceabilityBundle",
+            "/v1/projects/runtime",
+            "/v1/projects/runtime/au/dtc-ecommerce",
+            "POST /v1/projects/runtime/action",
+            "PATCH /v1/projects/runtime",
+            "/v1/projects/runtime/lifecycle-events",
+            "/v1/projects/runtime/lifecycle-events/export.csv",
+            "/v1/audit-events/runtime",
+            "/v1/audit-events/runtime/export.csv",
+            "/v1/project-members/runtime",
+            "/v1/project-members/runtime/export.csv",
+            "/v1/project-member-invitations/runtime",
+            "/v1/project-member-invitations/runtime/export.csv",
+            "/v1/project-member-invitations/runtime/action",
+            "/v1/project-member-invitations/runtime/email",
+            "/v1/project-member-invitations/runtime/accept",
+            "/v1/entity-aliases/runtime",
+            "/v1/entity-aliases/runtime/candidates",
+            "/v1/entity-aliases/runtime/candidates/reviews",
+            "/v1/entity-aliases/runtime/candidates/assignment-stats",
+            "/v1/entity-aliases/runtime/candidates/assignment-workbench",
+            "/v1/entity-aliases/runtime/candidates/assignment-workload",
+            "/v1/entity-aliases/runtime/candidates/assignment-dispatch-plan",
+            "/v1/entity-aliases/runtime/candidates/assignment-dispatch-apply",
+            "/v1/entity-aliases/runtime/candidates/assignment-notifications",
+            "/v1/entity-aliases/runtime/candidates/assignment-escalations",
+            "/v1/entity-aliases/runtime/candidates/assignment-reassignments",
+            "/v1/entity-aliases/runtime/candidates/review",
+            "/v1/entity-aliases/runtime/candidates/review-batch",
+            "/v1/entity-aliases/runtime/candidates/assign",
+            "/v1/entity-aliases/runtime/candidates/assignment-action",
+            "/v1/entity-aliases/runtime/candidates/assignment-actions",
+            "/v1/entity-aliases/runtime/confirm",
+            "/v1/entity-aliases/runtime/confirm-batch",
+            "/v1/prompts/runtime",
+            "PATCH /v1/prompts/runtime",
+            "/v1/prompts/runtime/export.csv",
+            "/v1/prompts/runtime/imports",
+            "/v1/prompts/runtime/import.csv",
+            "/v1/prompts/runtime/import.file",
+            "/v1/evidence-runs/runtime",
+            "/v1/collection-runs/runtime",
+            "/v1/collection-runs/runtime/export.csv",
+            "/v1/fidelity-checks/runtime",
+            "/v1/fidelity-checks/runtime/export.csv",
+            "/v1/fidelity-checks/runtime/trend",
+            "/v1/evidence-runs/runtime/export.csv",
+            "/v1/evidence-runs/runtime/manual-backfill",
+            "/v1/evidence-runs/runtime/manual-backfill/import.csv",
+            "/v1/runtime-saved-views",
+            "/v1/project-brand-kits/runtime",
+            "/v1/project-brand-kits/runtime/logo",
+            "/v1/project-brand-kits/runtime/assets",
+            "/v1/project-brand-kits/runtime/assets/activate",
+            "/v1/project-brand-assets/runtime",
+            "/v1/score-weight-configs/runtime",
+            "/v1/score-formulas/runtime",
+            "/v1/human-reviews/runtime",
+            "/v1/human-reviews/runtime/export.csv",
+            "/v1/human-reviews/runtime/queue",
+            "worker --persist",
+            "worker --persist-analysis",
+            "/v1/visibility-scores/runtime",
+            "/v1/visibility-scores/runtime/export.csv",
+            "/v1/citation-graphs/runtime",
+            "/v1/citation-graphs/runtime/export.csv",
+            "/v1/reports/runtime",
+            "/v1/reports/runtime/management-events/export.csv",
+            "/v1/report-export-jobs/runtime",
+            "/v1/report-export-jobs/runtime/export.csv",
+            "/v1/report-export-jobs/runtime/stats",
+            "/v1/report-export-jobs/runtime/{job_id}/status",
+            "/v1/runtime-notifications",
+            "/v1/runtime-notifications/export.csv",
+            "/v1/runtime-notification-subscriptions",
+            "/v1/runtime-notification-subscriptions/export.csv",
+            "/v1/runtime-notification-deliveries",
+            "/v1/runtime-notification-deliveries/export.csv",
+            "/v1/runtime-notification-email-feedback-events",
+            "/v1/runtime-notification-email-feedback-webhooks/geo",
+            "/v1/runtime-notification-email-feedback-webhooks/{provider}",
+            "/v1/runtime-notification-email-feedback-events/{feedback_event_id}/suppress-recipient",
+            "/v1/runtime-notification-email-feedback-events/{feedback_event_id}/project-suppression",
+            "/v1/runtime-notification-email-suppressions",
+            "/v1/runtime-notification-email-suppressions/export.csv",
+            "/v1/runtime-notification-email-preferences/status",
+            "/v1/runtime-notification-email-preferences/resubscribe",
+            "/v1/runtime-notification-email-preferences/unsubscribe",
+            "/v1/runtime-notification-deliveries/{delivery_id}/email-feedback",
+            "/v1/runtime-notifications/{notification_id}/status",
+            "/v1/reports/runtime/{report_export_id}/management-events",
+            "/v1/reports/runtime/{report_export_id}/artifact",
+            "/v1/reports/runtime/{report_export_id}/artifact/signed-url",
+            "/v1/action-plans/runtime",
+            "/v1/action-plans/runtime/export.csv",
+            "/v1/runtime-alerts",
+            "/v1/runtime-alerts/export.csv",
+            "/v1/runtime-alerts/notifications",
+            "/v1/runtime-alerts/{alert_id}/events",
+            "/v1/content-engines/runtime",
+            "/v1/content-engines/runtime/export.csv",
+            "/v1/content-drafts/runtime/{content_draft_id}/review",
+            "/v1/manual-distribution-records/runtime/{distribution_record_id}/backfill",
+            "/v1/knowledge-facts/runtime/search",
+            "/v1/knowledge-facts/runtime/import.csv",
+            "/v1/knowledge/pipeline-runs/runtime",
+            "/v1/knowledge/pipeline-runs/runtime/{pipeline_run_id}/start",
+            "/v1/knowledge/pipeline-runs/runtime/{pipeline_run_id}/stages",
+            "/v1/knowledge/pipeline-runs/runtime/{pipeline_run_id}/jobs",
+            "/v1/knowledge/pipeline-stages/runtime/{stage_id}/retry",
+            "/v1/knowledge/import-jobs/runtime",
+            "/v1/knowledge/import-jobs/runtime/{import_job_id}/enqueue",
+            "/v1/knowledge/import-jobs/runtime/{import_job_id}/files",
+            "/v1/knowledge/import-jobs/runtime/{import_job_id}/urls",
+            "/v1/knowledge/source-assets/runtime",
+            "/v1/knowledge/source-assets/runtime/{source_asset_id}/download",
+            "/v1/knowledge/parser-runs/runtime",
+            "/v1/knowledge/blocks/runtime",
+            "/v1/knowledge/tables/runtime",
+            "/v1/knowledge/ocr-spans/runtime",
+            "/v1/knowledge/page-snapshots/runtime",
+            "/v1/knowledge/chunks/runtime",
+            "/v1/knowledge/chunks/runtime/{chunk_id}/trace",
+            "/v1/knowledge/chunks/runtime/{chunk_id}/disable",
+            "/v1/knowledge/quality-findings/runtime",
+            "/v1/knowledge/quality-gate-runs/runtime",
+            "/v1/knowledge/trace-refs/runtime",
+            "/v1/knowledge/fact-extraction-jobs/runtime",
+            "/v1/knowledge/fact-candidates/runtime",
+            "/v1/knowledge/fact-candidates/runtime/{fact_candidate_id}/review",
+            "/v1/knowledge/approved-facts/runtime",
+            "/v1/knowledge/prompt-generation-templates/runtime",
+            "/v1/knowledge/prompt-generation-jobs/runtime",
+            "/v1/knowledge/prompt-candidates/runtime",
+            "/v1/knowledge/prompt-candidates/runtime/import-approved",
+            "/v1/knowledge/content-generation-jobs/runtime",
+            "/v1/knowledge/content-drafts/runtime",
+            "/v1/knowledge/content-drafts/runtime/{content_draft_id}/review",
+            "/v1/knowledge/content-drafts/runtime/{content_draft_id}/export.md",
+            "/v1/traceability/runtime",
+            "/v1/traceability/runtime/export.csv",
+            "/ready",
+            "/v1/runtime-diagnostics",
+            "/v1/launch-status/au",
+            "/v1/launch-remediation-plan/au",
+            "/v1/p0a-environment-checklist/au",
+            "/v1/p0a-execution-checklist/au",
+            "/v1/p0a-credential-request/au",
+            "/v1/p0a-credential-fulfillment/au",
+            "/v1/p0a-credential-clearance/au",
+            "/v1/p0a-real-batch-request/au",
+            "/v1/p0a-real-batch-fulfillment/au",
+            "/v1/p0a-real-batch-clearance/au",
+            "/v1/p0b-google-execution-checklist/au",
+            "/v1/p0b-google-environment-request/au",
+            "/v1/p0b-google-environment-fulfillment/au",
+            "/v1/p0b-google-environment-clearance/au",
+            "/v1/p0b-google-manual-backfill-request/au",
+            "/v1/p0b-google-manual-backfill-fulfillment/au",
+            "/v1/p0b-google-manual-backfill-clearance/au",
+            "/v1/p0b-google-phase-execution-request/au",
+            "/v1/p0b-google-phase-execution-fulfillment/au",
+            "/v1/p0b-google-phase-execution-clearance/au",
+            "/v1/au-broader-platform-registry",
+            "/v1/au-retest-scheduler-plan",
+            "/v1/au-retest-execution-status",
+            "/v1/handoff-dossier/au",
+            "/v1/customer-handoff-readiness/au",
+            "/v1/customer-handoff-clearance/au",
+            "/v1/customer-handoff-package/au",
+            "/v1/next-work-item/au",
+            "/v1/delivery-progress/au",
+            "/v1/external-dependency-handoff/au",
+            "/v1/external-dependency-clearance/au",
+            "/metrics",
+        ],
+    }

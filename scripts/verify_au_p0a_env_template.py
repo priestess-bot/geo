@@ -22,12 +22,12 @@ RECOMMENDED_KEYS = (
     "OBJECT_STORE_REGION",
 )
 OUTPUT_PATH_KEYS = (
-    "GENO_AU_P0A_ENV_OUTPUT_PATH",
-    "GENO_AU_P0A_RUNBOOK_OUTPUT_PATH",
-    "GENO_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH",
-    "GENO_AU_P0A_READINESS_OUTPUT_PATH",
-    "GENO_AU_P0A_PACKAGE_OUTPUT_PATH",
-    "GENO_AU_P0A_STATUS_OUTPUT_PATH",
+    "GEO_AU_P0A_ENV_OUTPUT_PATH",
+    "GEO_AU_P0A_RUNBOOK_OUTPUT_PATH",
+    "GEO_AU_P0A_RUNBOOK_EXECUTION_OUTPUT_PATH",
+    "GEO_AU_P0A_READINESS_OUTPUT_PATH",
+    "GEO_AU_P0A_PACKAGE_OUTPUT_PATH",
+    "GEO_AU_P0A_STATUS_OUTPUT_PATH",
 )
 LOCAL_DATABASE_HOSTS = {"localhost", "127.0.0.1", "postgres"}
 LOCAL_OBJECT_STORE_HOSTS = {"localhost", "127.0.0.1", "minio"}
@@ -273,7 +273,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "path",
         nargs="?",
-        default=os.environ.get("GENO_AU_P0A_ENV_TEMPLATE_PATH", DEFAULT_TEMPLATE_PATH),
+        default=os.environ.get("GEO_AU_P0A_ENV_TEMPLATE_PATH", DEFAULT_TEMPLATE_PATH),
         help="Path to the committed AU P0a env template.",
     )
     parser.add_argument("--generated-at", default=None, help="Override generated_at timestamp for deterministic tests.")

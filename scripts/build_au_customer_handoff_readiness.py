@@ -138,8 +138,8 @@ def build_au_customer_handoff_readiness(
     _append_unique(hard_gate_commands, "make verify-au-customer-handoff-readiness")
     _append_unique(
         hard_gate_commands,
-        "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_customer_handoff_readiness.py "
-        "${GENO_AU_CUSTOMER_HANDOFF_READINESS_OUTPUT_PATH:-docs/runtime_preflight/au-customer-handoff-readiness-latest.json} "
+        "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_customer_handoff_readiness.py "
+        "${GEO_AU_CUSTOMER_HANDOFF_READINESS_OUTPUT_PATH:-docs/runtime_preflight/au-customer-handoff-readiness-latest.json} "
         "--require-customer-ready",
     )
     payload: dict[str, Any] = {
@@ -207,12 +207,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build an AU customer handoff readiness JSON")
     parser.add_argument(
         "--handoff-dossier-path",
-        default=os.environ.get("GENO_AU_HANDOFF_DOSSIER_OUTPUT_PATH", DEFAULT_HANDOFF_DOSSIER_PATH),
+        default=os.environ.get("GEO_AU_HANDOFF_DOSSIER_OUTPUT_PATH", DEFAULT_HANDOFF_DOSSIER_PATH),
         help="Path to the AU handoff dossier JSON.",
     )
     parser.add_argument(
         "--output-path",
-        default=os.environ.get("GENO_AU_CUSTOMER_HANDOFF_READINESS_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_CUSTOMER_HANDOFF_READINESS_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to write the AU customer handoff readiness JSON.",
     )
     parser.add_argument("--generated-at", default=None, help="Override generated_at timestamp for deterministic tests.")

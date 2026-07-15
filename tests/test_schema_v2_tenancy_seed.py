@@ -6,12 +6,12 @@ from dataclasses import replace
 from typing import Any
 from uuid import uuid4
 
-from geno_core.bootstrap import build_project_bootstrap
-from geno_core.repositories.schema_v2_tenancy_repository import (
+from geo_core.bootstrap import build_project_bootstrap
+from geo_core.repositories.schema_v2_tenancy_repository import (
     PrivilegedSchemaV2TenancyRepository,
     SchemaV2TenancySeedConflictError,
 )
-from geno_core.schema_v2.tenancy_seed import (
+from geo_core.schema_v2.tenancy_seed import (
     CanonicalJsonObject,
     SchemaV2TenancySeed,
     SchemaV2TenancySeedValidationError,

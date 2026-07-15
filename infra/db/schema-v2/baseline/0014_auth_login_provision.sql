@@ -122,7 +122,7 @@ CREATE UNIQUE INDEX auth_login_successful_credential_version_idx
     ON auth_login_provision_receipts (login_kind, credential_version)
     WHERE outcome = 'succeeded';
 
-CREATE FUNCTION geno_v2_guard_auth_login_provision_attempt()
+CREATE FUNCTION geo_v2_guard_auth_login_provision_attempt()
 RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = pg_catalog
@@ -162,7 +162,7 @@ BEGIN
 END;
 $guard_auth_login_attempt$;
 
-CREATE FUNCTION geno_v2_reject_auth_login_receipt_mutation()
+CREATE FUNCTION geo_v2_reject_auth_login_receipt_mutation()
 RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = pg_catalog
@@ -173,7 +173,7 @@ BEGIN
 END;
 $reject_auth_login_receipt_mutation$;
 
-CREATE FUNCTION geno_v2_validate_auth_login_provision_lineage()
+CREATE FUNCTION geo_v2_validate_auth_login_provision_lineage()
 RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = pg_catalog
@@ -227,7 +227,7 @@ BEGIN
 END;
 $validate_auth_login_provision_lineage$;
 
-CREATE FUNCTION geno_v2_audit_auth_login_provision_receipt()
+CREATE FUNCTION geo_v2_audit_auth_login_provision_receipt()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -257,7 +257,7 @@ BEGIN
 END;
 $audit_auth_login_provision_receipt$;
 
-CREATE FUNCTION geno_v2_auth_login_startup_ready(p_credential_version text)
+CREATE FUNCTION geo_v2_auth_login_startup_ready(p_credential_version text)
 RETURNS boolean
 LANGUAGE sql
 STABLE
@@ -268,8 +268,8 @@ AS $auth_login_startup_ready$
         SELECT
             p_credential_version IS NOT NULL
             AND p_credential_version ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$'
-            AND session_user = 'geno_v2_api_login'
-            AND current_setting('role', true) = 'geno_v2_runtime'
+            AND session_user = 'geo_v2_api_login'
+            AND current_setting('role', true) = 'geo_v2_runtime'
             AND attempt.status = 'succeeded'
             AND attempt.operation IN ('provision', 'rotate')
             AND receipt.outcome = 'succeeded'
@@ -279,7 +279,7 @@ AS $auth_login_startup_ready$
             AND EXISTS (
             SELECT 1
             FROM pg_roles AS role_row
-            WHERE role_row.rolname = 'geno_v2_api_login'
+            WHERE role_row.rolname = 'geo_v2_api_login'
               AND role_row.rolcanlogin
             )
         FROM public.auth_login_provision_attempts AS attempt
@@ -291,50 +291,50 @@ AS $auth_login_startup_ready$
     ), false);
 $auth_login_startup_ready$;
 
-ALTER FUNCTION geno_v2_guard_auth_login_provision_attempt()
-    OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_reject_auth_login_receipt_mutation()
-    OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_validate_auth_login_provision_lineage()
-    OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_audit_auth_login_provision_receipt()
-    OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_auth_login_startup_ready(text)
-    OWNER TO geno_v2_authz_owner;
+ALTER FUNCTION geo_v2_guard_auth_login_provision_attempt()
+    OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_reject_auth_login_receipt_mutation()
+    OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_validate_auth_login_provision_lineage()
+    OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_audit_auth_login_provision_receipt()
+    OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_auth_login_startup_ready(text)
+    OWNER TO geo_v2_authz_owner;
 
 REVOKE ALL ON auth_login_provision_attempts,
-    auth_login_provision_receipts FROM PUBLIC, geno_v2_runtime;
-REVOKE ALL ON FUNCTION geno_v2_guard_auth_login_provision_attempt() FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_v2_reject_auth_login_receipt_mutation() FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_v2_validate_auth_login_provision_lineage() FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_v2_audit_auth_login_provision_receipt() FROM PUBLIC;
-REVOKE ALL ON FUNCTION geno_v2_auth_login_startup_ready(text) FROM PUBLIC;
+    auth_login_provision_receipts FROM PUBLIC, geo_v2_runtime;
+REVOKE ALL ON FUNCTION geo_v2_guard_auth_login_provision_attempt() FROM PUBLIC;
+REVOKE ALL ON FUNCTION geo_v2_reject_auth_login_receipt_mutation() FROM PUBLIC;
+REVOKE ALL ON FUNCTION geo_v2_validate_auth_login_provision_lineage() FROM PUBLIC;
+REVOKE ALL ON FUNCTION geo_v2_audit_auth_login_provision_receipt() FROM PUBLIC;
+REVOKE ALL ON FUNCTION geo_v2_auth_login_startup_ready(text) FROM PUBLIC;
 GRANT SELECT ON auth_login_provision_attempts,
-    auth_login_provision_receipts TO geno_v2_authz_owner;
-GRANT EXECUTE ON FUNCTION geno_v2_auth_login_startup_ready(text)
-    TO geno_v2_runtime;
+    auth_login_provision_receipts TO geo_v2_authz_owner;
+GRANT EXECUTE ON FUNCTION geo_v2_auth_login_startup_ready(text)
+    TO geo_v2_runtime;
 
 CREATE TRIGGER auth_login_attempts_guard_state
 BEFORE INSERT OR UPDATE OR DELETE ON auth_login_provision_attempts
-FOR EACH ROW EXECUTE FUNCTION geno_v2_guard_auth_login_provision_attempt();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_guard_auth_login_provision_attempt();
 
 CREATE TRIGGER auth_login_receipts_reject_mutation
 BEFORE UPDATE OR DELETE ON auth_login_provision_receipts
-FOR EACH ROW EXECUTE FUNCTION geno_v2_reject_auth_login_receipt_mutation();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_reject_auth_login_receipt_mutation();
 
 CREATE CONSTRAINT TRIGGER auth_login_attempts_validate_lineage
 AFTER INSERT OR UPDATE ON auth_login_provision_attempts
 DEFERRABLE INITIALLY DEFERRED
-FOR EACH ROW EXECUTE FUNCTION geno_v2_validate_auth_login_provision_lineage();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_validate_auth_login_provision_lineage();
 
 CREATE CONSTRAINT TRIGGER auth_login_receipts_validate_lineage
 AFTER INSERT ON auth_login_provision_receipts
 DEFERRABLE INITIALLY DEFERRED
-FOR EACH ROW EXECUTE FUNCTION geno_v2_validate_auth_login_provision_lineage();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_validate_auth_login_provision_lineage();
 
 CREATE TRIGGER auth_login_receipts_write_audit
 AFTER INSERT ON auth_login_provision_receipts
-FOR EACH ROW EXECUTE FUNCTION geno_v2_audit_auth_login_provision_receipt();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_audit_auth_login_provision_receipt();
 
 ALTER TABLE auth_login_provision_attempts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE auth_login_provision_attempts FORCE ROW LEVEL SECURITY;
@@ -356,22 +356,22 @@ INSERT INTO audit_events (
     'sealed_until_explicit_external_provisioning'
 );
 
-ALTER ROLE geno_v2_api_login
+ALTER ROLE geo_v2_api_login
     NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT
     NOREPLICATION NOBYPASSRLS PASSWORD NULL;
-ALTER ROLE geno_v2_api_login RESET ALL;
-ALTER ROLE geno_v2_api_login IN DATABASE geno_v2 RESET ALL;
+ALTER ROLE geo_v2_api_login RESET ALL;
+ALTER ROLE geo_v2_api_login IN DATABASE geo_v2 RESET ALL;
 
 DO $auth_login_provision_catalog_assert$
 DECLARE
     authz_owner_oid oid;
     runtime_oid oid;
     api_login_oid oid;
-    startup_function_oid oid := 'geno_v2_auth_login_startup_ready(text)'::regprocedure;
+    startup_function_oid oid := 'geo_v2_auth_login_startup_ready(text)'::regprocedure;
 BEGIN
-    SELECT oid INTO authz_owner_oid FROM pg_roles WHERE rolname = 'geno_v2_authz_owner';
-    SELECT oid INTO runtime_oid FROM pg_roles WHERE rolname = 'geno_v2_runtime';
-    SELECT oid INTO api_login_oid FROM pg_roles WHERE rolname = 'geno_v2_api_login';
+    SELECT oid INTO authz_owner_oid FROM pg_roles WHERE rolname = 'geo_v2_authz_owner';
+    SELECT oid INTO runtime_oid FROM pg_roles WHERE rolname = 'geo_v2_runtime';
+    SELECT oid INTO api_login_oid FROM pg_roles WHERE rolname = 'geo_v2_api_login';
 
     IF authz_owner_oid IS NULL OR runtime_oid IS NULL OR api_login_oid IS NULL
        OR EXISTS (

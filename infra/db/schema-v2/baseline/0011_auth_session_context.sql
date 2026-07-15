@@ -4,19 +4,19 @@
 DO $api_role$
 BEGIN
     IF NOT EXISTS (
-        SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'geno_v2_api_login'
+        SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'geo_v2_api_login'
     ) THEN
-        CREATE ROLE geno_v2_api_login
+        CREATE ROLE geo_v2_api_login
             NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT
             NOREPLICATION NOBYPASSRLS;
     ELSE
-        ALTER ROLE geno_v2_api_login
+        ALTER ROLE geo_v2_api_login
             NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT
             NOREPLICATION NOBYPASSRLS;
     END IF;
-    ALTER ROLE geno_v2_api_login PASSWORD NULL;
-    ALTER ROLE geno_v2_api_login RESET ALL;
-    ALTER ROLE geno_v2_api_login IN DATABASE geno_v2 RESET ALL;
+    ALTER ROLE geo_v2_api_login PASSWORD NULL;
+    ALTER ROLE geo_v2_api_login RESET ALL;
+    ALTER ROLE geo_v2_api_login IN DATABASE geo_v2 RESET ALL;
 
     IF EXISTS (
         SELECT 1
@@ -24,21 +24,21 @@ BEGIN
         WHERE (
                 membership.roleid = (
                     SELECT oid FROM pg_catalog.pg_roles
-                    WHERE rolname = 'geno_v2_api_login'
+                    WHERE rolname = 'geo_v2_api_login'
                 )
                 OR membership.member = (
                     SELECT oid FROM pg_catalog.pg_roles
-                    WHERE rolname = 'geno_v2_api_login'
+                    WHERE rolname = 'geo_v2_api_login'
                 )
               )
           AND NOT (
                 membership.roleid = (
                     SELECT oid FROM pg_catalog.pg_roles
-                    WHERE rolname = 'geno_v2_runtime'
+                    WHERE rolname = 'geo_v2_runtime'
                 )
                 AND membership.member = (
                     SELECT oid FROM pg_catalog.pg_roles
-                    WHERE rolname = 'geno_v2_api_login'
+                    WHERE rolname = 'geo_v2_api_login'
                 )
                 AND membership.inherit_option = false
                 AND membership.set_option = true
@@ -50,11 +50,11 @@ BEGIN
 END
 $api_role$;
 
-GRANT geno_v2_runtime TO geno_v2_api_login
+GRANT geo_v2_runtime TO geo_v2_api_login
     WITH ADMIN FALSE, INHERIT FALSE, SET TRUE;
 
-REVOKE CONNECT, TEMPORARY ON DATABASE geno_v2 FROM PUBLIC;
-GRANT CONNECT ON DATABASE geno_v2 TO geno_v2_api_login;
+REVOKE CONNECT, TEMPORARY ON DATABASE geo_v2 FROM PUBLIC;
+GRANT CONNECT ON DATABASE geo_v2 TO geo_v2_api_login;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES FROM PUBLIC;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON SEQUENCES FROM PUBLIC;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
@@ -370,7 +370,7 @@ CREATE INDEX auth_preflight_expiry_idx ON auth_preflight_rate_limits (expires_at
 CREATE INDEX runtime_reauth_pending_idx
     ON runtime_session_reauth_queue (created_at) WHERE status = 'pending';
 
-CREATE FUNCTION geno_v2_jsonb_text_set(value jsonb)
+CREATE FUNCTION geo_v2_jsonb_text_set(value jsonb)
 RETURNS text[]
 LANGUAGE sql
 IMMUTABLE
@@ -381,7 +381,7 @@ AS $jsonb_text_set$
     FROM jsonb_array_elements_text(value) AS array_item(item);
 $jsonb_text_set$;
 
-CREATE FUNCTION geno_v2_validate_auth_redemption_lineage()
+CREATE FUNCTION geo_v2_validate_auth_redemption_lineage()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -511,7 +511,7 @@ BEGIN
 END;
 $validate_auth_lineage$;
 
-CREATE FUNCTION geno_v2_validate_runtime_session_snapshot()
+CREATE FUNCTION geo_v2_validate_runtime_session_snapshot()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -568,17 +568,17 @@ BEGIN
             USING ERRCODE = '23514';
     END IF;
 
-    declared_project_ids := public.geno_v2_jsonb_text_set(NEW.project_ids);
+    declared_project_ids := public.geo_v2_jsonb_text_set(NEW.project_ids);
     IF cardinality(declared_project_ids) = 0
        OR cardinality(declared_project_ids) <> jsonb_array_length(NEW.project_ids) THEN
         RAISE EXCEPTION 'runtime session project_ids must be nonempty and unique'
             USING ERRCODE = '23514';
     END IF;
-    declared_tenant_roles := public.geno_v2_jsonb_text_set(NEW.tenant_roles);
+    declared_tenant_roles := public.geo_v2_jsonb_text_set(NEW.tenant_roles);
     IF cardinality(declared_tenant_roles) <> jsonb_array_length(NEW.tenant_roles)
-       OR cardinality(public.geno_v2_jsonb_text_set(NEW.roles))
+       OR cardinality(public.geo_v2_jsonb_text_set(NEW.roles))
             <> jsonb_array_length(NEW.roles)
-       OR cardinality(public.geno_v2_jsonb_text_set(NEW.permissions))
+       OR cardinality(public.geo_v2_jsonb_text_set(NEW.permissions))
             <> jsonb_array_length(NEW.permissions) THEN
         RAISE EXCEPTION 'runtime session flat snapshots must be unique'
             USING ERRCODE = '23514';
@@ -671,12 +671,12 @@ BEGIN
                 USING ERRCODE = '23514';
         END IF;
 
-        declared_roles := public.geno_v2_jsonb_text_set(scope_item->'roles');
-        declared_permissions := public.geno_v2_jsonb_text_set(scope_item->'permissions');
-        declared_capabilities := public.geno_v2_jsonb_text_set(
+        declared_roles := public.geo_v2_jsonb_text_set(scope_item->'roles');
+        declared_permissions := public.geo_v2_jsonb_text_set(scope_item->'permissions');
+        declared_capabilities := public.geo_v2_jsonb_text_set(
             scope_item->'portal_capabilities'
         );
-        declared_sources := public.geno_v2_jsonb_text_set(scope_item->'scope_sources');
+        declared_sources := public.geo_v2_jsonb_text_set(scope_item->'scope_sources');
         IF cardinality(declared_roles) = 0
            OR cardinality(declared_roles) <> jsonb_array_length(scope_item->'roles')
            OR cardinality(declared_permissions)
@@ -715,7 +715,7 @@ BEGIN
         INTO actual_permissions
         FROM unnest(actual_roles) AS role_item(role_name)
         CROSS JOIN LATERAL unnest(
-            public.geno_v2_permissions_for_role(role_item.role_name)
+            public.geo_v2_permissions_for_role(role_item.role_name)
         ) AS permission_item(permission);
         IF declared_permissions <> actual_permissions THEN
             RAISE EXCEPTION 'runtime session project permissions are not canonical'
@@ -769,8 +769,8 @@ BEGIN
     INTO aggregate_roles FROM unnest(declared_tenant_roles || aggregate_roles) AS item(value);
     SELECT coalesce(array_agg(DISTINCT value ORDER BY value), ARRAY[]::text[])
     INTO aggregate_permissions FROM unnest(aggregate_permissions) AS item(value);
-    IF public.geno_v2_jsonb_text_set(NEW.roles) <> aggregate_roles
-       OR public.geno_v2_jsonb_text_set(NEW.permissions) <> aggregate_permissions THEN
+    IF public.geo_v2_jsonb_text_set(NEW.roles) <> aggregate_roles
+       OR public.geo_v2_jsonb_text_set(NEW.permissions) <> aggregate_permissions THEN
         RAISE EXCEPTION 'runtime session flat role or permission projection is invalid'
             USING ERRCODE = '23514';
     END IF;
@@ -781,7 +781,7 @@ EXCEPTION WHEN invalid_text_representation THEN
 END;
 $validate_session$;
 
-CREATE FUNCTION geno_v2_guard_runtime_session_update()
+CREATE FUNCTION geo_v2_guard_runtime_session_update()
 RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = pg_catalog
@@ -817,7 +817,7 @@ BEGIN
 END;
 $guard_session_update$;
 
-CREATE FUNCTION geno_v2_resolve_session_context()
+CREATE FUNCTION geo_v2_resolve_session_context()
 RETURNS TABLE (
     session_id uuid,
     actor_id text,
@@ -867,7 +867,7 @@ BEGIN
 END;
 $resolve_session$;
 
-CREATE FUNCTION geno_v2_session_can_access_tenant(row_tenant_id uuid)
+CREATE FUNCTION geo_v2_session_can_access_tenant(row_tenant_id uuid)
 RETURNS boolean
 LANGUAGE sql
 STABLE
@@ -875,12 +875,12 @@ SECURITY DEFINER
 SET search_path = pg_catalog
 AS $tenant_access$
     SELECT EXISTS (
-        SELECT 1 FROM public.geno_v2_resolve_session_context() AS context
+        SELECT 1 FROM public.geo_v2_resolve_session_context() AS context
         WHERE context.tenant_id = row_tenant_id
     );
 $tenant_access$;
 
-CREATE FUNCTION geno_v2_session_has_tenant_permission(
+CREATE FUNCTION geo_v2_session_has_tenant_permission(
     row_tenant_id uuid,
     required_permission text
 )
@@ -892,14 +892,14 @@ SET search_path = pg_catalog
 AS $tenant_permission$
     SELECT EXISTS (
         SELECT 1
-        FROM public.geno_v2_resolve_session_context() AS context
+        FROM public.geo_v2_resolve_session_context() AS context
         CROSS JOIN LATERAL jsonb_array_elements_text(context.tenant_roles) AS role_item(role_name)
         WHERE context.tenant_id = row_tenant_id
-          AND public.geno_v2_role_has_permission(role_item.role_name, required_permission)
+          AND public.geo_v2_role_has_permission(role_item.role_name, required_permission)
     );
 $tenant_permission$;
 
-CREATE FUNCTION geno_v2_session_has_project_permission(
+CREATE FUNCTION geo_v2_session_has_project_permission(
     row_project_id uuid,
     row_tenant_id uuid,
     required_permission text
@@ -912,7 +912,7 @@ SET search_path = pg_catalog
 AS $project_permission$
     SELECT EXISTS (
         SELECT 1
-        FROM public.geno_v2_resolve_session_context() AS context
+        FROM public.geo_v2_resolve_session_context() AS context
         CROSS JOIN LATERAL jsonb_array_elements(context.project_scopes) AS scope(value)
         CROSS JOIN LATERAL jsonb_array_elements_text(scope.value->'permissions')
             AS permission_item(permission_name)
@@ -922,7 +922,7 @@ AS $project_permission$
     );
 $project_permission$;
 
-CREATE FUNCTION geno_v2_session_can_read_profile(
+CREATE FUNCTION geo_v2_session_can_read_profile(
     row_market_code text,
     row_industry_code text DEFAULT NULL
 )
@@ -934,7 +934,7 @@ SET search_path = pg_catalog
 AS $profile_access$
     SELECT EXISTS (
         SELECT 1
-        FROM public.geno_v2_resolve_session_context() AS context
+        FROM public.geo_v2_resolve_session_context() AS context
         CROSS JOIN LATERAL jsonb_array_elements_text(context.project_ids) AS scoped(project_id)
         JOIN public.projects AS project_row
           ON project_row.id = scoped.project_id::uuid
@@ -945,7 +945,7 @@ AS $profile_access$
     );
 $profile_access$;
 
-CREATE FUNCTION geno_v2_session_can_read_tenant_member(
+CREATE FUNCTION geo_v2_session_can_read_tenant_member(
     row_tenant_id uuid,
     row_user_id text
 )
@@ -956,11 +956,11 @@ SECURITY DEFINER
 SET search_path = pg_catalog
 AS $tenant_member_access$
     SELECT EXISTS (
-        SELECT 1 FROM public.geno_v2_resolve_session_context() AS context
+        SELECT 1 FROM public.geo_v2_resolve_session_context() AS context
         WHERE context.tenant_id = row_tenant_id
           AND (
               context.actor_id = row_user_id
-              OR public.geno_v2_session_has_tenant_permission(
+              OR public.geo_v2_session_has_tenant_permission(
                   row_tenant_id,
                   'member.manage'
               )
@@ -968,7 +968,7 @@ AS $tenant_member_access$
     );
 $tenant_member_access$;
 
-CREATE FUNCTION geno_v2_session_can_read_project_member(
+CREATE FUNCTION geo_v2_session_can_read_project_member(
     row_project_id uuid,
     row_tenant_id uuid,
     row_user_id text
@@ -981,7 +981,7 @@ SET search_path = pg_catalog
 AS $project_member_access$
     SELECT EXISTS (
         SELECT 1
-        FROM public.geno_v2_resolve_session_context() AS context
+        FROM public.geo_v2_resolve_session_context() AS context
         CROSS JOIN LATERAL jsonb_array_elements(context.project_scopes) AS scope(value)
         WHERE context.tenant_id = row_tenant_id
           AND scope.value->>'project_id' = row_project_id::text
@@ -992,7 +992,7 @@ AS $project_member_access$
     );
 $project_member_access$;
 
-CREATE FUNCTION geno_v2_session_can_read_audit(
+CREATE FUNCTION geo_v2_session_can_read_audit(
     row_tenant_id uuid,
     row_project_id uuid,
     row_actor_id text
@@ -1004,16 +1004,16 @@ SECURITY DEFINER
 SET search_path = pg_catalog
 AS $audit_access$
     SELECT EXISTS (
-        SELECT 1 FROM public.geno_v2_resolve_session_context() AS context
+        SELECT 1 FROM public.geo_v2_resolve_session_context() AS context
         WHERE (row_project_id IS NULL AND row_tenant_id IS NULL
                 AND context.actor_id = row_actor_id)
            OR (row_project_id IS NULL AND row_tenant_id = context.tenant_id
-                AND public.geno_v2_session_has_tenant_permission(
+                AND public.geo_v2_session_has_tenant_permission(
                     row_tenant_id,
                     'audit.read'
                 ))
            OR (row_project_id IS NOT NULL
-                AND public.geno_v2_session_has_project_permission(
+                AND public.geo_v2_session_has_project_permission(
                     row_project_id,
                     row_tenant_id,
                     'audit.read'
@@ -1021,49 +1021,49 @@ AS $audit_access$
     );
 $audit_access$;
 
-ALTER FUNCTION geno_v2_jsonb_text_set(jsonb) OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_validate_auth_redemption_lineage() OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_validate_runtime_session_snapshot() OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_guard_runtime_session_update() OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_resolve_session_context() OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_session_can_access_tenant(uuid) OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_session_has_tenant_permission(uuid, text)
-    OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_session_has_project_permission(uuid, uuid, text)
-    OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_session_can_read_profile(text, text) OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_session_can_read_tenant_member(uuid, text)
-    OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_session_can_read_project_member(uuid, uuid, text)
-    OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_session_can_read_audit(uuid, uuid, text)
-    OWNER TO geno_v2_authz_owner;
+ALTER FUNCTION geo_v2_jsonb_text_set(jsonb) OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_validate_auth_redemption_lineage() OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_validate_runtime_session_snapshot() OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_guard_runtime_session_update() OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_resolve_session_context() OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_session_can_access_tenant(uuid) OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_session_has_tenant_permission(uuid, text)
+    OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_session_has_project_permission(uuid, uuid, text)
+    OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_session_can_read_profile(text, text) OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_session_can_read_tenant_member(uuid, text)
+    OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_session_can_read_project_member(uuid, uuid, text)
+    OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_session_can_read_audit(uuid, uuid, text)
+    OWNER TO geo_v2_authz_owner;
 
 GRANT SELECT ON project_member_invitations, auth_invitation_redemption_attempts,
-    runtime_sessions, project_members TO geno_v2_authz_owner;
+    runtime_sessions, project_members TO geo_v2_authz_owner;
 
 CREATE CONSTRAINT TRIGGER project_invitations_validate_auth_lineage
 AFTER INSERT OR UPDATE ON project_member_invitations
 DEFERRABLE INITIALLY DEFERRED
-FOR EACH ROW EXECUTE FUNCTION geno_v2_validate_auth_redemption_lineage();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_validate_auth_redemption_lineage();
 
 CREATE CONSTRAINT TRIGGER auth_attempts_validate_auth_lineage
 AFTER INSERT OR UPDATE ON auth_invitation_redemption_attempts
 DEFERRABLE INITIALLY DEFERRED
-FOR EACH ROW EXECUTE FUNCTION geno_v2_validate_auth_redemption_lineage();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_validate_auth_redemption_lineage();
 
 CREATE CONSTRAINT TRIGGER runtime_sessions_validate_auth_lineage
 AFTER INSERT OR UPDATE ON runtime_sessions
 DEFERRABLE INITIALLY DEFERRED
-FOR EACH ROW EXECUTE FUNCTION geno_v2_validate_auth_redemption_lineage();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_validate_auth_redemption_lineage();
 
 CREATE TRIGGER runtime_sessions_validate_snapshot
 BEFORE INSERT ON runtime_sessions
-FOR EACH ROW EXECUTE FUNCTION geno_v2_validate_runtime_session_snapshot();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_validate_runtime_session_snapshot();
 
 CREATE TRIGGER runtime_sessions_guard_update
 BEFORE UPDATE ON runtime_sessions
-FOR EACH ROW EXECUTE FUNCTION geno_v2_guard_runtime_session_update();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_guard_runtime_session_update();
 
 ALTER TABLE project_member_invitations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE project_member_invitations FORCE ROW LEVEL SECURITY;
@@ -1079,55 +1079,55 @@ ALTER TABLE auth_runtime_write_controls ENABLE ROW LEVEL SECURITY;
 ALTER TABLE auth_runtime_write_controls FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY market_profiles_session_select ON market_profiles
-FOR SELECT TO geno_v2_runtime
-USING (geno_v2_session_can_read_profile(market_code, NULL));
+FOR SELECT TO geo_v2_runtime
+USING (geo_v2_session_can_read_profile(market_code, NULL));
 
 CREATE POLICY industry_profiles_session_select ON industry_profiles
-FOR SELECT TO geno_v2_runtime
-USING (geno_v2_session_can_read_profile(market_code, industry_code));
+FOR SELECT TO geo_v2_runtime
+USING (geo_v2_session_can_read_profile(market_code, industry_code));
 
 CREATE POLICY tenants_session_select ON tenants
-FOR SELECT TO geno_v2_runtime
-USING (geno_v2_session_can_access_tenant(id));
+FOR SELECT TO geo_v2_runtime
+USING (geo_v2_session_can_access_tenant(id));
 
 CREATE POLICY projects_session_select ON projects
-FOR SELECT TO geno_v2_runtime
-USING (geno_v2_session_has_project_permission(id, tenant_id, 'project.read'));
+FOR SELECT TO geo_v2_runtime
+USING (geo_v2_session_has_project_permission(id, tenant_id, 'project.read'));
 
 CREATE POLICY tenant_members_session_select ON tenant_members
-FOR SELECT TO geno_v2_runtime
-USING (geno_v2_session_can_read_tenant_member(tenant_id, user_id));
+FOR SELECT TO geo_v2_runtime
+USING (geo_v2_session_can_read_tenant_member(tenant_id, user_id));
 
 CREATE POLICY project_members_session_select ON project_members
-FOR SELECT TO geno_v2_runtime
-USING (geno_v2_session_can_read_project_member(project_id, tenant_id, user_id));
+FOR SELECT TO geo_v2_runtime
+USING (geo_v2_session_can_read_project_member(project_id, tenant_id, user_id));
 
 CREATE POLICY audit_events_session_select ON audit_events
-FOR SELECT TO geno_v2_runtime
-USING (geno_v2_session_can_read_audit(tenant_id, project_id, actor_id));
+FOR SELECT TO geo_v2_runtime
+USING (geo_v2_session_can_read_audit(tenant_id, project_id, actor_id));
 
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC;
 REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC;
 
-GRANT USAGE ON SCHEMA public TO geno_v2_runtime;
+GRANT USAGE ON SCHEMA public TO geo_v2_runtime;
 GRANT SELECT ON market_profiles, industry_profiles, tenants, projects,
-    tenant_members, project_members, audit_events TO geno_v2_runtime;
-GRANT EXECUTE ON FUNCTION geno_v2_resolve_session_context() TO geno_v2_runtime;
-GRANT EXECUTE ON FUNCTION geno_v2_session_can_access_tenant(uuid) TO geno_v2_runtime;
-GRANT EXECUTE ON FUNCTION geno_v2_session_has_tenant_permission(uuid, text)
-    TO geno_v2_runtime;
-GRANT EXECUTE ON FUNCTION geno_v2_session_has_project_permission(uuid, uuid, text)
-    TO geno_v2_runtime;
-GRANT EXECUTE ON FUNCTION geno_v2_session_can_read_profile(text, text)
-    TO geno_v2_runtime;
-GRANT EXECUTE ON FUNCTION geno_v2_session_can_read_tenant_member(uuid, text)
-    TO geno_v2_runtime;
-GRANT EXECUTE ON FUNCTION geno_v2_session_can_read_project_member(uuid, uuid, text)
-    TO geno_v2_runtime;
-GRANT EXECUTE ON FUNCTION geno_v2_session_can_read_audit(uuid, uuid, text)
-    TO geno_v2_runtime;
+    tenant_members, project_members, audit_events TO geo_v2_runtime;
+GRANT EXECUTE ON FUNCTION geo_v2_resolve_session_context() TO geo_v2_runtime;
+GRANT EXECUTE ON FUNCTION geo_v2_session_can_access_tenant(uuid) TO geo_v2_runtime;
+GRANT EXECUTE ON FUNCTION geo_v2_session_has_tenant_permission(uuid, text)
+    TO geo_v2_runtime;
+GRANT EXECUTE ON FUNCTION geo_v2_session_has_project_permission(uuid, uuid, text)
+    TO geo_v2_runtime;
+GRANT EXECUTE ON FUNCTION geo_v2_session_can_read_profile(text, text)
+    TO geo_v2_runtime;
+GRANT EXECUTE ON FUNCTION geo_v2_session_can_read_tenant_member(uuid, text)
+    TO geo_v2_runtime;
+GRANT EXECUTE ON FUNCTION geo_v2_session_can_read_project_member(uuid, uuid, text)
+    TO geo_v2_runtime;
+GRANT EXECUTE ON FUNCTION geo_v2_session_can_read_audit(uuid, uuid, text)
+    TO geo_v2_runtime;
 
-COMMENT ON FUNCTION geno_v2_resolve_session_context() IS
+COMMENT ON FUNCTION geo_v2_resolve_session_context() IS
     'Returns a safe read-only session projection; session_token_hash is never returned.';
 COMMENT ON TABLE auth_runtime_write_controls IS
     'Auth writes remain disabled until the 0012 sensitive command boundary is installed.';

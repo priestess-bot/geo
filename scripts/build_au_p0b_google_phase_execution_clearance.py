@@ -658,9 +658,9 @@ def build_au_p0b_google_phase_execution_clearance(
                 str(fulfillment_summary.get("request_strict_gate_command") or ""),
                 str(fulfillment_summary.get("scoring_strict_gate_command") or ""),
                 str(fulfillment_summary.get("strict_gate_command") or ""),
-                "PYTHONPATH=packages/geno_core:apps/api python3 "
+                "PYTHONPATH=packages/geo_core:apps/api python3 "
                 "scripts/verify_au_p0b_google_phase_execution_clearance.py "
-                "${GENO_AU_P0B_GOOGLE_PHASE_EXECUTION_CLEARANCE_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-phase-execution-clearance-latest.json} "
+                "${GEO_AU_P0B_GOOGLE_PHASE_EXECUTION_CLEARANCE_OUTPUT_PATH:-docs/runtime_preflight/au-p0b-google-phase-execution-clearance-latest.json} "
                 "--require-cleared",
             ]
         ),
@@ -699,7 +699,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--phase-execution-request-path",
         default=os.environ.get(
-            "GENO_AU_P0B_GOOGLE_PHASE_EXECUTION_REQUEST_OUTPUT_PATH",
+            "GEO_AU_P0B_GOOGLE_PHASE_EXECUTION_REQUEST_OUTPUT_PATH",
             DEFAULT_PHASE_EXECUTION_REQUEST_PATH,
         ),
         help="Path to the AU P0b Google phase execution request packet JSON.",
@@ -707,7 +707,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--p0b-google-execution-checklist-path",
         default=os.environ.get(
-            "GENO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH",
+            "GEO_AU_P0B_GOOGLE_EXECUTION_CHECKLIST_OUTPUT_PATH",
             DEFAULT_P0B_GOOGLE_EXECUTION_CHECKLIST_PATH,
         ),
         help="Path to the AU P0b Google execution checklist JSON.",
@@ -715,7 +715,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--phase-execution-fulfillment-path",
         default=os.environ.get(
-            "GENO_AU_P0B_GOOGLE_PHASE_EXECUTION_FULFILLMENT_OUTPUT_PATH",
+            "GEO_AU_P0B_GOOGLE_PHASE_EXECUTION_FULFILLMENT_OUTPUT_PATH",
             DEFAULT_PHASE_EXECUTION_FULFILLMENT_PATH,
         ),
         help="Path to the AU P0b Google phase execution fulfillment JSON.",
@@ -723,14 +723,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--external-dependency-clearance-path",
         default=os.environ.get(
-            "GENO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH",
+            "GEO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH",
             DEFAULT_EXTERNAL_DEPENDENCY_CLEARANCE_PATH,
         ),
         help="Path to the AU external dependency clearance JSON.",
     )
     parser.add_argument(
         "--output-path",
-        default=os.environ.get("GENO_AU_P0B_GOOGLE_PHASE_EXECUTION_CLEARANCE_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_P0B_GOOGLE_PHASE_EXECUTION_CLEARANCE_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to write the AU P0b Google phase execution clearance JSON.",
     )
     parser.add_argument("--generated-at", default=None, help="Override generated_at timestamp for deterministic tests.")

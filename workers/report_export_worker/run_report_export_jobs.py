@@ -7,10 +7,10 @@ from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol
 
-from geno_core.models import RuntimeReportExportJobStatusInput
-from geno_core.object_store import S3CompatibleObjectStore, StoredObject, archive_runtime_report_artifact
-from geno_core.repository import PostgresEvidenceRepository
-from geno_core.runtime import (
+from geo_core.models import RuntimeReportExportJobStatusInput
+from geo_core.object_store import S3CompatibleObjectStore, StoredObject, archive_runtime_report_artifact
+from geo_core.repository import PostgresEvidenceRepository
+from geo_core.runtime import (
     build_object_store_from_env,
     build_repository_from_env,
     close_repository_connection,
@@ -227,7 +227,7 @@ def _next_attempt_at(*, attempt_count: int, max_attempts: int, retry_backoff_sec
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Process queued GENO runtime report export jobs")
+    parser = argparse.ArgumentParser(description="Process queued GEO runtime report export jobs")
     parser.add_argument("--max-jobs", type=int, default=1, help="Maximum queued jobs to process before exiting.")
     parser.add_argument("--worker-id", default=WORKER_ID, help="Actor id used in report export job audit events.")
     parser.add_argument("--max-attempts", type=int, default=3, help="Dead-letter a job after this many claimed attempts.")

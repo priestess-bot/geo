@@ -1163,62 +1163,62 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build an AU delivery progress JSON")
     parser.add_argument(
         "--launch-status-path",
-        default=os.environ.get("GENO_AU_LAUNCH_STATUS_OUTPUT_PATH", DEFAULT_LAUNCH_STATUS_PATH),
+        default=os.environ.get("GEO_AU_LAUNCH_STATUS_OUTPUT_PATH", DEFAULT_LAUNCH_STATUS_PATH),
         help="Path to the AU launch status JSON.",
     )
     parser.add_argument(
         "--handoff-dossier-path",
-        default=os.environ.get("GENO_AU_HANDOFF_DOSSIER_OUTPUT_PATH", DEFAULT_HANDOFF_DOSSIER_PATH),
+        default=os.environ.get("GEO_AU_HANDOFF_DOSSIER_OUTPUT_PATH", DEFAULT_HANDOFF_DOSSIER_PATH),
         help="Path to the AU handoff dossier JSON.",
     )
     parser.add_argument(
         "--customer-handoff-readiness-path",
         default=os.environ.get(
-            "GENO_AU_CUSTOMER_HANDOFF_READINESS_OUTPUT_PATH",
+            "GEO_AU_CUSTOMER_HANDOFF_READINESS_OUTPUT_PATH",
             DEFAULT_CUSTOMER_HANDOFF_READINESS_PATH,
         ),
         help="Path to the AU customer handoff readiness JSON.",
     )
     parser.add_argument(
         "--next-work-item-path",
-        default=os.environ.get("GENO_AU_NEXT_WORK_ITEM_OUTPUT_PATH", DEFAULT_NEXT_WORK_ITEM_PATH),
+        default=os.environ.get("GEO_AU_NEXT_WORK_ITEM_OUTPUT_PATH", DEFAULT_NEXT_WORK_ITEM_PATH),
         help="Path to the AU next work item JSON.",
     )
     parser.add_argument(
         "--external-dependency-handoff-path",
-        default=os.environ.get("GENO_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH", DEFAULT_EXTERNAL_DEPENDENCY_HANDOFF_PATH),
+        default=os.environ.get("GEO_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH", DEFAULT_EXTERNAL_DEPENDENCY_HANDOFF_PATH),
         help="Path to the AU external dependency handoff JSON.",
     )
     parser.add_argument(
         "--external-dependency-clearance-path",
         default=os.environ.get(
-            "GENO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH",
+            "GEO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH",
             DEFAULT_EXTERNAL_DEPENDENCY_CLEARANCE_PATH,
         ),
         help="Path to the AU external dependency clearance JSON.",
     )
     parser.add_argument(
         "--p0a-credential-clearance-path",
-        default=os.environ.get("GENO_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH", DEFAULT_P0A_CREDENTIAL_CLEARANCE_PATH),
+        default=os.environ.get("GEO_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH", DEFAULT_P0A_CREDENTIAL_CLEARANCE_PATH),
         help="Path to the AU P0a credential clearance JSON.",
     )
     parser.add_argument(
         "--p0a-credential-update-receipt-path",
         default=os.environ.get(
-            "GENO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH",
+            "GEO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH",
             DEFAULT_P0A_CREDENTIAL_UPDATE_RECEIPT_PATH,
         ),
         help="Path to the AU P0a credential update receipt JSON.",
     )
     parser.add_argument(
         "--p0a-real-batch-clearance-path",
-        default=os.environ.get("GENO_AU_P0A_REAL_BATCH_CLEARANCE_OUTPUT_PATH", DEFAULT_P0A_REAL_BATCH_CLEARANCE_PATH),
+        default=os.environ.get("GEO_AU_P0A_REAL_BATCH_CLEARANCE_OUTPUT_PATH", DEFAULT_P0A_REAL_BATCH_CLEARANCE_PATH),
         help="Path to the AU P0a real batch clearance JSON.",
     )
     parser.add_argument(
         "--p0b-google-environment-clearance-path",
         default=os.environ.get(
-            "GENO_AU_P0B_GOOGLE_ENVIRONMENT_CLEARANCE_OUTPUT_PATH",
+            "GEO_AU_P0B_GOOGLE_ENVIRONMENT_CLEARANCE_OUTPUT_PATH",
             DEFAULT_P0B_GOOGLE_ENVIRONMENT_CLEARANCE_PATH,
         ),
         help="Path to the AU P0b Google environment clearance JSON.",
@@ -1226,7 +1226,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--p0b-google-manual-backfill-clearance-path",
         default=os.environ.get(
-            "GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_CLEARANCE_OUTPUT_PATH",
+            "GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_CLEARANCE_OUTPUT_PATH",
             DEFAULT_P0B_GOOGLE_MANUAL_BACKFILL_CLEARANCE_PATH,
         ),
         help="Path to the AU P0b Google manual backfill clearance JSON.",
@@ -1234,14 +1234,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--p0b-google-phase-execution-clearance-path",
         default=os.environ.get(
-            "GENO_AU_P0B_GOOGLE_PHASE_EXECUTION_CLEARANCE_OUTPUT_PATH",
+            "GEO_AU_P0B_GOOGLE_PHASE_EXECUTION_CLEARANCE_OUTPUT_PATH",
             DEFAULT_P0B_GOOGLE_PHASE_EXECUTION_CLEARANCE_PATH,
         ),
         help="Path to the AU P0b Google phase execution clearance JSON.",
     )
     parser.add_argument(
         "--output-path",
-        default=os.environ.get("GENO_AU_DELIVERY_PROGRESS_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_DELIVERY_PROGRESS_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to write the AU delivery progress JSON.",
     )
     parser.add_argument("--generated-at", default=None, help="Override generated_at timestamp for deterministic tests.")

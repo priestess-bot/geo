@@ -46,9 +46,9 @@ REQUIRED_FIELDS = (
 P0A_COMPLETION_CONTRACT_VERSION = "au_p0a_credential_request_completion_contract_v1"
 P0A_CREDENTIAL_UPDATE_RECEIPT_ENDPOINT = "GET /v1/p0a-credential-update-receipt/au"
 P0A_CREDENTIAL_UPDATE_RECEIPT_STRICT_GATE = (
-    "PYTHONPATH=packages/geno_core:apps/api python3 "
+    "PYTHONPATH=packages/geo_core:apps/api python3 "
     "scripts/verify_au_p0a_credential_update_receipt.py "
-    "${GENO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-update-receipt-latest.json} "
+    "${GEO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-update-receipt-latest.json} "
     "--require-complete"
 )
 P0A_POST_UPDATE_VALIDATION_COMMAND_COUNT = 13
@@ -538,7 +538,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "path",
         nargs="?",
-        default=os.environ.get("GENO_AU_NEXT_WORK_ITEM_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_NEXT_WORK_ITEM_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to the AU next work item packet JSON.",
     )
     parser.add_argument(

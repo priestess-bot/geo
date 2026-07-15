@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
-from geno_core.knowledge_pipeline import (
+from geo_core.knowledge_pipeline import (
     DEFAULT_EMBEDDING_DIMENSION,
     DEFAULT_QDRANT_COLLECTION,
     QdrantKnowledgeStore,

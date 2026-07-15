@@ -16,7 +16,7 @@ except ModuleNotFoundError:
     sys.modules["psycopg"] = psycopg
     sys.modules["psycopg.rows"] = rows
 
-from geno_core.geo_placement import GeoPlacementError, _normalize_claims, _normalize_evidence, _render_prompt
+from geo_core.geo_placement import GeoPlacementError, _normalize_claims, _normalize_evidence, _render_prompt
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -47,8 +47,8 @@ class GeoV3QualityContractsTest(unittest.TestCase):
             _normalize_claims([], evidence=evidence)
 
     def test_runtime_source_contains_prompt_claim_revision_and_no_publish_runner(self) -> None:
-        source = (ROOT / "packages/geno_core/geno_core/geo_placement.py").read_text(encoding="utf-8")
-        api = (ROOT / "apps/api/geno_api/main.py").read_text(encoding="utf-8")
+        source = (ROOT / "packages/geo_core/geo_core/geo_placement.py").read_text(encoding="utf-8")
+        api = (ROOT / "apps/api/geo_api/main.py").read_text(encoding="utf-8")
         runner = (ROOT / "scripts/run_geo_v3_full_qc.py").read_text(encoding="utf-8")
         self.assertIn('template_instruction=f"{rendered_system}', source)
         self.assertIn('output_schema=dict(prompt["output_schema"])', source)

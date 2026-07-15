@@ -392,13 +392,13 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build an AU P0b Google spike status report across local gates")
     parser.add_argument(
         "--runbook-path",
-        default=os.environ.get("GENO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH", DEFAULT_RUNBOOK_PATH),
+        default=os.environ.get("GEO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH", DEFAULT_RUNBOOK_PATH),
     )
     parser.add_argument(
         "--execution-path",
-        default=os.environ.get("GENO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH", DEFAULT_EXECUTION_PATH),
+        default=os.environ.get("GEO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH", DEFAULT_EXECUTION_PATH),
     )
-    parser.add_argument("--output-path", default=os.environ.get("GENO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH", DEFAULT_OUTPUT_PATH))
+    parser.add_argument("--output-path", default=os.environ.get("GEO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH", DEFAULT_OUTPUT_PATH))
     parser.add_argument("--generated-at", default=None, help="Override generated_at timestamp for deterministic tests.")
     return parser.parse_args()
 

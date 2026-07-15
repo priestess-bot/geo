@@ -30,7 +30,7 @@ def build_backup_smoke_report() -> dict[str, object]:
         _require("minio_volume", "minio_data:" in compose, "MinIO named volume is configured"),
         _require(
             "report_object_store",
-            "OBJECT_STORE_BUCKET: geno-reports" in compose,
+            "OBJECT_STORE_BUCKET: geo-reports" in compose,
             "Report/evidence bucket is wired",
         ),
         _require(

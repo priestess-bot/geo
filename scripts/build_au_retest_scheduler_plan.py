@@ -9,9 +9,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from geno_core.bootstrap import build_au_project_bootstrap
-from geno_core.collection import P0A_GEO_CITIES, P0A_SAMPLE_SIZE, build_p0a_collection_plan
-from geno_core.prompt_pack import PROMPT_VERSION_AU_DTC_V1
+from geo_core.bootstrap import build_au_project_bootstrap
+from geo_core.collection import P0A_GEO_CITIES, P0A_SAMPLE_SIZE, build_p0a_collection_plan
+from geo_core.prompt_pack import PROMPT_VERSION_AU_DTC_V1
 
 
 PLAN_VERSION = "au_retest_scheduler_plan_v1"
@@ -97,7 +97,7 @@ def build_au_retest_scheduler_plan(
         geo_cities=P0A_GEO_CITIES,
         sample_size=P0A_SAMPLE_SIZE,
     )
-    python_env = {"PYTHONPATH": "packages/geno_core:apps/api"}
+    python_env = {"PYTHONPATH": "packages/geo_core:apps/api"}
     planned_runs_per_window = collection_plan.planned_runs
     timeline: list[dict[str, Any]] = []
     for offset_day in offsets_days:
@@ -216,10 +216,10 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build the AU retest scheduler plan JSON.")
     parser.add_argument(
         "--output-path",
-        default=os.environ.get("GENO_AU_RETEST_SCHEDULER_PLAN_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_RETEST_SCHEDULER_PLAN_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to write the AU retest scheduler plan JSON.",
     )
-    parser.add_argument("--project-id", default=os.environ.get("GENO_AU_RETEST_PROJECT_ID", DEFAULT_PROJECT_ID))
+    parser.add_argument("--project-id", default=os.environ.get("GEO_AU_RETEST_PROJECT_ID", DEFAULT_PROJECT_ID))
     parser.add_argument("--generated-at", default=None)
     return parser.parse_args()
 

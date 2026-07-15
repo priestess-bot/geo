@@ -20,18 +20,18 @@
 ```text
 infra/db/migrations/up/0030_auth_session_scope_v2.sql
 infra/db/migrations/down/0030_auth_session_scope_v2.down.sql
-packages/geno_core/geno_core/auth.py                         # 新增
-packages/geno_core/geno_core/auth_delivery.py                # 新增
-packages/geno_core/geno_core/rbac.py
-packages/geno_core/geno_core/models.py                       # 仅 auth/session DTO
-packages/geno_core/geno_core/repository.py                   # 仅 Member/Invitation 持久化
-packages/geno_core/geno_core/runtime_project_access_repository.py
-packages/geno_core/geno_core/bootstrap.py                    # 仅 auth capability/scope
-apps/api/geno_api/auth_contracts.py                          # 新增
-apps/api/geno_api/auth_routes.py                             # 新增
-apps/api/geno_api/auth_context.py
-apps/api/geno_api/runtime_access_routes.py                   # 仅 surface project projection
-apps/api/geno_api/main.py                                    # 仅 router 注册/删除旧重复 auth route
+packages/geo_core/geo_core/auth.py                         # 新增
+packages/geo_core/geo_core/auth_delivery.py                # 新增
+packages/geo_core/geo_core/rbac.py
+packages/geo_core/geo_core/models.py                       # 仅 auth/session DTO
+packages/geo_core/geo_core/repository.py                   # 仅 Member/Invitation 持久化
+packages/geo_core/geo_core/runtime_project_access_repository.py
+packages/geo_core/geo_core/bootstrap.py                    # 仅 auth capability/scope
+apps/api/geo_api/auth_contracts.py                          # 新增
+apps/api/geo_api/auth_routes.py                             # 新增
+apps/api/geo_api/auth_context.py
+apps/api/geo_api/runtime_access_routes.py                   # 仅 surface project projection
+apps/api/geo_api/main.py                                    # 仅 router 注册/删除旧重复 auth route
 scripts/run_auth_session_v2_e2e.py                           # 新增
 scripts/cleanup_auth_redemption_attempts.py                  # 按需新增
 tests/test_auth_session_v2_contracts.py                      # 新增
@@ -74,7 +74,7 @@ UNIQUE(invitation_id, requested_surface, idempotency_key_hash)
 
 11. `runtime_sessions` 增加 `scope_version/authz_policy_version/tenant_roles/project_scopes/redemption_attempt_id`。
 12. 无法可靠回填的 active v1 Session 直接 revoke，写入 `runtime_session_reauth_queue`。
-13. 建立 `geno_rls_authz_owner NOLOGIN BYPASSRLS` 和窄 SECURITY DEFINER helper：fixed empty/safe `search_path`、schema-qualified table、无 dynamic SQL、撤销 PUBLIC execute，只授 app role。helper 只读 Member/Grant 与 transaction-local actor/tenant GUC，不读 `projects`。
+13. 建立 `geo_rls_authz_owner NOLOGIN BYPASSRLS` 和窄 SECURITY DEFINER helper：fixed empty/safe `search_path`、schema-qualified table、无 dynamic SQL、撤销 PUBLIC execute，只授 app role。helper 只读 Member/Grant 与 transaction-local actor/tenant GUC，不读 `projects`。
 14. project-owned RLS 收口为 active direct Member 或 active Grant + required permission。新表启用并 `FORCE RLS`。
 15. tenant role/policy/Project lifecycle 变更与 Grant 物化/撤销必须同事务。
 
@@ -86,7 +86,7 @@ Down/rollback 采用 fail closed：不删除已收紧的 additive FK/NOT NULL/Gr
 
 - `auth.py` 冻结 `auth_surface_policy_v1`。analyst 可进 Admin，viewer 只能 Customer。
 - Invitation 的有效 surface 是签发快照与当前 policy 的交集；policy 不得扩大旧邀请。
-- `auth_delivery.py` 使用独立 `GENO_AUTH_DELIVERY_MASTER_KEY/GENO_AUTH_DELIVERY_KEY_ID` 做认证加密，密文冻结完整 serialized Set-Cookie、attributes 和绝对 expiry。
+- `auth_delivery.py` 使用独立 `GEO_AUTH_DELIVERY_MASTER_KEY/GEO_AUTH_DELIVERY_KEY_ID` 做认证加密，密文冻结完整 serialized Set-Cookie、attributes 和绝对 expiry。
 - 默认 recovery TTL 10 分钟、max replay 5；确认/到期后擦除 ciphertext，仅保留 hash-only audit metadata。
 - key 轮换覆盖 TTL 内旧密文的解密窗口。
 
@@ -149,7 +149,7 @@ emit cookies after commit
 ## 6. 执行命令
 
 ```bash
-export PYTHONPATH="$PWD/packages/geno_core:$PWD/apps/api:$PWD"
+export PYTHONPATH="$PWD/packages/geo_core:$PWD/apps/api:$PWD"
 
 python3 -m pytest -q \
   tests/test_auth_session_v2_contracts.py \
@@ -162,13 +162,13 @@ python3 -m unittest \
   tests.test_core_contracts
 
 python3 -m ruff check \
-  packages/geno_core/geno_core/auth.py \
-  packages/geno_core/geno_core/auth_delivery.py \
-  packages/geno_core/geno_core/runtime_project_access_repository.py \
-  apps/api/geno_api/auth_contracts.py \
-  apps/api/geno_api/auth_routes.py
+  packages/geo_core/geo_core/auth.py \
+  packages/geo_core/geo_core/auth_delivery.py \
+  packages/geo_core/geo_core/runtime_project_access_repository.py \
+  apps/api/geo_api/auth_contracts.py \
+  apps/api/geo_api/auth_routes.py
 
-python3 -m compileall packages/geno_core/geno_core apps/api/geno_api scripts tests
+python3 -m compileall packages/geo_core/geo_core apps/api/geo_api scripts tests
 python3 scripts/run_auth_session_v2_e2e.py
 git diff --check
 ```

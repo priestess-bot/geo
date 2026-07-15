@@ -545,9 +545,9 @@ def build_au_p0a_real_batch_clearance(
                 "make verify-au-p0a-credential-clearance",
                 str(fulfillment_summary.get("strict_gate_command") or ""),
                 str(fulfillment_summary.get("design_partner_strict_gate_command") or ""),
-                "PYTHONPATH=packages/geno_core:apps/api python3 "
+                "PYTHONPATH=packages/geo_core:apps/api python3 "
                 "scripts/verify_au_p0a_real_batch_clearance.py "
-                "${GENO_AU_P0A_REAL_BATCH_CLEARANCE_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-real-batch-clearance-latest.json} "
+                "${GEO_AU_P0A_REAL_BATCH_CLEARANCE_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-real-batch-clearance-latest.json} "
                 "--require-cleared",
             ]
         ),
@@ -577,30 +577,30 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build an AU P0a real batch clearance JSON")
     parser.add_argument(
         "--real-batch-request-path",
-        default=os.environ.get("GENO_AU_P0A_REAL_BATCH_REQUEST_OUTPUT_PATH", DEFAULT_REAL_BATCH_REQUEST_PATH),
+        default=os.environ.get("GEO_AU_P0A_REAL_BATCH_REQUEST_OUTPUT_PATH", DEFAULT_REAL_BATCH_REQUEST_PATH),
         help="Path to the AU P0a real batch request packet JSON.",
     )
     parser.add_argument(
         "--p0a-execution-checklist-path",
-        default=os.environ.get("GENO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH", DEFAULT_P0A_EXECUTION_CHECKLIST_PATH),
+        default=os.environ.get("GEO_AU_P0A_EXECUTION_CHECKLIST_OUTPUT_PATH", DEFAULT_P0A_EXECUTION_CHECKLIST_PATH),
         help="Path to the AU P0a execution checklist JSON.",
     )
     parser.add_argument(
         "--real-batch-fulfillment-path",
-        default=os.environ.get("GENO_AU_P0A_REAL_BATCH_FULFILLMENT_OUTPUT_PATH", DEFAULT_REAL_BATCH_FULFILLMENT_PATH),
+        default=os.environ.get("GEO_AU_P0A_REAL_BATCH_FULFILLMENT_OUTPUT_PATH", DEFAULT_REAL_BATCH_FULFILLMENT_PATH),
         help="Path to the AU P0a real batch fulfillment JSON.",
     )
     parser.add_argument(
         "--external-dependency-clearance-path",
         default=os.environ.get(
-            "GENO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH",
+            "GEO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH",
             DEFAULT_EXTERNAL_DEPENDENCY_CLEARANCE_PATH,
         ),
         help="Path to the AU external dependency clearance JSON.",
     )
     parser.add_argument(
         "--output-path",
-        default=os.environ.get("GENO_AU_P0A_REAL_BATCH_CLEARANCE_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_P0A_REAL_BATCH_CLEARANCE_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to write the AU P0a real batch clearance JSON.",
     )
     parser.add_argument("--generated-at", default=None, help="Override generated_at timestamp for deterministic tests.")

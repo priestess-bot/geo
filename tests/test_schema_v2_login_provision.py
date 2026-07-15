@@ -95,14 +95,14 @@ class SchemaV2LoginSecretTest(unittest.TestCase):
         base = {
             "PGHOST": "localhost",
             "PGPORT": "5432",
-            "PGDATABASE": "geno_v2",
+            "PGDATABASE": "geo_v2",
             "PGUSER": "installer",
             "PGPASSWORD": "installer-secret",
         }
         for setting in (
-            "GENO_SCHEMA_V2_API_LOGIN_PASSWORD",
+            "GEO_SCHEMA_V2_API_LOGIN_PASSWORD",
             "SCHEMA_V2_API_LOGIN_PASSWORD",
-            "GENO_V2_API_LOGIN_PASSWORD",
+            "GEO_V2_API_LOGIN_PASSWORD",
             "DATABASE_URL",
             "SCHEMA_V2_DATABASE_URL",
             "PGSERVICE",
@@ -151,7 +151,7 @@ class SchemaV2LoginSecretTest(unittest.TestCase):
                     env={
                         "PGHOST": "localhost",
                         "PGPORT": "5432",
-                        "PGDATABASE": "geno_v2",
+                        "PGDATABASE": "geo_v2",
                         "PGUSER": "installer",
                         "PGPASSWORD": "installer-secret",
                     },

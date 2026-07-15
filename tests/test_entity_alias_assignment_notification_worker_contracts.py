@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from datetime import UTC, datetime
 
-from geno_core.models import RuntimeEntityAliasAssignmentNotificationResult, RuntimeProject, RuntimeProjectPage
+from geo_core.models import RuntimeEntityAliasAssignmentNotificationResult, RuntimeProject, RuntimeProjectPage
 from workers.notification_worker.run_entity_alias_assignment_notifications import (
     enqueue_entity_alias_assignment_notifications_for_projects,
 )

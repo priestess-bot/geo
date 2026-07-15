@@ -15,13 +15,13 @@ from typing import Any, Mapping, Sequence
 from uuid import UUID, uuid4
 
 
-DATABASE_NAME = "geno_v2"
-API_LOGIN_ROLE = "geno_v2_api_login"
-RUNTIME_ROLE = "geno_v2_runtime"
-WORKER_LOGIN_ROLE = "geno_v2_worker_login"
-WORKER_ROLE = "geno_v2_worker"
-INSTALL_LOCK_NAME = "geno:schema-v2:install"
-PROVISION_LOCK_NAME = "geno:schema-v2:auth-login-provision"
+DATABASE_NAME = "geo_v2"
+API_LOGIN_ROLE = "geo_v2_api_login"
+RUNTIME_ROLE = "geo_v2_runtime"
+WORKER_LOGIN_ROLE = "geo_v2_worker_login"
+WORKER_ROLE = "geo_v2_worker"
+INSTALL_LOCK_NAME = "geo:schema-v2:install"
+PROVISION_LOCK_NAME = "geo:schema-v2:auth-login-provision"
 REQUIRED_BASELINE_FILE = "baseline/0014_auth_login_provision.sql"
 WORKER_REQUIRED_BASELINE_FILE = "baseline/0021_worker_login_provision.sql"
 MAX_SECRET_BYTES = 4096
@@ -29,12 +29,12 @@ MIN_SECRET_CHARS = 32
 MAX_SECRET_CHARS = 1024
 VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 FORBIDDEN_API_SECRET_ENV = (
-    "GENO_SCHEMA_V2_API_LOGIN_PASSWORD",
+    "GEO_SCHEMA_V2_API_LOGIN_PASSWORD",
     "SCHEMA_V2_API_LOGIN_PASSWORD",
-    "GENO_V2_API_LOGIN_PASSWORD",
-    "GENO_SCHEMA_V2_WORKER_LOGIN_PASSWORD",
+    "GEO_V2_API_LOGIN_PASSWORD",
+    "GEO_SCHEMA_V2_WORKER_LOGIN_PASSWORD",
     "SCHEMA_V2_WORKER_LOGIN_PASSWORD",
-    "GENO_V2_WORKER_LOGIN_PASSWORD",
+    "GEO_V2_WORKER_LOGIN_PASSWORD",
 )
 FORBIDDEN_CONNECTION_ENV = (
     "DATABASE_URL",
@@ -60,37 +60,37 @@ SENSITIVE_TABLES = (
 )
 WORKER_EXECUTION_FUNCTION_SIGNATURES = frozenset(
     {
-        "public.geno_v2_claim_durable_job_dispatch(text, integer, uuid, uuid)",
-        "public.geno_v2_heartbeat_durable_job_dispatch(uuid, text, uuid, integer)",
-        "public.geno_v2_complete_durable_job_dispatch(uuid, text, uuid)",
-        "public.geno_v2_fail_durable_job_dispatch(uuid, text, uuid, text, text, boolean, integer)",
-        "public.geno_v2_claim_artifact_finalize(text, integer, uuid)",
-        "public.geno_v2_heartbeat_artifact_finalize(uuid, text, uuid, integer)",
-        "public.geno_v2_complete_artifact_finalize(uuid, text, uuid, text)",
-        "public.geno_v2_fail_artifact_finalize(uuid, text, uuid, text, text, boolean, integer)",
-        "public.geno_v2_claim_collection_job(text, integer, uuid)",
-        "public.geno_v2_heartbeat_collection_job(uuid, text, uuid, integer)",
-        "public.geno_v2_complete_collection_job(uuid, text, uuid, jsonb)",
-        "public.geno_v2_fail_collection_job(uuid, text, uuid, text, text, boolean, integer)",
-        "public.geno_v2_ack_collection_job_cancel(uuid, text, uuid)",
-        "public.geno_v2_claim_visibility_score_run(text, integer, uuid)",
-        "public.geno_v2_heartbeat_visibility_score_run(uuid, text, uuid, integer)",
-        "public.geno_v2_complete_visibility_score_run(uuid, text, uuid, jsonb)",
-        "public.geno_v2_fail_visibility_score_run(uuid, text, uuid, text, text, boolean, integer)",
-        "public.geno_v2_ack_visibility_score_run_cancel(uuid, text, uuid)",
-        "public.geno_v2_claim_retest_run(text, integer, uuid)",
-        "public.geno_v2_heartbeat_retest_run(uuid, text, uuid, integer)",
-        "public.geno_v2_complete_retest_run(uuid, text, uuid, uuid, jsonb)",
-        "public.geno_v2_fail_retest_run(uuid, text, uuid, text, text, boolean, integer)",
-        "public.geno_v2_ack_retest_run_cancel(uuid, text, uuid)",
-        "public.geno_v2_claim_knowledge_job(text, integer, uuid, text)",
-        "public.geno_v2_heartbeat_knowledge_job(uuid, text, uuid, integer)",
-        "public.geno_v2_begin_finalizing_knowledge_job(uuid, text, uuid, text, jsonb)",
-        "public.geno_v2_complete_knowledge_job(uuid, text, uuid)",
-        "public.geno_v2_fail_knowledge_job(uuid, text, uuid, text, text, boolean, integer)",
-        "public.geno_v2_ack_knowledge_job_cancel(uuid, text, uuid)",
-        "public.geno_v2_read_knowledge_job_input(uuid, text, uuid)",
-        "public.geno_v2_worker_login_startup_ready(text)",
+        "public.geo_v2_claim_durable_job_dispatch(text, integer, uuid, uuid)",
+        "public.geo_v2_heartbeat_durable_job_dispatch(uuid, text, uuid, integer)",
+        "public.geo_v2_complete_durable_job_dispatch(uuid, text, uuid)",
+        "public.geo_v2_fail_durable_job_dispatch(uuid, text, uuid, text, text, boolean, integer)",
+        "public.geo_v2_claim_artifact_finalize(text, integer, uuid)",
+        "public.geo_v2_heartbeat_artifact_finalize(uuid, text, uuid, integer)",
+        "public.geo_v2_complete_artifact_finalize(uuid, text, uuid, text)",
+        "public.geo_v2_fail_artifact_finalize(uuid, text, uuid, text, text, boolean, integer)",
+        "public.geo_v2_claim_collection_job(text, integer, uuid)",
+        "public.geo_v2_heartbeat_collection_job(uuid, text, uuid, integer)",
+        "public.geo_v2_complete_collection_job(uuid, text, uuid, jsonb)",
+        "public.geo_v2_fail_collection_job(uuid, text, uuid, text, text, boolean, integer)",
+        "public.geo_v2_ack_collection_job_cancel(uuid, text, uuid)",
+        "public.geo_v2_claim_visibility_score_run(text, integer, uuid)",
+        "public.geo_v2_heartbeat_visibility_score_run(uuid, text, uuid, integer)",
+        "public.geo_v2_complete_visibility_score_run(uuid, text, uuid, jsonb)",
+        "public.geo_v2_fail_visibility_score_run(uuid, text, uuid, text, text, boolean, integer)",
+        "public.geo_v2_ack_visibility_score_run_cancel(uuid, text, uuid)",
+        "public.geo_v2_claim_retest_run(text, integer, uuid)",
+        "public.geo_v2_heartbeat_retest_run(uuid, text, uuid, integer)",
+        "public.geo_v2_complete_retest_run(uuid, text, uuid, uuid, jsonb)",
+        "public.geo_v2_fail_retest_run(uuid, text, uuid, text, text, boolean, integer)",
+        "public.geo_v2_ack_retest_run_cancel(uuid, text, uuid)",
+        "public.geo_v2_claim_knowledge_job(text, integer, uuid, text)",
+        "public.geo_v2_heartbeat_knowledge_job(uuid, text, uuid, integer)",
+        "public.geo_v2_begin_finalizing_knowledge_job(uuid, text, uuid, text, jsonb)",
+        "public.geo_v2_complete_knowledge_job(uuid, text, uuid)",
+        "public.geo_v2_fail_knowledge_job(uuid, text, uuid, text, text, boolean, integer)",
+        "public.geo_v2_ack_knowledge_job_cancel(uuid, text, uuid)",
+        "public.geo_v2_read_knowledge_job_input(uuid, text, uuid)",
+        "public.geo_v2_worker_login_startup_ready(text)",
     }
 )
 
@@ -139,7 +139,7 @@ LOGIN_PROFILES = MappingProxyType({
         kind="api",
         login_role=API_LOGIN_ROLE,
         execution_role=RUNTIME_ROLE,
-        readiness_function="geno_v2_auth_login_startup_ready",
+        readiness_function="geo_v2_auth_login_startup_ready",
         required_baseline_files=(REQUIRED_BASELINE_FILE,),
         denied_role=WORKER_ROLE,
     ),
@@ -147,7 +147,7 @@ LOGIN_PROFILES = MappingProxyType({
         kind="worker",
         login_role=WORKER_LOGIN_ROLE,
         execution_role=WORKER_ROLE,
-        readiness_function="geno_v2_worker_login_startup_ready",
+        readiness_function="geo_v2_worker_login_startup_ready",
         required_baseline_files=(
             REQUIRED_BASELINE_FILE,
             "baseline/0020_collection_geo_scoring.sql",
@@ -447,7 +447,7 @@ def _verify_installed_contract(
                         RUNTIME_ROLE,
                         WORKER_LOGIN_ROLE,
                         WORKER_ROLE,
-                        "geno_v2_authz_owner",
+                        "geo_v2_authz_owner",
                     )
                 ):
                     raise LoginProvisionError("provision_database_identity_mismatch")
@@ -543,7 +543,7 @@ def _seal_login(
         sql.SQL("ALTER ROLE {} RESET ALL").format(sql.Identifier(profile.login_role))
     )
     cursor.execute(
-        sql.SQL("ALTER ROLE {} IN DATABASE geno_v2 RESET ALL").format(
+        sql.SQL("ALTER ROLE {} IN DATABASE geo_v2 RESET ALL").format(
             sql.Identifier(profile.login_role)
         )
     )
@@ -836,7 +836,7 @@ def _smoke_login(
                     raise LoginProvisionError(profile.error("sensitive_dml_smoke_failed"))
 
             if profile.kind == "api":
-                cursor.execute("SELECT count(*) FROM geno_v2_resolve_session_context()")
+                cursor.execute("SELECT count(*) FROM geo_v2_resolve_session_context()")
                 if cursor.fetchone() != (0,):
                     raise LoginProvisionError("api_login_anonymous_context_smoke_failed")
             if require_receipt:

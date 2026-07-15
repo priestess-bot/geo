@@ -45,7 +45,7 @@ class AuP0aEnvFileBootstrapTest(unittest.TestCase):
         self.assertEqual(verification["status"], "pass")
         serialized = json.dumps(report)
         self.assertNotIn("raw_value", serialized)
-        self.assertNotIn("geno_runtime_app:geno_runtime_app", serialized)
+        self.assertNotIn("geo_runtime_app:geo_runtime_app", serialized)
         self.assertNotIn("minio123", serialized)
 
     def test_bootstrap_does_not_overwrite_existing_env_file_by_default(self) -> None:

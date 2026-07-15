@@ -206,7 +206,7 @@ END;
 $$;
 
 REVOKE ALL ON publisher_catalog, geo_campaigns, geo_campaign_queries,
-    project_destinations, placement_opportunities FROM PUBLIC, geno_v2_runtime, geno_v2_worker;
+    project_destinations, placement_opportunities FROM PUBLIC, geo_v2_runtime, geo_v2_worker;
 
 CREATE INDEX geo_campaign_queries_campaign_status_idx
     ON geo_campaign_queries (campaign_id, status, created_at DESC);

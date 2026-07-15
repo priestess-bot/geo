@@ -855,9 +855,9 @@ def _operator_steps() -> list[dict[str, Any]]:
             "order": 8,
             "id": "run_customer_ready_strict_gate",
             "command": (
-                "PYTHONPATH=packages/geno_core:apps/api python3 "
+                "PYTHONPATH=packages/geo_core:apps/api python3 "
                 "scripts/verify_au_customer_handoff_package.py "
-                "${GENO_AU_CUSTOMER_HANDOFF_PACKAGE_OUTPUT_PATH:-docs/runtime_preflight/au-customer-handoff-package-latest.json} "
+                "${GEO_AU_CUSTOMER_HANDOFF_PACKAGE_OUTPUT_PATH:-docs/runtime_preflight/au-customer-handoff-package-latest.json} "
                 "--require-ready"
             ),
             "purpose": "fail_until_customer_handoff_clearance_and_p0c_report_package_are_ready",
@@ -888,14 +888,14 @@ def _post_update_validation_sequence() -> list[str]:
         "make verify-au-p0c-report-package",
         "make au-customer-handoff-package",
         "make verify-au-customer-handoff-package",
-        "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_customer_handoff_clearance.py "
-        "${GENO_AU_CUSTOMER_HANDOFF_CLEARANCE_OUTPUT_PATH:-docs/runtime_preflight/au-customer-handoff-clearance-latest.json} "
+        "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_customer_handoff_clearance.py "
+        "${GEO_AU_CUSTOMER_HANDOFF_CLEARANCE_OUTPUT_PATH:-docs/runtime_preflight/au-customer-handoff-clearance-latest.json} "
         "--require-cleared",
-        "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_p0a_credential_update_receipt.py "
-        "${GENO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-update-receipt-latest.json} "
+        "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_p0a_credential_update_receipt.py "
+        "${GEO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH:-docs/runtime_preflight/au-p0a-credential-update-receipt-latest.json} "
         "--require-complete",
-        "PYTHONPATH=packages/geno_core:apps/api python3 scripts/verify_au_customer_handoff_package.py "
-        "${GENO_AU_CUSTOMER_HANDOFF_PACKAGE_OUTPUT_PATH:-docs/runtime_preflight/au-customer-handoff-package-latest.json} "
+        "PYTHONPATH=packages/geo_core:apps/api python3 scripts/verify_au_customer_handoff_package.py "
+        "${GEO_AU_CUSTOMER_HANDOFF_PACKAGE_OUTPUT_PATH:-docs/runtime_preflight/au-customer-handoff-package-latest.json} "
         "--require-ready",
     ]
 
@@ -1050,69 +1050,69 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build an AU customer handoff package index JSON")
     parser.add_argument(
         "--handoff-dossier-path",
-        default=os.environ.get("GENO_AU_HANDOFF_DOSSIER_OUTPUT_PATH", DEFAULT_HANDOFF_DOSSIER_PATH),
+        default=os.environ.get("GEO_AU_HANDOFF_DOSSIER_OUTPUT_PATH", DEFAULT_HANDOFF_DOSSIER_PATH),
         help="Path to the AU handoff dossier JSON.",
     )
     parser.add_argument(
         "--handoff-dossier-markdown-path",
-        default=os.environ.get("GENO_AU_HANDOFF_DOSSIER_MARKDOWN_PATH", DEFAULT_HANDOFF_DOSSIER_MARKDOWN_PATH),
+        default=os.environ.get("GEO_AU_HANDOFF_DOSSIER_MARKDOWN_PATH", DEFAULT_HANDOFF_DOSSIER_MARKDOWN_PATH),
         help="Path to the AU handoff dossier Markdown.",
     )
     parser.add_argument(
         "--customer-handoff-readiness-path",
-        default=os.environ.get("GENO_AU_CUSTOMER_HANDOFF_READINESS_OUTPUT_PATH", DEFAULT_CUSTOMER_HANDOFF_READINESS_PATH),
+        default=os.environ.get("GEO_AU_CUSTOMER_HANDOFF_READINESS_OUTPUT_PATH", DEFAULT_CUSTOMER_HANDOFF_READINESS_PATH),
         help="Path to the AU customer handoff readiness JSON.",
     )
     parser.add_argument(
         "--next-work-item-path",
-        default=os.environ.get("GENO_AU_NEXT_WORK_ITEM_OUTPUT_PATH", DEFAULT_NEXT_WORK_ITEM_PATH),
+        default=os.environ.get("GEO_AU_NEXT_WORK_ITEM_OUTPUT_PATH", DEFAULT_NEXT_WORK_ITEM_PATH),
         help="Path to the AU next work item packet JSON.",
     )
     parser.add_argument(
         "--delivery-progress-path",
-        default=os.environ.get("GENO_AU_DELIVERY_PROGRESS_OUTPUT_PATH", DEFAULT_DELIVERY_PROGRESS_PATH),
+        default=os.environ.get("GEO_AU_DELIVERY_PROGRESS_OUTPUT_PATH", DEFAULT_DELIVERY_PROGRESS_PATH),
         help="Path to the AU delivery progress JSON.",
     )
     parser.add_argument(
         "--customer-handoff-clearance-path",
-        default=os.environ.get("GENO_AU_CUSTOMER_HANDOFF_CLEARANCE_OUTPUT_PATH", DEFAULT_CUSTOMER_HANDOFF_CLEARANCE_PATH),
+        default=os.environ.get("GEO_AU_CUSTOMER_HANDOFF_CLEARANCE_OUTPUT_PATH", DEFAULT_CUSTOMER_HANDOFF_CLEARANCE_PATH),
         help="Path to the AU customer handoff clearance JSON.",
     )
     parser.add_argument(
         "--external-dependency-handoff-path",
-        default=os.environ.get("GENO_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH", DEFAULT_EXTERNAL_DEPENDENCY_HANDOFF_PATH),
+        default=os.environ.get("GEO_AU_EXTERNAL_DEPENDENCY_HANDOFF_OUTPUT_PATH", DEFAULT_EXTERNAL_DEPENDENCY_HANDOFF_PATH),
         help="Path to the AU external dependency handoff JSON.",
     )
     parser.add_argument(
         "--external-dependency-clearance-path",
         default=os.environ.get(
-            "GENO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH",
+            "GEO_AU_EXTERNAL_DEPENDENCY_CLEARANCE_OUTPUT_PATH",
             DEFAULT_EXTERNAL_DEPENDENCY_CLEARANCE_PATH,
         ),
         help="Path to the AU external dependency clearance JSON.",
     )
     parser.add_argument(
         "--p0a-credential-clearance-path",
-        default=os.environ.get("GENO_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH", DEFAULT_P0A_CREDENTIAL_CLEARANCE_PATH),
+        default=os.environ.get("GEO_AU_P0A_CREDENTIAL_CLEARANCE_OUTPUT_PATH", DEFAULT_P0A_CREDENTIAL_CLEARANCE_PATH),
         help="Path to the AU P0a credential clearance JSON.",
     )
     parser.add_argument(
         "--p0a-credential-update-receipt-path",
         default=os.environ.get(
-            "GENO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH",
+            "GEO_AU_P0A_CREDENTIAL_UPDATE_RECEIPT_OUTPUT_PATH",
             DEFAULT_P0A_CREDENTIAL_UPDATE_RECEIPT_PATH,
         ),
         help="Path to the AU P0a credential update receipt JSON.",
     )
     parser.add_argument(
         "--p0a-real-batch-clearance-path",
-        default=os.environ.get("GENO_AU_P0A_REAL_BATCH_CLEARANCE_OUTPUT_PATH", DEFAULT_P0A_REAL_BATCH_CLEARANCE_PATH),
+        default=os.environ.get("GEO_AU_P0A_REAL_BATCH_CLEARANCE_OUTPUT_PATH", DEFAULT_P0A_REAL_BATCH_CLEARANCE_PATH),
         help="Path to the AU P0a real batch clearance JSON.",
     )
     parser.add_argument(
         "--p0b-google-environment-clearance-path",
         default=os.environ.get(
-            "GENO_AU_P0B_GOOGLE_ENVIRONMENT_CLEARANCE_OUTPUT_PATH",
+            "GEO_AU_P0B_GOOGLE_ENVIRONMENT_CLEARANCE_OUTPUT_PATH",
             DEFAULT_P0B_GOOGLE_ENVIRONMENT_CLEARANCE_PATH,
         ),
         help="Path to the AU P0b Google environment clearance JSON.",
@@ -1120,7 +1120,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--p0b-google-manual-backfill-clearance-path",
         default=os.environ.get(
-            "GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_CLEARANCE_OUTPUT_PATH",
+            "GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_CLEARANCE_OUTPUT_PATH",
             DEFAULT_P0B_GOOGLE_MANUAL_BACKFILL_CLEARANCE_PATH,
         ),
         help="Path to the AU P0b Google manual backfill clearance JSON.",
@@ -1128,34 +1128,34 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--p0b-google-phase-execution-clearance-path",
         default=os.environ.get(
-            "GENO_AU_P0B_GOOGLE_PHASE_EXECUTION_CLEARANCE_OUTPUT_PATH",
+            "GEO_AU_P0B_GOOGLE_PHASE_EXECUTION_CLEARANCE_OUTPUT_PATH",
             DEFAULT_P0B_GOOGLE_PHASE_EXECUTION_CLEARANCE_PATH,
         ),
         help="Path to the AU P0b Google phase execution clearance JSON.",
     )
     parser.add_argument(
         "--p0a-evidence-package-path",
-        default=os.environ.get("GENO_AU_P0A_EVIDENCE_PACKAGE_OUTPUT_PATH", DEFAULT_P0A_EVIDENCE_PACKAGE_PATH),
+        default=os.environ.get("GEO_AU_P0A_EVIDENCE_PACKAGE_OUTPUT_PATH", DEFAULT_P0A_EVIDENCE_PACKAGE_PATH),
         help="Path to the AU P0a evidence package JSON.",
     )
     parser.add_argument(
         "--p0b-google-evidence-package-path",
-        default=os.environ.get("GENO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH", DEFAULT_P0B_GOOGLE_EVIDENCE_PACKAGE_PATH),
+        default=os.environ.get("GEO_AU_P0B_GOOGLE_PACKAGE_OUTPUT_PATH", DEFAULT_P0B_GOOGLE_EVIDENCE_PACKAGE_PATH),
         help="Path to the AU P0b Google evidence package JSON.",
     )
     parser.add_argument(
         "--p0c-report-package-path",
-        default=os.environ.get("GENO_AU_P0C_REPORT_PACKAGE_OUTPUT_PATH", DEFAULT_P0C_REPORT_PACKAGE_PATH),
+        default=os.environ.get("GEO_AU_P0C_REPORT_PACKAGE_OUTPUT_PATH", DEFAULT_P0C_REPORT_PACKAGE_PATH),
         help="Path to the AU P0c report package JSON.",
     )
     parser.add_argument(
         "--output-path",
-        default=os.environ.get("GENO_AU_CUSTOMER_HANDOFF_PACKAGE_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_CUSTOMER_HANDOFF_PACKAGE_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to write the AU customer handoff package index JSON.",
     )
     parser.add_argument(
         "--markdown-output-path",
-        default=os.environ.get("GENO_AU_CUSTOMER_HANDOFF_PACKAGE_MARKDOWN_PATH", DEFAULT_MARKDOWN_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_CUSTOMER_HANDOFF_PACKAGE_MARKDOWN_PATH", DEFAULT_MARKDOWN_OUTPUT_PATH),
         help="Path to write the human-readable AU customer handoff package Markdown manifest.",
     )
     return parser.parse_args()

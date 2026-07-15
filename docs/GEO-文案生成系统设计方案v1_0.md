@@ -1711,7 +1711,7 @@ project_id uuid NOT NULL REFERENCES projects(id)
 并使用现有：
 
 ```text
-geno_runtime_can_access_project(project_id)
+geo_runtime_can_access_project(project_id)
 ```
 
 作为 RLS 锚点。
@@ -2129,15 +2129,15 @@ Approved facts 保持 PostgreSQL 真源。只有经过基准证明索引参数�
 现有主 repository 和 FastAPI main 已过大。新内容能力不得继续直接堆入：
 
 ```text
-packages/geno_core/geno_core/repository.py
-apps/api/geno_api/main.py
+packages/geo_core/geo_core/repository.py
+apps/api/geo_api/main.py
 workers/knowledge_worker/run_knowledge_pipeline.py
 ```
 
 ### 18.2 建议结构
 
 ```text
-packages/geno_core/geno_core/content_generation/
+packages/geo_core/geo_core/content_generation/
   domain/
     opportunity.py
     brief.py
@@ -2167,11 +2167,11 @@ packages/geno_core/geno_core/content_generation/
     object_store.py
   events.py
 
-packages/geno_core/geno_core/repositories/
+packages/geo_core/geo_core/repositories/
   content_repository.py
   content_postgres_repository.py
 
-apps/api/geno_api/routes/
+apps/api/geo_api/routes/
   content_opportunities.py
   content_briefs.py
   content_evidence.py
@@ -3187,14 +3187,14 @@ Managed S3 后置到独立 ADR/overlay；在 provider provisioning、workload id
 | 身份 | 可见服务 | 权限 |
 | --- | --- | --- |
 | MinIO root | `minio`、一次性 `minio-bootstrap` | 只用于创建 bucket/principal/policy 和治理配置，不进入业务容器 |
-| Application principal | 所有实际对象存储 runtime consumer | 仅对 `geno-reports`/配置 bucket 执行 put/get/head/list，禁止 admin/CreateBucket/常规 delete |
+| Application principal | 所有实际对象存储 runtime consumer | 仅对 `geo-reports`/配置 bucket 执行 put/get/head/list，禁止 admin/CreateBucket/常规 delete |
 | Backup principal | backup job 与 `backup-object-smoke` | source bucket 只读；正式 backup prefix 可写不可删，当次隔离 smoke prefix 可写/读/清理；不复用 root/application 身份 |
-| Ephemeral restore principal | 仅受控 restore job | 读取指定 backup manifest，只能写 `geno-reports/restore-smoke/{run_id}` 或批准恢复 prefix，完成后撤销 |
+| Ephemeral restore principal | 仅受控 restore job | 读取指定 backup manifest，只能写 `geo-reports/restore-smoke/{run_id}` 或批准恢复 prefix，完成后撤销 |
 | Ephemeral retention principal | 仅受控 retention/delete job | 只删除批准 manifest 中的精确业务 prefix，完成后撤销 |
 
 production 必须要求非默认 `MINIO_ROOT_USER/MINIO_ROOT_PASSWORD`、`OBJECT_STORE_ACCESS_KEY/OBJECT_STORE_SECRET_KEY`、`OBJECT_STORE_BACKUP_ACCESS_KEY/OBJECT_STORE_BACKUP_SECRET_KEY`；restore 演练另注入短期 `OBJECT_STORE_RESTORE_ACCESS_KEY/OBJECT_STORE_RESTORE_SECRET_KEY`，retention job 同理使用短期 `OBJECT_STORE_RETENTION_ACCESS_KEY/OBJECT_STORE_RETENTION_SECRET_KEY`。缺失或仍为 `minio/minio123` 时 merged config/build preflight 直接失败。base compose 可以保留本地开发默认值，但 base + production overlay 的任何 profile 都不得继承这些默认值。
 
-`minio-bootstrap` 使用 root 身份幂等完成 `geno-reports/geno-backups` bucket、application/backup principal、最小权限 policy、versioning 和 lifecycle，写入不含 secret 的 policy/version receipt 后退出。bucket 只能由 bootstrap/IaC 创建；production runtime 必须设置 `OBJECT_STORE_AUTO_CREATE_BUCKET=0`，客户端只做 bucket `HEAD`/readiness，任何 application/backup principal 的 `CreateBucket` 都必须被 policy negative test 拒绝。现有 `put_object()` 和 `backup-object-smoke` 的 `mc mb` 行为必须在 production 路径禁用/移除，不能通过授予建桶权限绕过。
+`minio-bootstrap` 使用 root 身份幂等完成 `geo-reports/geo-backups` bucket、application/backup principal、最小权限 policy、versioning 和 lifecycle，写入不含 secret 的 policy/version receipt 后退出。bucket 只能由 bootstrap/IaC 创建；production runtime 必须设置 `OBJECT_STORE_AUTO_CREATE_BUCKET=0`，客户端只做 bucket `HEAD`/readiness，任何 application/backup principal 的 `CreateBucket` 都必须被 policy negative test 拒绝。现有 `put_object()` 和 `backup-object-smoke` 的 `mc mb` 行为必须在 production 路径禁用/移除，不能通过授予建桶权限绕过。
 
 Phase 0 的 at-rest encryption 选定为 **MinIO data volume/backup volume 的基础设施加密**，不是尚未配置的对象级 SSE-KMS。加密卷必须在 MinIO 启动前由部署平台创建，key 由 Security/Platform 控制的 KMS/secret manager 管理，不进入 Compose 或应用容器。receipt 至少记录 `volume_id/provider/encryption_enabled/key_alias/policy_version/verified_at`，不记录 key；必须有 rotation owner、恢复所需 key escrow/权限和从加密 snapshot 在新节点 restore 的演练。若未来改为 SSE-KMS/KES，必须单独 ADR、双读/迁移和 restore Gate，不能只检查配置字符串。
 
@@ -3216,12 +3216,12 @@ Bucket/prefix/action 合同：
 
 | Principal | Source | Destination | Delete |
 | --- | --- | --- | --- |
-| application | `geno-reports` 业务 prefix read/write | 无跨 bucket | none（retention 另用短期身份） |
-| backup | `geno-reports` read/list | 正式 `geno-backups/production/{environment}/` put/list/get；测试 `geno-backups/smoke/{run_id}/` put/list/get | 仅当次 `geno-backups/smoke/{run_id}/` |
-| ephemeral restore | 指定 backup manifest/get | `geno-reports/restore-smoke/{run_id}` 或批准恢复 prefix put | 仅本次 restore-smoke prefix |
+| application | `geo-reports` 业务 prefix read/write | 无跨 bucket | none（retention 另用短期身份） |
+| backup | `geo-reports` read/list | 正式 `geo-backups/production/{environment}/` put/list/get；测试 `geo-backups/smoke/{run_id}/` put/list/get | 仅当次 `geo-backups/smoke/{run_id}/` |
+| ephemeral restore | 指定 backup manifest/get | `geo-reports/restore-smoke/{run_id}` 或批准恢复 prefix put | 仅本次 restore-smoke prefix |
 | ephemeral retention | 批准 deletion manifest 中的精确业务 prefix | 无跨 bucket | 仅 manifest 列出的 object keys |
 
-上表 application 的 Delete 列实际为 none；业务对象删除只能由 ephemeral retention principal 执行，backup principal 的唯一 delete 例外是当次隔离 smoke prefix。backup/restore 复用 application 的 `OBJECT_STORE_ENDPOINT/OBJECT_STORE_REGION`；source bucket 使用 `OBJECT_STORE_BUCKET=geno-reports`，destination 使用 `OBJECT_STORE_BACKUP_BUCKET=geno-backups`，正式备份前缀使用 `OBJECT_STORE_BACKUP_PREFIX=production/{environment}/`，`backup-object-smoke` 必须使用 `OBJECT_STORE_BACKUP_SMOKE_PREFIX=smoke/{run_id}/`，并分别使用上述 backup/restore credential env。smoke 先对当次 prefix 执行 put/list/get/hash，再只删除当次 prefix；不创建 bucket，不得写入或清理正式 backup prefix。常驻 backup principal 不得写/delete 业务 source bucket，正式 backup prefix 不得 delete；restore/retention 权限不得常驻。
+上表 application 的 Delete 列实际为 none；业务对象删除只能由 ephemeral retention principal 执行，backup principal 的唯一 delete 例外是当次隔离 smoke prefix。backup/restore 复用 application 的 `OBJECT_STORE_ENDPOINT/OBJECT_STORE_REGION`；source bucket 使用 `OBJECT_STORE_BUCKET=geo-reports`，destination 使用 `OBJECT_STORE_BACKUP_BUCKET=geo-backups`，正式备份前缀使用 `OBJECT_STORE_BACKUP_PREFIX=production/{environment}/`，`backup-object-smoke` 必须使用 `OBJECT_STORE_BACKUP_SMOKE_PREFIX=smoke/{run_id}/`，并分别使用上述 backup/restore credential env。smoke 先对当次 prefix 执行 put/list/get/hash，再只删除当次 prefix；不创建 bucket，不得写入或清理正式 backup prefix。常驻 backup principal 不得写/delete 业务 source bucket，正式 backup prefix 不得 delete；restore/retention 权限不得常驻。
 
 merged-compose contract 必须覆盖所有 production profiles，并验证：
 
@@ -3319,7 +3319,7 @@ UNIQUE(tenant_id, project_id, actor_id, source_type, source_id)
 FOREIGN KEY(project_id, tenant_id) REFERENCES projects(id, tenant_id)
 ```
 
-tenant role 变更、Project 创建/激活/归档必须在同一数据库事务内物化或撤销 grants；同步失败时 fail closed，不允许先授权再异步补表。`geno_runtime_can_access_project` 及所有 project-owned RLS policy 收口为“直接 active `project_members` **OR** 当前 actor/tenant 的 active grant + 所需 permission”。Phase 0 冻结为独立 `NOLOGIN BYPASSRLS` 的 `geno_rls_authz_owner` 持有窄 SECURITY DEFINER helper：固定安全 `search_path`、全部表名 schema-qualified、禁止 dynamic SQL、撤销 PUBLIC execute，仅向 app role 授予执行；function 只读 Member/Grant 表和 transaction-local actor/tenant GUC，不读 `projects`，避免 RLS 递归。owner 不得登录、持有业务表或被应用 `SET ROLE`，function body/owner/ACL/search_path 纳入 migration drift Gate。Session scope 签发从直接 Member + active Grant 合并，`/projects?surface=...`、detail 和 mutation 均经同一 RLS anchor，不得仅在 repository 中特判 tenant admin。
+tenant role 变更、Project 创建/激活/归档必须在同一数据库事务内物化或撤销 grants；同步失败时 fail closed，不允许先授权再异步补表。`geo_runtime_can_access_project` 及所有 project-owned RLS policy 收口为“直接 active `project_members` **OR** 当前 actor/tenant 的 active grant + 所需 permission”。Phase 0 冻结为独立 `NOLOGIN BYPASSRLS` 的 `geo_rls_authz_owner` 持有窄 SECURITY DEFINER helper：固定安全 `search_path`、全部表名 schema-qualified、禁止 dynamic SQL、撤销 PUBLIC execute，仅向 app role 授予执行；function 只读 Member/Grant 表和 transaction-local actor/tenant GUC，不读 `projects`，避免 RLS 递归。owner 不得登录、持有业务表或被应用 `SET ROLE`，function body/owner/ACL/search_path 纳入 migration drift Gate。Session scope 签发从直接 Member + active Grant 合并，`/projects?surface=...`、detail 和 mutation 均经同一 RLS anchor，不得仅在 repository 中特判 tenant admin。
 
 Session 的完整 scope 不等于某个门户的可见项目。`GET /v1/projects/runtime?surface=admin|customer` 必须由 API 做 server-side projection：Admin 只返回含 `portal.admin.access` 的 scope，Customer 只返回含 `portal.customer.access` 的 scope；UI 不接收后再自行过滤。owner(A)+viewer(B) 的 Customer selector 只能看到 B，Admin selector 只能看到 A，两个 surface 的 detail/mutation 也重复逐项目校验。当前 Session 固定一个 tenant；跨 tenant membership 不静默合并，必须显式切换/新建 Session。
 
@@ -3986,29 +3986,29 @@ Case Study 在客户授权合同完成前不进入 MVP。
 建议：
 
 ```text
-GENO_CONTENT_V1_ENABLED
-GENO_CONTENT_DATA_READINESS_ENABLED
-GENO_CONTENT_CLAIM_QA_ENABLED
-GENO_CONTENT_VARIANTS_ENABLED
-GENO_CONTENT_DELIVERY_ENABLED
-GENO_CONTENT_CUSTOMER_APPROVAL_ENABLED
-GENO_CONTENT_SKILLS_ENABLED
-GENO_CONTENT_PUBLICATION_REQUEST_ENABLED
-GENO_CONTENT_AUTO_PUBLICATION_ENABLED=false
+GEO_CONTENT_V1_ENABLED
+GEO_CONTENT_DATA_READINESS_ENABLED
+GEO_CONTENT_CLAIM_QA_ENABLED
+GEO_CONTENT_VARIANTS_ENABLED
+GEO_CONTENT_DELIVERY_ENABLED
+GEO_CONTENT_CUSTOMER_APPROVAL_ENABLED
+GEO_CONTENT_SKILLS_ENABLED
+GEO_CONTENT_PUBLICATION_REQUEST_ENABLED
+GEO_CONTENT_AUTO_PUBLICATION_ENABLED=false
 ```
 
 API bootstrap 一一投影为：
 
 ```text
-GENO_CONTENT_V1_ENABLED                  -> content_studio_v1
-GENO_CONTENT_DATA_READINESS_ENABLED      -> content_data_readiness_v1
-GENO_CONTENT_CLAIM_QA_ENABLED            -> content_claim_qa_v1
-GENO_CONTENT_VARIANTS_ENABLED            -> content_variants_v1
-GENO_CONTENT_DELIVERY_ENABLED            -> content_delivery_v1
-GENO_CONTENT_CUSTOMER_APPROVAL_ENABLED    -> content_customer_deliverables_v1
-GENO_CONTENT_SKILLS_ENABLED               -> content_skills_v1
-GENO_CONTENT_PUBLICATION_REQUEST_ENABLED  -> content_publication_request_v1
-GENO_CONTENT_AUTO_PUBLICATION_ENABLED     -> content_auto_publication
+GEO_CONTENT_V1_ENABLED                  -> content_studio_v1
+GEO_CONTENT_DATA_READINESS_ENABLED      -> content_data_readiness_v1
+GEO_CONTENT_CLAIM_QA_ENABLED            -> content_claim_qa_v1
+GEO_CONTENT_VARIANTS_ENABLED            -> content_variants_v1
+GEO_CONTENT_DELIVERY_ENABLED            -> content_delivery_v1
+GEO_CONTENT_CUSTOMER_APPROVAL_ENABLED    -> content_customer_deliverables_v1
+GEO_CONTENT_SKILLS_ENABLED               -> content_skills_v1
+GEO_CONTENT_PUBLICATION_REQUEST_ENABLED  -> content_publication_request_v1
+GEO_CONTENT_AUTO_PUBLICATION_ENABLED     -> content_auto_publication
 ```
 
 `content_auto_publication` 默认且持续为 false，直到 Phase 5 connector gate 单独批准。bootstrap 同时返回 actor/project capabilities、available actions 和 schema version。前端 env 只能作为全局 kill switch，不能单独开启后端未启用能力。每个 flag 必须有 owner、默认值、上线/回滚条件和删除日期；隐藏 UI 不改变 API 授权或 Gate。
@@ -4203,8 +4203,8 @@ Asset Version -> explicit Publication Request -> Manual Distribution/Publication
 
 | 能力 | 证据 |
 | --- | --- |
-| Source Gap 与 Action Recommendation 领域模型 | `packages/geno_core/geno_core/models.py:522-568` |
-| active fact、有效期和 ContentDraft 领域模型 | `packages/geno_core/geno_core/models.py:597-610,816-833` |
+| Source Gap 与 Action Recommendation 领域模型 | `packages/geo_core/geo_core/models.py:522-568` |
+| active fact、有效期和 ContentDraft 领域模型 | `packages/geo_core/geo_core/models.py:597-610,816-833` |
 | project-scoped `brand_entities` | `infra/db/migrations/up/0001_init.sql:673-681` |
 | 初始 `content_drafts` 和 `manual_distribution_records` | `infra/db/migrations/up/0001_init.sql:285-325` |
 | Legacy knowledge application jobs/candidates | `infra/db/migrations/up/0021_knowledge_application.sql:60-129` |
@@ -4220,16 +4220,16 @@ Asset Version -> explicit Publication Request -> Manual Distribution/Publication
 
 | 能力 | 证据 |
 | --- | --- |
-| 当前可持久化 ProjectRole 只有 owner/admin/analyst/viewer | `packages/geno_core/geno_core/models.py:10,80-86` |
-| 更细 RBAC role/permission vocabulary 已定义但未完全贯通成员模型 | `packages/geno_core/geno_core/rbac.py:17-211` |
-| Content generation request 字段 | `apps/api/geno_api/main.py:2647-2661` |
-| 内容生成 Job API 与项目管理权限 | `apps/api/geno_api/main.py:10762-10820` |
-| Content Draft review API | `apps/api/geno_api/main.py:9493-9529` |
-| Draft list 和 Markdown export API | `apps/api/geno_api/main.py:10854-10895` |
-| Human review list/queue/save API | `apps/api/geno_api/main.py:7436-7572` |
-| Action/Report/Retest ID 与 Source Gap 类型标签写入 Job metadata | `apps/api/geno_api/main.py:10787-10801` |
-| Runtime Fact Review 仍可能把 rejected/pending_review 写入 lifecycle status | `packages/geno_core/geno_core/repository.py:16225-16250` |
-| 邀请兑换当前按 invitation project 缩窄 membership scope | `apps/api/geno_api/main.py:5260-5264` |
+| 当前可持久化 ProjectRole 只有 owner/admin/analyst/viewer | `packages/geo_core/geo_core/models.py:10,80-86` |
+| 更细 RBAC role/permission vocabulary 已定义但未完全贯通成员模型 | `packages/geo_core/geo_core/rbac.py:17-211` |
+| Content generation request 字段 | `apps/api/geo_api/main.py:2647-2661` |
+| 内容生成 Job API 与项目管理权限 | `apps/api/geo_api/main.py:10762-10820` |
+| Content Draft review API | `apps/api/geo_api/main.py:9493-9529` |
+| Draft list 和 Markdown export API | `apps/api/geo_api/main.py:10854-10895` |
+| Human review list/queue/save API | `apps/api/geo_api/main.py:7436-7572` |
+| Action/Report/Retest ID 与 Source Gap 类型标签写入 Job metadata | `apps/api/geo_api/main.py:10787-10801` |
+| Runtime Fact Review 仍可能把 rejected/pending_review 写入 lifecycle status | `packages/geo_core/geo_core/repository.py:16225-16250` |
+| 邀请兑换当前按 invitation project 缩窄 membership scope | `apps/api/geo_api/main.py:5260-5264` |
 | Session 当前只有 project_ids + flat roles/permissions | `infra/db/migrations/up/0016_runtime_sessions.sql:1-20` |
 | viewer Member/Invitation 当前被全局唯一索引限制 | `infra/db/migrations/up/0015_customer_portal_launch_access_logs.sql:33-39` |
 
@@ -4244,22 +4244,22 @@ Asset Version -> explicit Publication Request -> Manual Distribution/Publication
 | 草稿 fact/chunk/citation_refs 写入 | `workers/knowledge_worker/run_knowledge_pipeline.py:2392-2433` |
 | Action/Report/Retest trace；Source Gap 只有类型 metadata | `workers/knowledge_worker/run_knowledge_pipeline.py:2456-2490` |
 | generation/security/traceability gate 执行 | `workers/knowledge_worker/run_knowledge_pipeline.py:2535-2576` |
-| content job enqueue 和 target action 映射 | `packages/geno_core/geno_core/knowledge_pipeline.py:3002-3114` |
-| 已批准草稿导出守卫 | `packages/geno_core/geno_core/knowledge_pipeline.py:2716-2757` |
-| 内容审批时重新检查 active facts/chunks/risk flags | `packages/geno_core/geno_core/repository.py:14579-14666` |
-| manual distribution 回填与审计 | `packages/geno_core/geno_core/repository.py:14669-14744` |
-| Knowledge child Job claim 当前只领取 queued，complete/fail 无 lease CAS | `packages/geno_core/geno_core/knowledge_pipeline.py:3364-3455` |
-| Collection Job claim 当前只领取 queued，complete/fail 无 lease CAS | `packages/geno_core/geno_core/collection_jobs.py:153-228` |
+| content job enqueue 和 target action 映射 | `packages/geo_core/geo_core/knowledge_pipeline.py:3002-3114` |
+| 已批准草稿导出守卫 | `packages/geo_core/geo_core/knowledge_pipeline.py:2716-2757` |
+| 内容审批时重新检查 active facts/chunks/risk flags | `packages/geo_core/geo_core/repository.py:14579-14666` |
+| manual distribution 回填与审计 | `packages/geo_core/geo_core/repository.py:14669-14744` |
+| Knowledge child Job claim 当前只领取 queued，complete/fail 无 lease CAS | `packages/geo_core/geo_core/knowledge_pipeline.py:3364-3455` |
+| Collection Job claim 当前只领取 queued，complete/fail 无 lease CAS | `packages/geo_core/geo_core/collection_jobs.py:153-228` |
 | recovery dispatcher 当前只重发 actor | `workers/task_queue/run_recovery_dispatcher.py:17-25` |
 
 ### 32.5 模型与任务基础设施
 
 | 能力或缺口 | 证据 |
 | --- | --- |
-| 通用 `LLMGateway` Protocol | `packages/geno_core/geno_core/contracts.py:41-51` |
-| LiteLLM retry、Token、成本、延迟和 call log | `packages/geno_core/geno_core/llm_gateway.py:142-345` |
-| 当前 DeepSeek 内容生成直连与 JSON retry | `packages/geno_core/geno_core/knowledge_application.py:438-599` |
-| Task actor 只有 collection/knowledge/report | `packages/geno_core/geno_core/task_queue.py:8-13` |
+| 通用 `LLMGateway` Protocol | `packages/geo_core/geo_core/contracts.py:41-51` |
+| LiteLLM retry、Token、成本、延迟和 call log | `packages/geo_core/geo_core/llm_gateway.py:142-345` |
+| 当前 DeepSeek 内容生成直连与 JSON retry | `packages/geo_core/geo_core/knowledge_application.py:438-599` |
+| Task actor 只有 collection/knowledge/report | `packages/geo_core/geo_core/task_queue.py:8-13` |
 | knowledge Dramatiq actor | `workers/task_queue/tasks.py:123-152` |
 | PostgreSQL/MinIO/Qdrant/Valkey 基础设施 | `infra/docker-compose.yml:1-95` |
 | knowledge worker 与 embedding API | `infra/docker-compose.yml:436-510` |

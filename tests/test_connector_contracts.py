@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from geno_core.connector_contract import (
+from geo_core.connector_contract import (
     ConnectorConfig,
     ConnectorPrompt,
     ConnectorRegistry,
@@ -13,14 +13,14 @@ from geno_core.connector_contract import (
     ConnectorValidationError,
     RecordedConnectorHarness,
 )
-from geno_core.collectors import DeepSeekChatCollector, JsonHttpResponse
-from geno_core.models import MarketProfile
-from geno_core.production_connectors import (
+from geo_core.collectors import DeepSeekChatCollector, JsonHttpResponse
+from geo_core.models import MarketProfile
+from geo_core.production_connectors import (
     GoogleManualBackfillConnectorBackend,
     OpenAIWebSearchConnectorBackend,
     PerplexitySonarConnectorBackend,
 )
-from geno_core.security.secrets import REDACTED_VALUE
+from geo_core.security.secrets import REDACTED_VALUE
 
 
 def _request(provider: str, prompt_id: str = "prompt-1") -> ConnectorRequest:
@@ -278,7 +278,7 @@ class ConnectorContractTest(unittest.TestCase):
         self.assertEqual(response.cost.completion_tokens, 500)
         self.assertEqual(response.cost.total_cost, 0.02)
         self.assertEqual(response.cost.estimate_method, "estimated")
-        self.assertTrue(response.evidence.snapshot_url.startswith("geno-api-snapshot://openai.web_search.api/"))
+        self.assertTrue(response.evidence.snapshot_url.startswith("geo-api-snapshot://openai.web_search.api/"))
         self.assertIn("html_snapshot", response.evidence.asset_hashes)
         sent_payload = http_client.requests[0]["payload"]
         self.assertIsInstance(sent_payload, dict)
@@ -376,7 +376,7 @@ class ConnectorContractTest(unittest.TestCase):
         self.assertEqual(response.citations[1].title, "KoalaHome AU")
         self.assertEqual(response.cost.total_cost, 0.008)
         self.assertEqual(response.cost.estimate_method, "provider_reported")
-        self.assertTrue(response.evidence.snapshot_url.startswith("geno-api-snapshot://perplexity.sonar.api/"))
+        self.assertTrue(response.evidence.snapshot_url.startswith("geo-api-snapshot://perplexity.sonar.api/"))
         sent_payload = http_client.requests[0]["payload"]
         self.assertIsInstance(sent_payload, dict)
         assert isinstance(sent_payload, dict)
@@ -466,7 +466,7 @@ class ConnectorContractTest(unittest.TestCase):
         self.assertEqual(response.metadata["collector_version"], "manual-backfill-jsonl-v1")
 
     def test_google_manual_connector_backend_reports_missing_backfill_file(self) -> None:
-        backend = GoogleManualBackfillConnectorBackend(backfill_path="/tmp/geno-missing-google-manual.jsonl")
+        backend = GoogleManualBackfillConnectorBackend(backfill_path="/tmp/geo-missing-google-manual.jsonl")
         response = backend.collect(_request("google_manual"))
 
         self.assertEqual(response.status, "failed")

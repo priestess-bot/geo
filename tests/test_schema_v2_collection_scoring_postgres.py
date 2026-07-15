@@ -158,7 +158,7 @@ class SchemaV2CollectionScoringPostgresTest(unittest.TestCase):
 
             cursor.execute(
                 "SELECT permission FROM unnest("
-                "geno_v2_permissions_for_role('project_owner')) AS item(permission) "
+                "geo_v2_permissions_for_role('project_owner')) AS item(permission) "
                 "ORDER BY permission"
             )
             permissions = [row[0] for row in cursor.fetchall()]
@@ -259,9 +259,9 @@ class SchemaV2CollectionScoringPostgresTest(unittest.TestCase):
         connection = psycopg.connect(autocommit=True)
         cursor = connection.cursor()
         try:
-            cursor.execute("SET ROLE geno_v2_api_login")
+            cursor.execute("SET ROLE geo_v2_api_login")
             cursor.execute("BEGIN")
-            cursor.execute("SET LOCAL ROLE geno_v2_runtime")
+            cursor.execute("SET LOCAL ROLE geo_v2_runtime")
             cursor.execute(
                 "SELECT set_config('app.session_token_hash', %s, true)",
                 (self.session_hash,),
@@ -280,9 +280,9 @@ class SchemaV2CollectionScoringPostgresTest(unittest.TestCase):
         connection = psycopg.connect(autocommit=True)
         cursor = connection.cursor()
         try:
-            cursor.execute("SET ROLE geno_v2_worker_login")
+            cursor.execute("SET ROLE geo_v2_worker_login")
             cursor.execute("BEGIN")
-            cursor.execute("SET LOCAL ROLE geno_v2_worker")
+            cursor.execute("SET LOCAL ROLE geo_v2_worker")
             cursor.execute("SELECT set_config('app.session_token_hash', '', true)")
             yield cursor
             cursor.execute("COMMIT")
@@ -393,7 +393,7 @@ class SchemaV2CollectionScoringPostgresTest(unittest.TestCase):
         with self._worker_transaction() as cursor:
             cursor.execute(
                 "SELECT id, lease_token, attempt_count "
-                "FROM geno_v2_claim_collection_job(%s, 30, %s)",
+                "FROM geo_v2_claim_collection_job(%s, 30, %s)",
                 (worker_id, self.project_a),
             )
             row = cursor.fetchone()
@@ -597,13 +597,13 @@ class SchemaV2CollectionScoringPostgresTest(unittest.TestCase):
         worker_id = f"score-worker-{marker}"
         with self._worker_transaction() as cursor:
             cursor.execute(
-                "SELECT lease_token FROM geno_v2_claim_visibility_score_run(%s, 30, %s) "
+                "SELECT lease_token FROM geo_v2_claim_visibility_score_run(%s, 30, %s) "
                 "WHERE id = %s",
                 (worker_id, self.project_a, score_run_id),
             )
             lease_token = cursor.fetchone()[0]
             cursor.execute(
-                "SELECT status FROM geno_v2_complete_visibility_score_run(%s, %s, %s, %s)",
+                "SELECT status FROM geo_v2_complete_visibility_score_run(%s, %s, %s, %s)",
                 (
                     score_run_id,
                     worker_id,
@@ -693,7 +693,7 @@ class SchemaV2CollectionScoringPostgresTest(unittest.TestCase):
         with self.assertRaises(psycopg.errors.InsufficientPrivilege):
             with self._runtime_transaction() as cursor:
                 cursor.execute(
-                    "SELECT * FROM geno_v2_claim_collection_job('forged-worker', 30, %s)",
+                    "SELECT * FROM geo_v2_claim_collection_job('forged-worker', 30, %s)",
                     (self.project_a,),
                 )
         with self.assertRaises(psycopg.errors.InsufficientPrivilege):
@@ -712,29 +712,29 @@ class SchemaV2CollectionScoringPostgresTest(unittest.TestCase):
 
     def test_job_roles_are_membership_free_and_acl_is_narrow(self) -> None:
         worker_functions = (
-            "geno_v2_claim_durable_job_dispatch",
-            "geno_v2_heartbeat_durable_job_dispatch",
-            "geno_v2_complete_durable_job_dispatch",
-            "geno_v2_fail_durable_job_dispatch",
-            "geno_v2_claim_artifact_finalize",
-            "geno_v2_heartbeat_artifact_finalize",
-            "geno_v2_complete_artifact_finalize",
-            "geno_v2_fail_artifact_finalize",
-            "geno_v2_claim_collection_job",
-            "geno_v2_heartbeat_collection_job",
-            "geno_v2_complete_collection_job",
-            "geno_v2_fail_collection_job",
-            "geno_v2_ack_collection_job_cancel",
-            "geno_v2_claim_visibility_score_run",
-            "geno_v2_heartbeat_visibility_score_run",
-            "geno_v2_complete_visibility_score_run",
-            "geno_v2_fail_visibility_score_run",
-            "geno_v2_ack_visibility_score_run_cancel",
-            "geno_v2_claim_retest_run",
-            "geno_v2_heartbeat_retest_run",
-            "geno_v2_complete_retest_run",
-            "geno_v2_fail_retest_run",
-            "geno_v2_ack_retest_run_cancel",
+            "geo_v2_claim_durable_job_dispatch",
+            "geo_v2_heartbeat_durable_job_dispatch",
+            "geo_v2_complete_durable_job_dispatch",
+            "geo_v2_fail_durable_job_dispatch",
+            "geo_v2_claim_artifact_finalize",
+            "geo_v2_heartbeat_artifact_finalize",
+            "geo_v2_complete_artifact_finalize",
+            "geo_v2_fail_artifact_finalize",
+            "geo_v2_claim_collection_job",
+            "geo_v2_heartbeat_collection_job",
+            "geo_v2_complete_collection_job",
+            "geo_v2_fail_collection_job",
+            "geo_v2_ack_collection_job_cancel",
+            "geo_v2_claim_visibility_score_run",
+            "geo_v2_heartbeat_visibility_score_run",
+            "geo_v2_complete_visibility_score_run",
+            "geo_v2_fail_visibility_score_run",
+            "geo_v2_ack_visibility_score_run_cancel",
+            "geo_v2_claim_retest_run",
+            "geo_v2_heartbeat_retest_run",
+            "geo_v2_complete_retest_run",
+            "geo_v2_fail_retest_run",
+            "geo_v2_ack_retest_run_cancel",
         )
         with psycopg.connect() as connection, connection.cursor() as cursor:
             cursor.execute(
@@ -743,11 +743,11 @@ class SchemaV2CollectionScoringPostgresTest(unittest.TestCase):
                 "ORDER BY rolname",
                 (
                     [
-                        "geno_v2_worker",
-                        "geno_v2_job_owner",
-                        "geno_v2_result_owner",
-                        "geno_v2_job_command_owner",
-                        "geno_v2_worker_login",
+                        "geo_v2_worker",
+                        "geo_v2_job_owner",
+                        "geo_v2_result_owner",
+                        "geo_v2_job_command_owner",
+                        "geo_v2_worker_login",
                     ],
                 ),
             )
@@ -764,9 +764,9 @@ class SchemaV2CollectionScoringPostgresTest(unittest.TestCase):
                     bypass,
                     role_name
                     in {
-                        "geno_v2_job_owner",
-                        "geno_v2_result_owner",
-                        "geno_v2_job_command_owner",
+                        "geo_v2_job_owner",
+                        "geo_v2_result_owner",
+                        "geo_v2_job_command_owner",
                     },
                 )
             cursor.execute(
@@ -780,24 +780,24 @@ class SchemaV2CollectionScoringPostgresTest(unittest.TestCase):
             )
             self.assertEqual(
                 cursor.fetchall(),
-                [("geno_v2_worker", "geno_v2_worker_login", False, False, True)],
+                [("geo_v2_worker", "geo_v2_worker_login", False, False, True)],
             )
             cursor.execute(
                 "SELECT rolpassword IS NULL FROM pg_authid "
-                "WHERE rolname = 'geno_v2_worker_login'"
+                "WHERE rolname = 'geo_v2_worker_login'"
             )
             self.assertTrue(cursor.fetchone()[0])
             cursor.execute(
                 "SELECT proname, pg_get_userbyid(proowner), prosecdef, proconfig, "
-                "has_function_privilege('geno_v2_worker', pg_proc.oid, 'EXECUTE'), "
-                "has_function_privilege('geno_v2_runtime', pg_proc.oid, 'EXECUTE') "
+                "has_function_privilege('geo_v2_worker', pg_proc.oid, 'EXECUTE'), "
+                "has_function_privilege('geo_v2_runtime', pg_proc.oid, 'EXECUTE') "
                 "FROM pg_proc WHERE pronamespace = 'public'::regnamespace "
                 "AND proname = ANY(%s) ORDER BY proname",
                 (list(worker_functions),),
             )
             functions = cursor.fetchall()
             self.assertEqual({row[0] for row in functions}, set(worker_functions))
-            self.assertTrue(all(row[1] == "geno_v2_job_owner" for row in functions))
+            self.assertTrue(all(row[1] == "geo_v2_job_owner" for row in functions))
             self.assertTrue(all(row[2] for row in functions))
             self.assertTrue(all(row[3] == ["search_path=pg_catalog"] for row in functions))
             self.assertTrue(all(row[4] and not row[5] for row in functions))
@@ -857,14 +857,14 @@ class SchemaV2CollectionScoringPostgresTest(unittest.TestCase):
         with self._worker_transaction() as cursor:
             cursor.execute(
                 "SELECT lease_token, attempt_count "
-                "FROM geno_v2_claim_durable_job_dispatch(%s, 30, %s, %s)",
+                "FROM geo_v2_claim_durable_job_dispatch(%s, 30, %s, %s)",
                 (first_worker, self.project_a, dispatch_id),
             )
             first_token, first_attempt = cursor.fetchone()
             self.assertEqual(first_attempt, 1)
             cursor.execute(
                 "SELECT status, lease_token, attempt_count "
-                "FROM geno_v2_heartbeat_durable_job_dispatch(%s, %s, %s, 30)",
+                "FROM geo_v2_heartbeat_durable_job_dispatch(%s, %s, %s, 30)",
                 (dispatch_id, first_worker, first_token),
             )
             self.assertEqual(
@@ -888,7 +888,7 @@ class SchemaV2CollectionScoringPostgresTest(unittest.TestCase):
                 with self._worker_transaction() as cursor:
                     cursor.execute(
                         "SELECT lease_token, attempt_count "
-                        "FROM geno_v2_claim_durable_job_dispatch(%s, 30, %s, %s)",
+                        "FROM geo_v2_claim_durable_job_dispatch(%s, 30, %s, %s)",
                         (worker_id, self.project_a, dispatch_id),
                     )
                     outcomes.append(cursor.fetchone())
@@ -914,8 +914,8 @@ class SchemaV2CollectionScoringPostgresTest(unittest.TestCase):
             winning_worker = cursor.fetchone()[0]
 
         for function_sql in (
-            "SELECT geno_v2_heartbeat_durable_job_dispatch(%s, %s, %s, 30)",
-            "SELECT geno_v2_complete_durable_job_dispatch(%s, %s, %s)",
+            "SELECT geo_v2_heartbeat_durable_job_dispatch(%s, %s, %s, 30)",
+            "SELECT geo_v2_complete_durable_job_dispatch(%s, %s, %s)",
         ):
             with self.assertRaises(psycopg.Error) as stale_lease:
                 with self._worker_transaction() as cursor:
@@ -924,7 +924,7 @@ class SchemaV2CollectionScoringPostgresTest(unittest.TestCase):
 
         with self._worker_transaction() as cursor:
             cursor.execute(
-                "SELECT status FROM geno_v2_complete_durable_job_dispatch(%s, %s, %s)",
+                "SELECT status FROM geo_v2_complete_durable_job_dispatch(%s, %s, %s)",
                 (dispatch_id, winning_worker, winning_token),
             )
             self.assertEqual(cursor.fetchone()[0], "dispatched")
@@ -947,25 +947,25 @@ class SchemaV2CollectionScoringPostgresTest(unittest.TestCase):
         retry_worker = f"dispatch-retry-{uuid4().hex}"
         with self._worker_transaction() as cursor:
             cursor.execute(
-                "SELECT lease_token FROM geno_v2_claim_durable_job_dispatch(%s, 30, %s, %s)",
+                "SELECT lease_token FROM geo_v2_claim_durable_job_dispatch(%s, 30, %s, %s)",
                 (retry_worker, self.project_a, retry_dispatch_id),
             )
             retry_token = cursor.fetchone()[0]
             cursor.execute(
-                "SELECT status, attempt_count FROM geno_v2_fail_durable_job_dispatch("
+                "SELECT status, attempt_count FROM geo_v2_fail_durable_job_dispatch("
                 "%s, %s, %s, 'temporary', 'retry dispatch', true, 0)",
                 (retry_dispatch_id, retry_worker, retry_token),
             )
             self.assertEqual(cursor.fetchone(), ("pending", 1))
             cursor.execute(
                 "SELECT lease_token, attempt_count "
-                "FROM geno_v2_claim_durable_job_dispatch(%s, 30, %s, %s)",
+                "FROM geo_v2_claim_durable_job_dispatch(%s, 30, %s, %s)",
                 (retry_worker, self.project_a, retry_dispatch_id),
             )
             final_token, final_attempt = cursor.fetchone()
             self.assertEqual(final_attempt, 2)
             cursor.execute(
-                "SELECT status, attempt_count FROM geno_v2_fail_durable_job_dispatch("
+                "SELECT status, attempt_count FROM geo_v2_fail_durable_job_dispatch("
                 "%s, %s, %s, 'still_failing', 'budget exhausted', true, 0)",
                 (retry_dispatch_id, retry_worker, final_token),
             )
@@ -982,7 +982,7 @@ class SchemaV2CollectionScoringPostgresTest(unittest.TestCase):
             expired_dispatch_id = cursor.fetchone()[0]
         with self._worker_transaction() as cursor:
             cursor.execute(
-                "SELECT lease_token FROM geno_v2_claim_durable_job_dispatch(%s, 30, %s, %s)",
+                "SELECT lease_token FROM geo_v2_claim_durable_job_dispatch(%s, 30, %s, %s)",
                 (expired_worker, self.project_a, expired_dispatch_id),
             )
             self.assertIsNotNone(cursor.fetchone())
@@ -994,7 +994,7 @@ class SchemaV2CollectionScoringPostgresTest(unittest.TestCase):
             )
         with self._worker_transaction() as cursor:
             cursor.execute(
-                "SELECT id FROM geno_v2_claim_durable_job_dispatch(%s, 30, %s, %s)",
+                "SELECT id FROM geo_v2_claim_durable_job_dispatch(%s, 30, %s, %s)",
                 (expired_worker, self.project_a, expired_dispatch_id),
             )
             self.assertIsNone(cursor.fetchone())
@@ -1009,7 +1009,7 @@ class SchemaV2CollectionScoringPostgresTest(unittest.TestCase):
         with self._runtime_transaction() as cursor:
             for cleanup_job_id in (job_id, retry_job_id, expired_job_id):
                 cursor.execute(
-                    "SELECT status FROM geno_v2_request_collection_job_cancel(%s, %s)",
+                    "SELECT status FROM geo_v2_request_collection_job_cancel(%s, %s)",
                     (cleanup_job_id, "dispatch projection test cleanup"),
                 )
                 self.assertEqual(cursor.fetchone()[0], "cancelled")
@@ -1049,14 +1049,14 @@ class SchemaV2CollectionScoringPostgresTest(unittest.TestCase):
         with self.assertRaises(psycopg.errors.InsufficientPrivilege):
             with self._runtime_transaction() as cursor:
                 cursor.execute(
-                    "SELECT geno_v2_complete_collection_job(%s, %s, %s, '{}'::jsonb)",
+                    "SELECT geo_v2_complete_collection_job(%s, %s, %s, '{}'::jsonb)",
                     (job_id, "crashed-owner", old_token),
                 )
 
         with self.assertRaises(psycopg.Error) as stale_context:
             with self._worker_transaction() as cursor:
                 cursor.execute(
-                    "SELECT geno_v2_complete_collection_job(%s, %s, %s, '{}'::jsonb)",
+                    "SELECT geo_v2_complete_collection_job(%s, %s, %s, '{}'::jsonb)",
                     (job_id, "crashed-owner", old_token),
                 )
         self.assertEqual(stale_context.exception.sqlstate, "55000")
@@ -1070,7 +1070,7 @@ class SchemaV2CollectionScoringPostgresTest(unittest.TestCase):
 
         with self._worker_transaction() as cursor:
             cursor.execute(
-                "SELECT lease_token FROM geno_v2_heartbeat_collection_job(%s, %s, %s, 30)",
+                "SELECT lease_token FROM geo_v2_heartbeat_collection_job(%s, %s, %s, 30)",
                 (job_id, winning_worker, new_token),
             )
             if cursor.fetchone() is None:
@@ -1079,7 +1079,7 @@ class SchemaV2CollectionScoringPostgresTest(unittest.TestCase):
         with self.assertRaises(psycopg.Error) as malformed_result:
             with self._worker_transaction() as cursor:
                 cursor.execute(
-                    "SELECT geno_v2_complete_collection_job(%s, %s, %s, '{}'::jsonb)",
+                    "SELECT geo_v2_complete_collection_job(%s, %s, %s, '{}'::jsonb)",
                     (job_id, winning_worker, new_token),
                 )
         self.assertEqual(malformed_result.exception.sqlstate, "22023")
@@ -1097,7 +1097,7 @@ class SchemaV2CollectionScoringPostgresTest(unittest.TestCase):
         )
         with self._worker_transaction() as cursor:
             cursor.execute(
-                "SELECT status FROM geno_v2_complete_collection_job(%s, %s, %s, %s)",
+                "SELECT status FROM geo_v2_complete_collection_job(%s, %s, %s, %s)",
                 (
                     job_id,
                     winning_worker,
@@ -1157,7 +1157,7 @@ class SchemaV2CollectionScoringPostgresTest(unittest.TestCase):
         finalize_worker = f"artifact-finalizer-{uuid4().hex}"
         with self._worker_transaction() as cursor:
             cursor.execute(
-                "SELECT id, lease_token FROM geno_v2_claim_artifact_finalize(%s, 30, %s) "
+                "SELECT id, lease_token FROM geo_v2_claim_artifact_finalize(%s, 30, %s) "
                 "WHERE id = %s",
                 (finalize_worker, self.project_a, result_ids["artifact_outbox"]),
             )
@@ -1165,13 +1165,13 @@ class SchemaV2CollectionScoringPostgresTest(unittest.TestCase):
         with self.assertRaises(psycopg.Error) as hash_mismatch:
             with self._worker_transaction() as cursor:
                 cursor.execute(
-                    "SELECT geno_v2_complete_artifact_finalize(%s, %s, %s, %s)",
+                    "SELECT geo_v2_complete_artifact_finalize(%s, %s, %s, %s)",
                     (outbox_id, finalize_worker, finalize_token, _digest("wrong")),
                 )
         self.assertEqual(hash_mismatch.exception.sqlstate, "22000")
         with self._worker_transaction() as cursor:
             cursor.execute(
-                "SELECT status FROM geno_v2_complete_artifact_finalize(%s, %s, %s, %s)",
+                "SELECT status FROM geo_v2_complete_artifact_finalize(%s, %s, %s, %s)",
                 (
                     outbox_id,
                     finalize_worker,
@@ -1182,7 +1182,7 @@ class SchemaV2CollectionScoringPostgresTest(unittest.TestCase):
             self.assertEqual(cursor.fetchone()[0], "succeeded")
         with self._worker_transaction() as cursor:
             cursor.execute(
-                "SELECT status FROM geno_v2_complete_artifact_finalize(%s, %s, %s, %s)",
+                "SELECT status FROM geo_v2_complete_artifact_finalize(%s, %s, %s, %s)",
                 (
                     outbox_id,
                     finalize_worker,
@@ -1215,7 +1215,7 @@ class SchemaV2CollectionScoringPostgresTest(unittest.TestCase):
         )
         with self._worker_transaction() as cursor:
             cursor.execute(
-                "SELECT status FROM geno_v2_complete_collection_job(%s, %s, %s, %s)",
+                "SELECT status FROM geo_v2_complete_collection_job(%s, %s, %s, %s)",
                 (
                     collection_job_id,
                     collection_worker,
@@ -1228,7 +1228,7 @@ class SchemaV2CollectionScoringPostgresTest(unittest.TestCase):
         artifact_worker = f"score-evidence-finalizer-{uuid4().hex}"
         with self._worker_transaction() as cursor:
             cursor.execute(
-                "SELECT id, lease_token FROM geno_v2_claim_artifact_finalize(%s, 30, %s) "
+                "SELECT id, lease_token FROM geo_v2_claim_artifact_finalize(%s, 30, %s) "
                 "WHERE id = %s",
                 (
                     artifact_worker,
@@ -1238,7 +1238,7 @@ class SchemaV2CollectionScoringPostgresTest(unittest.TestCase):
             )
             artifact_outbox_id, artifact_token = cursor.fetchone()
             cursor.execute(
-                "SELECT status FROM geno_v2_complete_artifact_finalize(%s, %s, %s, %s)",
+                "SELECT status FROM geo_v2_complete_artifact_finalize(%s, %s, %s, %s)",
                 (
                     artifact_outbox_id,
                     artifact_worker,
@@ -1650,13 +1650,13 @@ class SchemaV2CollectionScoringPostgresTest(unittest.TestCase):
             )
         with self._worker_transaction() as cursor:
             cursor.execute(
-                "SELECT lease_token FROM geno_v2_claim_retest_run(%s, 30, %s) "
+                "SELECT lease_token FROM geo_v2_claim_retest_run(%s, 30, %s) "
                 "WHERE id = %s",
                 (worker_id, self.project_a, retest_run_id),
             )
             lease_token = cursor.fetchone()[0]
             cursor.execute(
-                "SELECT status FROM geno_v2_complete_retest_run(%s, %s, %s, %s, %s)",
+                "SELECT status FROM geo_v2_complete_retest_run(%s, %s, %s, %s, %s)",
                 (
                     retest_run_id,
                     worker_id,
@@ -1790,7 +1790,7 @@ class SchemaV2CollectionScoringPostgresTest(unittest.TestCase):
         with self.assertRaises(psycopg.Error) as stale_heartbeat:
             with self._worker_transaction() as cursor:
                 cursor.execute(
-                    "SELECT geno_v2_heartbeat_retest_run(%s, %s, %s, 30)",
+                    "SELECT geo_v2_heartbeat_retest_run(%s, %s, %s, 30)",
                     (retest_run_id, worker_id, lease_token),
                 )
         self.assertEqual(stale_heartbeat.exception.sqlstate, "55000")
@@ -1917,12 +1917,12 @@ class SchemaV2CollectionScoringPostgresTest(unittest.TestCase):
             self.assertEqual(cursor.fetchone()[0], source_profile_id)
         with self._runtime_transaction() as cursor:
             cursor.execute(
-                "SELECT status FROM geno_v2_request_visibility_score_run_cancel(%s, %s)",
+                "SELECT status FROM geo_v2_request_visibility_score_run_cancel(%s, %s)",
                 (score_run_id, "concurrency test cleanup"),
             )
             self.assertEqual(cursor.fetchone()[0], "cancelled")
             cursor.execute(
-                "SELECT status FROM geno_v2_request_collection_job_cancel(%s, %s)",
+                "SELECT status FROM geo_v2_request_collection_job_cancel(%s, %s)",
                 (collection_job_id, "concurrency test cleanup"),
             )
             self.assertEqual(cursor.fetchone()[0], "cancelled")
@@ -1933,7 +1933,7 @@ class SchemaV2CollectionScoringPostgresTest(unittest.TestCase):
         )
         with self._runtime_transaction() as cursor:
             cursor.execute(
-                "SELECT status FROM geno_v2_request_collection_job_cancel(%s, %s)",
+                "SELECT status FROM geo_v2_request_collection_job_cancel(%s, %s)",
                 (collection_job_id, "operator cancelled queued collection"),
             )
             self.assertEqual(cursor.fetchone()[0], "cancelled")
@@ -1985,7 +1985,7 @@ class SchemaV2CollectionScoringPostgresTest(unittest.TestCase):
                 ),
             )
             cursor.execute(
-                "SELECT status FROM geno_v2_request_visibility_score_run_cancel(%s, %s)",
+                "SELECT status FROM geo_v2_request_visibility_score_run_cancel(%s, %s)",
                 (score_run_id, "operator cancelled queued score"),
             )
             self.assertEqual(cursor.fetchone()[0], "cancelled")
@@ -2018,31 +2018,31 @@ class SchemaV2CollectionScoringPostgresTest(unittest.TestCase):
                 ),
             )
             cursor.execute(
-                "SELECT status FROM geno_v2_request_retest_run_cancel(%s, %s)",
+                "SELECT status FROM geo_v2_request_retest_run_cancel(%s, %s)",
                 (retest_run_id, "operator cancelled queued retest"),
             )
             self.assertEqual(cursor.fetchone()[0], "cancelled")
 
         replay_specs = (
             (
-                "geno_v2_replay_collection_job",
-                "geno_v2_request_collection_job_cancel",
+                "geo_v2_replay_collection_job",
+                "geo_v2_request_collection_job_cancel",
                 "collection",
                 collection_job_id,
                 uuid4(),
                 f"collection-replay-{marker}",
             ),
             (
-                "geno_v2_replay_visibility_score_run",
-                "geno_v2_request_visibility_score_run_cancel",
+                "geo_v2_replay_visibility_score_run",
+                "geo_v2_request_visibility_score_run_cancel",
                 "visibility_score",
                 score_run_id,
                 uuid4(),
                 f"score-replay-{marker}",
             ),
             (
-                "geno_v2_replay_retest_run",
-                "geno_v2_request_retest_run_cancel",
+                "geo_v2_replay_retest_run",
+                "geo_v2_request_retest_run_cancel",
                 "retest",
                 retest_run_id,
                 uuid4(),
@@ -2171,18 +2171,18 @@ class SchemaV2CollectionScoringPostgresTest(unittest.TestCase):
             (
                 "visibility_score_run",
                 running_score_id,
-                "geno_v2_claim_visibility_score_run",
-                "geno_v2_request_visibility_score_run_cancel",
-                "geno_v2_heartbeat_visibility_score_run",
-                "geno_v2_ack_visibility_score_run_cancel",
+                "geo_v2_claim_visibility_score_run",
+                "geo_v2_request_visibility_score_run_cancel",
+                "geo_v2_heartbeat_visibility_score_run",
+                "geo_v2_ack_visibility_score_run_cancel",
             ),
             (
                 "retest_run",
                 running_retest_id,
-                "geno_v2_claim_retest_run",
-                "geno_v2_request_retest_run_cancel",
-                "geno_v2_heartbeat_retest_run",
-                "geno_v2_ack_retest_run_cancel",
+                "geo_v2_claim_retest_run",
+                "geo_v2_request_retest_run_cancel",
+                "geo_v2_heartbeat_retest_run",
+                "geo_v2_ack_retest_run_cancel",
             ),
         )
         for (
@@ -2229,27 +2229,27 @@ class SchemaV2CollectionScoringPostgresTest(unittest.TestCase):
         with self._runtime_transaction() as cursor:
             cursor.execute(
                 "SELECT status, cancel_requested_at IS NOT NULL "
-                "FROM geno_v2_request_collection_job_cancel(%s, %s)",
+                "FROM geo_v2_request_collection_job_cancel(%s, %s)",
                 (running_job_id, "cancel active collection"),
             )
             self.assertEqual(cursor.fetchone(), ("running", True))
         with self.assertRaises(psycopg.Error) as cancelled_heartbeat:
             with self._worker_transaction() as cursor:
                 cursor.execute(
-                    "SELECT geno_v2_heartbeat_collection_job(%s, %s, %s, 30)",
+                    "SELECT geo_v2_heartbeat_collection_job(%s, %s, %s, 30)",
                     (running_job_id, worker_id, lease_token),
                 )
         self.assertEqual(cancelled_heartbeat.exception.sqlstate, "55000")
         with self.assertRaises(psycopg.Error) as blocked_complete:
             with self._worker_transaction() as cursor:
                 cursor.execute(
-                    "SELECT geno_v2_complete_collection_job(%s, %s, %s, '{}'::jsonb)",
+                    "SELECT geo_v2_complete_collection_job(%s, %s, %s, '{}'::jsonb)",
                     (running_job_id, worker_id, lease_token),
                 )
         self.assertEqual(blocked_complete.exception.sqlstate, "55000")
         with self._worker_transaction() as cursor:
             cursor.execute(
-                "SELECT status FROM geno_v2_ack_collection_job_cancel(%s, %s, %s)",
+                "SELECT status FROM geo_v2_ack_collection_job_cancel(%s, %s, %s)",
                 (running_job_id, worker_id, lease_token),
             )
             self.assertEqual(cursor.fetchone()[0], "cancelled")
@@ -2268,7 +2268,7 @@ class SchemaV2CollectionScoringPostgresTest(unittest.TestCase):
         assert expired_claim is not None
         with self._runtime_transaction() as cursor:
             cursor.execute(
-                "SELECT status FROM geno_v2_request_collection_job_cancel(%s, %s)",
+                "SELECT status FROM geo_v2_request_collection_job_cancel(%s, %s)",
                 (expired_cancel_job_id, "recover cancelled crashed owner"),
             )
             self.assertEqual(cursor.fetchone()[0], "running")

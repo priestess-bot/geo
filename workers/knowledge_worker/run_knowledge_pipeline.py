@@ -13,15 +13,15 @@ import sys
 import time
 from typing import Any
 
-from geno_core.durable_jobs import LeaseClaim, LeaseFencedConnection, LeaseGuard, LostLeaseError
-from geno_core.knowledge_application import (
+from geo_core.durable_jobs import LeaseClaim, LeaseFencedConnection, LeaseGuard, LostLeaseError
+from geo_core.knowledge_application import (
     crawl_public_knowledge_url,
     deepseek_extract_knowledge_facts,
     deepseek_generate_knowledge_application,
     load_deepseek_api_key,
     normalize_knowledge_url,
 )
-from geno_core.knowledge_pipeline import (
+from geo_core.knowledge_pipeline import (
     DEFAULT_EMBEDDING_MODEL,
     DEFAULT_EMBEDDING_MODEL_VERSION,
     DEFAULT_QDRANT_COLLECTION,
@@ -37,8 +37,8 @@ from geno_core.knowledge_pipeline import (
     source_config_text,
     stable_pipeline_id,
 )
-from geno_core.object_store import ObjectStoreError, parse_s3_uri
-from geno_core.runtime import build_object_store_from_env, validate_runtime_schema_compatibility
+from geo_core.object_store import ObjectStoreError, parse_s3_uri
+from geo_core.runtime import build_object_store_from_env, validate_runtime_schema_compatibility
 
 
 CRAWL_MIN_SUCCESS_PAGES = max(1, int(os.getenv("GEO_CRAWL_MIN_SUCCESS_PAGES", "1")))
@@ -263,7 +263,7 @@ def _parser_quality_findings(parsed: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _require_real_model() -> bool:
-    return os.getenv("GENO_KNOWLEDGE_REQUIRE_REAL_MODEL", "false").strip().lower() in {"1", "true", "yes"}
+    return os.getenv("GEO_KNOWLEDGE_REQUIRE_REAL_MODEL", "false").strip().lower() in {"1", "true", "yes"}
 
 
 def _update_stage(
@@ -671,7 +671,7 @@ def _process_crawl_job(repository: KnowledgePipelineRepository, job: dict[str, A
         adapter = "http_fallback"
 
     store = _optional_object_store()
-    if store is None and os.getenv("GENO_KNOWLEDGE_REQUIRE_OBJECT_STORE", "false").strip().lower() in {"1", "true", "yes"}:
+    if store is None and os.getenv("GEO_KNOWLEDGE_REQUIRE_OBJECT_STORE", "false").strip().lower() in {"1", "true", "yes"}:
         raise RuntimeError("knowledge crawl asset archival requires object storage")
 
     def archive_asset(*, asset_type: str, content: bytes, content_type: str, title: str, source_uri: str) -> dict[str, Any] | None:
@@ -1289,7 +1289,7 @@ def _process_parser_run(repository: KnowledgePipelineRepository, job: dict[str, 
 
 
 def _optional_object_store():
-    required = os.getenv("GENO_KNOWLEDGE_REQUIRE_OBJECT_STORE", "false").strip().lower() in {"1", "true", "yes"}
+    required = os.getenv("GEO_KNOWLEDGE_REQUIRE_OBJECT_STORE", "false").strip().lower() in {"1", "true", "yes"}
     if not os.environ.get("OBJECT_STORE_ENDPOINT", "").strip():
         if required:
             raise RuntimeError("knowledge object storage is required but OBJECT_STORE_ENDPOINT is missing")
@@ -1646,7 +1646,7 @@ def _process_embedding_job(repository: KnowledgePipelineRepository, job: dict[st
     qdrant = QdrantKnowledgeStore(
         collection=str(os.getenv("QDRANT_COLLECTION") or job.get("qdrant_collection") or DEFAULT_QDRANT_COLLECTION)
     )
-    if not qdrant.enabled() and os.getenv("GENO_KNOWLEDGE_REQUIRE_QDRANT", "false").strip().lower() in {"1", "true", "yes"}:
+    if not qdrant.enabled() and os.getenv("GEO_KNOWLEDGE_REQUIRE_QDRANT", "false").strip().lower() in {"1", "true", "yes"}:
         raise RuntimeError("Qdrant is required for knowledge embedding but QDRANT_URL is missing")
     embedding_model_version = str(job.get("embedding_model_version") or DEFAULT_EMBEDDING_MODEL_VERSION)
     points = []
@@ -2691,20 +2691,20 @@ def _knowledge_terminal_status(table: str, result: dict[str, Any]) -> str:
 
 
 def _test_after_claim_failpoint(claim: LeaseClaim) -> None:
-    failpoint = os.getenv("GENO_DURABLE_JOB_AFTER_CLAIM_FAILPOINT", "").strip()
+    failpoint = os.getenv("GEO_DURABLE_JOB_AFTER_CLAIM_FAILPOINT", "").strip()
     if not failpoint:
         return
-    if os.getenv("GENO_DEPLOYMENT_ENVIRONMENT", "").strip().lower() != "test":
+    if os.getenv("GEO_DEPLOYMENT_ENVIRONMENT", "").strip().lower() != "test":
         raise RuntimeError("durable job failpoints are restricted to the test environment")
     if failpoint not in {"all", claim.spec.table}:
         return
     target_attempt = max(
-        1, int(os.getenv("GENO_DURABLE_JOB_AFTER_CLAIM_FAILPOINT_ATTEMPT", "1"))
+        1, int(os.getenv("GEO_DURABLE_JOB_AFTER_CLAIM_FAILPOINT_ATTEMPT", "1"))
     )
     if claim.attempt_count != target_attempt:
         return
     pause_seconds = max(
-        0.0, float(os.getenv("GENO_DURABLE_JOB_AFTER_CLAIM_PAUSE_SECONDS", "0"))
+        0.0, float(os.getenv("GEO_DURABLE_JOB_AFTER_CLAIM_PAUSE_SECONDS", "0"))
     )
     if pause_seconds:
         time.sleep(pause_seconds)
@@ -2713,20 +2713,20 @@ def _test_after_claim_failpoint(claim: LeaseClaim) -> None:
 
 
 def _test_after_business_failpoint(claim: LeaseClaim) -> None:
-    failpoint = os.getenv("GENO_DURABLE_JOB_AFTER_BUSINESS_FAILPOINT", "").strip()
+    failpoint = os.getenv("GEO_DURABLE_JOB_AFTER_BUSINESS_FAILPOINT", "").strip()
     if not failpoint:
         return
-    if os.getenv("GENO_DEPLOYMENT_ENVIRONMENT", "").strip().lower() != "test":
+    if os.getenv("GEO_DEPLOYMENT_ENVIRONMENT", "").strip().lower() != "test":
         raise RuntimeError("durable job failpoints are restricted to the test environment")
     if failpoint not in {"all", claim.spec.table}:
         return
     target_attempt = max(
-        1, int(os.getenv("GENO_DURABLE_JOB_AFTER_BUSINESS_FAILPOINT_ATTEMPT", "1"))
+        1, int(os.getenv("GEO_DURABLE_JOB_AFTER_BUSINESS_FAILPOINT_ATTEMPT", "1"))
     )
     if claim.attempt_count != target_attempt:
         return
     pause_seconds = max(
-        0.0, float(os.getenv("GENO_DURABLE_JOB_AFTER_BUSINESS_PAUSE_SECONDS", "0"))
+        0.0, float(os.getenv("GEO_DURABLE_JOB_AFTER_BUSINESS_PAUSE_SECONDS", "0"))
     )
     if pause_seconds:
         time.sleep(pause_seconds)
@@ -2735,20 +2735,20 @@ def _test_after_business_failpoint(claim: LeaseClaim) -> None:
 
 
 def _test_after_finalizing_failpoint(claim: LeaseClaim) -> None:
-    failpoint = os.getenv("GENO_DURABLE_JOB_AFTER_FINALIZING_FAILPOINT", "").strip()
+    failpoint = os.getenv("GEO_DURABLE_JOB_AFTER_FINALIZING_FAILPOINT", "").strip()
     if not failpoint:
         return
-    if os.getenv("GENO_DEPLOYMENT_ENVIRONMENT", "").strip().lower() != "test":
+    if os.getenv("GEO_DEPLOYMENT_ENVIRONMENT", "").strip().lower() != "test":
         raise RuntimeError("durable job failpoints are restricted to the test environment")
     if failpoint not in {"all", claim.spec.table}:
         return
     target_attempt = max(
-        1, int(os.getenv("GENO_DURABLE_JOB_AFTER_FINALIZING_FAILPOINT_ATTEMPT", "1"))
+        1, int(os.getenv("GEO_DURABLE_JOB_AFTER_FINALIZING_FAILPOINT_ATTEMPT", "1"))
     )
     if claim.attempt_count != target_attempt:
         return
     pause_seconds = max(
-        0.0, float(os.getenv("GENO_DURABLE_JOB_AFTER_FINALIZING_PAUSE_SECONDS", "0"))
+        0.0, float(os.getenv("GEO_DURABLE_JOB_AFTER_FINALIZING_PAUSE_SECONDS", "0"))
     )
     if pause_seconds:
         time.sleep(pause_seconds)
@@ -2971,11 +2971,11 @@ def run_once(repository: KnowledgePipelineRepository, *, worker_id: str, lease_s
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run GEO knowledge pipeline DB-polling worker.")
-    parser.add_argument("--worker-id", default=os.getenv("GENO_KNOWLEDGE_WORKER_ID", "knowledge-worker"))
+    parser.add_argument("--worker-id", default=os.getenv("GEO_KNOWLEDGE_WORKER_ID", "knowledge-worker"))
     parser.add_argument("--lease-seconds", type=int, default=600)
     parser.add_argument("--max-jobs", type=int, default=1)
     parser.add_argument("--loop-once", action="store_true")
-    parser.add_argument("--poll-seconds", type=float, default=float(os.getenv("GENO_KNOWLEDGE_WORKER_POLL_SECONDS", "2.0")))
+    parser.add_argument("--poll-seconds", type=float, default=float(os.getenv("GEO_KNOWLEDGE_WORKER_POLL_SECONDS", "2.0")))
     args = parser.parse_args(argv)
     validate_runtime_schema_compatibility()
     repository = connect_knowledge_pipeline_repository()

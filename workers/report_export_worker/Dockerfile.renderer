@@ -13,9 +13,9 @@ RUN pip install --no-cache-dir -r api-requirements.txt \
     markdown==3.8.2 \
     playwright==1.53.0
 
-COPY packages/geno_core ./packages/geno_core
+COPY packages/geo_core ./packages/geo_core
 COPY workers ./workers
 
-ENV PYTHONPATH=/app:/app/packages/geno_core
+ENV PYTHONPATH=/app:/app/packages/geo_core
 
 CMD ["uvicorn", "workers.report_export_worker.pdf_renderer_api:app", "--host", "0.0.0.0", "--port", "8200"]

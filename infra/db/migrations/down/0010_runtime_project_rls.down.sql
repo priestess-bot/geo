@@ -74,21 +74,21 @@ BEGIN
   END LOOP;
 END $$;
 
-DROP FUNCTION IF EXISTS geno_runtime_can_access_project(uuid);
-DROP FUNCTION IF EXISTS geno_runtime_project_id();
-DROP FUNCTION IF EXISTS geno_runtime_actor_id();
-DROP FUNCTION IF EXISTS geno_runtime_rls_enabled();
+DROP FUNCTION IF EXISTS geo_runtime_can_access_project(uuid);
+DROP FUNCTION IF EXISTS geo_runtime_project_id();
+DROP FUNCTION IF EXISTS geo_runtime_actor_id();
+DROP FUNCTION IF EXISTS geo_runtime_rls_enabled();
 
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
-  REVOKE SELECT, INSERT, UPDATE, DELETE ON TABLES FROM geno_runtime_app;
+  REVOKE SELECT, INSERT, UPDATE, DELETE ON TABLES FROM geo_runtime_app;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
-  REVOKE USAGE, SELECT ON SEQUENCES FROM geno_runtime_app;
+  REVOKE USAGE, SELECT ON SEQUENCES FROM geo_runtime_app;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
-  REVOKE EXECUTE ON FUNCTIONS FROM geno_runtime_app;
+  REVOKE EXECUTE ON FUNCTIONS FROM geo_runtime_app;
 
-REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM geno_runtime_app;
-REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM geno_runtime_app;
-REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public FROM geno_runtime_app;
-REVOKE USAGE ON SCHEMA public FROM geno_runtime_app;
+REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM geo_runtime_app;
+REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM geo_runtime_app;
+REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public FROM geo_runtime_app;
+REVOKE USAGE ON SCHEMA public FROM geo_runtime_app;
 
-DROP ROLE IF EXISTS geno_runtime_app;
+DROP ROLE IF EXISTS geo_runtime_app;

@@ -18,7 +18,7 @@ from zipfile import ZipFile
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 
-from geno_core.action_plan import (
+from geo_core.action_plan import (
     ACTION_PLAN_P0_ACTION_TYPES,
     build_action_plan_audit_event,
     build_action_recommendations,
@@ -26,16 +26,16 @@ from geno_core.action_plan import (
     build_retest_comparison_audit_event,
     compare_retest_windows,
 )
-from geno_core.audit import AUTH_AUDIT_EVENT_TYPES, build_audit_event, build_auth_audit_event, hash_payload
-from geno_core.analysis_contract import (
+from geo_core.audit import AUTH_AUDIT_EVENT_TYPES, build_audit_event, build_auth_audit_event, hash_payload
+from geo_core.analysis_contract import (
     ANALYSIS_OUTPUT_CONTRACT_VERSION,
     HUMAN_REVIEW_OVERRIDE_VERSION,
     apply_human_review_override,
     build_answer_analysis_output_contract,
 )
-from geno_core.analysis_pipeline import analyze_and_score_records
-from geno_core.bootstrap import build_au_project_bootstrap, build_project_bootstrap
-from geno_core.collection import (
+from geo_core.analysis_pipeline import analyze_and_score_records
+from geo_core.bootstrap import build_au_project_bootstrap, build_project_bootstrap
+from geo_core.collection import (
     CollectionExecutionPolicy,
     build_collection_run_audit_event,
     build_collection_run_summary,
@@ -47,26 +47,26 @@ from geno_core.collection import (
     run_collection_slice,
     run_fixture_collection_slice,
 )
-from geno_core.contracts import CollectorBackend, GraphStore, ParserEngine, ReportExporter, ScoringFormula, VectorStore
-from geno_core.email_delivery import (
+from geo_core.contracts import CollectorBackend, GraphStore, ParserEngine, ReportExporter, ScoringFormula, VectorStore
+from geo_core.email_delivery import (
     PROJECT_MEMBER_INVITATION_EMAIL_TEMPLATE_VERSION,
     RUNTIME_NOTIFICATION_EMAIL_TEMPLATE_VERSION,
     render_project_member_invitation_email,
     render_runtime_notification_email,
     runtime_email_body_hash,
 )
-from geno_core.email_feedback_adapters import (
+from geo_core.email_feedback_adapters import (
     RUNTIME_NOTIFICATION_EMAIL_PROVIDER_FEEDBACK_ADAPTER_VERSION,
     parse_runtime_notification_email_provider_feedback,
 )
-from geno_core.email_feedback_signatures import verify_runtime_notification_email_provider_signature
-from geno_core.email_preferences import (
+from geo_core.email_feedback_signatures import verify_runtime_notification_email_provider_signature
+from geo_core.email_preferences import (
     RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_MANAGE_ACTION,
     runtime_notification_email_preference_token_hash,
     sign_runtime_notification_email_preference_token,
     verify_runtime_notification_email_preference_token,
 )
-from geno_core.collectors import (
+from geo_core.collectors import (
     FixtureChatGPTSearchBrowserCollector,
     FixtureGoogleAIModeCollector,
     FixtureGoogleAIOCollector,
@@ -82,22 +82,22 @@ from geno_core.collectors import (
     JsonHttpResponse,
     ThirdPartySerpCollector,
 )
-from geno_core.geo import StaticAUGeoProvider
-from geno_core.fidelity import build_runtime_fidelity_check
-from geno_core.fidelity_schedule import build_browser_fidelity_sampling_plan
-from geno_core.google_spike import (
+from geo_core.geo import StaticAUGeoProvider
+from geo_core.fidelity import build_runtime_fidelity_check
+from geo_core.fidelity_schedule import build_browser_fidelity_sampling_plan
+from geo_core.google_spike import (
     build_google_spike_plan,
     evaluate_google_spike_gate,
     evaluate_google_spike_readiness_gate,
     select_google_spike_prompts,
 )
-from geno_core.graph import build_citation_graph
-from geno_core.graph_store import (
+from geo_core.graph import build_citation_graph
+from geo_core.graph_store import (
     InMemoryNeo4jCitationGraphStore,
     InMemoryPostgresAdjacencyGraphStore,
     summarize_citation_graph_store,
 )
-from geno_core.knowledge import (
+from geo_core.knowledge import (
     CONTENT_REVIEW_PENDING_STATUS,
     KNOWLEDGE_FACT_APPROVED_STATUS,
     MANUAL_DISTRIBUTION_BACKFILL_REQUIRED_STATUS,
@@ -112,7 +112,7 @@ from geno_core.knowledge import (
     embed_knowledge_text,
     knowledge_fact_text,
 )
-from geno_core.knowledge_application import (
+from geo_core.knowledge_application import (
     PRIVATE_HOST_ERROR,
     build_knowledge_application_artifacts,
     crawl_public_knowledge_url,
@@ -121,16 +121,16 @@ from geno_core.knowledge_application import (
     extract_knowledge_facts_from_document,
     normalize_knowledge_url,
 )
-from geno_core.llm_gateway import FixtureLLMGateway, LiteLLMGateway, LLMGatewayRequestError
-from geno_core.market import build_au_market_profile
-from geno_core.security.secrets import (
+from geo_core.llm_gateway import FixtureLLMGateway, LiteLLMGateway, LLMGatewayRequestError
+from geo_core.market import build_au_market_profile
+from geo_core.security.secrets import (
     CONNECTOR_SECRET_ENCRYPTION_VERSION,
     decrypt_connector_secret,
     encrypt_connector_secret,
     redact_secret_text,
     redact_secrets,
 )
-from geno_core.models import (
+from geo_core.models import (
     AnswerAnalysis,
     CollectionFailureRecord,
     EntityAliasCandidateAssignmentActionInput,
@@ -248,7 +248,7 @@ from geno_core.models import (
     RuntimeSessionRevokeInput,
     RuntimeTraceabilityDetail,
 )
-from geno_core.object_store import (
+from geo_core.object_store import (
     S3CompatibleObjectStore,
     archive_api_snapshot_assets,
     archive_evidence_bytes,
@@ -257,17 +257,17 @@ from geno_core.object_store import (
     archive_report_artifacts,
     archive_runtime_report_artifact,
 )
-from geno_core.prompt_pack import INTENT_WEIGHTS
-from geno_core.prompt_import import prompt_import_file_to_csv
-from geno_core.parser import ComparativeAnswerParser, LLMJudgeAnswerParser, RuleBasedAnswerParser
-from geno_core.report import MarkdownCsvReportExporter
-from geno_core.repository import (
+from geo_core.prompt_pack import INTENT_WEIGHTS
+from geo_core.prompt_import import prompt_import_file_to_csv
+from geo_core.parser import ComparativeAnswerParser, LLMJudgeAnswerParser, RuleBasedAnswerParser
+from geo_core.report import MarkdownCsvReportExporter
+from geo_core.repository import (
     PostgresEvidenceRepository,
     _artifact_hash,
     _parse_knowledge_fact_import_csv,
     _stable_id,
 )
-from geno_core.runtime import (
+from geo_core.runtime import (
     RuntimePersistenceError,
     build_runtime_diagnostics,
     build_repository_from_env,
@@ -277,7 +277,7 @@ from geno_core.runtime import (
     runtime_database_diagnostic,
     runtime_object_store_diagnostic,
 )
-from geno_core.scoring import (
+from geo_core.scoring import (
     AU_VISIBILITY_V1,
     AU_VISIBILITY_V1_1_LOCAL_BOOST,
     VISIBILITY_V1_0,
@@ -289,15 +289,15 @@ from geno_core.scoring import (
     rescore_snapshot_with_formula,
     score_answer_analysis,
 )
-from geno_core.stubs import (
+from geo_core.stubs import (
     NotConfiguredCollectorBackend,
     NotConfiguredParserEngine,
     NotConfiguredReportExporter,
     NotConfiguredScoringFormula,
 )
-from geno_core.traceability import build_traceability_bundle, verify_report_traceability_smoke
-from geno_core.vector_store import InMemoryPgVectorStore, InMemoryQdrantVectorStore, summarize_vector_search
-from geno_core.webhook_signing import (
+from geo_core.traceability import build_traceability_bundle, verify_report_traceability_smoke
+from geo_core.vector_store import InMemoryPgVectorStore, InMemoryQdrantVectorStore, summarize_vector_search
+from geo_core.webhook_signing import (
     RUNTIME_NOTIFICATION_WEBHOOK_DELIVERY_ID_HEADER,
     RUNTIME_NOTIFICATION_WEBHOOK_NOTIFICATION_ID_HEADER,
     RUNTIME_NOTIFICATION_WEBHOOK_PAYLOAD_HASH_HEADER,
@@ -411,7 +411,7 @@ class CoreContractsTest(unittest.TestCase):
             "provider": "openai",
             "raw_secret": "sk-test-provider-secret",
             "nested": {"api_key": "pplx-test-provider-secret", "safe": "visible"},
-            "items": [{"session_token": "geno-session-secret"}],
+            "items": [{"session_token": "geo-session-secret"}],
         }
 
         redacted = redact_secrets(payload)
@@ -551,11 +551,11 @@ class CoreContractsTest(unittest.TestCase):
             expires_at="2026-06-17T00:00:00+00:00",
             accept_url="https://app.example.com/invite/accept?invitation_id=invitation-1",
             one_time_code="token",
-            subject="Join GENO",
+            subject="Join GEO",
             message="Please join the workspace.",
         )
 
-        self.assertEqual(rendered.subject, "Join GENO")
+        self.assertEqual(rendered.subject, "Join GEO")
         self.assertEqual(rendered.template_version, PROJECT_MEMBER_INVITATION_EMAIL_TEMPLATE_VERSION)
         self.assertIn("Please join the workspace.", rendered.text)
         self.assertIn("Role: viewer", rendered.text)
@@ -564,7 +564,7 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("Enter this one-time code on that page:\ntoken", rendered.text)
         self.assertNotIn("invite_token=", rendered.text)
         self.assertNotIn("one-time link", rendered.text)
-        self.assertEqual(rendered.subject_hash, runtime_email_body_hash("Join GENO"))
+        self.assertEqual(rendered.subject_hash, runtime_email_body_hash("Join GEO"))
         self.assertEqual(rendered.body_hash, runtime_email_body_hash(rendered.text))
         self.assertRegex(rendered.template_hash, r"^[0-9a-f]{64}$")
 
@@ -584,7 +584,7 @@ class CoreContractsTest(unittest.TestCase):
             preferences_url="https://app.example.com/notifications/preferences",
         )
 
-        self.assertEqual(rendered.subject, "[GENO CRITICAL] Brand absent in Sydney")
+        self.assertEqual(rendered.subject, "[GEO CRITICAL] Brand absent in Sydney")
         self.assertEqual(rendered.template_version, RUNTIME_NOTIFICATION_EMAIL_TEMPLATE_VERSION)
         self.assertIn("Brand was absent from critical AI search prompts.", rendered.text)
         self.assertIn("Type: runtime_alert", rendered.text)
@@ -605,7 +605,7 @@ class CoreContractsTest(unittest.TestCase):
                     "email": "Ops@Example.com",
                     "timestamp": 1781462400,
                     "sg_event_id": "sendgrid-event-1",
-                    "custom_args": {"geno_delivery_id": "delivery-1"},
+                    "custom_args": {"geo_delivery_id": "delivery-1"},
                     "reason": "550 mailbox unavailable",
                 },
                 {"event": "processed", "email": "ignored@example.com"},
@@ -1596,19 +1596,19 @@ class CoreContractsTest(unittest.TestCase):
         )
         self.assertEqual(perplexity_result.answer_text, "Perplexity answer")
         self.assertEqual(perplexity_result.citations[0]["domain"], "source.example")
-        self.assertTrue(perplexity_result.html_snapshot_url.startswith("geno-api-snapshot://perplexity.sonar.api/"))
-        self.assertIn("_geno_api_snapshot", perplexity_result.raw_payload)
+        self.assertTrue(perplexity_result.html_snapshot_url.startswith("geo-api-snapshot://perplexity.sonar.api/"))
+        self.assertIn("_geo_api_snapshot", perplexity_result.raw_payload)
         self.assertEqual(
-            perplexity_result.raw_payload["_geno_api_snapshot"]["snapshot_type"],
+            perplexity_result.raw_payload["_geo_api_snapshot"]["snapshot_type"],
             "api_response_html",
         )
         self.assertIsNotNone(perplexity_result.evidence_asset_hashes)
         self.assertEqual(len(perplexity_result.evidence_asset_hashes["html_snapshot"]), 64)
         self.assertEqual(openai_result.answer_text, "OpenAI answer")
         self.assertEqual(openai_result.citations[0]["url"], "https://source.example/b")
-        self.assertTrue(openai_result.html_snapshot_url.startswith("geno-api-snapshot://openai.web_search.api/"))
-        self.assertIn("_geno_api_snapshot", openai_result.raw_payload)
-        self.assertEqual(openai_result.raw_payload["_geno_api_snapshot"]["citation_count"], 1)
+        self.assertTrue(openai_result.html_snapshot_url.startswith("geo-api-snapshot://openai.web_search.api/"))
+        self.assertIn("_geo_api_snapshot", openai_result.raw_payload)
+        self.assertEqual(openai_result.raw_payload["_geo_api_snapshot"]["citation_count"], 1)
         self.assertIsNotNone(openai_result.evidence_asset_hashes)
         self.assertEqual(len(openai_result.evidence_asset_hashes["html_snapshot"]), 64)
 
@@ -1626,7 +1626,7 @@ class CoreContractsTest(unittest.TestCase):
             enabled=True,
             prompt_selector="textarea",
             answer_selector="[data-message-author-role='assistant']",
-            storage_state_path="/tmp/geno-missing-browser-state.json",
+            storage_state_path="/tmp/geo-missing-browser-state.json",
         )
         self.assertEqual(missing_session.health(), "session_state_missing")
 
@@ -1722,9 +1722,9 @@ class CoreContractsTest(unittest.TestCase):
 
         self.assertTrue(result.answer_present)
         self.assertEqual(result.citations[0]["domain"], "examplebrand.example")
-        self.assertTrue(result.html_snapshot_url.startswith("geno-browser-snapshot://"))
-        self.assertTrue(result.screenshot_url.startswith("geno-browser-screenshot://"))
-        self.assertEqual(result.raw_payload["_geno_browser_capture"]["capture_type"], "browser_ui")
+        self.assertTrue(result.html_snapshot_url.startswith("geo-browser-snapshot://"))
+        self.assertTrue(result.screenshot_url.startswith("geo-browser-screenshot://"))
+        self.assertEqual(result.raw_payload["_geo_browser_capture"]["capture_type"], "browser_ui")
         self.assertIsNotNone(result.evidence_asset_hashes)
         self.assertEqual(len(result.evidence_asset_hashes["html_snapshot"]), 64)
         self.assertEqual(len(result.evidence_asset_hashes["screenshot"]), 64)
@@ -1850,12 +1850,12 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(result.model_or_surface, "google-aio-browser")
         self.assertEqual(result.collector_version, "google-playwright-browser-v1")
         self.assertEqual(result.citations[0]["domain"], "examplebrand.example")
-        self.assertTrue(result.html_snapshot_url.startswith("geno-browser-snapshot://"))
-        self.assertTrue(result.screenshot_url.startswith("geno-browser-screenshot://"))
+        self.assertTrue(result.html_snapshot_url.startswith("geo-browser-snapshot://"))
+        self.assertTrue(result.screenshot_url.startswith("geo-browser-screenshot://"))
         self.assertEqual(result.raw_payload["platform"], "google")
         self.assertEqual(result.raw_payload["surface"], "google_aio")
         self.assertEqual(
-            result.raw_payload["_geno_browser_capture"]["capture_type"],
+            result.raw_payload["_geo_browser_capture"]["capture_type"],
             "google_browser_ui",
         )
         self.assertIsNotNone(result.evidence_asset_hashes)
@@ -1934,7 +1934,7 @@ class CoreContractsTest(unittest.TestCase):
         for record in (perplexity_record, openai_record):
             self.assertEqual({asset.asset_type for asset in record.evidence_assets}, {"html_snapshot"})
             html_asset = record.evidence_assets[0]
-            self.assertTrue(html_asset.url.startswith("geno-api-snapshot://"))
+            self.assertTrue(html_asset.url.startswith("geo-api-snapshot://"))
             self.assertEqual(len(html_asset.content_hash), 64)
             self.assertEqual(record.collector_logs[0].payload["asset_types"], ["html_snapshot"])
 
@@ -1998,7 +1998,7 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(len(record.citations), 3)
         self.assertEqual(record.citations[0].domain, "koala.example")
         self.assertEqual(record.evidence_assets[0].asset_type, "html_snapshot")
-        self.assertTrue(record.evidence_assets[0].url.startswith("geno-api-snapshot://google.third_party_serp/"))
+        self.assertTrue(record.evidence_assets[0].url.startswith("geo-api-snapshot://google.third_party_serp/"))
         self.assertEqual(len(record.evidence_assets[0].content_hash or ""), 64)
         request = http_client.requests[0]
         self.assertEqual(request["url"], "https://serp.example/search")
@@ -2229,7 +2229,7 @@ class CoreContractsTest(unittest.TestCase):
     def test_m2b_manual_backfill_collector_reports_file_gaps(self) -> None:
         self.assertEqual(ManualBackfillCollector(backfill_path=None).health(), "not_configured")
         self.assertEqual(
-            ManualBackfillCollector(backfill_path="/tmp/geno-missing-manual-backfill.jsonl").health(),
+            ManualBackfillCollector(backfill_path="/tmp/geo-missing-manual-backfill.jsonl").health(),
             "file_missing",
         )
 
@@ -2590,8 +2590,8 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(response["usage"]["retry_errors"], ["rate limited"])
         self.assertEqual(response["usage"]["estimated_cost"], 0.123457)
         self.assertEqual(response["call_log"]["estimated_cost"], 0.123457)
-        self.assertEqual(response["raw_response"]["_geno_retry"]["attempt_count"], 2)
-        self.assertEqual(response["raw_response"]["_geno_retry"]["prior_errors"], ["rate limited"])
+        self.assertEqual(response["raw_response"]["_geo_retry"]["attempt_count"], 2)
+        self.assertEqual(response["raw_response"]["_geo_retry"]["prior_errors"], ["rate limited"])
 
     def test_m0_litellm_gateway_failed_request_keeps_auditable_call_log(self) -> None:
         class FailingLiteLLMHttpClient:
@@ -3269,7 +3269,7 @@ class CoreContractsTest(unittest.TestCase):
 
         store = S3CompatibleObjectStore(
             endpoint="http://minio:9000",
-            bucket="geno-reports",
+            bucket="geo-reports",
             access_key="minio",
             secret_key="minio123",
             requester=requester,
@@ -3417,7 +3417,7 @@ class CoreContractsTest(unittest.TestCase):
 
         store = S3CompatibleObjectStore(
             endpoint="http://minio:9000",
-            bucket="geno-reports",
+            bucket="geo-reports",
             access_key="minio",
             secret_key="minio123",
             requester=requester,
@@ -3429,7 +3429,7 @@ class CoreContractsTest(unittest.TestCase):
             [item.content_type for item in stored],
             ["text/markdown; charset=utf-8", "application/pdf", "text/csv; charset=utf-8"],
         )
-        self.assertTrue(all(item.uri.startswith("s3://geno-reports/") for item in stored))
+        self.assertTrue(all(item.uri.startswith("s3://geo-reports/") for item in stored))
         self.assertTrue(all(item.content_hash for item in stored))
         object_puts = [item for item in requests if item[0] == "PUT" and item[1].count("/") > 3]
         self.assertEqual(len(object_puts), 3)
@@ -3444,8 +3444,8 @@ class CoreContractsTest(unittest.TestCase):
             headers: object,
             body: bytes,
         ) -> tuple[int, dict[str, str], bytes]:
-            key = url.split("geno-evidence/", 1)[-1]
-            if method == "PUT" and url.endswith("/geno-evidence"):
+            key = url.split("geo-evidence/", 1)[-1]
+            if method == "PUT" and url.endswith("/geo-evidence"):
                 return 200, {}, b""
             if method == "PUT":
                 stored_payloads[key] = (body, dict(headers).get("content-type", "application/octet-stream"))
@@ -3457,7 +3457,7 @@ class CoreContractsTest(unittest.TestCase):
 
         store = S3CompatibleObjectStore(
             endpoint="http://minio:9000",
-            bucket="geno-evidence",
+            bucket="geo-evidence",
             access_key="minio",
             secret_key="minio123",
             requester=requester,
@@ -3472,7 +3472,7 @@ class CoreContractsTest(unittest.TestCase):
         )
         downloaded = store.get_object(key=stored.key, expected_hash=stored.content_hash)
 
-        self.assertEqual(stored.uri, "s3://geno-evidence/evidence/project/run/asset.html")
+        self.assertEqual(stored.uri, "s3://geo-evidence/evidence/project/run/asset.html")
         self.assertEqual(stored.content_hash, expected_hash)
         self.assertEqual(downloaded.content, b"<html>Evidence</html>")
         self.assertEqual(downloaded.content_type, "text/html; charset=utf-8")
@@ -3500,7 +3500,7 @@ class CoreContractsTest(unittest.TestCase):
 
         store = S3CompatibleObjectStore(
             endpoint="http://minio:9000",
-            bucket="geno-evidence",
+            bucket="geo-evidence",
             access_key="minio",
             secret_key="minio123",
             requester=requester,
@@ -3519,7 +3519,7 @@ class CoreContractsTest(unittest.TestCase):
         )
 
         self.assertEqual(asset.storage_backend, "s3_compatible")
-        self.assertEqual(asset.bucket, "geno-evidence")
+        self.assertEqual(asset.bucket, "geo-evidence")
         self.assertEqual(asset.content_type, "text/html; charset=utf-8")
         self.assertEqual(asset.byte_size, len(b"<html>Evidence</html>"))
         self.assertTrue(asset.storage_key and asset.storage_key.endswith("-snapshot.html"))
@@ -3544,7 +3544,7 @@ class CoreContractsTest(unittest.TestCase):
 
         store = S3CompatibleObjectStore(
             endpoint="http://minio:9000",
-            bucket="geno-reports",
+            bucket="geo-reports",
             access_key="minio",
             secret_key="minio123",
             requester=requester,
@@ -3559,7 +3559,7 @@ class CoreContractsTest(unittest.TestCase):
 
         self.assertEqual(stored.content_type, "image/png")
         self.assertEqual(stored.content_hash, "3a4fbb95f7aa11b1ad48768f3b59e812ce35f94ab2795c8feefda65f67916f2f")
-        self.assertEqual(stored.uri, f"s3://geno-reports/brand-assets/{project_id}/logo-3a4fbb95f7aa-Client-Logo-Final.PNG")
+        self.assertEqual(stored.uri, f"s3://geo-reports/brand-assets/{project_id}/logo-3a4fbb95f7aa-Client-Logo-Final.PNG")
         object_puts = [item for item in requests if item[0] == "PUT" and "brand-assets" in item[1]]
         self.assertEqual(len(object_puts), 1)
         self.assertTrue(object_puts[0][1].endswith("/brand-assets/9a50797d-a341-55a4-8bdf-cc255c017e5c/logo-3a4fbb95f7aa-Client-Logo-Final.PNG"))
@@ -3581,7 +3581,7 @@ class CoreContractsTest(unittest.TestCase):
 
         store = S3CompatibleObjectStore(
             endpoint="http://minio:9000",
-            bucket="geno-reports",
+            bucket="geo-reports",
             access_key="minio",
             secret_key="minio123",
             requester=requester,
@@ -3607,7 +3607,7 @@ class CoreContractsTest(unittest.TestCase):
 
         self.assertEqual(stored.content_type, "application/pdf")
         self.assertEqual(stored.uri, (
-            "s3://geno-reports/report-artifacts/"
+            "s3://geo-reports/report-artifacts/"
             "9a50797d-a341-55a4-8bdf-cc255c017e5c/"
             "b3efe108-1429-5f5f-bd07-8f1a2d2dd5ad/"
             "white_label/filter-hash/cost_desc/report-conte-worker-runtime-v1-white-label.pdf"
@@ -3642,7 +3642,7 @@ class CoreContractsTest(unittest.TestCase):
             sample_index=1,
             sample_size=3,
         )
-        self.assertTrue(record.evidence_assets[0].url.startswith("geno-api-snapshot://"))
+        self.assertTrue(record.evidence_assets[0].url.startswith("geo-api-snapshot://"))
         requests: list[tuple[str, str, dict[str, str], bytes]] = []
 
         def requester(
@@ -3656,7 +3656,7 @@ class CoreContractsTest(unittest.TestCase):
 
         store = S3CompatibleObjectStore(
             endpoint="http://minio:9000",
-            bucket="geno-reports",
+            bucket="geo-reports",
             access_key="minio",
             secret_key="minio123",
             requester=requester,
@@ -3664,14 +3664,14 @@ class CoreContractsTest(unittest.TestCase):
         archived_records, stored = archive_api_snapshot_assets(records=(record,), store=store)
 
         self.assertEqual(len(stored), 1)
-        self.assertTrue(stored[0].uri.startswith(f"s3://geno-reports/evidence/{bootstrap.project.id}/"))
+        self.assertTrue(stored[0].uri.startswith(f"s3://geo-reports/evidence/{bootstrap.project.id}/"))
         self.assertEqual(stored[0].content_type, "text/html; charset=utf-8")
         archived_asset = archived_records[0].evidence_assets[0]
         self.assertEqual(archived_asset.url, stored[0].uri)
         self.assertEqual(archived_asset.content_hash, stored[0].content_hash)
         object_puts = [item for item in requests if item[0] == "PUT" and item[1].count("/") > 3]
         self.assertEqual(len(object_puts), 1)
-        self.assertIn(b"GENO Official API Response Snapshot", object_puts[0][3])
+        self.assertIn(b"GEO Official API Response Snapshot", object_puts[0][3])
         self.assertIn(b"Perplexity answer", object_puts[0][3])
 
     def test_browser_capture_assets_archive_to_s3_compatible_store(self) -> None:
@@ -3778,7 +3778,7 @@ class CoreContractsTest(unittest.TestCase):
             self.assertTrue(all(asset.url.startswith("file://") for asset in record.evidence_assets))
             store = S3CompatibleObjectStore(
                 endpoint="http://minio:9000",
-                bucket="geno-reports",
+                bucket="geo-reports",
                 access_key="minio",
                 secret_key="minio123",
                 requester=requester,
@@ -3788,7 +3788,7 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(len(stored), 2)
         self.assertEqual({item.content_type for item in stored}, {"text/html; charset=utf-8", "image/png"})
         archived_assets = archived_records[0].evidence_assets
-        self.assertTrue(all(asset.url.startswith("s3://geno-reports/evidence/") for asset in archived_assets))
+        self.assertTrue(all(asset.url.startswith("s3://geo-reports/evidence/") for asset in archived_assets))
         self.assertTrue(all(asset.content_hash for asset in archived_assets))
         object_puts = [item for item in requests if item[0] == "PUT" and item[1].count("/") > 3]
         self.assertEqual(len(object_puts), 2)
@@ -4134,10 +4134,10 @@ class CoreContractsTest(unittest.TestCase):
             answer_run_ids=tuple(record.answer_run.id for record in records),
             now=datetime(2026, 6, 10, tzinfo=UTC),
         )
-        draft_fact = replace(approved_facts[0], id=str(uuid5(NAMESPACE_URL, "geno:knowledge-fact:draft")), status="draft")
+        draft_fact = replace(approved_facts[0], id=str(uuid5(NAMESPACE_URL, "geo:knowledge-fact:draft")), status="draft")
         archived_fact = replace(
             approved_facts[1],
-            id=str(uuid5(NAMESPACE_URL, "geno:knowledge-fact:archived")),
+            id=str(uuid5(NAMESPACE_URL, "geo:knowledge-fact:archived")),
             status="archived",
         )
         search_results = search_knowledge_facts(
@@ -4544,7 +4544,7 @@ class CoreContractsTest(unittest.TestCase):
             "event_type": "knowledge_fact_embeddings_indexed",
             "project_id": project_id,
             "actor_type": "system",
-            "actor_id": "geno-core.knowledge",
+            "actor_id": "geo-core.knowledge",
             "target_type": "knowledge_fact_embedding_index",
             "target_id": project_id,
             "before_hash": None,
@@ -4712,7 +4712,7 @@ class CoreContractsTest(unittest.TestCase):
         context_sql, context_params = connection.calls[0]
         self.assertIn("set_config", context_sql)
         self.assertIn("app.rls_enabled", context_params)
-        self.assertIn("geno.runtime_project_access_control", context_params)
+        self.assertIn("geo.runtime_project_access_control", context_params)
         prompt_inserts = [params for sql, params in connection.calls if "INSERT INTO prompt_questions" in sql]
         competitor_inserts = [params for sql, params in connection.calls if "INSERT INTO competitor_entities" in sql]
         first_project_insert = next(params for sql, params in connection.calls if "INSERT INTO projects" in sql)
@@ -4778,7 +4778,7 @@ class CoreContractsTest(unittest.TestCase):
                         "event_type": "project_bootstrap_created",
                         "project_id": project_id,
                         "actor_type": "system",
-                        "actor_id": "geno-core.bootstrap",
+                        "actor_id": "geo-core.bootstrap",
                         "target_type": "project",
                         "target_id": project_id,
                         "before_hash": None,
@@ -5460,13 +5460,13 @@ class CoreContractsTest(unittest.TestCase):
                 "",
                 "app.tenant_id",
                 "",
-                "geno.runtime_project_access_control",
+                "geo.runtime_project_access_control",
                 "1",
-                "geno.runtime_actor_id",
+                "geo.runtime_actor_id",
                 "agency-owner",
-                "geno.runtime_project_id",
+                "geo.runtime_project_id",
                 project_id,
-                "geno.runtime_tenant_id",
+                "geo.runtime_tenant_id",
                 "",
             ),
         )
@@ -5489,13 +5489,13 @@ class CoreContractsTest(unittest.TestCase):
                 "",
                 "app.project_id",
                 "",
-                "geno.runtime_project_access_control",
+                "geo.runtime_project_access_control",
                 "1",
-                "geno.runtime_actor_id",
+                "geo.runtime_actor_id",
                 "",
-                "geno.runtime_project_id",
+                "geo.runtime_project_id",
                 "",
-                "geno.runtime_invitation_token_hash",
+                "geo.runtime_invitation_token_hash",
                 "token-hash",
             ),
         )
@@ -5958,7 +5958,7 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(record.session["actor_id"], "viewer@example.com")
         self.assertEqual(record.session["status"], "active")
         self.assertNotIn("session_token_hash", record.session)
-        self.assertTrue(str(record.raw_session_token).startswith("geno-session-"))
+        self.assertTrue(str(record.raw_session_token).startswith("geo-session-"))
         self.assertNotIn(str(record.raw_session_token), str(record.audit_events))
         self.assertEqual(record.audit_events[0]["event_type"], "runtime_session_created")
         self.assertEqual(record.audit_events[0]["method_version"], "runtime_session_v2")
@@ -5972,7 +5972,7 @@ class CoreContractsTest(unittest.TestCase):
 
     def test_postgres_repository_validates_runtime_session_and_updates_last_used(self) -> None:
         now = datetime.now(UTC)
-        raw_token = "geno-session-test"
+        raw_token = "geo-session-test"
         session_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
         session_row = {
             "id": "3d96d3a9-65ce-49e1-9fc5-032a19739abf",
@@ -6134,7 +6134,7 @@ class CoreContractsTest(unittest.TestCase):
         insert_params = next(params for sql, params in connection.calls if "INSERT INTO project_member_invitations" in sql)
         old_stable_id = uuid5(
             NAMESPACE_URL,
-            "geno:project-member-invitation:"
+            "geo:project-member-invitation:"
             f"{project_id}:viewer@example.com:viewer:pending",
         )
         self.assertNotEqual(str(insert_params[0]), str(old_stable_id))
@@ -6276,7 +6276,7 @@ class CoreContractsTest(unittest.TestCase):
         now = datetime.now(UTC)
         project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
         invitation_id = "21a98a17-7930-5504-a6fa-cd08990fbf07"
-        invite_token = "geno-invite-token"
+        invite_token = "geo-invite-token"
         invite_token_hash = hashlib.sha256(invite_token.encode("utf-8")).hexdigest()
         pending_invitation = {
             "id": invitation_id,
@@ -6294,7 +6294,7 @@ class CoreContractsTest(unittest.TestCase):
             "created_at": now,
             "updated_at": now,
         }
-        member_id = str(uuid5(NAMESPACE_URL, f"geno:project-member:{project_id}:viewer@example.com"))
+        member_id = str(uuid5(NAMESPACE_URL, f"geo:project-member:{project_id}:viewer@example.com"))
         saved_member = {
             "id": member_id,
             "project_id": project_id,
@@ -6326,7 +6326,7 @@ class CoreContractsTest(unittest.TestCase):
             ["project_member_saved", "project_member_invitation_accepted"],
         )
         self.assertEqual(record.audit_events[1]["method_version"], "project_member_invitation_accept_v1")
-        self.assertNotIn("geno-invite-token", str(record.audit_events))
+        self.assertNotIn("geo-invite-token", str(record.audit_events))
         self.assertEqual(connection.commit_count, 1)
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
         self.assertIn("WHERE id = %s AND invite_token_hash = %s FOR UPDATE", executed_sql)
@@ -6340,7 +6340,7 @@ class CoreContractsTest(unittest.TestCase):
         now = datetime.now(UTC)
         project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
         invitation_id = "21a98a17-7930-5504-a6fa-cd08990fbf07"
-        invite_token = "geno-invite-token"
+        invite_token = "geo-invite-token"
         invite_token_hash = hashlib.sha256(invite_token.encode("utf-8")).hexdigest()
         pending_invitation = {
             "id": invitation_id,
@@ -6386,10 +6386,10 @@ class CoreContractsTest(unittest.TestCase):
         with patch.dict(
             "os.environ",
             {
-                "GENO_TEST_SMTP_HOST": "smtp.example.com",
-                "GENO_TEST_SMTP_PORT": "2525",
-                "GENO_TEST_SMTP_TLS": "0",
-                "GENO_TEST_SMTP_FROM": "invites@example.com",
+                "GEO_TEST_SMTP_HOST": "smtp.example.com",
+                "GEO_TEST_SMTP_PORT": "2525",
+                "GEO_TEST_SMTP_TLS": "0",
+                "GEO_TEST_SMTP_FROM": "invites@example.com",
             },
         ):
             record = PostgresEvidenceRepository(connection, email_sender=email_sender).send_runtime_project_member_invitation_email(
@@ -6402,8 +6402,8 @@ class CoreContractsTest(unittest.TestCase):
                         "?campaign=legacy&invite_token=must-be-stripped#old-fragment"
                     ),
                     sent_by="agency-owner",
-                    smtp_env_prefix="GENO_TEST_SMTP",
-                    subject="Join GENO",
+                    smtp_env_prefix="GEO_TEST_SMTP",
+                    subject="Join GEO",
                     message="Please join the workspace.",
                     reason="send invite email",
                 )
@@ -6419,8 +6419,8 @@ class CoreContractsTest(unittest.TestCase):
         self.assertNotIn("campaign=legacy", sent_content)
         self.assertNotIn("old-fragment", sent_content)
         self.assertNotIn("one-time link", sent_content)
-        self.assertEqual(sent[0][1]["Subject"], "Join GENO")
-        self.assertEqual(sent[0][1]["X-GENO-Email-Template-Version"], PROJECT_MEMBER_INVITATION_EMAIL_TEMPLATE_VERSION)
+        self.assertEqual(sent[0][1]["Subject"], "Join GEO")
+        self.assertEqual(sent[0][1]["X-GEO-Email-Template-Version"], PROJECT_MEMBER_INVITATION_EMAIL_TEMPLATE_VERSION)
         self.assertNotIn(invite_token, str(record.audit_events))
         self.assertIn(invite_token_hash, str(record.audit_events))
         self.assertEqual(connection.commit_count, 1)
@@ -6441,7 +6441,7 @@ class CoreContractsTest(unittest.TestCase):
             expires_at=pending_invitation["expires_at"].isoformat(),
             accept_url=accept_url,
             one_time_code=invite_token,
-            subject="Join GENO",
+            subject="Join GEO",
             message="Please join the workspace.",
         )
         self.assertEqual(audit_params[11], "project_member_invitation_email_v2")
@@ -6458,7 +6458,7 @@ class CoreContractsTest(unittest.TestCase):
     def test_postgres_repository_rejects_invitation_email_for_non_pending_status(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)
         invitation_id = "21a98a17-7930-5504-a6fa-cd08990fbf07"
-        invite_token = "geno-invite-token"
+        invite_token = "geo-invite-token"
         connection = RecordingConnection(
             result_sets=[
                 {
@@ -6496,7 +6496,7 @@ class CoreContractsTest(unittest.TestCase):
         now = datetime.now(UTC)
         project_id = "6624961f-36ae-539b-9d48-51619b42e37e"
         invitation_id = "21a98a17-7930-5504-a6fa-cd08990fbf07"
-        invite_token = "geno-invite-token"
+        invite_token = "geo-invite-token"
         connection = RecordingConnection(
             result_sets=[
                 {
@@ -6783,11 +6783,11 @@ class CoreContractsTest(unittest.TestCase):
             return connection
 
         repository = build_repository_from_env(
-            {"DATABASE_URL": "postgresql://geno:geno@localhost:5432/geno"},
+            {"DATABASE_URL": "postgresql://geo:geo@localhost:5432/geo"},
             connector=connector,
         )
         self.assertIsInstance(repository, PostgresEvidenceRepository)
-        self.assertEqual(seen_urls, ["postgresql://geno:geno@localhost:5432/geno"])
+        self.assertEqual(seen_urls, ["postgresql://geo:geo@localhost:5432/geo"])
 
     def test_runtime_repository_pool_reuses_connection_and_resets_on_return(self) -> None:
         connections: list[RecordingConnection] = []
@@ -6797,10 +6797,10 @@ class CoreContractsTest(unittest.TestCase):
             return connections[-1]
 
         env = {
-            "DATABASE_URL": "postgresql://geno:geno@localhost:5432/geno",
-            "GENO_RUNTIME_DB_POOL_ENABLED": "1",
-            "GENO_RUNTIME_DB_POOL_MAX_SIZE": "2",
-            "GENO_RUNTIME_DB_POOL_TIMEOUT_SECONDS": "0",
+            "DATABASE_URL": "postgresql://geo:geo@localhost:5432/geo",
+            "GEO_RUNTIME_DB_POOL_ENABLED": "1",
+            "GEO_RUNTIME_DB_POOL_MAX_SIZE": "2",
+            "GEO_RUNTIME_DB_POOL_TIMEOUT_SECONDS": "0",
         }
         try:
             repository = build_repository_from_env(env, connector=connector)
@@ -6819,13 +6819,13 @@ class CoreContractsTest(unittest.TestCase):
                 (
                     "app.session_token_hash",
                     "",
-                    "geno.runtime_project_access_control",
+                    "geo.runtime_project_access_control",
                     "",
-                    "geno.runtime_actor_id",
+                    "geo.runtime_actor_id",
                     "",
-                    "geno.runtime_project_id",
+                    "geo.runtime_project_id",
                     "",
-                    "geno.runtime_invitation_token_hash",
+                    "geo.runtime_invitation_token_hash",
                     "",
                 ),
             )
@@ -6847,10 +6847,10 @@ class CoreContractsTest(unittest.TestCase):
             return connections[-1]
 
         env = {
-            "DATABASE_URL": "postgresql://geno:geno@localhost:5432/geno",
-            "GENO_RUNTIME_DB_POOL_ENABLED": "1",
-            "GENO_RUNTIME_DB_POOL_MAX_SIZE": "1",
-            "GENO_RUNTIME_DB_POOL_TIMEOUT_SECONDS": "0",
+            "DATABASE_URL": "postgresql://geo:geo@localhost:5432/geo",
+            "GEO_RUNTIME_DB_POOL_ENABLED": "1",
+            "GEO_RUNTIME_DB_POOL_MAX_SIZE": "1",
+            "GEO_RUNTIME_DB_POOL_TIMEOUT_SECONDS": "0",
         }
         repository = build_repository_from_env(env, connector=connector)
         try:
@@ -6868,9 +6868,9 @@ class CoreContractsTest(unittest.TestCase):
         with self.assertRaises(RuntimePersistenceError):
             build_repository_from_env(
                 {
-                    "DATABASE_URL": "postgresql://geno:geno@localhost:5432/geno",
-                    "GENO_RUNTIME_DB_POOL_ENABLED": "1",
-                    "GENO_RUNTIME_DB_POOL_MAX_SIZE": "0",
+                    "DATABASE_URL": "postgresql://geo:geo@localhost:5432/geo",
+                    "GEO_RUNTIME_DB_POOL_ENABLED": "1",
+                    "GEO_RUNTIME_DB_POOL_MAX_SIZE": "0",
                 },
                 connector=lambda database_url: RecordingConnection(),
             )
@@ -6890,7 +6890,7 @@ class CoreContractsTest(unittest.TestCase):
             return connections[-1]
 
         diagnostic = runtime_database_diagnostic(
-            {"DATABASE_URL": "postgresql://geno:geno@localhost:5432/geno"},
+            {"DATABASE_URL": "postgresql://geo:geo@localhost:5432/geo"},
             connector=connector,
         )
 
@@ -6905,7 +6905,7 @@ class CoreContractsTest(unittest.TestCase):
         configured = runtime_object_store_diagnostic(
             {
                 "OBJECT_STORE_ENDPOINT": "http://minio:9000",
-                "OBJECT_STORE_BUCKET": "geno-reports",
+                "OBJECT_STORE_BUCKET": "geo-reports",
                 "OBJECT_STORE_ACCESS_KEY": "minio",
                 "OBJECT_STORE_SECRET_KEY": "minio123",
             }
@@ -6919,46 +6919,46 @@ class CoreContractsTest(unittest.TestCase):
     def test_runtime_auth_diagnostic_validates_jwt_secret(self) -> None:
         diagnostic = runtime_auth_diagnostic(
             {
-                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
-                "GENO_RUNTIME_AUTH_MODE": "jwt",
+                "GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GEO_RUNTIME_AUTH_MODE": "jwt",
             }
         )
         valid = runtime_auth_diagnostic(
             {
-                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
-                "GENO_RUNTIME_AUTH_MODE": "jwt",
-                "GENO_RUNTIME_JWT_SECRET": "secret",
+                "GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GEO_RUNTIME_AUTH_MODE": "jwt",
+                "GEO_RUNTIME_JWT_SECRET": "secret",
             }
         )
 
         self.assertEqual(diagnostic.status, "fail")
-        self.assertIn("GENO_RUNTIME_JWT_SECRET", diagnostic.detail)
+        self.assertIn("GEO_RUNTIME_JWT_SECRET", diagnostic.detail)
         self.assertEqual(valid.status, "pass")
 
     def test_runtime_auth_diagnostic_validates_jwks_json(self) -> None:
         missing = runtime_auth_diagnostic(
             {
-                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
-                "GENO_RUNTIME_AUTH_MODE": "jwks",
+                "GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GEO_RUNTIME_AUTH_MODE": "jwks",
             }
         )
         invalid = runtime_auth_diagnostic(
             {
-                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
-                "GENO_RUNTIME_AUTH_MODE": "jwks",
-                "GENO_RUNTIME_JWKS_JSON": "{}",
+                "GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GEO_RUNTIME_AUTH_MODE": "jwks",
+                "GEO_RUNTIME_JWKS_JSON": "{}",
             }
         )
         valid = runtime_auth_diagnostic(
             {
-                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
-                "GENO_RUNTIME_AUTH_MODE": "jwks",
-                "GENO_RUNTIME_JWKS_JSON": '{"keys":[{"kty":"RSA","kid":"runtime-key-1","n":"AQ","e":"AQAB"}]}',
+                "GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GEO_RUNTIME_AUTH_MODE": "jwks",
+                "GEO_RUNTIME_JWKS_JSON": '{"keys":[{"kty":"RSA","kid":"runtime-key-1","n":"AQ","e":"AQAB"}]}',
             }
         )
 
         self.assertEqual(missing.status, "fail")
-        self.assertIn("GENO_RUNTIME_JWKS_JSON", missing.detail)
+        self.assertIn("GEO_RUNTIME_JWKS_JSON", missing.detail)
         self.assertEqual(invalid.status, "fail")
         self.assertIn("keys array", invalid.detail)
         self.assertEqual(valid.status, "pass")
@@ -6967,35 +6967,35 @@ class CoreContractsTest(unittest.TestCase):
     def test_runtime_auth_diagnostic_accepts_jwks_url_without_network_check(self) -> None:
         diagnostic = runtime_auth_diagnostic(
             {
-                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
-                "GENO_RUNTIME_AUTH_MODE": "jwks",
-                "GENO_RUNTIME_JWKS_URL": "https://idp.example.test/.well-known/jwks.json",
-                "GENO_RUNTIME_JWKS_CACHE_TTL_SECONDS": "120",
-                "GENO_RUNTIME_JWKS_STALE_IF_ERROR_SECONDS": "30",
-                "GENO_RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS": "1.5",
+                "GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GEO_RUNTIME_AUTH_MODE": "jwks",
+                "GEO_RUNTIME_JWKS_URL": "https://idp.example.test/.well-known/jwks.json",
+                "GEO_RUNTIME_JWKS_CACHE_TTL_SECONDS": "120",
+                "GEO_RUNTIME_JWKS_STALE_IF_ERROR_SECONDS": "30",
+                "GEO_RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS": "1.5",
             }
         )
         invalid_url = runtime_auth_diagnostic(
             {
-                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
-                "GENO_RUNTIME_AUTH_MODE": "jwks",
-                "GENO_RUNTIME_JWKS_URL": "file:///tmp/jwks.json",
+                "GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GEO_RUNTIME_AUTH_MODE": "jwks",
+                "GEO_RUNTIME_JWKS_URL": "file:///tmp/jwks.json",
             }
         )
         invalid_ttl = runtime_auth_diagnostic(
             {
-                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
-                "GENO_RUNTIME_AUTH_MODE": "jwks",
-                "GENO_RUNTIME_JWKS_URL": "https://idp.example.test/.well-known/jwks.json",
-                "GENO_RUNTIME_JWKS_CACHE_TTL_SECONDS": "-1",
+                "GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GEO_RUNTIME_AUTH_MODE": "jwks",
+                "GEO_RUNTIME_JWKS_URL": "https://idp.example.test/.well-known/jwks.json",
+                "GEO_RUNTIME_JWKS_CACHE_TTL_SECONDS": "-1",
             }
         )
         invalid_stale_if_error = runtime_auth_diagnostic(
             {
-                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
-                "GENO_RUNTIME_AUTH_MODE": "jwks",
-                "GENO_RUNTIME_JWKS_URL": "https://idp.example.test/.well-known/jwks.json",
-                "GENO_RUNTIME_JWKS_STALE_IF_ERROR_SECONDS": "-1",
+                "GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GEO_RUNTIME_AUTH_MODE": "jwks",
+                "GEO_RUNTIME_JWKS_URL": "https://idp.example.test/.well-known/jwks.json",
+                "GEO_RUNTIME_JWKS_STALE_IF_ERROR_SECONDS": "-1",
             }
         )
 
@@ -7004,61 +7004,61 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(diagnostic.metadata["jwks_url_network_check"], "not_run")
         self.assertEqual(diagnostic.metadata["jwks_stale_if_error_seconds"], "30")
         self.assertEqual(invalid_url.status, "fail")
-        self.assertIn("GENO_RUNTIME_JWKS_URL", invalid_url.detail)
+        self.assertIn("GEO_RUNTIME_JWKS_URL", invalid_url.detail)
         self.assertEqual(invalid_ttl.status, "fail")
-        self.assertIn("GENO_RUNTIME_JWKS_CACHE_TTL_SECONDS", invalid_ttl.detail)
+        self.assertIn("GEO_RUNTIME_JWKS_CACHE_TTL_SECONDS", invalid_ttl.detail)
         self.assertEqual(invalid_stale_if_error.status, "fail")
-        self.assertIn("GENO_RUNTIME_JWKS_STALE_IF_ERROR_SECONDS", invalid_stale_if_error.detail)
+        self.assertIn("GEO_RUNTIME_JWKS_STALE_IF_ERROR_SECONDS", invalid_stale_if_error.detail)
 
     def test_runtime_auth_diagnostic_accepts_oidc_discovery_without_network_check(self) -> None:
         explicit_discovery = runtime_auth_diagnostic(
             {
-                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
-                "GENO_RUNTIME_AUTH_MODE": "jwks",
-                "GENO_RUNTIME_OIDC_DISCOVERY_URL": "https://idp.example.test/.well-known/openid-configuration",
-                "GENO_RUNTIME_JWKS_STALE_IF_ERROR_SECONDS": "60",
-                "GENO_RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS": "120",
-                "GENO_RUNTIME_OIDC_DISCOVERY_STALE_IF_ERROR_SECONDS": "30",
-                "GENO_RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS": "1.5",
+                "GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GEO_RUNTIME_AUTH_MODE": "jwks",
+                "GEO_RUNTIME_OIDC_DISCOVERY_URL": "https://idp.example.test/.well-known/openid-configuration",
+                "GEO_RUNTIME_JWKS_STALE_IF_ERROR_SECONDS": "60",
+                "GEO_RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS": "120",
+                "GEO_RUNTIME_OIDC_DISCOVERY_STALE_IF_ERROR_SECONDS": "30",
+                "GEO_RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS": "1.5",
             }
         )
         issuer_discovery = runtime_auth_diagnostic(
             {
-                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
-                "GENO_RUNTIME_AUTH_MODE": "jwks",
-                "GENO_RUNTIME_JWT_ISSUER": "https://idp.example.test/realms/geno",
-                "GENO_RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS": "120",
-                "GENO_RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS": "1.5",
+                "GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GEO_RUNTIME_AUTH_MODE": "jwks",
+                "GEO_RUNTIME_JWT_ISSUER": "https://idp.example.test/realms/geo",
+                "GEO_RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS": "120",
+                "GEO_RUNTIME_JWKS_FETCH_TIMEOUT_SECONDS": "1.5",
             }
         )
         invalid_discovery_url = runtime_auth_diagnostic(
             {
-                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
-                "GENO_RUNTIME_AUTH_MODE": "jwks",
-                "GENO_RUNTIME_OIDC_DISCOVERY_URL": "file:///tmp/openid-configuration",
+                "GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GEO_RUNTIME_AUTH_MODE": "jwks",
+                "GEO_RUNTIME_OIDC_DISCOVERY_URL": "file:///tmp/openid-configuration",
             }
         )
         invalid_issuer_fallback = runtime_auth_diagnostic(
             {
-                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
-                "GENO_RUNTIME_AUTH_MODE": "jwks",
-                "GENO_RUNTIME_JWT_ISSUER": "issuer-name",
+                "GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GEO_RUNTIME_AUTH_MODE": "jwks",
+                "GEO_RUNTIME_JWT_ISSUER": "issuer-name",
             }
         )
         invalid_discovery_ttl = runtime_auth_diagnostic(
             {
-                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
-                "GENO_RUNTIME_AUTH_MODE": "jwks",
-                "GENO_RUNTIME_OIDC_DISCOVERY_URL": "https://idp.example.test/.well-known/openid-configuration",
-                "GENO_RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS": "-1",
+                "GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GEO_RUNTIME_AUTH_MODE": "jwks",
+                "GEO_RUNTIME_OIDC_DISCOVERY_URL": "https://idp.example.test/.well-known/openid-configuration",
+                "GEO_RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS": "-1",
             }
         )
         invalid_discovery_stale_if_error = runtime_auth_diagnostic(
             {
-                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
-                "GENO_RUNTIME_AUTH_MODE": "jwks",
-                "GENO_RUNTIME_OIDC_DISCOVERY_URL": "https://idp.example.test/.well-known/openid-configuration",
-                "GENO_RUNTIME_OIDC_DISCOVERY_STALE_IF_ERROR_SECONDS": "-1",
+                "GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GEO_RUNTIME_AUTH_MODE": "jwks",
+                "GEO_RUNTIME_OIDC_DISCOVERY_URL": "https://idp.example.test/.well-known/openid-configuration",
+                "GEO_RUNTIME_OIDC_DISCOVERY_STALE_IF_ERROR_SECONDS": "-1",
             }
         )
 
@@ -7072,24 +7072,24 @@ class CoreContractsTest(unittest.TestCase):
         self.assertEqual(issuer_discovery.metadata["oidc_discovery_source"], "jwt_issuer")
         self.assertEqual(issuer_discovery.metadata["jwt_issuer"], "configured")
         self.assertEqual(invalid_discovery_url.status, "fail")
-        self.assertIn("GENO_RUNTIME_OIDC_DISCOVERY_URL", invalid_discovery_url.detail)
+        self.assertIn("GEO_RUNTIME_OIDC_DISCOVERY_URL", invalid_discovery_url.detail)
         self.assertEqual(invalid_issuer_fallback.status, "fail")
-        self.assertIn("GENO_RUNTIME_JWT_ISSUER", invalid_issuer_fallback.detail)
+        self.assertIn("GEO_RUNTIME_JWT_ISSUER", invalid_issuer_fallback.detail)
         self.assertEqual(invalid_discovery_ttl.status, "fail")
-        self.assertIn("GENO_RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS", invalid_discovery_ttl.detail)
+        self.assertIn("GEO_RUNTIME_OIDC_DISCOVERY_CACHE_TTL_SECONDS", invalid_discovery_ttl.detail)
         self.assertEqual(invalid_discovery_stale_if_error.status, "fail")
         self.assertIn(
-            "GENO_RUNTIME_OIDC_DISCOVERY_STALE_IF_ERROR_SECONDS",
+            "GEO_RUNTIME_OIDC_DISCOVERY_STALE_IF_ERROR_SECONDS",
             invalid_discovery_stale_if_error.detail,
         )
 
     def test_runtime_auth_diagnostic_prefers_inline_jwks_over_url(self) -> None:
         diagnostic = runtime_auth_diagnostic(
             {
-                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
-                "GENO_RUNTIME_AUTH_MODE": "jwks",
-                "GENO_RUNTIME_JWKS_JSON": '{"keys":[{"kty":"RSA","kid":"runtime-key-1","n":"AQ","e":"AQAB"}]}',
-                "GENO_RUNTIME_JWKS_URL": "file:///tmp/jwks.json",
+                "GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GEO_RUNTIME_AUTH_MODE": "jwks",
+                "GEO_RUNTIME_JWKS_JSON": '{"keys":[{"kty":"RSA","kid":"runtime-key-1","n":"AQ","e":"AQAB"}]}',
+                "GEO_RUNTIME_JWKS_URL": "file:///tmp/jwks.json",
             }
         )
 
@@ -8204,7 +8204,7 @@ class CoreContractsTest(unittest.TestCase):
                         "event_type": "visibility_score_snapshot_created",
                         "project_id": project_id,
                         "actor_type": "system",
-                        "actor_id": "geno-core.scoring",
+                        "actor_id": "geo-core.scoring",
                         "target_type": "visibility_score_snapshot",
                         "target_id": snapshot_id,
                         "before_hash": None,
@@ -8322,7 +8322,7 @@ class CoreContractsTest(unittest.TestCase):
                         "event_type": "visibility_score_snapshot_created",
                         "project_id": project_id,
                         "actor_type": "system",
-                        "actor_id": "geno-core.scoring",
+                        "actor_id": "geo-core.scoring",
                         "target_type": "visibility_score_snapshot",
                         "target_id": snapshot_id,
                         "before_hash": None,
@@ -8647,9 +8647,9 @@ class CoreContractsTest(unittest.TestCase):
             "window_start": now,
             "window_end": now,
             "methodology_hash": "methodology-hash",
-            "markdown_url": "s3://geno-reports/report.md",
+            "markdown_url": "s3://geo-reports/report.md",
             "pdf_url": None,
-            "csv_url": "s3://geno-reports/report.csv",
+            "csv_url": "s3://geo-reports/report.csv",
             "exported_by": "system",
             "exported_at": now,
         }
@@ -8781,9 +8781,9 @@ class CoreContractsTest(unittest.TestCase):
             "window_start": now,
             "window_end": now,
             "methodology_hash": "methodology-hash",
-            "markdown_url": "s3://geno-reports/report.md",
-            "pdf_url": "s3://geno-reports/report.pdf",
-            "csv_url": "s3://geno-reports/report.csv",
+            "markdown_url": "s3://geo-reports/report.md",
+            "pdf_url": "s3://geo-reports/report.pdf",
+            "csv_url": "s3://geo-reports/report.csv",
             "exported_by": "system",
             "exported_at": now,
         }
@@ -8888,9 +8888,9 @@ class CoreContractsTest(unittest.TestCase):
             "window_start": now,
             "window_end": now,
             "methodology_hash": "methodology-hash",
-            "markdown_url": "s3://geno-reports/report.md",
-            "pdf_url": "s3://geno-reports/report.pdf",
-            "csv_url": "s3://geno-reports/report.csv",
+            "markdown_url": "s3://geo-reports/report.md",
+            "pdf_url": "s3://geo-reports/report.pdf",
+            "csv_url": "s3://geo-reports/report.csv",
             "exported_by": "system",
             "exported_at": now,
         }
@@ -8964,9 +8964,9 @@ class CoreContractsTest(unittest.TestCase):
         now = datetime(2026, 6, 10, tzinfo=UTC)
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
         report_export_id = "b3efe108-1429-5f5f-bd07-8f1a2d2dd5ad"
-        markdown_url = "s3://geno-reports/private/report.md"
-        pdf_url = "s3://geno-reports/private/report.pdf"
-        csv_url = "s3://geno-reports/private/report.csv"
+        markdown_url = "s3://geo-reports/private/report.md"
+        pdf_url = "s3://geo-reports/private/report.pdf"
+        csv_url = "s3://geo-reports/private/report.csv"
         actor_id = "delivery-manager@example.com"
         note = "Ready for client delivery after internal QA"
         row = {
@@ -9193,7 +9193,7 @@ class CoreContractsTest(unittest.TestCase):
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
         report_export_id = "b3efe108-1429-5f5f-bd07-8f1a2d2dd5ad"
         job_id = "8f4f2a24-d6cf-5050-96a4-942d2c337fd0"
-        artifact_url = "s3://geno-reports/private/report.pdf"
+        artifact_url = "s3://geo-reports/private/report.pdf"
         error_message = "renderer failed with private object detail"
         job_row = {
             "id": job_id,
@@ -9412,7 +9412,7 @@ class CoreContractsTest(unittest.TestCase):
             "report_export_id": report_export_id,
             "status": "succeeded",
             "completed_at": now,
-            "artifact_url": "s3://geno-reports/report.pdf",
+            "artifact_url": "s3://geo-reports/report.pdf",
             "updated_at": now,
         }
         audit_row = {
@@ -9426,7 +9426,7 @@ class CoreContractsTest(unittest.TestCase):
             "before_hash": "before",
             "after_hash": "after",
             "input_refs": {"status": ["succeeded"], "report_export_job_ids": [job_id]},
-            "output_refs": {"artifact_url": ["s3://geno-reports/report.pdf"]},
+            "output_refs": {"artifact_url": ["s3://geo-reports/report.pdf"]},
             "method_version": "runtime_report_export_job_status_v1",
             "reason": "artifact archived",
             "created_at": now,
@@ -9458,13 +9458,13 @@ class CoreContractsTest(unittest.TestCase):
                 status="succeeded",
                 updated_by="runtime-worker",
                 report_export_id=report_export_id,
-                artifact_url="s3://geno-reports/report.pdf",
+                artifact_url="s3://geo-reports/report.pdf",
                 reason="artifact archived",
             )
         )
 
         self.assertEqual(record.report_export_job["status"], "succeeded")
-        self.assertEqual(record.report_export_job["artifact_url"], "s3://geno-reports/report.pdf")
+        self.assertEqual(record.report_export_job["artifact_url"], "s3://geo-reports/report.pdf")
         self.assertEqual(record.audit_events[0]["event_type"], "report_export_job_status_updated")
         self.assertEqual(connection.commit_count, 1)
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
@@ -9675,7 +9675,7 @@ class CoreContractsTest(unittest.TestCase):
             "id": subscription_id,
             "project_id": project_id,
             "channel": "webhook",
-            "endpoint_url": "https://hooks.example.com/geno",
+            "endpoint_url": "https://hooks.example.com/geo",
             "event_types": ["report_export_job"],
             "severity_threshold": "warning",
             "status": "active",
@@ -9706,7 +9706,7 @@ class CoreContractsTest(unittest.TestCase):
         record = PostgresEvidenceRepository(connection).save_runtime_notification_subscription(
             RuntimeNotificationSubscriptionInput(
                 project_id=project_id,
-                endpoint_url="https://hooks.example.com/geno",
+                endpoint_url="https://hooks.example.com/geo",
                 event_types=("report_export_job",),
                 severity_threshold="warning",
                 metadata={"source": "contract"},
@@ -9716,7 +9716,7 @@ class CoreContractsTest(unittest.TestCase):
         )
 
         self.assertIsInstance(record, RuntimeNotificationSubscription)
-        self.assertEqual(record.subscription["endpoint_url"], "https://hooks.example.com/geno")
+        self.assertEqual(record.subscription["endpoint_url"], "https://hooks.example.com/geo")
         self.assertEqual(record.audit_events[0]["event_type"], "runtime_notification_subscription_saved")
         self.assertEqual(connection.commit_count, 1)
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
@@ -9728,7 +9728,7 @@ class CoreContractsTest(unittest.TestCase):
         now = datetime(2026, 6, 12, tzinfo=UTC)
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
         subscription_id = "7d7e88a9-b44c-542e-8be7-c3f7db7fd5f8"
-        endpoint_url = "https://hooks.example.com/geno/raw-secret-path"
+        endpoint_url = "https://hooks.example.com/geo/raw-secret-path"
         reply_to = "reports@example.com"
         unsubscribe_url = "https://app.example.com/notifications/unsubscribe"
         subscription_row = {
@@ -9741,11 +9741,11 @@ class CoreContractsTest(unittest.TestCase):
             "status": "active",
             "metadata": {
                 "source": "contract",
-                "signing_secret_env": "GENO_TEST_WEBHOOK_SECRET",
+                "signing_secret_env": "GEO_TEST_WEBHOOK_SECRET",
                 "signing_secret_key_id": "current-v1",
-                "previous_signing_secret_env": "GENO_TEST_WEBHOOK_SECRET_PREVIOUS",
+                "previous_signing_secret_env": "GEO_TEST_WEBHOOK_SECRET_PREVIOUS",
                 "previous_signing_secret_key_id": "previous-v1",
-                "slack_channel": "#geno-alerts",
+                "slack_channel": "#geo-alerts",
                 "email_reply_to": reply_to,
                 "email_unsubscribe_url": unsubscribe_url,
                 "email_unsubscribe_mailto": "mailto:unsubscribe@example.com",
@@ -9815,7 +9815,7 @@ class CoreContractsTest(unittest.TestCase):
             "event_types": ["runtime_alert"],
             "severity_threshold": "warning",
             "status": "active",
-            "metadata": {"source": "contract", "slack_channel": "#geno-alerts"},
+            "metadata": {"source": "contract", "slack_channel": "#geo-alerts"},
             "created_by": "runtime-console",
             "created_at": now,
             "updated_by": "runtime-console",
@@ -9846,7 +9846,7 @@ class CoreContractsTest(unittest.TestCase):
                 endpoint_url="https://hooks.slack.com/services/T000/B000/XXX",
                 event_types=("runtime_alert",),
                 severity_threshold="warning",
-                metadata={"source": "contract", "slack_channel": "#geno-alerts"},
+                metadata={"source": "contract", "slack_channel": "#geo-alerts"},
                 updated_by="runtime-console",
                 reason="save slack subscription",
             )
@@ -9854,7 +9854,7 @@ class CoreContractsTest(unittest.TestCase):
 
         self.assertIsInstance(record, RuntimeNotificationSubscription)
         self.assertEqual(record.subscription["channel"], "slack")
-        self.assertEqual(record.subscription["metadata"]["slack_channel"], "#geno-alerts")
+        self.assertEqual(record.subscription["metadata"]["slack_channel"], "#geo-alerts")
         self.assertEqual(record.audit_events[0]["event_type"], "runtime_notification_subscription_saved")
         self.assertEqual(connection.commit_count, 1)
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
@@ -9971,7 +9971,7 @@ class CoreContractsTest(unittest.TestCase):
             "exported_at": now,
             "artifact_url": None,
         }
-        after_row = {**before_row, "status": "succeeded", "report_export_id": report_export_id, "artifact_url": "s3://geno-reports/report.pdf"}
+        after_row = {**before_row, "status": "succeeded", "report_export_id": report_export_id, "artifact_url": "s3://geo-reports/report.pdf"}
         notification_row = {
             "id": notification_id,
             "project_id": project_id,
@@ -9994,7 +9994,7 @@ class CoreContractsTest(unittest.TestCase):
             "id": subscription_id,
             "project_id": project_id,
             "channel": "webhook",
-            "endpoint_url": "https://hooks.example.com/geno",
+            "endpoint_url": "https://hooks.example.com/geo",
             "event_types": ["report_export_job"],
             "severity_threshold": "info",
             "status": "active",
@@ -10010,7 +10010,7 @@ class CoreContractsTest(unittest.TestCase):
             "notification_id": notification_id,
             "subscription_id": subscription_id,
             "channel": "webhook",
-            "endpoint_url": "https://hooks.example.com/geno",
+            "endpoint_url": "https://hooks.example.com/geo",
             "status": "queued",
             "attempt_count": 0,
             "max_attempts": 3,
@@ -10035,7 +10035,7 @@ class CoreContractsTest(unittest.TestCase):
             "before_hash": "before",
             "after_hash": "after",
             "input_refs": {"status": ["succeeded"]},
-            "output_refs": {"artifact_url": ["s3://geno-reports/report.pdf"]},
+            "output_refs": {"artifact_url": ["s3://geo-reports/report.pdf"]},
             "method_version": "runtime_report_export_job_status_v1",
             "reason": "artifact archived",
             "created_at": now,
@@ -10050,7 +10050,7 @@ class CoreContractsTest(unittest.TestCase):
                 status="succeeded",
                 updated_by="runtime-worker",
                 report_export_id=report_export_id,
-                artifact_url="s3://geno-reports/report.pdf",
+                artifact_url="s3://geo-reports/report.pdf",
                 reason="artifact archived",
             )
         )
@@ -10095,7 +10095,7 @@ class CoreContractsTest(unittest.TestCase):
             "event_types": ["runtime_alert"],
             "severity_threshold": "warning",
             "status": "active",
-            "metadata": {"slack_channel": "#geno-alerts"},
+            "metadata": {"slack_channel": "#geo-alerts"},
             "created_by": "runtime-console",
             "created_at": now,
             "updated_by": "runtime-console",
@@ -10235,7 +10235,7 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("runtime_notification_delivery_email_v1", delivery_payload)
         self.assertIn("ops@example.com", delivery_payload)
         self.assertNotIn('"muted@example.com"', delivery_payload)
-        self.assertIn("[GENO CRITICAL] Brand absent in Sydney", delivery_payload)
+        self.assertIn("[GEO CRITICAL] Brand absent in Sydney", delivery_payload)
         self.assertIn(RUNTIME_NOTIFICATION_EMAIL_TEMPLATE_VERSION, delivery_payload)
         self.assertIn("email_template_hash", delivery_payload)
         self.assertIn("email_subject_hash", delivery_payload)
@@ -10249,7 +10249,7 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIn("email_tokenized_preferences_url_hash", delivery_payload)
         self.assertNotIn("preference-secret", delivery_payload)
         self.assertIn("Reply-To", delivery_payload)
-        self.assertIn("X-GENO-Notification-Preferences-Url", delivery_payload)
+        self.assertIn("X-GEO-Notification-Preferences-Url", delivery_payload)
         self.assertIn("Notification controls:", delivery_payload)
         self.assertIn("email_control_hashes", delivery_payload)
         self.assertIn("email_reply_to_hash", delivery_payload)
@@ -10513,7 +10513,7 @@ class CoreContractsTest(unittest.TestCase):
             "id": subscription_id,
             "project_id": project_id,
             "channel": "webhook",
-            "endpoint_url": "https://hooks.example.com/geno",
+            "endpoint_url": "https://hooks.example.com/geo",
             "event_types": ["report_export_job"],
             "severity_threshold": "info",
             "status": "active",
@@ -10529,7 +10529,7 @@ class CoreContractsTest(unittest.TestCase):
             "notification_id": notification_id,
             "subscription_id": subscription_id,
             "channel": "webhook",
-            "endpoint_url": "https://hooks.example.com/geno",
+            "endpoint_url": "https://hooks.example.com/geo",
             "status": "queued",
             "attempt_count": 0,
             "max_attempts": 3,
@@ -10571,7 +10571,7 @@ class CoreContractsTest(unittest.TestCase):
         self.assertIsInstance(page, RuntimeNotificationDeliveryPage)
         self.assertIsInstance(page.records[0], RuntimeNotificationDelivery)
         self.assertEqual(page.records[0].notification["title"], "Report export failed")
-        self.assertEqual(page.records[0].subscription["endpoint_url"], "https://hooks.example.com/geno")
+        self.assertEqual(page.records[0].subscription["endpoint_url"], "https://hooks.example.com/geo")
         self.assertEqual(page.records[0].audit_events[0]["event_type"], "runtime_notification_delivery_queued")
         executed_sql = "\n".join(sql for sql, _ in connection.calls)
         self.assertIn("FROM runtime_notification_deliveries WHERE project_id = %s AND status = %s", executed_sql)
@@ -10582,7 +10582,7 @@ class CoreContractsTest(unittest.TestCase):
         notification_id = "3ba5d5b7-8759-557b-a8a8-7297f98e2339"
         subscription_id = "7d7e88a9-b44c-542e-8be7-c3f7db7fd5f8"
         delivery_id = "118e5c66-7bb4-558e-ab97-e74ef9928b46"
-        endpoint_url = "https://hooks.example.com/geno/raw-secret-path"
+        endpoint_url = "https://hooks.example.com/geo/raw-secret-path"
         notification_row = {
             "id": notification_id,
             "project_id": project_id,
@@ -10633,7 +10633,7 @@ class CoreContractsTest(unittest.TestCase):
             "payload": {
                 "delivery_version": "runtime_notification_delivery_v1",
                 "metadata": {
-                    "signing_secret_env": "GENO_TEST_WEBHOOK_SECRET",
+                    "signing_secret_env": "GEO_TEST_WEBHOOK_SECRET",
                     "do_not_export": "raw payload metadata value",
                 },
             },
@@ -10698,7 +10698,7 @@ class CoreContractsTest(unittest.TestCase):
             "notification_id": notification_id,
             "subscription_id": subscription_id,
             "channel": "webhook",
-            "endpoint_url": "https://hooks.example.com/geno",
+            "endpoint_url": "https://hooks.example.com/geo",
             "status": "queued",
             "attempt_count": 0,
             "max_attempts": 3,
@@ -10735,7 +10735,7 @@ class CoreContractsTest(unittest.TestCase):
             "id": subscription_id,
             "project_id": project_id,
             "channel": "webhook",
-            "endpoint_url": "https://hooks.example.com/geno",
+            "endpoint_url": "https://hooks.example.com/geo",
             "event_types": ["report_export_job"],
             "severity_threshold": "info",
             "status": "active",
@@ -10790,7 +10790,7 @@ class CoreContractsTest(unittest.TestCase):
             "notification_id": notification_id,
             "subscription_id": subscription_id,
             "channel": "webhook",
-            "endpoint_url": "https://hooks.example.com/geno",
+            "endpoint_url": "https://hooks.example.com/geo",
             "status": "sending",
             "attempt_count": 1,
             "max_attempts": 3,
@@ -10833,7 +10833,7 @@ class CoreContractsTest(unittest.TestCase):
             "id": subscription_id,
             "project_id": project_id,
             "channel": "webhook",
-            "endpoint_url": "https://hooks.example.com/geno",
+            "endpoint_url": "https://hooks.example.com/geo",
             "event_types": ["report_export_job"],
             "severity_threshold": "info",
             "status": "active",
@@ -11959,9 +11959,9 @@ class CoreContractsTest(unittest.TestCase):
             "window_start": now,
             "window_end": now,
             "methodology_hash": "methodology-hash",
-            "markdown_url": "s3://geno-reports/report.md",
+            "markdown_url": "s3://geo-reports/report.md",
             "pdf_url": None,
-            "csv_url": "s3://geno-reports/report.csv",
+            "csv_url": "s3://geo-reports/report.csv",
             "exported_by": "system",
             "exported_at": now,
         }
@@ -12082,9 +12082,9 @@ class CoreContractsTest(unittest.TestCase):
             "window_start": now,
             "window_end": now,
             "methodology_hash": "methodology-hash",
-            "markdown_url": "s3://geno-reports/report.md",
+            "markdown_url": "s3://geo-reports/report.md",
             "pdf_url": None,
-            "csv_url": "s3://geno-reports/report.csv",
+            "csv_url": "s3://geo-reports/report.csv",
             "exported_by": "system",
             "exported_at": now,
         }
@@ -12190,9 +12190,9 @@ class CoreContractsTest(unittest.TestCase):
             "window_start": now,
             "window_end": now,
             "methodology_hash": "methodology-hash",
-            "markdown_url": "s3://geno-reports/report.md",
+            "markdown_url": "s3://geo-reports/report.md",
             "pdf_url": None,
-            "csv_url": "s3://geno-reports/report.csv",
+            "csv_url": "s3://geo-reports/report.csv",
             "exported_by": "system",
             "exported_at": now,
         }
@@ -12282,9 +12282,9 @@ class CoreContractsTest(unittest.TestCase):
             "window_start": now,
             "window_end": now,
             "methodology_hash": "methodology-hash",
-            "markdown_url": "s3://geno-reports/report.md",
+            "markdown_url": "s3://geo-reports/report.md",
             "pdf_url": None,
-            "csv_url": "s3://geno-reports/report.csv",
+            "csv_url": "s3://geo-reports/report.csv",
             "exported_by": "system",
             "exported_at": now,
         }
@@ -12380,9 +12380,9 @@ class CoreContractsTest(unittest.TestCase):
             "window_start": now,
             "window_end": now,
             "methodology_hash": "methodology-hash",
-            "markdown_url": "s3://geno-reports/report.md",
+            "markdown_url": "s3://geo-reports/report.md",
             "pdf_url": None,
-            "csv_url": "s3://geno-reports/report.csv",
+            "csv_url": "s3://geo-reports/report.csv",
             "exported_by": "system",
             "exported_at": now,
         }
@@ -12550,7 +12550,7 @@ class CoreContractsTest(unittest.TestCase):
                         "event_type": "action_plan_created",
                         "project_id": project_id,
                         "actor_type": "system",
-                        "actor_id": "geno-core.action_plan",
+                        "actor_id": "geo-core.action_plan",
                         "target_type": "action_plan",
                         "target_id": schedule_id,
                         "before_hash": None,
@@ -12568,7 +12568,7 @@ class CoreContractsTest(unittest.TestCase):
                         "event_type": "retest_comparison_created",
                         "project_id": project_id,
                         "actor_type": "system",
-                        "actor_id": "geno-core.action_plan",
+                        "actor_id": "geo-core.action_plan",
                         "target_type": "retest_comparison",
                         "target_id": comparison_id,
                         "before_hash": "before",
@@ -12686,7 +12686,7 @@ class CoreContractsTest(unittest.TestCase):
                         "event_type": "action_plan_created",
                         "project_id": project_id,
                         "actor_type": "system",
-                        "actor_id": "geno-core.action_plan",
+                        "actor_id": "geo-core.action_plan",
                         "target_type": "action_plan",
                         "target_id": schedule_id,
                         "before_hash": None,
@@ -12704,7 +12704,7 @@ class CoreContractsTest(unittest.TestCase):
                         "event_type": "retest_comparison_created",
                         "project_id": project_id,
                         "actor_type": "system",
-                        "actor_id": "geno-core.action_plan",
+                        "actor_id": "geo-core.action_plan",
                         "target_type": "retest_comparison",
                         "target_id": comparison_id,
                         "before_hash": "before",
@@ -12867,7 +12867,7 @@ class CoreContractsTest(unittest.TestCase):
                         "event_type": "visibility_score_snapshot_created",
                         "project_id": project_id,
                         "actor_type": "system",
-                        "actor_id": "geno-core.scoring",
+                        "actor_id": "geo-core.scoring",
                         "target_type": "visibility_score_snapshot",
                         "target_id": snapshot_id,
                         "before_hash": None,
@@ -12995,7 +12995,7 @@ class CoreContractsTest(unittest.TestCase):
                         "event_type": "visibility_score_snapshot_created",
                         "project_id": project_id,
                         "actor_type": "system",
-                        "actor_id": "geno-core.scoring",
+                        "actor_id": "geo-core.scoring",
                         "target_type": "visibility_score_snapshot",
                         "target_id": snapshot_id,
                         "before_hash": None,
@@ -13239,7 +13239,7 @@ class CoreContractsTest(unittest.TestCase):
             "id": subscription_id,
             "project_id": project_id,
             "channel": "webhook",
-            "endpoint_url": "https://hooks.example.com/geno",
+            "endpoint_url": "https://hooks.example.com/geo",
             "event_types": ["runtime_alert"],
             "severity_threshold": "warning",
             "status": "active",
@@ -13255,7 +13255,7 @@ class CoreContractsTest(unittest.TestCase):
             "notification_id": notification_id,
             "subscription_id": subscription_id,
             "channel": "webhook",
-            "endpoint_url": "https://hooks.example.com/geno",
+            "endpoint_url": "https://hooks.example.com/geo",
             "status": "queued",
             "attempt_count": 0,
             "max_attempts": 3,
@@ -13284,7 +13284,7 @@ class CoreContractsTest(unittest.TestCase):
                         "event_type": "visibility_score_snapshot_created",
                         "project_id": project_id,
                         "actor_type": "system",
-                        "actor_id": "geno-core.scoring",
+                        "actor_id": "geo-core.scoring",
                         "target_type": "visibility_score_snapshot",
                         "target_id": snapshot_id,
                         "before_hash": None,
@@ -13361,7 +13361,7 @@ class CoreContractsTest(unittest.TestCase):
             "evidence_answer_run_ids": [answer_run_id],
             "draft_markdown": "# ExampleBrand FAQ",
             "review_status": "pending_human_review",
-            "created_by": "geno-core.knowledge",
+            "created_by": "geo-core.knowledge",
             "created_at": now,
         }
         distribution_row = {
@@ -13474,7 +13474,7 @@ class CoreContractsTest(unittest.TestCase):
                         "event_type": "content_engine_fixture_created",
                         "project_id": project_id,
                         "actor_type": "system",
-                        "actor_id": "geno-core.knowledge",
+                        "actor_id": "geo-core.knowledge",
                         "target_type": "content_engine_fixture",
                         "target_id": project_id,
                         "before_hash": None,
@@ -13556,7 +13556,7 @@ class CoreContractsTest(unittest.TestCase):
             "evidence_answer_run_ids": [answer_run_id],
             "draft_markdown": "# ExampleBrand FAQ\nCreate a citation-ready page.",
             "review_status": "pending_human_review",
-            "created_by": "geno-core.knowledge",
+            "created_by": "geo-core.knowledge",
             "created_at": now,
         }
         distribution_row = {
@@ -13669,7 +13669,7 @@ class CoreContractsTest(unittest.TestCase):
                         "event_type": "content_engine_fixture_created",
                         "project_id": project_id,
                         "actor_type": "system",
-                        "actor_id": "geno-core.knowledge",
+                        "actor_id": "geo-core.knowledge",
                         "target_type": "content_engine_fixture",
                         "target_id": project_id,
                         "before_hash": None,
@@ -13780,9 +13780,9 @@ class CoreContractsTest(unittest.TestCase):
             "window_start": now,
             "window_end": now,
             "methodology_hash": "methodology-hash",
-            "markdown_url": "s3://geno-reports/report.md",
+            "markdown_url": "s3://geo-reports/report.md",
             "pdf_url": None,
-            "csv_url": "s3://geno-reports/report.csv",
+            "csv_url": "s3://geo-reports/report.csv",
             "exported_by": "system",
             "exported_at": now,
         }
@@ -13831,7 +13831,7 @@ class CoreContractsTest(unittest.TestCase):
             "evidence_answer_run_ids": [answer_run_id],
             "draft_markdown": "# ExampleBrand FAQ",
             "review_status": "pending_human_review",
-            "created_by": "geno-core.knowledge",
+            "created_by": "geo-core.knowledge",
             "created_at": now,
         }
         fact_row = {
@@ -14402,7 +14402,7 @@ class CoreContractsTest(unittest.TestCase):
         }
         saved_row = {
             **before_row,
-            "logo_url": f"s3://geno-reports/brand-assets/{project_id}/logo-25f766a3e701-Client-Logo.png",
+            "logo_url": f"s3://geo-reports/brand-assets/{project_id}/logo-25f766a3e701-Client-Logo.png",
             "updated_by": "agency-user",
         }
         brand_asset_id = "ddc23a34-2ffb-5a56-a81a-3b98aaf843b4"
@@ -14483,7 +14483,7 @@ class CoreContractsTest(unittest.TestCase):
     def test_postgres_repository_lists_project_brand_asset_versions_from_audit_events(self) -> None:
         now = datetime(2026, 6, 10, tzinfo=UTC)
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
-        active_logo_url = f"s3://geno-reports/brand-assets/{project_id}/logo-active.png"
+        active_logo_url = f"s3://geo-reports/brand-assets/{project_id}/logo-active.png"
         brand_kit_row = {
             "id": "0ada83ad-b669-507e-b3c8-9d8574569a62",
             "project_id": project_id,
@@ -14543,7 +14543,7 @@ class CoreContractsTest(unittest.TestCase):
         now = datetime(2026, 6, 10, tzinfo=UTC)
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
         asset_id = "ddc23a34-2ffb-5a56-a81a-3b98aaf843b4"
-        asset_url = f"s3://geno-reports/brand-assets/{project_id}/hero.png"
+        asset_url = f"s3://geo-reports/brand-assets/{project_id}/hero.png"
         asset_row = {
             "id": asset_id,
             "project_id": project_id,
@@ -14625,7 +14625,7 @@ class CoreContractsTest(unittest.TestCase):
         now = datetime(2026, 6, 10, tzinfo=UTC)
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
         asset_id = "ddc23a34-2ffb-5a56-a81a-3b98aaf843b4"
-        asset_url = f"s3://geno-reports/brand-assets/{project_id}/hero.png"
+        asset_url = f"s3://geo-reports/brand-assets/{project_id}/hero.png"
         asset_row = {
             "id": asset_id,
             "project_id": project_id,
@@ -14686,7 +14686,7 @@ class CoreContractsTest(unittest.TestCase):
         now = datetime(2026, 6, 10, tzinfo=UTC)
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
         asset_id = "ddc23a34-2ffb-5a56-a81a-3b98aaf843b4"
-        asset_url = f"s3://geno-reports/brand-assets/{project_id}/hero.png"
+        asset_url = f"s3://geo-reports/brand-assets/{project_id}/hero.png"
         before_row = {
             "id": asset_id,
             "project_id": project_id,
@@ -14764,8 +14764,8 @@ class CoreContractsTest(unittest.TestCase):
         now = datetime(2026, 6, 10, tzinfo=UTC)
         project_id = "9a50797d-a341-55a4-8bdf-cc255c017e5c"
         brand_kit_id = "0ada83ad-b669-507e-b3c8-9d8574569a62"
-        previous_logo_url = f"s3://geno-reports/brand-assets/{project_id}/logo-previous.png"
-        current_logo_url = f"s3://geno-reports/brand-assets/{project_id}/logo-current.png"
+        previous_logo_url = f"s3://geo-reports/brand-assets/{project_id}/logo-previous.png"
+        current_logo_url = f"s3://geo-reports/brand-assets/{project_id}/logo-current.png"
         version_audit_row = {
             "id": "ce333139-53e7-44c8-8c85-ce498d841391",
             "event_type": "project_brand_logo_uploaded",
@@ -15117,7 +15117,7 @@ class CoreContractsTest(unittest.TestCase):
             "evidence_answer_run_ids": ["438ab927-5873-5516-8df3-47f6c75ef007"],
             "draft_markdown": "# AU shipping",
             "review_status": "pending_human_review",
-            "created_by": "geno-core.knowledge",
+            "created_by": "geo-core.knowledge",
             "created_at": now,
         }
         review_row = {
@@ -16361,7 +16361,7 @@ class CoreContractsTest(unittest.TestCase):
             "id": subscription_id,
             "project_id": project_id,
             "channel": "webhook",
-            "endpoint_url": "https://hooks.example.com/geno",
+            "endpoint_url": "https://hooks.example.com/geo",
             "event_types": ["entity_alias_assignment_overdue"],
             "severity_threshold": "warning",
             "status": "active",
@@ -16377,7 +16377,7 @@ class CoreContractsTest(unittest.TestCase):
             "notification_id": notification_id,
             "subscription_id": subscription_id,
             "channel": "webhook",
-            "endpoint_url": "https://hooks.example.com/geno",
+            "endpoint_url": "https://hooks.example.com/geo",
             "status": "queued",
             "attempt_count": 0,
             "max_attempts": 3,

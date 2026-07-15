@@ -8,11 +8,11 @@ DECLARE
     role_name text;
 BEGIN
     FOREACH role_name IN ARRAY ARRAY[
-        'geno_v2_worker',
-        'geno_v2_job_owner',
-        'geno_v2_result_owner',
-        'geno_v2_job_command_owner',
-        'geno_v2_worker_login'
+        'geo_v2_worker',
+        'geo_v2_job_owner',
+        'geo_v2_result_owner',
+        'geo_v2_job_command_owner',
+        'geo_v2_worker_login'
     ]
     LOOP
         IF NOT EXISTS (
@@ -31,12 +31,12 @@ BEGIN
             );
         END IF;
     END LOOP;
-    ALTER ROLE geno_v2_job_owner BYPASSRLS;
-    ALTER ROLE geno_v2_result_owner BYPASSRLS;
-    ALTER ROLE geno_v2_job_command_owner BYPASSRLS;
-    ALTER ROLE geno_v2_worker_login PASSWORD NULL;
-    ALTER ROLE geno_v2_worker_login RESET ALL;
-    ALTER ROLE geno_v2_worker_login IN DATABASE geno_v2 RESET ALL;
+    ALTER ROLE geo_v2_job_owner BYPASSRLS;
+    ALTER ROLE geo_v2_result_owner BYPASSRLS;
+    ALTER ROLE geo_v2_job_command_owner BYPASSRLS;
+    ALTER ROLE geo_v2_worker_login PASSWORD NULL;
+    ALTER ROLE geo_v2_worker_login RESET ALL;
+    ALTER ROLE geo_v2_worker_login IN DATABASE geo_v2 RESET ALL;
 
     IF EXISTS (
         SELECT 1
@@ -47,19 +47,19 @@ BEGIN
           ON member_role.oid = membership.member
         WHERE (
                 granted_role.rolname = ANY(ARRAY[
-                'geno_v2_worker', 'geno_v2_job_owner',
-                'geno_v2_result_owner', 'geno_v2_job_command_owner',
-                'geno_v2_worker_login'
+                'geo_v2_worker', 'geo_v2_job_owner',
+                'geo_v2_result_owner', 'geo_v2_job_command_owner',
+                'geo_v2_worker_login'
                 ])
                 OR member_role.rolname = ANY(ARRAY[
-                'geno_v2_worker', 'geno_v2_job_owner',
-                'geno_v2_result_owner', 'geno_v2_job_command_owner',
-                'geno_v2_worker_login'
+                'geo_v2_worker', 'geo_v2_job_owner',
+                'geo_v2_result_owner', 'geo_v2_job_command_owner',
+                'geo_v2_worker_login'
                 ])
               )
           AND NOT (
-                granted_role.rolname = 'geno_v2_worker'
-                AND member_role.rolname = 'geno_v2_worker_login'
+                granted_role.rolname = 'geo_v2_worker'
+                AND member_role.rolname = 'geo_v2_worker_login'
                 AND NOT membership.admin_option
                 AND NOT membership.inherit_option
                 AND membership.set_option
@@ -70,14 +70,14 @@ BEGIN
 END;
 $job_roles$;
 
-GRANT geno_v2_worker TO geno_v2_worker_login
+GRANT geo_v2_worker TO geo_v2_worker_login
     WITH ADMIN FALSE, INHERIT FALSE, SET TRUE;
-GRANT CONNECT ON DATABASE geno_v2 TO geno_v2_worker_login;
+GRANT CONNECT ON DATABASE geo_v2 TO geo_v2_worker_login;
 
-GRANT USAGE ON SCHEMA public TO geno_v2_worker;
-GRANT USAGE ON SCHEMA public TO geno_v2_job_owner;
-GRANT USAGE ON SCHEMA public TO geno_v2_result_owner;
-GRANT USAGE ON SCHEMA public TO geno_v2_job_command_owner;
+GRANT USAGE ON SCHEMA public TO geo_v2_worker;
+GRANT USAGE ON SCHEMA public TO geo_v2_job_owner;
+GRANT USAGE ON SCHEMA public TO geo_v2_result_owner;
+GRANT USAGE ON SCHEMA public TO geo_v2_job_command_owner;
 
 CREATE TABLE product_entities (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -2183,7 +2183,7 @@ CREATE TABLE review_assignments (
     )
 );
 
-CREATE FUNCTION geno_v2_reject_immutable_domain_update()
+CREATE FUNCTION geo_v2_reject_immutable_domain_update()
 RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = pg_catalog
@@ -2194,7 +2194,7 @@ BEGIN
 END;
 $immutable_domain_update$;
 
-CREATE FUNCTION geno_v2_guard_evidence_asset_finalize()
+CREATE FUNCTION geo_v2_guard_evidence_asset_finalize()
 RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = pg_catalog
@@ -2223,7 +2223,7 @@ BEGIN
 END;
 $guard_evidence_finalize$;
 
-CREATE FUNCTION geno_v2_guard_used_weight_profile_update()
+CREATE FUNCTION geo_v2_guard_used_weight_profile_update()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -2242,7 +2242,7 @@ BEGIN
 END;
 $guard_weight_profile$;
 
-CREATE FUNCTION geno_v2_guard_used_weight_component_update()
+CREATE FUNCTION geo_v2_guard_used_weight_component_update()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -2307,7 +2307,7 @@ BEGIN
 END;
 $guard_weight_component$;
 
-CREATE FUNCTION geno_v2_guard_score_run_profile()
+CREATE FUNCTION geo_v2_guard_score_run_profile()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -2329,7 +2329,7 @@ BEGIN
 END;
 $guard_score_run_profile$;
 
-CREATE FUNCTION geno_v2_require_finalized_score_evidence()
+CREATE FUNCTION geo_v2_require_finalized_score_evidence()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -2351,7 +2351,7 @@ BEGIN
 END;
 $require_finalized_score_evidence$;
 
-CREATE FUNCTION geno_v2_enqueue_durable_job_dispatch()
+CREATE FUNCTION geo_v2_enqueue_durable_job_dispatch()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -2402,7 +2402,7 @@ BEGIN
 END;
 $enqueue_durable_dispatch$;
 
-CREATE FUNCTION geno_v2_claim_durable_job_dispatch(
+CREATE FUNCTION geo_v2_claim_durable_job_dispatch(
     p_worker_id text,
     p_lease_seconds integer,
     p_project_id uuid DEFAULT NULL,
@@ -2467,7 +2467,7 @@ BEGIN
 END;
 $claim_durable_dispatch$;
 
-CREATE FUNCTION geno_v2_heartbeat_durable_job_dispatch(
+CREATE FUNCTION geo_v2_heartbeat_durable_job_dispatch(
     p_dispatch_id uuid,
     p_worker_id text,
     p_lease_token uuid,
@@ -2504,7 +2504,7 @@ BEGIN
 END;
 $heartbeat_durable_dispatch$;
 
-CREATE FUNCTION geno_v2_complete_durable_job_dispatch(
+CREATE FUNCTION geo_v2_complete_durable_job_dispatch(
     p_dispatch_id uuid,
     p_worker_id text,
     p_lease_token uuid
@@ -2541,7 +2541,7 @@ BEGIN
 END;
 $complete_durable_dispatch$;
 
-CREATE FUNCTION geno_v2_fail_durable_job_dispatch(
+CREATE FUNCTION geo_v2_fail_durable_job_dispatch(
     p_dispatch_id uuid,
     p_worker_id text,
     p_lease_token uuid,
@@ -2605,7 +2605,7 @@ BEGIN
 END;
 $fail_durable_dispatch$;
 
-CREATE FUNCTION geno_v2_claim_artifact_finalize(
+CREATE FUNCTION geo_v2_claim_artifact_finalize(
     p_worker_id text,
     p_lease_seconds integer,
     p_project_id uuid DEFAULT NULL
@@ -2682,7 +2682,7 @@ BEGIN
 END;
 $claim_artifact_finalize$;
 
-CREATE FUNCTION geno_v2_heartbeat_artifact_finalize(
+CREATE FUNCTION geo_v2_heartbeat_artifact_finalize(
     p_outbox_id uuid,
     p_worker_id text,
     p_lease_token uuid,
@@ -2718,7 +2718,7 @@ BEGIN
 END;
 $heartbeat_artifact_finalize$;
 
-CREATE FUNCTION geno_v2_complete_artifact_finalize(
+CREATE FUNCTION geo_v2_complete_artifact_finalize(
     p_outbox_id uuid,
     p_worker_id text,
     p_lease_token uuid,
@@ -2801,7 +2801,7 @@ BEGIN
 END;
 $complete_artifact_finalize$;
 
-CREATE FUNCTION geno_v2_fail_artifact_finalize(
+CREATE FUNCTION geo_v2_fail_artifact_finalize(
     p_outbox_id uuid,
     p_worker_id text,
     p_lease_token uuid,
@@ -2871,7 +2871,7 @@ BEGIN
 END;
 $fail_artifact_finalize$;
 
-CREATE FUNCTION geno_v2_refresh_collection_run_summary(
+CREATE FUNCTION geo_v2_refresh_collection_run_summary(
     p_collection_run_id uuid,
     p_project_id uuid
 )
@@ -3014,7 +3014,7 @@ $refresh_collection_summary$;
 -- Claim functions lock only during their calling transaction. Callers MUST
 -- commit immediately after claim and MUST NOT hold that transaction open while
 -- invoking an external provider. Completion is a new fenced transaction.
-CREATE FUNCTION geno_v2_claim_collection_job(
+CREATE FUNCTION geo_v2_claim_collection_job(
     p_worker_id text,
     p_lease_seconds integer,
     p_project_id uuid DEFAULT NULL
@@ -3048,7 +3048,7 @@ BEGIN
           AND (p_project_id IS NULL OR cancelled.project_id = p_project_id)
         RETURNING cancelled.collection_run_id, cancelled.project_id
     LOOP
-        PERFORM public.geno_v2_refresh_collection_run_summary(
+        PERFORM public.geo_v2_refresh_collection_run_summary(
             recovered.collection_run_id, recovered.project_id
         );
     END LOOP;
@@ -3072,7 +3072,7 @@ BEGIN
           AND (p_project_id IS NULL OR exhausted.project_id = p_project_id)
         RETURNING exhausted.collection_run_id, exhausted.project_id
     LOOP
-        PERFORM public.geno_v2_refresh_collection_run_summary(
+        PERFORM public.geo_v2_refresh_collection_run_summary(
             recovered.collection_run_id, recovered.project_id
         );
     END LOOP;
@@ -3117,7 +3117,7 @@ BEGIN
 END;
 $claim_collection_job$;
 
-CREATE FUNCTION geno_v2_heartbeat_collection_job(
+CREATE FUNCTION geo_v2_heartbeat_collection_job(
     p_job_id uuid,
     p_worker_id text,
     p_lease_token uuid,
@@ -3153,7 +3153,7 @@ BEGIN
 END;
 $heartbeat_collection_job$;
 
-CREATE FUNCTION geno_v2_persist_collection_result(
+CREATE FUNCTION geo_v2_persist_collection_result(
     p_job collection_jobs,
     p_result_payload jsonb
 )
@@ -3510,7 +3510,7 @@ EXCEPTION
 END;
 $persist_collection_result$;
 
-CREATE FUNCTION geno_v2_complete_collection_job(
+CREATE FUNCTION geo_v2_complete_collection_job(
     p_job_id uuid,
     p_worker_id text,
     p_lease_token uuid,
@@ -3545,7 +3545,7 @@ BEGIN
             USING ERRCODE = '55000';
     END IF;
 
-    answer_run_id := public.geno_v2_persist_collection_result(
+    answer_run_id := public.geo_v2_persist_collection_result(
         locked_job, p_result_payload
     );
     UPDATE public.collection_jobs AS job_row
@@ -3576,14 +3576,14 @@ BEGIN
         RAISE EXCEPTION 'collection job finalization lost its fenced lease'
             USING ERRCODE = '55000';
     END IF;
-    PERFORM public.geno_v2_refresh_collection_run_summary(
+    PERFORM public.geo_v2_refresh_collection_run_summary(
         completed_row.collection_run_id, completed_row.project_id
     );
     RETURN completed_row;
 END;
 $complete_collection_job$;
 
-CREATE FUNCTION geno_v2_fail_collection_job(
+CREATE FUNCTION geo_v2_fail_collection_job(
     p_job_id uuid,
     p_worker_id text,
     p_lease_token uuid,
@@ -3644,7 +3644,7 @@ BEGIN
         RAISE EXCEPTION 'collection job lease is lost' USING ERRCODE = '55000';
     END IF;
     IF failed_row.status IN ('failed', 'dead_lettered') THEN
-        PERFORM public.geno_v2_refresh_collection_run_summary(
+        PERFORM public.geo_v2_refresh_collection_run_summary(
             failed_row.collection_run_id, failed_row.project_id
         );
     END IF;
@@ -3652,7 +3652,7 @@ BEGIN
 END;
 $fail_collection_job$;
 
-CREATE FUNCTION geno_v2_record_job_command_audit(
+CREATE FUNCTION geo_v2_record_job_command_audit(
     p_tenant_id uuid,
     p_project_id uuid,
     p_event_type text,
@@ -3689,7 +3689,7 @@ BEGIN
 END;
 $record_job_command_audit$;
 
-CREATE FUNCTION geno_v2_ack_collection_job_cancel(
+CREATE FUNCTION geo_v2_ack_collection_job_cancel(
     p_job_id uuid,
     p_worker_id text,
     p_lease_token uuid
@@ -3723,20 +3723,20 @@ BEGIN
         RAISE EXCEPTION 'collection job cancellation lease is lost'
             USING ERRCODE = '55000';
     END IF;
-    PERFORM public.geno_v2_record_job_command_audit(
+    PERFORM public.geo_v2_record_job_command_audit(
         cancelled_row.tenant_id, cancelled_row.project_id,
         'collection_job.cancelled', 'collection_job', cancelled_row.id,
         'worker', p_worker_id, cancelled_row.cancel_reason,
         jsonb_build_object('attempt_count', cancelled_row.attempt_count), '{}'::jsonb
     );
-    PERFORM public.geno_v2_refresh_collection_run_summary(
+    PERFORM public.geo_v2_refresh_collection_run_summary(
         cancelled_row.collection_run_id, cancelled_row.project_id
     );
     RETURN cancelled_row;
 END;
 $ack_collection_cancel$;
 
-CREATE FUNCTION geno_v2_request_collection_job_cancel(
+CREATE FUNCTION geo_v2_request_collection_job_cancel(
     p_job_id uuid,
     p_reason text
 )
@@ -3757,13 +3757,13 @@ BEGIN
     FROM public.collection_jobs AS job_row
     WHERE job_row.id = p_job_id
     FOR UPDATE;
-    IF NOT FOUND OR NOT public.geno_v2_session_has_project_permission(
+    IF NOT FOUND OR NOT public.geo_v2_session_has_project_permission(
         target_row.project_id, target_row.tenant_id, 'collection.run'
     ) THEN
         RAISE EXCEPTION 'collection job is not accessible' USING ERRCODE = '42501';
     END IF;
     SELECT context.actor_id INTO actor_id
-    FROM public.geno_v2_resolve_session_context() AS context;
+    FROM public.geo_v2_resolve_session_context() AS context;
 
     IF target_row.status = 'queued' THEN
         UPDATE public.collection_jobs AS job_row
@@ -3794,12 +3794,12 @@ BEGIN
     END IF;
 
     IF event_type IS NOT NULL THEN
-        PERFORM public.geno_v2_record_job_command_audit(
+        PERFORM public.geo_v2_record_job_command_audit(
             target_row.tenant_id, target_row.project_id, event_type,
             'collection_job', target_row.id, 'user', actor_id, p_reason
         );
         IF target_row.status = 'cancelled' THEN
-            PERFORM public.geno_v2_refresh_collection_run_summary(
+            PERFORM public.geo_v2_refresh_collection_run_summary(
                 target_row.collection_run_id, target_row.project_id
             );
         END IF;
@@ -3808,7 +3808,7 @@ BEGIN
 END;
 $request_collection_cancel$;
 
-CREATE FUNCTION geno_v2_replay_collection_job(
+CREATE FUNCTION geo_v2_replay_collection_job(
     p_source_job_id uuid,
     p_new_job_id uuid,
     p_idempotency_key text
@@ -3832,7 +3832,7 @@ BEGIN
     FROM public.collection_jobs AS job_row
     WHERE job_row.id = p_source_job_id
     FOR UPDATE;
-    IF NOT FOUND OR NOT public.geno_v2_session_has_project_permission(
+    IF NOT FOUND OR NOT public.geo_v2_session_has_project_permission(
         source_row.project_id, source_row.tenant_id, 'collection.run'
     ) THEN
         RAISE EXCEPTION 'collection job is not accessible' USING ERRCODE = '42501';
@@ -3855,7 +3855,7 @@ BEGIN
         RAISE EXCEPTION 'collection replay idempotency conflict' USING ERRCODE = '23505';
     END IF;
     SELECT context.actor_id INTO actor_id
-    FROM public.geno_v2_resolve_session_context() AS context;
+    FROM public.geo_v2_resolve_session_context() AS context;
     BEGIN
         INSERT INTO public.collection_jobs (
             id, tenant_id, project_id, collection_run_id, monitoring_query_id,
@@ -3883,21 +3883,21 @@ BEGIN
         RAISE EXCEPTION 'collection replay idempotency conflict'
             USING ERRCODE = '23505';
     END;
-    PERFORM public.geno_v2_record_job_command_audit(
+    PERFORM public.geo_v2_record_job_command_audit(
         child_row.tenant_id, child_row.project_id, 'collection_job.replayed',
         'collection_job', child_row.id, 'user', actor_id,
         'operator replay',
         jsonb_build_object('source_job_id', source_row.id),
         jsonb_build_object('replay_nonce', next_nonce)
     );
-    PERFORM public.geno_v2_refresh_collection_run_summary(
+    PERFORM public.geo_v2_refresh_collection_run_summary(
         child_row.collection_run_id, child_row.project_id
     );
     RETURN child_row;
 END;
 $replay_collection_job$;
 
-CREATE FUNCTION geno_v2_claim_visibility_score_run(
+CREATE FUNCTION geo_v2_claim_visibility_score_run(
     p_worker_id text,
     p_lease_seconds integer,
     p_project_id uuid DEFAULT NULL
@@ -3980,7 +3980,7 @@ BEGIN
 END;
 $claim_visibility_score_run$;
 
-CREATE FUNCTION geno_v2_heartbeat_visibility_score_run(
+CREATE FUNCTION geo_v2_heartbeat_visibility_score_run(
     p_run_id uuid,
     p_worker_id text,
     p_lease_token uuid,
@@ -4016,7 +4016,7 @@ BEGIN
 END;
 $heartbeat_visibility_score_run$;
 
-CREATE FUNCTION geno_v2_persist_visibility_score_result(
+CREATE FUNCTION geo_v2_persist_visibility_score_result(
     p_score_run visibility_score_runs,
     p_formula_version text,
     p_result_payload jsonb
@@ -4523,7 +4523,7 @@ EXCEPTION
 END;
 $persist_visibility_score_result$;
 
-CREATE FUNCTION geno_v2_complete_visibility_score_run(
+CREATE FUNCTION geo_v2_complete_visibility_score_run(
     p_run_id uuid,
     p_worker_id text,
     p_lease_token uuid,
@@ -4567,7 +4567,7 @@ BEGIN
             USING ERRCODE = '55000';
     END IF;
 
-    snapshot_id := public.geno_v2_persist_visibility_score_result(
+    snapshot_id := public.geo_v2_persist_visibility_score_result(
         locked_run, formula_version, p_result_payload
     );
     UPDATE public.visibility_score_runs AS run_row
@@ -4599,7 +4599,7 @@ BEGIN
 END;
 $complete_visibility_score_run$;
 
-CREATE FUNCTION geno_v2_fail_visibility_score_run(
+CREATE FUNCTION geo_v2_fail_visibility_score_run(
     p_run_id uuid,
     p_worker_id text,
     p_lease_token uuid,
@@ -4661,7 +4661,7 @@ BEGIN
 END;
 $fail_visibility_score_run$;
 
-CREATE FUNCTION geno_v2_ack_visibility_score_run_cancel(
+CREATE FUNCTION geo_v2_ack_visibility_score_run_cancel(
     p_run_id uuid,
     p_worker_id text,
     p_lease_token uuid
@@ -4695,7 +4695,7 @@ BEGIN
         RAISE EXCEPTION 'visibility score cancellation lease is lost'
             USING ERRCODE = '55000';
     END IF;
-    PERFORM public.geno_v2_record_job_command_audit(
+    PERFORM public.geo_v2_record_job_command_audit(
         cancelled_row.tenant_id, cancelled_row.project_id,
         'visibility_score_run.cancelled', 'visibility_score_run', cancelled_row.id,
         'worker', p_worker_id, cancelled_row.cancel_reason,
@@ -4705,7 +4705,7 @@ BEGIN
 END;
 $ack_score_cancel$;
 
-CREATE FUNCTION geno_v2_request_visibility_score_run_cancel(
+CREATE FUNCTION geo_v2_request_visibility_score_run_cancel(
     p_run_id uuid,
     p_reason text
 )
@@ -4726,14 +4726,14 @@ BEGIN
     FROM public.visibility_score_runs AS run_row
     WHERE run_row.id = p_run_id
     FOR UPDATE;
-    IF NOT FOUND OR NOT public.geno_v2_session_has_project_permission(
+    IF NOT FOUND OR NOT public.geo_v2_session_has_project_permission(
         target_row.project_id, target_row.tenant_id, 'score.configure'
     ) THEN
         RAISE EXCEPTION 'visibility score run is not accessible'
             USING ERRCODE = '42501';
     END IF;
     SELECT context.actor_id INTO actor_id
-    FROM public.geno_v2_resolve_session_context() AS context;
+    FROM public.geo_v2_resolve_session_context() AS context;
     IF target_row.status = 'queued' THEN
         UPDATE public.visibility_score_runs AS run_row
         SET status = 'cancelled',
@@ -4761,7 +4761,7 @@ BEGIN
             USING ERRCODE = '55000';
     END IF;
     IF event_type IS NOT NULL THEN
-        PERFORM public.geno_v2_record_job_command_audit(
+        PERFORM public.geo_v2_record_job_command_audit(
             target_row.tenant_id, target_row.project_id, event_type,
             'visibility_score_run', target_row.id, 'user', actor_id, p_reason
         );
@@ -4770,7 +4770,7 @@ BEGIN
 END;
 $request_score_cancel$;
 
-CREATE FUNCTION geno_v2_replay_visibility_score_run(
+CREATE FUNCTION geo_v2_replay_visibility_score_run(
     p_source_run_id uuid,
     p_new_run_id uuid,
     p_idempotency_key text
@@ -4794,7 +4794,7 @@ BEGIN
     FROM public.visibility_score_runs AS run_row
     WHERE run_row.id = p_source_run_id
     FOR UPDATE;
-    IF NOT FOUND OR NOT public.geno_v2_session_has_project_permission(
+    IF NOT FOUND OR NOT public.geo_v2_session_has_project_permission(
         source_row.project_id, source_row.tenant_id, 'score.configure'
     ) THEN
         RAISE EXCEPTION 'visibility score run is not accessible'
@@ -4819,7 +4819,7 @@ BEGIN
             USING ERRCODE = '23505';
     END IF;
     SELECT context.actor_id INTO actor_id
-    FROM public.geno_v2_resolve_session_context() AS context;
+    FROM public.geo_v2_resolve_session_context() AS context;
     BEGIN
         INSERT INTO public.visibility_score_runs (
             id, tenant_id, project_id, collection_run_id, weight_profile_id,
@@ -4846,7 +4846,7 @@ BEGIN
         RAISE EXCEPTION 'visibility score replay idempotency conflict'
             USING ERRCODE = '23505';
     END;
-    PERFORM public.geno_v2_record_job_command_audit(
+    PERFORM public.geo_v2_record_job_command_audit(
         child_row.tenant_id, child_row.project_id, 'visibility_score_run.replayed',
         'visibility_score_run', child_row.id, 'user', actor_id,
         'operator replay',
@@ -4857,7 +4857,7 @@ BEGIN
 END;
 $replay_score_run$;
 
-CREATE FUNCTION geno_v2_claim_retest_run(
+CREATE FUNCTION geo_v2_claim_retest_run(
     p_worker_id text,
     p_lease_seconds integer,
     p_project_id uuid DEFAULT NULL
@@ -4946,7 +4946,7 @@ BEGIN
 END;
 $claim_retest_run$;
 
-CREATE FUNCTION geno_v2_heartbeat_retest_run(
+CREATE FUNCTION geo_v2_heartbeat_retest_run(
     p_run_id uuid,
     p_worker_id text,
     p_lease_token uuid,
@@ -4982,7 +4982,7 @@ BEGIN
 END;
 $heartbeat_retest_run$;
 
-CREATE FUNCTION geno_v2_persist_retest_result(
+CREATE FUNCTION geo_v2_persist_retest_result(
     p_retest_run retest_runs,
     p_output_score_snapshot_id uuid,
     p_result_payload jsonb
@@ -5116,7 +5116,7 @@ EXCEPTION
 END;
 $persist_retest_result$;
 
-CREATE FUNCTION geno_v2_complete_retest_run(
+CREATE FUNCTION geo_v2_complete_retest_run(
     p_run_id uuid,
     p_worker_id text,
     p_lease_token uuid,
@@ -5154,7 +5154,7 @@ BEGIN
             USING ERRCODE = '55000';
     END IF;
 
-    comparison_id := public.geno_v2_persist_retest_result(
+    comparison_id := public.geo_v2_persist_retest_result(
         locked_run, p_output_score_snapshot_id, p_result_payload
     );
     UPDATE public.retest_runs AS run_row
@@ -5190,7 +5190,7 @@ BEGIN
 END;
 $complete_retest_run$;
 
-CREATE FUNCTION geno_v2_fail_retest_run(
+CREATE FUNCTION geo_v2_fail_retest_run(
     p_run_id uuid,
     p_worker_id text,
     p_lease_token uuid,
@@ -5253,7 +5253,7 @@ BEGIN
 END;
 $fail_retest_run$;
 
-CREATE FUNCTION geno_v2_ack_retest_run_cancel(
+CREATE FUNCTION geo_v2_ack_retest_run_cancel(
     p_run_id uuid,
     p_worker_id text,
     p_lease_token uuid
@@ -5287,7 +5287,7 @@ BEGIN
     IF NOT FOUND THEN
         RAISE EXCEPTION 'retest cancellation lease is lost' USING ERRCODE = '55000';
     END IF;
-    PERFORM public.geno_v2_record_job_command_audit(
+    PERFORM public.geo_v2_record_job_command_audit(
         cancelled_row.tenant_id, cancelled_row.project_id,
         'retest_run.cancelled', 'retest_run', cancelled_row.id,
         'worker', p_worker_id, cancelled_row.cancel_reason,
@@ -5297,7 +5297,7 @@ BEGIN
 END;
 $ack_retest_cancel$;
 
-CREATE FUNCTION geno_v2_request_retest_run_cancel(
+CREATE FUNCTION geo_v2_request_retest_run_cancel(
     p_run_id uuid,
     p_reason text
 )
@@ -5318,13 +5318,13 @@ BEGIN
     FROM public.retest_runs AS run_row
     WHERE run_row.id = p_run_id
     FOR UPDATE;
-    IF NOT FOUND OR NOT public.geno_v2_session_has_project_permission(
+    IF NOT FOUND OR NOT public.geo_v2_session_has_project_permission(
         target_row.project_id, target_row.tenant_id, 'retest.run'
     ) THEN
         RAISE EXCEPTION 'retest run is not accessible' USING ERRCODE = '42501';
     END IF;
     SELECT context.actor_id INTO actor_id
-    FROM public.geno_v2_resolve_session_context() AS context;
+    FROM public.geo_v2_resolve_session_context() AS context;
     IF target_row.status = 'queued' THEN
         UPDATE public.retest_runs AS run_row
         SET status = 'cancelled',
@@ -5352,7 +5352,7 @@ BEGIN
             USING ERRCODE = '55000';
     END IF;
     IF event_type IS NOT NULL THEN
-        PERFORM public.geno_v2_record_job_command_audit(
+        PERFORM public.geo_v2_record_job_command_audit(
             target_row.tenant_id, target_row.project_id, event_type,
             'retest_run', target_row.id, 'user', actor_id, p_reason
         );
@@ -5361,7 +5361,7 @@ BEGIN
 END;
 $request_retest_cancel$;
 
-CREATE FUNCTION geno_v2_replay_retest_run(
+CREATE FUNCTION geo_v2_replay_retest_run(
     p_source_run_id uuid,
     p_new_run_id uuid,
     p_idempotency_key text
@@ -5385,7 +5385,7 @@ BEGIN
     FROM public.retest_runs AS run_row
     WHERE run_row.id = p_source_run_id
     FOR UPDATE;
-    IF NOT FOUND OR NOT public.geno_v2_session_has_project_permission(
+    IF NOT FOUND OR NOT public.geo_v2_session_has_project_permission(
         source_row.project_id, source_row.tenant_id, 'retest.run'
     ) THEN
         RAISE EXCEPTION 'retest run is not accessible' USING ERRCODE = '42501';
@@ -5408,7 +5408,7 @@ BEGIN
         RAISE EXCEPTION 'retest replay idempotency conflict' USING ERRCODE = '23505';
     END IF;
     SELECT context.actor_id INTO actor_id
-    FROM public.geno_v2_resolve_session_context() AS context;
+    FROM public.geo_v2_resolve_session_context() AS context;
     BEGIN
         INSERT INTO public.retest_runs (
             id, tenant_id, project_id, action_recommendation_id,
@@ -5444,7 +5444,7 @@ BEGIN
            query_row.monitoring_query_id, query_row.ordinal
     FROM public.retest_run_queries AS query_row
     WHERE query_row.retest_run_id = source_row.id;
-    PERFORM public.geno_v2_record_job_command_audit(
+    PERFORM public.geo_v2_record_job_command_audit(
         child_row.tenant_id, child_row.project_id, 'retest_run.replayed',
         'retest_run', child_row.id, 'user', actor_id, 'operator replay',
         jsonb_build_object('source_run_id', source_row.id),
@@ -5456,73 +5456,73 @@ $replay_retest_run$;
 
 CREATE TRIGGER visibility_weight_profiles_guard_used_update
 BEFORE UPDATE ON visibility_weight_profiles
-FOR EACH ROW EXECUTE FUNCTION geno_v2_guard_used_weight_profile_update();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_guard_used_weight_profile_update();
 
 CREATE TRIGGER collection_jobs_enqueue_dispatch
 AFTER INSERT ON collection_jobs
-FOR EACH ROW EXECUTE FUNCTION geno_v2_enqueue_durable_job_dispatch();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_enqueue_durable_job_dispatch();
 
 CREATE TRIGGER visibility_score_runs_enqueue_dispatch
 AFTER INSERT ON visibility_score_runs
-FOR EACH ROW EXECUTE FUNCTION geno_v2_enqueue_durable_job_dispatch();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_enqueue_durable_job_dispatch();
 
 CREATE TRIGGER retest_runs_enqueue_dispatch
 AFTER INSERT ON retest_runs
-FOR EACH ROW EXECUTE FUNCTION geno_v2_enqueue_durable_job_dispatch();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_enqueue_durable_job_dispatch();
 
 CREATE TRIGGER visibility_score_runs_guard_profile
 BEFORE INSERT ON visibility_score_runs
-FOR EACH ROW EXECUTE FUNCTION geno_v2_guard_score_run_profile();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_guard_score_run_profile();
 
 CREATE TRIGGER visibility_weight_components_guard_used_update
 BEFORE INSERT OR UPDATE OR DELETE ON visibility_weight_profile_components
-FOR EACH ROW EXECUTE FUNCTION geno_v2_guard_used_weight_component_update();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_guard_used_weight_component_update();
 
 CREATE TRIGGER raw_answers_immutable_update
 BEFORE UPDATE ON raw_answers
-FOR EACH ROW EXECUTE FUNCTION geno_v2_reject_immutable_domain_update();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_reject_immutable_domain_update();
 CREATE TRIGGER answer_citations_immutable_update
 BEFORE UPDATE ON answer_citations
-FOR EACH ROW EXECUTE FUNCTION geno_v2_reject_immutable_domain_update();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_reject_immutable_domain_update();
 CREATE TRIGGER evidence_assets_finalize_update
 BEFORE UPDATE ON evidence_assets
-FOR EACH ROW EXECUTE FUNCTION geno_v2_guard_evidence_asset_finalize();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_guard_evidence_asset_finalize();
 CREATE TRIGGER answer_analyses_immutable_update
 BEFORE UPDATE ON answer_analyses
-FOR EACH ROW EXECUTE FUNCTION geno_v2_reject_immutable_domain_update();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_reject_immutable_domain_update();
 CREATE TRIGGER collection_costs_immutable_update
 BEFORE UPDATE ON collection_costs
-FOR EACH ROW EXECUTE FUNCTION geno_v2_reject_immutable_domain_update();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_reject_immutable_domain_update();
 CREATE TRIGGER model_call_logs_immutable_update
 BEFORE UPDATE ON model_call_logs
-FOR EACH ROW EXECUTE FUNCTION geno_v2_reject_immutable_domain_update();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_reject_immutable_domain_update();
 CREATE TRIGGER visibility_score_snapshots_immutable_update
 BEFORE UPDATE ON visibility_score_snapshots
-FOR EACH ROW EXECUTE FUNCTION geno_v2_reject_immutable_domain_update();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_reject_immutable_domain_update();
 CREATE TRIGGER visibility_score_dimensions_immutable_update
 BEFORE UPDATE ON visibility_score_dimensions
-FOR EACH ROW EXECUTE FUNCTION geno_v2_reject_immutable_domain_update();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_reject_immutable_domain_update();
 CREATE TRIGGER score_contributions_immutable_update
 BEFORE UPDATE ON score_contributions
-FOR EACH ROW EXECUTE FUNCTION geno_v2_reject_immutable_domain_update();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_reject_immutable_domain_update();
 CREATE TRIGGER score_contribution_evidence_require_finalized
 BEFORE INSERT ON score_contribution_evidence_assets
-FOR EACH ROW EXECUTE FUNCTION geno_v2_require_finalized_score_evidence();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_require_finalized_score_evidence();
 CREATE TRIGGER source_graphs_immutable_update
 BEFORE UPDATE ON source_graphs
-FOR EACH ROW EXECUTE FUNCTION geno_v2_reject_immutable_domain_update();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_reject_immutable_domain_update();
 CREATE TRIGGER source_nodes_immutable_update
 BEFORE UPDATE ON source_nodes
-FOR EACH ROW EXECUTE FUNCTION geno_v2_reject_immutable_domain_update();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_reject_immutable_domain_update();
 CREATE TRIGGER source_graph_edges_immutable_update
 BEFORE UPDATE ON source_graph_edges
-FOR EACH ROW EXECUTE FUNCTION geno_v2_reject_immutable_domain_update();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_reject_immutable_domain_update();
 CREATE TRIGGER competitor_benchmarks_immutable_update
 BEFORE UPDATE ON competitor_benchmarks
-FOR EACH ROW EXECUTE FUNCTION geno_v2_reject_immutable_domain_update();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_reject_immutable_domain_update();
 CREATE TRIGGER retest_comparisons_immutable_update
 BEFORE UPDATE ON retest_comparisons
-FOR EACH ROW EXECUTE FUNCTION geno_v2_reject_immutable_domain_update();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_reject_immutable_domain_update();
 
 CREATE INDEX product_entities_project_status_idx
     ON product_entities (project_id, status, entity_kind);
@@ -5607,100 +5607,100 @@ CREATE INDEX durable_dispatch_expired_claim_idx
 CREATE INDEX review_assignments_project_queue_idx
     ON review_assignments (project_id, status, priority, due_at, created_at);
 
-ALTER FUNCTION geno_v2_reject_immutable_domain_update()
-    OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_guard_evidence_asset_finalize()
-    OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_guard_used_weight_profile_update()
-    OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_guard_used_weight_component_update()
-    OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_guard_score_run_profile()
-    OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_require_finalized_score_evidence()
-    OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_enqueue_durable_job_dispatch()
-    OWNER TO geno_v2_job_command_owner;
-ALTER FUNCTION geno_v2_claim_durable_job_dispatch(text, integer, uuid, uuid)
-    OWNER TO geno_v2_job_owner;
-ALTER FUNCTION geno_v2_heartbeat_durable_job_dispatch(uuid, text, uuid, integer)
-    OWNER TO geno_v2_job_owner;
-ALTER FUNCTION geno_v2_complete_durable_job_dispatch(uuid, text, uuid)
-    OWNER TO geno_v2_job_owner;
-ALTER FUNCTION geno_v2_fail_durable_job_dispatch(
+ALTER FUNCTION geo_v2_reject_immutable_domain_update()
+    OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_guard_evidence_asset_finalize()
+    OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_guard_used_weight_profile_update()
+    OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_guard_used_weight_component_update()
+    OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_guard_score_run_profile()
+    OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_require_finalized_score_evidence()
+    OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_enqueue_durable_job_dispatch()
+    OWNER TO geo_v2_job_command_owner;
+ALTER FUNCTION geo_v2_claim_durable_job_dispatch(text, integer, uuid, uuid)
+    OWNER TO geo_v2_job_owner;
+ALTER FUNCTION geo_v2_heartbeat_durable_job_dispatch(uuid, text, uuid, integer)
+    OWNER TO geo_v2_job_owner;
+ALTER FUNCTION geo_v2_complete_durable_job_dispatch(uuid, text, uuid)
+    OWNER TO geo_v2_job_owner;
+ALTER FUNCTION geo_v2_fail_durable_job_dispatch(
     uuid, text, uuid, text, text, boolean, integer
-) OWNER TO geno_v2_job_owner;
-ALTER FUNCTION geno_v2_refresh_collection_run_summary(uuid, uuid)
-    OWNER TO geno_v2_job_owner;
-ALTER FUNCTION geno_v2_claim_artifact_finalize(text, integer, uuid)
-    OWNER TO geno_v2_job_owner;
-ALTER FUNCTION geno_v2_heartbeat_artifact_finalize(uuid, text, uuid, integer)
-    OWNER TO geno_v2_job_owner;
-ALTER FUNCTION geno_v2_complete_artifact_finalize(uuid, text, uuid, text)
-    OWNER TO geno_v2_job_owner;
-ALTER FUNCTION geno_v2_fail_artifact_finalize(
+) OWNER TO geo_v2_job_owner;
+ALTER FUNCTION geo_v2_refresh_collection_run_summary(uuid, uuid)
+    OWNER TO geo_v2_job_owner;
+ALTER FUNCTION geo_v2_claim_artifact_finalize(text, integer, uuid)
+    OWNER TO geo_v2_job_owner;
+ALTER FUNCTION geo_v2_heartbeat_artifact_finalize(uuid, text, uuid, integer)
+    OWNER TO geo_v2_job_owner;
+ALTER FUNCTION geo_v2_complete_artifact_finalize(uuid, text, uuid, text)
+    OWNER TO geo_v2_job_owner;
+ALTER FUNCTION geo_v2_fail_artifact_finalize(
     uuid, text, uuid, text, text, boolean, integer
-) OWNER TO geno_v2_job_owner;
-ALTER FUNCTION geno_v2_claim_collection_job(text, integer, uuid)
-    OWNER TO geno_v2_job_owner;
-ALTER FUNCTION geno_v2_heartbeat_collection_job(uuid, text, uuid, integer)
-    OWNER TO geno_v2_job_owner;
-ALTER FUNCTION geno_v2_complete_collection_job(uuid, text, uuid, jsonb)
-    OWNER TO geno_v2_job_owner;
-ALTER FUNCTION geno_v2_fail_collection_job(uuid, text, uuid, text, text, boolean, integer)
-    OWNER TO geno_v2_job_owner;
-ALTER FUNCTION geno_v2_ack_collection_job_cancel(uuid, text, uuid)
-    OWNER TO geno_v2_job_owner;
-ALTER FUNCTION geno_v2_claim_visibility_score_run(text, integer, uuid)
-    OWNER TO geno_v2_job_owner;
-ALTER FUNCTION geno_v2_heartbeat_visibility_score_run(uuid, text, uuid, integer)
-    OWNER TO geno_v2_job_owner;
-ALTER FUNCTION geno_v2_complete_visibility_score_run(uuid, text, uuid, jsonb)
-    OWNER TO geno_v2_job_owner;
-ALTER FUNCTION geno_v2_fail_visibility_score_run(
+) OWNER TO geo_v2_job_owner;
+ALTER FUNCTION geo_v2_claim_collection_job(text, integer, uuid)
+    OWNER TO geo_v2_job_owner;
+ALTER FUNCTION geo_v2_heartbeat_collection_job(uuid, text, uuid, integer)
+    OWNER TO geo_v2_job_owner;
+ALTER FUNCTION geo_v2_complete_collection_job(uuid, text, uuid, jsonb)
+    OWNER TO geo_v2_job_owner;
+ALTER FUNCTION geo_v2_fail_collection_job(uuid, text, uuid, text, text, boolean, integer)
+    OWNER TO geo_v2_job_owner;
+ALTER FUNCTION geo_v2_ack_collection_job_cancel(uuid, text, uuid)
+    OWNER TO geo_v2_job_owner;
+ALTER FUNCTION geo_v2_claim_visibility_score_run(text, integer, uuid)
+    OWNER TO geo_v2_job_owner;
+ALTER FUNCTION geo_v2_heartbeat_visibility_score_run(uuid, text, uuid, integer)
+    OWNER TO geo_v2_job_owner;
+ALTER FUNCTION geo_v2_complete_visibility_score_run(uuid, text, uuid, jsonb)
+    OWNER TO geo_v2_job_owner;
+ALTER FUNCTION geo_v2_fail_visibility_score_run(
     uuid, text, uuid, text, text, boolean, integer
-) OWNER TO geno_v2_job_owner;
-ALTER FUNCTION geno_v2_ack_visibility_score_run_cancel(uuid, text, uuid)
-    OWNER TO geno_v2_job_owner;
-ALTER FUNCTION geno_v2_claim_retest_run(text, integer, uuid)
-    OWNER TO geno_v2_job_owner;
-ALTER FUNCTION geno_v2_heartbeat_retest_run(uuid, text, uuid, integer)
-    OWNER TO geno_v2_job_owner;
-ALTER FUNCTION geno_v2_complete_retest_run(uuid, text, uuid, uuid, jsonb)
-    OWNER TO geno_v2_job_owner;
-ALTER FUNCTION geno_v2_fail_retest_run(uuid, text, uuid, text, text, boolean, integer)
-    OWNER TO geno_v2_job_owner;
-ALTER FUNCTION geno_v2_ack_retest_run_cancel(uuid, text, uuid)
-    OWNER TO geno_v2_job_owner;
+) OWNER TO geo_v2_job_owner;
+ALTER FUNCTION geo_v2_ack_visibility_score_run_cancel(uuid, text, uuid)
+    OWNER TO geo_v2_job_owner;
+ALTER FUNCTION geo_v2_claim_retest_run(text, integer, uuid)
+    OWNER TO geo_v2_job_owner;
+ALTER FUNCTION geo_v2_heartbeat_retest_run(uuid, text, uuid, integer)
+    OWNER TO geo_v2_job_owner;
+ALTER FUNCTION geo_v2_complete_retest_run(uuid, text, uuid, uuid, jsonb)
+    OWNER TO geo_v2_job_owner;
+ALTER FUNCTION geo_v2_fail_retest_run(uuid, text, uuid, text, text, boolean, integer)
+    OWNER TO geo_v2_job_owner;
+ALTER FUNCTION geo_v2_ack_retest_run_cancel(uuid, text, uuid)
+    OWNER TO geo_v2_job_owner;
 
-ALTER FUNCTION geno_v2_persist_collection_result(collection_jobs, jsonb)
-    OWNER TO geno_v2_result_owner;
-ALTER FUNCTION geno_v2_persist_visibility_score_result(
+ALTER FUNCTION geo_v2_persist_collection_result(collection_jobs, jsonb)
+    OWNER TO geo_v2_result_owner;
+ALTER FUNCTION geo_v2_persist_visibility_score_result(
     visibility_score_runs, text, jsonb
 )
-    OWNER TO geno_v2_result_owner;
-ALTER FUNCTION geno_v2_persist_retest_result(retest_runs, uuid, jsonb)
-    OWNER TO geno_v2_result_owner;
+    OWNER TO geo_v2_result_owner;
+ALTER FUNCTION geo_v2_persist_retest_result(retest_runs, uuid, jsonb)
+    OWNER TO geo_v2_result_owner;
 
-ALTER FUNCTION geno_v2_record_job_command_audit(
+ALTER FUNCTION geo_v2_record_job_command_audit(
     uuid, uuid, text, text, uuid, text, text, text, jsonb, jsonb
-) OWNER TO geno_v2_job_command_owner;
-ALTER FUNCTION geno_v2_request_collection_job_cancel(uuid, text)
-    OWNER TO geno_v2_job_command_owner;
-ALTER FUNCTION geno_v2_replay_collection_job(uuid, uuid, text)
-    OWNER TO geno_v2_job_command_owner;
-ALTER FUNCTION geno_v2_request_visibility_score_run_cancel(uuid, text)
-    OWNER TO geno_v2_job_command_owner;
-ALTER FUNCTION geno_v2_replay_visibility_score_run(uuid, uuid, text)
-    OWNER TO geno_v2_job_command_owner;
-ALTER FUNCTION geno_v2_request_retest_run_cancel(uuid, text)
-    OWNER TO geno_v2_job_command_owner;
-ALTER FUNCTION geno_v2_replay_retest_run(uuid, uuid, text)
-    OWNER TO geno_v2_job_command_owner;
+) OWNER TO geo_v2_job_command_owner;
+ALTER FUNCTION geo_v2_request_collection_job_cancel(uuid, text)
+    OWNER TO geo_v2_job_command_owner;
+ALTER FUNCTION geo_v2_replay_collection_job(uuid, uuid, text)
+    OWNER TO geo_v2_job_command_owner;
+ALTER FUNCTION geo_v2_request_visibility_score_run_cancel(uuid, text)
+    OWNER TO geo_v2_job_command_owner;
+ALTER FUNCTION geo_v2_replay_visibility_score_run(uuid, uuid, text)
+    OWNER TO geo_v2_job_command_owner;
+ALTER FUNCTION geo_v2_request_retest_run_cancel(uuid, text)
+    OWNER TO geo_v2_job_command_owner;
+ALTER FUNCTION geo_v2_replay_retest_run(uuid, uuid, text)
+    OWNER TO geo_v2_job_command_owner;
 
-GRANT SELECT ON visibility_score_runs, evidence_assets TO geno_v2_authz_owner;
+GRANT SELECT ON visibility_score_runs, evidence_assets TO geo_v2_authz_owner;
 GRANT SELECT, UPDATE ON visibility_weight_profiles
-    TO geno_v2_authz_owner;
+    TO geo_v2_authz_owner;
 
 DO $enable_project_rls$
 DECLARE
@@ -5791,9 +5791,9 @@ BEGIN
     LOOP
         IF policy_spec.table_name = 'evidence_assets' THEN
             EXECUTE format(
-                'CREATE POLICY %I ON %I FOR SELECT TO geno_v2_runtime '
+                'CREATE POLICY %I ON %I FOR SELECT TO geo_v2_runtime '
                 'USING (artifact_status = ''finalized'' AND '
-                'public.geno_v2_session_has_project_permission('
+                'public.geo_v2_session_has_project_permission('
                 'project_id, tenant_id, %L))',
                 policy_spec.table_name || '_session_select',
                 policy_spec.table_name,
@@ -5801,8 +5801,8 @@ BEGIN
             );
         ELSE
             EXECUTE format(
-                'CREATE POLICY %I ON %I FOR SELECT TO geno_v2_runtime '
-                'USING (public.geno_v2_session_has_project_permission('
+                'CREATE POLICY %I ON %I FOR SELECT TO geo_v2_runtime '
+                'USING (public.geo_v2_session_has_project_permission('
                 'project_id, tenant_id, %L))',
                 policy_spec.table_name || '_session_select',
                 policy_spec.table_name,
@@ -5867,8 +5867,8 @@ BEGIN
         ) AS policy_map(table_name, permission_name, mutable)
     LOOP
         EXECUTE format(
-            'CREATE POLICY %I ON %I FOR INSERT TO geno_v2_runtime '
-            'WITH CHECK (public.geno_v2_session_has_project_permission('
+            'CREATE POLICY %I ON %I FOR INSERT TO geo_v2_runtime '
+            'WITH CHECK (public.geo_v2_session_has_project_permission('
             'project_id, tenant_id, %L))',
             policy_spec.table_name || '_session_insert',
             policy_spec.table_name,
@@ -5876,10 +5876,10 @@ BEGIN
         );
         IF policy_spec.mutable THEN
             EXECUTE format(
-                'CREATE POLICY %I ON %I FOR UPDATE TO geno_v2_runtime '
-                'USING (public.geno_v2_session_has_project_permission('
+                'CREATE POLICY %I ON %I FOR UPDATE TO geo_v2_runtime '
+                'USING (public.geo_v2_session_has_project_permission('
                 'project_id, tenant_id, %L)) '
-                'WITH CHECK (public.geno_v2_session_has_project_permission('
+                'WITH CHECK (public.geo_v2_session_has_project_permission('
                 'project_id, tenant_id, %L))',
                 policy_spec.table_name || '_session_update',
                 policy_spec.table_name,
@@ -5894,25 +5894,25 @@ $create_project_write_policies$;
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC;
 REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC;
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM
-    geno_v2_worker, geno_v2_job_owner, geno_v2_result_owner,
-    geno_v2_job_command_owner;
+    geo_v2_worker, geo_v2_job_owner, geo_v2_result_owner,
+    geo_v2_job_command_owner;
 REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM
-    geno_v2_worker, geno_v2_job_owner, geno_v2_result_owner,
-    geno_v2_job_command_owner;
+    geo_v2_worker, geo_v2_job_owner, geo_v2_result_owner,
+    geo_v2_job_command_owner;
 
 GRANT SELECT, UPDATE ON collection_jobs, visibility_score_runs, retest_runs,
     durable_job_dispatch_outbox, artifact_finalize_outbox, evidence_assets
-    TO geno_v2_job_owner;
-GRANT SELECT, UPDATE ON collection_runs TO geno_v2_job_owner;
-GRANT SELECT, INSERT, UPDATE ON collection_run_summaries TO geno_v2_job_owner;
+    TO geo_v2_job_owner;
+GRANT SELECT, UPDATE ON collection_runs TO geo_v2_job_owner;
+GRANT SELECT, INSERT, UPDATE ON collection_run_summaries TO geo_v2_job_owner;
 GRANT SELECT ON answer_runs, answer_citations, collection_costs,
     visibility_weight_profiles, visibility_score_snapshots,
     retest_run_queries, retest_comparisons
-    TO geno_v2_job_owner;
+    TO geo_v2_job_owner;
 
 GRANT SELECT ON visibility_score_snapshots, collection_run_queries,
     retest_run_queries
-    TO geno_v2_result_owner;
+    TO geo_v2_result_owner;
 GRANT INSERT ON answer_runs, raw_answers, answer_citations, evidence_assets,
     artifact_finalize_outbox, raw_answer_evidence_assets,
     answer_citation_evidence_assets, answer_analyses,
@@ -5925,18 +5925,18 @@ GRANT INSERT ON answer_runs, raw_answers, answer_citations, evidence_assets,
     competitor_benchmarks, competitor_benchmark_contributions,
     action_recommendations, action_source_gaps, action_score_contributions,
     action_competitor_benchmarks, action_tasks, retest_comparisons
-    TO geno_v2_result_owner;
+    TO geo_v2_result_owner;
 
 GRANT SELECT, INSERT, UPDATE ON collection_jobs, visibility_score_runs, retest_runs
-    TO geno_v2_job_command_owner;
-GRANT INSERT ON durable_job_dispatch_outbox TO geno_v2_job_command_owner;
-GRANT SELECT, INSERT ON retest_run_queries TO geno_v2_job_command_owner;
-GRANT INSERT ON audit_events TO geno_v2_job_command_owner;
-GRANT EXECUTE ON FUNCTION geno_v2_resolve_session_context()
-    TO geno_v2_job_command_owner;
-GRANT EXECUTE ON FUNCTION geno_v2_session_has_project_permission(uuid, uuid, text)
-    TO geno_v2_job_command_owner;
-GRANT EXECUTE ON FUNCTION digest(text, text) TO geno_v2_job_command_owner;
+    TO geo_v2_job_command_owner;
+GRANT INSERT ON durable_job_dispatch_outbox TO geo_v2_job_command_owner;
+GRANT SELECT, INSERT ON retest_run_queries TO geo_v2_job_command_owner;
+GRANT INSERT ON audit_events TO geo_v2_job_command_owner;
+GRANT EXECUTE ON FUNCTION geo_v2_resolve_session_context()
+    TO geo_v2_job_command_owner;
+GRANT EXECUTE ON FUNCTION geo_v2_session_has_project_permission(uuid, uuid, text)
+    TO geo_v2_job_command_owner;
+GRANT EXECUTE ON FUNCTION digest(text, text) TO geo_v2_job_command_owner;
 
 GRANT SELECT ON
     product_entities, product_entity_aliases,
@@ -5956,7 +5956,7 @@ GRANT SELECT ON
     action_recommendations, action_source_gaps, action_score_contributions,
     action_competitor_benchmarks, action_tasks, retest_runs,
     retest_run_queries, retest_comparisons, review_assignments
-TO geno_v2_runtime;
+TO geo_v2_runtime;
 
 GRANT INSERT ON
     product_entities, product_entity_aliases,
@@ -5967,7 +5967,7 @@ GRANT INSERT ON
     action_recommendations, action_source_gaps, action_score_contributions,
     action_competitor_benchmarks, action_tasks,
     retest_runs, retest_run_queries, review_assignments
-TO geno_v2_runtime;
+TO geo_v2_runtime;
 
 GRANT UPDATE ON
     product_entities, product_entity_aliases,
@@ -5975,135 +5975,135 @@ GRANT UPDATE ON
     collection_runs,
     visibility_weight_profiles, visibility_weight_profile_components,
     source_gaps, action_recommendations, action_tasks, review_assignments
-TO geno_v2_runtime;
+TO geo_v2_runtime;
 
-GRANT EXECUTE ON FUNCTION geno_v2_claim_collection_job(text, integer, uuid)
-    TO geno_v2_worker;
-GRANT EXECUTE ON FUNCTION geno_v2_claim_durable_job_dispatch(text, integer, uuid, uuid)
-    TO geno_v2_worker;
-GRANT EXECUTE ON FUNCTION geno_v2_heartbeat_durable_job_dispatch(
+GRANT EXECUTE ON FUNCTION geo_v2_claim_collection_job(text, integer, uuid)
+    TO geo_v2_worker;
+GRANT EXECUTE ON FUNCTION geo_v2_claim_durable_job_dispatch(text, integer, uuid, uuid)
+    TO geo_v2_worker;
+GRANT EXECUTE ON FUNCTION geo_v2_heartbeat_durable_job_dispatch(
     uuid, text, uuid, integer
-) TO geno_v2_worker;
-GRANT EXECUTE ON FUNCTION geno_v2_complete_durable_job_dispatch(uuid, text, uuid)
-    TO geno_v2_worker;
-GRANT EXECUTE ON FUNCTION geno_v2_fail_durable_job_dispatch(
+) TO geo_v2_worker;
+GRANT EXECUTE ON FUNCTION geo_v2_complete_durable_job_dispatch(uuid, text, uuid)
+    TO geo_v2_worker;
+GRANT EXECUTE ON FUNCTION geo_v2_fail_durable_job_dispatch(
     uuid, text, uuid, text, text, boolean, integer
-) TO geno_v2_worker;
-GRANT EXECUTE ON FUNCTION geno_v2_claim_artifact_finalize(text, integer, uuid)
-    TO geno_v2_worker;
-GRANT EXECUTE ON FUNCTION geno_v2_heartbeat_artifact_finalize(
+) TO geo_v2_worker;
+GRANT EXECUTE ON FUNCTION geo_v2_claim_artifact_finalize(text, integer, uuid)
+    TO geo_v2_worker;
+GRANT EXECUTE ON FUNCTION geo_v2_heartbeat_artifact_finalize(
     uuid, text, uuid, integer
-) TO geno_v2_worker;
-GRANT EXECUTE ON FUNCTION geno_v2_complete_artifact_finalize(uuid, text, uuid, text)
-    TO geno_v2_worker;
-GRANT EXECUTE ON FUNCTION geno_v2_fail_artifact_finalize(
+) TO geo_v2_worker;
+GRANT EXECUTE ON FUNCTION geo_v2_complete_artifact_finalize(uuid, text, uuid, text)
+    TO geo_v2_worker;
+GRANT EXECUTE ON FUNCTION geo_v2_fail_artifact_finalize(
     uuid, text, uuid, text, text, boolean, integer
-) TO geno_v2_worker;
-GRANT EXECUTE ON FUNCTION geno_v2_heartbeat_collection_job(uuid, text, uuid, integer)
-    TO geno_v2_worker;
-GRANT EXECUTE ON FUNCTION geno_v2_complete_collection_job(uuid, text, uuid, jsonb)
-    TO geno_v2_worker;
-GRANT EXECUTE ON FUNCTION geno_v2_fail_collection_job(
+) TO geo_v2_worker;
+GRANT EXECUTE ON FUNCTION geo_v2_heartbeat_collection_job(uuid, text, uuid, integer)
+    TO geo_v2_worker;
+GRANT EXECUTE ON FUNCTION geo_v2_complete_collection_job(uuid, text, uuid, jsonb)
+    TO geo_v2_worker;
+GRANT EXECUTE ON FUNCTION geo_v2_fail_collection_job(
     uuid, text, uuid, text, text, boolean, integer
-) TO geno_v2_worker;
-GRANT EXECUTE ON FUNCTION geno_v2_ack_collection_job_cancel(uuid, text, uuid)
-    TO geno_v2_worker;
-GRANT EXECUTE ON FUNCTION geno_v2_claim_visibility_score_run(text, integer, uuid)
-    TO geno_v2_worker;
-GRANT EXECUTE ON FUNCTION geno_v2_heartbeat_visibility_score_run(
+) TO geo_v2_worker;
+GRANT EXECUTE ON FUNCTION geo_v2_ack_collection_job_cancel(uuid, text, uuid)
+    TO geo_v2_worker;
+GRANT EXECUTE ON FUNCTION geo_v2_claim_visibility_score_run(text, integer, uuid)
+    TO geo_v2_worker;
+GRANT EXECUTE ON FUNCTION geo_v2_heartbeat_visibility_score_run(
     uuid, text, uuid, integer
-) TO geno_v2_worker;
-GRANT EXECUTE ON FUNCTION geno_v2_complete_visibility_score_run(
+) TO geo_v2_worker;
+GRANT EXECUTE ON FUNCTION geo_v2_complete_visibility_score_run(
     uuid, text, uuid, jsonb
-) TO geno_v2_worker;
-GRANT EXECUTE ON FUNCTION geno_v2_fail_visibility_score_run(
+) TO geo_v2_worker;
+GRANT EXECUTE ON FUNCTION geo_v2_fail_visibility_score_run(
     uuid, text, uuid, text, text, boolean, integer
-) TO geno_v2_worker;
-GRANT EXECUTE ON FUNCTION geno_v2_ack_visibility_score_run_cancel(uuid, text, uuid)
-    TO geno_v2_worker;
-GRANT EXECUTE ON FUNCTION geno_v2_claim_retest_run(text, integer, uuid)
-    TO geno_v2_worker;
-GRANT EXECUTE ON FUNCTION geno_v2_heartbeat_retest_run(uuid, text, uuid, integer)
-    TO geno_v2_worker;
-GRANT EXECUTE ON FUNCTION geno_v2_complete_retest_run(
+) TO geo_v2_worker;
+GRANT EXECUTE ON FUNCTION geo_v2_ack_visibility_score_run_cancel(uuid, text, uuid)
+    TO geo_v2_worker;
+GRANT EXECUTE ON FUNCTION geo_v2_claim_retest_run(text, integer, uuid)
+    TO geo_v2_worker;
+GRANT EXECUTE ON FUNCTION geo_v2_heartbeat_retest_run(uuid, text, uuid, integer)
+    TO geo_v2_worker;
+GRANT EXECUTE ON FUNCTION geo_v2_complete_retest_run(
     uuid, text, uuid, uuid, jsonb
-) TO geno_v2_worker;
-GRANT EXECUTE ON FUNCTION geno_v2_fail_retest_run(
+) TO geo_v2_worker;
+GRANT EXECUTE ON FUNCTION geo_v2_fail_retest_run(
     uuid, text, uuid, text, text, boolean, integer
-) TO geno_v2_worker;
-GRANT EXECUTE ON FUNCTION geno_v2_ack_retest_run_cancel(uuid, text, uuid)
-    TO geno_v2_worker;
+) TO geo_v2_worker;
+GRANT EXECUTE ON FUNCTION geo_v2_ack_retest_run_cancel(uuid, text, uuid)
+    TO geo_v2_worker;
 
-GRANT EXECUTE ON FUNCTION geno_v2_persist_collection_result(collection_jobs, jsonb)
-    TO geno_v2_job_owner;
-GRANT EXECUTE ON FUNCTION geno_v2_persist_visibility_score_result(
+GRANT EXECUTE ON FUNCTION geo_v2_persist_collection_result(collection_jobs, jsonb)
+    TO geo_v2_job_owner;
+GRANT EXECUTE ON FUNCTION geo_v2_persist_visibility_score_result(
     visibility_score_runs, text, jsonb
-) TO geno_v2_job_owner;
-GRANT EXECUTE ON FUNCTION geno_v2_persist_retest_result(
+) TO geo_v2_job_owner;
+GRANT EXECUTE ON FUNCTION geo_v2_persist_retest_result(
     retest_runs, uuid, jsonb
-) TO geno_v2_job_owner;
-GRANT EXECUTE ON FUNCTION geno_v2_record_job_command_audit(
+) TO geo_v2_job_owner;
+GRANT EXECUTE ON FUNCTION geo_v2_record_job_command_audit(
     uuid, uuid, text, text, uuid, text, text, text, jsonb, jsonb
-) TO geno_v2_job_owner, geno_v2_job_command_owner;
-GRANT EXECUTE ON FUNCTION geno_v2_refresh_collection_run_summary(uuid, uuid)
-    TO geno_v2_job_owner, geno_v2_job_command_owner;
+) TO geo_v2_job_owner, geo_v2_job_command_owner;
+GRANT EXECUTE ON FUNCTION geo_v2_refresh_collection_run_summary(uuid, uuid)
+    TO geo_v2_job_owner, geo_v2_job_command_owner;
 
-GRANT EXECUTE ON FUNCTION geno_v2_request_collection_job_cancel(uuid, text)
-    TO geno_v2_runtime;
-GRANT EXECUTE ON FUNCTION geno_v2_replay_collection_job(uuid, uuid, text)
-    TO geno_v2_runtime;
-GRANT EXECUTE ON FUNCTION geno_v2_request_visibility_score_run_cancel(uuid, text)
-    TO geno_v2_runtime;
-GRANT EXECUTE ON FUNCTION geno_v2_replay_visibility_score_run(uuid, uuid, text)
-    TO geno_v2_runtime;
-GRANT EXECUTE ON FUNCTION geno_v2_request_retest_run_cancel(uuid, text)
-    TO geno_v2_runtime;
-GRANT EXECUTE ON FUNCTION geno_v2_replay_retest_run(uuid, uuid, text)
-    TO geno_v2_runtime;
+GRANT EXECUTE ON FUNCTION geo_v2_request_collection_job_cancel(uuid, text)
+    TO geo_v2_runtime;
+GRANT EXECUTE ON FUNCTION geo_v2_replay_collection_job(uuid, uuid, text)
+    TO geo_v2_runtime;
+GRANT EXECUTE ON FUNCTION geo_v2_request_visibility_score_run_cancel(uuid, text)
+    TO geo_v2_runtime;
+GRANT EXECUTE ON FUNCTION geo_v2_replay_visibility_score_run(uuid, uuid, text)
+    TO geo_v2_runtime;
+GRANT EXECUTE ON FUNCTION geo_v2_request_retest_run_cancel(uuid, text)
+    TO geo_v2_runtime;
+GRANT EXECUTE ON FUNCTION geo_v2_replay_retest_run(uuid, uuid, text)
+    TO geo_v2_runtime;
 
 DO $verify_job_security_boundary$
 DECLARE
     worker_functions text[] := ARRAY[
-        'geno_v2_claim_durable_job_dispatch',
-        'geno_v2_heartbeat_durable_job_dispatch',
-        'geno_v2_complete_durable_job_dispatch',
-        'geno_v2_fail_durable_job_dispatch',
-        'geno_v2_claim_artifact_finalize',
-        'geno_v2_heartbeat_artifact_finalize',
-        'geno_v2_complete_artifact_finalize',
-        'geno_v2_fail_artifact_finalize',
-        'geno_v2_claim_collection_job',
-        'geno_v2_heartbeat_collection_job',
-        'geno_v2_complete_collection_job',
-        'geno_v2_fail_collection_job',
-        'geno_v2_ack_collection_job_cancel',
-        'geno_v2_claim_visibility_score_run',
-        'geno_v2_heartbeat_visibility_score_run',
-        'geno_v2_complete_visibility_score_run',
-        'geno_v2_fail_visibility_score_run',
-        'geno_v2_ack_visibility_score_run_cancel',
-        'geno_v2_claim_retest_run',
-        'geno_v2_heartbeat_retest_run',
-        'geno_v2_complete_retest_run',
-        'geno_v2_fail_retest_run',
-        'geno_v2_ack_retest_run_cancel'
+        'geo_v2_claim_durable_job_dispatch',
+        'geo_v2_heartbeat_durable_job_dispatch',
+        'geo_v2_complete_durable_job_dispatch',
+        'geo_v2_fail_durable_job_dispatch',
+        'geo_v2_claim_artifact_finalize',
+        'geo_v2_heartbeat_artifact_finalize',
+        'geo_v2_complete_artifact_finalize',
+        'geo_v2_fail_artifact_finalize',
+        'geo_v2_claim_collection_job',
+        'geo_v2_heartbeat_collection_job',
+        'geo_v2_complete_collection_job',
+        'geo_v2_fail_collection_job',
+        'geo_v2_ack_collection_job_cancel',
+        'geo_v2_claim_visibility_score_run',
+        'geo_v2_heartbeat_visibility_score_run',
+        'geo_v2_complete_visibility_score_run',
+        'geo_v2_fail_visibility_score_run',
+        'geo_v2_ack_visibility_score_run_cancel',
+        'geo_v2_claim_retest_run',
+        'geo_v2_heartbeat_retest_run',
+        'geo_v2_complete_retest_run',
+        'geo_v2_fail_retest_run',
+        'geo_v2_ack_retest_run_cancel'
     ];
     persist_functions text[] := ARRAY[
-        'geno_v2_persist_collection_result',
-        'geno_v2_persist_visibility_score_result',
-        'geno_v2_persist_retest_result'
+        'geo_v2_persist_collection_result',
+        'geo_v2_persist_visibility_score_result',
+        'geo_v2_persist_retest_result'
     ];
     operator_functions text[] := ARRAY[
-        'geno_v2_request_collection_job_cancel',
-        'geno_v2_replay_collection_job',
-        'geno_v2_request_visibility_score_run_cancel',
-        'geno_v2_replay_visibility_score_run',
-        'geno_v2_request_retest_run_cancel',
-        'geno_v2_replay_retest_run'
+        'geo_v2_request_collection_job_cancel',
+        'geo_v2_replay_collection_job',
+        'geo_v2_request_visibility_score_run_cancel',
+        'geo_v2_replay_visibility_score_run',
+        'geo_v2_request_retest_run_cancel',
+        'geo_v2_replay_retest_run'
     ];
     internal_functions text[] := ARRAY[
-        'geno_v2_refresh_collection_run_summary',
-        'geno_v2_enqueue_durable_job_dispatch'
+        'geo_v2_refresh_collection_run_summary',
+        'geo_v2_enqueue_durable_job_dispatch'
     ];
     domain_tables text[] := ARRAY[
         'product_entities', 'product_entity_aliases',
@@ -6150,29 +6150,29 @@ BEGIN
         SELECT count(*)
         FROM pg_catalog.pg_roles
         WHERE rolname = ANY(ARRAY[
-            'geno_v2_worker', 'geno_v2_job_owner',
-            'geno_v2_result_owner', 'geno_v2_job_command_owner',
-            'geno_v2_worker_login'
+            'geo_v2_worker', 'geo_v2_job_owner',
+            'geo_v2_result_owner', 'geo_v2_job_command_owner',
+            'geo_v2_worker_login'
         ])
           AND NOT rolcanlogin AND NOT rolsuper AND NOT rolcreatedb
           AND NOT rolcreaterole AND NOT rolinherit AND NOT rolreplication
           AND rolbypassrls = (rolname = ANY(ARRAY[
-                'geno_v2_job_owner', 'geno_v2_result_owner',
-                'geno_v2_job_command_owner'
+                'geo_v2_job_owner', 'geo_v2_result_owner',
+                'geo_v2_job_command_owner'
               ]))
     ) <> 5 THEN
         RAISE EXCEPTION 'Schema v2 job role attributes are not sealed';
     END IF;
     IF EXISTS (
         SELECT 1 FROM pg_catalog.pg_authid
-        WHERE rolname = 'geno_v2_worker_login' AND rolpassword IS NOT NULL
+        WHERE rolname = 'geo_v2_worker_login' AND rolpassword IS NOT NULL
     ) OR EXISTS (
         SELECT 1 FROM pg_catalog.pg_roles
-        WHERE rolname = 'geno_v2_worker_login' AND rolconfig IS NOT NULL
+        WHERE rolname = 'geo_v2_worker_login' AND rolconfig IS NOT NULL
     ) OR EXISTS (
         SELECT 1 FROM pg_catalog.pg_db_role_setting AS setting
         JOIN pg_catalog.pg_roles AS role_row ON role_row.oid = setting.setrole
-        WHERE role_row.rolname = 'geno_v2_worker_login'
+        WHERE role_row.rolname = 'geo_v2_worker_login'
     ) THEN
         RAISE EXCEPTION 'Schema v2 worker login placeholder is not sealed';
     END IF;
@@ -6182,22 +6182,22 @@ BEGIN
         JOIN pg_catalog.pg_roles AS granted_role ON granted_role.oid = membership.roleid
         JOIN pg_catalog.pg_roles AS member_role ON member_role.oid = membership.member
         WHERE granted_role.rolname = ANY(ARRAY[
-                'geno_v2_worker', 'geno_v2_job_owner',
-                'geno_v2_result_owner', 'geno_v2_job_command_owner',
-                'geno_v2_worker_login'
+                'geo_v2_worker', 'geo_v2_job_owner',
+                'geo_v2_result_owner', 'geo_v2_job_command_owner',
+                'geo_v2_worker_login'
               ])
            OR member_role.rolname = ANY(ARRAY[
-                'geno_v2_worker', 'geno_v2_job_owner',
-                'geno_v2_result_owner', 'geno_v2_job_command_owner',
-                'geno_v2_worker_login'
+                'geo_v2_worker', 'geo_v2_job_owner',
+                'geo_v2_result_owner', 'geo_v2_job_command_owner',
+                'geo_v2_worker_login'
               ])
     ) <> 1 OR NOT EXISTS (
         SELECT 1
         FROM pg_catalog.pg_auth_members AS membership
         JOIN pg_catalog.pg_roles AS granted_role ON granted_role.oid = membership.roleid
         JOIN pg_catalog.pg_roles AS member_role ON member_role.oid = membership.member
-        WHERE granted_role.rolname = 'geno_v2_worker'
-          AND member_role.rolname = 'geno_v2_worker_login'
+        WHERE granted_role.rolname = 'geo_v2_worker'
+          AND member_role.rolname = 'geo_v2_worker_login'
           AND NOT membership.admin_option
           AND NOT membership.inherit_option
           AND membership.set_option
@@ -6212,7 +6212,7 @@ BEGIN
         JOIN pg_catalog.pg_roles AS owner_role ON owner_role.oid = procedure.proowner
         WHERE namespace.nspname = 'public'
           AND procedure.proname = ANY(worker_functions)
-          AND owner_role.rolname = 'geno_v2_job_owner'
+          AND owner_role.rolname = 'geo_v2_job_owner'
           AND procedure.prosecdef
           AND procedure.proconfig = ARRAY['search_path=pg_catalog']::text[]
     ) <> cardinality(worker_functions) THEN
@@ -6225,7 +6225,7 @@ BEGIN
         JOIN pg_catalog.pg_roles AS owner_role ON owner_role.oid = procedure.proowner
         WHERE namespace.nspname = 'public'
           AND procedure.proname = ANY(persist_functions)
-          AND owner_role.rolname = 'geno_v2_result_owner'
+          AND owner_role.rolname = 'geo_v2_result_owner'
           AND procedure.prosecdef
           AND procedure.proconfig = ARRAY['search_path=pg_catalog']::text[]
     ) <> cardinality(persist_functions) THEN
@@ -6237,8 +6237,8 @@ BEGIN
         JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = procedure.pronamespace
         JOIN pg_catalog.pg_roles AS owner_role ON owner_role.oid = procedure.proowner
         WHERE namespace.nspname = 'public'
-          AND procedure.proname = 'geno_v2_enqueue_durable_job_dispatch'
-          AND owner_role.rolname = 'geno_v2_job_command_owner'
+          AND procedure.proname = 'geo_v2_enqueue_durable_job_dispatch'
+          AND owner_role.rolname = 'geo_v2_job_command_owner'
           AND procedure.prosecdef
           AND procedure.proconfig = ARRAY['search_path=pg_catalog']::text[]
     ) THEN
@@ -6268,7 +6268,7 @@ BEGIN
         JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = procedure.pronamespace
         WHERE namespace.nspname = 'public'
           AND procedure.proname = ANY(worker_functions)
-          AND has_function_privilege('geno_v2_worker', procedure.oid, 'EXECUTE')
+          AND has_function_privilege('geo_v2_worker', procedure.oid, 'EXECUTE')
     ) <> cardinality(worker_functions)
        OR EXISTS (
             SELECT 1
@@ -6279,7 +6279,7 @@ BEGIN
               AND procedure.proname = ANY(
                     worker_functions || persist_functions || internal_functions
               )
-              AND has_function_privilege('geno_v2_runtime', procedure.oid, 'EXECUTE')
+              AND has_function_privilege('geo_v2_runtime', procedure.oid, 'EXECUTE')
        )
        OR EXISTS (
             SELECT 1
@@ -6288,10 +6288,10 @@ BEGIN
               ON namespace.oid = procedure.pronamespace
             WHERE namespace.nspname = 'public'
               AND procedure.proname = ANY(persist_functions || operator_functions)
-              AND has_function_privilege('geno_v2_worker', procedure.oid, 'EXECUTE')
+              AND has_function_privilege('geo_v2_worker', procedure.oid, 'EXECUTE')
        )
        OR has_function_privilege(
-            'geno_v2_worker', 'geno_v2_resolve_session_context()', 'EXECUTE'
+            'geo_v2_worker', 'geo_v2_resolve_session_context()', 'EXECUTE'
        ) THEN
         RAISE EXCEPTION 'Schema v2 worker/runtime function ACLs are over-broad';
     END IF;
@@ -6301,7 +6301,7 @@ BEGIN
         JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = procedure.pronamespace
         WHERE namespace.nspname = 'public'
           AND procedure.proname = ANY(operator_functions)
-          AND has_function_privilege('geno_v2_runtime', procedure.oid, 'EXECUTE')
+          AND has_function_privilege('geo_v2_runtime', procedure.oid, 'EXECUTE')
     ) <> cardinality(operator_functions) THEN
         RAISE EXCEPTION 'runtime operator command ACLs are incomplete';
     END IF;
@@ -6309,7 +6309,7 @@ BEGIN
     FOREACH table_name IN ARRAY domain_tables LOOP
         FOREACH privilege_name IN ARRAY ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE'] LOOP
             IF has_table_privilege(
-                'geno_v2_worker', format('public.%I', table_name), privilege_name
+                'geo_v2_worker', format('public.%I', table_name), privilege_name
             ) THEN
                 RAISE EXCEPTION 'worker has forbidden % on %', privilege_name, table_name;
             END IF;
@@ -6317,11 +6317,11 @@ BEGIN
     END LOOP;
     FOREACH table_name IN ARRAY result_tables LOOP
         IF NOT has_table_privilege(
-            'geno_v2_result_owner', format('public.%I', table_name), 'INSERT'
+            'geo_v2_result_owner', format('public.%I', table_name), 'INSERT'
         ) OR has_table_privilege(
-            'geno_v2_result_owner', format('public.%I', table_name), 'UPDATE'
+            'geo_v2_result_owner', format('public.%I', table_name), 'UPDATE'
         ) OR has_table_privilege(
-            'geno_v2_result_owner', format('public.%I', table_name), 'DELETE'
+            'geo_v2_result_owner', format('public.%I', table_name), 'DELETE'
         ) THEN
             RAISE EXCEPTION 'result owner writer ACL is not exact for %', table_name;
         END IF;
@@ -6332,7 +6332,7 @@ BEGIN
     ] LOOP
         FOREACH privilege_name IN ARRAY ARRAY['INSERT', 'UPDATE', 'DELETE'] LOOP
             IF has_table_privilege(
-                'geno_v2_runtime', format('public.%I', table_name), privilege_name
+                'geo_v2_runtime', format('public.%I', table_name), privilege_name
             ) THEN
                 RAISE EXCEPTION 'runtime has forbidden result-table DML';
             END IF;
@@ -6343,27 +6343,27 @@ BEGIN
         'visibility_score_runs', 'retest_runs'
     ] LOOP
         IF NOT has_table_privilege(
-            'geno_v2_job_owner', format('public.%I', table_name), 'SELECT'
+            'geo_v2_job_owner', format('public.%I', table_name), 'SELECT'
         ) OR NOT has_table_privilege(
-            'geno_v2_job_owner', format('public.%I', table_name), 'UPDATE'
+            'geo_v2_job_owner', format('public.%I', table_name), 'UPDATE'
         ) OR has_table_privilege(
-            'geno_v2_job_owner', format('public.%I', table_name), 'INSERT'
+            'geo_v2_job_owner', format('public.%I', table_name), 'INSERT'
         ) OR has_table_privilege(
-            'geno_v2_job_owner', format('public.%I', table_name), 'DELETE'
+            'geo_v2_job_owner', format('public.%I', table_name), 'DELETE'
         ) THEN
             RAISE EXCEPTION 'job owner queue ACL is not exact for %', table_name;
         END IF;
     END LOOP;
     IF NOT has_table_privilege(
-        'geno_v2_job_command_owner',
+        'geo_v2_job_command_owner',
         'public.durable_job_dispatch_outbox',
         'INSERT'
     ) OR has_table_privilege(
-        'geno_v2_job_command_owner',
+        'geo_v2_job_command_owner',
         'public.durable_job_dispatch_outbox',
         'UPDATE'
     ) OR has_table_privilege(
-        'geno_v2_job_command_owner',
+        'geo_v2_job_command_owner',
         'public.durable_job_dispatch_outbox',
         'DELETE'
     ) THEN
@@ -6371,7 +6371,7 @@ BEGIN
     END IF;
     FOREACH privilege_name IN ARRAY ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE'] LOOP
         IF has_table_privilege(
-            'geno_v2_runtime',
+            'geo_v2_runtime',
             'public.durable_job_dispatch_outbox',
             privilege_name
         ) THEN
@@ -6391,9 +6391,9 @@ COMMENT ON TABLE visibility_score_runs IS
     'Durable scoring queue whose successful result is one immutable visibility score snapshot.';
 COMMENT ON TABLE retest_runs IS
     'Durable same-scope retest queue linked to exact baseline and output score snapshots.';
-COMMENT ON FUNCTION geno_v2_claim_collection_job(text, integer, uuid) IS
+COMMENT ON FUNCTION geo_v2_claim_collection_job(text, integer, uuid) IS
     'Claim or reclaim one job. Commit the claim transaction before any external provider call.';
-COMMENT ON FUNCTION geno_v2_claim_visibility_score_run(text, integer, uuid) IS
+COMMENT ON FUNCTION geo_v2_claim_visibility_score_run(text, integer, uuid) IS
     'Claim or reclaim one score run. Commit before performing scoring work outside PostgreSQL.';
-COMMENT ON FUNCTION geno_v2_claim_retest_run(text, integer, uuid) IS
+COMMENT ON FUNCTION geo_v2_claim_retest_run(text, integer, uuid) IS
     'Claim or reclaim one retest. Commit before any external collection or model call.';

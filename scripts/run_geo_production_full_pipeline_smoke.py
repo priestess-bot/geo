@@ -62,7 +62,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--reuse-qdrant-artifact")
     parser.add_argument("--reuse-live-artifact")
     parser.add_argument("--reuse-heavy-artifact")
-    parser.add_argument("--api-base", default=os.getenv("GENO_LIVE_API_BASE", "http://localhost:18003"))
+    parser.add_argument("--api-base", default=os.getenv("GEO_LIVE_API_BASE", "http://localhost:18003"))
     parser.add_argument("--qdrant-url", default=os.getenv("QDRANT_URL", "http://localhost:18006"))
     parser.add_argument("--artifact", default="/tmp/geo-production-full-pipeline-smoke.json")
     args = parser.parse_args(argv)
@@ -110,7 +110,7 @@ def main(argv: list[str] | None = None) -> int:
                 "knowledge_quality_gates_runtime_manage",
             ),
             _contains(
-                "packages/geno_core/geno_core/knowledge_pipeline.py",
+                "packages/geo_core/geo_core/knowledge_pipeline.py",
                 "PIPELINE_STAGE_KEYS",
                 "JOB_TABLES",
                 "archive_knowledge_source_asset",
@@ -157,7 +157,7 @@ def main(argv: list[str] | None = None) -> int:
                 "traceability_gate",
             ),
             _contains(
-                "apps/api/geno_api/main.py",
+                "apps/api/geo_api/main.py",
                 "/v1/knowledge/pipeline-runs/runtime",
                 "/v1/knowledge/import-jobs/runtime",
                 "/v1/knowledge/import-jobs/runtime/{import_job_id}/files",
@@ -239,7 +239,7 @@ def main(argv: list[str] | None = None) -> int:
                 "infra/docker-compose.yml",
                 "qdrant:",
                 "knowledge-worker:",
-                "GENO_DEEPSEEK_API_KEY_FILE",
+                "GEO_DEEPSEEK_API_KEY_FILE",
                 "QDRANT_URL",
                 "deepseek_api_key.txt",
             ),

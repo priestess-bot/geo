@@ -73,12 +73,12 @@ class AuP0bGoogleEnvTemplateVerifierTest(unittest.TestCase):
         with TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / ".env.au-p0b-google.example"
             template = _minimal_template({})
-            template = template.replace("GENO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH=docs/runtime_preflight/au-p0b-google-spike-status-latest.json\n", "")
+            template = template.replace("GEO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH=docs/runtime_preflight/au-p0b-google-spike-status-latest.json\n", "")
             path.write_text(template, encoding="utf-8")
             result = verify_au_p0b_google_env_template(template_path=path, generated_at="2026-06-12T00:00:00Z")
 
         self.assertEqual(result["status"], "fail")
-        self.assertIn("template_key_missing:GENO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH", result["errors"])
+        self.assertIn("template_key_missing:GEO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH", result["errors"])
 
     def test_cli_reads_template(self) -> None:
         result = subprocess.run(
@@ -125,20 +125,20 @@ def _minimal_template(overrides: dict[str, str]) -> str:
         "SERP_API_HL": "en",
         "SERP_API_LOCATION": "Australia",
         "SERP_API_VENDOR_COST": "",
-        "GENO_BROWSER_ARTIFACT_DIR": "",
+        "GEO_BROWSER_ARTIFACT_DIR": "",
         "OBJECT_STORE_ENDPOINT": "",
         "OBJECT_STORE_BUCKET": "",
         "OBJECT_STORE_ACCESS_KEY": "",
         "OBJECT_STORE_SECRET_KEY": "",
-        "GENO_AU_P0B_GOOGLE_ENV_FILE": ".env.au-p0b-google",
-        "GENO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH": "docs/runtime_preflight/au-p0b-google-spike-runbook-latest.json",
-        "GENO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH": "docs/runtime_preflight/au-p0b-google-spike-runbook-execution-latest.json",
-        "GENO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH": "docs/runtime_preflight/au-p0b-google-playwright-env-latest.json",
-        "GENO_AU_P0B_GOOGLE_PLAYWRIGHT_SMOKE_OUTPUT_PATH": "docs/runtime_preflight/au-p0b-google-playwright-smoke-latest.json",
-        "GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_TEMPLATE_PATH": "docs/runtime_preflight/au-p0b-google-manual-backfill-template.jsonl",
-        "GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_TEMPLATE_MANIFEST_PATH": "docs/runtime_preflight/au-p0b-google-manual-backfill-template-manifest.json",
-        "GENO_AU_P0B_GOOGLE_MANUAL_BACKFILL_VERIFICATION_PATH": "docs/runtime_preflight/au-p0b-google-manual-backfill-verification-latest.json",
-        "GENO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH": "docs/runtime_preflight/au-p0b-google-spike-status-latest.json",
+        "GEO_AU_P0B_GOOGLE_ENV_FILE": ".env.au-p0b-google",
+        "GEO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH": "docs/runtime_preflight/au-p0b-google-spike-runbook-latest.json",
+        "GEO_AU_P0B_GOOGLE_RUNBOOK_EXECUTION_OUTPUT_PATH": "docs/runtime_preflight/au-p0b-google-spike-runbook-execution-latest.json",
+        "GEO_AU_P0B_GOOGLE_PLAYWRIGHT_ENV_OUTPUT_PATH": "docs/runtime_preflight/au-p0b-google-playwright-env-latest.json",
+        "GEO_AU_P0B_GOOGLE_PLAYWRIGHT_SMOKE_OUTPUT_PATH": "docs/runtime_preflight/au-p0b-google-playwright-smoke-latest.json",
+        "GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_TEMPLATE_PATH": "docs/runtime_preflight/au-p0b-google-manual-backfill-template.jsonl",
+        "GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_TEMPLATE_MANIFEST_PATH": "docs/runtime_preflight/au-p0b-google-manual-backfill-template-manifest.json",
+        "GEO_AU_P0B_GOOGLE_MANUAL_BACKFILL_VERIFICATION_PATH": "docs/runtime_preflight/au-p0b-google-manual-backfill-verification-latest.json",
+        "GEO_AU_P0B_GOOGLE_STATUS_OUTPUT_PATH": "docs/runtime_preflight/au-p0b-google-spike-status-latest.json",
     }
     values.update(overrides)
     return "\n".join(f"{key}={value}" for key, value in values.items()) + "\n"

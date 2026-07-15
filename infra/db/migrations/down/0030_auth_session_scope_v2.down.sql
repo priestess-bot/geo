@@ -15,9 +15,9 @@ SET writes_enabled = false,
     updated_at = now()
 WHERE singleton;
 
-REVOKE INSERT, UPDATE, DELETE ON project_members FROM geno_runtime_rollback_app;
-REVOKE INSERT, UPDATE, DELETE ON project_member_invitations FROM geno_runtime_rollback_app;
-REVOKE INSERT, UPDATE, DELETE ON tenant_members FROM geno_runtime_rollback_app;
-REVOKE INSERT, UPDATE, DELETE ON runtime_sessions FROM geno_runtime_rollback_app;
-REVOKE INSERT, UPDATE, DELETE ON runtime_project_access_grants FROM geno_runtime_rollback_app;
-REVOKE INSERT, UPDATE, DELETE ON auth_invitation_redemption_attempts FROM geno_runtime_rollback_app;
+REVOKE INSERT, UPDATE, DELETE ON project_members FROM geo_runtime_rollback_app;
+REVOKE INSERT, UPDATE, DELETE ON project_member_invitations FROM geo_runtime_rollback_app;
+REVOKE INSERT, UPDATE, DELETE ON tenant_members FROM geo_runtime_rollback_app;
+REVOKE INSERT, UPDATE, DELETE ON runtime_sessions FROM geo_runtime_rollback_app;
+REVOKE INSERT, UPDATE, DELETE ON runtime_project_access_grants FROM geo_runtime_rollback_app;
+REVOKE INSERT, UPDATE, DELETE ON auth_invitation_redemption_attempts FROM geo_runtime_rollback_app;

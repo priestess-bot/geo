@@ -9,7 +9,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 import unittest
 
-from geno_core.durable_jobs import (
+from geo_core.durable_jobs import (
     KNOWLEDGE_JOB_TABLES,
     JobStateConflictError,
     LeaseClaim,
@@ -27,10 +27,10 @@ from geno_core.durable_jobs import (
 )
 
 
-DATABASE_URL = os.getenv("GENO_DURABLE_JOB_TEST_DATABASE_URL", "").strip()
+DATABASE_URL = os.getenv("GEO_DURABLE_JOB_TEST_DATABASE_URL", "").strip()
 
 
-@unittest.skipUnless(DATABASE_URL, "GENO_DURABLE_JOB_TEST_DATABASE_URL is required")
+@unittest.skipUnless(DATABASE_URL, "GEO_DURABLE_JOB_TEST_DATABASE_URL is required")
 class DurableJobLeasePostgresTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -159,11 +159,11 @@ class DurableJobLeasePostgresTest(unittest.TestCase):
         self.assertEqual(completed["status"], "succeeded")
 
     def test_runtime_app_maintenance_scope_can_claim_and_complete_under_force_rls(self) -> None:
-        from geno_core.knowledge_pipeline import KnowledgePipelineRepository
+        from geo_core.knowledge_pipeline import KnowledgePipelineRepository
 
         job_id = self._insert_import_job()
         runtime_url = DATABASE_URL.replace(
-            "postgresql://geno:geno@", "postgresql://geno_runtime_app:geno_runtime_app@"
+            "postgresql://geo:geo@", "postgresql://geo_runtime_app:geo_runtime_app@"
         )
         runtime_connection = self.psycopg.connect(runtime_url)
         runtime_repository = KnowledgePipelineRepository(runtime_connection)
@@ -497,7 +497,7 @@ class DurableJobLeasePostgresTest(unittest.TestCase):
             observer.close()
 
     def test_repository_fence_context_does_not_fence_again_after_terminal_commit(self) -> None:
-        from geno_core.knowledge_pipeline import KnowledgePipelineRepository
+        from geo_core.knowledge_pipeline import KnowledgePipelineRepository
 
         job_id = self._insert_import_job()
         repository = KnowledgePipelineRepository(self.connection, database_url=DATABASE_URL)
@@ -548,8 +548,8 @@ class DurableJobLeasePostgresTest(unittest.TestCase):
 
         environment = {
             "DATABASE_URL": DATABASE_URL,
-            "GENO_COLLECTION_PROVIDER_CONCURRENCY": "1",
-            "GENO_COLLECTION_TEST_BYPASS_RATE_LIMIT": "",
+            "GEO_COLLECTION_PROVIDER_CONCURRENCY": "1",
+            "GEO_COLLECTION_TEST_BYPASS_RATE_LIMIT": "",
         }
         with patch.dict(os.environ, environment, clear=False):
             with _collection_rate_limit_context() as first:
@@ -560,7 +560,7 @@ class DurableJobLeasePostgresTest(unittest.TestCase):
                 self.assertTrue(after_release)
 
     def test_recovery_second_claim_exception_stops_prior_guard_and_preserves_later_attempt(self) -> None:
-        from geno_core.knowledge_pipeline import KnowledgePipelineRepository
+        from geo_core.knowledge_pipeline import KnowledgePipelineRepository
         from workers.knowledge_worker import run_knowledge_pipeline as knowledge_worker
 
         import_id = self._insert_import_job(
@@ -631,7 +631,7 @@ class DurableJobLeasePostgresTest(unittest.TestCase):
         self.assertEqual(locked_by, "old-crawl-owner")
 
     def test_recovery_process_exception_stops_guard_and_preserves_later_attempt(self) -> None:
-        from geno_core.knowledge_pipeline import KnowledgePipelineRepository
+        from geo_core.knowledge_pipeline import KnowledgePipelineRepository
         from workers.knowledge_worker import run_knowledge_pipeline as knowledge_worker
 
         import_id = self._insert_import_job(
@@ -692,7 +692,7 @@ class DurableJobLeasePostgresTest(unittest.TestCase):
         self.assertEqual(current_token, crawl_token)
 
     def test_recovery_pass_record_exception_leaves_no_heartbeat_owner(self) -> None:
-        from geno_core.knowledge_pipeline import KnowledgePipelineRepository
+        from geo_core.knowledge_pipeline import KnowledgePipelineRepository
         from workers.knowledge_worker import run_knowledge_pipeline as knowledge_worker
 
         import_id = self._insert_import_job(
@@ -747,7 +747,7 @@ class DurableJobLeasePostgresTest(unittest.TestCase):
         self.assertEqual(reclaimed.job_id, import_id)
 
     def test_after_finalizing_failure_recovers_descriptor_without_second_provider_call(self) -> None:
-        from geno_core.knowledge_pipeline import KnowledgePipelineRepository
+        from geo_core.knowledge_pipeline import KnowledgePipelineRepository
         from workers.knowledge_worker import run_knowledge_pipeline as knowledge_worker
 
         job_id = self._insert_import_job(max_attempts=1)
@@ -780,10 +780,10 @@ class DurableJobLeasePostgresTest(unittest.TestCase):
 
         repository = KnowledgePipelineRepository(self.connection, database_url=DATABASE_URL)
         environment = {
-            "GENO_DEPLOYMENT_ENVIRONMENT": "test",
-            "GENO_DURABLE_JOB_AFTER_FINALIZING_FAILPOINT": "knowledge_import_jobs",
-            "GENO_DURABLE_JOB_AFTER_FINALIZING_FAILPOINT_ATTEMPT": "1",
-            "GENO_DURABLE_JOB_AFTER_FINALIZING_PAUSE_SECONDS": "0",
+            "GEO_DEPLOYMENT_ENVIRONMENT": "test",
+            "GEO_DURABLE_JOB_AFTER_FINALIZING_FAILPOINT": "knowledge_import_jobs",
+            "GEO_DURABLE_JOB_AFTER_FINALIZING_FAILPOINT_ATTEMPT": "1",
+            "GEO_DURABLE_JOB_AFTER_FINALIZING_PAUSE_SECONDS": "0",
         }
         with patch.dict(os.environ, environment, clear=False), patch.object(
             knowledge_worker, "_process_job", side_effect=provider_result
@@ -878,7 +878,7 @@ class DurableJobLeasePostgresTest(unittest.TestCase):
         self.assertEqual(dead_letter_count(), before + 1)
 
     def test_expired_finalizing_keeps_state_and_attempt_exhaustion_dead_letters(self) -> None:
-        from geno_core.knowledge_pipeline import KnowledgePipelineRepository
+        from geo_core.knowledge_pipeline import KnowledgePipelineRepository
         from workers.knowledge_worker.run_knowledge_pipeline import _process_claim
 
         finalizing_id = self._insert_import_job(max_attempts=1)

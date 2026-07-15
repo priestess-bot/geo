@@ -6,22 +6,22 @@ REVOKE USAGE ON SCHEMA public FROM PUBLIC;
 
 DO $roles$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'geno_v2_runtime') THEN
-        CREATE ROLE geno_v2_runtime
+    IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'geo_v2_runtime') THEN
+        CREATE ROLE geo_v2_runtime
             NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT
             NOREPLICATION NOBYPASSRLS;
     ELSE
-        ALTER ROLE geno_v2_runtime
+        ALTER ROLE geo_v2_runtime
             NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT
             NOREPLICATION NOBYPASSRLS;
     END IF;
 
-    IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'geno_v2_authz_owner') THEN
-        CREATE ROLE geno_v2_authz_owner
+    IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'geo_v2_authz_owner') THEN
+        CREATE ROLE geo_v2_authz_owner
             NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT
             NOREPLICATION BYPASSRLS;
     ELSE
-        ALTER ROLE geno_v2_authz_owner
+        ALTER ROLE geo_v2_authz_owner
             NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT
             NOREPLICATION BYPASSRLS;
     END IF;
@@ -31,38 +31,38 @@ BEGIN
         FROM pg_catalog.pg_auth_members AS membership
         WHERE membership.roleid = (
                 SELECT oid FROM pg_catalog.pg_roles
-                WHERE rolname = 'geno_v2_authz_owner'
+                WHERE rolname = 'geo_v2_authz_owner'
             )
            OR membership.member = (
                 SELECT oid FROM pg_catalog.pg_roles
-                WHERE rolname = 'geno_v2_authz_owner'
+                WHERE rolname = 'geo_v2_authz_owner'
             )
            OR membership.member = (
                 SELECT oid FROM pg_catalog.pg_roles
-                WHERE rolname = 'geno_v2_runtime'
+                WHERE rolname = 'geo_v2_runtime'
             )
            OR membership.roleid = (
                 SELECT oid FROM pg_catalog.pg_roles
-                WHERE rolname = 'geno_v2_api_login'
+                WHERE rolname = 'geo_v2_api_login'
             )
            OR (
                 membership.roleid = (
                     SELECT oid FROM pg_catalog.pg_roles
-                    WHERE rolname = 'geno_v2_runtime'
+                    WHERE rolname = 'geo_v2_runtime'
                 )
                 AND membership.member IS DISTINCT FROM (
                     SELECT oid FROM pg_catalog.pg_roles
-                    WHERE rolname = 'geno_v2_api_login'
+                    WHERE rolname = 'geo_v2_api_login'
                 )
            )
            OR (
                 membership.member = (
                     SELECT oid FROM pg_catalog.pg_roles
-                    WHERE rolname = 'geno_v2_api_login'
+                    WHERE rolname = 'geo_v2_api_login'
                 )
                 AND membership.roleid IS DISTINCT FROM (
                     SELECT oid FROM pg_catalog.pg_roles
-                    WHERE rolname = 'geno_v2_runtime'
+                    WHERE rolname = 'geo_v2_runtime'
                 )
            )
     ) THEN
@@ -72,7 +72,7 @@ BEGIN
 END
 $roles$;
 
-GRANT USAGE ON SCHEMA public TO geno_v2_authz_owner;
+GRANT USAGE ON SCHEMA public TO geo_v2_authz_owner;
 
 CREATE TABLE market_profiles (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -195,7 +195,7 @@ CREATE TABLE project_members (
         CHECK (invited_by IS NULL OR btrim(invited_by) <> '')
 );
 
-CREATE FUNCTION geno_v2_permissions_for_role(canonical_role text)
+CREATE FUNCTION geo_v2_permissions_for_role(canonical_role text)
 RETURNS text[]
 LANGUAGE sql
 IMMUTABLE
@@ -271,7 +271,7 @@ AS $permissions$
     END;
 $permissions$;
 
-CREATE FUNCTION geno_v2_role_has_permission(
+CREATE FUNCTION geo_v2_role_has_permission(
     canonical_role text,
     required_permission text
 )
@@ -281,7 +281,7 @@ IMMUTABLE
 STRICT
 SET search_path = pg_catalog
 AS $permission_check$
-    SELECT required_permission = ANY(public.geno_v2_permissions_for_role(canonical_role));
+    SELECT required_permission = ANY(public.geo_v2_permissions_for_role(canonical_role));
 $permission_check$;
 
 CREATE TABLE runtime_project_access_grants (
@@ -314,7 +314,7 @@ CREATE TABLE runtime_project_access_grants (
     CONSTRAINT runtime_grants_permission_version_canonical
         CHECK (permission_set_version = 'authz_permissions_v2'),
     CONSTRAINT runtime_grants_permissions_canonical
-        CHECK (permissions = geno_v2_permissions_for_role(canonical_role)),
+        CHECK (permissions = geo_v2_permissions_for_role(canonical_role)),
     CONSTRAINT runtime_grants_status_canonical CHECK (status = 'active')
 );
 
@@ -382,7 +382,7 @@ CREATE INDEX audit_events_global_actor_created_idx
     ON audit_events (actor_id, created_at DESC)
     WHERE tenant_id IS NULL AND project_id IS NULL;
 
-CREATE FUNCTION geno_v2_sync_tenant_member_project_grants()
+CREATE FUNCTION geo_v2_sync_tenant_member_project_grants()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -408,7 +408,7 @@ BEGIN
             NEW.id,
             NEW.role,
             'authz_permissions_v2',
-            public.geno_v2_permissions_for_role(NEW.role),
+            public.geo_v2_permissions_for_role(NEW.role),
             'active'
         FROM public.projects AS project_row
         JOIN public.tenants AS tenant_row ON tenant_row.id = project_row.tenant_id
@@ -420,7 +420,7 @@ BEGIN
 END;
 $sync_tenant_member$;
 
-CREATE FUNCTION geno_v2_sync_project_tenant_grants()
+CREATE FUNCTION geo_v2_sync_project_tenant_grants()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -451,7 +451,7 @@ BEGIN
             member.id,
             member.role,
             'authz_permissions_v2',
-            public.geno_v2_permissions_for_role(member.role),
+            public.geo_v2_permissions_for_role(member.role),
             'active'
         FROM public.tenant_members AS member
         WHERE member.tenant_id = NEW.tenant_id
@@ -462,7 +462,7 @@ BEGIN
 END;
 $sync_project$;
 
-CREATE FUNCTION geno_v2_sync_tenant_status_grants()
+CREATE FUNCTION geo_v2_sync_tenant_status_grants()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -486,7 +486,7 @@ BEGIN
             member.id,
             member.role,
             'authz_permissions_v2',
-            public.geno_v2_permissions_for_role(member.role),
+            public.geo_v2_permissions_for_role(member.role),
             'active'
         FROM public.projects AS project_row
         JOIN public.tenant_members AS member
@@ -500,7 +500,7 @@ BEGIN
 END;
 $sync_tenant_status$;
 
-CREATE FUNCTION geno_v2_reject_audit_event_mutation()
+CREATE FUNCTION geo_v2_reject_audit_event_mutation()
 RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = pg_catalog
@@ -510,33 +510,33 @@ BEGIN
 END;
 $audit_immutable$;
 
-ALTER FUNCTION geno_v2_permissions_for_role(text) OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_role_has_permission(text, text) OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_sync_tenant_member_project_grants()
-    OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_sync_project_tenant_grants() OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_sync_tenant_status_grants() OWNER TO geno_v2_authz_owner;
-ALTER FUNCTION geno_v2_reject_audit_event_mutation() OWNER TO geno_v2_authz_owner;
+ALTER FUNCTION geo_v2_permissions_for_role(text) OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_role_has_permission(text, text) OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_sync_tenant_member_project_grants()
+    OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_sync_project_tenant_grants() OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_sync_tenant_status_grants() OWNER TO geo_v2_authz_owner;
+ALTER FUNCTION geo_v2_reject_audit_event_mutation() OWNER TO geo_v2_authz_owner;
 
 GRANT SELECT ON tenants, projects, tenant_members, runtime_project_access_grants
-    TO geno_v2_authz_owner;
-GRANT INSERT, DELETE ON runtime_project_access_grants TO geno_v2_authz_owner;
+    TO geo_v2_authz_owner;
+GRANT INSERT, DELETE ON runtime_project_access_grants TO geo_v2_authz_owner;
 
 CREATE TRIGGER tenant_members_sync_project_grants
 AFTER INSERT OR UPDATE OF tenant_id, user_id, role, status OR DELETE ON tenant_members
-FOR EACH ROW EXECUTE FUNCTION geno_v2_sync_tenant_member_project_grants();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_sync_tenant_member_project_grants();
 
 CREATE TRIGGER projects_sync_tenant_grants
 AFTER INSERT OR UPDATE OF tenant_id, status OR DELETE ON projects
-FOR EACH ROW EXECUTE FUNCTION geno_v2_sync_project_tenant_grants();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_sync_project_tenant_grants();
 
 CREATE TRIGGER tenants_sync_status_grants
 AFTER UPDATE OF status ON tenants
-FOR EACH ROW EXECUTE FUNCTION geno_v2_sync_tenant_status_grants();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_sync_tenant_status_grants();
 
 CREATE TRIGGER audit_events_immutable
 BEFORE UPDATE OR DELETE ON audit_events
-FOR EACH ROW EXECUTE FUNCTION geno_v2_reject_audit_event_mutation();
+FOR EACH ROW EXECUTE FUNCTION geo_v2_reject_audit_event_mutation();
 
 ALTER TABLE market_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE market_profiles FORCE ROW LEVEL SECURITY;
@@ -558,9 +558,9 @@ ALTER TABLE audit_events FORCE ROW LEVEL SECURITY;
 REVOKE ALL ON ALL TABLES IN SCHEMA public FROM PUBLIC;
 REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC;
 
-COMMENT ON ROLE geno_v2_runtime IS
+COMMENT ON ROLE geo_v2_runtime IS
     'NOLOGIN sealed role with no access until session-backed RLS is installed by 0011.';
-COMMENT ON ROLE geno_v2_authz_owner IS
+COMMENT ON ROLE geo_v2_authz_owner IS
     'NOLOGIN owner for narrowly scoped projection-maintenance trigger functions.';
 COMMENT ON TABLE runtime_project_access_grants IS
     'Derived active project grants for canonical tenant roles; only sync triggers may write.';

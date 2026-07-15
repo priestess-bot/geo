@@ -19,8 +19,8 @@ import { apiBase } from "../../../runtime";
 const SURFACE = "customer" as const;
 
 export async function POST(request: NextRequest) {
-  const sessionToken = request.cookies.get("GENO_RUNTIME_SESSION")?.value || "";
-  const csrfToken = request.cookies.get("GENO_CSRF_TOKEN")?.value || "";
+  const sessionToken = request.cookies.get("GEO_RUNTIME_SESSION")?.value || "";
+  const csrfToken = request.cookies.get("GEO_CSRF_TOKEN")?.value || "";
   if (!sessionToken || !csrfToken) {
     return errorResponse({
       code: "auth_session_delivery_invalid",
@@ -57,11 +57,11 @@ export async function POST(request: NextRequest) {
   try {
     upstream = await fetch(new URL("/v1/auth/me", apiBase()), {
       headers: {
-        "X-GENO-Session-Token": sessionToken,
-        ...(csrfToken ? { "X-GENO-CSRF-Token": csrfToken } : {}),
+        "X-GEO-Session-Token": sessionToken,
+        ...(csrfToken ? { "X-GEO-CSRF-Token": csrfToken } : {}),
         Cookie: [
-          `GENO_RUNTIME_SESSION=${encodeURIComponent(sessionToken)}`,
-          ...(csrfToken ? [`GENO_CSRF_TOKEN=${encodeURIComponent(csrfToken)}`] : [])
+          `GEO_RUNTIME_SESSION=${encodeURIComponent(sessionToken)}`,
+          ...(csrfToken ? [`GEO_CSRF_TOKEN=${encodeURIComponent(csrfToken)}`] : [])
         ].join("; ")
       },
       cache: "no-store"

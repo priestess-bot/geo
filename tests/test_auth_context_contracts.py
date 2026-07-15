@@ -6,8 +6,8 @@ from unittest.mock import patch
 
 from fastapi import HTTPException
 
-from geno_core.models import RuntimeSession
-from geno_api.auth_context import (
+from geo_core.models import RuntimeSession
+from geo_api.auth_context import (
     AuthContextError,
     auth_context_scope,
     build_anonymous_auth_context,
@@ -15,8 +15,8 @@ from geno_api.auth_context import (
     build_user_auth_context,
     hash_context_value,
 )
-import geno_api.main as api_main
-from geno_api.main import assert_runtime_project_access, build_runtime_auth_context
+import geo_api.main as api_main
+from geo_api.main import assert_runtime_project_access, build_runtime_auth_context
 
 
 class AuthContextContractsTest(unittest.TestCase):
@@ -105,7 +105,7 @@ class AuthContextContractsTest(unittest.TestCase):
         self.assertFalse(context.is_authenticated)
 
     def test_runtime_auth_context_uses_header_actor_when_access_control_enabled(self) -> None:
-        with patch.dict(os.environ, {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=False):
+        with patch.dict(os.environ, {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=False):
             context = build_runtime_auth_context(" analyst-1 ")
 
         self.assertEqual(context.actor_id, "analyst-1")
@@ -113,15 +113,15 @@ class AuthContextContractsTest(unittest.TestCase):
         self.assertEqual(context.auth_method, "header")
 
     def test_runtime_auth_context_rejects_missing_header_actor_when_access_control_enabled(self) -> None:
-        with patch.dict(os.environ, {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=False):
+        with patch.dict(os.environ, {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1"}, clear=False):
             with self.assertRaises(HTTPException) as raised:
                 build_runtime_auth_context(None)
 
         self.assertEqual(raised.exception.status_code, 401)
-        self.assertIn("X-GENO-Actor-Id", raised.exception.detail)
+        self.assertIn("X-GEO-Actor-Id", raised.exception.detail)
 
     def test_runtime_auth_context_allows_anonymous_when_access_control_disabled(self) -> None:
-        with patch.dict(os.environ, {"GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "0"}, clear=False):
+        with patch.dict(os.environ, {"GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "0"}, clear=False):
             context = build_runtime_auth_context(None)
 
         self.assertIsNone(context.actor_id)
@@ -132,9 +132,9 @@ class AuthContextContractsTest(unittest.TestCase):
         with patch.dict(
             os.environ,
             {
-                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
-                "GENO_RUNTIME_AUTH_MODE": "jwt",
-                "GENO_RUNTIME_JWT_SECRET": "test-runtime-secret",
+                "GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GEO_RUNTIME_AUTH_MODE": "jwt",
+                "GEO_RUNTIME_JWT_SECRET": "test-runtime-secret",
             },
             clear=False,
         ):
@@ -166,8 +166,8 @@ class AuthContextContractsTest(unittest.TestCase):
             with patch.dict(
                 os.environ,
                 {
-                    "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
-                    "GENO_RUNTIME_AUTH_MODE": "session",
+                    "GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                    "GEO_RUNTIME_AUTH_MODE": "session",
                 },
                 clear=False,
             ):
@@ -185,8 +185,8 @@ class AuthContextContractsTest(unittest.TestCase):
         with patch.dict(
             os.environ,
             {
-                "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
-                "GENO_RUNTIME_AUTH_MODE": "session",
+                "GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                "GEO_RUNTIME_AUTH_MODE": "session",
             },
             clear=False,
         ):
@@ -194,7 +194,7 @@ class AuthContextContractsTest(unittest.TestCase):
                 build_runtime_auth_context(None)
 
         self.assertEqual(raised.exception.status_code, 401)
-        self.assertIn("GENO_RUNTIME_SESSION", raised.exception.detail)
+        self.assertIn("GEO_RUNTIME_SESSION", raised.exception.detail)
 
     def test_runtime_project_access_can_use_auth_context_scope_before_repository_role_lookup(self) -> None:
         class FakeRepository:
@@ -216,8 +216,8 @@ class AuthContextContractsTest(unittest.TestCase):
             with patch.dict(
                 os.environ,
                 {
-                    "GENO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
-                    "GENO_RUNTIME_AUTH_MODE": "session",
+                    "GEO_RUNTIME_PROJECT_ACCESS_CONTROL": "1",
+                    "GEO_RUNTIME_AUTH_MODE": "session",
                 },
                 clear=False,
             ):

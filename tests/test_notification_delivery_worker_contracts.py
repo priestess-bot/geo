@@ -6,9 +6,9 @@ import unittest
 from datetime import UTC, datetime
 from pathlib import Path
 
-from geno_core.models import RuntimeNotificationDelivery, RuntimeNotificationDeliveryStatusInput
-from geno_core.email_delivery import RUNTIME_NOTIFICATION_EMAIL_TEMPLATE_VERSION
-from geno_core.webhook_signing import verify_runtime_notification_webhook_signature
+from geo_core.models import RuntimeNotificationDelivery, RuntimeNotificationDeliveryStatusInput
+from geo_core.email_delivery import RUNTIME_NOTIFICATION_EMAIL_TEMPLATE_VERSION
+from geo_core.webhook_signing import verify_runtime_notification_webhook_signature
 from workers.notification_worker import run_notification_deliveries
 from workers.notification_worker.run_notification_deliveries import process_next_notification_delivery
 
@@ -44,7 +44,7 @@ def _delivery_record(
     attempt_count: int = 1,
     max_attempts: int = 3,
     channel: str = "webhook",
-    endpoint_url: str = "https://hooks.example.com/geno",
+    endpoint_url: str = "https://hooks.example.com/geo",
     payload: dict[str, object] | None = None,
     subscription_metadata: dict[str, object] | None = None,
 ) -> RuntimeNotificationDelivery:
@@ -120,18 +120,18 @@ class NotificationDeliveryWorkerContractsTest(unittest.TestCase):
         self.assertEqual(repository.status_updates[-1].response_status, 204)
         self.assertEqual(repository.status_updates[-1].reason, "runtime notification delivery delivered")
         self.assertEqual(requests[0][0], "POST")
-        self.assertEqual(requests[0][1], "https://hooks.example.com/geno")
+        self.assertEqual(requests[0][1], "https://hooks.example.com/geo")
         self.assertEqual(requests[0][2]["content-type"], "application/json")
-        self.assertEqual(requests[0][2]["x-geno-delivery-id"], "118e5c66-7bb4-558e-ab97-e74ef9928b46")
-        self.assertEqual(requests[0][2]["x-geno-notification-id"], "3ba5d5b7-8759-557b-a8a8-7297f98e2339")
+        self.assertEqual(requests[0][2]["x-geo-delivery-id"], "118e5c66-7bb4-558e-ab97-e74ef9928b46")
+        self.assertEqual(requests[0][2]["x-geo-notification-id"], "3ba5d5b7-8759-557b-a8a8-7297f98e2339")
         self.assertEqual(requests[0][4], 2.5)
         body_payload = json.loads(requests[0][3].decode("utf-8"))
         self.assertEqual(body_payload["delivery_version"], "runtime_notification_delivery_v1")
-        self.assertEqual(result["payload_hash"], requests[0][2]["x-geno-payload-sha256"])
+        self.assertEqual(result["payload_hash"], requests[0][2]["x-geo-payload-sha256"])
         self.assertFalse(result["signed"])
         self.assertEqual(result["channel"], "webhook")
 
-    def test_process_next_notification_delivery_posts_slack_payload_without_geno_signature(self) -> None:
+    def test_process_next_notification_delivery_posts_slack_payload_without_geo_signature(self) -> None:
         repository = FakeNotificationDeliveryRepository(
             _delivery_record(
                 channel="slack",
@@ -159,10 +159,10 @@ class NotificationDeliveryWorkerContractsTest(unittest.TestCase):
                     },
                     "delivery_version": "runtime_notification_delivery_slack_v1",
                 },
-                subscription_metadata={"signing_secret_env": "GENO_TEST_WEBHOOK_SECRET"},
+                subscription_metadata={"signing_secret_env": "GEO_TEST_WEBHOOK_SECRET"},
             )
         )
-        os.environ["GENO_TEST_WEBHOOK_SECRET"] = "should-not-be-used-for-slack"
+        os.environ["GEO_TEST_WEBHOOK_SECRET"] = "should-not-be-used-for-slack"
         requests: list[tuple[str, str, dict[str, str], bytes, float]] = []
 
         def requester(
@@ -182,7 +182,7 @@ class NotificationDeliveryWorkerContractsTest(unittest.TestCase):
                 requester=requester,
             )
         finally:
-            os.environ.pop("GENO_TEST_WEBHOOK_SECRET", None)
+            os.environ.pop("GEO_TEST_WEBHOOK_SECRET", None)
 
         self.assertEqual(result["status"], "delivered")
         self.assertEqual(result["channel"], "slack")
@@ -209,18 +209,18 @@ class NotificationDeliveryWorkerContractsTest(unittest.TestCase):
                     },
                     "email": {
                         "to": ["ops@example.com"],
-                        "subject": "[GENO CRITICAL] Brand absent in Sydney",
+                        "subject": "[GEO CRITICAL] Brand absent in Sydney",
                         "text": "Brand was absent from critical AI search prompts.",
                         "headers": {
-                            "X-GENO-Severity": "critical",
-                            "X-GENO-Email-Template-Version": RUNTIME_NOTIFICATION_EMAIL_TEMPLATE_VERSION,
+                            "X-GEO-Severity": "critical",
+                            "X-GEO-Email-Template-Version": RUNTIME_NOTIFICATION_EMAIL_TEMPLATE_VERSION,
                             "Reply-To": "reports@example.com",
                             "List-Unsubscribe": (
                                 "<https://app.example.com/notifications/unsubscribe>, "
                                 "<mailto:unsubscribe@example.com>"
                             ),
                             "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-                            "X-GENO-Notification-Preferences-Url": (
+                            "X-GEO-Notification-Preferences-Url": (
                                 "https://app.example.com/notifications/preferences"
                             ),
                         },
@@ -241,11 +241,11 @@ class NotificationDeliveryWorkerContractsTest(unittest.TestCase):
                 },
             )
         )
-        os.environ["GENO_TEST_SMTP_HOST"] = "smtp.example.com"
-        os.environ["GENO_TEST_SMTP_PORT"] = "2525"
-        os.environ["GENO_TEST_SMTP_TLS"] = "0"
-        os.environ["GENO_TEST_SMTP_FROM"] = "geno@example.com"
-        os.environ["GENO_TEST_WEBHOOK_SECRET"] = "webhook-secret"
+        os.environ["GEO_TEST_SMTP_HOST"] = "smtp.example.com"
+        os.environ["GEO_TEST_SMTP_PORT"] = "2525"
+        os.environ["GEO_TEST_SMTP_TLS"] = "0"
+        os.environ["GEO_TEST_SMTP_FROM"] = "geo@example.com"
+        os.environ["GEO_TEST_WEBHOOK_SECRET"] = "webhook-secret"
         sent: list[tuple[dict[str, object], object, list[str]]] = []
 
         def email_sender(config: dict[str, object], message: object, recipients: list[str]) -> tuple[int, bytes]:
@@ -255,14 +255,14 @@ class NotificationDeliveryWorkerContractsTest(unittest.TestCase):
         try:
             result = process_next_notification_delivery(
                 repository=repository,
-                default_signing_secret_env="GENO_TEST_WEBHOOK_SECRET",
-                smtp_env_prefix="GENO_TEST_SMTP",
+                default_signing_secret_env="GEO_TEST_WEBHOOK_SECRET",
+                smtp_env_prefix="GEO_TEST_SMTP",
                 email_sender=email_sender,
             )
         finally:
             for name in ("HOST", "PORT", "TLS", "FROM"):
-                os.environ.pop(f"GENO_TEST_SMTP_{name}", None)
-            os.environ.pop("GENO_TEST_WEBHOOK_SECRET", None)
+                os.environ.pop(f"GEO_TEST_SMTP_{name}", None)
+            os.environ.pop("GEO_TEST_WEBHOOK_SECRET", None)
 
         self.assertEqual(result["status"], "delivered")
         self.assertEqual(result["channel"], "email")
@@ -271,9 +271,9 @@ class NotificationDeliveryWorkerContractsTest(unittest.TestCase):
         self.assertEqual(sent[0][0]["host"], "smtp.example.com")
         self.assertEqual(sent[0][0]["port"], 2525)
         self.assertEqual(sent[0][2], ["ops@example.com"])
-        self.assertEqual(sent[0][1]["Subject"], "[GENO CRITICAL] Brand absent in Sydney")
-        self.assertEqual(sent[0][1]["X-GENO-Severity"], "critical")
-        self.assertEqual(sent[0][1]["X-GENO-Email-Template-Version"], RUNTIME_NOTIFICATION_EMAIL_TEMPLATE_VERSION)
+        self.assertEqual(sent[0][1]["Subject"], "[GEO CRITICAL] Brand absent in Sydney")
+        self.assertEqual(sent[0][1]["X-GEO-Severity"], "critical")
+        self.assertEqual(sent[0][1]["X-GEO-Email-Template-Version"], RUNTIME_NOTIFICATION_EMAIL_TEMPLATE_VERSION)
         self.assertEqual(sent[0][1]["Reply-To"], "reports@example.com")
         self.assertEqual(
             sent[0][1]["List-Unsubscribe"],
@@ -281,7 +281,7 @@ class NotificationDeliveryWorkerContractsTest(unittest.TestCase):
         )
         self.assertEqual(sent[0][1]["List-Unsubscribe-Post"], "List-Unsubscribe=One-Click")
         self.assertEqual(
-            sent[0][1]["X-GENO-Notification-Preferences-Url"],
+            sent[0][1]["X-GEO-Notification-Preferences-Url"],
             "https://app.example.com/notifications/preferences",
         )
         self.assertEqual(repository.status_updates[-1].status, "delivered")
@@ -294,7 +294,7 @@ class NotificationDeliveryWorkerContractsTest(unittest.TestCase):
                 payload={
                     "email": {
                         "to": ["ops@example.com"],
-                        "subject": "[GENO WARNING] Report export failed",
+                        "subject": "[GEO WARNING] Report export failed",
                         "text": "Report export failed.",
                     },
                     "delivery_version": "runtime_notification_delivery_email_v1",
@@ -305,19 +305,19 @@ class NotificationDeliveryWorkerContractsTest(unittest.TestCase):
         result = process_next_notification_delivery(
             repository=repository,
             default_signing_secret_env=None,
-            smtp_env_prefix="GENO_MISSING_SMTP",
+            smtp_env_prefix="GEO_MISSING_SMTP",
             email_sender=lambda *args: (250, b"queued"),
         )
 
         self.assertEqual(result["status"], "queued")
         self.assertEqual(result["channel"], "email")
-        self.assertIn("GENO_MISSING_SMTP_HOST", repository.status_updates[-1].error_message or "")
+        self.assertIn("GEO_MISSING_SMTP_HOST", repository.status_updates[-1].error_message or "")
 
     def test_process_next_notification_delivery_signs_webhook_from_subscription_secret_env(self) -> None:
         repository = FakeNotificationDeliveryRepository(
-            _delivery_record(subscription_metadata={"signing_secret_env": "GENO_TEST_WEBHOOK_SECRET"})
+            _delivery_record(subscription_metadata={"signing_secret_env": "GEO_TEST_WEBHOOK_SECRET"})
         )
-        os.environ["GENO_TEST_WEBHOOK_SECRET"] = "test-secret"
+        os.environ["GEO_TEST_WEBHOOK_SECRET"] = "test-secret"
         requests: list[tuple[str, str, dict[str, str], bytes, float]] = []
 
         def requester(
@@ -337,13 +337,13 @@ class NotificationDeliveryWorkerContractsTest(unittest.TestCase):
                 requester=requester,
             )
         finally:
-            os.environ.pop("GENO_TEST_WEBHOOK_SECRET", None)
+            os.environ.pop("GEO_TEST_WEBHOOK_SECRET", None)
 
         self.assertEqual(result["status"], "delivered")
         self.assertTrue(result["signed"])
-        self.assertEqual(requests[0][2]["x-geno-signature-version"], "runtime_notification_webhook_hmac_sha256_v1")
+        self.assertEqual(requests[0][2]["x-geo-signature-version"], "runtime_notification_webhook_hmac_sha256_v1")
         self.assertEqual(
-            requests[0][2]["x-geno-signature-input"],
+            requests[0][2]["x-geo-signature-input"],
             "timestamp.delivery_id.notification_id.payload_sha256",
         )
         verification = verify_runtime_notification_webhook_signature(
@@ -352,14 +352,14 @@ class NotificationDeliveryWorkerContractsTest(unittest.TestCase):
             secret="test-secret",
         )
         self.assertTrue(verification.valid, verification.reason)
-        self.assertTrue(requests[0][2]["x-geno-signature-timestamp"].isdigit())
+        self.assertTrue(requests[0][2]["x-geo-signature-timestamp"].isdigit())
 
     def test_process_next_notification_delivery_requeues_missing_subscription_secret_env(self) -> None:
         repository = FakeNotificationDeliveryRepository(
             _delivery_record(
                 attempt_count=1,
                 max_attempts=3,
-                subscription_metadata={"signing_secret_env": "GENO_MISSING_WEBHOOK_SECRET"},
+                subscription_metadata={"signing_secret_env": "GEO_MISSING_WEBHOOK_SECRET"},
             )
         )
 
@@ -372,11 +372,11 @@ class NotificationDeliveryWorkerContractsTest(unittest.TestCase):
         self.assertEqual(result["status"], "queued")
         self.assertFalse(result["signed"])
         self.assertEqual(repository.status_updates[-1].status, "queued")
-        self.assertIn("GENO_MISSING_WEBHOOK_SECRET", repository.status_updates[-1].error_message or "")
+        self.assertIn("GEO_MISSING_WEBHOOK_SECRET", repository.status_updates[-1].error_message or "")
 
     def test_process_next_notification_delivery_signs_with_default_secret_env(self) -> None:
         repository = FakeNotificationDeliveryRepository(_delivery_record())
-        os.environ["GENO_DEFAULT_WEBHOOK_SECRET"] = "default-secret"
+        os.environ["GEO_DEFAULT_WEBHOOK_SECRET"] = "default-secret"
         requests: list[tuple[str, str, dict[str, str], bytes, float]] = []
 
         def requester(
@@ -392,11 +392,11 @@ class NotificationDeliveryWorkerContractsTest(unittest.TestCase):
         try:
             result = process_next_notification_delivery(
                 repository=repository,
-                default_signing_secret_env="GENO_DEFAULT_WEBHOOK_SECRET",
+                default_signing_secret_env="GEO_DEFAULT_WEBHOOK_SECRET",
                 requester=requester,
             )
         finally:
-            os.environ.pop("GENO_DEFAULT_WEBHOOK_SECRET", None)
+            os.environ.pop("GEO_DEFAULT_WEBHOOK_SECRET", None)
 
         self.assertEqual(result["status"], "delivered")
         self.assertTrue(result["signed"])
@@ -411,15 +411,15 @@ class NotificationDeliveryWorkerContractsTest(unittest.TestCase):
         repository = FakeNotificationDeliveryRepository(
             _delivery_record(
                 subscription_metadata={
-                    "signing_secret_env": "GENO_TEST_WEBHOOK_SECRET_V2",
+                    "signing_secret_env": "GEO_TEST_WEBHOOK_SECRET_V2",
                     "signing_secret_key_id": "v2",
-                    "previous_signing_secret_env": "GENO_TEST_WEBHOOK_SECRET_V1",
+                    "previous_signing_secret_env": "GEO_TEST_WEBHOOK_SECRET_V1",
                     "previous_signing_secret_key_id": "v1",
                 }
             )
         )
-        os.environ["GENO_TEST_WEBHOOK_SECRET_V1"] = "previous-secret"
-        os.environ["GENO_TEST_WEBHOOK_SECRET_V2"] = "current-secret"
+        os.environ["GEO_TEST_WEBHOOK_SECRET_V1"] = "previous-secret"
+        os.environ["GEO_TEST_WEBHOOK_SECRET_V2"] = "current-secret"
         requests: list[tuple[str, str, dict[str, str], bytes, float]] = []
 
         def requester(
@@ -439,14 +439,14 @@ class NotificationDeliveryWorkerContractsTest(unittest.TestCase):
                 requester=requester,
             )
         finally:
-            os.environ.pop("GENO_TEST_WEBHOOK_SECRET_V1", None)
-            os.environ.pop("GENO_TEST_WEBHOOK_SECRET_V2", None)
+            os.environ.pop("GEO_TEST_WEBHOOK_SECRET_V1", None)
+            os.environ.pop("GEO_TEST_WEBHOOK_SECRET_V2", None)
 
         self.assertEqual(result["status"], "delivered")
         self.assertTrue(result["signed"])
-        self.assertEqual(result["signing_secret_env"], "GENO_TEST_WEBHOOK_SECRET_V2")
+        self.assertEqual(result["signing_secret_env"], "GEO_TEST_WEBHOOK_SECRET_V2")
         self.assertEqual(result["signing_secret_key_id"], "v2")
-        self.assertEqual(requests[0][2]["x-geno-signature-key-id"], "v2")
+        self.assertEqual(requests[0][2]["x-geo-signature-key-id"], "v2")
         verification = verify_runtime_notification_webhook_signature(
             headers=requests[0][2],
             body=requests[0][3],

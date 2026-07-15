@@ -181,25 +181,25 @@ def verify_au_p0b_google_spike_runbook(runbook: Any, *, path: Path | None = None
             errors.append("manual_backfill_planned_runs_invalid")
         if not _command_contains(health_step, "make") or not _command_contains(health_step, "au-p0b-google-spike-health"):
             errors.append("health_make_target_missing")
-        if not _env_contains(health_step, "GENO_AU_P0B_GOOGLE_SPIKE_HEALTH_OUTPUT_PATH"):
+        if not _env_contains(health_step, "GEO_AU_P0B_GOOGLE_SPIKE_HEALTH_OUTPUT_PATH"):
             errors.append("health_output_env_missing")
         if (
             not _command_contains(health_manifest_step, "make")
             or not _command_contains(health_manifest_step, "au-p0b-google-spike-health-manifest")
         ):
             errors.append("health_manifest_make_target_missing")
-        if not _env_contains(health_manifest_step, "GENO_AU_P0B_GOOGLE_SPIKE_HEALTH_MANIFEST_PATH"):
+        if not _env_contains(health_manifest_step, "GEO_AU_P0B_GOOGLE_SPIKE_HEALTH_MANIFEST_PATH"):
             errors.append("health_manifest_output_env_missing")
         if not _command_contains(collect_step, "make") or not _command_contains(collect_step, "au-p0b-google-spike"):
             errors.append("collect_make_target_missing")
-        if not _env_contains(collect_step, "GENO_AU_P0B_GOOGLE_SPIKE_OUTPUT_PATH"):
+        if not _env_contains(collect_step, "GEO_AU_P0B_GOOGLE_SPIKE_OUTPUT_PATH"):
             errors.append("collect_output_env_missing")
         if not _command_contains(spike_manifest_step, "make") or not _command_contains(
             spike_manifest_step,
             "au-p0b-google-spike-manifest",
         ):
             errors.append("spike_manifest_make_target_missing")
-        if not _env_contains(spike_manifest_step, "GENO_AU_P0B_GOOGLE_SPIKE_MANIFEST_PATH"):
+        if not _env_contains(spike_manifest_step, "GEO_AU_P0B_GOOGLE_SPIKE_MANIFEST_PATH"):
             errors.append("spike_manifest_output_env_missing")
 
     return {
@@ -220,7 +220,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "path",
         nargs="?",
-        default=os.environ.get("GENO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
+        default=os.environ.get("GEO_AU_P0B_GOOGLE_RUNBOOK_OUTPUT_PATH", DEFAULT_OUTPUT_PATH),
         help="Path to the generated AU P0b Google spike runbook JSON.",
     )
     return parser.parse_args()
