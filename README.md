@@ -1,80 +1,141 @@
 # GEO Platform
 
-GEO Platform 是一个以证据为基础的 AI 搜索监测与内容投放系统。它帮助团队识别消费者在 ChatGPT、Google 等 AI 搜索工具中的商品咨询问题，分析模型实际引用的信源，为目标网站生成适配渠道的投放内容，并持续验证公开 URL 和推荐结果变化。
+GEO Platform 是一个以证据为基础的 AI 搜索监测与渠道投放系统。它帮助团队记录消费者问题和 AI 回答，识别品牌或商品的推荐与引用缺口，为具体目标网站生成渠道适配内容，经人工审核和人工发布后验证公开 URL，并用相同口径持续复测。
 
-当前稳定合同由双 API、Admin/Customer Web、PostgreSQL Durable Job、MinIO 工件和 GEO Placement 领域组成。历史阶段实现不属于公共合同。
+系统不承诺 ChatGPT、Google 或任何平台一定推荐某个商品，也不登录第三方账号或自动发帖。第三方平台发布始终是有授权人员执行的外部动作，系统负责提供任务、文案、证据、审核、回填、验证和测量链路。
 
-## 应用入口
+## 当前入口
 
-| 应用 | 用途 | 开发地址 |
-|---|---|---|
-| Admin Web | 项目配置、证据治理、GEO 投放、审核和 Development Board | `http://localhost:3001` |
-| Customer Web | 客户只读仪表盘、报告、投放结果和溯源 | `http://localhost:3000` |
-| Internal API | 内部管理和工程接口 | `http://localhost:8000` |
-| Customer API | 客户最小权限投影 | `http://localhost:8001` |
+本地验收统一使用以下宿主机端口：
 
-## 开发启动
+| 入口 | 地址 | 边界 |
+| --- | --- | --- |
+| Admin Web | `http://localhost:3001` | 项目、证据、监测、目的地、生成、审核、投放管理 |
+| Customer Web | `http://localhost:3000` | 客户只读指标、测量窗口、已验证 URL 和已批准报告 |
+| Internal API | `http://localhost:8000` | 内部管理与写入 API |
+| Customer API | `http://localhost:8001` | 独立进程中的客户最小权限只读 API |
 
-环境要求：Docker Compose、uv、Node.js 22 和 Corepack。
+这些是 `.env.example` 与开发 Compose 的默认宿主机端口。端口冲突时可以在根目录 `.env` 覆盖 `GEO_INTERNAL_API_HOST_PORT`、`GEO_CUSTOMER_API_HOST_PORT`、`GEO_ADMIN_WEB_HOST_PORT` 和 `GEO_CUSTOMER_WEB_HOST_PORT`，但验收证据必须记录实际地址。
+
+## 一次启动完整开发栈
+
+前置要求：Docker Compose、uv、Node.js 22 和 Corepack。
 
 ```bash
 make install
-test -f deepseek_api_key.txt
+cp -n .env.example .env
+test -s deepseek_api_key.txt
 chmod 600 deepseek_api_key.txt
 make dev-up
 ```
 
-`make dev-up` 会构建并启动 PostgreSQL、迁移、MinIO、Valkey、双 API、Durable Worker 和双 Web。查看日志使用 `make dev-logs`，停止使用 `make dev-down`。进行客户演示或生产验收前，仍必须使用独立生产配置并完成空库迁移、Secret、DeepSeek 和浏览器全流程门禁。
-
-## 质量检查
+`make dev-up` 会启动 PostgreSQL、Alembic migration、MinIO、Valkey、Internal/Customer API、`geo_worker`、Outbox Relay、Admin Web 和 Customer Web。常用命令：
 
 ```bash
-uv run ruff check apps/api/geo_api packages/geo_core/geo_core
-uv run pytest
-corepack pnpm typecheck
-corepack pnpm build
+make dev-logs
+make dev-down
+make ci
 ```
 
-付费或对外模型调用不属于普通 PR 测试。DeepSeek 实际生成测试必须显式提供 Key，并保存 Prompt Bundle、Evidence Pack、模型调用日志和生成结果。
+开发 Key 只允许放在被 Git 忽略的只读文件中。不得把 DeepSeek Key 写入 `.env`、请求体、日志、截图或提交记录。
+
+## 运行架构
+
+```mermaid
+flowchart LR
+  A[Admin Web :3001] --> I[Internal API :8000]
+  C[Customer Web :3000] --> U[Customer API :8001]
+  I --> P[(PostgreSQL)]
+  U --> P
+  I --> M[(MinIO)]
+  I --> V[(Valkey)]
+  V --> W[geo_worker]
+  W --> P
+  W --> M
+  W --> D[DeepSeek v4 flash]
+```
+
+- PostgreSQL 是业务对象、审计和 Durable Job 的唯一真源。
+- Valkey/Dramatiq 只唤醒 Worker；消息丢失不等于任务丢失。
+- Outbox Relay 将已提交的数据库事件投递给 Worker。
+- MinIO 保存 Evidence、Prompt Bundle、导出包等不可变工件。
+- DeepSeek 只由 Worker 调用；API 不接触模型 Key。
+- Customer API 不注册内部审核、Prompt、Job、成员或工程路由。
+
+完整业务链为：
+
+```text
+Project Catalog
+-> Campaign + frozen Monitoring Protocol
+-> baseline observations
+-> nine governed Destinations + nine Opportunities
+-> Brief Version
+-> Evidence Pack Attempt
+-> Prompt Release + frozen Prompt Bundle
+-> Durable Generation Job
+-> Package Version + Claims
+-> maker-checker Review
+-> Export (optional, no publication side effect)
+-> explicit Publication Request
+-> manual third-party Submission
+-> URL Verification Job
+-> T+28 / T+56 / T+84 measurements
+-> approved customer report
+```
 
 ## 项目结构
 
 ```text
 apps/
-  api/             Internal API 与 Customer API
-  admin-web/       内部管理端
-  customer-web/    客户门户
+  api/
+    geo_api/          Internal/Customer ASGI 入口、Router、HTTP contracts
+    geo_worker/       Durable Job actor 与 Outbox Relay
+  admin-web/          内部管理端 Next.js 应用
+  customer-web/       客户只读门户 Next.js 应用
 packages/
-  geo_core/        领域、应用服务、Port 和 Adapter
-  web/             共享 auth、types、API client 和 UI
-workers/           Durable Job 执行入口
+  geo_core/
+    geo_core/         Domain、Application Service、Port、PostgreSQL/MinIO Adapter
+  web/                双 Web 共享的 auth、API client、types 与 UI
 infra/
-  db/              Alembic 数据库基线与迁移
-  compose.prod.yml 独立生产部署
-contracts/         两套 OpenAPI 及生成合同
-tests/             单元、集成、架构、浏览器和 live 测试
-docs/              架构、运行手册、ADR、工程治理与历史归档
+  db/alembic/         唯一数据库基线、版本与 checksum
+  docker-compose.yml  完整开发栈
+  compose.prod.yml    独立生产栈
+  backup/ minio/ otel/ prometheus/
+contracts/openapi/    稳定 API 快照及 manifest
+scripts/              provisioning、OpenAPI、备份与恢复入口
+tests/                architecture、unit、integration、infra、web、live
+docs/                 当前架构、ADR、操作手册、工程治理和历史归档
 ```
 
-详细边界见 [文档索引](docs/README.md) 和 [系统架构](docs/architecture/system-overview.md)。
+依赖方向固定为 `Router -> Application Service -> Domain + Port <- Adapter`。Domain 不依赖 FastAPI、psycopg、HTTP、MinIO SDK 或环境变量；外部模型调用期间不得持有数据库事务或行锁。
 
-## 核心约束
+## 核心不变量
 
-- Router 只能调用 Application Service，Domain 不依赖 FastAPI、psycopg、HTTP 或环境变量。
-- PostgreSQL 是业务状态和 Durable Job 真源；Valkey/Dramatiq 只负责唤醒。
-- 项目数据同时由复合外键和 RLS 隔离，不能把 RLS 当作关系完整性替代品。
-- Prompt/Skill 可独立发布；每次生成冻结 Prompt Bundle、Evidence Pack、模型策略和调用预算。
-- Export、Delivery、Publication Request、Submission 和 Verification 是不同事件。
-- Customer API 不注册内部路由，Dev Tools 在关闭时必须是 404。
-- 通用 HTTP 日志不保存正文；敏感业务操作使用显式 AuditEvent。
+- 每个选中渠道都创建持久投放任务；政策未审核或证据不足时任务保持可见并显示阻断原因。
+- `owned_site`、`amazon`、`youtube`、`tiktok`、`instagram`、`productreview`、`reddit`、`ozbargain`、`quora` 是九个标准渠道。
+- Prompt/Skill 可独立编辑和发布；每次生成冻结 Prompt Bundle，不把提示词硬编码进工作流。
+- Evidence Pack 重试创建新 Attempt，旧 Attempt 永不原地重建。
+- Package Version 不可变；人工编辑创建新版本并重新执行 Claim QA 和审核。
+- `submitted_for_review_by` 与 `reviewer_id` 必须不同，批准分数不得低于 85。
+- Export、Publication Request、Submission、Verification 是四个不同事件；Export 不创建待发布记录。
+- 公开 URL 验证成功后才计入已验证覆盖，并进入 T+28/T+56/T+84 测量。
+- 项目内关系同时使用复合外键和 RLS；RLS 不能替代关系完整性。
 
-## 生产与备份
+## 文档与质量门禁
 
-生产环境使用 [独立 Compose](infra/compose.prod.yml)，不得叠加开发 Compose。配置方法见 [生产运行手册](docs/operations/production-runbook.md)。
+- [文档索引](docs/README.md)
+- [当前系统架构](docs/architecture/system-overview.md)
+- [GEO v3 运行与验收合同](docs/GEO-v3-%E5%85%A8%E6%B5%81%E7%A8%8B%E8%BF%90%E8%A1%8C%E6%89%8B%E5%86%8C.md)
+- [逐步全流程操作手册](docs/operations/geo-full-flow-runbook.md)
+- [生产部署](docs/operations/production-runbook.md)
+- [备份与恢复](docs/operations/backup-restore.md)
 
 ```bash
-docker compose --env-file infra/production.env -f infra/compose.prod.yml config
-docker compose --env-file infra/production.env -f infra/compose.prod.yml up -d
+make quality
+make test-migrated
+make test-integration
+make openapi-contracts
+make web-build
 ```
 
-备份采用每日 PostgreSQL dump 和 MinIO 镜像，保留 7 个日备和 4 个周备，并定期执行隔离恢复冒烟。详见 [备份与恢复](docs/operations/backup-restore.md)。
+实时 DeepSeek 测试会产生外部调用费用，必须显式执行 `make deepseek-live`，并保留 Prompt Bundle hash、Evidence Pack hash、模型调用日志、Package hash 和审核记录。历史设计、阶段报告和 `runtime_preflight` 旧证据只用于追溯，不是当前可用性证明。
