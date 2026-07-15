@@ -970,26 +970,6 @@ services:
       api:
         condition: service_started
 
-  dashboard-web:
-    profiles:
-      - retired-dashboard
-    build:
-      context: ..
-      dockerfile: apps/dashboard-web/Dockerfile
-    environment:
-      PORT: ${GEO_DASHBOARD_WEB_CONTAINER_PORT:-3000}
-    command:
-      - npm
-      - run
-      - dev
-      - --
-      - -H
-      - 0.0.0.0
-      - -p
-      - "${GEO_DASHBOARD_WEB_CONTAINER_PORT:-3000}"
-    ports:
-      - "${GEO_DASHBOARD_WEB_HOST_PORT:-3002}:${GEO_DASHBOARD_WEB_CONTAINER_PORT:-3000}"
-
 volumes:
   postgres_data:
   minio_data:

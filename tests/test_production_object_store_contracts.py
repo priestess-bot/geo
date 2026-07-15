@@ -162,7 +162,6 @@ class ProductionObjectStoreComposeTests(unittest.TestCase):
         for name in (
             "admin-web",
             "customer-web",
-            "dashboard-web",
             "knowledge-embedding-api",
             "report-pdf-renderer",
             "task-recovery-dispatcher",
