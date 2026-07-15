@@ -61,6 +61,14 @@ def test_project_relationships_and_rls_are_database_contracts() -> None:
     assert "monitoring_query_ids" not in BASELINE
 
 
+def test_runtime_roles_are_non_login_non_bypassrls_permission_groups() -> None:
+    for role in ("geo_app", "geo_worker", "geo_readonly"):
+        assert f"CREATE ROLE {role} NOLOGIN NOSUPERUSER" in BASELINE
+    assert BASELINE.count("NOBYPASSRLS") >= 3
+    assert "REVOKE CREATE ON SCHEMA public FROM PUBLIC" in BASELINE
+    assert "GRANT SELECT ON ALL TABLES IN SCHEMA public TO geo_readonly" in BASELINE
+
+
 def test_content_publication_and_evidence_invariants_are_explicit() -> None:
     assert "Export and delivery are projections/events" in BASELINE
     assert "Export and delivery MUST NOT create this row" in BASELINE

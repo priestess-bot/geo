@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from logging.config import fileConfig
+from pathlib import Path
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
@@ -11,7 +12,41 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-database_url = os.getenv("GEO_DATABASE_URL")
+def database_url_from_environment() -> str:
+    direct = [
+        value.strip()
+        for name in ("GEO_DATABASE_URL", "DATABASE_URL")
+        if (value := os.getenv(name, "")).strip()
+    ]
+    files = [
+        value.strip()
+        for name in ("GEO_DATABASE_URL_FILE", "DATABASE_URL_FILE")
+        if (value := os.getenv(name, "")).strip()
+    ]
+    if len(direct) + len(files) > 1:
+        raise RuntimeError("configure exactly one database URL or database URL file")
+    if direct:
+        return sqlalchemy_psycopg_url(direct[0])
+    if files:
+        try:
+            value = Path(files[0]).read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            raise RuntimeError("unable to read database URL file") from exc
+        if not value:
+            raise RuntimeError("database URL file is empty")
+        return sqlalchemy_psycopg_url(value)
+    return ""
+
+
+def sqlalchemy_psycopg_url(value: str) -> str:
+    if value.startswith("postgresql://"):
+        return "postgresql+psycopg://" + value.removeprefix("postgresql://")
+    if value.startswith("postgres://"):
+        return "postgresql+psycopg://" + value.removeprefix("postgres://")
+    return value
+
+
+database_url = database_url_from_environment()
 if database_url:
     config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 
