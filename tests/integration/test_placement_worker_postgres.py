@@ -26,6 +26,7 @@ from geo_core.placements.worker_composition import (
 )
 from geo_core.placements.worker_repository import PlacementWorkerRepository
 from tests.integration.placement_worker_support import (
+    cleanup_projects,
     FakeGateway,
     FakeVerifier,
     MemoryArtifactStore,
@@ -263,9 +264,7 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
             },
             client_variable_names=("tone",),
             system_template="Use the published integration system voice.",
-            user_template=(
-                "Use {{brief}} {{evidence}} {{destination_policy}} and write {{tone}}."
-            ),
+            user_template=("Use {{brief}} {{evidence}} {{destination_policy}} and write {{tone}}."),
         )
         assert release.source_text.startswith("Use {{brief}}")
         assert release.system_template == "Use the published integration system voice."
@@ -777,28 +776,11 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
             assert invalid_state[3]["accessibility"] is False
     finally:
         with psycopg.connect(ADMIN_URL) as admin:
-            project_ids = [item["project"] for item in projects]
-            identity_ids = [
-                identity_id
-                for item in projects
-                for identity_id in (item["owner"], item["reviewer"])
-            ]
-            admin.execute("SET LOCAL session_replication_role = replica")
-            project_tables = admin.execute(
-                """SELECT table_name
-                   FROM information_schema.columns
-                   WHERE table_schema = 'public' AND column_name = 'project_id'"""
-            ).fetchall()
-            for (table,) in project_tables:
-                admin.execute(
-                    sql.SQL("DELETE FROM {} WHERE project_id = ANY(%s)").format(
-                        sql.Identifier(table)
-                    ),
-                    (project_ids,),
-                )
-            admin.execute("DELETE FROM projects WHERE id = ANY(%s)", (project_ids,))
-            admin.execute("DELETE FROM identities WHERE id = ANY(%s)", (identity_ids,))
-            admin.execute("DELETE FROM tenants WHERE id = ANY(%s)", (tenants,))
-            admin.execute(sql.SQL("DROP ROLE IF EXISTS {}").format(sql.Identifier(app_login)))
-            admin.execute(sql.SQL("DROP ROLE IF EXISTS {}").format(sql.Identifier(worker_login)))
+            cleanup_projects(
+                admin,
+                projects=projects,
+                tenant_ids=tenants,
+                app_login=app_login,
+                worker_login=worker_login,
+            )
             admin.commit()

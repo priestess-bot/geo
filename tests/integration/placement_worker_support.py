@@ -3,6 +3,7 @@ from decimal import Decimal
 import hashlib
 from uuid import UUID, uuid4
 
+from psycopg import sql
 from psycopg.conninfo import conninfo_to_dict, make_conninfo
 
 from geo_core.model_gateway import ModelGatewayRequest, ModelGatewayResult
@@ -157,3 +158,32 @@ def seed_project(connection, *, suffix: str) -> dict[str, UUID]:
         (ids["market"], ids["project"]),
     )
     return ids
+
+
+def cleanup_projects(
+    connection,
+    *,
+    projects: list[dict[str, UUID]],
+    tenant_ids: list[UUID],
+    app_login: str,
+    worker_login: str,
+) -> None:
+    project_ids = [item["project"] for item in projects]
+    identity_ids = [
+        identity_id for item in projects for identity_id in (item["owner"], item["reviewer"])
+    ]
+    connection.execute("SET LOCAL session_replication_role = replica")
+    project_tables = connection.execute(
+        """SELECT table_name FROM information_schema.columns
+           WHERE table_schema = 'public' AND column_name = 'project_id'"""
+    ).fetchall()
+    for (table,) in project_tables:
+        connection.execute(
+            sql.SQL("DELETE FROM {} WHERE project_id = ANY(%s)").format(sql.Identifier(table)),
+            (project_ids,),
+        )
+    connection.execute("DELETE FROM projects WHERE id = ANY(%s)", (project_ids,))
+    connection.execute("DELETE FROM identities WHERE id = ANY(%s)", (identity_ids,))
+    connection.execute("DELETE FROM tenants WHERE id = ANY(%s)", (tenant_ids,))
+    connection.execute(sql.SQL("DROP ROLE IF EXISTS {}").format(sql.Identifier(app_login)))
+    connection.execute(sql.SQL("DROP ROLE IF EXISTS {}").format(sql.Identifier(worker_login)))
