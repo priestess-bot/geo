@@ -624,8 +624,8 @@ def runtime_object_store_diagnostic(
     endpoint = runtime_env.get("OBJECT_STORE_ENDPOINT", "").strip()
     bucket = runtime_env.get("OBJECT_STORE_BUCKET", "geo-reports").strip()
     try:
-        access_key = _object_store_secret_from_env(runtime_env, "OBJECT_STORE_ACCESS_KEY")
-        secret_key = _object_store_secret_from_env(runtime_env, "OBJECT_STORE_SECRET_KEY")
+        access_key = _secret_from_env(runtime_env, "OBJECT_STORE_ACCESS_KEY")
+        secret_key = _secret_from_env(runtime_env, "OBJECT_STORE_SECRET_KEY")
         auto_create_bucket = _object_store_auto_create_bucket(runtime_env)
     except RuntimePersistenceError as exc:
         return RuntimeComponentDiagnostic(
