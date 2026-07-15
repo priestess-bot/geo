@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Mapping
+from typing import Any, Mapping
 from uuid import UUID, uuid4
+from urllib.parse import urlparse
 
+from geo_core.placements.application_operations import PlacementOperationsApplicationMixin
+from geo_core.placements.generation_contract import validate_generation_schema
 from geo_core.placements.domain import (
     AuthenticityRisk,
     BriefVersion,
@@ -27,6 +30,7 @@ from geo_core.placements.domain import (
     PromptSkill,
     PublicationRequest,
     Review,
+    ReviewSubmission,
     Submission,
     assert_approval_allowed,
     canonical_hash,
@@ -37,11 +41,14 @@ from geo_core.placements.ports import UnitOfWorkFactory
 from geo_core.prompts.domain import compile_template
 
 
-class PlacementApplication:
+class PlacementApplication(PlacementOperationsApplicationMixin):
     """Coordinates domain rules and one short Unit of Work per command/query."""
 
-    def __init__(self, uow_factory: UnitOfWorkFactory) -> None:
+    def __init__(
+        self, uow_factory: UnitOfWorkFactory, *, artifact_reader: Any | None = None
+    ) -> None:
         self._uow_factory = uow_factory
+        self._artifact_reader = artifact_reader
 
     def create_campaign(
         self,
@@ -75,7 +82,9 @@ class PlacementApplication:
                 rationale=rationale,
             )
             if {item.destination_id for item in opportunities} != set(destination_ids):
-                raise PlacementRuleViolation("every selected destination must create an opportunity")
+                raise PlacementRuleViolation(
+                    "every selected destination must create an opportunity"
+                )
             uow.commit()
             return campaign, opportunities
 
@@ -125,8 +134,15 @@ class PlacementApplication:
         destination_key: str,
         operation_mode: str,
         destination_account_id: str | None,
-        canonical_url: str | None,
+        canonical_url: str,
     ) -> Destination:
+        parsed = urlparse(canonical_url or "")
+        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+            raise PlacementRuleViolation("destination canonical URL must be an absolute HTTPS URL")
+        if parsed.port not in (None, 443):
+            raise PlacementRuleViolation(
+                "destination canonical URL must use the standard HTTPS port"
+            )
         with self._uow_factory(project_id) as uow:
             result = uow.placements.create_destination(
                 project_id=project_id,
@@ -135,6 +151,8 @@ class PlacementApplication:
                 operation_mode=operation_mode,
                 destination_account_id=destination_account_id,
                 canonical_url=canonical_url,
+                canonical_host=parsed.hostname.casefold(),
+                allowed_hosts=(parsed.hostname.casefold(),),
             )
             uow.commit()
             return result
@@ -143,13 +161,9 @@ class PlacementApplication:
         with self._uow_factory(project_id) as uow:
             return uow.placements.list_destinations(project_id=project_id)
 
-    def list_opportunities(
-        self, *, project_id: UUID, campaign_id: UUID
-    ) -> tuple[Opportunity, ...]:
+    def list_opportunities(self, *, project_id: UUID, campaign_id: UUID) -> tuple[Opportunity, ...]:
         with self._uow_factory(project_id) as uow:
-            return uow.placements.list_opportunities(
-                project_id=project_id, campaign_id=campaign_id
-            )
+            return uow.placements.list_opportunities(project_id=project_id, campaign_id=campaign_id)
 
     def create_brief_version(
         self,
@@ -219,6 +233,20 @@ class PlacementApplication:
                 project_id=project_id, brief_version_id=brief_version_id
             )
 
+    def get_evidence_attempt(
+        self, *, project_id: UUID, attempt_id: UUID
+    ) -> EvidencePackAttempt | None:
+        with self._uow_factory(project_id) as uow:
+            return uow.placements.get_evidence_attempt(project_id=project_id, attempt_id=attempt_id)
+
+    def list_evidence_attempt_items(
+        self, *, project_id: UUID, attempt_id: UUID
+    ) -> tuple[Mapping[str, object], ...]:
+        with self._uow_factory(project_id) as uow:
+            return uow.placements.list_evidence_attempt_items(
+                project_id=project_id, attempt_id=attempt_id
+            )
+
     def create_prompt_skill(self, *, project_id: UUID, skill_key: str) -> PromptSkill:
         with self._uow_factory(project_id) as uow:
             result = uow.placements.create_prompt_skill(project_id=project_id, skill_key=skill_key)
@@ -233,20 +261,50 @@ class PlacementApplication:
         source: str,
         actor_id: UUID,
         output_schema: Mapping[str, object],
+        client_variable_names: tuple[str, ...],
     ) -> PromptReleaseView:
+        validate_generation_schema(output_schema)
         with self._uow_factory(project_id) as uow:
             skill_version = uow.placements.create_skill_version(
                 project_id=project_id, skill_id=skill_id, source=source, actor_id=actor_id
             )
             template = compile_template(release_id=uuid4(), skill=skill_version)
+            authoritative = {"brief", "evidence", "destination_policy"}
+            if not authoritative.issubset(template.required_variables):
+                raise PlacementRuleViolation(
+                    "prompt releases must render brief, evidence and destination_policy"
+                )
+            if not set(client_variable_names).issubset(template.required_variables):
+                raise PlacementRuleViolation("client prompt variables must exist in the template")
+            if authoritative.intersection(client_variable_names):
+                raise PlacementRuleViolation("authoritative prompt variables are server-owned")
             result = uow.placements.create_template_release(
                 project_id=project_id,
                 skill_version_id=skill_version.id,
                 template=template,
                 output_schema=output_schema,
+                client_variable_names=client_variable_names,
             )
             uow.commit()
             return result
+
+    def list_prompt_skills(self, *, project_id: UUID) -> tuple[PromptSkill, ...]:
+        with self._uow_factory(project_id) as uow:
+            return uow.placements.list_prompt_skills(project_id=project_id)
+
+    def list_prompt_releases(
+        self, *, project_id: UUID, skill_id: UUID
+    ) -> tuple[PromptReleaseView, ...]:
+        with self._uow_factory(project_id) as uow:
+            return uow.placements.list_prompt_releases(project_id=project_id, skill_id=skill_id)
+
+    def list_prompt_bundles(
+        self, *, project_id: UUID, brief_version_id: UUID
+    ) -> tuple[PromptBundleView, ...]:
+        with self._uow_factory(project_id) as uow:
+            return uow.placements.list_prompt_bundles(
+                project_id=project_id, brief_version_id=brief_version_id
+            )
 
     def create_prompt_bundle(
         self,
@@ -259,9 +317,10 @@ class PlacementApplication:
         model_policy_hash: str,
     ) -> PromptBundleView:
         with self._uow_factory(project_id) as uow:
-            if uow.placements.get_template_release(
-                project_id=project_id, release_id=release_id
-            ) is None:
+            if (
+                uow.placements.get_template_release(project_id=project_id, release_id=release_id)
+                is None
+            ):
                 raise PlacementRuleViolation("template release does not exist")
             result = uow.placements.create_prompt_bundle(
                 project_id=project_id,
@@ -282,6 +341,7 @@ class PlacementApplication:
         configured_model: str,
         model_call_budget: int,
         idempotency_key: str,
+        requested_by: UUID,
     ) -> JobReference:
         if not 1 <= model_call_budget <= 5:
             raise PlacementRuleViolation("model call budget must be between 1 and 5")
@@ -292,6 +352,7 @@ class PlacementApplication:
                 configured_model=configured_model,
                 model_call_budget=model_call_budget,
                 idempotency_key=idempotency_key,
+                requested_by=requested_by,
             )
             uow.commit()
             return job
@@ -303,6 +364,10 @@ class PlacementApplication:
             return uow.placements.list_package_versions(
                 project_id=project_id, opportunity_id=opportunity_id
             )
+
+    def get_package_version(self, *, project_id: UUID, version_id: UUID) -> PackageVersion | None:
+        with self._uow_factory(project_id) as uow:
+            return uow.placements.get_package_version(project_id=project_id, version_id=version_id)
 
     def edit_package_version(
         self,
@@ -323,7 +388,9 @@ class PlacementApplication:
             if base is None:
                 raise PlacementRuleViolation("base package version does not exist")
             if base.package_id != package_id:
-                raise PlacementRuleViolation("base version does not belong to the requested package")
+                raise PlacementRuleViolation(
+                    "base version does not belong to the requested package"
+                )
             version = edit_package_version(
                 base=base,
                 new_id=uuid4(),
@@ -343,22 +410,65 @@ class PlacementApplication:
         with self._uow_factory(project_id) as uow:
             return uow.placements.list_claims(project_id=project_id, version_id=version_id)
 
-    def submit_review(self, *, review: Review) -> Review:
-        with self._uow_factory(review.project_id) as uow:
-            claims = uow.placements.list_claims(
-                project_id=review.project_id, version_id=review.package_version_id
+    def submit_for_review(
+        self, *, project_id: UUID, version_id: UUID, submitted_by: UUID
+    ) -> ReviewSubmission:
+        with self._uow_factory(project_id) as uow:
+            result = uow.placements.submit_for_review(
+                project_id=project_id, version_id=version_id, submitted_by=submitted_by
             )
+            uow.commit()
+            return result
+
+    def submit_review(
+        self,
+        *,
+        project_id: UUID,
+        version_id: UUID,
+        reviewer_id: UUID,
+        decision: str,
+        claim_inventory_complete: bool,
+        extracted_claim_support_confirmed: bool,
+        score: float | None,
+        notes: str | None,
+    ) -> Review:
+        with self._uow_factory(project_id) as uow:
+            submission = uow.placements.get_review_submission(
+                project_id=project_id, version_id=version_id
+            )
+            if submission is None:
+                raise PlacementRuleViolation("package version has not been submitted for review")
+            review = Review(
+                id=uuid4(),
+                project_id=project_id,
+                package_version_id=version_id,
+                submitted_for_review_by=submission.submitted_by,
+                reviewer_id=reviewer_id,
+                decision=decision,
+                claim_inventory_complete=claim_inventory_complete,
+                extracted_claim_support_confirmed=extracted_claim_support_confirmed,
+                score=score,
+                notes=notes,
+            )
+            claims = uow.placements.list_claims(project_id=project_id, version_id=version_id)
             assert_approval_allowed(review=review, claims=claims)
             result = uow.placements.save_review(review=review)
             uow.commit()
             return result
 
+    def list_reviews(self, *, project_id: UUID, version_id: UUID) -> tuple[Review, ...]:
+        with self._uow_factory(project_id) as uow:
+            return uow.placements.list_reviews(project_id=project_id, version_id=version_id)
+
     def export_package(
-        self, *, project_id: UUID, version_id: UUID
+        self, *, project_id: UUID, version_id: UUID, requested_by: UUID
     ) -> ExportReceipt:
         with self._uow_factory(project_id) as uow:
             result = uow.placements.export_package(
-                project_id=project_id, version_id=version_id, exported_at=datetime.now(UTC)
+                project_id=project_id,
+                version_id=version_id,
+                exported_at=datetime.now(UTC),
+                requested_by=requested_by,
             )
             uow.commit()
             return result
@@ -372,6 +482,8 @@ class PlacementApplication:
         requested_by: UUID,
         publication_attempt: int,
         idempotency_key: str,
+        restricted_policy_acknowledged: bool,
+        policy_basis: str | None,
     ) -> PublicationRequest:
         with self._uow_factory(project_id) as uow:
             result = uow.placements.create_publication_request(
@@ -381,6 +493,8 @@ class PlacementApplication:
                 requested_by=requested_by,
                 publication_attempt=publication_attempt,
                 idempotency_key=idempotency_key,
+                restricted_policy_acknowledged=restricted_policy_acknowledged,
+                policy_basis=policy_basis,
             )
             uow.commit()
             return result
@@ -402,6 +516,26 @@ class PlacementApplication:
             )
             uow.commit()
             return result
+
+    def list_publication_requests(
+        self, *, project_id: UUID, version_id: UUID
+    ) -> tuple[PublicationRequest, ...]:
+        with self._uow_factory(project_id) as uow:
+            return uow.placements.list_publication_requests(
+                project_id=project_id, version_id=version_id
+            )
+
+    def list_submissions(
+        self, *, project_id: UUID, publication_request_id: UUID
+    ) -> tuple[Submission, ...]:
+        with self._uow_factory(project_id) as uow:
+            return uow.placements.list_submissions(
+                project_id=project_id, publication_request_id=publication_request_id
+            )
+
+    def get_submission(self, *, project_id: UUID, submission_id: UUID) -> Submission | None:
+        with self._uow_factory(project_id) as uow:
+            return uow.placements.get_submission(project_id=project_id, submission_id=submission_id)
 
     def request_verification(
         self, *, project_id: UUID, submission_id: UUID, idempotency_key: str

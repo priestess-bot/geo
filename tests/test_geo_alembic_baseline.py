@@ -87,11 +87,15 @@ def test_runtime_roles_are_non_login_non_bypassrls_permission_groups() -> None:
 def test_content_publication_and_evidence_invariants_are_explicit() -> None:
     assert "Export and delivery are projections/events" in BASELINE
     assert "Export and delivery MUST NOT create this row" in BASELINE
-    assert "publication requires the exact approved package version" in BASELINE
+    assert "publication requires approved content and an eligible destination policy" in BASELINE
+    assert "score >= 85" in BASELINE
     assert "claim_inventory_complete" in BASELINE
     assert "extracted_claim_support_confirmed" in BASELINE
     assert "consumer_experience" in BASELINE
-    assert "left(storage_uri, 16) = 'content-prompts/'" in BASELINE
+    assert "left(storage_key, 16) = 'content-prompts/'" in BASELINE
+    assert "CREATE TABLE model_call_logs" in BASELINE
+    assert "CREATE TABLE placement_export_receipts" in BASELINE
+    assert "generation requires a finalized prompt bundle artifact" in BASELINE
     assert "vector(1024)" in BASELINE
     assert "vector_cosine_ops" in BASELINE
 

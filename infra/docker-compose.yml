@@ -129,12 +129,30 @@ services:
       GEO_DATABASE_URL: postgresql://geo_worker_dev:geo_worker_dev@postgres:5432/geo
       DATABASE_URL: postgresql://geo_worker_dev:geo_worker_dev@postgres:5432/geo
       GEO_DEEPSEEK_API_KEY_FILE: /run/secrets/deepseek_api_key
-    command: ["dramatiq", "workers.task_queue.tasks", "--processes", "1", "--threads", "4"]
+    command: ["dramatiq", "geo_worker.tasks", "--processes", "1", "--threads", "4"]
     volumes:
       - ../apps/api:/app/apps/api
       - ../packages/geo_core:/app/packages/geo_core
-      - ../workers:/app/workers
       - ${GEO_DEEPSEEK_API_KEY_FILE:-../deepseek_api_key.txt}:/run/secrets/deepseek_api_key:ro
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      valkey:
+        condition: service_healthy
+
+  outbox-relay:
+    profiles: ["workers"]
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    environment:
+      GEO_DEPLOYMENT_ENVIRONMENT: development
+      GEO_DATABASE_URL: postgresql://geo_worker_dev:geo_worker_dev@postgres:5432/geo
+      GEO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
+    command: ["python", "-m", "geo_worker.relay"]
+    volumes:
+      - ../apps/api:/app/apps/api
+      - ../packages/geo_core:/app/packages/geo_core
     depends_on:
       migrate:
         condition: service_completed_successfully

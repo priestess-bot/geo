@@ -8,6 +8,7 @@ from geo_core.model_gateway.contracts import (
     ModelPolicy,
     ProviderCapabilities,
     ProviderCapabilityRegistry,
+    RetryableModelGatewayError,
 )
 from geo_core.model_gateway.deepseek import DeepSeekGateway
 
@@ -20,4 +21,5 @@ __all__ = [
     "ModelPolicy",
     "ProviderCapabilities",
     "ProviderCapabilityRegistry",
+    "RetryableModelGatewayError",
 ]

@@ -92,7 +92,24 @@ class Destination:
     operation_mode: str = "manual"
     destination_account_id: str | None = None
     canonical_url: str | None = None
+    canonical_host: str = ""
+    allowed_hosts: tuple[str, ...] = ()
     policy_status: str = "unreviewed"
+
+
+@dataclass(frozen=True)
+class DestinationPolicyVersion:
+    id: UUID
+    project_id: UUID
+    destination_id: UUID
+    version_number: int
+    status: str
+    rules: Mapping[str, object]
+    identity_requirements: Mapping[str, object]
+    disclosure_requirements: Mapping[str, object]
+    allowed_hosts: tuple[str, ...]
+    reviewed_by: UUID
+    reviewed_at: datetime
 
 
 @dataclass(frozen=True)
@@ -158,7 +175,9 @@ class PromptBundleView:
     evidence_pack_attempt_id: UUID
     template_release_id: UUID
     bundle_hash: str
-    storage_uri: str
+    storage_key: str
+    artifact_status: str
+    storage_uri: str | None
 
 
 @dataclass(frozen=True)
@@ -194,6 +213,7 @@ class PackageVersion:
     base_version_id: UUID | None = None
     edited_by: UUID | None = None
     edit_reason: str | None = None
+    generated_by_job_id: UUID | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "content_json", MappingProxyType(dict(self.content_json)))
@@ -211,6 +231,7 @@ class Review:
     extracted_claim_support_confirmed: bool
     score: float | None = None
     notes: str | None = None
+    reviewed_at: datetime | None = None
 
     def __post_init__(self) -> None:
         if self.submitted_for_review_by == self.reviewer_id:
@@ -219,13 +240,33 @@ class Review:
             self.claim_inventory_complete and self.extracted_claim_support_confirmed
         ):
             raise PlacementRuleViolation("approval requires both claim review gates")
+        if self.decision == "approved" and (self.score is None or self.score < 85):
+            raise PlacementRuleViolation("approval requires a review score of at least 85")
+
+
+@dataclass(frozen=True)
+class ReviewSubmission:
+    id: UUID
+    project_id: UUID
+    package_version_id: UUID
+    submitted_by: UUID
+    submitted_at: datetime
 
 
 @dataclass(frozen=True)
 class ExportReceipt:
+    id: UUID
+    project_id: UUID
     package_version_id: UUID
     content_hash: str
     exported_at: datetime
+    export_format: str
+    requested_by: UUID
+    artifact_status: str
+    storage_key: str
+    artifact_uri: str | None
+    package_version: PackageVersion
+    claims: tuple[Claim, ...]
 
 
 @dataclass(frozen=True)
@@ -238,6 +279,8 @@ class PublicationRequest:
     destination_key: str
     publication_attempt: int
     idempotency_key: str
+    restricted_policy_acknowledged: bool = False
+    policy_basis: str | None = None
     status: str = "requested"
 
 
@@ -249,6 +292,9 @@ class Submission:
     status: str
     submitted_url: str | None = None
     provider_submission_id: str | None = None
+    verification_result: Mapping[str, object] | None = None
+    url_backfilled_by: UUID | None = None
+    url_backfilled_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -265,8 +311,17 @@ class Measurement:
 
 
 def canonical_hash(value: object) -> str:
-    encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(encoded.encode()).hexdigest()
+    return hashlib.sha256(canonical_json_bytes(value)).hexdigest()
+
+
+def canonical_json_bytes(value: object) -> bytes:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode("utf-8")
 
 
 def validate_authenticity(
@@ -285,7 +340,8 @@ def assert_approval_allowed(*, review: Review, claims: tuple[Claim, ...]) -> Non
     if review.decision != "approved":
         return
     unsupported = [
-        claim for claim in claims
+        claim
+        for claim in claims
         if claim.claim_kind != "non_factual" and claim.support_status != "supported"
     ]
     if unsupported:

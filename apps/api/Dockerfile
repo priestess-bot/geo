@@ -14,8 +14,6 @@ COPY pyproject.toml uv.lock alembic.ini ./
 COPY packages/geo_core ./packages/geo_core
 COPY apps/api ./apps/api
 COPY infra/db/alembic ./infra/db/alembic
-COPY workers ./workers
-COPY scripts ./scripts
 
 RUN uv sync --frozen --no-dev && \
     addgroup --system --gid 10001 geo && \

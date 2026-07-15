@@ -220,7 +220,8 @@ class PsycopgJobRepository:
             with self._connection.cursor() as cursor:
                 cursor.execute(
                     """
-                    SELECT id, kind, status, created_at, updated_at, result_ref, error_code
+                    SELECT id, kind, status, created_at, updated_at, result_ref, error_code,
+                           error_detail
                     FROM durable_jobs
                     WHERE project_id = ANY(%s::uuid[])
                     ORDER BY updated_at DESC, id DESC
@@ -247,16 +248,15 @@ class PsycopgJobRepository:
             raise _database_error("count durable jobs", error) from error
         return int(row["total"]) if row else 0
 
-    def get_authorized(
-        self, *, job_id: UUID, project_ids: tuple[UUID, ...]
-    ) -> JobRecord | None:
+    def get_authorized(self, *, job_id: UUID, project_ids: tuple[UUID, ...]) -> JobRecord | None:
         if not project_ids:
             return None
         try:
             with self._connection.cursor() as cursor:
                 cursor.execute(
                     """
-                    SELECT id, kind, status, created_at, updated_at, result_ref, error_code
+                    SELECT id, kind, status, created_at, updated_at, result_ref, error_code,
+                           error_detail
                     FROM durable_jobs
                     WHERE id = %s AND project_id = ANY(%s::uuid[])
                     """,
@@ -408,4 +408,5 @@ def _job(row: dict[str, Any]) -> JobRecord:
         updated_at=row["updated_at"],
         result_ref=str(row["result_ref"]) if row["result_ref"] else None,
         error_code=str(row["error_code"]) if row["error_code"] else None,
+        result_details=dict(row["error_detail"]) if row.get("error_detail") else None,
     )

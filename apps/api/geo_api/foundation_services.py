@@ -49,6 +49,8 @@ class AuthenticationInput:
 
 
 class FoundationServices(Protocol):
+    def authenticate(self, authentication: AuthenticationInput) -> AccessPrincipal: ...
+
     def current_identity(self, authentication: AuthenticationInput) -> AuthIdentity: ...
 
     def logout(self, authentication: AuthenticationInput) -> None: ...
@@ -79,6 +81,10 @@ class UnavailableFoundationServices:
         raise FoundationServiceUnavailable(self._MESSAGE)
 
     def current_identity(self, authentication: AuthenticationInput) -> AuthIdentity:
+        del authentication
+        self._unavailable()
+
+    def authenticate(self, authentication: AuthenticationInput) -> AccessPrincipal:
         del authentication
         self._unavailable()
 
@@ -135,6 +141,10 @@ class ConnectedFoundationServices:
             project_ids=list(principal.project_ids),
             roles=list(principal.roles),
         )
+
+    def authenticate(self, authentication: AuthenticationInput) -> AccessPrincipal:
+        """Authenticate once for domain routers that enforce project command roles."""
+        return self._authenticate(authentication)
 
     def logout(self, authentication: AuthenticationInput) -> None:
         self._access.logout(self._authenticate(authentication))
@@ -297,4 +307,5 @@ def _job(item: object) -> JobStatus:
         updated_at=item.updated_at,
         result_ref=item.result_ref,
         error_code=item.error_code,
+        result_details=item.result_details,
     )

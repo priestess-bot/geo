@@ -23,6 +23,7 @@ from geo_api.foundation_services import (
 )
 from geo_api.problems import install_problem_handlers
 from geo_api.placement_campaign_routes import campaign_router
+from geo_api.job_control_routes import job_control_router
 from geo_api.placement_generation_routes import generation_router
 from geo_api.placement_publication_routes import publication_router
 from geo_api.stable_routes import (
@@ -48,9 +49,7 @@ class ApiSettings:
     @classmethod
     def from_environment(cls) -> "ApiSettings":
         enabled = os.getenv("GEO_DEV_TOOLS_ENABLED", "0").strip().lower() in _TRUE_VALUES
-        cookie_name = os.getenv(
-            "GEO_CUSTOMER_SESSION_COOKIE_NAME", "GEO_CUSTOMER_SESSION"
-        ).strip()
+        cookie_name = os.getenv("GEO_CUSTOMER_SESSION_COOKIE_NAME", "GEO_CUSTOMER_SESSION").strip()
         return cls(
             dev_tools_enabled=enabled,
             customer_session_cookie_name=cookie_name or "GEO_CUSTOMER_SESSION",
@@ -104,6 +103,7 @@ def create_api_app(
         app.include_router(campaign_router())
         app.include_router(generation_router())
         app.include_router(publication_router())
+        app.include_router(job_control_router())
         app.include_router(engineering_router())
         app.include_router(github_integration_router())
         if resolved_settings.dev_tools_enabled:
