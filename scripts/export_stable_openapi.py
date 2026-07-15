@@ -36,10 +36,10 @@ SHARED_REQUIRED_OPERATIONS = (
     ("get", "/v1/auth/me"),
     ("post", "/v1/auth/logout"),
     ("get", "/v1/projects"),
-    ("get", "/v1/jobs"),
-    ("get", "/v1/jobs/{job_id}"),
 )
 INTERNAL_REQUIRED_OPERATIONS = (
+    ("get", "/v1/jobs"),
+    ("get", "/v1/jobs/{job_id}"),
     ("post", "/v1/projects"),
     ("get", "/v1/projects/{project_id}"),
     ("patch", "/v1/projects/{project_id}"),

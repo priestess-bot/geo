@@ -6,10 +6,10 @@
       "api_version": "1.0.0",
       "document_version": "3.1.0",
       "file": "customer.openapi.json",
-      "operation_count": 14,
-      "path_count": 14,
-      "sha256": "00d02c35c80df9aa18e8c1de02c2840090549fb453038af28ba39af9451f07e7",
-      "size_bytes": 76697
+      "operation_count": 12,
+      "path_count": 12,
+      "sha256": "67764afbc4661a570ad6f95ad1739e1d9e369b707989f89f359ac529dd91d528",
+      "size_bytes": 65352
     },
     "internal": {
       "api_title": "GEO Internal API",

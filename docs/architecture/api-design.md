@@ -12,7 +12,10 @@ Internal 和 Customer API 都使用 `/v1`，但位于不同进程和 OpenAPI。�
 - Customer API 不注册 engineering、dev-tools、成员管理、Secret 或内部审核端点。
 - Dev Tools 仅在内部进程、功能开关、管理员和测试租户四项同时满足时注册。
 
-当前稳定 Foundation 路径包括 `/v1/auth`、`/v1/projects`、`/v1/jobs`，Internal 额外提供 `/v1/engineering`。领域路由按纵向迁移进度接入；未接入时必须返回 503 Problem Details，不允许伪造数据。
+两个稳定 surface 共享 `/v1/auth` 和 `/v1/projects`。`/v1/jobs` 与
+`/v1/engineering` 仅在 Internal API 提供，避免 Customer 暴露证据、生成、
+artifact 或发布任务的内部错误和结果引用。领域路由未接入时必须返回
+503 Problem Details，不允许伪造数据。
 
 Internal `/v1/auth/me` 默认验证 OIDC discovery/JWKS、issuer、audience、期限和
 tenant claim。只有显式 `GEO_AUTH_MODE=development` 且非生产部署时，才接受

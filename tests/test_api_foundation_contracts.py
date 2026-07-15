@@ -31,11 +31,12 @@ def test_internal_and_customer_openapi_are_isolated_and_stable() -> None:
         "/v1/auth/logout",
         "/v1/auth/invitations/preflight",
         "/v1/projects",
-        "/v1/jobs",
-        "/v1/jobs/{job_id}",
     }
     assert shared <= internal_paths
     assert shared <= customer_paths
+    assert {"/v1/jobs", "/v1/jobs/{job_id}"} <= internal_paths
+    assert "/v1/jobs" not in customer_paths
+    assert "/v1/jobs/{job_id}" not in customer_paths
     assert "/v1/auth/invitations/redeem" not in internal_paths
     assert "/v1/auth/invitations/redeem" in customer_paths
     assert "/v1/engineering/status" in internal_paths
@@ -137,13 +138,13 @@ def test_engineering_work_items_default_to_unknown_empty_projection() -> None:
     }
 
 
-def test_job_not_found_uses_problem_contract_with_generated_request_id() -> None:
+def test_internal_job_not_found_uses_problem_contract_with_generated_request_id() -> None:
     class MissingJobServices:
         def get_job(self, authentication: object, *, job_id: object) -> None:
             del authentication, job_id
             return None
 
-    app = create_api_app(surface="customer", services=MissingJobServices())  # type: ignore[arg-type]
+    app = create_api_app(surface="internal", services=MissingJobServices())  # type: ignore[arg-type]
     with TestClient(app) as client:
         response = client.get(f"/v1/jobs/{uuid4()}")
 

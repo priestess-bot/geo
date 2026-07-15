@@ -192,17 +192,25 @@ def test_internal_development_mode_requires_both_explicit_headers() -> None:
     assert "display_name" not in allowed.text
 
 
-def test_auth_me_and_jobs_share_the_authenticated_full_scope() -> None:
+def test_internal_jobs_use_full_scope_and_customer_does_not_expose_jobs() -> None:
     access = StubAccessApplication()
-    with TestClient(_customer_app(access)) as client:
-        client.cookies.set("GEO_CUSTOMER_SESSION", "valid-customer-session")
-        identity = client.get("/v1/auth/me")
-        jobs = client.get("/v1/jobs")
-        job = client.get(f"/v1/jobs/{access.job.id}")
+    with TestClient(_internal_app(access)) as internal:
+        headers = {
+            "X-GEO-Actor-ID": str(access.identity_id),
+            "X-GEO-Tenant-ID": str(access.tenant_id),
+        }
+        identity = internal.get("/v1/auth/me", headers=headers)
+        jobs = internal.get("/v1/jobs", headers=headers)
+        job = internal.get(f"/v1/jobs/{access.job.id}", headers=headers)
 
     assert identity.status_code == jobs.status_code == job.status_code == 200
     assert identity.json()["project_ids"] == [str(value) for value in access.project_ids]
     assert jobs.json()["items"][0]["id"] == str(access.job.id)
+
+    with TestClient(_customer_app(access)) as customer:
+        customer.cookies.set("GEO_CUSTOMER_SESSION", "valid-customer-session")
+        assert customer.get("/v1/jobs").status_code == 404
+        assert customer.get(f"/v1/jobs/{access.job.id}").status_code == 404
 
 
 def test_customer_logout_revokes_session_and_expires_cookie() -> None:

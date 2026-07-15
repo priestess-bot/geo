@@ -125,8 +125,8 @@ def create_api_app(
     app.include_router(auth_router())
     app.include_router(invitation_auth_router(include_redeem=surface == "customer"))
     app.include_router(projects_router(surface=surface))
-    app.include_router(jobs_router())
     if surface == "internal":
+        app.include_router(jobs_router())
         app.include_router(invitation_management_router())
         app.include_router(catalog_router())
         app.include_router(monitoring_router())
