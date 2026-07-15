@@ -98,4 +98,4 @@ docs/                   当前架构、ADR、手册、治理与历史归档
 - 开发部署：`infra/docker-compose.yml`
 - 生产部署：`infra/compose.prod.yml`
 
-历史单文件 API、旧 Worker、旧 schema 和阶段脚本不属于当前入口。它们即使仍存在于历史 commit 或 `archive/`，也不能被新代码引用。
+历史单文件 API、旧 Worker、旧 schema 和阶段脚本不属于当前入口。它们只存在于 Git 历史或 v1/v2 设计输入中，不能被当前代码引用。

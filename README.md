@@ -138,4 +138,4 @@ make openapi-contracts
 make web-build
 ```
 
-实时 DeepSeek 测试会产生外部调用费用，必须显式执行 `make deepseek-live`，并保留 Prompt Bundle hash、Evidence Pack hash、模型调用日志、Package hash 和审核记录。历史设计、阶段报告和 `runtime_preflight` 旧证据只用于追溯，不是当前可用性证明。
+实时 DeepSeek 测试会产生外部调用费用，必须显式执行 `make deepseek-live`，并保留 Prompt Bundle hash、Evidence Pack hash、模型调用日志、Package hash 和审核记录。历史设计和旧阶段证据只用于追溯，不是当前可用性证明。
