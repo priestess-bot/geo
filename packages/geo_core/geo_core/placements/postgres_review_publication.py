@@ -14,6 +14,8 @@ from geo_core.placements.domain import (
     JobReference,
     Measurement,
     PackageVersion,
+    PlacementConflict,
+    PlacementNotFound,
     PlacementRuleViolation,
     PublicationRequest,
     Review,
@@ -80,7 +82,7 @@ class PostgresReviewPublicationMixin:
             (project_id, version_id),
         ).rowcount
         if changed != 1:
-            raise RuntimeError("package version cannot be submitted from its current state")
+            raise PlacementConflict("package version cannot be submitted from its current state")
         return ReviewSubmission(**record)
 
     def get_review_submission(
@@ -123,7 +125,7 @@ class PostgresReviewPublicationMixin:
             (review.decision, review.package_version_id, review.project_id),
         ).rowcount
         if changed != 1:
-            raise RuntimeError("package review lost its pending-review state")
+            raise PlacementConflict("package review lost its pending-review state")
         return Review(
             id=review.id,
             project_id=review.project_id,
@@ -165,7 +167,7 @@ class PostgresReviewPublicationMixin:
     ) -> ExportReceipt:
         version = self.get_package_version(project_id=project_id, version_id=version_id)
         if version is None:
-            raise RuntimeError("package version does not exist")
+            raise PlacementNotFound("package version does not exist")
         claims = self.list_claims(project_id=project_id, version_id=version_id)
         receipt_id = uuid4()
         manifest = {
@@ -339,9 +341,7 @@ class PostgresReviewPublicationMixin:
                 or parsed.port not in (None, 443)
                 or parsed.hostname.casefold() not in destination["allowed_hosts"]
             ):
-                raise PlacementRuleViolation(
-                    "submitted URL must match the destination HTTPS host"
-                )
+                raise PlacementRuleViolation("submitted URL must match the destination HTTPS host")
         status = "submitted" if values["submitted_url"] else "awaiting_url"
         record = _one(
             self._db.execute(

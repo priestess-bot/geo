@@ -16,6 +16,7 @@ from geo_core.placements.domain import (
     MonitoringQuery,
     Opportunity,
     PackageVersion,
+    PlacementConflict,
     WorkflowStatus,
     canonical_hash,
 )
@@ -271,7 +272,7 @@ class PsycopgPlacementRepository(
             (opportunity_id, project_id),
         ).fetchone()
         if eligible is None:
-            raise RuntimeError("brief creation requires a qualified opportunity")
+            raise PlacementConflict("brief creation requires a qualified opportunity")
         existing = _rows(
             self._db.execute(
                 """SELECT id FROM placement_briefs
@@ -359,7 +360,7 @@ class PsycopgPlacementRepository(
             (project_id, brief_version_id),
         ).fetchone()
         if eligible is None:
-            raise RuntimeError("evidence build requires a qualified opportunity")
+            raise PlacementConflict("evidence build requires a qualified opportunity")
         attempt_number = _row(
             self._db.execute(
                 """SELECT COALESCE(MAX(attempt_number), 0) + 1 AS value
@@ -537,7 +538,7 @@ class PsycopgPlacementRepository(
                 )
             )
             if record["input_hash"] != input_hash:
-                raise RuntimeError("idempotency key was already used with different input")
+                raise PlacementConflict("idempotency key was already used with different input")
         job = JobReference(
             id=record["id"],
             project_id=record["project_id"],

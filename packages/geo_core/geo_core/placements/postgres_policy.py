@@ -6,7 +6,12 @@ import json
 from typing import Any, Mapping
 from uuid import UUID
 
-from geo_core.placements.domain import DestinationPolicyVersion, Opportunity
+from geo_core.placements.domain import (
+    DestinationPolicyVersion,
+    Opportunity,
+    PlacementConflict,
+    PlacementRuleViolation,
+)
 
 
 def _row(cursor: Any) -> dict[str, Any]:
@@ -41,7 +46,9 @@ class PostgresDestinationPolicyMixin:
         )
         allowed_hosts = tuple(dict.fromkeys(value.casefold() for value in values["allowed_hosts"]))
         if destination["canonical_host"] not in allowed_hosts:
-            raise RuntimeError("policy allowed hosts must include the canonical destination host")
+            raise PlacementRuleViolation(
+                "policy allowed hosts must include the canonical destination host"
+            )
         version_number = _row(
             self._db.execute(
                 """SELECT COALESCE(MAX(version_number), 0) + 1 AS value
@@ -131,7 +138,9 @@ class PostgresDestinationPolicyMixin:
             "cancel": "cancelled",
         }[command]
         if command == "qualify" and current["policy_status"] != "approved":
-            raise RuntimeError("opportunity qualification requires approved destination policy")
+            raise PlacementConflict(
+                "opportunity qualification requires approved destination policy"
+            )
         blocked_reason = (reason or "manually_blocked") if target == "blocked" else None
         self._db.execute(
             """UPDATE placement_opportunities SET status = %s, blocked_reason = %s,

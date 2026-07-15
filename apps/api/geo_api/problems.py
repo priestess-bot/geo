@@ -25,7 +25,12 @@ from geo_core.access.models import (
     MembershipNotFound,
     MembershipSafetyViolation,
 )
-from geo_core.placements.domain import ConcurrencyConflict, PlacementRuleViolation
+from geo_core.placements.domain import (
+    ConcurrencyConflict,
+    PlacementConflict,
+    PlacementNotFound,
+    PlacementRuleViolation,
+)
 
 
 _LOGGER = logging.getLogger("geo_api.errors")
@@ -243,6 +248,30 @@ def install_problem_handlers(app: FastAPI) -> None:
                 title="Concurrency Conflict",
                 detail=str(exc),
                 type_uri="urn:geo:problem:stale-version",
+            ),
+        )
+
+    @app.exception_handler(PlacementConflict)
+    async def placement_conflict_handler(request: Request, exc: PlacementConflict) -> JSONResponse:
+        return _response(
+            request,
+            ApiProblem(
+                status=409,
+                title="Placement State Conflict",
+                detail=str(exc),
+                type_uri="urn:geo:problem:placement-state-conflict",
+            ),
+        )
+
+    @app.exception_handler(PlacementNotFound)
+    async def placement_not_found_handler(request: Request, exc: PlacementNotFound) -> JSONResponse:
+        return _response(
+            request,
+            ApiProblem(
+                status=404,
+                title="Placement Resource Not Found",
+                detail=str(exc),
+                type_uri="urn:geo:problem:placement-not-found",
             ),
         )
 

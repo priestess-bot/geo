@@ -6,7 +6,12 @@ import json
 from typing import Any
 from uuid import UUID, uuid4
 
-from geo_core.placements.domain import PackageVersion
+from geo_core.placements.domain import (
+    ConcurrencyConflict,
+    PackageVersion,
+    PlacementNotFound,
+    PlacementRuleViolation,
+)
 from geo_core.placements.ports import GeneratedClaim
 
 
@@ -27,7 +32,7 @@ class PostgresPackageVersionMixin:
             project_id=version.project_id, version_id=superseded_version_id
         )
         if base is None:
-            raise RuntimeError("base package version does not exist")
+            raise PlacementNotFound("base package version does not exist")
         evidence_ids = {evidence_id for claim in claims for evidence_id in claim.evidence_item_ids}
         if evidence_ids:
             frozen_ids = {
@@ -43,7 +48,9 @@ class PostgresPackageVersionMixin:
                 ).fetchall()
             }
             if frozen_ids != evidence_ids:
-                raise RuntimeError("edited claims reference evidence outside the frozen pack")
+                raise PlacementRuleViolation(
+                    "edited claims reference evidence outside the frozen pack"
+                )
         changed = self._db.execute(
             """UPDATE placement_package_versions SET workflow_status = 'superseded'
                WHERE project_id = %s AND id = %s AND content_hash = %s
@@ -51,7 +58,7 @@ class PostgresPackageVersionMixin:
             (version.project_id, superseded_version_id, base.content_hash),
         ).rowcount
         if changed != 1:
-            raise RuntimeError("base package version changed concurrently")
+            raise ConcurrencyConflict("base package version changed concurrently")
         self._db.execute(
             """INSERT INTO placement_package_versions
                  (id, project_id, package_id, prompt_bundle_id, version_number, base_version_id,

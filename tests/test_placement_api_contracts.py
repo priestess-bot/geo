@@ -5,7 +5,12 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from geo_core.access.models import AccessPrincipal, MembershipRecord
-from geo_core.placements.domain import Campaign, Opportunity
+from geo_core.placements.domain import (
+    Campaign,
+    Opportunity,
+    PlacementConflict,
+    PlacementNotFound,
+)
 
 
 def test_placement_routes_are_stable_and_internal_only() -> None:
@@ -72,6 +77,26 @@ def test_manual_package_edit_requires_a_non_empty_claim_inventory() -> None:
     package_edit = document["components"]["schemas"]["PackageEdit"]
     assert "claims" in package_edit["required"]
     assert package_edit["properties"]["claims"]["minItems"] == 1
+
+
+def test_placement_state_and_missing_resource_use_public_problem_contracts() -> None:
+    app = create_api_app(surface="internal")
+
+    @app.get("/_test/placement-conflict")
+    def conflict() -> None:
+        raise PlacementConflict("invalid transition")
+
+    @app.get("/_test/placement-missing")
+    def missing() -> None:
+        raise PlacementNotFound("missing package")
+
+    with TestClient(app) as client:
+        conflict_response = client.get("/_test/placement-conflict")
+        missing_response = client.get("/_test/placement-missing")
+    assert conflict_response.status_code == 409
+    assert conflict_response.json()["type"] == "urn:geo:problem:placement-state-conflict"
+    assert missing_response.status_code == 404
+    assert missing_response.json()["type"] == "urn:geo:problem:placement-not-found"
 
 
 def test_placement_slice_has_no_legacy_dependency_and_respects_file_budget() -> None:
