@@ -3,6 +3,48 @@ LANGUAGE sql STABLE PARALLEL SAFE AS $$
     SELECT NULLIF(current_setting('geo.invitation_token_hash', true), '')
 $$;
 
+CREATE FUNCTION geo_can_manage_project_memberships(
+    target_project_id uuid,
+    target_tenant_id uuid
+) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER
+SET search_path = pg_catalog, public
+SET row_security = off
+AS $$
+    SELECT target_tenant_id = public.geo_current_tenant_id()
+       AND EXISTS (
+           SELECT 1
+           FROM public.project_memberships AS manager
+           WHERE manager.project_id = target_project_id
+             AND manager.tenant_id = target_tenant_id
+             AND manager.identity_id = public.geo_current_identity_id()
+             AND manager.status = 'active'
+             AND manager.role IN ('owner', 'admin')
+       )
+$$;
+
+REVOKE ALL ON FUNCTION geo_can_manage_project_memberships(uuid, uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION geo_can_manage_project_memberships(uuid, uuid)
+FROM geo_worker, geo_readonly;
+GRANT EXECUTE ON FUNCTION geo_can_manage_project_memberships(uuid, uuid) TO geo_app;
+
+DROP POLICY project_scope ON project_memberships;
+CREATE POLICY project_scope ON project_memberships
+USING (
+    tenant_id = geo_current_tenant_id()
+    AND (
+        identity_id = geo_current_identity_id()
+        OR geo_can_manage_project_memberships(project_id, tenant_id)
+    )
+)
+WITH CHECK (
+    tenant_id = geo_current_tenant_id()
+    AND (
+        identity_id = geo_current_identity_id()
+        OR geo_can_manage_project_memberships(project_id, tenant_id)
+    )
+);
+
 ALTER TABLE customer_sessions
     ADD COLUMN csrf_token_hash text CHECK (csrf_token_hash ~ '^[0-9a-f]{64}$'),
     ADD COLUMN surface text NOT NULL DEFAULT 'customer' CHECK (surface = 'customer');
@@ -64,6 +106,25 @@ CREATE TABLE invitation_redemptions (
     UNIQUE (invitation_id, idempotency_key_hash)
 );
 
+CREATE TABLE membership_commands (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id uuid NOT NULL,
+    project_id uuid NOT NULL,
+    actor_identity_id uuid NOT NULL REFERENCES identities(id),
+    command_type text NOT NULL CHECK (
+        command_type IN ('add', 'revoke', 'change_role', 'reactivate')
+    ),
+    idempotency_key_hash text NOT NULL CHECK (idempotency_key_hash ~ '^[0-9a-f]{64}$'),
+    request_hash text NOT NULL CHECK (request_hash ~ '^[0-9a-f]{64}$'),
+    membership_id uuid NOT NULL,
+    result_snapshot jsonb NOT NULL CHECK (jsonb_typeof(result_snapshot) = 'object'),
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    FOREIGN KEY (project_id, tenant_id) REFERENCES projects(id, tenant_id) ON DELETE CASCADE,
+    FOREIGN KEY (membership_id, project_id)
+        REFERENCES project_memberships(id, project_id) ON DELETE CASCADE,
+    UNIQUE (project_id, idempotency_key_hash)
+);
+
 CREATE TABLE access_audit_events (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id uuid NOT NULL REFERENCES tenants(id),
@@ -72,9 +133,12 @@ CREATE TABLE access_audit_events (
     event_type text NOT NULL CHECK (event_type IN (
         'invitation.created', 'invitation.preflight_failed', 'invitation.redeemed',
         'invitation.revoked', 'invitation.expired', 'session.created', 'session.revoked',
-        'session.csrf_rejected', 'tenant.bootstrap'
+        'session.csrf_rejected', 'tenant.bootstrap', 'member.added', 'member.revoked',
+        'member.role_changed', 'member.reactivated'
     )),
-    subject_type text NOT NULL CHECK (subject_type IN ('invitation', 'session', 'project')),
+    subject_type text NOT NULL CHECK (
+        subject_type IN ('invitation', 'session', 'project', 'membership')
+    ),
     subject_id uuid NOT NULL,
     metadata jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(metadata) = 'object'),
     created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
@@ -145,6 +209,12 @@ WITH CHECK (
 ALTER TABLE invitation_redemptions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE invitation_redemptions FORCE ROW LEVEL SECURITY;
 CREATE POLICY project_scope ON invitation_redemptions
+USING (project_id = ANY(geo_current_project_ids()))
+WITH CHECK (project_id = ANY(geo_current_project_ids()));
+
+ALTER TABLE membership_commands ENABLE ROW LEVEL SECURITY;
+ALTER TABLE membership_commands FORCE ROW LEVEL SECURITY;
+CREATE POLICY project_scope ON membership_commands
 USING (project_id = ANY(geo_current_project_ids()))
 WITH CHECK (project_id = ANY(geo_current_project_ids()));
 

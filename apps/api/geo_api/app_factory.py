@@ -25,6 +25,8 @@ from geo_api.foundation_services import (
     UnavailableFoundationServices,
     services_from_environment,
 )
+from geo_api.member_routes import member_router
+from geo_api.member_runtime import build_membership_application
 from geo_api.problems import install_problem_handlers
 from geo_api.monitoring_routes import monitoring_router
 from geo_api.monitoring_runtime import build_monitoring_application
@@ -82,6 +84,7 @@ def create_api_app(
     placement_services: object | None = None,
     catalog_application: object | None = None,
     monitoring_application: object | None = None,
+    membership_application: object | None = None,
 ) -> FastAPI:
     """Build one API surface without importing the legacy application module."""
 
@@ -118,6 +121,11 @@ def create_api_app(
         deployment_environment=resolved_settings.deployment_environment,
     )
     app.state.monitoring_application = monitoring_application or build_monitoring_application()
+    app.state.membership_application = (
+        membership_application or build_membership_application()
+        if surface == "internal"
+        else None
+    )
     install_problem_handlers(app)
     _install_request_metadata_middleware(app, surface=surface)
 
@@ -127,6 +135,7 @@ def create_api_app(
     app.include_router(projects_router(surface=surface))
     if surface == "internal":
         app.include_router(jobs_router())
+        app.include_router(member_router())
         app.include_router(invitation_management_router())
         app.include_router(catalog_router())
         app.include_router(monitoring_router())

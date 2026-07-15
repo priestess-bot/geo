@@ -13,6 +13,10 @@ from geo_core.access.models import (
     InvitationRecord,
     InvitationRedemptionRecord,
     JobRecord,
+    ManagedMembershipRecord,
+    ManagedMembershipRole,
+    MembershipCommandRecord,
+    MembershipCommandType,
     MembershipRecord,
     ProjectRecord,
     SessionRecord,
@@ -117,6 +121,70 @@ class AccessAuditRepository(Protocol):
     ) -> None: ...
 
 
+class MembershipRepository(Protocol):
+    def lock_project(self, *, tenant_id: UUID, project_id: UUID) -> bool: ...
+
+    def get_or_create_identity_exact(
+        self,
+        *,
+        issuer: str,
+        subject: str,
+        email: str,
+        display_name: str,
+    ) -> tuple[IdentityRecord, bool]: ...
+
+    def add_exact(
+        self,
+        *,
+        tenant_id: UUID,
+        project_id: UUID,
+        identity_id: UUID,
+        role: ManagedMembershipRole,
+    ) -> tuple[ManagedMembershipRecord, bool]: ...
+
+    def list_project(
+        self, *, project_id: UUID, limit: int, offset: int
+    ) -> tuple[ManagedMembershipRecord, ...]: ...
+
+    def count_project(self, *, project_id: UUID) -> int: ...
+
+    def get_for_update(
+        self, *, project_id: UUID, membership_id: UUID
+    ) -> ManagedMembershipRecord | None: ...
+
+    def count_active_role(self, *, project_id: UUID, roles: tuple[str, ...]) -> int: ...
+
+    def revoke(self, *, project_id: UUID, membership_id: UUID) -> ManagedMembershipRecord: ...
+
+    def change_role(
+        self,
+        *,
+        project_id: UUID,
+        membership_id: UUID,
+        role: ManagedMembershipRole,
+    ) -> ManagedMembershipRecord: ...
+
+    def reactivate(
+        self, *, project_id: UUID, membership_id: UUID
+    ) -> ManagedMembershipRecord: ...
+
+    def get_command(
+        self, *, project_id: UUID, idempotency_key_hash: str
+    ) -> MembershipCommandRecord | None: ...
+
+    def add_command(
+        self,
+        *,
+        tenant_id: UUID,
+        project_id: UUID,
+        actor_identity_id: UUID,
+        command_type: MembershipCommandType,
+        idempotency_key_hash: str,
+        request_hash: str,
+        membership: ManagedMembershipRecord,
+    ) -> None: ...
+
+
 class AccessUnitOfWork(Protocol):
     identities: IdentityRepository
     sessions: SessionRepository
@@ -124,6 +192,7 @@ class AccessUnitOfWork(Protocol):
     jobs: JobRepository
     invitations: InvitationRepository
     audit: AccessAuditRepository
+    members: MembershipRepository
 
     def __enter__(self) -> "AccessUnitOfWork": ...
 

@@ -9,6 +9,12 @@
 不保存原始 token 或项目快照。RLS 使用事务局部的 identity、tenant 和 project ID
 数组，因此一个 Session 可以保留同一租户内的全部有效项目，同时不能访问未授权项目。
 
+owner/admin 管理他人 membership 时，应用角色守卫与 PostgreSQL RLS 同时生效；RLS 的
+`SECURITY DEFINER` 判定函数固定 search path、关闭 PUBLIC/worker/readonly 执行权限，
+并且仍核验事务 tenant 与数据库中的 active manager 关系。项目行锁串行化角色变更和
+撤销，保证并发请求不能同时绕过最后 owner/manager 约束。`membership_commands` 保存
+幂等 key hash、请求 hash 和冻结结果，不保存 raw key。
+
 ## 不可变版本
 
 Brief、Evidence Pack、Template Release、Prompt Bundle 和 Placement Package Version 创建后不可原地修改。编辑创建新版本，保存 `base_version_id`、基础 hash、编辑者和原因；旧版本标记 superseded，但旧审核、投放和测量记录不删除。

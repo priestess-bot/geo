@@ -137,6 +137,17 @@ def test_initial_owner_audit_is_append_only_and_installer_only() -> None:
     assert "granted.rolname IN ('geo_app', 'geo_worker')" in ACCESS
 
 
+def test_member_management_has_restricted_rls_and_idempotent_commands() -> None:
+    assert "CREATE TABLE membership_commands" in ACCESS
+    assert "UNIQUE (project_id, idempotency_key_hash)" in ACCESS
+    assert "result_snapshot jsonb NOT NULL" in ACCESS
+    assert "SECURITY DEFINER" in ACCESS
+    assert "SET search_path = pg_catalog, public" in ACCESS
+    assert "SET row_security = off" in ACCESS
+    assert "FROM geo_worker, geo_readonly" in ACCESS
+    assert "manager.role IN ('owner', 'admin')" in ACCESS
+
+
 def test_content_publication_and_evidence_invariants_are_explicit() -> None:
     assert "Export and delivery are projections/events" in BASELINE
     assert "Export and delivery MUST NOT create this row" in BASELINE

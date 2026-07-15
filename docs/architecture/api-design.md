@@ -17,6 +17,10 @@ Internal 和 Customer API 都使用 `/v1`，但位于不同进程和 OpenAPI。�
 artifact 或发布任务的内部错误和结果引用。领域路由未接入时必须返回
 503 Problem Details，不允许伪造数据。
 
+Internal 的 `/v1/projects/{project_id}/members` 提供 OIDC 成员列表、新增、角色变更、撤销
+和恢复；Customer OpenAPI 不注册这些路径。成员 mutation 使用持久化命令账本恢复同一
+`Idempotency-Key` 的冻结响应，actor 只能来自验证后的 OIDC principal，不能来自 DTO。
+
 Internal `/v1/auth/me` 默认验证 OIDC discovery/JWKS、issuer、audience、期限和
 tenant claim。只有显式 `GEO_AUTH_MODE=development` 且非生产部署时，才接受
 `X-GEO-Actor-ID` 与 `X-GEO-Tenant-ID`。Customer 只接受

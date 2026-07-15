@@ -54,7 +54,35 @@ tenant/identity/project ID 与 `replayed`。相同配置可安全重放；任何
 fail closed，绝不覆盖。完成后使用该 OIDC owner 登录，即可通过稳定 `POST /v1/projects`
 创建后续项目。不要把 provisioning profile 加入常驻启动命令。
 
-## 5. 验收
+## 5. 管理内部 OIDC 成员
+
+Internal API 不创建 IdP 账号；先在 IdP 创建用户并取得其精确 `iss`、`sub`、email 和
+display name，再由项目 owner/admin 调用成员 API。每个 mutation 都必须使用新的
+`Idempotency-Key`；同 key、同请求会返回冻结结果，复用同 key 执行不同请求会返回 409。
+
+```bash
+curl -X POST "$INTERNAL_API/v1/projects/$PROJECT_ID/members" \
+  -H "Authorization: Bearer $OWNER_TOKEN" \
+  -H "Idempotency-Key: member-add-$(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"issuer":"https://idp.example/","subject":"user-sub","email":"user@example.com","display_name":"Content Reviewer","role":"analyst"}'
+```
+
+可用命令为：
+
+- `GET /v1/projects/{project_id}/members`：列出 active/revoked 历史成员；
+- `POST /v1/projects/{project_id}/members`：绑定 `owner/admin/analyst` OIDC 身份；
+- `POST /v1/projects/{project_id}/members/{membership_id}/role`：显式变更角色；
+- `POST /v1/projects/{project_id}/members/{membership_id}/revoke`：撤销访问；
+- `POST /v1/projects/{project_id}/members/{membership_id}/reactivate`：恢复误撤销成员。
+
+只有 owner 可以新增、撤销、恢复或改写 owner；admin 只能管理 admin/analyst。系统拒绝
+删除或降级最后一个 active owner，也拒绝导致项目没有 manager 的自撤销/自降级。OIDC
+identity 已存在但资料不同、或对 revoked 成员再次调用 add，都会 fail closed；必须核对
+IdP 后使用显式 role/reactivate 命令。所有实际变化分别记录 `member.added`、
+`member.role_changed`、`member.revoked`、`member.reactivated` 追加式审计。
+
+## 6. 验收
 
 - Customer API 请求 `/v1/engineering/*`、`/v1/dev-tools/*` 和内部管理路径均为 404。
 - Admin `/api/auth/login` 只跳转到 allowlist 中的 OIDC HTTPS origin；缺配置或非法 URL 必须返回 503。
@@ -63,6 +91,6 @@ fail closed，绝不覆盖。完成后使用该 OIDC owner 登录，即可通过
 - Worker 可接管租约过期任务，且重复消息不会产生第二份业务结果。
 - 使用新建项目完成一次受控 DeepSeek 文案生成和人工审核。
 
-## 6. 升级与回退
+## 7. 升级与回退
 
 先执行备份，再拉取新 digest，通过 `migrate` 后滚动 API、Worker、Web。数据库迁移只能向前；应用回退必须兼容已执行迁移，否则从升级前备份恢复到隔离环境重新部署。

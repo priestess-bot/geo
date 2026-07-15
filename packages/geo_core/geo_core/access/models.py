@@ -48,6 +48,18 @@ class CsrfRejected(AccessError):
     """Raised when an unsafe Session operation lacks the bound CSRF token."""
 
 
+class MembershipConflict(AccessError):
+    """Raised when a managed identity or membership conflicts with stored state."""
+
+
+class MembershipNotFound(AccessError):
+    """Raised when the requested project membership is not visible to the caller."""
+
+
+class MembershipSafetyViolation(AccessError):
+    """Raised when a member change would remove required project governance."""
+
+
 @dataclass(frozen=True)
 class ExternalIdentity:
     issuer: str
@@ -132,6 +144,7 @@ class Page:
 
 InvitationRole = Literal["analyst", "viewer", "customer"]
 InvitationSurface = Literal["admin", "customer"]
+ManagedMembershipRole = Literal["owner", "admin", "analyst"]
 
 
 @dataclass(frozen=True)
@@ -183,4 +196,47 @@ class RedeemedSession:
     session_token: str
     csrf_token: str
     expires_at: datetime
+    replayed: bool
+
+
+@dataclass(frozen=True)
+class ManagedMembershipRecord:
+    id: UUID
+    tenant_id: UUID
+    project_id: UUID
+    identity_id: UUID
+    issuer: str
+    subject: str
+    email: str
+    display_name: str
+    role: ManagedMembershipRole
+    status: Literal["active", "revoked"]
+    created_at: datetime
+
+
+@dataclass(frozen=True)
+class CreatedMembership:
+    membership: ManagedMembershipRecord
+    replayed: bool
+
+
+@dataclass(frozen=True)
+class RevokedMembership:
+    membership: ManagedMembershipRecord
+    replayed: bool
+
+
+MembershipCommandType = Literal["add", "revoke", "change_role", "reactivate"]
+
+
+@dataclass(frozen=True)
+class MembershipCommandRecord:
+    command_type: MembershipCommandType
+    request_hash: str
+    membership: ManagedMembershipRecord
+
+
+@dataclass(frozen=True)
+class ChangedMembership:
+    membership: ManagedMembershipRecord
     replayed: bool

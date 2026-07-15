@@ -28,6 +28,7 @@ from geo_core.access.ports import (
     IdentityRepository,
     InvitationRepository,
     JobRepository,
+    MembershipRepository,
     ProjectRepository,
     SessionRepository,
 )
@@ -376,6 +377,7 @@ class PsycopgAccessUnitOfWork:
     jobs: JobRepository
     invitations: InvitationRepository
     audit: AccessAuditRepository
+    members: MembershipRepository
 
     def __init__(self, connection_factory: ConnectionFactory) -> None:
         self._connection_factory = connection_factory
@@ -393,9 +395,11 @@ class PsycopgAccessUnitOfWork:
                 PsycopgAccessAuditRepository,
                 PsycopgInvitationRepository,
             )
+            from geo_core.access.membership_postgres import PsycopgMembershipRepository
 
             self.invitations = PsycopgInvitationRepository(self.connection)
             self.audit = PsycopgAccessAuditRepository(self.connection)
+            self.members = PsycopgMembershipRepository(self.connection)
             self.set_principal(None)
         except psycopg.Error as error:
             self._close()

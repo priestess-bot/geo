@@ -40,6 +40,9 @@ typecheck:
 		apps/api/geo_api/monitoring_routes.py \
 		apps/api/geo_api/customer_geo_routes.py \
 		apps/api/geo_api/monitoring_runtime.py \
+		apps/api/geo_api/member_contracts.py \
+		apps/api/geo_api/member_routes.py \
+		apps/api/geo_api/member_runtime.py \
 		scripts/export_stable_openapi.py \
 		packages/geo_core/geo_core/jobs \
 		packages/geo_core/geo_core/catalog \
@@ -47,6 +50,8 @@ typecheck:
 		packages/geo_core/geo_core/engineering \
 		packages/geo_core/geo_core/model_gateway \
 		packages/geo_core/geo_core/prompts \
+		packages/geo_core/geo_core/access/membership_service.py \
+		packages/geo_core/geo_core/access/membership_postgres.py \
 		apps/api/geo_api/engineering_runtime.py
 	corepack pnpm typecheck
 
@@ -64,6 +69,7 @@ test-migrated:
 		tests/test_api_catalog_slice.py \
 		tests/test_api_monitoring_slice.py \
 		tests/test_api_foundation_contracts.py \
+		tests/test_api_member_contracts.py \
 		tests/test_geo_alembic_baseline.py \
 		tests/test_geo_job_lifecycle.py \
 		tests/test_geo_v3_qc_contracts.py

@@ -21,6 +21,9 @@ from geo_core.access.models import (
     InvitationConsumed,
     InvitationInvalid,
     InvitationSurfaceMismatch,
+    MembershipConflict,
+    MembershipNotFound,
+    MembershipSafetyViolation,
 )
 from geo_core.placements.domain import ConcurrencyConflict, PlacementRuleViolation
 
@@ -101,6 +104,16 @@ def install_problem_handlers(app: FastAPI) -> None:
             "Access persistence unavailable",
             extra={"request_id": getattr(request.state, "request_id", "unknown")},
         )
+        return _response(
+            request,
+            ApiProblem(
+                status=503,
+                title="Service Unavailable",
+                detail="The access persistence service is unavailable.",
+                type_uri="urn:geo:problem:service-unavailable",
+                headers={"Retry-After": "30"},
+            ),
+        )
 
     @app.exception_handler(AccessConfigurationUnavailable)
     async def access_configuration_handler(
@@ -155,8 +168,9 @@ def install_problem_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(InvitationConsumed)
-    @app.exception_handler(IdempotencyConflict)
-    async def invitation_conflict_handler(request: Request, exc: Exception) -> JSONResponse:
+    async def invitation_conflict_handler(
+        request: Request, exc: InvitationConsumed
+    ) -> JSONResponse:
         return _response(
             request,
             ApiProblem(
@@ -166,14 +180,45 @@ def install_problem_handlers(app: FastAPI) -> None:
                 type_uri="urn:geo:problem:invitation-conflict",
             ),
         )
+
+    @app.exception_handler(IdempotencyConflict)
+    async def idempotency_conflict_handler(
+        request: Request, exc: IdempotencyConflict
+    ) -> JSONResponse:
         return _response(
             request,
             ApiProblem(
-                status=503,
-                title="Service Unavailable",
-                detail="The access persistence service is unavailable.",
-                type_uri="urn:geo:problem:service-unavailable",
-                headers={"Retry-After": "30"},
+                status=409,
+                title="Idempotency Conflict",
+                detail=str(exc),
+                type_uri="urn:geo:problem:idempotency-conflict",
+            ),
+        )
+
+    @app.exception_handler(MembershipNotFound)
+    async def membership_not_found_handler(
+        request: Request, exc: MembershipNotFound
+    ) -> JSONResponse:
+        return _response(
+            request,
+            ApiProblem(
+                status=404,
+                title="Membership Not Found",
+                detail=str(exc),
+                type_uri="urn:geo:problem:membership-not-found",
+            ),
+        )
+
+    @app.exception_handler(MembershipConflict)
+    @app.exception_handler(MembershipSafetyViolation)
+    async def membership_conflict_handler(request: Request, exc: Exception) -> JSONResponse:
+        return _response(
+            request,
+            ApiProblem(
+                status=409,
+                title="Membership Conflict",
+                detail=str(exc),
+                type_uri="urn:geo:problem:membership-conflict",
             ),
         )
 
