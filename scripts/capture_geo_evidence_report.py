@@ -195,6 +195,14 @@ def main() -> int:
         page = browser_instance.new_page(viewport={"width": 1440, "height": 1000})
         page.goto(report.resolve().as_uri(), wait_until="networkidle")
         page.screenshot(path=str(args.output / "geo-acceptance-evidence.png"), full_page=True)
+        cards = page.locator(".card")
+        for index, name in (
+            (0, "01-run-record.png"),
+            (1, "02-stack-health.png"),
+            (2, "03-flow-assertions.png"),
+            (3, "17-backup-restore.png"),
+        ):
+            cards.nth(index).screenshot(path=str(args.output / name))
         browser_instance.close()
     print(f"acceptance evidence captured: {args.output}")
     return 0

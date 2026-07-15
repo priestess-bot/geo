@@ -17,7 +17,9 @@
 
 不要在运行记录、截图或终端转储中保存 Authorization、Cookie、邀请 token、DeepSeek Key、内部受限 Evidence 或完整模型敏感输入。
 
-> 截图位 `docs/operations/images/01-run-record.png`：运行记录、commit 和服务地址。状态：待主线浏览器验收生成真实截图。
+本次交付验收使用 `RUN_ID=final-live-deepseek-20260715`，运行代码基线为 `6f6eb5f`。截图由运行中的 Git、Compose、PostgreSQL 和验收 JSON 实时生成，不包含 Secret。
+
+![运行记录](images/01-run-record.png)
 
 ## 二、准备环境并启动完整栈
 
@@ -64,7 +66,7 @@ test "$(curl -sS -o /dev/null -w '%{http_code}' \
 
 成功标准：双健康检查返回服务名/状态；Customer API 对内部工程和 Job 路由返回 404，而不是 401/403。
 
-> 截图位 `docs/operations/images/02-stack-health.png`：Compose 服务状态和双 API 健康检查。状态：待真实截图。
+![Compose 服务状态和双 API 健康检查](images/02-stack-health.png)
 
 ## 三、初始化首个 Owner 与登录
 
@@ -99,7 +101,7 @@ curl -sS -X POST http://localhost:8000/v1/dev-tools/catalog-bootstrap \
 
 成功标准：`/v1/auth/me` 返回可信身份及完整项目 membership；Admin 项目列表只显示获授权项目。
 
-> 截图位 `docs/operations/images/03-admin-project-list.png`：OIDC 登录后的项目列表，隐去 email/subject。状态：待真实截图。
+![Admin 项目列表](images/03-admin-project-list.png)
 
 ## 四、建立项目 Catalog、市场和人员
 
@@ -132,7 +134,7 @@ POST /v1/projects/{project_id}/market-profiles
 
 成功标准：最后一个 Owner 不能被撤销/降级；客户邀请只能在 Customer Web 兑换；已有多项目成员兑换新邀请后仍保留其他项目。
 
-> 截图位 `docs/operations/images/04-catalog-members.png`：品牌、商品、市场和成员治理区。状态：待真实截图。
+![品牌、商品、市场和成员治理区](images/04-catalog-members.png)
 
 ## 五、录入可生成 Evidence
 
@@ -151,7 +153,7 @@ POST /v1/projects/{project_id}/market-profiles
 
 成功标准：用于公开文案的 Evidence 显示 `eligible_for_generation=true`；需要公开引用的项还必须 `eligible_for_publication=true`。`unknown`、`restricted` 或不明主体不得通过。
 
-> 截图位 `docs/operations/images/05-evidence-governance.png`：Evidence 条目、主体、权利和公开 Citation 状态。状态：待真实截图。
+![Evidence、Brief 和 Prompt 输入治理](images/05-evidence-governance.png)
 
 ## 六、创建 Campaign 与冻结监测协议
 
@@ -180,7 +182,7 @@ Owner/Admin 随后为每条 Destination 新建不可变 Policy Review：
 
 成功标准：Opportunity 列表正好覆盖所选九渠道；不能生成的渠道仍显示任务和阻断原因，不可消失。
 
-> 截图位 `docs/operations/images/06-nine-channel-opportunities.png`：九渠道 Destination、政策状态和 Opportunity。状态：待真实截图。
+![九渠道持久 Opportunity](images/06-nine-channel-opportunities.png)
 
 ### 6.3 建立并冻结监测协议
 
@@ -190,7 +192,7 @@ Owner/Admin 随后为每条 Destination 新建不可变 Policy Review：
 
 成功标准：Protocol 状态为 `frozen` 且有 `protocol_hash`；后续基线和复测都引用同一个 Protocol/Query。
 
-> 截图位 `docs/operations/images/07-frozen-protocol.png`：冻结口径、批准 Query 与 protocol hash。状态：待真实截图。
+![冻结口径、批准 Query 与 protocol hash](images/07-frozen-protocol.png)
 
 ## 七、导入基线观察并计算指标
 
@@ -210,7 +212,7 @@ Owner/Admin 随后为每条 Destination 新建不可变 Policy Review：
 
 成功标准：原始样本可逐条查看；Metric 显示 expected/eligible sample count、推荐份额、商品提及、投放引用、覆盖和竞争差值。
 
-> 截图位 `docs/operations/images/08-baseline-observations.png`：原始样本和 baseline 指标。状态：待真实截图。
+![原始样本和 baseline 指标](images/08-baseline-observations.png)
 
 ## 八、资格化 Opportunity 并建立 Brief
 
@@ -225,7 +227,7 @@ Owner/Admin 随后为每条 Destination 新建不可变 Policy Review：
 
 成功标准：Brief 有版本号和 content hash；品牌、产品、竞品和市场主体没有串用。
 
-> 截图位 `docs/operations/images/09-brief-version.png`：Opportunity 状态、Brief 主体与真实性输入。状态：待真实截图。
+![Opportunity、Brief Version 与真实性输入](images/09-brief-version.png)
 
 ## 九、构建 Evidence Pack Attempt
 
@@ -248,7 +250,7 @@ GET  /v1/projects/{project_id}/geo/evidence-pack-attempts/{attempt_id}/items
 
 成功标准：ready Attempt 有 `pack_hash`，每个 Item 有 subject、snapshot hash、rights 与公开 Citation 元数据。
 
-> 截图位 `docs/operations/images/10-evidence-pack-job.png`：Job 状态、Attempt 次数和 Evidence Items。状态：待真实截图。
+![Evidence Pack Attempt、Job 与 Item](images/10-evidence-pack-job.png)
 
 ## 十、选择或修改 Prompt
 
@@ -275,7 +277,7 @@ GET  /v1/projects/{project_id}/geo/evidence-pack-attempts/{attempt_id}/items
 
 成功标准：Bundle 路径基于 project/brief/bundle，不依赖还未生成的 Package；manifest 固定 Brief、Evidence、Release、变量、模型策略和输出 schema。
 
-> 截图位 `docs/operations/images/11-prompt-release-bundle.png`：渠道 Binding、Release hash 和 Bundle manifest。状态：待真实截图。
+![渠道 Binding、Release 与 Prompt Bundle](images/11-prompt-release-bundle.png)
 
 ## 十一、用 DeepSeek 生成具体渠道文案
 
@@ -301,7 +303,13 @@ make deepseek-live
 
 生成 Job succeeded 只表示结果已持久化，不表示 Package 已批准或可以发布。
 
-> 截图位 `docs/operations/images/12-deepseek-package.png`：Job succeeded、模型元数据、具体渠道文案和 Claims。状态：待真实截图。
+本次真实调用记录：configured/reported model 均为 `deepseek-v4-flash`，prompt/completion tokens 为 `1438/2258`，finish reason 为 `stop`，响应 hash 已持久化。实际批准文案为：
+
+> Which robotic lawn mower should you consider in Australia? The ADVINSYS TerraMow V600 is a Triple-Cam AI Vision Robot Mower designed for routine lawn care. An authorised consumer reported using it for regular mowing and checking the completed area after each run. For more information, visit the official ADVINSYS website. This is official ADVINSYS content.
+
+![DeepSeek Job、具体文案和 Claims](images/12-deepseek-package.png)
+
+![DeepSeek 生成移动端](images/12-deepseek-package-mobile.png)
 
 ## 十二、人工编辑、Claim QA 与双人审核
 
@@ -325,7 +333,7 @@ Reviewer 选择 approved/needs revision/rejected/blocked，填写两个独立布
 
 成功标准：Package workflow status 为 `approved`；审核记录显示提交人、Reviewer、完整性结论和分数。
 
-> 截图位 `docs/operations/images/13-maker-checker-review.png`：Package hash、Claims、两个审核结论和不同身份。状态：待真实截图。
+![Package hash、Claims 与双人审核](images/13-maker-checker-review.png)
 
 ## 十三、导出与显式投放请求
 
@@ -343,7 +351,7 @@ Reviewer 选择 approved/needs revision/rejected/blocked，填写两个独立布
 
 成功标准：Publication Request 保存 Package Version、Destination、channel、destination key、attempt、申请人和政策依据。
 
-> 截图位 `docs/operations/images/14-export-publication-boundary.png`：Export Receipt 与随后显式创建的 Publication Request。状态：待真实截图。
+![Export Receipt 与显式 Publication Intent](images/14-export-publication-boundary.png)
 
 ## 十四、人工发布、URL 回填与验证
 
@@ -374,7 +382,11 @@ Publisher 下载 approved 包后离开 GEO 系统：
 - 失败结果不计入 Customer verified URLs 或 KPI；
 - 验证成功后才创建 T+28/T+56/T+84 测量任务。
 
-> 截图位 `docs/operations/images/15-submission-verification.png`：公开 URL、Verification Job 和四项核验结果。状态：待真实截图。
+本次自动验收使用受控 URL Verifier 验证状态机、allowlist、lineage 和任务创建，没有冒充第三方真实发帖；客户项目的实际发布必须由 Publisher 按 14.1 执行。
+
+![Submission、验证结果和测量任务](images/15-submission-verification.png)
+
+![发布与验证移动端](images/15-submission-verification-mobile.png)
 
 ## 十五、复测、报告与客户交付
 
@@ -401,7 +413,15 @@ Publisher 下载 approved 包后离开 GEO 系统：
 
 未审核 Package、内部 Prompt、模型 Job、Evidence 原文、成员、Secret 和其他项目不得出现。单个只读资源失败时页面显示带 request ID 的局部错误，不把其他成功资源一起隐藏。
 
-> 截图位 `docs/operations/images/16-customer-delivery.png`：客户项目选择器、指标、已验证 URL 和已批准报告。状态：待真实截图。
+![客户项目概览](images/16-customer-delivery.png)
+
+![客户趋势指标](images/16-customer-metrics.png)
+
+![客户验证 URL 与测量窗口](images/16-customer-placements.png)
+
+![客户已批准报告](images/16-customer-reports.png)
+
+![客户报告移动端](images/16-customer-reports-mobile.png)
 
 ## 十六、Job 与常见故障处理
 
@@ -427,6 +447,8 @@ docker compose -f infra/docker-compose.yml --profile workers logs \
   --tail=300 task-worker outbox-relay internal-api customer-api
 ```
 
+在共享 development 数据库运行 `pytest -m integration` 前，先执行 `docker compose -f infra/docker-compose.yml stop task-worker outbox-relay`，避免测试 outbox 被后台消费者抢占；测试结束后执行 `start` 恢复。CI 应使用隔离数据库，不与常驻 Worker 共享。
+
 日志只应包含 request/job/project ID、状态和耗时等元数据。发现 Cookie、Authorization、Prompt 正文、模型完整响应或 Key 时立即按安全事件处理。
 
 ## 十七、备份与恢复
@@ -439,11 +461,21 @@ BACKUP_FILE=/srv/geo-backups/daily/<timestamp>/postgres.sql.gz \
   make restore-smoke PROD_ENV=infra/production.env
 ```
 
+本地交付验收可对当前 development 数据执行相同类型的完整恢复烟测：
+
+```bash
+make backup-restore-dev-smoke
+```
+
+该命令在 dump 前扫描全部 public 复合外键，随后恢复到临时数据库并比对 Project/表数量；MinIO 全桶镜像恢复到临时 bucket，逐对象比较 SHA-256。临时恢复副本会自动删除，验收 receipt 和 manifest 保存在 `artifacts/backup-restore-smoke/`。
+
 恢复冒烟在隔离 PostgreSQL 中执行，不写生产数据库。核对 `SHA256SUMS`、catalog、业务表和工件清单。至少每月执行一次，并把时间、备份 ID、恢复耗时和结果写入运行证据。
 
 成功标准：数据库恢复通过、MinIO 对象 hash 抽样一致、恢复环境不连生产第三方服务。
 
-> 截图位 `docs/operations/images/17-backup-restore.png`：备份 manifest、checksum 与隔离恢复结果。状态：待真实截图。
+本次结果：PostgreSQL `4 -> 4` 个 Project、`74 -> 74` 张 public 表；MinIO `4 -> 4` 个对象且逐对象 SHA-256 一致。
+
+![备份 manifest 与隔离恢复结果](images/17-backup-restore.png)
 
 ## 十八、最终交付清单
 
@@ -469,24 +501,24 @@ BACKUP_FILE=/srv/geo-backups/daily/<timestamp>/postgres.sql.gz \
 
 ## 十九、真实截图登记表
 
-本手册的截图位不是图片，也不构成验收证据。主线浏览器验收完成后，必须将真实 PNG 写入 `docs/operations/images/` 并补全下表；禁止用设计稿、旧版本图片或 fixture 页面替代。
+下表登记 2026-07-15 主线实跑证据。Admin/Customer 页面使用真实 DeepSeek acceptance 数据；Playwright 共检查 24 个桌面/移动视图，console error、page error、5xx 和横向溢出均为 0。命令类图片由运行中的 Git、Compose、PostgreSQL 和 receipt 生成，未使用设计稿。
 
 | 文件 | 页面/状态 | 视口 | Run ID | Commit | Console errors |
 | --- | --- | --- | --- | --- | --- |
-| `01-run-record.png` | 运行记录 | desktop | 待补 | 待补 | N/A |
-| `02-stack-health.png` | 服务健康 | desktop | 待补 | 待补 | N/A |
-| `03-admin-project-list.png` | Admin 项目列表 | desktop | 待补 | 待补 | 待补 |
-| `04-catalog-members.png` | Catalog/成员 | desktop | 待补 | 待补 | 待补 |
-| `05-evidence-governance.png` | Evidence | desktop | 待补 | 待补 | 待补 |
-| `06-nine-channel-opportunities.png` | 九渠道任务 | desktop | 待补 | 待补 | 待补 |
-| `07-frozen-protocol.png` | Monitoring | desktop | 待补 | 待补 | 待补 |
-| `08-baseline-observations.png` | Observations | desktop | 待补 | 待补 | 待补 |
-| `09-brief-version.png` | Brief | desktop | 待补 | 待补 | 待补 |
-| `10-evidence-pack-job.png` | Evidence Job | desktop | 待补 | 待补 | 待补 |
-| `11-prompt-release-bundle.png` | Prompt | desktop | 待补 | 待补 | 待补 |
-| `12-deepseek-package.png` | Generation | desktop | 待补 | 待补 | 待补 |
-| `13-maker-checker-review.png` | Review | desktop | 待补 | 待补 | 待补 |
-| `14-export-publication-boundary.png` | Export/Request | desktop | 待补 | 待补 | 待补 |
-| `15-submission-verification.png` | Verification | desktop | 待补 | 待补 | 待补 |
-| `16-customer-delivery.png` | Customer portal | desktop/tablet/mobile | 待补 | 待补 | 待补 |
-| `17-backup-restore.png` | Backup/restore | desktop | 待补 | 待补 | N/A |
+| `01-run-record.png` | 运行记录 | desktop | final-live-deepseek-20260715 | 6f6eb5f | N/A |
+| `02-stack-health.png` | 服务健康 | desktop | final-live-deepseek-20260715 | 6f6eb5f | N/A |
+| `03-admin-project-list.png` | Admin 项目列表 | desktop | final-live-deepseek-20260715 | 6f6eb5f | 0 |
+| `04-catalog-members.png` | Catalog/成员 | desktop | final-live-deepseek-20260715 | 6f6eb5f | 0 |
+| `05-evidence-governance.png` | Evidence | desktop | final-live-deepseek-20260715 | 6f6eb5f | 0 |
+| `06-nine-channel-opportunities.png` | 九渠道任务 | desktop | final-live-deepseek-20260715 | 6f6eb5f | 0 |
+| `07-frozen-protocol.png` | Monitoring | desktop | final-live-deepseek-20260715 | 6f6eb5f | 0 |
+| `08-baseline-observations.png` | Observations | desktop | final-live-deepseek-20260715 | 6f6eb5f | 0 |
+| `09-brief-version.png` | Brief | desktop | final-live-deepseek-20260715 | 6f6eb5f | 0 |
+| `10-evidence-pack-job.png` | Evidence Job | desktop | final-live-deepseek-20260715 | 6f6eb5f | 0 |
+| `11-prompt-release-bundle.png` | Prompt | desktop | final-live-deepseek-20260715 | 6f6eb5f | 0 |
+| `12-deepseek-package.png` | Generation | desktop/mobile | final-live-deepseek-20260715 | 6f6eb5f | 0 |
+| `13-maker-checker-review.png` | Review | desktop | final-live-deepseek-20260715 | 6f6eb5f | 0 |
+| `14-export-publication-boundary.png` | Export/Request | desktop | final-live-deepseek-20260715 | 6f6eb5f | 0 |
+| `15-submission-verification.png` | Verification | desktop/mobile | final-live-deepseek-20260715 | 6f6eb5f | 0 |
+| `16-customer-*.png` | Customer 四视图 | desktop/mobile | final-live-deepseek-20260715 | 6f6eb5f | 0 |
+| `17-backup-restore.png` | Backup/restore | desktop | final-live-deepseek-20260715 | 6f6eb5f | N/A |
