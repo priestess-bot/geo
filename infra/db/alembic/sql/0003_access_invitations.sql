@@ -72,9 +72,9 @@ CREATE TABLE access_audit_events (
     event_type text NOT NULL CHECK (event_type IN (
         'invitation.created', 'invitation.preflight_failed', 'invitation.redeemed',
         'invitation.revoked', 'invitation.expired', 'session.created', 'session.revoked',
-        'session.csrf_rejected'
+        'session.csrf_rejected', 'tenant.bootstrap'
     )),
-    subject_type text NOT NULL CHECK (subject_type IN ('invitation', 'session')),
+    subject_type text NOT NULL CHECK (subject_type IN ('invitation', 'session', 'project')),
     subject_id uuid NOT NULL,
     metadata jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(metadata) = 'object'),
     created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
@@ -90,6 +90,41 @@ BEGIN
     RAISE EXCEPTION 'access audit events are append-only' USING ERRCODE = '55000';
 END;
 $$;
+
+CREATE FUNCTION geo_protect_bootstrap_audit_insert() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE
+    installer_allowed boolean;
+BEGIN
+    IF NEW.event_type <> 'tenant.bootstrap' THEN
+        RETURN NEW;
+    END IF;
+    SELECT current_user = session_user
+           AND current_user = pg_get_userbyid(database_owner.datdba)
+           AND (role.rolsuper OR role.rolbypassrls)
+           AND current_user NOT IN ('geo_app', 'geo_worker')
+           AND NOT EXISTS (
+               SELECT 1 FROM pg_auth_members AS membership
+               JOIN pg_roles AS granted ON granted.oid = membership.roleid
+               JOIN pg_roles AS member ON member.oid = membership.member
+               WHERE member.rolname = current_user
+                 AND granted.rolname IN ('geo_app', 'geo_worker')
+           )
+    INTO installer_allowed
+    FROM pg_database AS database_owner
+    JOIN pg_roles AS role ON role.rolname = current_user
+    WHERE database_owner.datname = current_database();
+    IF NOT COALESCE(installer_allowed, false) THEN
+        RAISE EXCEPTION 'tenant bootstrap audit requires the installer role'
+            USING ERRCODE = '42501';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER access_audit_events_bootstrap_installer_only
+BEFORE INSERT ON access_audit_events
+FOR EACH ROW EXECUTE FUNCTION geo_protect_bootstrap_audit_insert();
 
 CREATE TRIGGER access_audit_events_append_only
 BEFORE UPDATE OR DELETE ON access_audit_events

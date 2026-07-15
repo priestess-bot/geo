@@ -5,6 +5,7 @@ import re
 ROOT = Path(__file__).resolve().parents[1]
 ALEMBIC = ROOT / "infra" / "db" / "alembic"
 BASELINE = (ALEMBIC / "sql" / "0001_geo_baseline.sql").read_text(encoding="utf-8")
+ACCESS = (ALEMBIC / "sql" / "0003_access_invitations.sql").read_text(encoding="utf-8")
 ALEMBIC_ENV = (ALEMBIC / "env.py").read_text(encoding="utf-8")
 
 
@@ -86,6 +87,16 @@ def test_runtime_roles_are_non_login_non_bypassrls_permission_groups() -> None:
     assert BASELINE.count("NOBYPASSRLS") >= 3
     assert "REVOKE CREATE ON SCHEMA public FROM PUBLIC" in BASELINE
     assert "GRANT SELECT ON ALL TABLES IN SCHEMA public TO geo_readonly" in BASELINE
+
+
+def test_initial_owner_audit_is_append_only_and_installer_only() -> None:
+    assert "'tenant.bootstrap'" in ACCESS
+    assert "'project'" in ACCESS
+    assert "geo_protect_bootstrap_audit_insert" in ACCESS
+    assert "current_user = session_user" in ACCESS
+    assert "current_user = pg_get_userbyid(database_owner.datdba)" in ACCESS
+    assert "FROM pg_auth_members AS membership" in ACCESS
+    assert "granted.rolname IN ('geo_app', 'geo_worker')" in ACCESS
 
 
 def test_content_publication_and_evidence_invariants_are_explicit() -> None:

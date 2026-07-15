@@ -9,6 +9,7 @@ PROD_COMPOSE := docker compose --env-file $(PROD_ENV) -f infra/compose.prod.yml
 	web-build api-internal api-customer admin-web customer-web \
 	db-up db-down db-reset-dev db-migrate db-heads \
 	docker-config production-config production-up production-down \
+	production-provision-owner \
 	api-image admin-image customer-image images \
 	backup restore-smoke deepseek-live ci
 
@@ -110,6 +111,9 @@ production-config:
 
 production-up: production-config
 	$(PROD_COMPOSE) up -d
+
+production-provision-owner: production-config
+	$(PROD_COMPOSE) --profile provisioning run --rm initial-owner-provision
 
 production-down:
 	$(PROD_COMPOSE) down

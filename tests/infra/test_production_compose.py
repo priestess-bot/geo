@@ -57,3 +57,18 @@ def test_backup_and_restore_smoke_scripts_are_present() -> None:
     assert restore.stat().st_mode & 0o111
     assert "pg_dump" in backup.read_text(encoding="utf-8")
     assert "restore-smoke-postgres" in restore.read_text(encoding="utf-8")
+
+
+def test_initial_owner_provision_is_explicit_installer_only_profile() -> None:
+    services = load_compose()["services"]
+    provision = services["initial-owner-provision"]
+
+    assert provision["profiles"] == ["provisioning"]
+    assert provision["restart"] == "no"
+    assert provision["read_only"] is True
+    assert provision["environment"]["GEO_INSTALLER_DATABASE_URL_FILE"] == (
+        "/run/secrets/installer_database_url"
+    )
+    assert provision["secrets"] == ["installer_database_url"]
+    assert "scripts.provision_initial_owner" in provision["command"]
+    assert "initial-owner-provision" not in services["internal-api"].get("depends_on", {})

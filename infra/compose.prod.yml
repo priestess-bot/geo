@@ -258,6 +258,34 @@ services:
       customer-api:
         condition: service_healthy
 
+  initial-owner-provision:
+    <<: *service-security
+    image: ${GEO_API_IMAGE:?set a digest-pinned GEO_API_IMAGE}
+    profiles: ["provisioning"]
+    restart: "no"
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,noexec,nosuid
+    environment:
+      GEO_INSTALLER_DATABASE_URL_FILE: /run/secrets/installer_database_url
+      GEO_JWT_ISSUER: ${GEO_JWT_ISSUER:?set GEO_JWT_ISSUER}
+      GEO_BOOTSTRAP_TENANT_ID: ${GEO_BOOTSTRAP_TENANT_ID:-}
+      GEO_BOOTSTRAP_TENANT_NAME: ${GEO_BOOTSTRAP_TENANT_NAME:-}
+      GEO_BOOTSTRAP_OIDC_ISSUER: ${GEO_BOOTSTRAP_OIDC_ISSUER:-}
+      GEO_BOOTSTRAP_OIDC_SUBJECT: ${GEO_BOOTSTRAP_OIDC_SUBJECT:-}
+      GEO_BOOTSTRAP_EMAIL: ${GEO_BOOTSTRAP_EMAIL:-}
+      GEO_BOOTSTRAP_DISPLAY_NAME: ${GEO_BOOTSTRAP_DISPLAY_NAME:-}
+      GEO_BOOTSTRAP_PROJECT_ID: ${GEO_BOOTSTRAP_PROJECT_ID:-}
+      GEO_BOOTSTRAP_PROJECT_NAME: ${GEO_BOOTSTRAP_PROJECT_NAME:-}
+    secrets:
+      - installer_database_url
+    command: ["python", "-m", "scripts.provision_initial_owner"]
+    networks:
+      - backend
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
   otel-collector:
     <<: *service-security
     image: ${GEO_OTEL_COLLECTOR_IMAGE:?set a digest-pinned GEO_OTEL_COLLECTOR_IMAGE}

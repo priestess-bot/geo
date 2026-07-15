@@ -32,7 +32,29 @@ docker compose --env-file infra/production.env -f infra/compose.prod.yml ps
 
 `migrate` 必须成功退出，API 和 Web 才能进入 healthy。Admin/Customer Web 只绑定本机回环地址，外部 TLS、域名和访问控制由受管反向代理提供。
 
-## 4. 验收
+## 4. 首次 Owner 初始化
+
+空库迁移完成后，先从 IdP 管理台确认初始管理员 token 中的 `iss`、`sub` 和
+tenant claim。填写 `infra/production.env` 的全部 `GEO_BOOTSTRAP_*` 值，其中：
+
+- `GEO_BOOTSTRAP_OIDC_ISSUER` 必须与 `GEO_JWT_ISSUER` 完全一致；
+- `GEO_BOOTSTRAP_OIDC_SUBJECT` 必须等于 IdP token 的 `sub`；
+- `GEO_BOOTSTRAP_TENANT_ID` 必须等于 token 中由 `GEO_OIDC_TENANT_CLAIM` 指定的 claim；
+- email/display name 只用于身份资料，不参与认证；tenant/project UUID 由运维预先生成并留档。
+
+执行显式 one-shot profile；普通 `production-up` 不会运行此服务：
+
+```bash
+make production-provision-owner PROD_ENV=infra/production.env
+```
+
+该命令只使用 installer Secret，在一个短事务内创建首 tenant、OIDC identity、首 project
+和 owner membership，并追加 `tenant.bootstrap` 审计。成功输出仅包含四个公开字段：
+tenant/identity/project ID 与 `replayed`。相同配置可安全重放；任何部分存在或字段不同都会
+fail closed，绝不覆盖。完成后使用该 OIDC owner 登录，即可通过稳定 `POST /v1/projects`
+创建后续项目。不要把 provisioning profile 加入常驻启动命令。
+
+## 5. 验收
 
 - Customer API 请求 `/v1/engineering/*`、`/v1/dev-tools/*` 和内部管理路径均为 404。
 - Admin `/api/auth/login` 只跳转到 allowlist 中的 OIDC HTTPS origin；缺配置或非法 URL 必须返回 503。
@@ -41,6 +63,6 @@ docker compose --env-file infra/production.env -f infra/compose.prod.yml ps
 - Worker 可接管租约过期任务，且重复消息不会产生第二份业务结果。
 - 使用新建项目完成一次受控 DeepSeek 文案生成和人工审核。
 
-## 5. 升级与回退
+## 6. 升级与回退
 
 先执行备份，再拉取新 digest，通过 `migrate` 后滚动 API、Worker、Web。数据库迁移只能向前；应用回退必须兼容已执行迁移，否则从升级前备份恢复到隔离环境重新部署。
