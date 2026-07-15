@@ -25,16 +25,19 @@ export function ObservationWorkspace({ projectId, data }: { projectId: string; d
           <span className={styles.meta}><span>{item.platform}</span><span>{item.locale}</span><span>{item.sample_size} samples</span></span>
         </Link>)}</div> : <Empty>先建立监测协议。</Empty>}</ResourceBlock></div>
         <div className={styles.panel}>
-          <ActionForm action={importObservation} title="导入人工观察" submitLabel="保存原始样本" disabled={!canImport || data.queries.data.length === 0}>
+          <ActionForm action={importObservation} title="导入人工观察" submitLabel="保存原始样本" disabled={!canImport || data.protocolQueries.data.length === 0}>
             <HiddenProject projectId={projectId} /><input type="hidden" name="protocol_id" value={protocol?.id || ""} />
             <input type="hidden" name="measurement_window" value={selection.measurementWindow} />
-            <label>监测查询<select name="monitoring_query_id" required defaultValue=""><option value="" disabled>选择查询</option>{data.queries.data.map((query) => <option value={query.id} key={query.id}>{query.query_text}</option>)}</select></label>
+            <label>协议内查询<select name="monitoring_query_id" required defaultValue=""><option value="" disabled>选择冻结查询</option>{data.protocolQueries.data.map((query) => <option value={query.monitoring_query_id} key={query.id}>{query.ordinal}. {query.query_text}</option>)}</select></label>
             <div className={styles.inline}><label>样本编号<input name="sample_index" type="number" min="1" defaultValue="1" required /></label><label>结果<select name="result_status" defaultValue="succeeded"><option value="succeeded">成功</option><option value="failed">失败</option></select></label></div>
             <label>观测时间<input name="observed_at" type="datetime-local" required /></label>
             <label>配置模型<input name="configured_model" defaultValue="deepseek-chat" required /></label><label>提供方报告模型<input name="provider_reported_model" /></label>
             <label>界面/入口<input name="ui_surface" defaultValue="manual browser session" required /></label>
             <label>原始回答<textarea name="raw_answer" placeholder="完整保存 AI 搜索回答" /></label>
-            <label>引用 URL<textarea name="citation_urls" placeholder="每行一条，系统保留逐条验证状态" /></label>
+            <label>已验证投放引用<select name="verified_citation_targets" multiple size={Math.min(5, Math.max(2, data.citationTargets.data.length))}>{data.citationTargets.data.map((target) => <option
+              value={JSON.stringify({ url: target.url, submission_id: target.submission_id })} key={target.submission_id}>{target.publication_channel} · {target.destination_key} · {target.url}</option>)}</select></label>
+            <p className={styles.meta}>仅列出当前协议 Campaign 中已通过 URL 验证的投放记录；可按住 Ctrl/Cmd 多选。</p>
+            <label>其他公开引用 URL<textarea name="citation_urls" placeholder="每行一条；未关联验证投放的引用不会计入 placement citation share" /></label>
             <label>截图/导出工件 URI<input name="artifact_uri" type="url" /></label>
             <div className={styles.inline}><label className={styles.check}><input type="checkbox" name="eligible" defaultChecked />样本符合协议</label><label>URL 检查<select name="url_verification_status" defaultValue="unknown"><option value="unknown">未检查</option><option value="passed">通过</option><option value="failed">失败</option></select></label></div>
             <label className={styles.check}><input type="checkbox" name="recommendation_present" />出现推荐</label>
@@ -43,6 +46,7 @@ export function ObservationWorkspace({ projectId, data }: { projectId: string; d
             <label>混杂因素<textarea name="confounding_factors" placeholder="每行一条" /></label><label>不合格原因<textarea name="ineligible_reasons" placeholder="每行一条" /></label>
           </ActionForm>
           {!canImport ? <p className={styles.meta}>只有冻结的协议可接收观察样本，避免测量口径漂移。</p> : null}
+          {canImport && data.protocolQueries.data.length === 0 ? <p className={styles.meta}>当前协议没有已批准查询，不能导入观察。</p> : null}
         </div>
       </aside>
       <div className={styles.workspace}>
@@ -51,7 +55,7 @@ export function ObservationWorkspace({ projectId, data }: { projectId: string; d
           <div className={styles.metric}><span>总样本</span><strong>{data.observations.data.length}</strong></div>
           <div className={styles.metric}><span>合格</span><strong>{data.observations.data.filter((item) => item.eligible).length}</strong></div>
           <div className={styles.metric}><span>主商品提及</span><strong>{data.observations.data.filter((item) => item.primary_product_mentioned).length}</strong></div>
-          <div className={styles.metric}><span>已验证引用</span><strong>{data.observations.data.flatMap((item) => item.citations).filter((item) => item.verification_status === "passed").length}</strong></div>
+          <div className={styles.metric}><span>已验证投放引用</span><strong>{data.observations.data.flatMap((item) => item.citations).filter((item) => item.verified_placement).length}</strong></div>
         </div>
         <ResourceBlock resource={data.observations}>{(observations) => observations.length ? observations.map((observation) => <article className={styles.panel} key={observation.id}>
           <div className={styles.rowHeader}><div><strong>样本 #{observation.sample_index}</strong> <ShortId value={observation.id} /></div><Status value={observation.eligible ? "eligible" : "ineligible"} /></div>

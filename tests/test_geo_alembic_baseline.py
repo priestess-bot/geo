@@ -18,12 +18,14 @@ def test_revision_graph_has_exactly_one_root_and_head() -> None:
         "0003_access_invitations.py",
         "0004_monitoring_observations.py",
         "0005_claim_inventory_guard.py",
+        "0006_monitoring_lineage.py",
     ]
     root = revisions[0].read_text(encoding="utf-8")
     engineering = revisions[1].read_text(encoding="utf-8")
     invitations = revisions[2].read_text(encoding="utf-8")
     monitoring = revisions[3].read_text(encoding="utf-8")
-    head = revisions[4].read_text(encoding="utf-8")
+    claim_inventory = revisions[4].read_text(encoding="utf-8")
+    head = revisions[5].read_text(encoding="utf-8")
     assert 'revision = "0001_geo_baseline"' in root
     assert "down_revision = None" in root
     assert 'revision = "0002_engineering_governance"' in engineering
@@ -32,8 +34,10 @@ def test_revision_graph_has_exactly_one_root_and_head() -> None:
     assert 'down_revision = "0002_engineering_governance"' in invitations
     assert 'revision = "0004_monitoring_observations"' in monitoring
     assert 'down_revision = "0003_access_invitations"' in monitoring
-    assert 'revision = "0005_claim_inventory_guard"' in head
-    assert 'down_revision = "0004_monitoring_observations"' in head
+    assert 'revision = "0005_claim_inventory_guard"' in claim_inventory
+    assert 'down_revision = "0004_monitoring_observations"' in claim_inventory
+    assert 'revision = "0006_monitoring_lineage"' in head
+    assert 'down_revision = "0005_claim_inventory_guard"' in head
 
 
 def test_claim_inventory_guard_fails_closed_on_empty_inventory() -> None:

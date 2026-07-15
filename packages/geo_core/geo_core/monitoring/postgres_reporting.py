@@ -192,6 +192,8 @@ class MonitoringReportingMixin:
             LEFT JOIN monitoring_observation_citations citation
               ON citation.submission_id = s.id AND citation.project_id = s.project_id
              AND citation.verification_status = 'passed'
+             AND citation.url = s.submitted_url
+             AND citation.destination_id = r.destination_id
             LEFT JOIN monitoring_observations observed
               ON observed.id = citation.observation_id
              AND observed.project_id = citation.project_id

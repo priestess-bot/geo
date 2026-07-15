@@ -82,12 +82,18 @@ class ProtocolQueryResponse(StrictModel):
     ordinal: int
 
 
+class VerifiedCitationTargetResponse(StrictModel):
+    submission_id: UUID
+    destination_id: UUID
+    destination_key: str
+    publication_channel: str
+    url: str
+    verified_at: datetime
+
+
 class ObservationCitationRequest(StrictModel):
     url: str = Field(min_length=8, max_length=4096)
     title: str | None = Field(default=None, max_length=1000)
-    verification_status: Literal["passed", "failed", "unknown"]
-    verified_at: datetime | None = None
-    destination_id: UUID | None = None
     submission_id: UUID | None = None
 
 

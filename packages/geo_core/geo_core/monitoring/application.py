@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
@@ -24,6 +25,7 @@ from geo_core.monitoring.domain import (
     ProtocolQuery,
     ProtocolStatus,
     QuerySuggestion,
+    VerifiedCitationTarget,
     VerifiedUrl,
     calculate_metric_snapshot,
     protocol_hash,
@@ -118,6 +120,26 @@ class MonitoringApplication:
                 project_id=project_id, protocol_id=protocol_id
             )
 
+    def list_protocol_queries(
+        self, principal: AccessPrincipal, *, project_id: UUID, protocol_id: UUID
+    ) -> tuple[ProtocolQuery, ...]:
+        _require_role(principal, project_id, READER_ROLES)
+        with self._unit_of_work_factory(principal) as unit_of_work:
+            _protocol(unit_of_work.monitoring, project_id, protocol_id)
+            return unit_of_work.monitoring.list_protocol_queries(
+                project_id=project_id, protocol_id=protocol_id
+            )
+
+    def list_citation_targets(
+        self, principal: AccessPrincipal, *, project_id: UUID, protocol_id: UUID
+    ) -> tuple[VerifiedCitationTarget, ...]:
+        _require_role(principal, project_id, CONTRIBUTOR_ROLES)
+        with self._unit_of_work_factory(principal) as unit_of_work:
+            protocol = _protocol(unit_of_work.monitoring, project_id, protocol_id)
+            return unit_of_work.monitoring.list_verified_citation_targets(
+                project_id=project_id, campaign_id=protocol.campaign_id
+            )
+
     def approve_suggestion(
         self,
         principal: AccessPrincipal,
@@ -196,6 +218,12 @@ class MonitoringApplication:
                 raise MonitoringRuleViolation("observations require a frozen protocol")
             if draft.sample_index > protocol.sample_size:
                 raise MonitoringRuleViolation("sample index exceeds the frozen denominator")
+            normalized_citations = unit_of_work.monitoring.resolve_citation_lineage(
+                project_id=project_id,
+                campaign_id=protocol.campaign_id,
+                citations=draft.citations,
+            )
+            draft = replace(draft, citations=normalized_citations)
             observation = unit_of_work.monitoring.import_observation(
                 project_id=project_id,
                 protocol_id=protocol_id,

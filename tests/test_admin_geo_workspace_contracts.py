@@ -74,6 +74,22 @@ def test_admin_geo_export_and_publication_are_separate_explicit_actions() -> Non
     assert "标记为待发布" in publication_panel
 
 
+def test_observation_workspace_uses_protocol_queries_and_verified_submission_targets() -> None:
+    data = (FEATURE_ROOT / "data.ts").read_text(encoding="utf-8")
+    actions = (FEATURE_ROOT / "campaign-actions.ts").read_text(encoding="utf-8")
+    workspace = (FEATURE_ROOT / "ObservationWorkspace.tsx").read_text(encoding="utf-8")
+    client = (ROOT / "packages/web/api-client/src/geo.ts").read_text(encoding="utf-8")
+
+    assert "listProtocolQueries" in data
+    assert "listCitationTargets" in data
+    assert "/monitoring-protocols/${protocolId}/queries" in client
+    assert "/monitoring-protocols/${protocolId}/citation-targets" in client
+    assert "data.protocolQueries.data" in workspace
+    assert "query.monitoring_query_id" in workspace
+    assert 'name="verified_citation_targets"' in workspace
+    assert 'verification_status: "unknown"' not in actions
+
+
 def test_admin_geo_files_stay_below_refactor_size_limits() -> None:
     page = (GEO_ROOT / "page.tsx").read_text(encoding="utf-8")
     assert len(page.splitlines()) < 300

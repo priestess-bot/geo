@@ -137,6 +137,37 @@ def test_report_is_explicitly_observational_and_non_causal() -> None:
     assert len(report_hash) == 64
 
 
+def test_passed_citation_without_verified_submission_lineage_is_not_counted() -> None:
+    destination_id, submission_id = uuid4(), uuid4()
+    protocol = MonitoringProtocol(
+        uuid4(), uuid4(), uuid4(), uuid4(), "P", Platform.CHATGPT_SEARCH, "en-AU",
+        Device.DESKTOP, 1, 28, ProtocolStatus.FROZEN, "d" * 64, NOW, NOW, NOW,
+    )
+    observation = _observation(
+        project_id=protocol.project_id,
+        protocol_id=protocol.id,
+        campaign_id=protocol.campaign_id,
+        sample_index=1,
+        verified=True,
+        eligible=True,
+        destination_id=destination_id,
+        submission_id=submission_id,
+        verified_lineage=False,
+    )
+
+    metric = calculate_metric_snapshot(
+        snapshot_id=uuid4(), protocol=protocol, query_count=1,
+        window=MeasurementWindow.BASELINE, observations=(observation,),
+        destination_state=CampaignDestinationState(
+            frozenset({destination_id}), frozenset({destination_id}),
+            frozenset({destination_id}),
+        ),
+        computed_at=NOW,
+    )
+
+    assert metric.placement_citation_share == Decimal("0.000000")
+
+
 def test_failed_and_mixed_collection_windows_are_confounded() -> None:
     campaign_id = uuid4()
     protocol = MonitoringProtocol(
@@ -194,6 +225,7 @@ def _observation(
     eligible: bool,
     destination_id: object | None = None,
     submission_id: object | None = None,
+    verified_lineage: bool = True,
 ) -> MonitoringObservation:
     query_id = uuid4()
     verification = VerificationStatus.PASSED if verified else VerificationStatus.FAILED
@@ -213,7 +245,7 @@ def _observation(
         citations = (
             ObservationCitation(
                 uuid4(), "https://example.com/verified", "Verified",
-                VerificationStatus.PASSED, destination_id, submission_id, True,
+                VerificationStatus.PASSED, destination_id, submission_id, verified_lineage,
             ),
         )
     draft = ObservationDraft(

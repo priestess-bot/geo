@@ -17,7 +17,9 @@ from geo_core.monitoring.domain import (
     MonitoringProtocol,
     MonitoringReport,
     Platform,
+    ProtocolQuery,
     ProtocolStatus,
+    VerifiedCitationTarget,
     VerifiedUrl,
 )
 
@@ -92,12 +94,36 @@ class ReadModelApplication(MonitoringApplication):
             ),
         )
 
+    def list_protocol_queries(
+        self, principal: AccessPrincipal, *, project_id: UUID, protocol_id: UUID
+    ):
+        del principal
+        return (
+            ProtocolQuery(
+                uuid4(), project_id, protocol_id, uuid4(),
+                "best robot vacuum", "recommendation", "en-AU", 1,
+            ),
+        )
 
-def _app(surface: str = "customer") -> tuple[object, AccessPrincipal]:
+    def list_citation_targets(
+        self, principal: AccessPrincipal, *, project_id: UUID, protocol_id: UUID
+    ):
+        del principal, project_id, protocol_id
+        return (
+            VerifiedCitationTarget(
+                uuid4(), uuid4(), "owned-au", "owned_site",
+                "https://example.com/verified", NOW,
+            ),
+        )
+
+
+def _app(
+    surface: str = "customer", role: str = "customer"
+) -> tuple[object, AccessPrincipal]:
     tenant_id, identity_id, project_id = uuid4(), uuid4(), uuid4()
     principal = AccessPrincipal(
         identity_id, "customer-subject", tenant_id,
-        (MembershipRecord(project_id, tenant_id, "customer"),), "session",
+        (MembershipRecord(project_id, tenant_id, role),), "session",
     )
     return (
         create_api_app(
@@ -158,3 +184,29 @@ def test_internal_monitoring_dto_rejects_actor_and_tenant_fields() -> None:
         )
 
     assert response.status_code == 422
+
+
+def test_internal_monitoring_exposes_frozen_queries_and_verified_citation_targets() -> None:
+    app, principal = _app("internal", "owner")
+    project_id, protocol_id = principal.project_ids[0], uuid4()
+    with TestClient(app) as client:  # type: ignore[arg-type]
+        queries = client.get(
+            f"/v1/projects/{project_id}/monitoring-protocols/{protocol_id}/queries"
+        )
+        targets = client.get(
+            f"/v1/projects/{project_id}/monitoring-protocols/{protocol_id}/citation-targets"
+        )
+
+    assert queries.status_code == targets.status_code == 200
+    assert queries.json()[0]["protocol_id"] == str(protocol_id)
+    assert targets.json()[0]["url"] == "https://example.com/verified"
+    assert targets.json()[0]["publication_channel"] == "owned_site"
+
+
+def test_citation_verification_fields_are_server_authoritative() -> None:
+    app, _ = _app("internal", "owner")
+    properties = app.openapi()["components"]["schemas"]["ObservationCitationRequest"][
+        "properties"
+    ]
+
+    assert set(properties) == {"url", "title", "submission_id"}

@@ -1,6 +1,6 @@
 "use server";
 
-import type { MeasurementWindow, PublicationChannel, QueryKind } from "@geo/types/geo";
+import type { MeasurementWindow, ObservationCitationCreate, PublicationChannel, QueryKind } from "@geo/types/geo";
 import { checked, client, finish, guards, isActionError, jsonObject, lines, numberValue, type ActionResult, value } from "./action-utils";
 
 export async function createCampaign(_state: ActionResult, form: FormData): Promise<ActionResult> {
@@ -56,14 +56,28 @@ export async function approveSuggestion(_state: ActionResult, form: FormData): P
 
 export async function importObservation(_state: ActionResult, form: FormData): Promise<ActionResult> {
   const projectId = value(form, "project_id"), protocolId = value(form, "protocol_id"), api = await client();
-  const citationUrls = lines(form, "citation_urls");
+  let verifiedCitations: ObservationCitationCreate[];
+  try {
+    verifiedCitations = form.getAll("verified_citation_targets").map((raw) => {
+      const parsed = JSON.parse(String(raw)) as { url?: unknown; submission_id?: unknown };
+      if (typeof parsed.url !== "string" || typeof parsed.submission_id !== "string") throw new Error("invalid citation target");
+      return { url: parsed.url, submission_id: parsed.submission_id };
+    });
+  } catch {
+    return { error: "已验证引用选项无效，请刷新页面后重试", status: 422, code: "invalid_citation_target" };
+  }
+  const verifiedUrls = new Set(verifiedCitations.map((item) => item.url));
+  const citations: ObservationCitationCreate[] = [
+    ...verifiedCitations,
+    ...lines(form, "citation_urls").filter((url) => !verifiedUrls.has(url)).map((url) => ({ url })),
+  ];
   return finish(projectId, await api.importObservation(projectId, protocolId, {
     monitoring_query_id: value(form, "monitoring_query_id"), measurement_window: value(form, "measurement_window") as MeasurementWindow,
     sample_index: numberValue(form, "sample_index", 1), result_status: value(form, "result_status") as "succeeded" | "failed",
     eligible: checked(form, "eligible"), url_verification_status: value(form, "url_verification_status") as "passed" | "failed" | "unknown",
     configured_model: value(form, "configured_model"), provider_reported_model: value(form, "provider_reported_model") || null,
     ui_surface: value(form, "ui_surface"), observed_at: value(form, "observed_at"), raw_answer: value(form, "raw_answer") || null,
-    citations: citationUrls.map((url) => ({ url, verification_status: "unknown" })),
+    citations,
     recommendation_present: checked(form, "recommendation_present"), primary_product_mentioned: checked(form, "primary_product_mentioned"),
     competitor_mentioned: checked(form, "competitor_mentioned"), artifact_uri: value(form, "artifact_uri") || null,
     confounding_factors: lines(form, "confounding_factors"), ineligible_reasons: lines(form, "ineligible_reasons"),

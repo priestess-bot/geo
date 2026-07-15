@@ -1,0 +1,3 @@
+DROP TRIGGER IF EXISTS monitoring_observation_citation_lineage_guard
+ON monitoring_observation_citations;
+DROP FUNCTION IF EXISTS geo_assert_monitoring_citation_lineage();
