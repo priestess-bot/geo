@@ -12,6 +12,8 @@ from geo_core.placements.evidence_worker_repository import EvidenceWorkerReposit
 from geo_core.placements.domain import PackageVersion, WorkflowStatus, canonical_hash
 from geo_core.placements.ports import GeneratedPlacement, GenerationClaim
 from geo_core.placements.publication_worker_support import (
+    advance_generated_opportunity,
+    advance_verified_opportunity,
     content_fragments,
     open_measurement_window,
     schedule_measurements,
@@ -308,6 +310,7 @@ class PlacementWorkerRepository(EvidenceWorkerRepositoryMixin):
                            VALUES (%s, %s, %s, %s)""",
                         (claim_id, lease.project_id, evidence_id, classification),
                     )
+            advance_generated_opportunity(connection, lease.project_id, claim.package_id)
             details = {
                 "model_call_log_id": str(result.call_log_id),
                 "configured_model": result.configured_model,
@@ -410,6 +413,10 @@ class PlacementWorkerRepository(EvidenceWorkerRepositoryMixin):
                    WHERE id = %s AND project_id = %s""",
                 (publication_status, snapshot.publication_request_id, lease.project_id),
             )
+            if success:
+                advance_verified_opportunity(
+                    connection, lease.project_id, snapshot.submission_id
+                )
             scheduled = (
                 self._schedule_measurements(connection, lease, snapshot.submission_id)
                 if success

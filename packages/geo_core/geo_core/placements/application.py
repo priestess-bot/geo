@@ -8,6 +8,9 @@ from uuid import UUID, uuid4
 from urllib.parse import urlparse
 
 from geo_core.placements.application_operations import PlacementOperationsApplicationMixin
+from geo_core.placements.application_publication_operations import (
+    PlacementPublicationOperationsMixin,
+)
 from geo_core.placements.claim_inventory import validate_edited_claims
 from geo_core.placements.default_prompts import DEFAULT_SYSTEM_TEMPLATE
 from geo_core.placements.domain import (
@@ -21,7 +24,6 @@ from geo_core.placements.domain import (
     EvidencePackAttempt,
     ExportReceipt,
     JobReference,
-    Measurement,
     MonitoringQuery,
     Opportunity,
     PackageVersion,
@@ -32,7 +34,6 @@ from geo_core.placements.domain import (
     PublicationRequest,
     Review,
     ReviewSubmission,
-    Submission,
     assert_approval_allowed,
     canonical_hash,
     edit_package_version,
@@ -42,7 +43,9 @@ from geo_core.placements.ports import GeneratedClaim, UnitOfWorkFactory
 from geo_core.placements.prompt_release import compile_executable_release
 
 
-class PlacementApplication(PlacementOperationsApplicationMixin):
+class PlacementApplication(
+    PlacementOperationsApplicationMixin, PlacementPublicationOperationsMixin
+):
     """Coordinates domain rules and one short Unit of Work per command/query."""
 
     def __init__(
@@ -506,24 +509,6 @@ class PlacementApplication(PlacementOperationsApplicationMixin):
             uow.commit()
             return result
 
-    def create_submission(
-        self,
-        *,
-        project_id: UUID,
-        publication_request_id: UUID,
-        submitted_url: str | None,
-        provider_submission_id: str | None,
-    ) -> Submission:
-        with self._uow_factory(project_id) as uow:
-            result = uow.placements.create_submission(
-                project_id=project_id,
-                publication_request_id=publication_request_id,
-                submitted_url=submitted_url,
-                provider_submission_id=provider_submission_id,
-            )
-            uow.commit()
-            return result
-
     def list_publication_requests(
         self, *, project_id: UUID, version_id: UUID
     ) -> tuple[PublicationRequest, ...]:
@@ -531,64 +516,5 @@ class PlacementApplication(PlacementOperationsApplicationMixin):
             return uow.placements.list_publication_requests(
                 project_id=project_id, version_id=version_id
             )
-
-    def list_submissions(
-        self, *, project_id: UUID, publication_request_id: UUID
-    ) -> tuple[Submission, ...]:
-        with self._uow_factory(project_id) as uow:
-            return uow.placements.list_submissions(
-                project_id=project_id, publication_request_id=publication_request_id
-            )
-
-    def get_submission(self, *, project_id: UUID, submission_id: UUID) -> Submission | None:
-        with self._uow_factory(project_id) as uow:
-            return uow.placements.get_submission(project_id=project_id, submission_id=submission_id)
-
-    def request_verification(
-        self, *, project_id: UUID, submission_id: UUID, idempotency_key: str
-    ) -> JobReference:
-        with self._uow_factory(project_id) as uow:
-            result = uow.placements.enqueue_verification(
-                project_id=project_id,
-                submission_id=submission_id,
-                idempotency_key=idempotency_key,
-            )
-            uow.commit()
-            return result
-
-    def record_measurement(
-        self,
-        *,
-        project_id: UUID,
-        submission_id: UUID,
-        monitoring_query_id: UUID,
-        measured_at: datetime,
-        citation_present: bool,
-        recommendation_position: int | None,
-        result_snapshot_uri: str,
-        metrics: Mapping[str, object],
-    ) -> Measurement:
-        with self._uow_factory(project_id) as uow:
-            result = uow.placements.record_measurement(
-                project_id=project_id,
-                submission_id=submission_id,
-                monitoring_query_id=monitoring_query_id,
-                measured_at=measured_at,
-                citation_present=citation_present,
-                recommendation_position=recommendation_position,
-                result_snapshot_uri=result_snapshot_uri,
-                metrics=metrics,
-            )
-            uow.commit()
-            return result
-
-    def list_measurements(
-        self, *, project_id: UUID, submission_id: UUID
-    ) -> tuple[Measurement, ...]:
-        with self._uow_factory(project_id) as uow:
-            return uow.placements.list_measurements(
-                project_id=project_id, submission_id=submission_id
-            )
-
 
 __all__ = ["ConcurrencyConflict", "PlacementApplication"]

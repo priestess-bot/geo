@@ -43,6 +43,7 @@ export interface DestinationPolicyView extends DestinationPolicyReviewCreate {
 export interface OpportunityView {
   id: string; project_id: string; campaign_id: string; destination_id: string;
   opportunity_ref: string; rationale: string; status: string;
+  allowed_commands: Array<"qualify" | "block" | "reopen" | "cancel">;
 }
 export interface OpportunityStateCommand { reason?: string | null; }
 
@@ -145,6 +146,7 @@ export interface PublicationView {
 export interface SubmissionCreate { provider_submission_id?: string | null; submitted_url?: string | null; }
 export interface SubmissionView {
   id: string; project_id: string; publication_request_id: string; status: string;
+  idempotency_key: string; submitted_by: string;
   provider_submission_id?: string | null; submitted_url?: string | null;
   url_backfilled_at?: string | null; url_backfilled_by?: string | null; verification_result?: JsonObject | null;
 }
@@ -155,6 +157,13 @@ export interface MeasurementCreate {
   metrics?: JsonObject; recommendation_position?: number | null;
 }
 export interface MeasurementView extends MeasurementCreate { id: string; project_id: string; submission_id: string; }
+export interface MeasurementCollectionTaskView {
+  id: string; project_id: string; job_id: string; submission_id: string; protocol_id: string;
+  measurement_window: "t28" | "t56" | "t84"; expected_sample_count: number;
+  actual_sample_count: number; scheduled_for: string; status: "open" | "completed" | "cancelled";
+  opened_at: string; completed_at: string | null; cancelled_at: string | null;
+  acted_by: string | null; state_reason: string | null;
+}
 
 export interface MonitoringProtocolCreate {
   campaign_id: string; market_profile_id: string; name: string;

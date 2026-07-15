@@ -307,7 +307,7 @@ class PostgresPromptRepositoryMixin:
                      ORDER BY value.version_number DESC LIMIT 1
                    ) pv ON true
                    WHERE p.id = %s AND p.project_id = %s AND p.status = 'ready'
-                     AND bv.id = %s AND o.status IN ('qualified', 'in_progress')""",
+                     AND bv.id = %s AND o.status IN ('briefing', 'in_progress')""",
                 (
                     values["evidence_pack_attempt_id"],
                     values["project_id"],
@@ -570,7 +570,7 @@ class PostgresPromptRepositoryMixin:
                JOIN placement_opportunities o
                  ON o.id = b.opportunity_id AND o.project_id = b.project_id
                WHERE pb.id = %s AND pb.project_id = %s
-                 AND o.status IN ('qualified', 'in_progress')""",
+                 AND o.status IN ('briefing', 'in_progress')""",
             (values["prompt_bundle_id"], values["project_id"]),
         ).fetchone()
         if eligible is None:

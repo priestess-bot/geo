@@ -2,7 +2,7 @@ import type {
   AsyncResourceCreated, BriefVersionCreate, BriefVersionView, CampaignCreate, CampaignCreated, CampaignView,
   ClaimView, DestinationCreate, DestinationPolicyReviewCreate, DestinationPolicyView, DestinationView,
   EvidenceAttemptView, EvidenceItemView, ExportView, GenerationCreate, JobAccepted, JobStatus,
-  MeasurementCreate, MeasurementView, MeasurementWindow, MetricView, MonitoringObservationCreate,
+  MeasurementCollectionTaskView, MeasurementCreate, MeasurementView, MeasurementWindow, MetricView, MonitoringObservationCreate,
   MonitoringObservationView, MonitoringProtocolCreate, MonitoringProtocolView, MonitoringQueryCreate,
   MonitoringQueryView, MonitoringReportCreate, MonitoringReportView, OpportunityStateCommand, OpportunityView,
   PackageEdit, PackageVersionView, PlacementJobEventView, PlacementJobView, PromptBundleCreate,
@@ -90,6 +90,9 @@ export class GeoAdminApiClient {
   verifySubmission(projectId: string, submissionId: string, guards: RuntimeRequestGuards) { return this.request<JobAccepted>(`/v1/projects/${projectId}/geo/submissions/${submissionId}/verification-jobs`, { method: "POST", ...guards }); }
   listMeasurements(projectId: string, submissionId: string) { return this.request<MeasurementView[]>(`/v1/projects/${projectId}/geo/submissions/${submissionId}/measurements`); }
   createMeasurement(projectId: string, submissionId: string, body: MeasurementCreate, guards: RuntimeRequestGuards) { return this.request<MeasurementView, MeasurementCreate>(`/v1/projects/${projectId}/geo/submissions/${submissionId}/measurements`, { method: "POST", body, ...guards }); }
+  listMeasurementCollectionTasks(projectId: string, submissionId?: string) { return this.request<MeasurementCollectionTaskView[]>(`/v1/projects/${projectId}/geo/measurement-collection-tasks`, { query: { submission_id: submissionId } }); }
+  completeMeasurementCollectionTask(projectId: string, taskId: string, guards: RuntimeRequestGuards) { return this.request<MeasurementCollectionTaskView>(`/v1/projects/${projectId}/geo/measurement-collection-tasks/${taskId}/complete`, { method: "POST", ...guards }); }
+  cancelMeasurementCollectionTask(projectId: string, taskId: string, body: StateReasonCreate, guards: RuntimeRequestGuards) { return this.request<MeasurementCollectionTaskView, StateReasonCreate>(`/v1/projects/${projectId}/geo/measurement-collection-tasks/${taskId}/cancel`, { method: "POST", body, ...guards }); }
 
   listProtocols(projectId: string) { return this.request<MonitoringProtocolView[]>(`/v1/projects/${projectId}/monitoring-protocols`); }
   createProtocol(projectId: string, body: MonitoringProtocolCreate, guards: RuntimeRequestGuards) { return this.request<MonitoringProtocolView, MonitoringProtocolCreate>(`/v1/projects/${projectId}/monitoring-protocols`, { method: "POST", body, ...guards }); }

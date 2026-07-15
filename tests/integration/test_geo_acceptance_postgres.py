@@ -46,7 +46,7 @@ def test_stable_geo_acceptance_closes_the_controlled_full_flow(tmp_path: Path) -
         assert assertions["selected_channel_count"] == 9
         assert assertions["persistent_task_count"] == 9
         assert assertions["blocked_task_count"] == 8
-        assert assertions["approved_task_count"] == 1
+        assert assertions["completed_task_count"] == 1
         assert assertions["export_created_publication"] is False
         assert assertions["claim_inventory_complete"] is True
         assert assertions["review_submitter_differs_from_reviewer"] is True
@@ -54,6 +54,7 @@ def test_stable_geo_acceptance_closes_the_controlled_full_flow(tmp_path: Path) -
         placement = cast(dict[str, object], result["placement"])
         assert placement["prompt_binding_count"] == 9
         assert placement["scheduled_measurement_offsets"] == [28, 56, 84]
+        assert placement["measurement_collection_task_status"] == "completed"
         assert len(str(placement["prompt_bundle_hash"])) == 64
         assert len(str(placement["package_content_hash"])) == 64
 

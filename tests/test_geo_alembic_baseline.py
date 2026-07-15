@@ -19,6 +19,7 @@ def test_revision_graph_has_exactly_one_root_and_head() -> None:
         "0004_monitoring_observations.py",
         "0005_claim_inventory_guard.py",
         "0006_monitoring_lineage.py",
+        "0007_placement_operations.py",
     ]
     root = revisions[0].read_text(encoding="utf-8")
     engineering = revisions[1].read_text(encoding="utf-8")

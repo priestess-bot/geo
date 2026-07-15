@@ -71,7 +71,7 @@ export function DestinationWorkspace({ projectId, data }: { projectId: string; d
             return <div className={styles.row} key={item.id}>
               <span className={styles.rowHeader}><strong>{channel} · {item.opportunity_ref}</strong><Status value={item.status} /></span>
               <span className={styles.meta}><span>{item.rationale}</span><ShortId value={item.id} /></span>
-              <div className={styles.toolbar}>{(["qualify", "block", "reopen", "cancel"] as const).map((command) => <ActionForm action={transitionOpportunity} submitLabel={command} key={command} danger={command === "block" || command === "cancel"}>
+              <div className={styles.toolbar}>{item.allowed_commands.map((command) => <ActionForm action={transitionOpportunity} submitLabel={command} key={command} danger={command === "block" || command === "cancel"}>
                 <HiddenProject projectId={projectId} /><input type="hidden" name="opportunity_id" value={item.id} /><input type="hidden" name="command" value={command} /><input type="hidden" name="reason" value={`Admin workspace: ${command}`} />
               </ActionForm>)}</div>
             </div>;

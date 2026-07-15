@@ -160,6 +160,59 @@ def seed_project(connection, *, suffix: str) -> dict[str, UUID]:
     return ids
 
 
+def seed_frozen_protocol(
+    connection,
+    *,
+    project_id: UUID,
+    campaign_id: UUID,
+    market_profile_id: UUID,
+    monitoring_query_id: UUID,
+    actor_id: UUID,
+) -> UUID:
+    protocol_id, suggestion_id = uuid4(), uuid4()
+    connection.execute(
+        """INSERT INTO monitoring_protocols
+             (id, project_id, campaign_id, market_profile_id, name, platform,
+              locale, device, sample_size, window_days, created_by)
+           VALUES (%s, %s, %s, %s, %s, 'chatgpt_search', 'en-AU', 'desktop',
+                   1, 84, %s)""",
+        (
+            protocol_id, project_id, campaign_id, market_profile_id,
+            f"Frozen placement protocol {protocol_id}", actor_id,
+        ),
+    )
+    connection.execute(
+        """INSERT INTO monitoring_query_suggestions
+             (id, project_id, protocol_id, query_text, query_kind, rationale,
+              status, suggested_by, decided_by, decided_at)
+           VALUES (%s, %s, %s, 'best robot vacuum', 'recommendation',
+                   'placement integration', 'approved', %s, %s, clock_timestamp())""",
+        (suggestion_id, project_id, protocol_id, actor_id, actor_id),
+    )
+    connection.execute(
+        """INSERT INTO monitoring_protocol_queries
+             (project_id, protocol_id, monitoring_query_id, suggestion_id, ordinal,
+              query_text_snapshot, query_kind_snapshot, locale_snapshot, approved_by)
+           VALUES (%s, %s, %s, %s, 1, 'best robot vacuum',
+                   'recommendation', 'en-AU', %s)""",
+        (project_id, protocol_id, monitoring_query_id, suggestion_id, actor_id),
+    )
+    connection.execute(
+        """UPDATE monitoring_protocols
+           SET status = 'approved', approved_by = %s, approved_at = clock_timestamp()
+           WHERE id = %s AND project_id = %s""",
+        (actor_id, protocol_id, project_id),
+    )
+    connection.execute(
+        """UPDATE monitoring_protocols
+           SET status = 'frozen', protocol_hash = %s, frozen_by = %s,
+               frozen_at = clock_timestamp()
+           WHERE id = %s AND project_id = %s""",
+        ("f" * 64, actor_id, protocol_id, project_id),
+    )
+    return protocol_id
+
+
 def cleanup_projects(
     connection,
     *,

@@ -24,6 +24,7 @@ from geo_core.placements.postgres_prompts import PostgresPromptRepositoryMixin
 from geo_core.placements.postgres_policy import PostgresDestinationPolicyMixin
 from geo_core.placements.postgres_job_control import PostgresJobControlMixin
 from geo_core.placements.postgres_package_versions import PostgresPackageVersionMixin
+from geo_core.placements.postgres_measurement_tasks import PostgresMeasurementTaskMixin
 from geo_core.placements.postgres_review_publication import PostgresReviewPublicationMixin
 
 
@@ -102,6 +103,7 @@ def _package(value: Mapping[str, Any]) -> PackageVersion:
 
 
 class PsycopgPlacementRepository(
+    PostgresMeasurementTaskMixin,
     PostgresPromptRepositoryMixin,
     PostgresPackageVersionMixin,
     PostgresReviewPublicationMixin,
@@ -265,14 +267,13 @@ class PsycopgPlacementRepository(
 
     def create_brief_version(self, **values: Any) -> BriefVersion:
         project_id, opportunity_id = values["project_id"], values["opportunity_id"]
-        eligible = self._db.execute(
-            """SELECT 1 FROM placement_opportunities
-               WHERE id = %s AND project_id = %s
-                 AND status IN ('qualified', 'in_progress')""",
-            (opportunity_id, project_id),
-        ).fetchone()
-        if eligible is None:
-            raise PlacementConflict("brief creation requires a qualified opportunity")
+        opportunity = _row(
+            self._db.execute(
+                """SELECT status FROM placement_opportunities
+                   WHERE id = %s AND project_id = %s FOR UPDATE""",
+                (opportunity_id, project_id),
+            )
+        )
         existing = _rows(
             self._db.execute(
                 """SELECT id FROM placement_briefs
@@ -281,8 +282,16 @@ class PsycopgPlacementRepository(
             )
         )
         if existing:
+            if opportunity["status"] not in {"briefing", "in_progress"}:
+                raise PlacementConflict(
+                    "another brief version is not allowed from the current opportunity state"
+                )
             brief_id = existing[0]["id"]
         else:
+            if opportunity["status"] != "qualified":
+                raise PlacementConflict(
+                    "the first brief requires a qualified opportunity"
+                )
             brief_id = _row(
                 self._db.execute(
                     """INSERT INTO placement_briefs
@@ -291,6 +300,12 @@ class PsycopgPlacementRepository(
                     (project_id, opportunity_id, values["primary_brand_entity_id"]),
                 )
             )["id"]
+            self._db.execute(
+                """UPDATE placement_opportunities SET status = 'briefing',
+                     blocked_reason = NULL, updated_at = clock_timestamp()
+                   WHERE id = %s AND project_id = %s AND status = 'qualified'""",
+                (opportunity_id, project_id),
+            )
         version_number = _row(
             self._db.execute(
                 """SELECT COALESCE(MAX(version_number), 0) + 1 AS value
@@ -356,11 +371,13 @@ class PsycopgPlacementRepository(
                JOIN placement_opportunities o
                  ON o.id = b.opportunity_id AND o.project_id = b.project_id
                WHERE bv.project_id = %s AND bv.id = %s
-                 AND o.status IN ('qualified', 'in_progress') FOR UPDATE OF bv""",
+                 AND o.status IN ('briefing', 'in_progress') FOR UPDATE OF bv""",
             (project_id, brief_version_id),
         ).fetchone()
         if eligible is None:
-            raise PlacementConflict("evidence build requires a qualified opportunity")
+            raise PlacementConflict(
+                "evidence build requires a briefing or in-progress opportunity"
+            )
         attempt_number = _row(
             self._db.execute(
                 """SELECT COALESCE(MAX(attempt_number), 0) + 1 AS value

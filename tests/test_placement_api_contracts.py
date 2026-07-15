@@ -11,6 +11,7 @@ from geo_core.placements.domain import (
     PlacementConflict,
     PlacementNotFound,
     PromptReleaseView,
+    Submission,
 )
 
 
@@ -35,6 +36,9 @@ def test_placement_routes_are_stable_and_internal_only() -> None:
         "/v1/projects/{project_id}/geo/publication-requests/{publication_request_id}/submissions",
         "/v1/projects/{project_id}/geo/submissions/{submission_id}/verification-jobs",
         "/v1/projects/{project_id}/geo/submissions/{submission_id}/measurements",
+        "/v1/projects/{project_id}/geo/measurement-collection-tasks",
+        "/v1/projects/{project_id}/geo/measurement-collection-tasks/{task_id}/complete",
+        "/v1/projects/{project_id}/geo/measurement-collection-tasks/{task_id}/cancel",
     }
     assert expected <= set(internal)
     assert expected.isdisjoint(customer)
@@ -56,6 +60,7 @@ def test_generation_and_publication_require_idempotency_header() -> None:
         "/v1/projects/{project_id}/geo/prompt-bundles/{prompt_bundle_id}/generation-jobs",
         "/v1/projects/{project_id}/geo/package-versions/{version_id}/publication-requests",
         "/v1/projects/{project_id}/geo/submissions/{submission_id}/verification-jobs",
+        "/v1/projects/{project_id}/geo/publication-requests/{publication_request_id}/submissions",
     )
     for path in paths:
         parameters = document["paths"][path]["post"]["parameters"]
@@ -161,6 +166,7 @@ class _AccessServices:
 class _PlacementServices:
     def __init__(self) -> None:
         self.actor_id = None
+        self.submission_values = None
 
     def create_campaign(self, **values):
         self.actor_id = values["actor_id"]
@@ -181,6 +187,17 @@ class _PlacementServices:
             values["rationale"],
         )
         return campaign, (opportunity,)
+
+    def create_submission(self, **values):
+        self.submission_values = values
+        return Submission(
+            id=uuid4(),
+            project_id=values["project_id"],
+            publication_request_id=values["publication_request_id"],
+            status="awaiting_url",
+            idempotency_key=values["idempotency_key"],
+            submitted_by=values["submitted_by"],
+        )
 
 
 class _PromptPlacementServices:
@@ -263,6 +280,25 @@ def test_command_identity_is_derived_from_principal_and_actor_fields_are_forbidd
     }
     for name in ("CampaignCreate", "BriefVersionCreate", "PackageEdit", "ReviewCreate"):
         assert forbidden.isdisjoint(schemas[name].get("properties", {}))
+
+
+def test_submission_requires_idempotency_and_uses_authenticated_actor() -> None:
+    project_id = uuid4()
+    principal = _principal(project_id, "admin")
+    placement = _PlacementServices()
+    app = create_api_app(
+        surface="internal", services=_AccessServices(principal), placement_services=placement
+    )
+    path = f"/v1/projects/{project_id}/geo/publication-requests/{uuid4()}/submissions"
+    with TestClient(app) as client:
+        missing = client.post(path, json={})
+        created = client.post(
+            path, json={}, headers={"Idempotency-Key": "submission-contract-0001"}
+        )
+    assert missing.status_code == 422
+    assert created.status_code == 201
+    assert placement.submission_values["submitted_by"] == principal.identity_id
+    assert placement.submission_values["idempotency_key"] == "submission-contract-0001"
 
 
 def test_prompt_release_endpoint_publishes_the_submitted_system_and_user_templates() -> None:

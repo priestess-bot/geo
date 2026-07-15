@@ -18,6 +18,7 @@ from geo_core.placements.domain import (
     EvidencePackAttempt,
     ExportReceipt,
     JobReference,
+    MeasurementCollectionTask,
     PackageVersion,
     PromptBundleView,
     PublicationRequest,
@@ -29,6 +30,7 @@ from geo_core.placements.worker_composition import (
     EvidencePackHandler,
     GenerationHandler,
     JobHandler,
+    MeasurementWindowHandler,
     PlacementWorkerDispatcher,
     PublicationVerificationHandler,
 )
@@ -62,6 +64,7 @@ class PlacementResult:
     export: ExportReceipt
     publication: PublicationRequest
     submission: Submission
+    measurement_task: MeasurementCollectionTask
     submitted_url: str
     scheduled_windows: tuple[int, ...]
 
@@ -225,6 +228,8 @@ def run_placement(
         publication_request_id=publication.id,
         submitted_url=submitted_url,
         provider_submission_id=f"controlled-{setup.suffix}",
+        idempotency_key=f"acceptance-submission-{setup.suffix}",
+        submitted_by=setup.owner.identity_id,
     )
     verification_job = app.request_verification(
         project_id=project_id,
@@ -253,6 +258,21 @@ def run_placement(
     scheduled_windows = _measurement_windows(store, project_id, submission.id)
     if scheduled_windows != (28, 56, 84):
         raise AssertionError("verification must schedule T+28, T+56 and T+84")
+    measurement_job_id = _make_measurement_job_due(
+        store, project_id, submission.id, due_offset_days=28
+    )
+    opened = _dispatcher(
+        store,
+        handlers={"placement.measure": MeasurementWindowHandler(repository)},
+        worker_id=f"acceptance-measurement-{setup.suffix}",
+    ).process(job_id=measurement_job_id, project_id=project_id)
+    if opened["status"] != "awaiting_manual_samples":
+        raise AssertionError(f"T+28 collection task did not open: {opened}")
+    tasks = app.list_measurement_collection_tasks(
+        project_id=project_id, submission_id=submission.id, status="open"
+    )
+    if len(tasks) != 1 or tasks[0].measurement_window != "t28":
+        raise AssertionError("T+28 job must persist one queryable collection task")
     return PlacementResult(
         store,
         brief,
@@ -266,6 +286,7 @@ def run_placement(
         export,
         publication,
         verified_submission,
+        tasks[0],
         submitted_url,
         scheduled_windows,
     )
@@ -337,3 +358,30 @@ def _measurement_windows(
     finally:
         connection.close()
     return tuple(int(row[0]) for row in rows)
+
+
+def _make_measurement_job_due(
+    store: PostgresDurableJobStore,
+    project_id: UUID,
+    submission_id: UUID,
+    *,
+    due_offset_days: int,
+) -> UUID:
+    connection = store.open_project(project_id)
+    try:
+        row = connection.execute(
+            """SELECT job_id FROM measurement_job_specs
+               WHERE project_id = %s AND submission_id = %s AND due_offset_days = %s""",
+            (project_id, submission_id, due_offset_days),
+        ).fetchone()
+        if row is None:
+            raise AssertionError("scheduled measurement job does not exist")
+        connection.execute(
+            """UPDATE durable_jobs SET next_run_at = clock_timestamp()
+               WHERE id = %s AND project_id = %s""",
+            (row[0], project_id),
+        )
+        connection.commit()
+        return row[0]
+    finally:
+        connection.close()

@@ -5,11 +5,12 @@ from __future__ import annotations
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Request, status
+from fastapi import APIRouter, Query, Request, status
 
 from geo_api.contracts import JobAccepted, JobState
 from geo_api.placement_contracts import (
     MeasurementCreate,
+    MeasurementCollectionTaskView,
     MeasurementView,
     PublicationCreate,
     PublicationView,
@@ -80,14 +81,16 @@ def publication_router() -> APIRouter:
         publication_request_id: UUID,
         payload: SubmissionCreate,
         request: Request,
+        idempotency_key: IdempotencyHeader,
         principal: PlacementPublisher,
     ) -> object:
-        del principal
         return placement_services(request).create_submission(
             project_id=project_id,
             publication_request_id=publication_request_id,
             submitted_url=payload.submitted_url,
             provider_submission_id=payload.provider_submission_id,
+            idempotency_key=idempotency_key,
+            submitted_by=principal.identity_id,
         )
 
     @router.get(
@@ -239,6 +242,59 @@ def publication_router() -> APIRouter:
         del principal
         return placement_services(request).list_measurements(
             project_id=project_id, submission_id=submission_id
+        )
+
+    @router.get(
+        "/measurement-collection-tasks",
+        response_model=list[MeasurementCollectionTaskView],
+        operation_id="listPlacementMeasurementCollectionTasks",
+    )
+    def list_measurement_tasks(
+        project_id: UUID,
+        request: Request,
+        principal: PlacementViewer,
+        submission_id: UUID | None = None,
+        task_status: Literal["open", "completed", "cancelled"] | None = Query(
+            default=None, alias="status"
+        ),
+    ) -> tuple[object, ...]:
+        del principal
+        return placement_services(request).list_measurement_collection_tasks(
+            project_id=project_id, submission_id=submission_id, status=task_status
+        )
+
+    @router.post(
+        "/measurement-collection-tasks/{task_id}/complete",
+        response_model=MeasurementCollectionTaskView,
+        operation_id="completePlacementMeasurementCollectionTask",
+    )
+    def complete_measurement_task(
+        project_id: UUID,
+        task_id: UUID,
+        request: Request,
+        principal: PlacementEditor,
+    ) -> object:
+        return placement_services(request).complete_measurement_collection_task(
+            project_id=project_id, task_id=task_id, actor_id=principal.identity_id
+        )
+
+    @router.post(
+        "/measurement-collection-tasks/{task_id}/cancel",
+        response_model=MeasurementCollectionTaskView,
+        operation_id="cancelPlacementMeasurementCollectionTask",
+    )
+    def cancel_measurement_task(
+        project_id: UUID,
+        task_id: UUID,
+        payload: StateReasonCreate,
+        request: Request,
+        principal: PlacementEditor,
+    ) -> object:
+        return placement_services(request).cancel_measurement_collection_task(
+            project_id=project_id,
+            task_id=task_id,
+            actor_id=principal.identity_id,
+            reason=payload.reason,
         )
 
     return router

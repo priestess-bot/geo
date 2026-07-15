@@ -32,6 +32,59 @@ class PlacementNotFound(RuntimeError):
     """A project-scoped placement resource does not exist."""
 
 
+class OpportunityStatus(StrEnum):
+    IDENTIFIED = "identified"
+    QUALIFIED = "qualified"
+    BRIEFING = "briefing"
+    IN_PROGRESS = "in_progress"
+    BLOCKED = "blocked"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+
+OPPORTUNITY_COMMANDS: Mapping[OpportunityStatus, Mapping[str, OpportunityStatus]] = {
+    OpportunityStatus.IDENTIFIED: MappingProxyType(
+        {"qualify": OpportunityStatus.QUALIFIED, "block": OpportunityStatus.BLOCKED,
+         "cancel": OpportunityStatus.CANCELLED}
+    ),
+    OpportunityStatus.QUALIFIED: MappingProxyType(
+        {"block": OpportunityStatus.BLOCKED, "cancel": OpportunityStatus.CANCELLED}
+    ),
+    OpportunityStatus.BRIEFING: MappingProxyType(
+        {"block": OpportunityStatus.BLOCKED, "cancel": OpportunityStatus.CANCELLED}
+    ),
+    OpportunityStatus.IN_PROGRESS: MappingProxyType(
+        {"block": OpportunityStatus.BLOCKED, "cancel": OpportunityStatus.CANCELLED}
+    ),
+    OpportunityStatus.BLOCKED: MappingProxyType(
+        {"reopen": OpportunityStatus.IDENTIFIED, "cancel": OpportunityStatus.CANCELLED}
+    ),
+    OpportunityStatus.COMPLETED: MappingProxyType({}),
+    OpportunityStatus.CANCELLED: MappingProxyType({}),
+}
+
+
+def allowed_opportunity_commands(status: str) -> tuple[str, ...]:
+    try:
+        state = OpportunityStatus(status)
+    except ValueError as exc:
+        raise PlacementConflict(f"unknown opportunity status: {status}") from exc
+    return tuple(OPPORTUNITY_COMMANDS[state])
+
+
+def transition_opportunity_status(*, status: str, command: str) -> OpportunityStatus:
+    try:
+        state = OpportunityStatus(status)
+    except ValueError as exc:
+        raise PlacementConflict(f"unknown opportunity status: {status}") from exc
+    target = OPPORTUNITY_COMMANDS[state].get(command)
+    if target is None:
+        raise PlacementConflict(
+            f"opportunity command {command!r} is not allowed from {state.value!r}"
+        )
+    return target
+
+
 class WorkflowStatus(StrEnum):
     GENERATED = "generated"
     QA_RUNNING = "qa_running"
@@ -129,6 +182,10 @@ class Opportunity:
     opportunity_ref: str
     rationale: str
     status: str = "identified"
+
+    @property
+    def allowed_commands(self) -> tuple[str, ...]:
+        return allowed_opportunity_commands(self.status)
 
 
 @dataclass(frozen=True)
@@ -308,6 +365,8 @@ class Submission:
     project_id: UUID
     publication_request_id: UUID
     status: str
+    idempotency_key: str
+    submitted_by: UUID
     submitted_url: str | None = None
     provider_submission_id: str | None = None
     verification_result: Mapping[str, object] | None = None
@@ -326,6 +385,25 @@ class Measurement:
     result_snapshot_uri: str
     recommendation_position: int | None = None
     metrics: Mapping[str, object] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class MeasurementCollectionTask:
+    id: UUID
+    project_id: UUID
+    job_id: UUID
+    submission_id: UUID
+    protocol_id: UUID
+    measurement_window: str
+    expected_sample_count: int
+    actual_sample_count: int
+    scheduled_for: datetime
+    status: str
+    opened_at: datetime
+    completed_at: datetime | None = None
+    cancelled_at: datetime | None = None
+    acted_by: UUID | None = None
+    state_reason: str | None = None
 
 
 def canonical_hash(value: object) -> str:
