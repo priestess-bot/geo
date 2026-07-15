@@ -66,21 +66,63 @@ def test_default_prompt_catalog_converges_without_overwriting_user_selection() -
         original = application.list_prompt_releases(
             project_id=ids["project"], skill_id=owned_skill.id
         )[0]
+        assert original.source_text == owned_definition.source
+        assert original.system_template == owned_definition.system_template
+        assert original.user_template == owned_definition.source
+        assert original.variable_schema["server_authoritative"] == [
+            "brief",
+            "evidence",
+            "destination_policy",
+        ]
+        assert original.output_schema == default_output_schema()
+        assert original.compiler_version == "geo-prompt-compiler-v1"
+        same_content = application.publish_skill_version(
+            project_id=ids["project"],
+            skill_id=owned_skill.id,
+            source=owned_definition.source,
+            actor_id=ids["owner"],
+            output_schema=default_output_schema(),
+            client_variable_names=(),
+            system_template=owned_definition.system_template,
+            user_template=owned_definition.source,
+        )
+        assert same_content.release_hash == original.release_hash
         changed_schema = default_output_schema()
         changed_schema["properties"]["submission_notes"] = {"type": "string"}
-        custom = application.publish_skill_version(
+        custom_system = application.publish_skill_version(
+            project_id=ids["project"],
+            skill_id=owned_skill.id,
+            source=owned_definition.source,
+            actor_id=ids["owner"],
+            output_schema=default_output_schema(),
+            client_variable_names=(),
+            system_template="Use a project-specific official voice.",
+            user_template=owned_definition.source,
+        )
+        assert custom_system.release_hash != original.release_hash
+        custom_schema = application.publish_skill_version(
             project_id=ids["project"],
             skill_id=owned_skill.id,
             source=owned_definition.source,
             actor_id=ids["owner"],
             output_schema=changed_schema,
             client_variable_names=(),
+            system_template=owned_definition.system_template,
+            user_template=owned_definition.source,
         )
-        assert custom.release_hash != original.release_hash
+        assert custom_schema.release_hash != original.release_hash
+        with psycopg.connect(ADMIN_URL) as admin:
+            with pytest.raises(psycopg.Error):
+                admin.execute(
+                    """UPDATE generation_template_releases SET system_template = 'changed'
+                       WHERE id = %s""",
+                    (original.id,),
+                )
+            admin.rollback()
         application.select_prompt_release(
             project_id=ids["project"],
             task_key="owned_site",
-            release_id=custom.id,
+            release_id=custom_system.id,
             selected_by=ids["owner"],
         )
 
@@ -90,7 +132,7 @@ def test_default_prompt_catalog_converges_without_overwriting_user_selection() -
         owned_binding = next(
             item for item in after_customization if item["task_key"] == "owned_site"
         )
-        assert owned_binding["template_release_id"] == custom.id
+        assert owned_binding["template_release_id"] == custom_system.id
 
         with psycopg.connect(ADMIN_URL) as admin:
             counts = admin.execute(

@@ -5,7 +5,7 @@ from uuid import uuid4
 import pytest
 
 from geo_core.jobs.postgres import WorkerLease
-from geo_core.model_gateway import ModelGatewayResult
+from geo_core.model_gateway import ModelGatewayRequest, ModelGatewayResult
 from geo_core.placements.domain import PackageVersion, WorkflowStatus
 from geo_core.placements.domain import PlacementRuleViolation
 from geo_core.placements.generation_worker import parse_generated_placement
@@ -71,9 +71,11 @@ class FakeGateway:
         self.store = store
         self.evidence_id = evidence_id
         self.maximum_calls = None
+        self.request: ModelGatewayRequest | None = None
 
     def generate(self, request, *, policy, budget):
-        del request, policy
+        del policy
+        self.request = request
         assert not self.store.transaction_open
         self.maximum_calls = budget.maximum_calls
         budget.consume()
@@ -114,6 +116,7 @@ def test_generation_handler_calls_gateway_outside_transaction_and_preserves_budg
         fencing_generation=2,
         prompt_bundle_id=uuid4(),
         prompt_bundle_hash="a" * 64,
+        system_prompt="Write in the published comparison voice.",
         rendered_prompt="Return JSON using evidence pack 1.",
         configured_model="deepseek-v4-flash",
         model_call_budget=2,
@@ -138,6 +141,14 @@ def test_generation_handler_calls_gateway_outside_transaction_and_preserves_budg
 
     assert result["status"] == "succeeded"
     assert gateway.maximum_calls == 1
+    assert gateway.request is not None
+    assert gateway.request.messages[0]["role"] == "system"
+    assert "frozen output schema" in gateway.request.messages[0]["content"]
+    assert gateway.request.messages[1] == {
+        "role": "system",
+        "content": "Write in the published comparison voice.",
+    }
+    assert gateway.request.messages[2]["role"] == "user"
     assert repository.finalized[2].claims[0].evidence_item_ids == (evidence_id,)
     assert repository.success_log[2].provider == "deepseek"
     assert store.failed is None
@@ -152,6 +163,7 @@ def test_internal_evidence_cannot_be_promoted_to_public_citation() -> None:
         fencing_generation=1,
         prompt_bundle_id=uuid4(),
         prompt_bundle_hash="a" * 64,
+        system_prompt="Frozen system prompt",
         rendered_prompt="frozen",
         configured_model="deepseek-v4-flash",
         model_call_budget=1,

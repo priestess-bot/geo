@@ -5,7 +5,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from geo_core.access.models import AccessPrincipal, MembershipRecord
-from geo_core.placements.domain import Campaign, Opportunity
+from geo_core.placements.domain import Campaign, Opportunity, PromptReleaseView
 
 
 def test_placement_routes_are_stable_and_internal_only() -> None:
@@ -53,6 +53,28 @@ def test_generation_and_publication_require_idempotency_header() -> None:
         parameters = document["paths"][path]["post"]["parameters"]
         header = next(item for item in parameters if item["name"] == "Idempotency-Key")
         assert header["required"] is True
+
+
+def test_prompt_release_contract_exposes_the_complete_executable_snapshot() -> None:
+    schemas = create_api_app(surface="internal").openapi()["components"]["schemas"]
+    create = schemas["PromptReleaseCreate"]
+    view = schemas["PromptReleaseView"]
+    assert {"source", "system_template", "user_template", "output_schema"} <= set(
+        create["required"]
+    )
+    assert {
+        "source_text",
+        "system_template",
+        "user_template",
+        "variable_schema",
+        "output_schema",
+        "compiler_version",
+        "release_hash",
+    } <= set(view["required"])
+    generation = schemas["GenerationCreate"]["properties"]
+    assert generation["configured_model"]["default"] == "deepseek-v4-flash"
+    assert generation["model_call_budget"]["default"] == 2
+    assert generation["model_call_budget"]["maximum"] == 5
 
 
 def test_export_is_not_a_publication_operation() -> None:
@@ -126,6 +148,20 @@ class _PlacementServices:
         return campaign, (opportunity,)
 
 
+class _PromptPlacementServices:
+    def __init__(self) -> None:
+        self.values = None
+
+    def publish_skill_version(self, **values):
+        self.values = values
+        return PromptReleaseView(
+            uuid4(), values["project_id"], uuid4(), 1, "a" * 64,
+            values["source"], values["system_template"], values["user_template"],
+            {"required": ["brief", "evidence", "destination_policy"]},
+            values["output_schema"], "geo-prompt-compiler-v1",
+        )
+
+
 def _principal(project_id, role: str) -> AccessPrincipal:
     identity_id, tenant_id = uuid4(), uuid4()
     return AccessPrincipal(
@@ -192,3 +228,32 @@ def test_command_identity_is_derived_from_principal_and_actor_fields_are_forbidd
     }
     for name in ("CampaignCreate", "BriefVersionCreate", "PackageEdit", "ReviewCreate"):
         assert forbidden.isdisjoint(schemas[name].get("properties", {}))
+
+
+def test_prompt_release_endpoint_publishes_the_submitted_system_and_user_templates() -> None:
+    project_id, skill_id = uuid4(), uuid4()
+    placement = _PromptPlacementServices()
+    principal = _principal(project_id, "admin")
+    app = create_api_app(
+        surface="internal",
+        services=_AccessServices(principal),
+        placement_services=placement,
+    )
+    payload = {
+        "source": "Auditable source",
+        "system_template": "Published system instruction",
+        "user_template": "{{brief}} {{evidence}} {{destination_policy}}",
+        "output_schema": {"type": "object"},
+        "client_variable_names": [],
+    }
+    with TestClient(app) as client:
+        response = client.post(
+            f"/v1/projects/{project_id}/geo/prompt-skills/{skill_id}/releases",
+            json=payload,
+        )
+
+    assert response.status_code == 201, response.text
+    assert response.json()["source_text"] == payload["source"]
+    assert response.json()["system_template"] == payload["system_template"]
+    assert response.json()["user_template"] == payload["user_template"]
+    assert placement.values["actor_id"] == principal.identity_id

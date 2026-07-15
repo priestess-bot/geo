@@ -183,12 +183,33 @@ class FakeRepository:
     def create_template_release(self, **values: Any) -> PromptReleaseView:
         template = values["template"]
         self.releases[template.id] = template
+        variable_schema = {
+            "required": template.required_variables,
+            "client_allowed": values["client_variable_names"],
+            "server_authoritative": ["brief", "evidence", "destination_policy"],
+        }
+        release_hash = canonical_hash(
+            {
+                "source_text": values["source_text"],
+                "system_template": values["system_template"],
+                "user_template": template.template,
+                "variable_schema": variable_schema,
+                "output_schema": values["output_schema"],
+                "compiler_version": "geo-prompt-compiler-v1",
+            }
+        )
         return PromptReleaseView(
             template.id,
             values["project_id"],
             values["skill_version_id"],
             len(self.releases),
-            template.release_hash,
+            release_hash,
+            values["source_text"],
+            values["system_template"],
+            template.template,
+            variable_schema,
+            values["output_schema"],
+            "geo-prompt-compiler-v1",
         )
 
     def get_template_release(self, **values: Any) -> TemplateRelease | None:
@@ -559,6 +580,27 @@ def test_prompt_releases_are_independent_and_old_release_is_unchanged() -> None:
     assert first.release_hash != second.release_hash
     assert repository.releases[first.id] is first_template
     assert "for {{product}}" in first_template.template
+
+
+def test_system_prompt_changes_release_hash_without_mutating_old_release() -> None:
+    app, _repository = _application()
+    project_id, actor_id = uuid4(), uuid4()
+    skill = app.create_prompt_skill(project_id=project_id, skill_key="owned-site")
+    source = "Use {{brief}} {{evidence}} {{destination_policy}}."
+    first = app.publish_skill_version(
+        project_id=project_id, skill_id=skill.id, source=source, actor_id=actor_id,
+        output_schema=OUTPUT_SCHEMA, client_variable_names=(),
+        system_template="Write concise content.",
+    )
+    second = app.publish_skill_version(
+        project_id=project_id, skill_id=skill.id, source=source, actor_id=actor_id,
+        output_schema=OUTPUT_SCHEMA, client_variable_names=(),
+        system_template="Write detailed content.",
+    )
+
+    assert first.release_hash != second.release_hash
+    assert first.system_template == "Write concise content."
+    assert second.system_template == "Write detailed content."
 
 
 def test_edit_uses_exact_base_hash_and_new_version_invalidates_old_review_lineage() -> None:

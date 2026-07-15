@@ -74,6 +74,26 @@ def test_admin_geo_export_and_publication_are_separate_explicit_actions() -> Non
     assert "标记为待发布" in publication_panel
 
 
+def test_admin_prompt_catalog_edits_the_actual_executable_release() -> None:
+    prompt_panel = (FEATURE_ROOT / "BriefPromptPanel.tsx").read_text(encoding="utf-8")
+    actions = (FEATURE_ROOT / "placement-actions.ts").read_text(encoding="utf-8")
+    generation = (FEATURE_ROOT / "GenerationPackagePanel.tsx").read_text(encoding="utf-8")
+    client = (ROOT / "packages/web/api-client/src/geo.ts").read_text(encoding="utf-8")
+    defaults = (FEATURE_ROOT / "prompt-defaults.ts").read_text(encoding="utf-8")
+
+    assert "installDefaultPromptCatalog" in prompt_panel
+    assert "installDefaultPromptCatalog" in client
+    assert 'name="system_template"' in prompt_panel
+    assert 'name="user_template"' in prompt_panel
+    assert "system_template: value" in actions
+    assert "user_template: value" in actions
+    assert "PROMPT_TASK_KEYS" in prompt_panel
+    assert "internal_evidence_refs" in defaults
+    assert "public_citation_refs" in defaults
+    assert 'defaultValue="deepseek-v4-flash"' in generation
+    assert 'max="5" defaultValue="2"' in generation
+
+
 def test_admin_geo_files_stay_below_refactor_size_limits() -> None:
     page = (GEO_ROOT / "page.tsx").read_text(encoding="utf-8")
     assert len(page.splitlines()) < 300

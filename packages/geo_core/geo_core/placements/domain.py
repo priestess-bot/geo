@@ -165,6 +165,16 @@ class PromptReleaseView:
     skill_version_id: UUID
     release_number: int
     release_hash: str
+    source_text: str
+    system_template: str
+    user_template: str
+    variable_schema: Mapping[str, object]
+    output_schema: Mapping[str, object]
+    compiler_version: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "variable_schema", MappingProxyType(dict(self.variable_schema)))
+        object.__setattr__(self, "output_schema", MappingProxyType(dict(self.output_schema)))
 
 
 @dataclass(frozen=True)

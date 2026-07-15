@@ -261,7 +261,16 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
                 },
             },
             client_variable_names=("tone",),
+            system_template="Use the published integration system voice.",
+            user_template=(
+                "Use {{brief}} {{evidence}} {{destination_policy}} and write {{tone}}."
+            ),
         )
+        assert release.source_text.startswith("Use {{brief}}")
+        assert release.system_template == "Use the published integration system voice."
+        assert release.user_template.endswith("write {{tone}}.")
+        assert release.variable_schema["client_allowed"] == ["tone"]
+        assert release.compiler_version == "geo-prompt-compiler-v1"
         application.select_prompt_release(
             project_id=first["project"],
             task_key="reddit",
@@ -328,6 +337,7 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
         )
         assert bundle_detail["artifact_status"] == "finalized"
         assert bundle_detail["manifest"]["template_release_id"] == str(release.id)
+        assert bundle_detail["manifest"]["system_prompt"] == release.system_template
         assert (
             application.list_prompt_release_selections(project_id=first["project"])[0]["task_key"]
             == "reddit"
@@ -340,13 +350,14 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
             idempotency_key=f"generation-{suffix}-0001",
             requested_by=first["owner"],
         )
+        gateway = FakeGateway(first["evidence_id"])
         generation_dispatcher = PlacementWorkerDispatcher(
             store=store,
             handlers={
                 "placement.generate": GenerationHandler(
                     store=store,
                     repository=repository,
-                    gateway=FakeGateway(first["evidence_id"]),
+                    gateway=gateway,
                     lease_for=timedelta(seconds=30),
                 )
             },
@@ -359,6 +370,10 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
             ]
             == "succeeded"
         )
+        assert gateway.requests[0].messages[1] == {
+            "role": "system",
+            "content": release.system_template,
+        }
         with psycopg.connect(ADMIN_URL) as admin:
             assert admin.execute(
                 """SELECT array_agg(status ORDER BY created_at)

@@ -94,6 +94,7 @@ class PlacementWorkerRepository:
                 fencing_generation=lease.fencing_generation,
                 prompt_bundle_id=row["prompt_bundle_id"],
                 prompt_bundle_hash=row["bundle_hash"],
+                system_prompt=snapshot["system_prompt"],
                 rendered_prompt=snapshot["rendered_prompt"],
                 configured_model=row["configured_model"],
                 model_call_budget=row["model_call_budget"],

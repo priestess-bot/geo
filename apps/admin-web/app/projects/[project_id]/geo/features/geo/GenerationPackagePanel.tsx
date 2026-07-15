@@ -15,8 +15,8 @@ export function GenerationPackagePanel({ projectId, data }: { projectId: string;
         <SectionHeader eyebrow="6 · Durable generation" title="生成任务" />
         <ActionForm action={createGenerationJob} title="从冻结 Bundle 生成" submitLabel="提交生成任务" disabled={!bundle}>
           <HiddenProject projectId={projectId} /><input type="hidden" name="bundle_id" value={bundle?.id || ""} />
-          <label>模型<input name="configured_model" defaultValue="deepseek-chat" required /></label>
-          <label>总模型调用预算<input name="model_call_budget" type="number" min="1" max="20" defaultValue="3" required /></label>
+          <label>模型<input name="configured_model" defaultValue="deepseek-v4-flash" required /></label>
+          <label>总模型调用预算<input name="model_call_budget" type="number" min="1" max="5" defaultValue="2" required /></label>
         </ActionForm>
         <form method="GET" className={styles.form}>
           <input type="hidden" name="section" value="placement" /><input type="hidden" name="opportunity_id" value={selection.opportunityId || ""} /><input type="hidden" name="bundle_id" value={selection.bundleId || ""} />

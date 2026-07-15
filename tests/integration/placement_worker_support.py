@@ -5,7 +5,7 @@ from uuid import UUID, uuid4
 
 from psycopg.conninfo import conninfo_to_dict, make_conninfo
 
-from geo_core.model_gateway import ModelGatewayResult
+from geo_core.model_gateway import ModelGatewayRequest, ModelGatewayResult
 from geo_core.model_gateway.contracts import RetryableModelGatewayError
 from geo_core.object_store import ObjectStoreError, RetrievedObject, StoredObject
 from geo_core.placements.url_verifier import PermanentVerificationError, UrlVerificationResult
@@ -16,9 +16,11 @@ class FakeGateway:
 
     def __init__(self, evidence_id: UUID) -> None:
         self.evidence_id = evidence_id
+        self.requests: list[ModelGatewayRequest] = []
 
     def generate(self, request, *, policy, budget):
-        del request, policy
+        del policy
+        self.requests.append(request)
         budget.consume()
         return ModelGatewayResult(
             output={
