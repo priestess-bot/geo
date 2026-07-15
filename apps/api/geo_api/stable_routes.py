@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Header, Query, Request
+from fastapi import APIRouter, Header, Query, Request, Response
 
 from geo_api.contracts import (
     AuthIdentity,
+    CustomerProjectSummary,
     DevToolsStatus,
     HealthStatus,
     JobStatus,
@@ -17,13 +18,13 @@ from geo_api.contracts import (
     ProblemDetails,
     ProjectSummary,
 )
-from geo_api.foundation_services import FoundationServices
+from geo_api.foundation_services import AuthenticationInput, FoundationServices
 from geo_api.problems import ApiProblem
 
 
 Surface = Literal["internal", "customer"]
 AuthorizationHeader = Annotated[str | None, Header(alias="Authorization")]
-PROBLEM_RESPONSES = {
+PROBLEM_RESPONSES: dict[int | str, dict[str, Any]] = {
     status_code: {
         "model": ProblemDetails,
         "description": title,
@@ -76,26 +77,55 @@ def auth_router() -> APIRouter:
 
     @router.get("/me", response_model=AuthIdentity, operation_id="getCurrentIdentity")
     def current_identity(request: Request, authorization: AuthorizationHeader = None) -> AuthIdentity:
-        return _services(request).current_identity(authorization=authorization)
+        return _services(request).current_identity(_authentication(request, authorization))
 
     @router.post("/logout", response_model=LogoutResult, operation_id="logout")
-    def logout(request: Request, authorization: AuthorizationHeader = None) -> LogoutResult:
-        _services(request).logout(authorization=authorization)
+    def logout(
+        request: Request,
+        response: Response,
+        authorization: AuthorizationHeader = None,
+    ) -> LogoutResult:
+        _services(request).logout(_authentication(request, authorization))
+        if request.app.state.surface == "customer":
+            response.delete_cookie(
+                request.app.state.customer_session_cookie_name,
+                httponly=True,
+                secure=request.url.scheme == "https",
+                samesite="lax",
+                path="/",
+            )
         return LogoutResult()
 
     return router
 
 
-def projects_router() -> APIRouter:
+def projects_router(*, surface: Surface) -> APIRouter:
     router = APIRouter(prefix="/v1/projects", tags=["projects"], responses=PROBLEM_RESPONSES)
 
-    @router.get("", response_model=OffsetPage[ProjectSummary], operation_id="listProjects")
-    def list_projects(
-        request: Request,
-        limit: Annotated[int, Query(ge=1, le=100)] = 50,
-        offset: Annotated[int, Query(ge=0)] = 0,
-    ) -> OffsetPage[ProjectSummary]:
-        return _services(request).list_projects(limit=limit, offset=offset)
+    if surface == "internal":
+        @router.get("", response_model=OffsetPage[ProjectSummary], operation_id="listProjects")
+        def list_internal_projects(
+            request: Request,
+            authorization: AuthorizationHeader = None,
+            limit: Annotated[int, Query(ge=1, le=100)] = 50,
+            offset: Annotated[int, Query(ge=0)] = 0,
+        ) -> OffsetPage[ProjectSummary]:
+            return _services(request).list_internal_projects(
+                _authentication(request, authorization), limit=limit, offset=offset
+            )
+    else:
+        @router.get(
+            "", response_model=OffsetPage[CustomerProjectSummary], operation_id="listProjects"
+        )
+        def list_customer_projects(
+            request: Request,
+            authorization: AuthorizationHeader = None,
+            limit: Annotated[int, Query(ge=1, le=100)] = 50,
+            offset: Annotated[int, Query(ge=0)] = 0,
+        ) -> OffsetPage[CustomerProjectSummary]:
+            return _services(request).list_customer_projects(
+                _authentication(request, authorization), limit=limit, offset=offset
+            )
 
     return router
 
@@ -106,14 +136,21 @@ def jobs_router() -> APIRouter:
     @router.get("", response_model=OffsetPage[JobStatus], operation_id="listJobs")
     def list_jobs(
         request: Request,
+        authorization: AuthorizationHeader = None,
         limit: Annotated[int, Query(ge=1, le=100)] = 50,
         offset: Annotated[int, Query(ge=0)] = 0,
     ) -> OffsetPage[JobStatus]:
-        return _services(request).list_jobs(limit=limit, offset=offset)
+        return _services(request).list_jobs(
+            _authentication(request, authorization), limit=limit, offset=offset
+        )
 
     @router.get("/{job_id}", response_model=JobStatus, operation_id="getJob")
-    def get_job(job_id: UUID, request: Request) -> JobStatus:
-        job = _services(request).get_job(job_id=job_id)
+    def get_job(
+        job_id: UUID, request: Request, authorization: AuthorizationHeader = None
+    ) -> JobStatus:
+        job = _services(request).get_job(
+            _authentication(request, authorization), job_id=job_id
+        )
         if job is None:
             raise ApiProblem(
                 status=404,
@@ -138,3 +175,14 @@ def dev_tools_router() -> APIRouter:
 
 def _services(request: Request) -> FoundationServices:
     return request.app.state.services
+
+
+def _authentication(
+    request: Request, authorization: str | None
+) -> AuthenticationInput:
+    return AuthenticationInput(
+        authorization=authorization,
+        customer_session=request.cookies.get(request.app.state.customer_session_cookie_name),
+        development_actor_id=request.headers.get("X-GEO-Actor-ID"),
+        development_tenant_id=request.headers.get("X-GEO-Tenant-ID"),
+    )

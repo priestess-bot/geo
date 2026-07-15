@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
 from geo_api.app_factory import ApiSettings, REQUEST_ID_HEADER, create_api_app
+from geo_api.foundation_services import UnavailableFoundationServices
 
 
 FORBIDDEN_PATH_TERMS = ("runtime", "p0a", "p0b", "fixture", "/au/", "-au/")
@@ -47,7 +50,7 @@ def test_internal_and_customer_openapi_are_isolated_and_stable() -> None:
 
 
 def test_problem_details_and_request_id_are_consistent() -> None:
-    app = create_api_app(surface="customer")
+    app = create_api_app(surface="customer", services=UnavailableFoundationServices())
     with TestClient(app) as client:
         response = client.get("/v1/projects", headers={REQUEST_ID_HEADER: "request-123"})
 
@@ -58,10 +61,19 @@ def test_problem_details_and_request_id_are_consistent() -> None:
         "type": "urn:geo:problem:service-unavailable",
         "title": "Service Unavailable",
         "status": 503,
-        "detail": "The application service for this operation is not connected.",
+        "detail": "The access application service is not configured.",
         "instance": "/v1/projects",
         "request_id": "request-123",
     }
+
+
+def test_readiness_fails_closed_when_access_configuration_is_missing() -> None:
+    app = create_api_app(surface="customer", services=UnavailableFoundationServices())
+    with TestClient(app) as client:
+        response = client.get("/ready")
+
+    assert response.status_code == 503
+    assert response.json()["type"] == "urn:geo:problem:not-ready"
 
 
 def test_validation_errors_use_problem_details() -> None:
@@ -126,7 +138,8 @@ def test_engineering_work_items_default_to_unknown_empty_projection() -> None:
 
 def test_job_not_found_uses_problem_contract_with_generated_request_id() -> None:
     class MissingJobServices:
-        def get_job(self, *, job_id: object) -> None:
+        def get_job(self, authentication: object, *, job_id: object) -> None:
+            del authentication, job_id
             return None
 
     app = create_api_app(surface="customer", services=MissingJobServices())  # type: ignore[arg-type]
@@ -150,6 +163,7 @@ def test_new_api_modules_do_not_import_scripts_workers_or_legacy_main() -> None:
             "customer_app.py",
             "foundation_services.py",
             "internal_app.py",
+            "oidc.py",
             "problems.py",
             "stable_routes.py",
         )
@@ -159,6 +173,31 @@ def test_new_api_modules_do_not_import_scripts_workers_or_legacy_main() -> None:
     assert "from workers" not in sources
     assert "import workers" not in sources
     assert "geo_api.main" not in sources
+
+    access_sources = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in Path("packages/geo_core/geo_core/access").glob("*.py")
+    )
+    for forbidden in ("geo_core.repository", "from scripts", "import scripts", "workers"):
+        assert forbidden not in access_sources
+
+
+def test_access_submodule_import_does_not_load_legacy_runtime() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import sys; import geo_core.access.models; "
+                "assert 'geo_core.repository' not in sys.modules; "
+                "assert 'geo_core.runtime' not in sys.modules"
+            ),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_docker_defaults_to_internal_application() -> None:

@@ -11,6 +11,11 @@ from starlette.exceptions import HTTPException
 
 from geo_api.contracts import ProblemDetails
 from geo_api.foundation_services import FoundationServiceUnavailable
+from geo_core.access.models import (
+    AccessForbidden,
+    AccessPersistenceUnavailable,
+    AuthenticationRequired,
+)
 
 
 _LOGGER = logging.getLogger("geo_api.errors")
@@ -51,6 +56,54 @@ def install_problem_handlers(app: FastAPI) -> None:
                 status=503,
                 title="Service Unavailable",
                 detail=str(exc),
+                type_uri="urn:geo:problem:service-unavailable",
+                headers={"Retry-After": "30"},
+            ),
+        )
+
+    @app.exception_handler(AuthenticationRequired)
+    async def authentication_handler(
+        request: Request, exc: AuthenticationRequired
+    ) -> JSONResponse:
+        return _response(
+            request,
+            ApiProblem(
+                status=401,
+                title="Unauthorized",
+                detail=str(exc),
+                type_uri="urn:geo:problem:authentication-required",
+                headers={"WWW-Authenticate": "Bearer"},
+            ),
+        )
+
+    @app.exception_handler(AccessForbidden)
+    async def access_forbidden_handler(
+        request: Request, exc: AccessForbidden
+    ) -> JSONResponse:
+        return _response(
+            request,
+            ApiProblem(
+                status=403,
+                title="Forbidden",
+                detail=str(exc),
+                type_uri="urn:geo:problem:access-forbidden",
+            ),
+        )
+
+    @app.exception_handler(AccessPersistenceUnavailable)
+    async def access_persistence_handler(
+        request: Request, exc: AccessPersistenceUnavailable
+    ) -> JSONResponse:
+        _LOGGER.warning(
+            "Access persistence unavailable",
+            extra={"request_id": getattr(request.state, "request_id", "unknown")},
+        )
+        return _response(
+            request,
+            ApiProblem(
+                status=503,
+                title="Service Unavailable",
+                detail="The access persistence service is unavailable.",
                 type_uri="urn:geo:problem:service-unavailable",
                 headers={"Retry-After": "30"},
             ),

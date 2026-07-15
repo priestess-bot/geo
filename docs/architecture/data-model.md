@@ -4,6 +4,11 @@
 
 所有项目拥有对象必须包含 `project_id`。项目内引用使用 `(id, project_id)` 复合外键，同时启用 PostgreSQL RLS。RLS 负责可见性，复合外键负责关系正确性，两者不能互相替代。
 
+身份由 `(issuer, subject)` 唯一标识；`project_memberships` 是项目授权真源。
+`customer_sessions` 只保存 SHA-256 token hash、identity、tenant、期限和撤销状态，
+不保存原始 token 或项目快照。RLS 使用事务局部的 identity、tenant 和 project ID
+数组，因此一个 Session 可以保留同一租户内的全部有效项目，同时不能访问未授权项目。
+
 ## 不可变版本
 
 Brief、Evidence Pack、Template Release、Prompt Bundle 和 Placement Package Version 创建后不可原地修改。编辑创建新版本，保存 `base_version_id`、基础 hash、编辑者和原因；旧版本标记 superseded，但旧审核、投放和测量记录不删除。

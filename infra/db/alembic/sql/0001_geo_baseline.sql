@@ -25,6 +25,30 @@ LANGUAGE sql STABLE PARALLEL SAFE AS $$
     SELECT NULLIF(current_setting('geo.project_id', true), '')::uuid
 $$;
 
+CREATE FUNCTION geo_current_identity_id() RETURNS uuid
+LANGUAGE sql STABLE PARALLEL SAFE AS $$
+    SELECT NULLIF(current_setting('geo.identity_id', true), '')::uuid
+$$;
+
+CREATE FUNCTION geo_current_tenant_id() RETURNS uuid
+LANGUAGE sql STABLE PARALLEL SAFE AS $$
+    SELECT NULLIF(current_setting('geo.tenant_id', true), '')::uuid
+$$;
+
+CREATE FUNCTION geo_current_project_ids() RETURNS uuid[]
+LANGUAGE sql STABLE PARALLEL SAFE AS $$
+    SELECT COALESCE(array_agg(project_id), ARRAY[]::uuid[])
+    FROM (
+        SELECT value::uuid AS project_id
+        FROM jsonb_array_elements_text(
+            COALESCE(
+                NULLIF(current_setting('geo.project_ids', true), '')::jsonb,
+                '[]'::jsonb
+            )
+        ) AS project_ids(value)
+    ) AS scoped_projects
+$$;
+
 CREATE FUNCTION geo_reject_immutable_change() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
@@ -133,6 +157,29 @@ CREATE TABLE project_memberships (
     UNIQUE (id, project_id),
     UNIQUE (project_id, identity_id)
 );
+
+CREATE INDEX project_memberships_identity_scope_idx
+ON project_memberships (identity_id, tenant_id, status, project_id);
+
+CREATE TABLE customer_sessions (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    identity_id uuid NOT NULL REFERENCES identities(id) ON DELETE CASCADE,
+    tenant_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    token_hash text NOT NULL UNIQUE CHECK (token_hash ~ '^[0-9a-f]{64}$'),
+    status text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'revoked')),
+    expires_at timestamptz NOT NULL,
+    revoked_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    last_seen_at timestamptz,
+    CHECK (
+        (status = 'active' AND revoked_at IS NULL)
+        OR (status = 'revoked' AND revoked_at IS NOT NULL)
+    )
+);
+
+CREATE INDEX customer_sessions_active_expiry_idx
+ON customer_sessions (expires_at)
+WHERE status = 'active';
 
 CREATE TABLE product_entities (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -658,6 +705,9 @@ CREATE INDEX durable_jobs_reclaim_idx
 ON durable_jobs (lease_expires_at)
 WHERE status IN ('running', 'finalizing');
 
+CREATE INDEX durable_jobs_project_activity_idx
+ON durable_jobs (project_id, updated_at DESC, id DESC);
+
 CREATE TABLE collection_job_specs (
     job_id uuid PRIMARY KEY,
     project_id uuid NOT NULL,
@@ -866,12 +916,18 @@ BEGIN
         EXECUTE 'ALTER TABLE ' || quote_ident(table_name) || ' FORCE ROW LEVEL SECURITY';
         IF table_name = 'projects' THEN
             EXECUTE 'CREATE POLICY project_scope ON ' || quote_ident(table_name)
-                || ' USING (id = geo_current_project_id())'
-                || ' WITH CHECK (id = geo_current_project_id())';
+                || ' USING (id = ANY(geo_current_project_ids()))'
+                || ' WITH CHECK (id = ANY(geo_current_project_ids()))';
+        ELSIF table_name = 'project_memberships' THEN
+            EXECUTE 'CREATE POLICY project_scope ON ' || quote_ident(table_name)
+                || ' USING (identity_id = geo_current_identity_id()'
+                || ' AND tenant_id = geo_current_tenant_id())'
+                || ' WITH CHECK (identity_id = geo_current_identity_id()'
+                || ' AND tenant_id = geo_current_tenant_id())';
         ELSE
             EXECUTE 'CREATE POLICY project_scope ON ' || quote_ident(table_name)
-                || ' USING (project_id = geo_current_project_id())'
-                || ' WITH CHECK (project_id = geo_current_project_id())';
+                || ' USING (project_id = ANY(geo_current_project_ids()))'
+                || ' WITH CHECK (project_id = ANY(geo_current_project_ids()))';
         END IF;
     END LOOP;
 END;

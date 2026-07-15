@@ -25,6 +25,12 @@ CLI    -> Application Service
 
 Domain 禁止导入 FastAPI、psycopg、httpx、对象存储 SDK或环境变量。Repository 只负责持久化，不能提交事务、调用网络、调用模型或决定工作流。Unit of Work 是事务、RLS 上下文、commit 和 rollback 的唯一所有者。
 
+`identity_access` 的实现拆为 `models.py`、`ports.py`、`service.py` 和
+`postgres.py`。认证先解析可信身份或哈希 Session，再读取当前有效 membership；
+Session 不保存项目快照，因此用户新增或撤销项目权限会在下一次请求立即生效。
+每个事务都设置 `geo.actor_id`、`geo.identity_id`、`geo.tenant_id`、
+`geo.project_id` 和 `geo.project_ids`，Repository 不得自行覆盖或提交这些上下文。
+
 外部模型、HTTP 和 MinIO 调用不得发生在数据库锁或长事务中。正确顺序是冻结输入并提交、执行外部调用、在新事务中校验 lease/fencing/idempotency、写入结果并完成任务。
 
 ## 文件预算

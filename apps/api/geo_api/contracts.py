@@ -52,6 +52,15 @@ class ProjectSummary(StrictContract):
     role: str
 
 
+class CustomerProjectSummary(StrictContract):
+    """Customer-safe project projection without internal membership metadata."""
+
+    project_id: UUID
+    display_name: str
+    market_code: str
+    status: str
+
+
 ItemT = TypeVar("ItemT")
 
 

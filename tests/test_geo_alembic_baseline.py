@@ -5,6 +5,7 @@ import re
 ROOT = Path(__file__).resolve().parents[1]
 ALEMBIC = ROOT / "infra" / "db" / "alembic"
 BASELINE = (ALEMBIC / "sql" / "0001_geo_baseline.sql").read_text(encoding="utf-8")
+ALEMBIC_ENV = (ALEMBIC / "env.py").read_text(encoding="utf-8")
 
 
 def test_revision_graph_has_exactly_one_root_and_head() -> None:
@@ -21,11 +22,17 @@ def test_revision_graph_has_exactly_one_root_and_head() -> None:
     assert 'down_revision = "0001_geo_baseline"' in head
 
 
+def test_alembic_uses_the_installed_psycopg3_driver_for_standard_urls() -> None:
+    assert 'value.startswith("postgresql://")' in ALEMBIC_ENV
+    assert '"postgresql+psycopg://"' in ALEMBIC_ENV
+
+
 def test_baseline_covers_required_geo_aggregates() -> None:
     required_tables = {
         "tenants",
         "projects",
         "project_memberships",
+        "customer_sessions",
         "product_entities",
         "market_profiles",
         "monitoring_queries",
@@ -62,7 +69,9 @@ def test_project_relationships_and_rls_are_database_contracts() -> None:
     assert "FOREIGN KEY (job_id, project_id)" in BASELINE
     assert "ENABLE ROW LEVEL SECURITY" in BASELINE
     assert "FORCE ROW LEVEL SECURITY" in BASELINE
-    assert "project_id = geo_current_project_id()" in BASELINE
+    assert "project_id = ANY(geo_current_project_ids())" in BASELINE
+    assert "identity_id = geo_current_identity_id()" in BASELINE
+    assert "customer_sessions" in BASELINE
     assert "compared_entity_ids" not in BASELINE
     assert "monitoring_query_ids" not in BASELINE
 

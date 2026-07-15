@@ -14,9 +14,13 @@ from uuid import uuid4
 from fastapi import FastAPI, Request
 from starlette.responses import Response
 
-from geo_api.foundation_services import FoundationServices, UnavailableFoundationServices
 from geo_api.engineering_routes import engineering_router, github_integration_router
 from geo_api.engineering_runtime import build_engineering_service
+from geo_api.foundation_services import (
+    FoundationServices,
+    UnavailableFoundationServices,
+    services_from_environment,
+)
 from geo_api.problems import install_problem_handlers
 from geo_api.stable_routes import (
     Surface,
@@ -36,11 +40,18 @@ _ACCESS_LOGGER = logging.getLogger("geo_api.access")
 @dataclass(frozen=True)
 class ApiSettings:
     dev_tools_enabled: bool = False
+    customer_session_cookie_name: str = "GEO_CUSTOMER_SESSION"
 
     @classmethod
     def from_environment(cls) -> "ApiSettings":
         enabled = os.getenv("GEO_DEV_TOOLS_ENABLED", "0").strip().lower() in _TRUE_VALUES
-        return cls(dev_tools_enabled=enabled)
+        cookie_name = os.getenv(
+            "GEO_CUSTOMER_SESSION_COOKIE_NAME", "GEO_CUSTOMER_SESSION"
+        ).strip()
+        return cls(
+            dev_tools_enabled=enabled,
+            customer_session_cookie_name=cookie_name or "GEO_CUSTOMER_SESSION",
+        )
 
 
 def create_api_app(
@@ -54,10 +65,12 @@ def create_api_app(
 
     resolved_settings = settings or ApiSettings.from_environment()
     service_name = f"geo-{surface}-api"
+    resolved_services = services or services_from_environment(surface=surface)
+    service_ready = not isinstance(resolved_services, UnavailableFoundationServices)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        app.state.ready = True
+        app.state.ready = service_ready
         try:
             yield
         finally:
@@ -71,14 +84,16 @@ def create_api_app(
         redoc_url=None,
     )
     app.state.ready = False
-    app.state.services = services or UnavailableFoundationServices()
+    app.state.surface = surface
+    app.state.services = resolved_services
+    app.state.customer_session_cookie_name = resolved_settings.customer_session_cookie_name
     app.state.engineering_service = engineering_service or build_engineering_service()
     install_problem_handlers(app)
     _install_request_metadata_middleware(app, surface=surface)
 
     app.include_router(health_router(service_name=service_name, surface=surface))
     app.include_router(auth_router())
-    app.include_router(projects_router())
+    app.include_router(projects_router(surface=surface))
     app.include_router(jobs_router())
     if surface == "internal":
         app.include_router(engineering_router())
