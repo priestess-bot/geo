@@ -60,13 +60,15 @@ Placement
 | `amazon.com.au` | 已授权卖家资料和商品页，人工维护 | 是，需确认权限 |
 | `youtube.com` | 官方视频或免费创作者合作，人工发布/发送 | 是 |
 | TikTok、Instagram | 官方内容或免费创作者素材，人工发布 | 是 |
-| `productreview.com.au` | 评论与声誉观测 | 否 |
-| `reddit.com` | 社区与引用观测 | 否 |
-| `ozbargain.com.au` | 优惠/社区观测 | 否 |
-| Quora | 问答与引用观测 | 否 |
+| `productreview.com.au` | 商家资料、已验证购买上下文中的官方回复；禁止伪造消费者评价 | 资格与上下文审核通过后是 |
+| `reddit.com` | 明确披露品牌关系的官方参与；遵守具体 Subreddit 规则 | 身份与社区政策审核通过后是 |
+| `ozbargain.com.au` | 真实优惠的商家提交；明确披露关联关系 | 商家资格和优惠证据审核通过后是 |
+| Quora | 明确披露品牌关系的专业回答 | 身份、主题和来源审核通过后是 |
 | 竞品网站、Wikipedia | 竞争或引用观察 | 否，除非另行人工审核 |
 
 系统禁止生成、安排或代发伪装消费者的推广、虚假评价、隐蔽商业关系内容和未经授权账号发布。
+
+每个被运营人员选中的渠道都必须创建持久 `Placement` 任务。渠道未审核、受限、禁止，或缺少账号授权、优惠、原始问题/评价上下文时，任务仍然存在并展示明确的阻断原因，不得被静默省略；只有 Destination Policy、身份、披露和证据门禁均通过后，任务才可进入 Brief、生成、审核和人工提交。任务存在不等于平台允许发布，也不等于系统自动发布。
 
 ## 4. 数据与领域对象
 
@@ -89,7 +91,7 @@ placement_verification_runs
 placement_measurements
 ```
 
-所有 project-owned 关系使用 `(id, project_id)` 复合外键、`UNIQUE(id, project_id)`、`ENABLE/FORCE RLS` 和受限 command function。任何 Observation Source 都不能自动成为 Destination；`observed_only` Destination 不能创建 Package 或 Submission。
+所有 project-owned 关系使用 `(id, project_id)` 复合外键、`UNIQUE(id, project_id)`、`ENABLE/FORCE RLS` 和受限 command function。任何 Observation Source 都不能自动成为 Destination；`observed_only` Destination 可以形成可见的阻断任务，但不能创建 Package 或 Submission。
 
 ADVINSYS 官网、Amazon 商品页和已授权社媒页面自动导入为 `brand_authored` Knowledge Source，可直接进入生成输入，但必须带精确 URL、版本、hash 和来源类别。品牌自述不能被改写成独立评测、客观排名或消费者体验；认证、比较、价格和安全 Claim 必须由对应来源明确支持。
 
@@ -170,6 +172,6 @@ Admin Web 提供 Campaign、Observations、Destinations & Opportunities、Placem
 2. Campaign、查询建议/批准、人工 Observation Import 与 Measurement。
 3. 自动品牌资料导入、Destination-specific Brief、Evidence、Prompt Bundle 和 Package。
 4. 人工 Submission、URL 回填、公开页面验证、通知、报告和客户只读视图。
-5. 闭环稳定后才评估 Shopify/Amazon/社媒 connector；第三方社区保持只观测。
+5. 闭环稳定后才评估 Shopify/Amazon/社媒 connector；第三方社区继续采用人工、明确披露身份的任务和提交，不建设自动发帖 connector。
 
-验收至少覆盖跨项目 FK/RLS、`observed_only` 禁止提交、事实与来源类型约束、不可变 Package、人工 Observation 可重放、URL 验证失败不计入 KPI、28/56/84 测量冻结、以及报告不输出未经支持的因果结论。
+验收至少覆盖跨项目 FK/RLS、所有选定渠道均有持久任务、阻断任务不可生成或提交、`observed_only` 禁止提交、事实与来源类型约束、不可变 Package、人工 Observation 可重放、URL 验证失败不计入 KPI、28/56/84 测量冻结、以及报告不输出未经支持的因果结论。
