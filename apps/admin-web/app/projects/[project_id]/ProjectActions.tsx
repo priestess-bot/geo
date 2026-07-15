@@ -5,7 +5,6 @@ import { useActionState, useRef, useState } from "react";
 import {
   acceptKnowledgeQualityRiskAction,
   cancelCollectionAction,
-  deleteMemberAction,
   backfillManualDistributionAction,
   createKnowledgeMaintenanceRunAction,
   createKnowledgeFactExtractionAction,
@@ -34,7 +33,6 @@ import {
   saveCompetitorEntityAction,
   saveLaunchConfigAction,
   saveKnowledgePromptTemplateAction,
-  saveMemberAction,
   savePromptAction,
   saveProjectAndBrandAction,
   saveScoreWeightProfileAction,
@@ -776,15 +774,6 @@ function CompetitorStatusActions({ projectId, competitor }: { projectId: string;
   );
 }
 
-export function MemberManagement({ projectId }: { projectId: string }) {
-  return (
-    <div className="twoCol compact">
-      <MemberSaveForm projectId={projectId} />
-      <MemberDeleteForm projectId={projectId} />
-    </div>
-  );
-}
-
 export function InvitationList({ invitations, projectId }: { invitations: RuntimeListRecord[]; projectId: string }) {
   if (!invitations.length) {
     return <p className="muted emptyState">暂无邀请记录。</p>;
@@ -848,28 +837,6 @@ function InvitationActionForm({ invitationId, projectId }: { invitationId: strin
   );
 }
 
-export function MemberList({ members }: { members: RuntimeListRecord[] }) {
-  if (!members.length) {
-    return <p className="muted emptyState">暂无成员记录。</p>;
-  }
-  return (
-    <div className="summaryList">
-      {members.map((record, index) => {
-        const member = objectValue(record.member);
-        const memberId = stringValue(member.id) || stringValue(record.id) || stringValue(member.user_id);
-        return (
-          <div className="summaryListRow" key={`${index}-${memberId}`}>
-            <div>
-              <strong>{stringValue(member.user_id) || "未知用户"}</strong>
-              <p className="muted">{roleLabel(stringValue(member.role) || "viewer")} · {stringValue(member.created_at) || "无创建时间"}</p>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 export function PromptEditor({ projectId, prompt }: { projectId: string; prompt: PromptRecord }) {
   const [editing, setEditing] = useState(false);
   const [state, formAction, pending] = useActionState(savePromptAction, initialState);
@@ -913,42 +880,6 @@ export function PromptEditor({ projectId, prompt }: { projectId: string; prompt:
         </form>
       ) : null}
     </div>
-  );
-}
-
-function MemberSaveForm({ projectId }: { projectId: string }) {
-  const [state, formAction, pending] = useActionState(saveMemberAction, initialState);
-  return (
-    <form className="inlineForm" action={formAction}>
-      <input {...hydrationControlProps} type="hidden" name="project_id" value={projectId} />
-      <label><span>用户 ID / 邮箱</span><input {...hydrationControlProps} name="user_id" placeholder="customer@example.com" required /></label>
-      <label>
-        <span>角色</span>
-        <select {...hydrationControlProps} name="role" defaultValue="viewer">
-          <option value="owner">负责人</option>
-          <option value="admin">管理员</option>
-          <option value="analyst">分析师</option>
-          <option value="content_operator">内容运营</option>
-          <option value="reviewer">独立审核员</option>
-          <option value="client_viewer">客户只读</option>
-          <option value="viewer">客户查看者</option>
-        </select>
-      </label>
-      <button type="submit" disabled={pending}>{pending ? "保存中..." : "保存成员"}</button>
-      <ActionState state={state} />
-    </form>
-  );
-}
-
-function MemberDeleteForm({ projectId }: { projectId: string }) {
-  const [state, formAction, pending] = useActionState(deleteMemberAction, initialState);
-  return (
-    <form className="inlineForm" action={formAction}>
-      <input {...hydrationControlProps} type="hidden" name="project_id" value={projectId} />
-      <label><span>用户 ID / 邮箱</span><input {...hydrationControlProps} name="user_id" placeholder="customer@example.com" required /></label>
-      <button type="submit" className="danger" disabled={pending}>{pending ? "删除中..." : "删除成员"}</button>
-      <ActionState state={state} />
-    </form>
   );
 }
 

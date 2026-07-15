@@ -698,50 +698,6 @@ export async function saveCompetitorEntityAction(
   return { ok: true, message: `竞品已保存：${response.data?.entity?.canonical_name || payload.canonical_name}` };
 }
 
-export async function saveMemberAction(
-  _previousState: ProjectActionState,
-  formData: FormData
-): Promise<ProjectActionState> {
-  const pid = projectId(formData);
-  const response = await runtimeRequest<Record<string, unknown>>("/v1/project-members/runtime", {
-    method: "POST",
-    body: {
-      project_id: pid,
-      user_id: value(formData, "user_id"),
-      role: value(formData, "role") || "viewer",
-      updated_by: adminActorId(),
-      reason: "admin_web_project_member_save"
-    }
-  });
-  if (!response.ok) {
-    return { ok: false, error: response.error || "成员保存失败。" };
-  }
-  revalidateProject(pid);
-  return { ok: true, message: "成员已保存。" };
-}
-
-export async function deleteMemberAction(
-  _previousState: ProjectActionState,
-  formData: FormData
-): Promise<ProjectActionState> {
-  const userId = value(formData, "user_id");
-  const pid = projectId(formData);
-  const response = await runtimeRequest<Record<string, unknown>>("/v1/project-members/runtime", {
-    method: "DELETE",
-    body: {
-      project_id: pid,
-      user_id: userId,
-      deleted_by: adminActorId(),
-      reason: "admin_web_project_member_delete"
-    }
-  });
-  if (!response.ok) {
-    return { ok: false, error: response.error || "成员删除失败。" };
-  }
-  revalidateProject(pid);
-  return { ok: true, message: `成员已删除：${userId}` };
-}
-
 export async function importPromptsAction(
   _previousState: ProjectActionState,
   formData: FormData

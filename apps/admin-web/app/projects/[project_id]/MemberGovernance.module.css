@@ -1,0 +1,278 @@
+.panel {
+  border-top: 1px solid #d8e0e8;
+  display: grid;
+  gap: 16px;
+  margin-top: 18px;
+  padding-top: 18px;
+}
+
+.panelHeader,
+.formHeading,
+.memberHeading,
+.rowActions,
+.roleForm,
+.summary {
+  align-items: center;
+  display: flex;
+}
+
+.panelHeader,
+.formHeading {
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.panelHeader p,
+.formHeading p {
+  color: #5b6e7d;
+  font-size: 12px;
+  font-weight: 700;
+  margin: 0 0 5px;
+}
+
+.panelHeader h3 {
+  font-size: 16px;
+}
+
+.summary {
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.summary span {
+  background: #eef3f6;
+  border: 1px solid #d4dfe6;
+  border-radius: 6px;
+  color: #526674;
+  display: grid;
+  font-size: 11px;
+  gap: 2px;
+  min-width: 78px;
+  padding: 7px 9px;
+}
+
+.summary strong {
+  color: #17232d;
+  font-size: 13px;
+}
+
+.addForm {
+  background: #f7fafc;
+  border-block: 1px solid #d8e0e8;
+  display: grid;
+  gap: 12px;
+  padding: 14px 0;
+}
+
+.formGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.formGrid label:nth-child(4),
+.formGrid label:nth-child(5) {
+  grid-column: span 1;
+}
+
+.memberList {
+  border: 1px solid #d8e0e8;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.memberRow {
+  align-items: center;
+  background: #ffffff;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(260px, 1.6fr) minmax(140px, 0.7fr) minmax(300px, 1.2fr);
+  padding: 14px;
+}
+
+.memberRow + .memberRow {
+  border-top: 1px solid #d8e0e8;
+}
+
+.identityCell,
+.stateCell {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.identityCell a {
+  color: #225e79;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.identityCell > span,
+.identityCell code,
+.stateCell small {
+  color: #657783;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.memberHeading {
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.memberHeading strong {
+  font-size: 14px;
+}
+
+.selfBadge,
+.activeBadge,
+.revokedBadge {
+  border: 1px solid;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 3px 7px;
+  width: fit-content;
+}
+
+.selfBadge {
+  background: #edf5f7;
+  border-color: #bad3da;
+  color: #285e6c;
+}
+
+.activeBadge {
+  background: #edf7f1;
+  border-color: #b9d9c6;
+  color: #296344;
+}
+
+.revokedBadge {
+  background: #f7f0ef;
+  border-color: #dec7c2;
+  color: #82483e;
+}
+
+.rowActions,
+.roleForm {
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.roleForm select {
+  min-width: 132px;
+  padding-block: 8px;
+}
+
+.rowActions button,
+.formHeading button {
+  min-height: 36px;
+  min-width: 92px;
+}
+
+.feedbackRow {
+  display: grid;
+  gap: 6px;
+  grid-column: 1 / -1;
+}
+
+.errorFeedback,
+.successFeedback,
+.loadError,
+.emptyState {
+  border: 1px solid;
+  border-radius: 6px;
+  display: grid;
+  font-size: 12px;
+  gap: 3px;
+  padding: 9px 11px;
+}
+
+.errorFeedback,
+.loadError {
+  background: #fbf1ef;
+  border-color: #e2c6bf;
+  color: #7d3f35;
+}
+
+.successFeedback {
+  background: #eef7f2;
+  border-color: #bfdac9;
+  color: #285f42;
+}
+
+.errorFeedback small,
+.loadError small {
+  overflow-wrap: anywhere;
+}
+
+.emptyState {
+  background: #f7fafc;
+  border-color: #d8e0e8;
+  color: #607481;
+  min-height: 96px;
+  place-items: center;
+}
+
+.srOnly {
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+@media (max-width: 980px) {
+  .formGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .memberRow {
+    grid-template-columns: minmax(0, 1fr) minmax(140px, 0.5fr);
+  }
+
+  .rowActions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 640px) {
+  .panelHeader,
+  .formHeading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .summary {
+    justify-content: stretch;
+  }
+
+  .summary span {
+    flex: 1 1 92px;
+  }
+
+  .formGrid,
+  .memberRow {
+    grid-template-columns: 1fr;
+  }
+
+  .rowActions,
+  .roleForm {
+    align-items: stretch;
+    display: grid;
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .roleForm select,
+  .rowActions button,
+  .formHeading button {
+    width: 100%;
+  }
+}

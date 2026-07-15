@@ -85,7 +85,7 @@ class AdminCustomerWebContractsTest(unittest.TestCase):
         self.assertIn("InvitationForm", page_source)
         self.assertIn("InvitationList", page_source)
         self.assertNotIn("TokenList", page_source)
-        self.assertIn("MemberList", page_source)
+        self.assertIn("MemberGovernancePanel", page_source)
         self.assertNotIn("TokenCreateForm", page_source)
         self.assertNotIn("TokenRevokeForm", page_source)
         self.assertIn("ProjectBasicsForm", page_source)

@@ -16,8 +16,6 @@ import {
   type KnowledgeFactSearchResult,
   LaunchConfigForm,
   ManualBackfillPanel,
-  MemberList,
-  MemberManagement,
   ProjectBasicsForm,
   ProjectStatusControls,
   PromptCandidatePanel,
@@ -32,6 +30,9 @@ import {
 } from "./ProjectActions";
 import { InvitationManagementPanel } from "./InvitationManagementPanel";
 import { loadProjectInvitations } from "./invitationData";
+import { MemberGovernancePanel } from "./MemberGovernancePanel";
+import { emptyProjectMembers, loadProjectMembers } from "./memberData";
+import type { ProjectMemberLoadResult } from "./memberTypes";
 import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { actorHeaders, adminDevToolsEnabled, apiBase, runtimeRequest } from "../../runtime";
@@ -491,12 +492,15 @@ export default async function ProjectDetailPage({
   }
   const launch = launchConfig?.launch_config || {};
   const scoringProfile = stringValue(launch, "scoring_profile") || "visibility_v1.0";
+  const membersPromise = activeTab === "entry"
+    ? loadProjectMembers(projectId)
+    : Promise.resolve(emptyProjectMembers());
 
   const [
     scoreConfig,
     scoreFormulas,
     scoreProfiles,
-    members,
+    memberData,
     invitations,
     prompts,
     knowledge,
@@ -521,7 +525,7 @@ export default async function ProjectDetailPage({
     loadScoreWeightConfig(projectId, scoringProfile),
     loadScoreFormulas(),
     loadScoreProfiles(),
-    loadPage<Record<string, unknown>>("/v1/project-members/runtime", projectId),
+    membersPromise,
     loadProjectInvitations(projectId),
     loadPage<PromptRecord>("/v1/prompts/runtime", projectId, promptQuery, promptLimit),
     loadKnowledgeSearch(projectId, knowledgeQuery, knowledgeMarket || record?.project.market_code || "GLOBAL", knowledgeCity),
@@ -616,7 +620,7 @@ export default async function ProjectDetailPage({
             defaultEmail={defaultEmail}
             invitations={invitations}
             launch={launch}
-            members={members}
+            members={memberData}
             projectId={projectId}
           />
         ) : null}
@@ -771,7 +775,7 @@ function EntryPanel({
   defaultEmail?: string;
   invitations: PageResponse<Record<string, unknown>>;
   launch: Record<string, unknown>;
-  members: PageResponse<Record<string, unknown>>;
+  members: ProjectMemberLoadResult;
   projectId: string;
 }) {
   return (
@@ -787,12 +791,7 @@ function EntryPanel({
         invitations={invitations.records}
         projectId={projectId}
       />
-      <div className="detailPanel">
-          <p className="eyebrow">成员权限</p>
-          <h3>内部和客户成员</h3>
-          <MemberManagement projectId={projectId} />
-          <MemberList members={members.records} />
-      </div>
+      <MemberGovernancePanel data={members} projectId={projectId} />
     </section>
   );
 }
@@ -1575,7 +1574,7 @@ function AccessOverview({
   defaultEmail?: string;
   invitations: PageResponse<Record<string, unknown>>;
   launch: Record<string, unknown>;
-  members: PageResponse<Record<string, unknown>>;
+  members: ProjectMemberLoadResult;
 }) {
   const pendingInvitations = invitations.records.filter((record) => stringValue(childRecord(record, "invitation"), "status") === "pending");
   const defaultRole = pendingInvitations[0] ? stringValue(childRecord(pendingInvitations[0], "invitation"), "role") || "viewer" : "viewer";
@@ -1610,7 +1609,7 @@ function AccessOverview({
         <p className="eyebrow">访问状态</p>
         <h3>当前入口资源</h3>
         <SummaryTable rows={[
-          ["成员数量", String(members.total_count)],
+          ["成员数量", String(members.page.total)],
           ["邀请数量", String(invitations.total_count)],
           ["访问方式", "安全会话"]
         ]} />
