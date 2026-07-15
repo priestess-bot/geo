@@ -8,8 +8,8 @@
       "file": "customer.openapi.json",
       "operation_count": 12,
       "path_count": 12,
-      "sha256": "67764afbc4661a570ad6f95ad1739e1d9e369b707989f89f359ac529dd91d528",
-      "size_bytes": 65352
+      "sha256": "4c80d69328233555bda7a9a6c19bec06fc875f9c14d91cf587a795fd35f594f4",
+      "size_bytes": 65464
     },
     "internal": {
       "api_title": "GEO Internal API",

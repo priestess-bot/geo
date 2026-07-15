@@ -293,6 +293,7 @@ class ConnectedFoundationServices:
                     display_name=item.name,
                     market_code=item.market_code or "UNSET",
                     status=item.status,
+                    role=item.role,
                 )
                 for item in _projects(page)
             ],

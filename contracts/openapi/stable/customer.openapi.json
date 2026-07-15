@@ -101,7 +101,7 @@
       },
       "CustomerProjectSummary": {
         "additionalProperties": false,
-        "description": "Customer-safe project projection without internal membership metadata.",
+        "description": "Customer-safe project projection including the caller's own project role.",
         "properties": {
           "display_name": {
             "title": "Display Name",
@@ -116,6 +116,10 @@
             "title": "Project Id",
             "type": "string"
           },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
           "status": {
             "title": "Status",
             "type": "string"
@@ -125,7 +129,8 @@
           "project_id",
           "display_name",
           "market_code",
-          "status"
+          "status",
+          "role"
         ],
         "title": "CustomerProjectSummary",
         "type": "object"

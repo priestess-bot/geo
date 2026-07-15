@@ -143,12 +143,14 @@ def test_customer_session_returns_all_projects_using_customer_dto() -> None:
                 "project_id": str(access.project_ids[0]),
                 "display_name": "Public Project A",
                 "market_code": "AU",
+                "role": "customer",
                 "status": "active",
             },
             {
                 "project_id": str(access.project_ids[1]),
                 "display_name": "Public Project B",
                 "market_code": "NZ",
+                "role": "viewer",
                 "status": "paused",
             },
         ],
@@ -156,7 +158,7 @@ def test_customer_session_returns_all_projects_using_customer_dto() -> None:
         "limit": 50,
         "offset": 0,
     }
-    assert "role" not in response.text
+    assert [item["role"] for item in response.json()["items"]] == ["customer", "viewer"]
 
 
 def test_customer_surface_rejects_development_headers_without_session() -> None:
@@ -235,6 +237,8 @@ def test_customer_and_internal_openapi_use_distinct_project_contracts() -> None:
     assert "CustomerProjectSummary" in str(customer_ref)
     assert "ProjectSummary" in str(internal_ref)
     assert "CustomerProjectSummary" not in str(internal_ref)
+    customer_contract = customer_schema["components"]["schemas"]["CustomerProjectSummary"]
+    assert "role" in customer_contract["required"]
 
 
 def test_header_development_auth_is_explicit_and_forbidden_in_production(
