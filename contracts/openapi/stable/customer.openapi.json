@@ -38,6 +38,37 @@
         "title": "AuthIdentity",
         "type": "object"
       },
+      "CustomerProjectSummary": {
+        "additionalProperties": false,
+        "description": "Customer-safe project projection without internal membership metadata.",
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "market_code": {
+            "title": "Market Code",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "display_name",
+          "market_code",
+          "status"
+        ],
+        "title": "CustomerProjectSummary",
+        "type": "object"
+      },
       "HealthStatus": {
         "additionalProperties": false,
         "properties": {
@@ -155,6 +186,41 @@
         "title": "LogoutResult",
         "type": "object"
       },
+      "OffsetPage_CustomerProjectSummary_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CustomerProjectSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "OffsetPage[CustomerProjectSummary]",
+        "type": "object"
+      },
       "OffsetPage_JobStatus_": {
         "additionalProperties": false,
         "properties": {
@@ -188,41 +254,6 @@
           "offset"
         ],
         "title": "OffsetPage[JobStatus]",
-        "type": "object"
-      },
-      "OffsetPage_ProjectSummary_": {
-        "additionalProperties": false,
-        "properties": {
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/ProjectSummary"
-            },
-            "title": "Items",
-            "type": "array"
-          },
-          "limit": {
-            "minimum": 1.0,
-            "title": "Limit",
-            "type": "integer"
-          },
-          "offset": {
-            "minimum": 0.0,
-            "title": "Offset",
-            "type": "integer"
-          },
-          "total": {
-            "minimum": 0.0,
-            "title": "Total",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "items",
-          "total",
-          "limit",
-          "offset"
-        ],
-        "title": "OffsetPage[ProjectSummary]",
         "type": "object"
       },
       "ProblemDetails": {
@@ -280,36 +311,6 @@
           "request_id"
         ],
         "title": "ProblemDetails",
-        "type": "object"
-      },
-      "ProjectSummary": {
-        "additionalProperties": false,
-        "properties": {
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "key": {
-            "title": "Key",
-            "type": "string"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "role": {
-            "title": "Role",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "key",
-          "name",
-          "role"
-        ],
-        "title": "ProjectSummary",
         "type": "object"
       }
     }
@@ -691,6 +692,22 @@
               "title": "Offset",
               "type": "integer"
             }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
           }
         ],
         "responses": {
@@ -828,6 +845,22 @@
               "format": "uuid",
               "title": "Job Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
             }
           }
         ],
@@ -980,6 +1013,22 @@
               "title": "Offset",
               "type": "integer"
             }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
           }
         ],
         "responses": {
@@ -987,7 +1036,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OffsetPage_ProjectSummary_"
+                  "$ref": "#/components/schemas/OffsetPage_CustomerProjectSummary_"
                 }
               }
             },
@@ -1099,7 +1148,7 @@
             "description": "Service Unavailable"
           }
         },
-        "summary": "List Projects",
+        "summary": "List Customer Projects",
         "tags": [
           "projects"
         ]
