@@ -132,6 +132,7 @@ class JobRecord:
     updated_at: datetime
     result_ref: str | None
     error_code: str | None
+    result_details: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)

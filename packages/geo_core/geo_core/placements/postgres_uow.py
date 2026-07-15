@@ -8,6 +8,7 @@ from typing import Any
 from uuid import UUID
 
 from geo_core.placements.postgres_repository import PsycopgPlacementRepository
+from geo_core.project_scope import set_project_scope
 
 
 class PsycopgPlacementUnitOfWork:
@@ -20,9 +21,7 @@ class PsycopgPlacementUnitOfWork:
 
     def __enter__(self) -> "PsycopgPlacementUnitOfWork":
         self._connection = self._connection_factory()
-        self._connection.execute(
-            "SELECT set_config('geo.project_id', %s, true)", (str(self._project_id),)
-        )
+        set_project_scope(self._connection, self._project_id)
         self.placements = PsycopgPlacementRepository(self._connection)
         return self
 

@@ -1,85 +1,16 @@
-"""Dedicated placement generation worker orchestration."""
+"""Validation of structured placement generation output."""
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
-from typing import Mapping
+from typing import Any, Mapping
 from uuid import UUID
 
-from geo_core.model_gateway import (
-    ModelCallBudget,
-    ModelGateway,
-    ModelGatewayRequest,
-    ModelPolicy,
-)
-from geo_core.model_gateway.contracts import ModelGatewayError
-from geo_core.placements.domain import PackageVersion, PlacementRuleViolation
+from geo_core.placements.domain import PlacementRuleViolation
 from geo_core.placements.ports import (
     GeneratedClaim,
     GeneratedPlacement,
     GenerationClaim,
-    GenerationWorkerPort,
 )
-
-
-class PlacementGenerationWorker:
-    """Claims/finalizes with short transactions and calls the model between them."""
-
-    def __init__(
-        self,
-        *,
-        port: GenerationWorkerPort,
-        gateway: ModelGateway,
-        worker_id: str,
-        lease_for: timedelta = timedelta(minutes=5),
-    ) -> None:
-        if not worker_id.strip():
-            raise ValueError("worker id is required")
-        self._port = port
-        self._gateway = gateway
-        self._worker_id = worker_id
-        self._lease_for = lease_for
-
-    def run_once(self) -> PackageVersion | None:
-        """Process one generation job; the claim call must release its transaction."""
-        claim = self._port.claim_next(worker_id=self._worker_id, lease_for=self._lease_for)
-        if claim is None:
-            return None
-        try:
-            result = self._gateway.generate(
-                ModelGatewayRequest(
-                    messages=(
-                        {
-                            "role": "system",
-                            "content": (
-                                "Return JSON with content_json, rendered_text and claims. "
-                                "Use only supplied evidence and never invent consumer experience."
-                            ),
-                        },
-                        {"role": "user", "content": claim.rendered_prompt},
-                    ),
-                    configured_model=claim.configured_model,
-                    prompt_bundle_hash=claim.prompt_bundle_hash,
-                    project_id=claim.project_id,
-                    purpose="geo-placement-generation",
-                ),
-                policy=ModelPolicy(),
-                budget=ModelCallBudget(claim.model_call_budget),
-            )
-            placement = parse_generated_placement(result.output, claim=claim)
-            return self._port.finalize(
-                claim=claim,
-                placement=placement,
-                model_result=result,
-                completed_at=datetime.now(UTC),
-            )
-        except (ModelGatewayError, PlacementRuleViolation) as exc:
-            self._port.fail(
-                claim=claim,
-                error_code=type(exc).__name__,
-                retry_at=datetime.now(UTC) + timedelta(minutes=1),
-            )
-            return None
 
 
 def parse_generated_placement(
@@ -88,13 +19,21 @@ def parse_generated_placement(
     content_json = output.get("content_json")
     rendered_text = output.get("rendered_text")
     raw_claims = output.get("claims")
+    raw_internal_refs = output.get("internal_evidence_refs")
+    raw_public_refs = output.get("public_citation_refs")
     if not isinstance(content_json, Mapping):
         raise PlacementRuleViolation("model output content_json must be an object")
     if not isinstance(rendered_text, str) or not rendered_text.strip():
         raise PlacementRuleViolation("model output rendered_text is required")
     if not isinstance(raw_claims, list):
         raise PlacementRuleViolation("model output claims must be an array")
+    internal_refs = _reference_ids(raw_internal_refs, label="internal evidence")
+    public_refs = _reference_ids(raw_public_refs, label="public citation")
     allowed_evidence = set(claim.evidence_item_ids)
+    if not set(internal_refs).issubset(allowed_evidence):
+        raise PlacementRuleViolation("internal refs contain evidence outside the frozen pack")
+    if not set(public_refs).issubset(set(claim.public_citation_item_ids)):
+        raise PlacementRuleViolation("public citations contain non-disclosable evidence")
     claims: list[GeneratedClaim] = []
     for item in raw_claims:
         if not isinstance(item, Mapping):
@@ -120,4 +59,54 @@ def parse_generated_placement(
         if kind != "non_factual" and status == "supported" and not evidence_ids:
             raise PlacementRuleViolation("a supported factual claim requires evidence")
         claims.append(GeneratedClaim(text.strip(), str(kind), str(status), evidence_ids))
-    return GeneratedPlacement(dict(content_json), rendered_text.strip(), tuple(claims))
+    enriched_content = {
+        **dict(content_json),
+        "internal_evidence_refs": [str(value) for value in internal_refs],
+        "public_citation_refs": [str(value) for value in public_refs],
+    }
+    return GeneratedPlacement(
+        enriched_content,
+        rendered_text.strip(),
+        tuple(claims),
+        internal_refs,
+        public_refs,
+    )
+
+
+def _reference_ids(value: object, *, label: str) -> tuple[UUID, ...]:
+    if not isinstance(value, list):
+        raise PlacementRuleViolation(f"model output {label} refs must be an array")
+    try:
+        return tuple(UUID(str(item)) for item in value)
+    except (TypeError, ValueError) as exc:
+        raise PlacementRuleViolation(f"model output {label} ref is invalid") from exc
+
+
+def validate_output_schema(output: Mapping[str, object], schema: Mapping[str, object]) -> None:
+    """Validate the stable top-level JSON contract without provider-specific libraries."""
+    if schema.get("type") not in (None, "object"):
+        raise PlacementRuleViolation("placement output schema must describe an object")
+    required = schema.get("required", ())
+    if not isinstance(required, list):
+        raise PlacementRuleViolation("output schema required must be an array")
+    missing = [str(name) for name in required if str(name) not in output]
+    if missing:
+        raise PlacementRuleViolation(f"model output misses schema fields: {', '.join(missing)}")
+    properties = schema.get("properties", {})
+    if not isinstance(properties, Mapping):
+        raise PlacementRuleViolation("output schema properties must be an object")
+    types: dict[str, Any] = {
+        "object": Mapping,
+        "array": list,
+        "string": str,
+        "integer": int,
+        "number": (int, float),
+        "boolean": bool,
+    }
+    for name, contract in properties.items():
+        if name not in output or not isinstance(contract, Mapping):
+            continue
+        expected = contract.get("type")
+        expected_type = types.get(str(expected))
+        if expected_type is not None and not isinstance(output[name], expected_type):
+            raise PlacementRuleViolation(f"model output field has wrong type: {name}")

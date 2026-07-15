@@ -61,11 +61,11 @@ LANGUAGE plpgsql AS $$
 BEGIN
     IF (NEW.package_id, NEW.project_id, NEW.version_number, NEW.base_version_id,
         NEW.content_json, NEW.rendered_text, NEW.content_hash, NEW.edited_by,
-        NEW.edit_reason, NEW.prompt_bundle_id)
+        NEW.edit_reason, NEW.prompt_bundle_id, NEW.generated_by_job_id)
        IS DISTINCT FROM
        (OLD.package_id, OLD.project_id, OLD.version_number, OLD.base_version_id,
         OLD.content_json, OLD.rendered_text, OLD.content_hash, OLD.edited_by,
-        OLD.edit_reason, OLD.prompt_bundle_id) THEN
+        OLD.edit_reason, OLD.prompt_bundle_id, OLD.generated_by_job_id) THEN
         RAISE EXCEPTION 'placement package version content and lineage are immutable'
             USING ERRCODE = '55000';
     END IF;
@@ -310,7 +310,11 @@ CREATE TABLE publication_destinations (
     )),
     destination_account_id text,
     destination_key text NOT NULL CHECK (btrim(destination_key) <> ''),
-    canonical_url text,
+    canonical_url text NOT NULL CHECK (canonical_url ~ '^https://'),
+    canonical_host text NOT NULL CHECK (
+        canonical_host = lower(canonical_host) AND btrim(canonical_host) <> ''
+    ),
+    allowed_hosts text[] NOT NULL CHECK (cardinality(allowed_hosts) > 0),
     operation_mode text NOT NULL DEFAULT 'manual' CHECK (operation_mode IN ('manual', 'assisted', 'api')),
     policy_status text NOT NULL DEFAULT 'unreviewed' CHECK (policy_status IN (
         'unreviewed', 'approved', 'restricted', 'prohibited'
@@ -318,6 +322,24 @@ CREATE TABLE publication_destinations (
     created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     UNIQUE (id, project_id),
     UNIQUE (project_id, publication_channel, destination_key)
+);
+
+CREATE TABLE destination_policy_versions (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    destination_id uuid NOT NULL,
+    version_number integer NOT NULL CHECK (version_number > 0),
+    status text NOT NULL CHECK (status IN ('approved', 'restricted', 'prohibited')),
+    rules jsonb NOT NULL CHECK (jsonb_typeof(rules) = 'object'),
+    identity_requirements jsonb NOT NULL CHECK (jsonb_typeof(identity_requirements) = 'object'),
+    disclosure_requirements jsonb NOT NULL CHECK (jsonb_typeof(disclosure_requirements) = 'object'),
+    allowed_hosts text[] NOT NULL CHECK (cardinality(allowed_hosts) > 0),
+    reviewed_by uuid NOT NULL REFERENCES identities(id),
+    reviewed_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    FOREIGN KEY (destination_id, project_id)
+        REFERENCES publication_destinations(id, project_id),
+    UNIQUE (id, project_id),
+    UNIQUE (destination_id, version_number)
 );
 
 CREATE TABLE placement_opportunities (
@@ -458,6 +480,20 @@ CREATE TABLE generation_template_releases (
     UNIQUE (skill_version_id, release_number)
 );
 
+CREATE TABLE content_task_prompt_releases (
+    project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    task_key text NOT NULL CHECK (task_key IN (
+        'owned_site', 'productreview', 'youtube', 'reddit', 'amazon', 'ozbargain',
+        'tiktok', 'instagram', 'quora'
+    )),
+    template_release_id uuid NOT NULL,
+    selected_by uuid NOT NULL REFERENCES identities(id),
+    selected_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    PRIMARY KEY (project_id, task_key),
+    FOREIGN KEY (template_release_id, project_id)
+        REFERENCES generation_template_releases(id, project_id)
+);
+
 CREATE TABLE prompt_bundles (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -465,7 +501,7 @@ CREATE TABLE prompt_bundles (
     evidence_pack_attempt_id uuid NOT NULL,
     template_release_id uuid NOT NULL,
     input_snapshot jsonb NOT NULL CHECK (jsonb_typeof(input_snapshot) = 'object'),
-    storage_uri text NOT NULL CHECK (left(storage_uri, 16) = 'content-prompts/'),
+    storage_key text NOT NULL CHECK (left(storage_key, 16) = 'content-prompts/'),
     bundle_hash text NOT NULL CHECK (bundle_hash ~ '^[0-9a-f]{64}$'),
     created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     FOREIGN KEY (brief_version_id, project_id) REFERENCES placement_brief_versions(id, project_id),
@@ -501,6 +537,7 @@ CREATE TABLE placement_package_versions (
     content_hash text NOT NULL CHECK (content_hash ~ '^[0-9a-f]{64}$'),
     edited_by uuid REFERENCES identities(id),
     edit_reason text,
+    generated_by_job_id uuid,
     created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     FOREIGN KEY (package_id, project_id) REFERENCES placement_packages(id, project_id) ON DELETE CASCADE,
     FOREIGN KEY (prompt_bundle_id, project_id) REFERENCES prompt_bundles(id, project_id),
@@ -508,7 +545,8 @@ CREATE TABLE placement_package_versions (
     UNIQUE (id, project_id),
     UNIQUE (package_id, version_number),
     CHECK ((base_version_id IS NULL) = (version_number = 1)),
-    CHECK (version_number = 1 OR (edited_by IS NOT NULL AND edit_reason IS NOT NULL))
+    CHECK ((generated_by_job_id IS NOT NULL) <> (edited_by IS NOT NULL)),
+    CHECK (edited_by IS NULL OR edit_reason IS NOT NULL)
 );
 
 COMMENT ON COLUMN placement_package_versions.workflow_status IS
@@ -539,6 +577,19 @@ CREATE TABLE placement_claim_evidence (
     FOREIGN KEY (evidence_item_id, project_id) REFERENCES evidence_items(id, project_id)
 );
 
+CREATE TABLE placement_review_submissions (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    package_version_id uuid NOT NULL,
+    submitted_by uuid NOT NULL REFERENCES identities(id),
+    submitted_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    FOREIGN KEY (package_version_id, project_id)
+        REFERENCES placement_package_versions(id, project_id),
+    UNIQUE (id, project_id),
+    UNIQUE (package_version_id),
+    UNIQUE (package_version_id, project_id, submitted_by)
+);
+
 CREATE TABLE placement_reviews (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -552,9 +603,14 @@ CREATE TABLE placement_reviews (
     notes text,
     reviewed_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     FOREIGN KEY (package_version_id, project_id) REFERENCES placement_package_versions(id, project_id),
+    FOREIGN KEY (package_version_id, project_id, submitted_for_review_by)
+        REFERENCES placement_review_submissions(package_version_id, project_id, submitted_by),
     UNIQUE (id, project_id),
     CHECK (submitted_for_review_by <> reviewer_id),
-    CHECK (decision <> 'approved' OR (claim_inventory_complete AND extracted_claim_support_confirmed))
+    CHECK (decision <> 'approved' OR (
+        claim_inventory_complete AND extracted_claim_support_confirmed
+        AND score IS NOT NULL AND score >= 85
+    ))
 );
 
 CREATE FUNCTION geo_assert_package_version_approval() RETURNS trigger
@@ -565,7 +621,7 @@ BEGIN
             SELECT 1 FROM placement_reviews r
             WHERE r.package_version_id = NEW.id AND r.project_id = NEW.project_id
               AND r.decision = 'approved' AND r.claim_inventory_complete
-              AND r.extracted_claim_support_confirmed
+              AND r.extracted_claim_support_confirmed AND r.score >= 85
         ) OR EXISTS (
             SELECT 1 FROM placement_claims c
             WHERE c.package_version_id = NEW.id AND c.project_id = NEW.project_id
@@ -590,11 +646,16 @@ CREATE TABLE publication_requests (
     destination_id uuid NOT NULL,
     publication_attempt integer NOT NULL DEFAULT 1 CHECK (publication_attempt > 0),
     idempotency_key text NOT NULL CHECK (btrim(idempotency_key) <> ''),
+    restricted_policy_acknowledged boolean NOT NULL DEFAULT false,
+    policy_basis text,
     status text NOT NULL DEFAULT 'requested' CHECK (status IN (
         'requested', 'scheduled', 'publishing', 'retrying', 'published', 'failed', 'blocked', 'cancelled'
     )),
     requested_by uuid NOT NULL REFERENCES identities(id),
     requested_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    state_reason text,
+    state_changed_by uuid REFERENCES identities(id),
+    state_changed_at timestamptz,
     FOREIGN KEY (package_version_id, project_id) REFERENCES placement_package_versions(id, project_id),
     FOREIGN KEY (destination_id, project_id) REFERENCES publication_destinations(id, project_id),
     UNIQUE (id, project_id),
@@ -609,11 +670,22 @@ CREATE FUNCTION geo_assert_publication_package_approved() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
     IF NOT EXISTS (
-        SELECT 1 FROM placement_package_versions v
+        SELECT 1
+        FROM placement_package_versions v
+        JOIN placement_packages p ON p.id = v.package_id AND p.project_id = v.project_id
+        JOIN placement_opportunities o
+          ON o.id = p.opportunity_id AND o.project_id = p.project_id
+        JOIN publication_destinations d
+          ON d.id = NEW.destination_id AND d.project_id = NEW.project_id
         WHERE v.id = NEW.package_version_id AND v.project_id = NEW.project_id
-          AND v.workflow_status = 'approved'
+          AND v.workflow_status = 'approved' AND o.destination_id = d.id
+          AND (
+              d.policy_status = 'approved'
+              OR (d.policy_status = 'restricted' AND NEW.restricted_policy_acknowledged
+                  AND btrim(COALESCE(NEW.policy_basis, '')) <> '')
+          )
     ) THEN
-        RAISE EXCEPTION 'publication requires the exact approved package version'
+        RAISE EXCEPTION 'publication requires approved content and an eligible destination policy'
             USING ERRCODE = '23514';
     END IF;
     RETURN NEW;
@@ -631,15 +703,52 @@ CREATE TABLE publication_submissions (
     submitted_url text,
     provider_submission_id text,
     status text NOT NULL DEFAULT 'awaiting_url' CHECK (status IN (
-        'awaiting_url', 'submitted', 'verifying', 'verified', 'failed', 'blocked'
+        'awaiting_url', 'submitted', 'verifying', 'verified', 'failed', 'blocked', 'cancelled'
     )),
     submitted_at timestamptz,
+    url_backfilled_by uuid REFERENCES identities(id),
+    url_backfilled_at timestamptz,
     verified_at timestamptz,
+    state_reason text,
+    state_changed_by uuid REFERENCES identities(id),
+    state_changed_at timestamptz,
+    verification_result jsonb CHECK (
+        verification_result IS NULL OR jsonb_typeof(verification_result) = 'object'
+    ),
     created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     FOREIGN KEY (publication_request_id, project_id) REFERENCES publication_requests(id, project_id),
     UNIQUE (id, project_id),
     CHECK (status = 'awaiting_url' OR submitted_url IS NOT NULL)
 );
+
+CREATE FUNCTION geo_assert_submission_destination_host() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE
+    expected_hosts text[];
+    submitted_host text;
+BEGIN
+    IF NEW.submitted_url IS NULL THEN
+        RETURN NEW;
+    END IF;
+    IF NEW.submitted_url !~ '^https://' THEN
+        RAISE EXCEPTION 'publication submission URL must use HTTPS' USING ERRCODE = '23514';
+    END IF;
+    SELECT d.allowed_hosts INTO expected_hosts
+    FROM publication_requests r JOIN publication_destinations d
+      ON d.id = r.destination_id AND d.project_id = r.project_id
+    WHERE r.id = NEW.publication_request_id AND r.project_id = NEW.project_id;
+    submitted_host := lower(split_part(split_part(substring(NEW.submitted_url FROM 9), '/', 1), ':', 1));
+    IF expected_hosts IS NULL OR NOT submitted_host = ANY(expected_hosts) THEN
+        RAISE EXCEPTION 'publication submission URL does not match destination host'
+            USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER publication_submission_destination_host
+BEFORE INSERT OR UPDATE OF submitted_url, publication_request_id ON publication_submissions
+FOR EACH ROW EXECUTE FUNCTION geo_assert_submission_destination_host();
 
 CREATE TABLE placement_measurements (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -657,6 +766,24 @@ CREATE TABLE placement_measurements (
     UNIQUE (id, project_id),
     UNIQUE (submission_id, monitoring_query_id, measured_at)
 );
+
+CREATE TABLE placement_export_receipts (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    package_version_id uuid NOT NULL,
+    export_format text NOT NULL DEFAULT 'json' CHECK (export_format IN ('json')),
+    manifest jsonb NOT NULL CHECK (jsonb_typeof(manifest) = 'object'),
+    manifest_hash text NOT NULL CHECK (manifest_hash ~ '^[0-9a-f]{64}$'),
+    requested_by uuid NOT NULL REFERENCES identities(id),
+    storage_key text NOT NULL CHECK (left(storage_key, 18) = 'content-artifacts/'),
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    FOREIGN KEY (package_version_id, project_id)
+        REFERENCES placement_package_versions(id, project_id),
+    UNIQUE (id, project_id)
+);
+
+CREATE INDEX placement_export_receipts_version_idx
+ON placement_export_receipts (project_id, package_version_id, created_at DESC);
 
 CREATE TABLE durable_jobs (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -697,6 +824,14 @@ CREATE TABLE durable_jobs (
     )
 );
 
+ALTER TABLE placement_package_versions
+ADD CONSTRAINT placement_package_generated_by_job_fk
+FOREIGN KEY (generated_by_job_id, project_id) REFERENCES durable_jobs(id, project_id);
+
+CREATE UNIQUE INDEX placement_package_generated_job_idx
+ON placement_package_versions (project_id, generated_by_job_id)
+WHERE generated_by_job_id IS NOT NULL;
+
 CREATE INDEX durable_jobs_claim_idx
 ON durable_jobs (priority DESC, next_run_at, created_at)
 WHERE status IN ('queued', 'retry_wait');
@@ -729,8 +864,12 @@ CREATE TABLE evidence_pack_job_specs (
     job_id uuid PRIMARY KEY,
     project_id uuid NOT NULL,
     brief_version_id uuid NOT NULL,
+    evidence_pack_attempt_id uuid NOT NULL,
     FOREIGN KEY (job_id, project_id) REFERENCES durable_jobs(id, project_id) ON DELETE CASCADE,
-    FOREIGN KEY (brief_version_id, project_id) REFERENCES placement_brief_versions(id, project_id)
+    FOREIGN KEY (brief_version_id, project_id) REFERENCES placement_brief_versions(id, project_id),
+    FOREIGN KEY (evidence_pack_attempt_id, project_id)
+        REFERENCES evidence_pack_attempts(id, project_id),
+    UNIQUE (evidence_pack_attempt_id)
 );
 
 CREATE TABLE generation_job_specs (
@@ -739,9 +878,51 @@ CREATE TABLE generation_job_specs (
     prompt_bundle_id uuid NOT NULL,
     configured_model text NOT NULL CHECK (btrim(configured_model) <> ''),
     model_call_budget integer NOT NULL CHECK (model_call_budget > 0),
+    requested_by uuid NOT NULL REFERENCES identities(id),
     FOREIGN KEY (job_id, project_id) REFERENCES durable_jobs(id, project_id) ON DELETE CASCADE,
     FOREIGN KEY (prompt_bundle_id, project_id) REFERENCES prompt_bundles(id, project_id)
 );
+
+-- Append-only events reserve a job-wide paid-call slot before provider I/O and
+-- record its terminal outcome without storing prompts or credentials.
+CREATE TABLE model_call_logs (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    job_id uuid NOT NULL,
+    call_number integer NOT NULL CHECK (call_number > 0),
+    status text NOT NULL CHECK (status IN ('reserved', 'succeeded', 'failed')),
+    request_hash text NOT NULL CHECK (request_hash ~ '^[0-9a-f]{64}$'),
+    prompt_bundle_hash text NOT NULL CHECK (prompt_bundle_hash ~ '^[0-9a-f]{64}$'),
+    provider text NOT NULL CHECK (btrim(provider) <> ''),
+    configured_model text NOT NULL CHECK (btrim(configured_model) <> ''),
+    gateway_call_log_id uuid,
+    provider_request_id text,
+    provider_reported_model text,
+    prompt_tokens integer CHECK (prompt_tokens IS NULL OR prompt_tokens >= 0),
+    completion_tokens integer CHECK (completion_tokens IS NULL OR completion_tokens >= 0),
+    cost_usd numeric(18,8) CHECK (cost_usd IS NULL OR cost_usd >= 0),
+    finish_reason text,
+    response_hash text CHECK (response_hash IS NULL OR response_hash ~ '^[0-9a-f]{64}$'),
+    error_classification text CHECK (error_classification IS NULL OR error_classification IN (
+        'retryable', 'permanent', 'policy', 'contract', 'budget', 'configuration', 'unknown'
+    )),
+    error_code text,
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    FOREIGN KEY (job_id, project_id) REFERENCES durable_jobs(id, project_id) ON DELETE CASCADE,
+    UNIQUE (id, project_id),
+    UNIQUE (job_id, call_number, status),
+    CHECK (
+        (status = 'reserved' AND gateway_call_log_id IS NULL AND response_hash IS NULL
+            AND error_classification IS NULL AND error_code IS NULL)
+        OR (status = 'succeeded' AND gateway_call_log_id IS NOT NULL
+            AND response_hash IS NOT NULL AND error_classification IS NULL AND error_code IS NULL)
+        OR (status = 'failed' AND error_classification IS NOT NULL AND error_code IS NOT NULL)
+    )
+);
+
+CREATE UNIQUE INDEX model_call_logs_terminal_idx
+ON model_call_logs (job_id, call_number)
+WHERE status IN ('succeeded', 'failed');
 
 CREATE TABLE verification_job_specs (
     job_id uuid PRIMARY KEY,
@@ -755,9 +936,19 @@ CREATE TABLE measurement_job_specs (
     job_id uuid PRIMARY KEY,
     project_id uuid NOT NULL,
     submission_id uuid NOT NULL,
+    due_offset_days integer NOT NULL CHECK (due_offset_days IN (28, 56, 84)),
+    scheduled_for timestamptz NOT NULL,
+    market_profile_id uuid NOT NULL,
+    locale text NOT NULL CHECK (btrim(locale) <> ''),
+    device text NOT NULL CHECK (device IN ('desktop', 'mobile')),
+    sample_size integer NOT NULL CHECK (sample_size > 0),
+    protocol_snapshot jsonb NOT NULL CHECK (jsonb_typeof(protocol_snapshot) = 'object'),
+    protocol_hash text NOT NULL CHECK (protocol_hash ~ '^[0-9a-f]{64}$'),
     FOREIGN KEY (job_id, project_id) REFERENCES durable_jobs(id, project_id) ON DELETE CASCADE,
     FOREIGN KEY (submission_id, project_id) REFERENCES publication_submissions(id, project_id),
-    UNIQUE (job_id, project_id)
+    FOREIGN KEY (market_profile_id, project_id) REFERENCES market_profiles(id, project_id),
+    UNIQUE (job_id, project_id),
+    UNIQUE (submission_id, due_offset_days)
 );
 
 CREATE TABLE measurement_job_queries (
@@ -813,27 +1004,192 @@ CREATE TABLE broker_outbox (
     idempotency_key text NOT NULL,
     available_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     published_at timestamptz,
+    claimed_by text,
+    lease_expires_at timestamptz,
+    last_error text,
     attempt_count integer NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     FOREIGN KEY (job_id, project_id) REFERENCES durable_jobs(id, project_id) ON DELETE CASCADE,
     UNIQUE (id, project_id),
-    UNIQUE (project_id, idempotency_key)
+    UNIQUE (project_id, idempotency_key),
+    CHECK ((claimed_by IS NULL) = (lease_expires_at IS NULL))
+);
+
+CREATE INDEX broker_outbox_delivery_idx
+ON broker_outbox (available_at, created_at)
+WHERE published_at IS NULL;
+
+CREATE FUNCTION geo_worker_claim_broker_outbox(
+    worker_id text, batch_size integer, lease_seconds integer
+) RETURNS TABLE (
+    id uuid, project_id uuid, job_id uuid, topic text, payload jsonb
+)
+LANGUAGE sql SECURITY DEFINER
+SET search_path = pg_catalog, public
+SET row_security = off
+AS $$
+    WITH candidates AS (
+        SELECT candidate.id
+        FROM public.broker_outbox AS candidate
+        WHERE candidate.published_at IS NULL
+          AND candidate.available_at <= clock_timestamp()
+          AND (candidate.lease_expires_at IS NULL
+               OR candidate.lease_expires_at <= clock_timestamp())
+        ORDER BY candidate.available_at, candidate.created_at
+        LIMIT LEAST(GREATEST(batch_size, 1), 100)
+        FOR UPDATE SKIP LOCKED
+    )
+    UPDATE public.broker_outbox AS claimed
+    SET claimed_by = worker_id,
+        lease_expires_at = clock_timestamp()
+            + make_interval(secs => LEAST(GREATEST(lease_seconds, 5), 300)),
+        attempt_count = claimed.attempt_count + 1,
+        last_error = NULL
+    FROM candidates
+    WHERE claimed.id = candidates.id
+    RETURNING claimed.id, claimed.project_id, claimed.job_id, claimed.topic, claimed.payload
+$$;
+
+CREATE FUNCTION geo_worker_ack_broker_outbox(
+    outbox_id uuid, scoped_project_id uuid, worker_id text
+) RETURNS boolean
+LANGUAGE sql SECURITY DEFINER
+SET search_path = pg_catalog, public
+SET row_security = off
+AS $$
+    WITH acknowledged AS (
+        UPDATE public.broker_outbox
+        SET published_at = clock_timestamp(), claimed_by = NULL, lease_expires_at = NULL
+        WHERE id = outbox_id AND project_id = scoped_project_id
+          AND claimed_by = worker_id AND published_at IS NULL
+        RETURNING id
+    )
+    SELECT EXISTS(SELECT 1 FROM acknowledged)
+$$;
+
+CREATE FUNCTION geo_worker_fail_broker_outbox(
+    outbox_id uuid, scoped_project_id uuid, worker_id text, failure text
+) RETURNS boolean
+LANGUAGE sql SECURITY DEFINER
+SET search_path = pg_catalog, public
+SET row_security = off
+AS $$
+    WITH failed AS (
+        UPDATE public.broker_outbox
+        SET claimed_by = NULL, lease_expires_at = NULL,
+            available_at = clock_timestamp() + interval '5 seconds',
+            last_error = left(failure, 2000)
+        WHERE id = outbox_id AND project_id = scoped_project_id
+          AND claimed_by = worker_id AND published_at IS NULL
+        RETURNING id
+    )
+    SELECT EXISTS(SELECT 1 FROM failed)
+$$;
+
+CREATE FUNCTION geo_worker_recoverable_jobs(batch_size integer)
+RETURNS TABLE (job_id uuid, project_id uuid, kind text)
+LANGUAGE sql SECURITY DEFINER
+SET search_path = pg_catalog, public
+SET row_security = off
+AS $$
+    SELECT job.id, job.project_id, job.kind
+    FROM public.durable_jobs AS job
+    WHERE (
+        (job.status IN ('queued', 'retry_wait') AND job.next_run_at <= clock_timestamp())
+        OR (job.status IN ('running', 'finalizing')
+            AND job.lease_expires_at <= clock_timestamp())
+    )
+    ORDER BY job.priority DESC, job.next_run_at, job.created_at
+    LIMIT LEAST(GREATEST(batch_size, 1), 500)
+$$;
+
+CREATE TABLE durable_job_events (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    job_id uuid NOT NULL,
+    event_type text NOT NULL CHECK (btrim(event_type) <> ''),
+    worker_id text NOT NULL CHECK (btrim(worker_id) <> ''),
+    fencing_generation bigint CHECK (fencing_generation IS NULL OR fencing_generation >= 0),
+    details jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(details) = 'object'),
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    FOREIGN KEY (job_id, project_id) REFERENCES durable_jobs(id, project_id) ON DELETE CASCADE,
+    UNIQUE (id, project_id)
+);
+
+CREATE INDEX durable_job_events_job_idx
+ON durable_job_events (project_id, job_id, created_at);
+
+CREATE TABLE job_replay_requests (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    source_job_id uuid NOT NULL,
+    replay_job_id uuid NOT NULL,
+    idempotency_key text NOT NULL CHECK (btrim(idempotency_key) <> ''),
+    requested_by uuid NOT NULL REFERENCES identities(id),
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    FOREIGN KEY (source_job_id, project_id) REFERENCES durable_jobs(id, project_id),
+    FOREIGN KEY (replay_job_id, project_id) REFERENCES durable_jobs(id, project_id),
+    UNIQUE (id, project_id),
+    UNIQUE (project_id, source_job_id, idempotency_key),
+    UNIQUE (replay_job_id)
+);
+
+CREATE TABLE job_retry_requests (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    job_id uuid NOT NULL,
+    idempotency_key text NOT NULL CHECK (btrim(idempotency_key) <> ''),
+    requested_by uuid NOT NULL REFERENCES identities(id),
+    created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    FOREIGN KEY (job_id, project_id) REFERENCES durable_jobs(id, project_id),
+    UNIQUE (id, project_id),
+    UNIQUE (project_id, job_id, idempotency_key)
 );
 
 CREATE TABLE artifact_finalize_outbox (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     job_id uuid NOT NULL,
+    resource_kind text NOT NULL CHECK (resource_kind IN ('prompt_bundle', 'package_export')),
+    resource_id uuid NOT NULL,
     pending_uri text NOT NULL CHECK (btrim(pending_uri) <> ''),
-    final_uri text NOT NULL CHECK (btrim(final_uri) <> ''),
+    storage_key text NOT NULL CHECK (btrim(storage_key) <> ''),
+    final_uri text CHECK (final_uri IS NULL OR left(final_uri, 5) = 's3://'),
     content_hash text NOT NULL CHECK (content_hash ~ '^[0-9a-f]{64}$'),
     status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'finalizing', 'finalized', 'failed')),
     attempt_count integer NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+    last_error text,
     finalized_at timestamptz,
     created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
     FOREIGN KEY (job_id, project_id) REFERENCES durable_jobs(id, project_id) ON DELETE CASCADE,
     UNIQUE (id, project_id),
-    UNIQUE (job_id, final_uri)
+    UNIQUE (job_id, project_id),
+    UNIQUE (project_id, resource_kind, resource_id),
+    CHECK ((status = 'finalized') = (final_uri IS NOT NULL AND finalized_at IS NOT NULL))
 );
+
+CREATE TRIGGER artifact_finalize_job_kind
+BEFORE INSERT OR UPDATE ON artifact_finalize_outbox
+FOR EACH ROW EXECUTE FUNCTION geo_assert_domain_job_kind('artifact.finalize');
+
+CREATE FUNCTION geo_assert_generation_bundle_finalized() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM artifact_finalize_outbox a
+        WHERE a.project_id = NEW.project_id AND a.resource_kind = 'prompt_bundle'
+          AND a.resource_id = NEW.prompt_bundle_id AND a.status = 'finalized'
+    ) THEN
+        RAISE EXCEPTION 'generation requires a finalized prompt bundle artifact'
+            USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER generation_requires_finalized_prompt_artifact
+BEFORE INSERT OR UPDATE ON generation_job_specs
+FOR EACH ROW EXECUTE FUNCTION geo_assert_generation_bundle_finalized();
 
 -- The baseline vector contract is BGE-M3 at 1024 dimensions and cosine distance.
 CREATE TABLE evidence_embeddings (
@@ -855,6 +1211,9 @@ ON evidence_embeddings (project_id, model_key);
 
 CREATE TRIGGER placement_brief_versions_immutable
 BEFORE UPDATE OR DELETE ON placement_brief_versions
+FOR EACH ROW EXECUTE FUNCTION geo_reject_immutable_change();
+CREATE TRIGGER destination_policy_versions_immutable
+BEFORE UPDATE OR DELETE ON destination_policy_versions
 FOR EACH ROW EXECUTE FUNCTION geo_reject_immutable_change();
 CREATE TRIGGER evidence_items_immutable
 BEFORE UPDATE OR DELETE ON evidence_items
@@ -892,6 +1251,24 @@ FOR EACH ROW EXECUTE FUNCTION geo_reject_immutable_change();
 CREATE TRIGGER placement_reviews_immutable
 BEFORE UPDATE OR DELETE ON placement_reviews
 FOR EACH ROW EXECUTE FUNCTION geo_reject_immutable_change();
+CREATE TRIGGER placement_review_submissions_immutable
+BEFORE UPDATE OR DELETE ON placement_review_submissions
+FOR EACH ROW EXECUTE FUNCTION geo_reject_immutable_change();
+CREATE TRIGGER durable_job_events_immutable
+BEFORE UPDATE OR DELETE ON durable_job_events
+FOR EACH ROW EXECUTE FUNCTION geo_reject_immutable_change();
+CREATE TRIGGER placement_export_receipts_immutable
+BEFORE UPDATE OR DELETE ON placement_export_receipts
+FOR EACH ROW EXECUTE FUNCTION geo_reject_immutable_change();
+CREATE TRIGGER model_call_logs_immutable
+BEFORE UPDATE OR DELETE ON model_call_logs
+FOR EACH ROW EXECUTE FUNCTION geo_reject_immutable_change();
+CREATE TRIGGER job_replay_requests_immutable
+BEFORE UPDATE OR DELETE ON job_replay_requests
+FOR EACH ROW EXECUTE FUNCTION geo_reject_immutable_change();
+CREATE TRIGGER job_retry_requests_immutable
+BEFORE UPDATE OR DELETE ON job_retry_requests
+FOR EACH ROW EXECUTE FUNCTION geo_reject_immutable_change();
 
 -- Every project-owned table is both RLS-enabled and project constrained by its foreign keys.
 DO $$
@@ -901,15 +1278,21 @@ BEGIN
     FOREACH table_name IN ARRAY ARRAY[
         'projects', 'project_memberships', 'product_entities', 'market_profiles',
         'monitoring_queries', 'evidence_items', 'geo_campaigns', 'campaign_entities',
-        'campaign_monitoring_queries', 'publication_destinations', 'placement_opportunities',
+        'campaign_monitoring_queries', 'publication_destinations',
+        'destination_policy_versions', 'placement_opportunities',
         'placement_briefs', 'placement_brief_versions', 'placement_brief_subject_entities',
         'evidence_pack_attempts', 'evidence_pack_items', 'prompt_skills', 'prompt_skill_versions',
-        'generation_template_releases', 'prompt_bundles', 'placement_packages',
+        'generation_template_releases', 'content_task_prompt_releases',
+        'prompt_bundles', 'placement_packages',
         'placement_package_versions', 'placement_claims', 'placement_claim_evidence',
-        'placement_reviews', 'publication_requests', 'publication_submissions',
-        'placement_measurements', 'durable_jobs', 'collection_job_specs', 'collection_job_queries',
-        'evidence_pack_job_specs', 'generation_job_specs', 'verification_job_specs',
-        'measurement_job_specs', 'measurement_job_queries', 'broker_outbox', 'artifact_finalize_outbox',
+        'placement_review_submissions', 'placement_reviews', 'publication_requests',
+        'publication_submissions', 'placement_measurements', 'placement_export_receipts',
+        'durable_jobs', 'collection_job_specs', 'collection_job_queries',
+        'evidence_pack_job_specs', 'generation_job_specs', 'model_call_logs',
+        'verification_job_specs',
+        'measurement_job_specs', 'measurement_job_queries', 'broker_outbox', 'durable_job_events',
+        'job_replay_requests', 'job_retry_requests',
+        'artifact_finalize_outbox',
         'evidence_embeddings'
     ] LOOP
         EXECUTE 'ALTER TABLE ' || quote_ident(table_name) || ' ENABLE ROW LEVEL SECURITY';
@@ -938,6 +1321,22 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO geo_app, 
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO geo_readonly;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO geo_app, geo_worker;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO geo_app, geo_worker, geo_readonly;
+
+REVOKE ALL ON FUNCTION geo_worker_claim_broker_outbox(text, integer, integer) FROM PUBLIC;
+REVOKE ALL ON FUNCTION geo_worker_ack_broker_outbox(uuid, uuid, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION geo_worker_fail_broker_outbox(uuid, uuid, text, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION geo_worker_recoverable_jobs(integer) FROM PUBLIC;
+REVOKE ALL ON FUNCTION geo_worker_claim_broker_outbox(text, integer, integer)
+    FROM geo_app, geo_readonly;
+REVOKE ALL ON FUNCTION geo_worker_ack_broker_outbox(uuid, uuid, text)
+    FROM geo_app, geo_readonly;
+REVOKE ALL ON FUNCTION geo_worker_fail_broker_outbox(uuid, uuid, text, text)
+    FROM geo_app, geo_readonly;
+REVOKE ALL ON FUNCTION geo_worker_recoverable_jobs(integer) FROM geo_app, geo_readonly;
+GRANT EXECUTE ON FUNCTION geo_worker_claim_broker_outbox(text, integer, integer) TO geo_worker;
+GRANT EXECUTE ON FUNCTION geo_worker_ack_broker_outbox(uuid, uuid, text) TO geo_worker;
+GRANT EXECUTE ON FUNCTION geo_worker_fail_broker_outbox(uuid, uuid, text, text) TO geo_worker;
+GRANT EXECUTE ON FUNCTION geo_worker_recoverable_jobs(integer) TO geo_worker;
 
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
     GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO geo_app, geo_worker;

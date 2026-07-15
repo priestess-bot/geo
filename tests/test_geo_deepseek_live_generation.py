@@ -1,17 +1,14 @@
-"""Opt-in live DeepSeek verification for an approved GEO placement fixture.
-
-This test intentionally never runs in the default suite because it consumes a
-real provider call. It proves that v3 persists a real model result rather than
-a local template fallback.
-"""
+"""Opt-in paid-provider test through the stable asynchronous placement chain."""
 
 from __future__ import annotations
 
 import json
 import os
+import time
 import unittest
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
+from uuid import uuid4
 
 
 def _required(name: str) -> str:
@@ -21,45 +18,72 @@ def _required(name: str) -> str:
     return value
 
 
+def _json_request(url: str, *, headers: dict[str, str], payload: dict | None = None) -> dict:
+    request = Request(
+        url,
+        data=json.dumps(payload).encode() if payload is not None else None,
+        headers={
+            **headers,
+            **({"Content-Type": "application/json"} if payload is not None else {}),
+        },
+        method="POST" if payload is not None else "GET",
+    )
+    try:
+        with urlopen(request, timeout=30) as response:  # nosec B310 - configured test API.
+            return json.loads(response.read().decode())
+    except HTTPError as exc:
+        detail = exc.read().decode(errors="replace")
+        raise AssertionError(f"live GEO request failed with HTTP {exc.code}: {detail}") from exc
+
+
 class GeoDeepSeekLiveGenerationTest(unittest.TestCase):
-    def test_geo_package_is_generated_by_deepseek_when_explicitly_enabled(self) -> None:
+    def test_stable_job_worker_package_and_claim_lineage(self) -> None:
         if os.environ.get("GEO_RUN_LIVE_DEEPSEEK_TEST") != "1":
             self.skipTest("set GEO_RUN_LIVE_DEEPSEEK_TEST=1 to execute a paid provider call")
         api_url = os.environ.get("GEO_LIVE_API_URL", "http://localhost:8000").rstrip("/")
         project_id = _required("GEO_LIVE_PROJECT_ID")
+        prompt_bundle_id = _required("GEO_LIVE_PROMPT_BUNDLE_ID")
         opportunity_id = _required("GEO_LIVE_OPPORTUNITY_ID")
-        prompt_version_id = _required("GEO_LIVE_PROMPT_VERSION_ID")
-        actor_id = os.environ.get("GEO_LIVE_ACTOR_ID", "runtime-console")
-        payload = {
-            "project_id": project_id,
-            "prompt_template_version_id": prompt_version_id,
-            "generate_with_model": True,
-            "model": "deepseek-chat",
-            "title": "Live DeepSeek GEO verification package",
-            "disclosure_text": "Disclosure: I am posting on behalf of the brand.",
-            "evidence": [{
-                "source_url": _required("GEO_LIVE_EVIDENCE_URL"),
-                "text": _required("GEO_LIVE_EVIDENCE_TEXT"),
-                "source_kind": "brand_authored",
-                "usage_rights": "owned",
-                "subject": "TerraMow V600",
-                "subject_role": "primary_product",
-                "public_disclosure_allowed": True,
-            }],
+        headers = {
+            "X-GEO-Actor-ID": _required("GEO_LIVE_IDENTITY_ID"),
+            "X-GEO-Tenant-ID": _required("GEO_LIVE_TENANT_ID"),
+            "Idempotency-Key": f"deepseek-live-{uuid4()}",
         }
-        request = Request(
-            f"{api_url}/v1/geo/placement-opportunities/{opportunity_id}/packages",
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json", "X-GEO-Actor-Id": actor_id},
-            method="POST",
+        accepted = _json_request(
+            f"{api_url}/v1/projects/{project_id}/geo/prompt-bundles/"
+            f"{prompt_bundle_id}/generation-jobs",
+            headers=headers,
+            payload={"configured_model": "deepseek-v4-flash", "model_call_budget": 2},
         )
-        try:
-            with urlopen(request, timeout=90) as response:  # nosec B310 - local configured API endpoint.
-                body = json.loads(response.read().decode("utf-8"))
-        except HTTPError as exc:
-            raise AssertionError(f"live GEO DeepSeek request failed with HTTP {exc.code}") from exc
-        package = body["placement_package"]
-        self.assertEqual(package["generation_model"], "deepseek-chat")
-        self.assertEqual(len(package["model_response_hash"]), 64)
-        self.assertTrue(package["rendered_text"].strip())
-        self.assertEqual(package["status"], "draft")
+        job_id = accepted["job_id"]
+        terminal = None
+        for _ in range(90):
+            terminal = _json_request(f"{api_url}/v1/jobs/{job_id}", headers=headers)
+            if terminal["status"] in {"succeeded", "failed", "dead_lettered", "cancelled"}:
+                break
+            time.sleep(2)
+        self.assertIsNotNone(terminal)
+        self.assertEqual(terminal["status"], "succeeded")
+        details = terminal["result_details"]
+        self.assertEqual(details["configured_model"], "deepseek-v4-flash")
+        self.assertTrue(details["provider_reported_model"])
+        self.assertEqual(len(details["response_hash"]), 64)
+        self.assertEqual(len(details["prompt_bundle_hash"]), 64)
+
+        versions = _json_request(
+            f"{api_url}/v1/projects/{project_id}/geo/opportunities/"
+            f"{opportunity_id}/package-versions",
+            headers=headers,
+        )
+        generated = next(item for item in versions if item["generated_by_job_id"] == job_id)
+        detail = _json_request(
+            f"{api_url}/v1/projects/{project_id}/geo/package-versions/{generated['id']}",
+            headers=headers,
+        )
+        claims = _json_request(
+            f"{api_url}/v1/projects/{project_id}/geo/package-versions/" f"{generated['id']}/claims",
+            headers=headers,
+        )
+        self.assertTrue(detail["rendered_text"].strip())
+        self.assertEqual(len(detail["content_hash"]), 64)
+        self.assertIsInstance(claims, list)

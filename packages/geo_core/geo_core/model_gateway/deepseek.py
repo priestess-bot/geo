@@ -8,6 +8,7 @@ import hashlib
 import json
 from pathlib import Path
 from typing import Protocol
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from uuid import NAMESPACE_URL, uuid5
 
@@ -19,6 +20,7 @@ from geo_core.model_gateway.contracts import (
     ModelPolicy,
     ProviderCapabilities,
     ProviderCapabilityRegistry,
+    RetryableModelGatewayError,
 )
 
 
@@ -95,18 +97,31 @@ class DeepSeekGateway:
             "max_tokens": request.max_output_tokens,
             "response_format": {"type": "json_object"},
         }
-        response = self.transport.post(
-            url=self.endpoint,
-            headers={"Authorization": f"Bearer {api_key}"},
-            payload=payload,
-            timeout_seconds=self.timeout_seconds,
-        )
+        try:
+            response = self.transport.post(
+                url=self.endpoint,
+                headers={"Authorization": f"Bearer {api_key}"},
+                payload=payload,
+                timeout_seconds=self.timeout_seconds,
+            )
+        except HTTPError as exc:
+            if exc.code == 429 or 500 <= exc.code < 600:
+                raise RetryableModelGatewayError(
+                    f"DeepSeek temporarily rejected the request with HTTP {exc.code}"
+                ) from exc
+            raise ModelGatewayError(f"DeepSeek rejected the request with HTTP {exc.code}") from exc
+        except (TimeoutError, URLError, ConnectionError) as exc:
+            raise RetryableModelGatewayError("DeepSeek request could not be completed") from exc
         output, finish_reason = _extract_output(response.body)
-        canonical = json.dumps(response.body, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        canonical = json.dumps(
+            response.body, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        )
         response_hash = hashlib.sha256(canonical.encode()).hexdigest()
         usage_value = response.body.get("usage")
         usage: dict[str, object] = usage_value if isinstance(usage_value, dict) else {}
-        provider_request_id = response.headers.get("x-request-id") or _optional_text(response.body.get("id"))
+        provider_request_id = response.headers.get("x-request-id") or _optional_text(
+            response.body.get("id")
+        )
         call_log_id = uuid5(
             NAMESPACE_URL,
             ":".join(

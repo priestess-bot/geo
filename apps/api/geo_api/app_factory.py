@@ -31,6 +31,7 @@ from geo_api.problems import install_problem_handlers
 from geo_api.monitoring_routes import monitoring_router
 from geo_api.monitoring_runtime import build_monitoring_application
 from geo_api.placement_campaign_routes import campaign_router
+from geo_api.job_control_routes import job_control_router
 from geo_api.placement_generation_routes import generation_router
 from geo_api.placement_publication_routes import publication_router
 from geo_api.stable_routes import (
@@ -142,6 +143,7 @@ def create_api_app(
         app.include_router(campaign_router())
         app.include_router(generation_router())
         app.include_router(publication_router())
+        app.include_router(job_control_router())
         app.include_router(engineering_router())
         app.include_router(github_integration_router())
         if (

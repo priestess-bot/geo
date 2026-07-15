@@ -12,6 +12,10 @@ class ModelGatewayError(RuntimeError):
     """Base error for policy, budget, configuration, and provider failures."""
 
 
+class RetryableModelGatewayError(ModelGatewayError):
+    """Transient network, throttling, or provider availability failure."""
+
+
 class ModelCallBudgetExceeded(ModelGatewayError):
     """Raised before a call would exceed the job-wide paid call budget."""
 
@@ -37,7 +41,9 @@ class ProviderCapabilityRegistry:
         try:
             return self._capabilities[provider]
         except KeyError as exc:
-            raise ProviderPolicyViolation(f"provider capabilities are not registered: {provider}") from exc
+            raise ProviderPolicyViolation(
+                f"provider capabilities are not registered: {provider}"
+            ) from exc
 
 
 @dataclass(frozen=True)

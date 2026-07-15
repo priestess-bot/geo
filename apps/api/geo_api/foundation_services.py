@@ -511,6 +511,7 @@ def _job(item: object) -> JobStatus:
         updated_at=item.updated_at,
         result_ref=item.result_ref,
         error_code=item.error_code,
+        result_details=item.result_details,
     )
 
 

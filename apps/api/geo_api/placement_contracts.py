@@ -8,6 +8,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from geo_api.contracts import JobState
+
 
 class PlacementContract(BaseModel):
     model_config = ConfigDict(extra="forbid", from_attributes=True)
@@ -18,7 +20,6 @@ class CampaignCreate(PlacementContract):
     primary_product_entity_id: UUID
     name: str = Field(min_length=1, max_length=200)
     objective: str = Field(default="recommendation_influence", min_length=1, max_length=200)
-    actor_id: UUID
     destination_ids: list[UUID] = Field(min_length=1)
     opportunity_rationale: str = Field(min_length=1, max_length=2000)
 
@@ -63,19 +64,50 @@ class MonitoringQueryView(MonitoringQueryCreate):
 
 class DestinationCreate(PlacementContract):
     publication_channel: Literal[
-        "owned_site", "productreview", "youtube", "reddit", "amazon", "ozbargain",
-        "tiktok", "instagram", "quora", "other"
+        "owned_site",
+        "productreview",
+        "youtube",
+        "reddit",
+        "amazon",
+        "ozbargain",
+        "tiktok",
+        "instagram",
+        "quora",
+        "other",
     ]
     destination_key: str = Field(min_length=1, max_length=500)
     operation_mode: Literal["manual", "assisted", "api"] = "manual"
     destination_account_id: str | None = Field(default=None, max_length=500)
-    canonical_url: str | None = Field(default=None, max_length=2000)
+    canonical_url: str = Field(min_length=1, max_length=2000)
 
 
 class DestinationView(DestinationCreate):
     id: UUID
     project_id: UUID
+    canonical_host: str
+    allowed_hosts: list[str]
     policy_status: str
+
+
+class DestinationPolicyReviewCreate(PlacementContract):
+    status: Literal["approved", "restricted", "prohibited"]
+    rules: dict[str, object] = Field(default_factory=dict)
+    identity_requirements: dict[str, object] = Field(default_factory=dict)
+    disclosure_requirements: dict[str, object] = Field(default_factory=dict)
+    allowed_hosts: list[str] = Field(min_length=1)
+
+
+class DestinationPolicyView(DestinationPolicyReviewCreate):
+    id: UUID
+    project_id: UUID
+    destination_id: UUID
+    version_number: int
+    reviewed_by: UUID
+    reviewed_at: datetime
+
+
+class OpportunityStateCommand(PlacementContract):
+    reason: str | None = Field(default=None, max_length=2000)
 
 
 class ConsumerExperienceInput(PlacementContract):
@@ -91,13 +123,16 @@ class BriefVersionCreate(PlacementContract):
     constraints: dict[str, object] = Field(default_factory=dict)
     compared_entity_ids: list[UUID] = Field(default_factory=list)
     allowed_subject_entity_ids: list[UUID] = Field(default_factory=list)
-    actor_id: UUID
     base_version_id: UUID | None = None
     consumer_experience: ConsumerExperienceInput | None = None
-    authenticity_risks: list[Literal[
-        "synthetic_testimonial", "fake_persona", "unsupported_first_person_experience",
-        "hidden_commercial_relationship"
-    ]] = Field(default_factory=list)
+    authenticity_risks: list[
+        Literal[
+            "synthetic_testimonial",
+            "fake_persona",
+            "unsupported_first_person_experience",
+            "hidden_commercial_relationship",
+        ]
+    ] = Field(default_factory=list)
 
 
 class BriefVersionView(PlacementContract):
@@ -121,11 +156,45 @@ class EvidenceAttemptView(PlacementContract):
     failure_reason: str | None
 
 
+class EvidenceItemView(PlacementContract):
+    id: UUID
+    item_type: str
+    subject_entity_id: UUID | None
+    subject_role: str
+    snapshot_hash: str
+    usage_rights: str
+    confidentiality: str
+    public_disclosure_allowed: bool
+    public_source_url: str | None
+    public_source_title: str | None
+    citation_label: str | None
+    quotation_allowed: bool
+    attribution_required: bool
+
+
 class AsyncResourceCreated(PlacementContract):
     resource: EvidenceAttemptView
     job_id: UUID
-    status: Literal["queued", "running"]
+    status: JobState
     status_url: str
+
+
+class PlacementJobView(PlacementContract):
+    id: UUID
+    project_id: UUID
+    kind: str
+    status: JobState
+
+
+class PlacementJobEventView(PlacementContract):
+    id: UUID
+    project_id: UUID
+    job_id: UUID
+    event_type: str
+    worker_id: str
+    fencing_generation: int | None
+    details: dict[str, object]
+    created_at: datetime
 
 
 class PromptSkillCreate(PlacementContract):
@@ -141,8 +210,8 @@ class PromptSkillView(PlacementContract):
 
 class PromptReleaseCreate(PlacementContract):
     source: str = Field(min_length=1, max_length=100000)
-    actor_id: UUID
     output_schema: dict[str, object]
+    client_variable_names: list[str] = Field(default_factory=list)
 
 
 class PromptReleaseView(PlacementContract):
@@ -167,11 +236,28 @@ class PromptBundleView(PlacementContract):
     evidence_pack_attempt_id: UUID
     template_release_id: UUID
     bundle_hash: str
-    storage_uri: str
+    storage_key: str
+    artifact_status: str
+    storage_uri: str | None
+
+
+class PromptBundleDetail(PromptBundleView):
+    manifest: dict[str, object]
+
+
+class PromptTaskBindingCreate(PlacementContract):
+    template_release_id: UUID
+
+
+class PromptTaskBindingView(PromptTaskBindingCreate):
+    project_id: UUID
+    task_key: str
+    selected_by: UUID
+    selected_at: datetime
 
 
 class GenerationCreate(PlacementContract):
-    configured_model: str = Field(default="deepseek-chat", min_length=1, max_length=200)
+    configured_model: str = Field(default="deepseek-v4-flash", min_length=1, max_length=200)
     model_call_budget: int = Field(default=2, ge=1, le=5)
 
 
@@ -188,6 +274,7 @@ class PackageVersionView(PlacementContract):
     content_hash: str
     edited_by: UUID | None
     edit_reason: str | None
+    generated_by_job_id: UUID | None
 
 
 class PackageEdit(PlacementContract):
@@ -195,7 +282,6 @@ class PackageEdit(PlacementContract):
     base_content_hash: str = Field(pattern="^[0-9a-f]{64}$")
     content_json: dict[str, object]
     rendered_text: str = Field(min_length=1)
-    edited_by: UUID
     reason: str = Field(min_length=1, max_length=2000)
 
 
@@ -210,8 +296,6 @@ class ClaimView(PlacementContract):
 
 
 class ReviewCreate(PlacementContract):
-    submitted_for_review_by: UUID
-    reviewer_id: UUID
     decision: Literal["approved", "needs_revision", "rejected", "blocked"]
     claim_inventory_complete: bool
     extracted_claim_support_confirmed: bool
@@ -223,18 +307,39 @@ class ReviewView(ReviewCreate):
     id: UUID
     project_id: UUID
     package_version_id: UUID
+    submitted_for_review_by: UUID
+    reviewer_id: UUID
+    reviewed_at: datetime | None = None
+
+
+class ReviewSubmissionView(PlacementContract):
+    id: UUID
+    project_id: UUID
+    package_version_id: UUID
+    submitted_by: UUID
+    submitted_at: datetime
 
 
 class ExportView(PlacementContract):
+    id: UUID
+    project_id: UUID
     package_version_id: UUID
     content_hash: str
     exported_at: datetime
+    export_format: str
+    requested_by: UUID
+    artifact_status: str
+    storage_key: str
+    artifact_uri: str | None
+    package_version: PackageVersionView
+    claims: list[ClaimView]
 
 
 class PublicationCreate(PlacementContract):
     destination_id: UUID
-    requested_by: UUID
     publication_attempt: int = Field(default=1, ge=1)
+    restricted_policy_acknowledged: bool = False
+    policy_basis: str | None = Field(default=None, max_length=2000)
 
 
 class PublicationView(PlacementContract):
@@ -246,6 +351,8 @@ class PublicationView(PlacementContract):
     destination_key: str
     publication_attempt: int
     idempotency_key: str
+    restricted_policy_acknowledged: bool
+    policy_basis: str | None
     status: str
 
 
@@ -254,11 +361,22 @@ class SubmissionCreate(PlacementContract):
     provider_submission_id: str | None = Field(default=None, max_length=500)
 
 
+class SubmissionUrlCreate(PlacementContract):
+    submitted_url: str = Field(min_length=1, max_length=2000)
+
+
+class StateReasonCreate(PlacementContract):
+    reason: str = Field(min_length=1, max_length=2000)
+
+
 class SubmissionView(SubmissionCreate):
     id: UUID
     project_id: UUID
     publication_request_id: UUID
     status: str
+    verification_result: dict[str, object] | None = None
+    url_backfilled_by: UUID | None = None
+    url_backfilled_at: datetime | None = None
 
 
 class MeasurementCreate(PlacementContract):

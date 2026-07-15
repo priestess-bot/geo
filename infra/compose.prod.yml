@@ -18,7 +18,7 @@ x-api-environment: &api-environment
   GEO_JWT_ISSUER: ${GEO_JWT_ISSUER:?set GEO_JWT_ISSUER}
   GEO_JWT_AUDIENCE: ${GEO_JWT_AUDIENCE:?set GEO_JWT_AUDIENCE}
   GEO_AUTH_TOKEN_SECRET_FILE: /run/secrets/auth_token_secret
-  DATABASE_URL_FILE: /run/secrets/database_url
+  GEO_DATABASE_URL_FILE: /run/secrets/database_url
   OBJECT_STORE_ENDPOINT: http://minio:9000
   OBJECT_STORE_BUCKET: geo-artifacts
   OBJECT_STORE_REGION: ${GEO_OBJECT_STORE_REGION:-us-east-1}
@@ -28,7 +28,6 @@ x-api-environment: &api-environment
   GEO_TASK_QUEUE_ENABLED: "1"
   GEO_TASK_QUEUE_REQUIRED: "1"
   GEO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
-  GEO_DEEPSEEK_API_KEY_FILE: /run/secrets/deepseek_api_key
   OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
   OTEL_SERVICE_NAME: geo-api
 
@@ -36,7 +35,6 @@ x-api-secrets: &api-secrets
   - database_url
   - object_store_access_key
   - object_store_secret_key
-  - deepseek_api_key
   - auth_token_secret
 
 x-api-dependencies: &api-dependencies
@@ -209,10 +207,41 @@ services:
     tmpfs:
       - /tmp:size=512m,noexec,nosuid
     environment:
-      <<: *api-environment
+      GEO_DEPLOYMENT_ENVIRONMENT: production
+      GEO_DATABASE_URL_FILE: /run/secrets/worker_database_url
+      GEO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
+      GEO_DEEPSEEK_API_KEY_FILE: /run/secrets/deepseek_api_key
+      OBJECT_STORE_ENDPOINT: http://minio:9000
+      OBJECT_STORE_BUCKET: geo-artifacts
+      OBJECT_STORE_REGION: ${GEO_OBJECT_STORE_REGION:-us-east-1}
+      OBJECT_STORE_ACCESS_KEY_FILE: /run/secrets/object_store_access_key
+      OBJECT_STORE_SECRET_KEY_FILE: /run/secrets/object_store_secret_key
+      OBJECT_STORE_AUTO_CREATE_BUCKET: "0"
       OTEL_SERVICE_NAME: geo-task-worker
-    secrets: *api-secrets
-    command: ["dramatiq", "workers.task_queue.tasks", "--processes", "2", "--threads", "4"]
+    secrets:
+      - worker_database_url
+      - deepseek_api_key
+      - object_store_access_key
+      - object_store_secret_key
+    command: ["dramatiq", "geo_worker.tasks", "--processes", "2", "--threads", "4"]
+    networks:
+      - backend
+    depends_on: *api-dependencies
+
+  outbox-relay:
+    <<: *service-security
+    image: ${GEO_API_IMAGE:?set a digest-pinned GEO_API_IMAGE}
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,noexec,nosuid
+    environment:
+      GEO_DEPLOYMENT_ENVIRONMENT: production
+      GEO_DATABASE_URL_FILE: /run/secrets/worker_database_url
+      GEO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
+      OTEL_SERVICE_NAME: geo-outbox-relay
+    secrets:
+      - worker_database_url
+    command: ["python", "-m", "geo_worker.relay"]
     networks:
       - backend
     depends_on: *api-dependencies
@@ -366,6 +395,8 @@ secrets:
     file: ${GEO_INSTALLER_DATABASE_URL_FILE:?set GEO_INSTALLER_DATABASE_URL_FILE}
   database_url:
     file: ${GEO_DATABASE_URL_FILE:?set GEO_DATABASE_URL_FILE}
+  worker_database_url:
+    file: ${GEO_WORKER_DATABASE_URL_FILE:?set GEO_WORKER_DATABASE_URL_FILE}
   minio_root_user:
     file: ${GEO_MINIO_ROOT_USER_FILE:?set GEO_MINIO_ROOT_USER_FILE}
   minio_root_password:

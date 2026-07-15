@@ -47,7 +47,7 @@ class EngineeringServices(Protocol):
 
 
 def build_engineering_service() -> EngineeringService | UnavailableEngineeringService:
-    database_url = os.getenv("DATABASE_URL", "").strip()
+    database_url = _secret("GEO_DATABASE_URL") or _secret("DATABASE_URL")
     if not database_url:
         return UnavailableEngineeringService()
 

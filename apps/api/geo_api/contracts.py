@@ -91,6 +91,7 @@ class JobStatus(StrictContract):
     updated_at: datetime
     result_ref: str | None = None
     error_code: str | None = None
+    result_details: dict[str, object] | None = None
 
 
 class JobAccepted(StrictContract):

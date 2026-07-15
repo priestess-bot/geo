@@ -5,16 +5,16 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
-from geo_core.model_gateway import ModelGatewayResult
 from geo_core.placements.domain import (
     BriefVersion,
     Campaign,
     Claim,
     Destination,
+    DestinationPolicyVersion,
     EvidencePackAttempt,
     ExportReceipt,
     JobReference,
@@ -27,6 +27,7 @@ from geo_core.placements.domain import (
     PromptSkill,
     PublicationRequest,
     Review,
+    ReviewSubmission,
     Submission,
 )
 from geo_core.prompts.domain import SkillVersion, TemplateRelease
@@ -45,7 +46,10 @@ class GenerationClaim:
     model_call_budget: int
     package_id: UUID
     next_version_number: int
+    base_version_id: UUID | None
     evidence_item_ids: tuple[UUID, ...]
+    public_citation_item_ids: tuple[UUID, ...]
+    output_schema: Mapping[str, object]
 
 
 @dataclass(frozen=True)
@@ -61,6 +65,8 @@ class GeneratedPlacement:
     content_json: Mapping[str, object]
     rendered_text: str
     claims: tuple[GeneratedClaim, ...]
+    internal_evidence_refs: tuple[UUID, ...]
+    public_citation_refs: tuple[UUID, ...]
 
 
 class PlacementRepository(Protocol):
@@ -101,10 +107,22 @@ class PlacementRepository(Protocol):
         destination_key: str,
         operation_mode: str,
         destination_account_id: str | None,
-        canonical_url: str | None,
+        canonical_url: str,
+        canonical_host: str,
+        allowed_hosts: tuple[str, ...],
     ) -> Destination: ...
 
     def list_destinations(self, *, project_id: UUID) -> tuple[Destination, ...]: ...
+
+    def review_destination_policy(self, **values: object) -> DestinationPolicyVersion: ...
+
+    def list_destination_policies(
+        self, *, project_id: UUID, destination_id: UUID
+    ) -> tuple[DestinationPolicyVersion, ...]: ...
+
+    def transition_opportunity(
+        self, *, project_id: UUID, opportunity_id: UUID, command: str, reason: str | None
+    ) -> Opportunity: ...
 
     def create_opportunities(
         self,
@@ -146,9 +164,15 @@ class PlacementRepository(Protocol):
         self, *, project_id: UUID, brief_version_id: UUID
     ) -> tuple[EvidencePackAttempt, ...]: ...
 
-    def create_prompt_skill(
-        self, *, project_id: UUID, skill_key: str
-    ) -> PromptSkill: ...
+    def get_evidence_attempt(
+        self, *, project_id: UUID, attempt_id: UUID
+    ) -> EvidencePackAttempt | None: ...
+
+    def list_evidence_attempt_items(
+        self, *, project_id: UUID, attempt_id: UUID
+    ) -> tuple[Mapping[str, object], ...]: ...
+
+    def create_prompt_skill(self, *, project_id: UUID, skill_key: str) -> PromptSkill: ...
 
     def create_skill_version(
         self, *, project_id: UUID, skill_id: UUID, source: str, actor_id: UUID
@@ -161,11 +185,30 @@ class PlacementRepository(Protocol):
         skill_version_id: UUID,
         template: TemplateRelease,
         output_schema: Mapping[str, object],
+        client_variable_names: tuple[str, ...],
     ) -> PromptReleaseView: ...
 
     def get_template_release(
         self, *, project_id: UUID, release_id: UUID
     ) -> TemplateRelease | None: ...
+
+    def list_prompt_skills(self, *, project_id: UUID) -> tuple[PromptSkill, ...]: ...
+    def list_prompt_releases(
+        self, *, project_id: UUID, skill_id: UUID
+    ) -> tuple[PromptReleaseView, ...]: ...
+    def list_prompt_bundles(
+        self, *, project_id: UUID, brief_version_id: UUID
+    ) -> tuple[PromptBundleView, ...]: ...
+
+    def get_prompt_bundle(
+        self, *, project_id: UUID, bundle_id: UUID
+    ) -> Mapping[str, object] | None: ...
+
+    def select_prompt_release(self, **values: object) -> Mapping[str, object]: ...
+
+    def list_prompt_release_selections(
+        self, *, project_id: UUID
+    ) -> tuple[Mapping[str, object], ...]: ...
 
     def create_prompt_bundle(
         self,
@@ -186,6 +229,7 @@ class PlacementRepository(Protocol):
         configured_model: str,
         model_call_budget: int,
         idempotency_key: str,
+        requested_by: UUID,
     ) -> JobReference: ...
 
     def list_package_versions(
@@ -201,11 +245,26 @@ class PlacementRepository(Protocol):
     ) -> PackageVersion: ...
 
     def list_claims(self, *, project_id: UUID, version_id: UUID) -> tuple[Claim, ...]: ...
+    def submit_for_review(
+        self, *, project_id: UUID, version_id: UUID, submitted_by: UUID
+    ) -> ReviewSubmission: ...
+    def get_review_submission(
+        self, *, project_id: UUID, version_id: UUID
+    ) -> ReviewSubmission | None: ...
     def save_review(self, *, review: Review) -> Review: ...
 
+    def list_reviews(self, *, project_id: UUID, version_id: UUID) -> tuple[Review, ...]: ...
+
     def export_package(
-        self, *, project_id: UUID, version_id: UUID, exported_at: datetime
+        self,
+        *,
+        project_id: UUID,
+        version_id: UUID,
+        exported_at: datetime,
+        requested_by: UUID,
     ) -> ExportReceipt: ...
+
+    def list_exports(self, *, project_id: UUID, version_id: UUID) -> tuple[ExportReceipt, ...]: ...
 
     def create_publication_request(
         self,
@@ -216,6 +275,8 @@ class PlacementRepository(Protocol):
         requested_by: UUID,
         publication_attempt: int,
         idempotency_key: str,
+        restricted_policy_acknowledged: bool,
+        policy_basis: str | None,
     ) -> PublicationRequest: ...
 
     def create_submission(
@@ -226,6 +287,24 @@ class PlacementRepository(Protocol):
         submitted_url: str | None,
         provider_submission_id: str | None,
     ) -> Submission: ...
+
+    def list_publication_requests(
+        self, *, project_id: UUID, version_id: UUID
+    ) -> tuple[PublicationRequest, ...]: ...
+
+    def list_submissions(
+        self, *, project_id: UUID, publication_request_id: UUID
+    ) -> tuple[Submission, ...]: ...
+
+    def get_submission(self, *, project_id: UUID, submission_id: UUID) -> Submission | None: ...
+
+    def backfill_submission_url(
+        self, *, project_id: UUID, submission_id: UUID, submitted_url: str, actor_id: UUID
+    ) -> Submission: ...
+
+    def transition_submission(self, **values: object) -> Submission: ...
+
+    def transition_publication(self, **values: object) -> PublicationRequest: ...
 
     def enqueue_verification(
         self, *, project_id: UUID, submission_id: UUID, idempotency_key: str
@@ -248,6 +327,30 @@ class PlacementRepository(Protocol):
         self, *, project_id: UUID, submission_id: UUID
     ) -> tuple[Measurement, ...]: ...
 
+    def cancel_job(self, *, project_id: UUID, job_id: UUID, actor_id: UUID) -> JobReference: ...
+
+    def retry_job_now(
+        self,
+        *,
+        project_id: UUID,
+        job_id: UUID,
+        actor_id: UUID,
+        idempotency_key: str,
+    ) -> JobReference: ...
+
+    def replay_job(
+        self,
+        *,
+        project_id: UUID,
+        source_job_id: UUID,
+        actor_id: UUID,
+        idempotency_key: str,
+    ) -> JobReference: ...
+
+    def list_job_events(
+        self, *, project_id: UUID, job_id: UUID
+    ) -> tuple[Mapping[str, object], ...]: ...
+
 
 class PlacementUnitOfWork(Protocol):
     placements: PlacementRepository
@@ -258,26 +361,3 @@ class PlacementUnitOfWork(Protocol):
 
 
 UnitOfWorkFactory = Callable[[UUID], AbstractContextManager[PlacementUnitOfWork]]
-
-
-class GenerationWorkerPort(Protocol):
-    """Each method owns a short transaction; claims never leak a live transaction."""
-
-    def claim_next(self, *, worker_id: str, lease_for: timedelta) -> GenerationClaim | None: ...
-
-    def finalize(
-        self,
-        *,
-        claim: GenerationClaim,
-        placement: GeneratedPlacement,
-        model_result: ModelGatewayResult,
-        completed_at: datetime,
-    ) -> PackageVersion: ...
-
-    def fail(
-        self,
-        *,
-        claim: GenerationClaim,
-        error_code: str,
-        retry_at: datetime | None,
-    ) -> None: ...

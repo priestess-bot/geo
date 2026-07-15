@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 import json
 from typing import Any, Mapping
 from uuid import NAMESPACE_URL, UUID, uuid5
@@ -13,19 +12,17 @@ from geo_core.placements.domain import (
     Claim,
     Destination,
     EvidencePackAttempt,
-    ExportReceipt,
     JobReference,
-    Measurement,
     MonitoringQuery,
     Opportunity,
     PackageVersion,
-    PublicationRequest,
-    Review,
-    Submission,
     WorkflowStatus,
     canonical_hash,
 )
 from geo_core.placements.postgres_prompts import PostgresPromptRepositoryMixin
+from geo_core.placements.postgres_policy import PostgresDestinationPolicyMixin
+from geo_core.placements.postgres_job_control import PostgresJobControlMixin
+from geo_core.placements.postgres_review_publication import PostgresReviewPublicationMixin
 
 
 def _row(cursor: Any) -> dict[str, Any]:
@@ -37,6 +34,7 @@ def _row(cursor: Any) -> dict[str, Any]:
     names = [item.name for item in cursor.description]
     return dict(zip(names, record, strict=True))
 
+
 def _rows(cursor: Any) -> list[dict[str, Any]]:
     records = cursor.fetchall()
     if not records:
@@ -46,16 +44,23 @@ def _rows(cursor: Any) -> list[dict[str, Any]]:
     names = [item.name for item in cursor.description]
     return [dict(zip(names, record, strict=True)) for record in records]
 
+
 def _campaign(value: Mapping[str, Any]) -> Campaign:
     return Campaign(**{key: value[key] for key in Campaign.__dataclass_fields__})
 
+
 def _destination(value: Mapping[str, Any]) -> Destination:
     return Destination(
-        id=value["id"], project_id=value["project_id"],
-        publication_channel=value["publication_channel"], destination_key=value["destination_key"],
+        id=value["id"],
+        project_id=value["project_id"],
+        publication_channel=value["publication_channel"],
+        destination_key=value["destination_key"],
         operation_mode=value["operation_mode"],
         destination_account_id=value.get("destination_account_id"),
-        canonical_url=value.get("canonical_url"), policy_status=value["policy_status"],
+        canonical_url=value.get("canonical_url"),
+        canonical_host=value["canonical_host"],
+        allowed_hosts=tuple(value["allowed_hosts"]),
+        policy_status=value["policy_status"],
     )
 
 
@@ -65,25 +70,41 @@ def _opportunity(value: Mapping[str, Any]) -> Opportunity:
 
 def _brief(value: Mapping[str, Any]) -> BriefVersion:
     return BriefVersion(
-        id=value["id"], project_id=value["project_id"], brief_id=value["brief_id"],
-        version_number=value["version_number"], base_version_id=value.get("base_version_id"),
-        goals=value["goals"], constraints=value["constraints"], content_hash=value["content_hash"],
+        id=value["id"],
+        project_id=value["project_id"],
+        brief_id=value["brief_id"],
+        version_number=value["version_number"],
+        base_version_id=value.get("base_version_id"),
+        goals=value["goals"],
+        constraints=value["constraints"],
+        content_hash=value["content_hash"],
     )
 
 
 def _package(value: Mapping[str, Any]) -> PackageVersion:
     return PackageVersion(
-        id=value["id"], project_id=value["project_id"], package_id=value["package_id"],
-        prompt_bundle_id=value["prompt_bundle_id"], version_number=value["version_number"],
+        id=value["id"],
+        project_id=value["project_id"],
+        package_id=value["package_id"],
+        prompt_bundle_id=value["prompt_bundle_id"],
+        version_number=value["version_number"],
         base_version_id=value.get("base_version_id"),
         workflow_status=WorkflowStatus(value["workflow_status"]),
-        content_json=value["content_json"], rendered_text=value["rendered_text"],
-        content_hash=value["content_hash"], edited_by=value.get("edited_by"),
+        content_json=value["content_json"],
+        rendered_text=value["rendered_text"],
+        content_hash=value["content_hash"],
+        edited_by=value.get("edited_by"),
         edit_reason=value.get("edit_reason"),
+        generated_by_job_id=value.get("generated_by_job_id"),
     )
 
 
-class PsycopgPlacementRepository(PostgresPromptRepositoryMixin):
+class PsycopgPlacementRepository(
+    PostgresPromptRepositoryMixin,
+    PostgresReviewPublicationMixin,
+    PostgresJobControlMixin,
+    PostgresDestinationPolicyMixin,
+):
     def __init__(self, connection: Any) -> None:
         self._db = connection
 
@@ -162,15 +183,19 @@ class PsycopgPlacementRepository(PostgresPromptRepositoryMixin):
         return tuple(MonitoringQuery(**record) for record in records)
 
     def create_destination(self, **values: Any) -> Destination:
+        values = {**values, "allowed_hosts": list(values["allowed_hosts"])}
         record = _row(
             self._db.execute(
                 """INSERT INTO publication_destinations
-                     (project_id, publication_channel, destination_key, operation_mode,
-                      destination_account_id, canonical_url)
+                 (project_id, publication_channel, destination_key, operation_mode,
+                      destination_account_id, canonical_url, canonical_host, allowed_hosts,
+                      policy_status)
                    VALUES (%(project_id)s, %(publication_channel)s, %(destination_key)s,
-                           %(operation_mode)s, %(destination_account_id)s, %(canonical_url)s)
+                           %(operation_mode)s, %(destination_account_id)s, %(canonical_url)s,
+                           %(canonical_host)s, %(allowed_hosts)s, 'unreviewed')
                    RETURNING id, project_id, publication_channel, destination_key,
-                     operation_mode, destination_account_id, canonical_url, policy_status""",
+                     operation_mode, destination_account_id, canonical_url, canonical_host,
+                     allowed_hosts, policy_status""",
                 values,
             )
         )
@@ -180,7 +205,8 @@ class PsycopgPlacementRepository(PostgresPromptRepositoryMixin):
         records = _rows(
             self._db.execute(
                 """SELECT id, project_id, publication_channel, destination_key,
-                          operation_mode, destination_account_id, canonical_url, policy_status
+                          operation_mode, destination_account_id, canonical_url, canonical_host,
+                          allowed_hosts, policy_status
                    FROM publication_destinations WHERE project_id = %s ORDER BY created_at""",
                 (project_id,),
             )
@@ -191,25 +217,39 @@ class PsycopgPlacementRepository(PostgresPromptRepositoryMixin):
         result: list[Opportunity] = []
         for destination_id in values["destination_ids"]:
             reference = f"destination:{destination_id}"
+            destination = _row(
+                self._db.execute(
+                    """SELECT policy_status FROM publication_destinations
+                       WHERE project_id = %s AND id = %s""",
+                    (values["project_id"], destination_id),
+                )
+            )
+            eligible = destination["policy_status"] == "approved"
+            status = "identified" if eligible else "blocked"
+            blocked_reason = None if eligible else "destination_policy_not_eligible"
             record = _row(
                 self._db.execute(
                     """INSERT INTO placement_opportunities
-                         (project_id, campaign_id, destination_id, opportunity_ref, rationale)
-                       VALUES (%s, %s, %s, %s, %s)
+                         (project_id, campaign_id, destination_id, opportunity_ref, rationale,
+                          status, blocked_reason)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s)
                        RETURNING id, project_id, campaign_id, destination_id,
                                  opportunity_ref, rationale, status""",
                     (
-                        values["project_id"], values["campaign_id"], destination_id,
-                        reference, values["rationale"],
+                        values["project_id"],
+                        values["campaign_id"],
+                        destination_id,
+                        reference,
+                        values["rationale"],
+                        status,
+                        blocked_reason,
                     ),
                 )
             )
             result.append(_opportunity(record))
         return tuple(result)
 
-    def list_opportunities(
-        self, *, project_id: UUID, campaign_id: UUID
-    ) -> tuple[Opportunity, ...]:
+    def list_opportunities(self, *, project_id: UUID, campaign_id: UUID) -> tuple[Opportunity, ...]:
         records = _rows(
             self._db.execute(
                 """SELECT id, project_id, campaign_id, destination_id, opportunity_ref,
@@ -222,6 +262,14 @@ class PsycopgPlacementRepository(PostgresPromptRepositoryMixin):
 
     def create_brief_version(self, **values: Any) -> BriefVersion:
         project_id, opportunity_id = values["project_id"], values["opportunity_id"]
+        eligible = self._db.execute(
+            """SELECT 1 FROM placement_opportunities
+               WHERE id = %s AND project_id = %s
+                 AND status IN ('qualified', 'in_progress')""",
+            (opportunity_id, project_id),
+        ).fetchone()
+        if eligible is None:
+            raise RuntimeError("brief creation requires a qualified opportunity")
         existing = _rows(
             self._db.execute(
                 """SELECT id FROM placement_briefs
@@ -256,9 +304,14 @@ class PsycopgPlacementRepository(PostgresPromptRepositoryMixin):
                    RETURNING id, project_id, brief_id, version_number, base_version_id,
                              goals, constraints, content_hash""",
                 (
-                    project_id, brief_id, version_number, values["base_version_id"],
-                    json.dumps(values["goals"]), json.dumps(values["constraints"]),
-                    values["content_hash"], values["actor_id"],
+                    project_id,
+                    brief_id,
+                    version_number,
+                    values["base_version_id"],
+                    json.dumps(values["goals"]),
+                    json.dumps(values["constraints"]),
+                    values["content_hash"],
+                    values["actor_id"],
                 ),
             )
         )
@@ -294,11 +347,17 @@ class PsycopgPlacementRepository(PostgresPromptRepositoryMixin):
     def create_evidence_attempt(
         self, *, project_id: UUID, brief_version_id: UUID, idempotency_key: str
     ) -> tuple[EvidencePackAttempt, JobReference]:
-        self._db.execute(
-            """SELECT id FROM placement_brief_versions
-               WHERE project_id = %s AND id = %s FOR UPDATE""",
+        eligible = self._db.execute(
+            """SELECT bv.id FROM placement_brief_versions bv
+               JOIN placement_briefs b ON b.id = bv.brief_id AND b.project_id = bv.project_id
+               JOIN placement_opportunities o
+                 ON o.id = b.opportunity_id AND o.project_id = b.project_id
+               WHERE bv.project_id = %s AND bv.id = %s
+                 AND o.status IN ('qualified', 'in_progress') FOR UPDATE OF bv""",
             (project_id, brief_version_id),
-        )
+        ).fetchone()
+        if eligible is None:
+            raise RuntimeError("evidence build requires a qualified opportunity")
         attempt_number = _row(
             self._db.execute(
                 """SELECT COALESCE(MAX(attempt_number), 0) + 1 AS value
@@ -320,24 +379,32 @@ class PsycopgPlacementRepository(PostgresPromptRepositoryMixin):
                 (attempt_id, project_id, brief_version_id, attempt_number),
             )
         )
-        attempt = inserted[0] if inserted else _row(
-            self._db.execute(
-                """SELECT id, project_id, brief_version_id, attempt_number,
+        attempt = (
+            inserted[0]
+            if inserted
+            else _row(
+                self._db.execute(
+                    """SELECT id, project_id, brief_version_id, attempt_number,
                           status, pack_hash, failure_reason
                    FROM evidence_pack_attempts WHERE project_id = %s AND id = %s""",
-                (project_id, attempt_id),
+                    (project_id, attempt_id),
+                )
             )
         )
         job = self._enqueue_job(
             project_id=project_id,
             kind="evidence_pack.build",
-            input_value={"brief_version_id": str(brief_version_id), "attempt_id": str(attempt["id"])},
+            input_value={
+                "brief_version_id": str(brief_version_id),
+                "attempt_id": str(attempt["id"]),
+            },
             idempotency_key=idempotency_key,
         )
         self._db.execute(
-            """INSERT INTO evidence_pack_job_specs (job_id, project_id, brief_version_id)
-               VALUES (%s, %s, %s) ON CONFLICT (job_id) DO NOTHING""",
-            (job.id, project_id, brief_version_id),
+            """INSERT INTO evidence_pack_job_specs
+                 (job_id, project_id, brief_version_id, evidence_pack_attempt_id)
+               VALUES (%s, %s, %s, %s) ON CONFLICT (job_id) DO NOTHING""",
+            (job.id, project_id, brief_version_id, attempt["id"]),
         )
         return EvidencePackAttempt(**attempt), job
 
@@ -355,6 +422,39 @@ class PsycopgPlacementRepository(PostgresPromptRepositoryMixin):
         )
         return tuple(EvidencePackAttempt(**record) for record in records)
 
+    def get_evidence_attempt(
+        self, *, project_id: UUID, attempt_id: UUID
+    ) -> EvidencePackAttempt | None:
+        records = _rows(
+            self._db.execute(
+                """SELECT id, project_id, brief_version_id, attempt_number,
+                          status, pack_hash, failure_reason
+                   FROM evidence_pack_attempts WHERE project_id = %s AND id = %s""",
+                (project_id, attempt_id),
+            )
+        )
+        return EvidencePackAttempt(**records[0]) if records else None
+
+    def list_evidence_attempt_items(
+        self, *, project_id: UUID, attempt_id: UUID
+    ) -> tuple[Mapping[str, object], ...]:
+        return tuple(
+            _rows(
+                self._db.execute(
+                    """SELECT e.id, e.item_type, e.subject_entity_id, e.subject_role,
+                              e.snapshot_hash, e.usage_rights, e.confidentiality,
+                              e.public_disclosure_allowed, e.public_source_url,
+                              e.public_source_title, e.citation_label,
+                              e.quotation_allowed, e.attribution_required
+                       FROM evidence_pack_items pi JOIN evidence_items e
+                         ON e.id = pi.evidence_item_id AND e.project_id = pi.project_id
+                       WHERE pi.project_id = %s AND pi.pack_attempt_id = %s
+                       ORDER BY pi.ordinal""",
+                    (project_id, attempt_id),
+                )
+            )
+        )
+
     def list_package_versions(
         self, *, project_id: UUID, opportunity_id: UUID
     ) -> tuple[PackageVersion, ...]:
@@ -362,7 +462,8 @@ class PsycopgPlacementRepository(PostgresPromptRepositoryMixin):
             self._db.execute(
                 """SELECT v.id, v.project_id, v.package_id, v.prompt_bundle_id,
                           v.version_number, v.base_version_id, v.workflow_status,
-                          v.content_json, v.rendered_text, v.content_hash, v.edited_by, v.edit_reason
+                          v.content_json, v.rendered_text, v.content_hash, v.edited_by, v.edit_reason,
+                          v.generated_by_job_id
                    FROM placement_package_versions v JOIN placement_packages p
                      ON p.id = v.package_id AND p.project_id = v.project_id
                    WHERE v.project_id = %s AND p.opportunity_id = %s ORDER BY v.version_number""",
@@ -371,14 +472,12 @@ class PsycopgPlacementRepository(PostgresPromptRepositoryMixin):
         )
         return tuple(_package(item) for item in records)
 
-    def get_package_version(
-        self, *, project_id: UUID, version_id: UUID
-    ) -> PackageVersion | None:
+    def get_package_version(self, *, project_id: UUID, version_id: UUID) -> PackageVersion | None:
         records = _rows(
             self._db.execute(
                 """SELECT id, project_id, package_id, prompt_bundle_id, version_number,
                           base_version_id, workflow_status, content_json, rendered_text,
-                          content_hash, edited_by, edit_reason
+                          content_hash, edited_by, edit_reason, generated_by_job_id
                    FROM placement_package_versions WHERE project_id = %s AND id = %s""",
                 (project_id, version_id),
             )
@@ -407,9 +506,17 @@ class PsycopgPlacementRepository(PostgresPromptRepositoryMixin):
                   content_json, rendered_text, content_hash, edited_by, edit_reason)
                VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s)""",
             (
-                version.id, version.project_id, version.package_id, version.prompt_bundle_id,
-                version.version_number, version.base_version_id, json.dumps(dict(version.content_json)),
-                version.rendered_text, version.content_hash, version.edited_by, version.edit_reason,
+                version.id,
+                version.project_id,
+                version.package_id,
+                version.prompt_bundle_id,
+                version.version_number,
+                version.base_version_id,
+                json.dumps(dict(version.content_json)),
+                version.rendered_text,
+                version.content_hash,
+                version.edited_by,
+                version.edit_reason,
             ),
         )
         return version
@@ -428,126 +535,10 @@ class PsycopgPlacementRepository(PostgresPromptRepositoryMixin):
                 (project_id, version_id),
             )
         )
-        return tuple(Claim(**{**item, "evidence_item_ids": tuple(item["evidence_item_ids"])}) for item in records)
-
-    def save_review(self, *, review: Review) -> Review:
-        self._db.execute(
-            """INSERT INTO placement_reviews
-                 (id, project_id, package_version_id, submitted_for_review_by, reviewer_id,
-                  decision, claim_inventory_complete, extracted_claim_support_confirmed,
-                  score, notes)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-            (
-                review.id, review.project_id, review.package_version_id,
-                review.submitted_for_review_by, review.reviewer_id, review.decision,
-                review.claim_inventory_complete, review.extracted_claim_support_confirmed,
-                review.score, review.notes,
-            ),
+        return tuple(
+            Claim(**{**item, "evidence_item_ids": tuple(item["evidence_item_ids"])})
+            for item in records
         )
-        self._db.execute(
-            """UPDATE placement_package_versions SET workflow_status = %s
-               WHERE id = %s AND project_id = %s""",
-            (review.decision, review.package_version_id, review.project_id),
-        )
-        return review
-
-    def export_package(
-        self, *, project_id: UUID, version_id: UUID, exported_at: datetime
-    ) -> ExportReceipt:
-        version = self.get_package_version(project_id=project_id, version_id=version_id)
-        if version is None:
-            raise RuntimeError("package version does not exist")
-        return ExportReceipt(version.id, version.content_hash, exported_at)
-
-    def create_publication_request(self, **values: Any) -> PublicationRequest:
-        record = _row(
-            self._db.execute(
-                """INSERT INTO publication_requests
-                     (project_id, package_version_id, destination_id, requested_by,
-                      publication_attempt, idempotency_key)
-                   VALUES (%(project_id)s, %(version_id)s, %(destination_id)s,
-                           %(requested_by)s, %(publication_attempt)s, %(idempotency_key)s)
-                   ON CONFLICT (project_id, idempotency_key) DO UPDATE
-                     SET idempotency_key = EXCLUDED.idempotency_key
-                     WHERE publication_requests.package_version_id = EXCLUDED.package_version_id
-                       AND publication_requests.destination_id = EXCLUDED.destination_id
-                       AND publication_requests.publication_attempt = EXCLUDED.publication_attempt
-                   RETURNING id, project_id, package_version_id, destination_id,
-                             publication_attempt, idempotency_key, status""",
-                values,
-            )
-        )
-        destination = _row(
-            self._db.execute(
-                """SELECT publication_channel, destination_key FROM publication_destinations
-                   WHERE project_id = %s AND id = %s""",
-                (values["project_id"], values["destination_id"]),
-            )
-        )
-        return PublicationRequest(**record, **destination)
-
-    def create_submission(self, **values: Any) -> Submission:
-        status = "submitted" if values["submitted_url"] else "awaiting_url"
-        record = _row(
-            self._db.execute(
-                """INSERT INTO publication_submissions
-                     (project_id, publication_request_id, submitted_url,
-                      provider_submission_id, status, submitted_at)
-                   VALUES (%s, %s, %s, %s, %s,
-                     CASE WHEN %s = 'submitted' THEN clock_timestamp() ELSE NULL END)
-                   RETURNING id, project_id, publication_request_id, status,
-                             submitted_url, provider_submission_id""",
-                (
-                    values["project_id"], values["publication_request_id"],
-                    values["submitted_url"], values["provider_submission_id"], status, status,
-                ),
-            )
-        )
-        return Submission(**record)
-
-    def enqueue_verification(
-        self, *, project_id: UUID, submission_id: UUID, idempotency_key: str
-    ) -> JobReference:
-        job = self._enqueue_job(
-            project_id=project_id, kind="publication.verify",
-            input_value={"submission_id": str(submission_id)}, idempotency_key=idempotency_key,
-        )
-        self._db.execute(
-            """INSERT INTO verification_job_specs (job_id, project_id, submission_id)
-               VALUES (%s, %s, %s) ON CONFLICT (job_id) DO NOTHING""",
-            (job.id, project_id, submission_id),
-        )
-        return job
-
-    def record_measurement(self, **values: Any) -> Measurement:
-        record = _row(
-            self._db.execute(
-                """INSERT INTO placement_measurements
-                     (project_id, submission_id, monitoring_query_id, measured_at,
-                      citation_present, recommendation_position, result_snapshot_uri, metrics)
-                   VALUES (%(project_id)s, %(submission_id)s, %(monitoring_query_id)s,
-                           %(measured_at)s, %(citation_present)s, %(recommendation_position)s,
-                           %(result_snapshot_uri)s, %(metrics)s::jsonb)
-                   RETURNING id, project_id, submission_id, monitoring_query_id, measured_at,
-                             citation_present, recommendation_position, result_snapshot_uri, metrics""",
-                {**values, "metrics": json.dumps(values["metrics"])},
-            )
-        )
-        return Measurement(**record)
-
-    def list_measurements(
-        self, *, project_id: UUID, submission_id: UUID
-    ) -> tuple[Measurement, ...]:
-        records = _rows(
-            self._db.execute(
-                """SELECT id, project_id, submission_id, monitoring_query_id, measured_at,
-                          citation_present, recommendation_position, result_snapshot_uri, metrics
-                   FROM placement_measurements WHERE project_id = %s AND submission_id = %s
-                   ORDER BY measured_at DESC""",
-                (project_id, submission_id),
-            )
-        )
-        return tuple(Measurement(**record) for record in records)
 
     def _enqueue_job(
         self,
@@ -583,8 +574,10 @@ class PsycopgPlacementRepository(PostgresPromptRepositoryMixin):
             if record["input_hash"] != input_hash:
                 raise RuntimeError("idempotency key was already used with different input")
         job = JobReference(
-            id=record["id"], project_id=record["project_id"],
-            kind=record["kind"], status=record["status"],
+            id=record["id"],
+            project_id=record["project_id"],
+            kind=record["kind"],
+            status=record["status"],
         )
         self._db.execute(
             """INSERT INTO broker_outbox
@@ -592,7 +585,10 @@ class PsycopgPlacementRepository(PostgresPromptRepositoryMixin):
                VALUES (%s, %s, %s, %s::jsonb, %s)
                ON CONFLICT (project_id, idempotency_key) DO NOTHING""",
             (
-                project_id, job.id, kind, json.dumps({"job_id": str(job.id)}),
+                project_id,
+                job.id,
+                kind,
+                json.dumps({"job_id": str(job.id)}),
                 f"wake:{kind}:{idempotency_key}",
             ),
         )

@@ -43,6 +43,14 @@ typecheck:
 		apps/api/geo_api/member_contracts.py \
 		apps/api/geo_api/member_routes.py \
 		apps/api/geo_api/member_runtime.py \
+		apps/api/geo_api/job_control_routes.py \
+		apps/api/geo_api/placement_access.py \
+		apps/api/geo_api/placement_bootstrap.py \
+		apps/api/geo_api/placement_campaign_routes.py \
+		apps/api/geo_api/placement_contracts.py \
+		apps/api/geo_api/placement_generation_routes.py \
+		apps/api/geo_api/placement_publication_routes.py \
+		apps/api/geo_worker \
 		scripts/export_stable_openapi.py \
 		packages/geo_core/geo_core/jobs \
 		packages/geo_core/geo_core/catalog \
@@ -50,6 +58,8 @@ typecheck:
 		packages/geo_core/geo_core/engineering \
 		packages/geo_core/geo_core/model_gateway \
 		packages/geo_core/geo_core/prompts \
+		packages/geo_core/geo_core/object_store_config.py \
+		packages/geo_core/geo_core/project_scope.py \
 		packages/geo_core/geo_core/access/membership_service.py \
 		packages/geo_core/geo_core/access/membership_postgres.py \
 		apps/api/geo_api/engineering_runtime.py

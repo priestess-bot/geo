@@ -1,0 +1,367 @@
+"""Unified handler registry for evidence, generation and publication verification."""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime, timedelta
+from typing import Mapping, Protocol
+from uuid import UUID
+
+from geo_core.jobs.postgres import (
+    JobCancellationRequested,
+    LeaseHeartbeat,
+    LostJobLease,
+    PostgresDurableJobStore,
+    WorkerLease,
+)
+from geo_core.placements.artifact_worker import (
+    ArtifactObjectStore,
+    PlacementArtifactRepository,
+)
+from geo_core.model_gateway import (
+    ModelCallBudget,
+    ModelGateway,
+    ModelGatewayRequest,
+    ModelPolicy,
+)
+from geo_core.model_gateway.contracts import (
+    ModelCallBudgetExceeded,
+    ModelGatewayError,
+    ProviderPolicyViolation,
+    RetryableModelGatewayError,
+)
+from geo_core.placements.domain import (
+    PlacementRuleViolation,
+    canonical_hash,
+    canonical_json_bytes,
+)
+from geo_core.placements.generation_worker import parse_generated_placement, validate_output_schema
+from geo_core.placements.url_verifier import (
+    PermanentVerificationError,
+    PublicUrlVerifier,
+    RetryableVerificationError,
+)
+from geo_core.placements.worker_repository import PlacementWorkerRepository
+
+
+class JobHandler(Protocol):
+    def handle(self, lease: WorkerLease) -> Mapping[str, object]: ...
+
+
+class EvidencePackHandler:
+    def __init__(self, repository: PlacementWorkerRepository) -> None:
+        self._repository = repository
+
+    def handle(self, lease: WorkerLease) -> Mapping[str, object]:
+        status = self._repository.build_evidence_pack(lease)
+        return {"status": status, "job_id": str(lease.job_id)}
+
+
+class ArtifactFinalizeHandler:
+    def __init__(
+        self,
+        *,
+        store: PostgresDurableJobStore,
+        repository: PlacementArtifactRepository,
+        object_store: ArtifactObjectStore,
+    ) -> None:
+        self._store = store
+        self._repository = repository
+        self._object_store = object_store
+
+    def handle(self, lease: WorkerLease) -> Mapping[str, object]:
+        artifact = self._repository.load(lease)
+        try:
+            stored = self._object_store.put_object(
+                key=artifact.storage_key,
+                content=artifact.content,
+                content_type="application/json",
+                expected_hash=artifact.content_hash,
+            )
+        except Exception as exc:
+            status = self._store.fail(
+                lease,
+                error_code=type(exc).__name__,
+                details={"message": str(exc)},
+                retry_delay=timedelta(seconds=30),
+            )
+            self._repository.mark_failure(
+                project_id=lease.project_id,
+                job_id=lease.job_id,
+                error=str(exc),
+                terminal=status in {"failed", "dead_lettered"},
+            )
+            return {"status": status, "job_id": str(lease.job_id)}
+        self._repository.finalize(lease, artifact, stored)
+        return {
+            "status": "finalized",
+            "job_id": str(lease.job_id),
+            "resource_id": str(artifact.resource_id),
+        }
+
+
+class GenerationHandler:
+    def __init__(
+        self,
+        *,
+        store: PostgresDurableJobStore,
+        repository: PlacementWorkerRepository,
+        gateway: ModelGateway,
+        lease_for: timedelta,
+    ) -> None:
+        self._store = store
+        self._repository = repository
+        self._gateway = gateway
+        self._lease_for = lease_for
+
+    def handle(self, lease: WorkerLease) -> Mapping[str, object]:
+        claim = self._repository.load_generation(lease)
+        serialized_schema = canonical_json_bytes(claim.output_schema).decode("utf-8")
+        request = ModelGatewayRequest(
+            messages=(
+                {
+                    "role": "system",
+                    "content": (
+                        "Return JSON matching the frozen output schema. Use only the "
+                        "brief, destination policy and evidence in this prompt bundle. "
+                        "Return JSON only. Keep internal_evidence_refs separate from "
+                        "public_citation_refs; public refs must obey the frozen disclosure, "
+                        "attribution and quotation metadata. Frozen output schema: "
+                        f"{serialized_schema}"
+                    ),
+                },
+                {"role": "user", "content": claim.rendered_prompt},
+            ),
+            configured_model=claim.configured_model,
+            prompt_bundle_hash=claim.prompt_bundle_hash,
+            project_id=claim.project_id,
+            purpose="geo-placement-generation",
+        )
+        request_hash = canonical_hash(
+            {
+                "messages": request.messages,
+                "configured_model": request.configured_model,
+                "prompt_bundle_hash": request.prompt_bundle_hash,
+                "purpose": request.purpose,
+                "temperature": request.temperature,
+                "max_output_tokens": request.max_output_tokens,
+            }
+        )
+        provider = str(getattr(self._gateway, "provider", "unknown"))
+        try:
+            reservation = self._repository.reserve_model_call(
+                lease, claim, provider=provider, request_hash=request_hash
+            )
+        except ModelCallBudgetExceeded as exc:
+            return self._fail(lease, exc, retry=False, classification="budget")
+        try:
+            with LeaseHeartbeat(
+                self._store,
+                lease,
+                lease_for=self._lease_for,
+                interval=min(self._lease_for / 3, timedelta(seconds=30)),
+            ) as heartbeat:
+                result = self._gateway.generate(
+                    request,
+                    policy=ModelPolicy(),
+                    budget=ModelCallBudget(1),
+                )
+                heartbeat.raise_if_stopped()
+        except Exception as exc:
+            classification = _model_error_classification(exc)
+            self._repository.record_model_call_failure(
+                lease,
+                claim,
+                reservation,
+                classification=classification,
+                error_code=type(exc).__name__,
+            )
+            return self._fail(
+                lease,
+                exc,
+                retry=isinstance(exc, RetryableModelGatewayError),
+                classification=classification,
+            )
+        self._repository.record_model_call_success(lease, claim, reservation, result)
+        try:
+            validate_output_schema(result.output, claim.output_schema)
+            placement = parse_generated_placement(result.output, claim=claim)
+            version = self._repository.finalize_generation(lease, claim, placement, result)
+            return {
+                "status": "succeeded",
+                "job_id": str(lease.job_id),
+                "package_version_id": str(version.id),
+                "response_hash": result.response_hash,
+            }
+        except PlacementRuleViolation as exc:
+            return self._fail(lease, exc, retry=False, classification="contract")
+
+    def _fail(
+        self,
+        lease: WorkerLease,
+        error: Exception,
+        *,
+        retry: bool,
+        classification: str,
+    ) -> Mapping[str, object]:
+        status = self._store.fail(
+            lease,
+            error_code=type(error).__name__,
+            details={"message": str(error), "classification": classification},
+            retry_delay=timedelta(seconds=30) if retry else None,
+        )
+        return {"status": status, "job_id": str(lease.job_id)}
+
+
+class PublicationVerificationHandler:
+    def __init__(
+        self,
+        *,
+        store: PostgresDurableJobStore,
+        repository: PlacementWorkerRepository,
+        verifier: PublicUrlVerifier,
+        lease_for: timedelta,
+    ) -> None:
+        self._store = store
+        self._repository = repository
+        self._verifier = verifier
+        self._lease_for = lease_for
+
+    def handle(self, lease: WorkerLease) -> Mapping[str, object]:
+        snapshot = self._repository.begin_verification(lease)
+        try:
+            with LeaseHeartbeat(
+                self._store,
+                lease,
+                lease_for=self._lease_for,
+                interval=min(self._lease_for / 3, timedelta(seconds=20)),
+            ) as heartbeat:
+                verification = self._verifier.verify(
+                    snapshot.submitted_url,
+                    expected_text_fragments=snapshot.expected_text_fragments,
+                    required_disclosures=snapshot.required_disclosures,
+                    expected_links=snapshot.expected_links,
+                    allowed_hosts=snapshot.allowed_hosts,
+                )
+                heartbeat.raise_if_stopped()
+        except RetryableVerificationError as exc:
+            status = self._store.fail(
+                lease,
+                error_code=type(exc).__name__,
+                details={"message": str(exc)},
+                retry_delay=timedelta(seconds=30),
+            )
+            self._repository.mark_verification_retry(
+                lease, snapshot, terminal=status in {"failed", "dead_lettered"}
+            )
+            return {"status": status, "job_id": str(lease.job_id)}
+        except PermanentVerificationError as exc:
+            checked_at = datetime.now(UTC).isoformat()
+            result = {
+                "status_code": 0,
+                "final_url": snapshot.submitted_url,
+                "checked_at": checked_at,
+                "metadata_hash": canonical_hash(
+                    {"url": snapshot.submitted_url, "error": str(exc), "checked_at": checked_at}
+                ),
+                "accessibility": False,
+                "content_match": False,
+                "disclosure_match": False,
+                "link_match": False,
+                "error": str(exc),
+            }
+            self._repository.fail_verification_permanently(
+                lease,
+                snapshot,
+                error_code=type(exc).__name__,
+                result=result,
+            )
+            return {"status": "failed", "job_id": str(lease.job_id)}
+        result = {
+            "status_code": verification.status_code,
+            "final_url": verification.final_url,
+            "checked_at": verification.checked_at.isoformat(),
+            "metadata_hash": verification.metadata_hash,
+            "accessibility": verification.accessibility,
+            "content_match": verification.content_match,
+            "disclosure_match": verification.disclosure_match,
+            "link_match": verification.link_match,
+        }
+        self._repository.finalize_verification(
+            lease, snapshot, success=verification.success, result=result
+        )
+        return {
+            "status": "verified" if verification.success else "verification_failed",
+            "job_id": str(lease.job_id),
+        }
+
+
+class MeasurementWindowHandler:
+    def __init__(self, repository: PlacementWorkerRepository) -> None:
+        self._repository = repository
+
+    def handle(self, lease: WorkerLease) -> Mapping[str, object]:
+        details = self._repository.open_measurement_window(lease)
+        return {"job_id": str(lease.job_id), **details}
+
+
+def _model_error_classification(error: Exception) -> str:
+    if isinstance(error, RetryableModelGatewayError):
+        return "retryable"
+    if isinstance(error, ProviderPolicyViolation):
+        return "policy"
+    if isinstance(error, ModelCallBudgetExceeded):
+        return "budget"
+    if isinstance(error, ModelGatewayError):
+        return "permanent"
+    return "unknown"
+
+
+class PlacementWorkerDispatcher:
+    def __init__(
+        self,
+        *,
+        store: PostgresDurableJobStore,
+        handlers: Mapping[str, JobHandler],
+        worker_id: str,
+        lease_for: timedelta = timedelta(minutes=2),
+    ) -> None:
+        self._store = store
+        self._handlers = dict(handlers)
+        self._worker_id = worker_id
+        self._lease_for = lease_for
+
+    def process(self, *, job_id: UUID, project_id: UUID) -> Mapping[str, object]:
+        claim = self._store.claim(
+            job_id=job_id,
+            project_id=project_id,
+            expected_kind="",
+            worker_id=self._worker_id,
+            lease_for=self._lease_for,
+        )
+        if claim.lease is None:
+            return {"status": claim.disposition, "job_id": str(job_id)}
+        lease = claim.lease
+        handler = self._handlers.get(lease.kind)
+        if handler is None:
+            status = self._store.fail(
+                lease,
+                error_code="unsupported_job_kind",
+                details={"kind": lease.kind},
+                retry_delay=None,
+            )
+            return {"status": status, "job_id": str(job_id)}
+        try:
+            return handler.handle(lease)
+        except JobCancellationRequested:
+            self._store.cancel(lease)
+            return {"status": "cancelled", "job_id": str(job_id)}
+        except LostJobLease:
+            return {"status": "fenced", "job_id": str(job_id)}
+        except Exception as exc:
+            status = self._store.fail(
+                lease,
+                error_code=type(exc).__name__,
+                details={"message": str(exc)},
+                retry_delay=timedelta(seconds=30),
+            )
+            return {"status": status, "job_id": str(job_id)}

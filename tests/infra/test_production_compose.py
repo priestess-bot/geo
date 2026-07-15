@@ -30,11 +30,30 @@ def test_api_services_use_secrets_read_only_filesystems_and_separate_entrypoints
 
     assert internal["read_only"] is True
     assert customer["read_only"] is True
-    assert internal["environment"]["DATABASE_URL_FILE"] == "/run/secrets/database_url"
-    assert customer["environment"]["DATABASE_URL_FILE"] == "/run/secrets/database_url"
+    assert internal["environment"]["GEO_DATABASE_URL_FILE"] == "/run/secrets/database_url"
+    assert customer["environment"]["GEO_DATABASE_URL_FILE"] == "/run/secrets/database_url"
     assert "geo_api.internal_app:app" in internal["command"]
     assert "geo_api.customer_app:app" in customer["command"]
     assert internal["environment"]["GEO_DEV_TOOLS_ENABLED"] == "0"
+    assert "deepseek_api_key" not in internal["secrets"]
+    assert "deepseek_api_key" not in customer["secrets"]
+
+
+def test_durable_worker_and_outbox_relay_use_the_worker_database_identity() -> None:
+    services = load_compose()["services"]
+    worker = services["task-worker"]
+    relay = services["outbox-relay"]
+
+    assert "geo_worker.tasks" in worker["command"]
+    assert "geo_worker.relay" in relay["command"]
+    assert worker["environment"]["GEO_DATABASE_URL_FILE"] == (
+        "/run/secrets/worker_database_url"
+    )
+    assert relay["environment"]["GEO_DATABASE_URL_FILE"] == (
+        "/run/secrets/worker_database_url"
+    )
+    assert "deepseek_api_key" in worker["secrets"]
+    assert "deepseek_api_key" not in relay["secrets"]
 
 
 def test_production_compose_contains_no_source_mounts_or_weak_default_credentials() -> None:
