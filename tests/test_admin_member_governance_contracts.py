@@ -52,6 +52,9 @@ def test_member_ui_covers_permissions_and_operational_states() -> None:
     loading = source("loading.tsx")
 
     assert "data.currentRole === \"owner\" || data.currentRole === \"admin\"" in panel
+    assert 'member.status === "revoked"' in panel
+    assert "data.page.total - activeMembers.length" not in panel
+    assert "全部成员" in panel
     assert "problemTitle" in panel
     assert "暂无成员记录" in panel
     assert "isLastOwner" in row

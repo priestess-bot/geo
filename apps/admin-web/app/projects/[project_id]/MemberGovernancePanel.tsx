@@ -13,6 +13,7 @@ export function MemberGovernancePanel({
   projectId: string;
 }) {
   const activeMembers = data.page.items.filter((member) => member.status === "active");
+  const revokedMembers = data.page.items.filter((member) => member.status === "revoked");
   const activeOwnerCount = activeMembers.filter((member) => member.role === "owner").length;
   const activeManagerCount = activeMembers.filter(
     (member) => member.role === "owner" || member.role === "admin"
@@ -28,8 +29,9 @@ export function MemberGovernancePanel({
           <h3 id="member-governance-title">内部 OIDC 成员</h3>
         </div>
         <div className={styles.summary}>
-          <span><strong>{activeMembers.length}</strong> 有效</span>
-          <span><strong>{data.page.total - activeMembers.length}</strong> 已撤销</span>
+          <span><strong>{activeMembers.length}</strong> 当前页有效</span>
+          <span><strong>{revokedMembers.length}</strong> 当前页已撤销</span>
+          <span><strong>{data.page.total}</strong> 全部成员</span>
           <span><strong>{data.currentRole ? roleName(data.currentRole) : "未识别"}</strong> 当前角色</span>
         </div>
       </header>
