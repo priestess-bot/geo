@@ -11,6 +11,7 @@ from geo_core.placements.domain import (
     Opportunity,
     PlacementConflict,
     PlacementRuleViolation,
+    transition_opportunity_status,
 )
 
 
@@ -131,12 +132,9 @@ class PostgresDestinationPolicyMixin:
                 (opportunity_id, project_id),
             )
         )
-        target = {
-            "qualify": "qualified",
-            "block": "blocked",
-            "reopen": "identified",
-            "cancel": "cancelled",
-        }[command]
+        target = transition_opportunity_status(
+            status=current["status"], command=command
+        ).value
         if command == "qualify" and current["policy_status"] != "approved":
             raise PlacementConflict(
                 "opportunity qualification requires approved destination policy"

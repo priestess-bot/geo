@@ -59,8 +59,9 @@ def open_measurement_window(
     with store.fenced_transaction(lease) as connection:
         spec = row(
             connection.execute(
-                """SELECT submission_id, due_offset_days, scheduled_for,
-                          market_profile_id, locale, device, sample_size,
+                """SELECT submission_id, protocol_id, measurement_window,
+                          due_offset_days, scheduled_for, market_profile_id,
+                          locale, device, sample_size, expected_sample_count,
                           protocol_snapshot, protocol_hash
                    FROM measurement_job_specs
                    WHERE job_id = %s AND project_id = %s""",
@@ -69,6 +70,23 @@ def open_measurement_window(
         )
         if spec is None:
             raise RuntimeError("measurement job specification does not exist")
+        task = row(
+            connection.execute(
+                """INSERT INTO measurement_collection_tasks
+                     (project_id, job_id, submission_id, protocol_id,
+                      measurement_window, expected_sample_count, scheduled_for)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s)
+                   ON CONFLICT (job_id) DO UPDATE SET job_id = EXCLUDED.job_id
+                   RETURNING id""",
+                (
+                    lease.project_id, lease.job_id, spec["submission_id"],
+                    spec["protocol_id"], spec["measurement_window"],
+                    spec["expected_sample_count"], spec["scheduled_for"],
+                ),
+            )
+        )
+        if task is None:
+            raise RuntimeError("measurement collection task was not persisted")
         queries = connection.execute(
             """SELECT monitoring_query_id FROM measurement_job_queries
                WHERE job_id = %s AND project_id = %s ORDER BY monitoring_query_id""",
@@ -76,6 +94,7 @@ def open_measurement_window(
         ).fetchall()
         details = {
             "status": "awaiting_manual_samples",
+            "measurement_collection_task_id": str(task["id"]),
             "submission_id": str(spec["submission_id"]),
             "due_offset_days": spec["due_offset_days"],
             "scheduled_for": spec["scheduled_for"].isoformat(),
@@ -101,94 +120,126 @@ def schedule_measurements(
     lease: WorkerLease,
     submission_id: UUID,
 ) -> int:
-    queries = rows(
+    protocols = rows(
         connection.execute(
-            """SELECT q.id, q.query_text, q.locale, c.market_profile_id
+            """SELECT protocol.id, protocol.market_profile_id, protocol.locale,
+                      protocol.device, protocol.sample_size, protocol.protocol_hash
                FROM publication_submissions s
                JOIN publication_requests r
                  ON r.id = s.publication_request_id AND r.project_id = s.project_id
                JOIN placement_package_versions v
                  ON v.id = r.package_version_id AND v.project_id = r.project_id
-               JOIN placement_packages p ON p.id = v.package_id AND p.project_id = v.project_id
+               JOIN placement_packages package
+                 ON package.id = v.package_id AND package.project_id = v.project_id
                JOIN placement_opportunities o
-                 ON o.id = p.opportunity_id AND o.project_id = p.project_id
-               JOIN geo_campaigns c ON c.id = o.campaign_id AND c.project_id = o.project_id
-               JOIN campaign_monitoring_queries cq
-                 ON cq.campaign_id = c.id AND cq.project_id = c.project_id
-               JOIN monitoring_queries q
-                 ON q.id = cq.monitoring_query_id AND q.project_id = cq.project_id
-               WHERE s.id = %s AND s.project_id = %s AND q.status = 'active'
-               ORDER BY q.id""",
+                 ON o.id = package.opportunity_id AND o.project_id = package.project_id
+               JOIN monitoring_protocols protocol
+                 ON protocol.campaign_id = o.campaign_id
+                AND protocol.project_id = o.project_id
+               WHERE s.id = %s AND s.project_id = %s AND protocol.status = 'frozen'
+               ORDER BY protocol.id""",
             (submission_id, lease.project_id),
         )
     )
-    if not queries:
+    if not protocols:
         return 0
     verified_at = datetime.now(UTC)
-    protocol = {
-        "version": "geo-measurement-v1",
-        "device": "desktop",
-        "sample_size": 3,
-        "queries": [
-            {"id": str(value["id"]), "text": value["query_text"], "locale": value["locale"]}
-            for value in queries
-        ],
-    }
-    protocol_hash = canonical_hash(protocol)
-    locale = queries[0]["locale"] if len({value["locale"] for value in queries}) == 1 else "mixed"
-    for offset in (28, 56, 84):
-        job_id = uuid5(NAMESPACE_URL, f"geo-measurement:{submission_id}:{offset}")
-        scheduled_for = verified_at + timedelta(days=offset)
-        connection.execute(
-            """INSERT INTO durable_jobs
-                 (id, project_id, kind, input_hash, idempotency_key, next_run_at)
-               VALUES (%s, %s, 'placement.measure', %s, %s, %s)
-               ON CONFLICT (id) DO NOTHING""",
-            (
-                job_id,
-                lease.project_id,
-                canonical_hash({"submission_id": str(submission_id), "offset": offset}),
-                f"measurement:{submission_id}:{offset}",
-                scheduled_for,
-            ),
-        )
-        connection.execute(
-            """INSERT INTO measurement_job_specs
-                 (job_id, project_id, submission_id, due_offset_days, scheduled_for,
-                  market_profile_id, locale, device, sample_size,
-                  protocol_snapshot, protocol_hash)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, 'desktop', 3, %s::jsonb, %s)
-               ON CONFLICT (job_id) DO NOTHING""",
-            (
-                job_id,
-                lease.project_id,
-                submission_id,
-                offset,
-                scheduled_for,
-                queries[0]["market_profile_id"],
-                locale,
-                json.dumps(protocol),
-                protocol_hash,
-            ),
-        )
-        for query in queries:
+    scheduled = 0
+    for protocol in protocols:
+        queries = rows(
             connection.execute(
-                """INSERT INTO measurement_job_queries
-                     (job_id, project_id, monitoring_query_id)
-                   VALUES (%s, %s, %s) ON CONFLICT DO NOTHING""",
-                (job_id, lease.project_id, query["id"]),
+                """SELECT monitoring_query_id AS id, query_text_snapshot AS query_text,
+                          locale_snapshot AS locale
+                   FROM monitoring_protocol_queries
+                   WHERE project_id = %s AND protocol_id = %s ORDER BY ordinal""",
+                (lease.project_id, protocol["id"]),
             )
-        connection.execute(
-            """INSERT INTO broker_outbox
-                 (project_id, job_id, topic, payload, idempotency_key, available_at)
-               VALUES (%s, %s, 'placement.measure', %s::jsonb, %s, %s)
-               ON CONFLICT (project_id, idempotency_key) DO NOTHING""",
-            (
-                lease.project_id,
-                job_id,
-                json.dumps({"job_id": str(job_id), "project_id": str(lease.project_id)}),
-                f"wake:placement.measure:{submission_id}:{offset}",
-                scheduled_for,
-            ),
         )
-    return 3
+        if not queries:
+            continue
+        snapshot = {
+            "version": "geo-measurement-v2", "protocol_id": str(protocol["id"]),
+            "device": protocol["device"], "sample_size": protocol["sample_size"],
+            "queries": [{"id": str(value["id"]), "text": value["query_text"],
+                         "locale": value["locale"]} for value in queries],
+        }
+        expected = protocol["sample_size"] * len(queries)
+        for offset in (28, 56, 84):
+            window = f"t{offset}"
+            job_id = uuid5(
+                NAMESPACE_URL,
+                f"geo-measurement:{submission_id}:{protocol['id']}:{window}",
+            )
+            scheduled_for = verified_at + timedelta(days=offset)
+            connection.execute(
+                """INSERT INTO durable_jobs
+                     (id, project_id, kind, input_hash, idempotency_key, next_run_at)
+                   VALUES (%s, %s, 'placement.measure', %s, %s, %s)
+                   ON CONFLICT (id) DO NOTHING""",
+                (job_id, lease.project_id,
+                 canonical_hash({"submission_id": str(submission_id),
+                                 "protocol_id": str(protocol["id"]), "window": window}),
+                 f"measurement:{submission_id}:{protocol['id']}:{window}", scheduled_for),
+            )
+            connection.execute(
+                """INSERT INTO measurement_job_specs
+                     (job_id, project_id, submission_id, protocol_id, measurement_window,
+                      due_offset_days, scheduled_for, market_profile_id, locale, device,
+                      sample_size, expected_sample_count, protocol_snapshot, protocol_hash)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
+                   ON CONFLICT (job_id) DO NOTHING""",
+                (job_id, lease.project_id, submission_id, protocol["id"], window, offset,
+                 scheduled_for, protocol["market_profile_id"], protocol["locale"],
+                 protocol["device"], protocol["sample_size"], expected,
+                 json.dumps(snapshot), protocol["protocol_hash"]),
+            )
+            for query in queries:
+                connection.execute(
+                    """INSERT INTO measurement_job_queries
+                         (job_id, project_id, monitoring_query_id)
+                       VALUES (%s, %s, %s) ON CONFLICT DO NOTHING""",
+                    (job_id, lease.project_id, query["id"]),
+                )
+            connection.execute(
+                """INSERT INTO broker_outbox
+                     (project_id, job_id, topic, payload, idempotency_key, available_at)
+                   VALUES (%s, %s, 'placement.measure', %s::jsonb, %s, %s)
+                   ON CONFLICT (project_id, idempotency_key) DO NOTHING""",
+                (lease.project_id, job_id,
+                 json.dumps({"job_id": str(job_id), "project_id": str(lease.project_id)}),
+                 f"wake:placement.measure:{submission_id}:{protocol['id']}:{window}",
+                 scheduled_for),
+            )
+            scheduled += 1
+    return scheduled
+
+
+def advance_generated_opportunity(connection: Any, project_id: UUID, package_id: UUID) -> None:
+    connection.execute(
+        """UPDATE placement_opportunities o SET status = 'in_progress',
+             blocked_reason = NULL, updated_at = clock_timestamp()
+           FROM placement_packages p
+           WHERE p.id = %s AND p.project_id = %s
+             AND o.id = p.opportunity_id AND o.project_id = p.project_id
+             AND o.status = 'briefing'""",
+        (package_id, project_id),
+    )
+
+
+def advance_verified_opportunity(
+    connection: Any, project_id: UUID, submission_id: UUID
+) -> None:
+    connection.execute(
+        """UPDATE placement_opportunities o SET status = 'completed',
+             blocked_reason = NULL, updated_at = clock_timestamp()
+           FROM publication_submissions s
+           JOIN publication_requests r
+             ON r.id = s.publication_request_id AND r.project_id = s.project_id
+           JOIN placement_package_versions v
+             ON v.id = r.package_version_id AND v.project_id = r.project_id
+           JOIN placement_packages p ON p.id = v.package_id AND p.project_id = v.project_id
+           WHERE s.id = %s AND s.project_id = %s
+             AND o.id = p.opportunity_id AND o.project_id = p.project_id
+             AND o.status = 'in_progress'""",
+        (submission_id, project_id),
+    )

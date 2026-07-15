@@ -23,6 +23,7 @@ from geo_core.placements.domain import (
     MonitoringQuery,
     Opportunity,
     PackageVersion,
+    PlacementConflict,
     PlacementRuleViolation,
     PromptBundleView,
     PromptReleaseView,
@@ -73,6 +74,7 @@ class FakeRepository:
         self.exports: list[ExportReceipt] = []
         self.publications: list[PublicationRequest] = []
         self.submissions: list[Submission] = []
+        self.submission_hashes: dict[str, str] = {}
         self.measurements: list[Measurement] = []
         self.jobs: list[JobReference] = []
 
@@ -367,15 +369,27 @@ class FakeRepository:
         return item
 
     def create_submission(self, **values: Any) -> Submission:
+        replay = next(
+            (item for item in self.submissions
+             if item.idempotency_key == values["idempotency_key"]),
+            None,
+        )
+        if replay is not None:
+            if self.submission_hashes[values["idempotency_key"]] != values["payload_hash"]:
+                raise PlacementConflict("idempotency key reused with different payload")
+            return replay
         item = Submission(
             uuid4(),
             values["project_id"],
             values["publication_request_id"],
             "submitted" if values["submitted_url"] else "awaiting_url",
+            values["idempotency_key"],
+            values["submitted_by"],
             values["submitted_url"],
             values["provider_submission_id"],
         )
         self.submissions.append(item)
+        self.submission_hashes[values["idempotency_key"]] = values["payload_hash"]
         return item
 
     def enqueue_verification(self, **values: Any) -> JobReference:
@@ -548,7 +562,20 @@ def test_full_application_chain_keeps_export_and_publication_separate() -> None:
         publication_request_id=publication.id,
         submitted_url="https://reddit.example/post",
         provider_submission_id=None,
+        idempotency_key="submission-0001",
+        submitted_by=actor_id,
     )
+    assert app.create_submission(
+        project_id=project_id, publication_request_id=publication.id,
+        submitted_url="https://reddit.example/post", provider_submission_id=None,
+        idempotency_key="submission-0001", submitted_by=actor_id,
+    ).id == submission.id
+    with pytest.raises(PlacementConflict, match="different payload"):
+        app.create_submission(
+            project_id=project_id, publication_request_id=publication.id,
+            submitted_url="https://reddit.example/other-post", provider_submission_id=None,
+            idempotency_key="submission-0001", submitted_by=actor_id,
+        )
     verify_job = app.request_verification(
         project_id=project_id,
         submission_id=submission.id,

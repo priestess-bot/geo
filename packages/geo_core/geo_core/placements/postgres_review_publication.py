@@ -343,16 +343,20 @@ class PostgresReviewPublicationMixin:
             ):
                 raise PlacementRuleViolation("submitted URL must match the destination HTTPS host")
         status = "submitted" if values["submitted_url"] else "awaiting_url"
-        record = _one(
+        created = _many(
             self._db.execute(
                 """INSERT INTO publication_submissions
                      (project_id, publication_request_id, submitted_url,
-                      provider_submission_id, status, submitted_at)
+                      provider_submission_id, status, submitted_at,
+                      idempotency_key, payload_hash, submitted_by)
                    VALUES (%s, %s, %s, %s, %s,
-                     CASE WHEN %s = 'submitted' THEN clock_timestamp() ELSE NULL END)
+                     CASE WHEN %s = 'submitted' THEN clock_timestamp() ELSE NULL END,
+                     %s, %s, %s)
+                   ON CONFLICT (project_id, idempotency_key) DO NOTHING
                    RETURNING id, project_id, publication_request_id, status,
                              submitted_url, provider_submission_id, verification_result,
-                             url_backfilled_by, url_backfilled_at""",
+                             url_backfilled_by, url_backfilled_at,
+                             idempotency_key, submitted_by""",
                 (
                     values["project_id"],
                     values["publication_request_id"],
@@ -360,10 +364,30 @@ class PostgresReviewPublicationMixin:
                     values["provider_submission_id"],
                     status,
                     status,
+                    values["idempotency_key"],
+                    values["payload_hash"],
+                    values["submitted_by"],
                 ),
             )
         )
-        return Submission(**record)
+        if created:
+            return Submission(**created[0])
+        existing = _one(
+            self._db.execute(
+                """SELECT id, project_id, publication_request_id, status,
+                          submitted_url, provider_submission_id, verification_result,
+                          url_backfilled_by, url_backfilled_at, idempotency_key,
+                          submitted_by, payload_hash
+                   FROM publication_submissions
+                   WHERE project_id = %s AND idempotency_key = %s""",
+                (values["project_id"], values["idempotency_key"]),
+            )
+        )
+        if existing.pop("payload_hash") != values["payload_hash"]:
+            raise PlacementConflict(
+                "submission idempotency key was already used with a different payload"
+            )
+        return Submission(**existing)
 
     def backfill_submission_url(
         self, *, project_id: UUID, submission_id: UUID, submitted_url: str, actor_id: UUID
@@ -372,7 +396,8 @@ class PostgresReviewPublicationMixin:
             self._db.execute(
                 """SELECT s.id, s.project_id, s.publication_request_id, s.status,
                           s.submitted_url, s.provider_submission_id, s.verification_result,
-                          s.url_backfilled_by, s.url_backfilled_at, d.allowed_hosts
+                          s.url_backfilled_by, s.url_backfilled_at,
+                          s.idempotency_key, s.submitted_by, d.allowed_hosts
                    FROM publication_submissions s JOIN publication_requests r
                      ON r.id = s.publication_request_id AND r.project_id = s.project_id
                    JOIN publication_destinations d
@@ -404,7 +429,7 @@ class PostgresReviewPublicationMixin:
                    WHERE id = %s AND project_id = %s
                    RETURNING id, project_id, publication_request_id, status,
                      submitted_url, provider_submission_id, verification_result,
-                     url_backfilled_by, url_backfilled_at""",
+                     url_backfilled_by, url_backfilled_at, idempotency_key, submitted_by""",
                 (submitted_url, actor_id, submission_id, project_id),
             )
         )
@@ -427,7 +452,7 @@ class PostgresReviewPublicationMixin:
                      AND status IN ('awaiting_url', 'submitted', 'failed', 'blocked')
                    RETURNING id, project_id, publication_request_id, status,
                      submitted_url, provider_submission_id, verification_result,
-                     url_backfilled_by, url_backfilled_at""",
+                     url_backfilled_by, url_backfilled_at, idempotency_key, submitted_by""",
                 (status, reason, actor_id, submission_id, project_id),
             )
         )
@@ -488,7 +513,7 @@ class PostgresReviewPublicationMixin:
             self._db.execute(
                 """SELECT id, project_id, publication_request_id, status,
                           submitted_url, provider_submission_id, verification_result,
-                          url_backfilled_by, url_backfilled_at
+                          url_backfilled_by, url_backfilled_at, idempotency_key, submitted_by
                    FROM publication_submissions
                    WHERE project_id = %s AND publication_request_id = %s
                    ORDER BY created_at""",
@@ -502,7 +527,7 @@ class PostgresReviewPublicationMixin:
             self._db.execute(
                 """SELECT id, project_id, publication_request_id, status,
                           submitted_url, provider_submission_id, verification_result,
-                          url_backfilled_by, url_backfilled_at
+                          url_backfilled_by, url_backfilled_at, idempotency_key, submitted_by
                    FROM publication_submissions WHERE project_id = %s AND id = %s""",
                 (project_id, submission_id),
             )

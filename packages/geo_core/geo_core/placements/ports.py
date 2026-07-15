@@ -19,6 +19,7 @@ from geo_core.placements.domain import (
     ExportReceipt,
     JobReference,
     Measurement,
+    MeasurementCollectionTask,
     MonitoringQuery,
     Opportunity,
     PackageVersion,
@@ -297,6 +298,9 @@ class PlacementRepository(Protocol):
         publication_request_id: UUID,
         submitted_url: str | None,
         provider_submission_id: str | None,
+        idempotency_key: str,
+        payload_hash: str,
+        submitted_by: UUID,
     ) -> Submission: ...
 
     def list_publication_requests(
@@ -337,6 +341,18 @@ class PlacementRepository(Protocol):
     def list_measurements(
         self, *, project_id: UUID, submission_id: UUID
     ) -> tuple[Measurement, ...]: ...
+
+    def list_measurement_collection_tasks(
+        self, *, project_id: UUID, submission_id: UUID | None, status: str | None
+    ) -> tuple[MeasurementCollectionTask, ...]: ...
+
+    def complete_measurement_collection_task(
+        self, *, project_id: UUID, task_id: UUID, actor_id: UUID
+    ) -> MeasurementCollectionTask: ...
+
+    def cancel_measurement_collection_task(
+        self, *, project_id: UUID, task_id: UUID, actor_id: UUID, reason: str
+    ) -> MeasurementCollectionTask: ...
 
     def cancel_job(self, *, project_id: UUID, job_id: UUID, actor_id: UUID) -> JobReference: ...
 

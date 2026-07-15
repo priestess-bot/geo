@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Mapping
 
 from geo_core.monitoring.domain import MonitoringReport
-from geo_core.placements.domain import Measurement
+from geo_core.placements.domain import Measurement, MeasurementCollectionTask
 
 from scripts.geo_acceptance.contracts import AcceptanceConfig, CHANNELS
 from scripts.geo_acceptance.monitoring import (
@@ -24,6 +24,7 @@ from scripts.geo_acceptance.setup import AcceptanceSetup
 @dataclass(frozen=True)
 class ReportingResult:
     placement_measurement: Measurement
+    measurement_task: MeasurementCollectionTask
     follow_up: FollowUpResult
     report: MonitoringReport
     customer_metric_count: int
@@ -54,6 +55,11 @@ def run_reporting(
         submitted_url=placement.submitted_url,
         submission_id=placement.submission.id,
     )
+    completed_task = setup.placement.complete_measurement_collection_task(
+        project_id=setup.project_id,
+        task_id=placement.measurement_task.id,
+        actor_id=setup.owner.identity_id,
+    )
     report = baseline.application.generate_report(
         setup.owner,
         project_id=setup.project_id,
@@ -78,6 +84,7 @@ def run_reporting(
         raise AssertionError("customer projection exposed an unapproved report")
     return ReportingResult(
         placement_measurement,
+        completed_task,
         follow_up,
         report,
         len(customer_metrics),
@@ -146,6 +153,8 @@ def build_result(
             "export_id": placement.export.id,
             "publication_request_id": placement.publication.id,
             "submission_id": placement.submission.id,
+            "measurement_collection_task_id": reporting.measurement_task.id,
+            "measurement_collection_task_status": reporting.measurement_task.status,
             "scheduled_measurement_offsets": list(placement.scheduled_windows),
             "placement_measurement_id": reporting.placement_measurement.id,
         },
@@ -158,7 +167,7 @@ def build_result(
             "selected_channel_count": len(CHANNELS),
             "persistent_task_count": len(opportunities),
             "blocked_task_count": sum(item.status == "blocked" for item in opportunities),
-            "approved_task_count": sum(item.status == "qualified" for item in opportunities),
+            "completed_task_count": sum(item.status == "completed" for item in opportunities),
             "export_created_publication": False,
             "claim_inventory_complete": placement.review.claim_inventory_complete,
             "review_submitter_differs_from_reviewer": (

@@ -1,16 +1,22 @@
 import Link from "next/link";
 import { ActionForm } from "./ActionForm";
-import { blockSubmission, createMeasurement, createPublication, createSubmission, setSubmissionUrl, transitionPublication, verifySubmission } from "./placement-actions";
+import { blockSubmission, cancelMeasurementCollectionTask, completeMeasurementCollectionTask, createMeasurement, createPublication, createSubmission, setSubmissionUrl, transitionPublication, verifySubmission } from "./placement-actions";
 import { Empty, HiddenProject, ResourceBlock, SectionHeader, ShortId, Status, geoHref } from "./common";
 import type { GeoWorkspaceData } from "./model";
+import { loadMeasurementCollectionTasks } from "./measurement-task-data";
 import styles from "./GeoWorkspace.module.css";
 
-export function PublicationPanel({ projectId, data }: { projectId: string; data: GeoWorkspaceData }) {
+export async function PublicationPanel({ projectId, data }: { projectId: string; data: GeoWorkspaceData }) {
   const { selection } = data;
   const version = data.packageVersion.data;
   const publication = data.publications.data.find((item) => item.id === selection.publicationId);
   const submission = data.submission.data;
-  const usableDestinations = data.destinations.data.filter((item) => item.policy_status === "approved" || item.policy_status === "restricted");
+  const opportunity = data.opportunities.data.find((item) => item.id === selection.opportunityId);
+  const usableDestinations = data.destinations.data.filter((item) =>
+    item.id === opportunity?.destination_id &&
+    (item.policy_status === "approved" || item.policy_status === "restricted")
+  );
+  const collectionTasks = await loadMeasurementCollectionTasks(projectId, submission?.id);
   return <div className={styles.workspace}>
     <SectionHeader eyebrow="Explicit publication intent" title="投放请求、人工提交与效果测量" />
     <div className={styles.threeColumns}>
@@ -85,6 +91,17 @@ export function PublicationPanel({ projectId, data }: { projectId: string; data:
               <label>附加指标 JSON<textarea name="metrics" defaultValue={'{"product_mentioned":true,"recommendation_present":true}'} /></label>
             </ActionForm>
           </div>
+        </div>
+        <div className={styles.panel}>
+          <SectionHeader eyebrow="Due collection queue" title="T+28 / T+56 / T+84 采集待办" />
+          <ResourceBlock resource={collectionTasks}>{(items) => items.length ? <div className={styles.list}>{items.map((item) => <div className={styles.row} key={item.id}>
+            <span className={styles.rowHeader}><strong>{item.measurement_window} · {new Date(item.scheduled_for).toLocaleString("zh-CN")}</strong><Status value={item.status} /></span>
+            <span className={styles.meta}><span>protocol <ShortId value={item.protocol_id} /></span><span>samples {item.actual_sample_count}/{item.expected_sample_count}</span><span>job <ShortId value={item.job_id} /></span></span>
+            {item.status === "open" ? <div className={styles.toolbar}>
+              <ActionForm action={completeMeasurementCollectionTask} submitLabel="核对样本并完成"><HiddenProject projectId={projectId} /><input type="hidden" name="task_id" value={item.id} /></ActionForm>
+              <ActionForm action={cancelMeasurementCollectionTask} submitLabel="取消待办" danger><HiddenProject projectId={projectId} /><input type="hidden" name="task_id" value={item.id} /><label>原因<input name="reason" required /></label></ActionForm>
+            </div> : null}
+          </div>)}</div> : <Empty>验证成功后，冻结协议会在到期日生成可操作的采集待办。</Empty>}</ResourceBlock>
         </div>
         <div className={styles.panel}>
           <SectionHeader eyebrow="Measurement lineage" title="历史测量" />

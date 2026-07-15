@@ -13,7 +13,9 @@ from geo_core.jobs.outbox import PostgresOutboxStore
 from geo_core.jobs.postgres import PostgresDurableJobStore
 from geo_core.placements.application import PlacementApplication
 from geo_core.placements.artifact_worker import PlacementArtifactRepository
-from geo_core.placements.domain import ConsumerExperience, PlacementRuleViolation
+from geo_core.placements.domain import (
+    ConsumerExperience, PlacementConflict, PlacementRuleViolation,
+)
 from geo_core.placements.postgres_uow import placement_uow_factory
 from geo_core.placements.ports import GeneratedClaim
 from geo_core.placements.worker_composition import (
@@ -33,6 +35,7 @@ from tests.integration.placement_worker_support import (
     PermanentVerifier,
     RetryableGateway,
     login_url,
+    seed_frozen_protocol,
     seed_project,
 )
 
@@ -90,7 +93,7 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
                 rationale="Audience fit",
             )
             assert opportunities[0].status == "blocked"
-            with pytest.raises(RuntimeError, match="approved destination policy"):
+            with pytest.raises(PlacementConflict, match="not allowed from 'blocked'"):
                 application.transition_opportunity(
                     project_id=seeded["project"],
                     opportunity_id=opportunities[0].id,
@@ -119,6 +122,11 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
                 query_kind="recommendation",
                 locale="en-AU",
             )
+            with psycopg.connect(ADMIN_URL) as admin:
+                seed_frozen_protocol(admin, project_id=seeded["project"],
+                    campaign_id=campaign.id, market_profile_id=seeded["market"],
+                    monitoring_query_id=query.id, actor_id=seeded["owner"])
+                admin.commit()
             application.transition_opportunity(
                 project_id=seeded["project"],
                 opportunity_id=opportunities[0].id,
@@ -470,62 +478,6 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
         )
         assert downloaded.content_hash == export.content_hash
 
-        publication = application.request_publication(
-            project_id=first["project"],
-            version_id=version.id,
-            destination_id=first["destination"].id,
-            requested_by=first["owner"],
-            publication_attempt=1,
-            idempotency_key=f"publication-{suffix}-0001",
-            restricted_policy_acknowledged=False,
-            policy_basis=None,
-        )
-        submission = application.create_submission(
-            project_id=first["project"],
-            publication_request_id=publication.id,
-            submitted_url="https://reddit.com/post",
-            provider_submission_id=None,
-        )
-        verification = application.request_verification(
-            project_id=first["project"],
-            submission_id=submission.id,
-            idempotency_key=f"verification-{suffix}-0001",
-        )
-        verification_dispatcher = PlacementWorkerDispatcher(
-            store=store,
-            handlers={
-                "publication.verify": PublicationVerificationHandler(
-                    store=store,
-                    repository=repository,
-                    verifier=FakeVerifier(),
-                    lease_for=timedelta(seconds=30),
-                )
-            },
-            worker_id="integration-verification",
-            lease_for=timedelta(seconds=30),
-        )
-        assert (
-            verification_dispatcher.process(job_id=verification.id, project_id=first["project"])[
-                "status"
-            ]
-            == "verified"
-        )
-        assert (
-            application.list_publication_requests(
-                project_id=first["project"], version_id=version.id
-            )[0].id
-            == publication.id
-        )
-        assert (
-            application.list_submissions(
-                project_id=first["project"], publication_request_id=publication.id
-            )[0].status
-            == "verified"
-        )
-        verified_submission = application.get_submission(
-            project_id=first["project"], submission_id=submission.id
-        )
-        assert verified_submission.verification_result["content_match"] is True
         retrying_gateway = RetryableGateway()
         budget_job = application.request_generation(
             project_id=first["project"],
@@ -619,6 +571,64 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
         )
         assert application.list_job_events(project_id=first["project"], job_id=budget_job.id)
 
+        publication = application.request_publication(
+            project_id=first["project"],
+            version_id=version.id,
+            destination_id=first["destination"].id,
+            requested_by=first["owner"],
+            publication_attempt=1,
+            idempotency_key=f"publication-{suffix}-0001",
+            restricted_policy_acknowledged=False,
+            policy_basis=None,
+        )
+        submission = application.create_submission(
+            project_id=first["project"],
+            publication_request_id=publication.id,
+            submitted_url="https://reddit.com/post",
+            provider_submission_id=None,
+            idempotency_key=f"submission-{suffix}-0001", submitted_by=first["owner"],
+        )
+        verification = application.request_verification(
+            project_id=first["project"],
+            submission_id=submission.id,
+            idempotency_key=f"verification-{suffix}-0001",
+        )
+        verification_dispatcher = PlacementWorkerDispatcher(
+            store=store,
+            handlers={
+                "publication.verify": PublicationVerificationHandler(
+                    store=store,
+                    repository=repository,
+                    verifier=FakeVerifier(),
+                    lease_for=timedelta(seconds=30),
+                )
+            },
+            worker_id="integration-verification",
+            lease_for=timedelta(seconds=30),
+        )
+        assert (
+            verification_dispatcher.process(job_id=verification.id, project_id=first["project"])[
+                "status"
+            ]
+            == "verified"
+        )
+        assert (
+            application.list_publication_requests(
+                project_id=first["project"], version_id=version.id
+            )[0].id
+            == publication.id
+        )
+        assert (
+            application.list_submissions(
+                project_id=first["project"], publication_request_id=publication.id
+            )[0].status
+            == "verified"
+        )
+        verified_submission = application.get_submission(
+            project_id=first["project"], submission_id=submission.id
+        )
+        assert verified_submission.verification_result["content_match"] is True
+
         second_publication = application.request_publication(
             project_id=first["project"],
             version_id=version.id,
@@ -635,12 +645,14 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
                 publication_request_id=second_publication.id,
                 submitted_url="https://attacker.example/post",
                 provider_submission_id=None,
+                idempotency_key=f"submission-{suffix}-invalid-host", submitted_by=first["owner"],
             )
         invalid_submission = application.create_submission(
             project_id=first["project"],
             publication_request_id=second_publication.id,
             submitted_url=None,
             provider_submission_id=None,
+            idempotency_key=f"submission-{suffix}-0002", submitted_by=first["owner"],
         )
         with pytest.raises(PlacementRuleViolation, match="destination HTTPS host"):
             application.backfill_submission_url(

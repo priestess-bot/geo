@@ -173,3 +173,21 @@ export async function createMeasurement(_state: ActionResult, form: FormData): P
     metrics: metrics as JsonObject
   }, guards(form)), "投放效果测量已记录");
 }
+
+export async function completeMeasurementCollectionTask(
+  _state: ActionResult, form: FormData
+): Promise<ActionResult> {
+  const projectId = value(form, "project_id"), api = await client();
+  return finish(projectId, await api.completeMeasurementCollectionTask(
+    projectId, value(form, "task_id"), guards(form)
+  ), "测量采集待办已完成");
+}
+
+export async function cancelMeasurementCollectionTask(
+  _state: ActionResult, form: FormData
+): Promise<ActionResult> {
+  const projectId = value(form, "project_id"), api = await client();
+  return finish(projectId, await api.cancelMeasurementCollectionTask(
+    projectId, value(form, "task_id"), { reason: value(form, "reason") }, guards(form)
+  ), "测量采集待办已取消");
+}

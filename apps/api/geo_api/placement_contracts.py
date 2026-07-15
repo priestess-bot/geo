@@ -42,6 +42,7 @@ class OpportunityView(PlacementContract):
     opportunity_ref: str
     rationale: str
     status: str
+    allowed_commands: list[Literal["qualify", "block", "reopen", "cancel"]]
 
 
 class CampaignCreated(PlacementContract):
@@ -390,6 +391,8 @@ class SubmissionView(SubmissionCreate):
     project_id: UUID
     publication_request_id: UUID
     status: str
+    idempotency_key: str
+    submitted_by: UUID
     verification_result: dict[str, object] | None = None
     url_backfilled_by: UUID | None = None
     url_backfilled_at: datetime | None = None
@@ -408,3 +411,21 @@ class MeasurementView(MeasurementCreate):
     id: UUID
     project_id: UUID
     submission_id: UUID
+
+
+class MeasurementCollectionTaskView(PlacementContract):
+    id: UUID
+    project_id: UUID
+    job_id: UUID
+    submission_id: UUID
+    protocol_id: UUID
+    measurement_window: Literal["t28", "t56", "t84"]
+    expected_sample_count: int
+    actual_sample_count: int
+    scheduled_for: datetime
+    status: Literal["open", "completed", "cancelled"]
+    opened_at: datetime
+    completed_at: datetime | None = None
+    cancelled_at: datetime | None = None
+    acted_by: UUID | None = None
+    state_reason: str | None = None
