@@ -28,8 +28,10 @@ typecheck:
 		apps/api/geo_api/problems.py \
 		apps/api/geo_api/stable_routes.py \
 		packages/geo_core/geo_core/jobs \
+		packages/geo_core/geo_core/engineering \
 		packages/geo_core/geo_core/model_gateway \
-		packages/geo_core/geo_core/prompts
+		packages/geo_core/geo_core/prompts \
+		apps/api/geo_api/engineering_runtime.py
 	corepack pnpm typecheck
 
 quality: lint typecheck

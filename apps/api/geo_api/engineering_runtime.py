@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from collections.abc import Iterator
 from typing import Protocol
 from uuid import UUID
 
 from geo_core.engineering.postgres import PostgresEngineeringUnitOfWork
+from geo_core.engineering.ports import EngineeringEvent, EngineeringUnitOfWork
 from geo_core.engineering.service import EngineeringService
 from geo_core.engineering.service import WebhookConfigurationError
 from geo_api.foundation_services import FoundationServiceUnavailable
@@ -35,7 +37,7 @@ class UnavailableEngineeringService:
         del kwargs
         raise FoundationServiceUnavailable("engineering persistence is not configured")
 
-    def events(self, **kwargs: object):
+    def events(self, **kwargs: object) -> Iterator[EngineeringEvent]:
         del kwargs
         return iter(())
 
@@ -64,7 +66,7 @@ def build_engineering_service() -> EngineeringService | UnavailableEngineeringSe
         project_id and os.getenv("GEO_ENGINEERING_HEALTH_TARGETS", "").strip()
     )
 
-    def unit_of_work() -> PostgresEngineeringUnitOfWork:
+    def unit_of_work() -> EngineeringUnitOfWork:
         return PostgresEngineeringUnitOfWork(
             lambda: psycopg.connect(database_url), project_id=project_id
         )

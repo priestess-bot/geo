@@ -98,7 +98,8 @@ class EngineeringRepository(Protocol):
 
 
 class EngineeringUnitOfWork(Protocol):
-    repository: EngineeringRepository
+    @property
+    def repository(self) -> EngineeringRepository: ...
 
     def __enter__(self) -> Self: ...
 

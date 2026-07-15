@@ -54,14 +54,16 @@ class PostgresEngineeringRepository:
         self, *, external_repository_id: int | None = None, repository_id: UUID | None = None
     ) -> dict[str, Any]:
         if external_repository_id is not None:
-            predicate, value = "external_repository_id = %s", external_repository_id
+            predicate = "external_repository_id = %s"
+            parameters: tuple[object, ...] = (external_repository_id,)
         elif repository_id is not None:
-            predicate, value = "repository_id = %s", repository_id
+            predicate = "repository_id = %s"
+            parameters = (repository_id,)
         else:
             raise ValueError("a repository identifier is required")
         binding = self._fetchone(
             f"SELECT project_id, repository_id FROM engineering_github_bindings WHERE {predicate}",
-            (value,),
+            parameters,
         )
         if not binding:
             raise UnknownRepositoryError("GitHub repository is not bound to a GEO project")
@@ -174,7 +176,7 @@ class PostgresEngineeringRepository:
                 default_branch,
             ),
         )
-        repository_id = row["id"]
+        repository_id = UUID(str(row["id"]))
         binding = self._connection.execute(
             """
             INSERT INTO engineering_github_bindings (

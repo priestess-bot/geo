@@ -9,7 +9,7 @@ from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from uuid import UUID
 
-from geo_core.engineering.domain import WorkItemProjection, evaluate_freshness
+from geo_core.engineering.domain import Freshness, WorkItemProjection, evaluate_freshness
 from geo_core.engineering.ports import (
     DeliveryReceipt,
     EngineeringEvent,
@@ -91,7 +91,7 @@ class EngineeringService:
             items = tuple(unit_of_work.repository.list_work_items(now=now))
         return items
 
-    def freshness_for(self, item: WorkItemProjection):
+    def freshness_for(self, item: WorkItemProjection) -> Freshness:
         return evaluate_freshness(
             observed_at=item.observed_at,
             now=self._clock(),
