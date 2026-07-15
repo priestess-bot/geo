@@ -14,6 +14,8 @@ from geo_core.monitoring.domain import (
     MeasurementWindow,
     MonitoringConflict,
     MonitoringNotFound,
+    MonitoringRuleViolation,
+    CitationDraft,
     ObservationDraft,
     Platform,
     ResultStatus,
@@ -118,14 +120,39 @@ def test_monitoring_rls_idempotency_immutability_and_frozen_metrics() -> None:
         frozen = service.freeze_protocol(
             principal, project_id=project_id, protocol_id=protocol.id
         )
-        verified_url = _seed_campaign_destinations(
+        verified_url, verified_submission_id, verified_destination_id = _seed_campaign_destinations(
             project_id=project_id,
             campaign_id=campaign_id,
             identity_id=identity_id,
             marker=marker,
         )
 
-        included = _draft(query.monitoring_query_id, 1, eligible=True, verified=True)
+        protocol_queries = service.list_protocol_queries(
+            principal, project_id=project_id, protocol_id=frozen.id
+        )
+        citation_targets = service.list_citation_targets(
+            principal, project_id=project_id, protocol_id=frozen.id
+        )
+        assert [item.monitoring_query_id for item in protocol_queries] == [
+            query.monitoring_query_id
+        ]
+        assert [item.submission_id for item in citation_targets] == [
+            verified_submission_id
+        ]
+
+        included = _draft(
+            query.monitoring_query_id,
+            1,
+            eligible=True,
+            verified=True,
+            citation=CitationDraft(
+                url=verified_url,
+                title="Verified placement",
+                verification_status=VerificationStatus.UNKNOWN,
+                verified_at=None,
+                submission_id=verified_submission_id,
+            ),
+        )
         unverified = _draft(query.monitoring_query_id, 2, eligible=True, verified=False)
         ineligible = _draft(query.monitoring_query_id, 3, eligible=False, verified=True)
         first = service.import_observation(
@@ -135,6 +162,29 @@ def test_monitoring_rls_idempotency_immutability_and_frozen_metrics() -> None:
             draft=included,
             idempotency_key=f"{marker}-1",
         )
+        assert first.citations[0].verified_placement
+        assert first.citations[0].destination_id == verified_destination_id
+        assert first.citations[0].verification_status == VerificationStatus.PASSED
+        with pytest.raises(MonitoringRuleViolation, match="does not match"):
+            service.import_observation(
+                principal,
+                project_id=project_id,
+                protocol_id=frozen.id,
+                draft=_draft(
+                    query.monitoring_query_id,
+                    1,
+                    eligible=True,
+                    verified=True,
+                    citation=CitationDraft(
+                        url=f"{verified_url}/forged",
+                        title=None,
+                        verification_status=VerificationStatus.UNKNOWN,
+                        verified_at=None,
+                        submission_id=verified_submission_id,
+                    ),
+                ),
+                idempotency_key=f"{marker}-forged",
+            )
         replay = service.import_observation(
             principal,
             project_id=project_id,
@@ -176,7 +226,7 @@ def test_monitoring_rls_idempotency_immutability_and_frozen_metrics() -> None:
         assert metric.eligible_sample_count == 2
         assert metric.status == "confounded"
         assert metric.recommendation_share == 1
-        assert metric.placement_citation_share == 0
+        assert metric.placement_citation_share == pytest.approx(0.5)
         assert metric.qualified_destination_coverage == pytest.approx(0.5)
         assert metric.verified_placement_coverage == 1
         assert "incomplete_or_ineligible_sample_set" in metric.confounded_reasons
@@ -196,7 +246,7 @@ def test_monitoring_rls_idempotency_immutability_and_frozen_metrics() -> None:
         assert len(urls) == 1
         assert urls[0].url == verified_url
         assert urls[0].campaign_id == campaign_id
-        assert urls[0].observation_count == 0
+        assert urls[0].observation_count == 1
 
         with factory(principal) as unit_of_work:
             assert unit_of_work.monitoring.list_protocols(
@@ -206,6 +256,21 @@ def test_monitoring_rls_idempotency_immutability_and_frozen_metrics() -> None:
             service.list_protocols(principal, project_id=foreign_project_id)
 
         with psycopg.connect(ADMIN_URL) as admin:
+            with pytest.raises(psycopg.Error):
+                admin.execute(
+                    """
+                    INSERT INTO monitoring_observation_citations
+                      (project_id, observation_id, citation_index, url,
+                       destination_id, submission_id, verification_status, verified_at)
+                    SELECT %s, %s, 1, %s, %s, id, 'passed', verified_at
+                    FROM publication_submissions WHERE id = %s
+                    """,
+                    (
+                        project_id, first.id, f"{verified_url}/forged",
+                        verified_destination_id, verified_submission_id,
+                    ),
+                )
+            admin.rollback()
             with pytest.raises(psycopg.Error):
                 admin.execute(
                     """
@@ -251,7 +316,12 @@ def test_monitoring_rls_idempotency_immutability_and_frozen_metrics() -> None:
 
 
 def _draft(
-    query_id: UUID, sample_index: int, *, eligible: bool, verified: bool
+    query_id: UUID,
+    sample_index: int,
+    *,
+    eligible: bool,
+    verified: bool,
+    citation: CitationDraft | None = None,
 ) -> ObservationDraft:
     return ObservationDraft(
         monitoring_query_id=query_id,
@@ -268,7 +338,7 @@ def _draft(
         competitor_mentioned=False,
         raw_answer="internal raw answer",
         raw_result={"rank": 1},
-        citations=(),
+        citations=(citation,) if citation else (),
         artifact_uri=None,
         artifact_hash=None,
         configured_model="deepseek-chat",
@@ -338,7 +408,7 @@ def _seed(**values: object) -> None:
 
 def _seed_campaign_destinations(
     *, project_id: UUID, campaign_id: UUID, identity_id: UUID, marker: str
-) -> str:
+) -> tuple[str, UUID, UUID]:
     qualified_destination, selected_destination = uuid4(), uuid4()
     qualified_opportunity, selected_opportunity = uuid4(), uuid4()
     package_id, package_version_id = uuid4(), uuid4()
@@ -404,7 +474,7 @@ def _seed_campaign_destinations(
                VALUES (%s, %s, %s, %s, 'verified', clock_timestamp(), clock_timestamp())""",
             (submission_id, project_id, request_id, url),
         )
-    return url
+    return url, submission_id, qualified_destination
 
 
 def _cleanup(tenant_id: UUID, identity_id: UUID) -> None:

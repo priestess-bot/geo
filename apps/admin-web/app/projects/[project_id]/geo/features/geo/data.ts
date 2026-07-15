@@ -54,8 +54,10 @@ export async function loadGeoWorkspace(projectId: string, params: SearchParams):
     destinationId: requested.destinationId || top.destinations.data[0]?.id,
     skillId: requested.skillId || top.skills.data[0]?.id
   };
-  const [queries, opportunities, policyReviews, observations, suggestions, briefs, releases] = await Promise.all([
+  const [queries, protocolQueries, citationTargets, opportunities, policyReviews, observations, suggestions, briefs, releases] = await Promise.all([
     optional(selection.campaignId, (id) => client.listMonitoringQueries(projectId, id), []),
+    optional(selection.protocolId, (id) => client.listProtocolQueries(projectId, id), []),
+    optional(selection.protocolId, (id) => client.listCitationTargets(projectId, id), []),
     optional(selection.campaignId, (id) => client.listOpportunities(projectId, id), []),
     optional(selection.destinationId, (id) => client.listPolicyReviews(projectId, id), []),
     optional(selection.protocolId, (id) => client.listObservations(projectId, id, selection.measurementWindow), []),
@@ -96,7 +98,7 @@ export async function loadGeoWorkspace(projectId: string, params: SearchParams):
     optional(selection.submissionId, (id) => client.getSubmission(projectId, id), null),
     optional(selection.submissionId, (id) => client.listMeasurements(projectId, id), [])
   ]);
-  return { ...top, selection, queries, opportunities, policyReviews, observations, suggestions, briefs, attempts,
+  return { ...top, selection, queries, protocolQueries, citationTargets, opportunities, policyReviews, observations, suggestions, briefs, attempts,
     attempt, evidenceItems, releases, bundles, bundle, job, jobEvents, packages, packageVersion, claims, reviews,
     exports, publications, submissions, submission, measurements };
 }

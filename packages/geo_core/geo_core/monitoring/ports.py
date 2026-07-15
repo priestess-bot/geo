@@ -9,6 +9,7 @@ from uuid import UUID
 from geo_core.access.models import AccessPrincipal
 from geo_core.monitoring.domain import (
     CampaignDestinationState,
+    CitationDraft,
     Device,
     MeasurementWindow,
     MetricSnapshot,
@@ -19,6 +20,7 @@ from geo_core.monitoring.domain import (
     Platform,
     ProtocolQuery,
     QuerySuggestion,
+    VerifiedCitationTarget,
     VerifiedUrl,
 )
 
@@ -72,6 +74,18 @@ class MonitoringRepository(Protocol):
     def list_protocol_queries(
         self, *, project_id: UUID, protocol_id: UUID
     ) -> tuple[ProtocolQuery, ...]: ...
+
+    def list_verified_citation_targets(
+        self, *, project_id: UUID, campaign_id: UUID
+    ) -> tuple[VerifiedCitationTarget, ...]: ...
+
+    def resolve_citation_lineage(
+        self,
+        *,
+        project_id: UUID,
+        campaign_id: UUID,
+        citations: tuple[CitationDraft, ...],
+    ) -> tuple[CitationDraft, ...]: ...
 
     def approve_protocol(
         self, *, project_id: UUID, protocol_id: UUID, actor_id: UUID

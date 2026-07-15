@@ -159,8 +159,7 @@ export interface MonitoringProtocolView extends MonitoringProtocolCreate {
   created_at: string; approved_at: string | null; frozen_at: string | null;
 }
 export interface ObservationCitationCreate {
-  url: string; verification_status: "passed" | "failed" | "unknown"; title?: string | null;
-  destination_id?: string | null; submission_id?: string | null; verified_at?: string | null;
+  url: string; title?: string | null; submission_id?: string | null;
 }
 export interface ObservationCitationView {
   id: string; url: string; verification_status: "passed" | "failed" | "unknown"; verified_placement: boolean;
@@ -195,6 +194,10 @@ export interface QuerySuggestionView extends QuerySuggestionCreate {
   monitoring_query_id: string | null; created_at: string;
 }
 export interface ProtocolQueryView { id: string; project_id: string; protocol_id: string; monitoring_query_id: string; query_text: string; query_kind: string; locale: string; ordinal: number; }
+export interface VerifiedCitationTargetView {
+  submission_id: string; destination_id: string; destination_key: string;
+  publication_channel: string; url: string; verified_at: string;
+}
 export interface MonitoringReportCreate { metric_snapshot_id: string; title: string; }
 export interface MonitoringReportView {
   id: string; project_id: string; protocol_id: string; campaign_id: string; metric_snapshot_id: string;

@@ -3,8 +3,8 @@ import type {
   EvidenceItemView, ExportView, JobStatus, MeasurementView, MeasurementWindow, MetricView,
   MonitoringObservationView, MonitoringProtocolView, MonitoringQueryView, MonitoringReportView,
   OpportunityView, PackageVersionView, PlacementJobEventView, PromptBundleDetail, PromptBundleView,
-  PromptReleaseView, PromptSkillView, PromptTaskBindingView, PublicationView, QuerySuggestionView,
-  ReviewView, SubmissionView
+  PromptReleaseView, PromptSkillView, PromptTaskBindingView, ProtocolQueryView, PublicationView,
+  QuerySuggestionView, ReviewView, SubmissionView, VerifiedCitationTargetView
 } from "@geo/types/geo";
 
 export type GeoSection = "campaigns" | "observations" | "destinations" | "placement";
@@ -22,6 +22,8 @@ export type GeoWorkspaceData = {
   protocols: Resource<MonitoringProtocolView[]>; metrics: Resource<MetricView[]>;
   reports: Resource<MonitoringReportView[]>; skills: Resource<PromptSkillView[]>;
   bindings: Resource<PromptTaskBindingView[]>; queries: Resource<MonitoringQueryView[]>;
+  protocolQueries: Resource<ProtocolQueryView[]>;
+  citationTargets: Resource<VerifiedCitationTargetView[]>;
   opportunities: Resource<OpportunityView[]>; policyReviews: Resource<DestinationPolicyView[]>;
   observations: Resource<MonitoringObservationView[]>; suggestions: Resource<QuerySuggestionView[]>;
   briefs: Resource<BriefVersionView[]>; attempts: Resource<EvidenceAttemptView[]>;

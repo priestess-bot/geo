@@ -9,7 +9,7 @@ import type {
   PromptBundleDetail, PromptBundleView, PromptReleaseCreate, PromptReleaseView, PromptSkillCreate,
   PromptSkillView, PromptTaskBindingCreate, PromptTaskBindingView, PublicationCreate, PublicationView,
   ProtocolQueryView, QuerySuggestionCreate, QuerySuggestionView, ReviewCreate, ReviewSubmissionView, ReviewView,
-  StateReasonCreate, SubmissionCreate, SubmissionUrlCreate, SubmissionView
+  StateReasonCreate, SubmissionCreate, SubmissionUrlCreate, SubmissionView, VerifiedCitationTargetView
 } from "@geo/types/geo";
 import {
   geoApiUrl, mergeClientRequestInit, performRuntimeHttpRequest, runtimeGuardHeaders,
@@ -94,6 +94,8 @@ export class GeoAdminApiClient {
   createProtocol(projectId: string, body: MonitoringProtocolCreate, guards: RuntimeRequestGuards) { return this.request<MonitoringProtocolView, MonitoringProtocolCreate>(`/v1/projects/${projectId}/monitoring-protocols`, { method: "POST", body, ...guards }); }
   approveProtocol(projectId: string, protocolId: string, guards: RuntimeRequestGuards) { return this.request<MonitoringProtocolView>(`/v1/projects/${projectId}/monitoring-protocols/${protocolId}/approve`, { method: "POST", ...guards }); }
   freezeProtocol(projectId: string, protocolId: string, guards: RuntimeRequestGuards) { return this.request<MonitoringProtocolView>(`/v1/projects/${projectId}/monitoring-protocols/${protocolId}/freeze`, { method: "POST", ...guards }); }
+  listProtocolQueries(projectId: string, protocolId: string) { return this.request<ProtocolQueryView[]>(`/v1/projects/${projectId}/monitoring-protocols/${protocolId}/queries`); }
+  listCitationTargets(projectId: string, protocolId: string) { return this.request<VerifiedCitationTargetView[]>(`/v1/projects/${projectId}/monitoring-protocols/${protocolId}/citation-targets`); }
   listObservations(projectId: string, protocolId: string, window: MeasurementWindow) { return this.request<MonitoringObservationView[]>(`/v1/projects/${projectId}/monitoring-protocols/${protocolId}/observations`, { query: { measurement_window: window } }); }
   importObservation(projectId: string, protocolId: string, body: MonitoringObservationCreate, guards: RuntimeRequestGuards) { return this.request<MonitoringObservationView, MonitoringObservationCreate>(`/v1/projects/${projectId}/monitoring-protocols/${protocolId}/observations`, { method: "POST", body, ...guards }); }
   listSuggestions(projectId: string, protocolId: string) { return this.request<QuerySuggestionView[]>(`/v1/projects/${projectId}/monitoring-protocols/${protocolId}/query-suggestions`); }

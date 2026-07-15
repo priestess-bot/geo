@@ -26,6 +26,7 @@ from geo_api.monitoring_contracts import (
     ObservationCitationResponse,
     ProtocolQueryResponse,
     QuerySuggestionResponse,
+    VerifiedCitationTargetResponse,
 )
 from geo_api.stable_routes import PROBLEM_RESPONSES
 from geo_core.monitoring.domain import (
@@ -43,6 +44,7 @@ from geo_core.monitoring.domain import (
     QuerySuggestion,
     ResultStatus,
     VerificationStatus,
+    VerifiedCitationTarget,
 )
 
 
@@ -169,6 +171,44 @@ def monitoring_router() -> APIRouter:
             )
         )
         return _query_response(result)
+
+    @router.get(
+        "/monitoring-protocols/{protocol_id}/queries",
+        response_model=list[ProtocolQueryResponse],
+        operation_id="listMonitoringProtocolQueries",
+    )
+    def list_protocol_queries(
+        project_id: UUID,
+        protocol_id: UUID,
+        request: Request,
+        authorization: AuthorizationHeader = None,
+    ) -> list[ProtocolQueryResponse]:
+        principal = _principal(request, authorization, project_id, READER_ROLES)
+        items = _call(
+            lambda: _application(request).list_protocol_queries(
+                principal, project_id=project_id, protocol_id=protocol_id
+            )
+        )
+        return [_query_response(item) for item in items]
+
+    @router.get(
+        "/monitoring-protocols/{protocol_id}/citation-targets",
+        response_model=list[VerifiedCitationTargetResponse],
+        operation_id="listMonitoringCitationTargets",
+    )
+    def list_citation_targets(
+        project_id: UUID,
+        protocol_id: UUID,
+        request: Request,
+        authorization: AuthorizationHeader = None,
+    ) -> list[VerifiedCitationTargetResponse]:
+        principal = _principal(request, authorization, project_id, CONTRIBUTOR_ROLES)
+        items = _call(
+            lambda: _application(request).list_citation_targets(
+                principal, project_id=project_id, protocol_id=protocol_id
+            )
+        )
+        return [_citation_target_response(item) for item in items]
 
     @router.post(
         "/monitoring-protocols/{protocol_id}/approve",
@@ -384,6 +424,12 @@ def _query_response(item: ProtocolQuery) -> ProtocolQueryResponse:
     return ProtocolQueryResponse(**item.__dict__)
 
 
+def _citation_target_response(
+    item: VerifiedCitationTarget,
+) -> VerifiedCitationTargetResponse:
+    return VerifiedCitationTargetResponse(**item.__dict__)
+
+
 def _observation_draft(payload: ImportObservationRequest) -> ObservationDraft:
     return ObservationDraft(
         monitoring_query_id=payload.monitoring_query_id,
@@ -398,8 +444,8 @@ def _observation_draft(payload: ImportObservationRequest) -> ObservationDraft:
         citations=tuple(
             CitationDraft(
                 url=item.url, title=item.title,
-                verification_status=VerificationStatus(item.verification_status),
-                verified_at=item.verified_at, destination_id=item.destination_id,
+                verification_status=VerificationStatus.UNKNOWN,
+                verified_at=None, destination_id=None,
                 submission_id=item.submission_id,
             ) for item in payload.citations
         ),

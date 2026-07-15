@@ -37,6 +37,7 @@ from geo_core.monitoring.postgres_mappers import (
     protocol_query_from_row as _protocol_query_from_row,
     suggestion_from_row as _suggestion,
 )
+from geo_core.monitoring.postgres_lineage import MonitoringLineageMixin
 from geo_core.monitoring.postgres_reporting import MonitoringReportingMixin
 
 
@@ -50,7 +51,7 @@ def _failure(operation: str, error: psycopg.Error) -> RuntimeError:
     return MonitoringPersistenceUnavailable(f"PostgreSQL could not {operation}.")
 
 
-class PsycopgMonitoringRepository(MonitoringReportingMixin):
+class PsycopgMonitoringRepository(MonitoringLineageMixin, MonitoringReportingMixin):
     def __init__(self, connection: Connection) -> None:
         self._connection = connection
 
@@ -215,17 +216,6 @@ class PsycopgMonitoringRepository(MonitoringReportingMixin):
             "approve the monitoring query suggestion",
         )
         return _suggestion(decided), _protocol_query_from_row(membership)
-
-    def list_protocol_queries(
-        self, *, project_id: UUID, protocol_id: UUID
-    ) -> tuple[ProtocolQuery, ...]:
-        rows = self._many(
-            """SELECT * FROM monitoring_protocol_queries
-               WHERE project_id = %s AND protocol_id = %s ORDER BY ordinal""",
-            (project_id, protocol_id),
-            "list frozen protocol queries",
-        )
-        return tuple(_protocol_query_from_row(row) for row in rows)
 
     def approve_protocol(self, **values: Any) -> MonitoringProtocol:
         row = self._optional(
@@ -426,14 +416,28 @@ class PsycopgMonitoringRepository(MonitoringReportingMixin):
     ) -> MonitoringObservation:
         citation_rows = self._many(
             """
-            SELECT c.*, (s.status = 'verified') AS verified_placement
+            SELECT c.*, EXISTS (
+                SELECT 1
+                FROM publication_submissions s
+                JOIN publication_requests r
+                  ON r.id = s.publication_request_id AND r.project_id = s.project_id
+                JOIN placement_package_versions version
+                  ON version.id = r.package_version_id AND version.project_id = r.project_id
+                JOIN placement_packages package
+                  ON package.id = version.package_id AND package.project_id = version.project_id
+                JOIN placement_opportunities opportunity
+                  ON opportunity.id = package.opportunity_id
+                 AND opportunity.project_id = package.project_id
+                WHERE s.id = c.submission_id AND s.project_id = c.project_id
+                  AND s.status = 'verified' AND s.submitted_url = c.url
+                  AND r.destination_id = c.destination_id
+                  AND opportunity.campaign_id = %s
+            ) AS verified_placement
             FROM monitoring_observation_citations c
-            LEFT JOIN publication_submissions s
-              ON s.id = c.submission_id AND s.project_id = c.project_id
             WHERE c.project_id = %s AND c.observation_id = %s
             ORDER BY c.citation_index
             """,
-            (row["project_id"], row["id"]),
+            (row["campaign_id"], row["project_id"], row["id"]),
             "read observation citations",
         )
         citations = tuple(_citation(item) for item in citation_rows)

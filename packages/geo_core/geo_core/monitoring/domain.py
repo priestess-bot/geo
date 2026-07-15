@@ -146,6 +146,16 @@ class ProtocolQuery:
 
 
 @dataclass(frozen=True)
+class VerifiedCitationTarget:
+    submission_id: UUID
+    destination_id: UUID
+    destination_key: str
+    publication_channel: str
+    url: str
+    verified_at: datetime
+
+
+@dataclass(frozen=True)
 class CitationDraft:
     url: str
     title: str | None
@@ -163,8 +173,12 @@ class CitationDraft:
             raise MonitoringRuleViolation(
                 "passed citation verification requires exactly one verified_at value"
             )
-        if self.submission_id is not None and self.destination_id is None:
-            raise MonitoringRuleViolation("submission citations require a destination")
+        if self.verification_status == VerificationStatus.PASSED and (
+            self.submission_id is None or self.destination_id is None
+        ):
+            raise MonitoringRuleViolation(
+                "passed citations require verified submission and destination lineage"
+            )
 
 
 @dataclass(frozen=True)
@@ -419,7 +433,9 @@ def calculate_metric_snapshot(
             continue
         for citation in observation.citations:
             if (
-                citation.verification_status == VerificationStatus.PASSED
+                citation.verified_placement
+                and citation.submission_id is not None
+                and citation.verification_status == VerificationStatus.PASSED
                 and citation.destination_id in destination_state.selected_destination_ids
             ):
                 has_valid_campaign_citation = True
