@@ -4,6 +4,10 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 
 import { adminActorId, apiBase, actorHeaders, customerInvitationUrl, runtimeRequest } from "../../runtime";
+import type {
+  CreatedProjectInvitationResponse,
+  ProjectInvitationListResponse
+} from "@geo/types/auth";
 
 export type ProjectActionState = {
   ok: boolean;
@@ -12,14 +16,6 @@ export type ProjectActionState = {
   details?: Array<[string, string]>;
   inviteUrl?: string;
   rawInviteToken?: string;
-};
-
-type InvitationResponse = {
-  invitation?: { id?: string; invite_token?: string; email?: string };
-};
-
-type InvitationPageResponse = {
-  records?: Array<{ invitation?: { id?: string; email?: string; role?: string; status?: string } }>;
 };
 
 type RuntimeProjectResponse = {
@@ -1855,14 +1851,14 @@ export async function createInvitationAction(
   const email = String(formData.get("email") || "").trim().toLowerCase();
   const replaceConfirmed = value(formData, "replace_existing_pending") === "1";
   const pendingInvitationIdsFromForm = lines(value(formData, "existing_pending_invitation_ids"));
-  const pendingLookup = await runtimeRequest<InvitationPageResponse>("/v1/project-member-invitations/runtime", {
-    query: { project_id: pid, status: "pending", limit: 50 }
-  });
+  const pendingLookup = await runtimeRequest<ProjectInvitationListResponse>(
+    `/v1/projects/${encodeURIComponent(pid)}/invitations`,
+    { query: { limit: 100, offset: 0 } }
+  );
   if (!pendingLookup.ok) {
     return { ok: false, error: pendingLookup.error || "无法检查已有待处理邀请，未生成新的邀请。" };
   }
-  const pendingInvitationIdsFromApi = (pendingLookup.data?.records || [])
-    .map((record) => record.invitation || {})
+  const pendingInvitationIdsFromApi = (pendingLookup.data?.items || [])
     .filter((invitation) => {
       const invitationEmail = String(invitation.email || "").trim().toLowerCase();
       const role = String(invitation.role || "viewer").trim().toLowerCase();
@@ -1879,43 +1875,37 @@ export async function createInvitationAction(
     };
   }
   for (const invitationId of pendingInvitationIds) {
-    const revokeResponse = await runtimeRequest<InvitationResponse>("/v1/project-member-invitations/runtime/action", {
-      method: "POST",
-      body: {
-        project_id: pid,
-        invitation_id: invitationId,
-        action: "revoke",
-        updated_by: adminActorId(),
-        reason: "admin_web_customer_invitation_replace_existing_pending"
-      }
-    });
+    const revokeResponse = await runtimeRequest<{ status: "revoked" }>(
+      `/v1/projects/${encodeURIComponent(pid)}/invitations/`
+      + `${encodeURIComponent(invitationId)}/revoke`,
+      { method: "POST" }
+    );
     if (!revokeResponse.ok) {
       return { ok: false, error: revokeResponse.error || "旧邀请失效失败，未生成新的邀请。" };
     }
   }
   const payload = {
-    project_id: pid,
     email,
     role: "viewer",
-    invited_by: adminActorId(),
-    metadata: {
-      created_from: "admin_web_project_detail",
-      replaced_pending_invitation_ids: pendingInvitationIds
-    },
-    reason: "admin_web_customer_invitation_create"
+    target_surface: "customer",
+    expires_in_hours: 72
   };
-  const response = await runtimeRequest<InvitationResponse>("/v1/project-member-invitations/runtime", {
-    method: "POST",
-    body: payload
-  });
+  const response = await runtimeRequest<CreatedProjectInvitationResponse>(
+    `/v1/projects/${encodeURIComponent(pid)}/invitations`,
+    {
+      method: "POST",
+      body: payload,
+      idempotencyKey: value(formData, "idempotency_key")
+    }
+  );
   if (!response.ok) {
     return { ok: false, error: response.error || "客户邀请创建失败。" };
   }
-  revalidateProject(payload.project_id);
+  revalidateProject(pid);
   const invitation = response.data?.invitation;
   const inviteUrl =
-    invitation?.id && invitation?.invite_token
-      ? customerInvitationUrl(invitation.id, invitation.invite_token)
+    invitation?.id && response.data?.invite_token
+      ? customerInvitationUrl(invitation.id)
       : undefined;
   const replacedCount = pendingInvitationIds.length;
   return {
@@ -1930,7 +1920,7 @@ export async function createInvitationAction(
         ]
       : undefined,
     inviteUrl,
-    rawInviteToken: invitation?.invite_token
+    rawInviteToken: response.data?.invite_token
   };
 }
 
@@ -1941,19 +1931,17 @@ export async function invitationAction(
   const pid = projectId(formData);
   const action = value(formData, "action") || "revoke";
   const invitationId = value(formData, "invitation_id");
-  const response = await runtimeRequest<InvitationResponse>("/v1/project-member-invitations/runtime/action", {
-    method: "POST",
-    body: {
-      project_id: pid,
-      invitation_id: invitationId,
-      action,
-      updated_by: adminActorId(),
-      reason: `admin_web_invitation_${action}`
-    }
-  });
+  if (action !== "revoke") {
+    return { ok: false, error: "稳定邀请合同只支持显式撤销。" };
+  }
+  const response = await runtimeRequest<{ status: "revoked" }>(
+    `/v1/projects/${encodeURIComponent(pid)}/invitations/`
+    + `${encodeURIComponent(invitationId)}/revoke`,
+    { method: "POST" }
+  );
   if (!response.ok) {
     return { ok: false, error: response.error || "邀请操作失败。" };
   }
   revalidateProject(pid);
-  return { ok: true, message: action === "expire" ? "邀请已过期。" : "邀请已撤销。" };
+  return { ok: true, message: "邀请已撤销。" };
 }

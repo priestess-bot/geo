@@ -6,6 +6,14 @@
 
 生产配置禁止使用源码 build、宿主源码挂载、默认密码、公开 PostgreSQL/MinIO/Valkey 端口或 Dev Tools。
 
+Admin Web 不兑换客户邀请。`GEO_ADMIN_OIDC_LOGIN_URL` 和
+`GEO_ADMIN_OIDC_LOGOUT_URL` 必须指向受信任边缘网关的 HTTPS 入口，origin
+必须精确列入 `GEO_ADMIN_OIDC_ALLOWED_ORIGINS`。边缘网关负责 Authorization Code +
+PKCE、state/nonce 和会话；它必须删除浏览器自带的 `Authorization`，只把验证后映射的
+Bearer 身份转发给 Admin Web。Admin Web 再将该 Bearer 原样转发到 Internal API，由 API
+复核 issuer、audience、签名和项目角色。Customer Web 只能使用 API 签发的 Customer
+Session Cookie，两个信任域不可互换。
+
 ## 2. 校验配置
 
 ```bash
@@ -27,6 +35,7 @@ docker compose --env-file infra/production.env -f infra/compose.prod.yml ps
 ## 4. 验收
 
 - Customer API 请求 `/v1/engineering/*`、`/v1/dev-tools/*` 和内部管理路径均为 404。
+- Admin `/api/auth/login` 只跳转到 allowlist 中的 OIDC HTTPS origin；缺配置或非法 URL 必须返回 503。
 - Dev Tools 环境变量固定为 0。
 - 日志只有 JSON 元数据，不包含 Authorization、Cookie、Prompt、正文或模型响应。
 - Worker 可接管租约过期任务，且重复消息不会产生第二份业务结果。

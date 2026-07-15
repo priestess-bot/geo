@@ -118,7 +118,7 @@ def create_api_app(
 
     app.include_router(health_router(service_name=service_name, surface=surface))
     app.include_router(auth_router())
-    app.include_router(invitation_auth_router())
+    app.include_router(invitation_auth_router(include_redeem=surface == "customer"))
     app.include_router(projects_router(surface=surface))
     app.include_router(jobs_router())
     if surface == "internal":

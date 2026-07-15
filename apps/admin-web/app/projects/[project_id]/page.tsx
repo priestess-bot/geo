@@ -5,8 +5,6 @@ import {
   ContentWorkbenchPanel,
   FixtureE2EForm,
   HumanReviewPanel,
-  InvitationForm,
-  InvitationList,
   KnowledgeDashboardPanel,
   KnowledgeChunkControlForm,
   KnowledgeFactExtractionForm,
@@ -32,6 +30,8 @@ import {
   ReportCenterPanel,
   ActionPlanPanel
 } from "./ProjectActions";
+import { InvitationManagementPanel } from "./InvitationManagementPanel";
+import { loadProjectInvitations } from "./invitationData";
 import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { actorHeaders, adminDevToolsEnabled, apiBase, runtimeRequest } from "../../runtime";
@@ -522,7 +522,7 @@ export default async function ProjectDetailPage({
     loadScoreFormulas(),
     loadScoreProfiles(),
     loadPage<Record<string, unknown>>("/v1/project-members/runtime", projectId),
-    loadPage<Record<string, unknown>>("/v1/project-member-invitations/runtime", projectId),
+    loadProjectInvitations(projectId),
     loadPage<PromptRecord>("/v1/prompts/runtime", projectId, promptQuery, promptLimit),
     loadKnowledgeSearch(projectId, knowledgeQuery, knowledgeMarket || record?.project.market_code || "GLOBAL", knowledgeCity),
     loadKnowledgePipelineData(projectId, knowledgeChunkFilters),
@@ -782,22 +782,11 @@ function EntryPanel({
         用户入口只有一条正式路径：发送一次性邀请，客户兑换后成为项目成员并建立安全会话。新建项目时填写的客户邮箱和默认查看权限在这里明文展示。
       </p>
       <AccessOverview defaultEmail={defaultEmail} invitations={invitations} launch={launch} members={members} />
-      <div className="detailPanel nestedPanel">
-        <div className="sectionTitle">
-          <div>
-            <p className="eyebrow">客户邀请</p>
-            <h3>创建和跟踪客户入口</h3>
-          </div>
-        </div>
-        <InvitationForm
-          projectId={projectId}
-          defaultEmail={defaultEmail}
-          pendingInvitations={invitations.records.filter(
-            (record) => stringValue(childRecord(record, "invitation"), "status") === "pending"
-          )}
-        />
-        <InvitationList invitations={invitations.records} projectId={projectId} />
-      </div>
+      <InvitationManagementPanel
+        defaultEmail={defaultEmail}
+        invitations={invitations.records}
+        projectId={projectId}
+      />
       <div className="detailPanel">
           <p className="eyebrow">成员权限</p>
           <h3>内部和客户成员</h3>

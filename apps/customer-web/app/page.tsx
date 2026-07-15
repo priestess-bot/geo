@@ -1,8 +1,6 @@
 import { InvitationLoginForm } from "./_auth/InvitationLoginForm";
-import { SessionDeliveryConfirm } from "./_auth/SessionDeliveryConfirm";
 import {
   adminWebBaseUrl,
-  hasRuntimeSession,
   latestScore,
   loadGeoCustomerSummary,
   loadPortalRuntimeData,
@@ -31,10 +29,7 @@ export default async function CustomerHome({
   const params = (await searchParams) || {};
   const invitationId = Array.isArray(params.invitation_id) ? params.invitation_id[0] : params.invitation_id;
   const selectedProjectId = Array.isArray(params.project_id) ? params.project_id[0] : params.project_id;
-  const [sessionData, runtimeSession] = await Promise.all([
-    loadSessionPortal(selectedProjectId),
-    hasRuntimeSession()
-  ]);
+  const sessionData = await loadSessionPortal(selectedProjectId);
   const data = sessionData;
   const bundle = data?.bundle;
   const project = bundle?.project?.project;
@@ -52,7 +47,6 @@ export default async function CustomerHome({
 
   return (
     <main className="shell">
-      <SessionDeliveryConfirm active={runtimeSession && authenticated} />
       <section className="topbar">
         <div>
           <p className="eyebrow">GEO 客户门户</p>

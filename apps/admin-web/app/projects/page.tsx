@@ -1,8 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { ProjectLifecycleForm } from "./[project_id]/ProjectActions";
-import { SessionDeliveryConfirm } from "../_auth/SessionDeliveryConfirm";
-import { actorHeaders, apiBase, hasRuntimeSession } from "../runtime";
+import { actorHeaders, apiBase } from "../runtime";
 import { projectStatusLabel } from "./status";
 
 type RuntimeProject = {
@@ -70,7 +69,7 @@ export default async function ProjectsPage({
   const status = params?.status || "";
   const query = (params?.q || "").trim().toLowerCase();
   const offset = Math.max(0, Math.floor(Number(params?.offset || 0) || 0));
-  const [page, runtimeSession] = await Promise.all([loadProjects(status, offset), hasRuntimeSession()]);
+  const page = await loadProjects(status, offset);
   if (page.status === 401) {
     redirect("/login");
   }
@@ -94,7 +93,6 @@ export default async function ProjectsPage({
     : page.records;
   return (
     <main className="shell">
-      <SessionDeliveryConfirm active={runtimeSession} />
       <section className="topbar">
         <div>
           <h1>项目列表</h1>

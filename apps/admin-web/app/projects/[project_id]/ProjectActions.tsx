@@ -157,13 +157,10 @@ type PageResponse<T = RuntimeListRecord> = {
   offset?: number;
 };
 
-export function InvitationForm({
-  projectId,
-  defaultEmail,
-  pendingInvitations
-}: {
+export function InvitationForm({ projectId, defaultEmail, idempotencyKey, pendingInvitations }: {
   projectId: string;
   defaultEmail?: string;
+  idempotencyKey: string;
   pendingInvitations?: RuntimeListRecord[];
 }) {
   const [state, formAction, pending] = useActionState(createInvitationAction, initialState);
@@ -214,6 +211,7 @@ export function InvitationForm({
       }}
     >
       <input {...hydrationControlProps} type="hidden" name="project_id" value={projectId} />
+      <input {...hydrationControlProps} type="hidden" name="idempotency_key" value={idempotencyKey} />
       <input {...hydrationControlProps} type="hidden" name="replace_existing_pending" value="0" />
       <input {...hydrationControlProps} type="hidden" name="existing_pending_invitation_ids" value="" />
       <label><span>客户邮箱</span><input {...hydrationControlProps} name="email" type="email" defaultValue={defaultEmail || ""} placeholder="customer@example.com" required /></label>
@@ -804,7 +802,7 @@ export function InvitationList({ invitations, projectId }: { invitations: Runtim
           <p className="muted">
             {roleLabel(stringValue(invitation.role) || "viewer")} · {statusLabel(status)} · {stringValue(invitation.created_at) || "无创建时间"}
           </p>
-          <p className="muted">邀请 ID：{invitationId || "无"} · token hash：{shortValue(stringValue(invitation.invite_token_hash)) || "未生成"}</p>
+          <p className="muted">邀请 ID：{invitationId || "无"} · token 提示：{stringValue(invitation.token_hint) || "未生成"}</p>
         </div>
         {mode === "active" && invitationId ? <InvitationActionForm invitationId={invitationId} projectId={projectId} /> : null}
       </div>

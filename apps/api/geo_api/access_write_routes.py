@@ -27,7 +27,7 @@ from geo_api.stable_routes import (
 IdempotencyHeader = Annotated[str, Header(alias="Idempotency-Key", min_length=16, max_length=512)]
 
 
-def invitation_auth_router() -> APIRouter:
+def invitation_auth_router(*, include_redeem: bool) -> APIRouter:
     router = APIRouter(
         prefix="/v1/auth/invitations",
         tags=["authentication"],
@@ -42,49 +42,51 @@ def invitation_auth_router() -> APIRouter:
     def preflight(payload: InvitationCredentialRequest, request: Request) -> object:
         return services_for_request(request).preflight_invitation(payload)
 
-    @router.post(
-        "/redeem",
-        response_model=InvitationRedeemResponse,
-        status_code=status.HTTP_201_CREATED,
-        operation_id="redeemInvitation",
-    )
-    def redeem(
-        payload: InvitationCredentialRequest,
-        request: Request,
-        response: Response,
-        idempotency_key: IdempotencyHeader,
-    ) -> object:
-        result = services_for_request(request).redeem_invitation(
-            payload, idempotency_key=idempotency_key
+    if include_redeem:
+
+        @router.post(
+            "/redeem",
+            response_model=InvitationRedeemResponse,
+            status_code=status.HTTP_201_CREATED,
+            operation_id="redeemInvitation",
         )
-        expires_at = result.expires_at.astimezone(UTC)
-        max_age = max(0, int((expires_at - datetime.now(UTC)).total_seconds()))
-        response.set_cookie(
-            request.app.state.customer_session_cookie_name,
-            result.session_token,
-            max_age=max_age,
-            expires=expires_at,
-            path="/",
-            secure=request.app.state.cookie_secure,
-            httponly=True,
-            samesite="lax",
-        )
-        response.set_cookie(
-            request.app.state.csrf_cookie_name,
-            result.csrf_token,
-            max_age=max_age,
-            expires=expires_at,
-            path="/",
-            secure=request.app.state.cookie_secure,
-            httponly=False,
-            samesite="lax",
-        )
-        response.headers["Cache-Control"] = "no-store"
-        return InvitationRedeemResponse(
-            recovery_status="replayed" if result.replayed else "created",
-            session=services_for_request(request).identity_contract(result.principal),
-            expires_at=result.expires_at,
-        )
+        def redeem(
+            payload: InvitationCredentialRequest,
+            request: Request,
+            response: Response,
+            idempotency_key: IdempotencyHeader,
+        ) -> object:
+            result = services_for_request(request).redeem_invitation(
+                payload, idempotency_key=idempotency_key
+            )
+            expires_at = result.expires_at.astimezone(UTC)
+            max_age = max(0, int((expires_at - datetime.now(UTC)).total_seconds()))
+            response.set_cookie(
+                request.app.state.customer_session_cookie_name,
+                result.session_token,
+                max_age=max_age,
+                expires=expires_at,
+                path="/",
+                secure=request.app.state.cookie_secure,
+                httponly=True,
+                samesite="lax",
+            )
+            response.set_cookie(
+                request.app.state.csrf_cookie_name,
+                result.csrf_token,
+                max_age=max_age,
+                expires=expires_at,
+                path="/",
+                secure=request.app.state.cookie_secure,
+                httponly=False,
+                samesite="lax",
+            )
+            response.headers["Cache-Control"] = "no-store"
+            return InvitationRedeemResponse(
+                recovery_status="replayed" if result.replayed else "created",
+                session=services_for_request(request).identity_contract(result.principal),
+                expires_at=result.expires_at,
+            )
 
     return router
 

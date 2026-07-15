@@ -5,8 +5,14 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./admin-oidc": "./src/admin-oidc.ts",
+    "./bff": "./src/bff.ts",
     "./portal-url": "./src/portal-url.ts"
   },
   "scripts": { "typecheck": "tsc --noEmit" },
+  "dependencies": {
+    "@geo/api-client": "workspace:*",
+    "@geo/types": "workspace:*"
+  },
   "devDependencies": { "typescript": "5.7.3" }
 }

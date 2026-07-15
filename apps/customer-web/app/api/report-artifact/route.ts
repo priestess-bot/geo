@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { GEO_SESSION_COOKIE, GEO_SESSION_HEADER } from "@geo/auth";
+import { GEO_SESSION_COOKIE } from "@geo/auth";
 
 import { apiBase } from "../../runtime";
 
@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
   artifactUrl.searchParams.set("type", artifactType);
   const artifactResponse = await fetch(artifactUrl.toString(), {
     headers: {
-      [GEO_SESSION_HEADER]: sessionToken,
+      Cookie: `${GEO_SESSION_COOKIE}=${encodeURIComponent(sessionToken)}`,
       "X-GEO-Customer-Portal-Access": "true"
     },
     cache: "no-store"

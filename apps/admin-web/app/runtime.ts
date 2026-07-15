@@ -1,12 +1,4 @@
-import { cookies } from "next/headers";
-
-import {
-  GEO_ACTOR_HEADER,
-  GEO_CSRF_COOKIE,
-  GEO_CSRF_HEADER,
-  GEO_SESSION_COOKIE,
-  GEO_SESSION_HEADER
-} from "@geo/auth";
+import { headers } from "next/headers";
 import { resolveCounterpartPortalUrl } from "@geo/auth/portal-url";
 import {
   performRuntimeHttpRequest,
@@ -71,31 +63,19 @@ export function customerInvitationUrl(invitationId: string, _inviteToken?: strin
   return url.toString();
 }
 
-export async function hasRuntimeSession(): Promise<boolean> {
-  const cookieStore = await cookies();
-  return Boolean(cookieStore.get(GEO_SESSION_COOKIE)?.value);
-}
-
 export async function actorHeaders(extra?: HeadersInit): Promise<HeadersInit> {
-  const cookieStore = await cookies();
-  const sessionToken = cookieStore.get(GEO_SESSION_COOKIE)?.value || "";
-  const csrfToken = cookieStore.get(GEO_CSRF_COOKIE)?.value || "";
-  if (sessionToken) {
+  const authorization = (await headers()).get("authorization") || "";
+  if (authorization) {
+    return { Authorization: authorization, ...(extra || {}) };
+  }
+  if (process.env.GEO_AUTH_MODE === "development") {
     return {
-      [GEO_SESSION_HEADER]: sessionToken,
-      ...(csrfToken
-        ? {
-            [GEO_CSRF_HEADER]: csrfToken,
-            Cookie: `${GEO_CSRF_COOKIE}=${encodeURIComponent(csrfToken)}`
-          }
-        : {}),
+      "X-GEO-Actor-ID": adminActorId(),
+      "X-GEO-Tenant-ID": process.env.GEO_ADMIN_TENANT_ID || "",
       ...(extra || {})
     };
   }
-  if ((process.env.GEO_RUNTIME_AUTH_MODE || "header") === "session") {
-    return { ...(extra || {}) };
-  }
-  return { [GEO_ACTOR_HEADER]: adminActorId(), ...(extra || {}) };
+  return { ...(extra || {}) };
 }
 
 function runtimeUrl(path: string, query?: RuntimeRequestOptions["query"]): string {

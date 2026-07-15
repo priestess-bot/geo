@@ -6,6 +6,7 @@
   "exports": {
     "./internal": "./src/internal.ts",
     "./customer": "./src/customer.ts",
+    "./auth": "./src/auth.ts",
     "./transport": "./src/transport.ts"
   },
   "scripts": {

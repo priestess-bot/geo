@@ -54,7 +54,11 @@ const emptySummary: DraftSummary = {
   collectionMode: "api"
 };
 
-export default function CreateProjectForm() {
+export default function CreateProjectForm({
+  invitationIdempotencyKey
+}: {
+  invitationIdempotencyKey: string;
+}) {
   const [state, formAction, pending] = useActionState(createProjectAction, initialState);
   const [modalOpen, setModalOpen] = useState(false);
   const [confirmedSubmit, setConfirmedSubmit] = useState(false);
@@ -138,6 +142,7 @@ export default function CreateProjectForm() {
 
   return (
     <form className="wizard" action={formAction} onSubmit={handleReview}>
+      <input type="hidden" name="invitation_idempotency_key" value={invitationIdempotencyKey} />
       <button ref={submitButtonRef} type="submit" className="visuallyHidden" tabIndex={-1} aria-hidden="true">
         确认提交
       </button>
@@ -305,6 +310,9 @@ export default function CreateProjectForm() {
                   <span>项目 ID：<code>{state.projectId}</code></span>
                   {state.rawInviteToken ? (
                     <span>邀请 token 只显示一次：<code>{state.rawInviteToken}</code></span>
+                  ) : null}
+                  {state.invitationError ? (
+                    <span>项目已创建，但邀请未完成：{state.invitationError}</span>
                   ) : null}
                 </div>
                 <div className="modalActions">

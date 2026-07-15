@@ -53,7 +53,7 @@ def test_invitation_lifecycle_preserves_all_memberships_and_session_security() -
     )
     customer = create_api_app(
         surface="customer",
-        settings=ApiSettings(cookie_secure=False),
+        settings=ApiSettings(cookie_secure=True),
         services=ConnectedFoundationServices(access, surface="customer", auth_mode="session"),
     )
     admin_headers = {
@@ -145,7 +145,7 @@ def test_invitation_lifecycle_preserves_all_memberships_and_session_security() -
             "invite_token": invite_token,
             "requested_surface": "admin",
         }
-        with TestClient(customer) as customer_client:
+        with TestClient(customer, base_url="https://testserver") as customer_client:
             revoked_preflight = customer_client.post(
                 "/v1/auth/invitations/preflight",
                 json={
@@ -198,6 +198,7 @@ def test_invitation_lifecycle_preserves_all_memberships_and_session_security() -
             csrf_token = redeemed.cookies["GEO_CSRF_TOKEN"]
             assert "HttpOnly" in redeemed.headers["set-cookie"]
             assert "SameSite=lax" in redeemed.headers["set-cookie"]
+            assert "Secure" in redeemed.headers["set-cookie"]
 
             idempotent_replay = customer_client.post(
                 "/v1/auth/invitations/redeem",
@@ -232,7 +233,7 @@ def test_invitation_lifecycle_preserves_all_memberships_and_session_security() -
             "session.created",
             "session.revoked",
         }
-        with TestClient(customer) as customer_client:
+        with TestClient(customer, base_url="https://testserver") as customer_client:
             assert (
                 customer_client.get(f"/v1/projects/{invited_project}/invitations").status_code
                 == 404

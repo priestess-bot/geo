@@ -81,23 +81,11 @@ services:
     environment:
       <<: *object-store-application-environment
       GEO_DEPLOYMENT_ENVIRONMENT: production
-      GEO_RUNTIME_PROJECT_ACCESS_CONTROL: "1"
-      GEO_RUNTIME_AUTH_MODE: session
-      GEO_RUNTIME_SESSION_COOKIE_SECURE: "1"
       GEO_DEV_TOOLS_ENABLED: "0"
       GEO_AUTH_MODE: oidc
       GEO_AUTH_TOKEN_SECRET: ""
       GEO_AUTH_TOKEN_SECRET_FILE: /run/secrets/auth_token_secret
       GEO_CONNECTOR_SECRET_MASTER_KEY: ${GEO_CONNECTOR_SECRET_MASTER_KEY:?set GEO_CONNECTOR_SECRET_MASTER_KEY}
-      GEO_AUTH_DELIVERY_MASTER_KEY: ""
-      GEO_AUTH_DELIVERY_MASTER_KEY_FILE: /run/secrets/auth_delivery_master_key
-      GEO_AUTH_DELIVERY_KEY_ID: ${GEO_AUTH_DELIVERY_KEY_ID:?set GEO_AUTH_DELIVERY_KEY_ID}
-      GEO_AUTH_DELIVERY_PREVIOUS_KEYS: ""
-      GEO_AUTH_DELIVERY_PREVIOUS_KEYS_FILE: ${GEO_AUTH_DELIVERY_PREVIOUS_KEYS_FILE:-}
-      GEO_AUTH_DELIVERY_RECOVERY_TTL_SECONDS: ${GEO_AUTH_DELIVERY_RECOVERY_TTL_SECONDS:-600}
-      GEO_AUTH_DELIVERY_MAX_REPLAY: ${GEO_AUTH_DELIVERY_MAX_REPLAY:-5}
-      GEO_AUTH_PREFLIGHT_RATE_LIMIT: ${GEO_AUTH_PREFLIGHT_RATE_LIMIT:-20}
-      GEO_AUTH_PREFLIGHT_RATE_WINDOW_SECONDS: ${GEO_AUTH_PREFLIGHT_RATE_WINDOW_SECONDS:-60}
       AUTH_WRITES_ENABLED: ${AUTH_WRITES_ENABLED:-1}
       GEO_REPORT_ARTIFACT_SIGNING_SECRET: ${GEO_REPORT_ARTIFACT_SIGNING_SECRET:?set GEO_REPORT_ARTIFACT_SIGNING_SECRET}
       GEO_PDF_RENDERER_URL: http://report-pdf-renderer:8200
@@ -107,8 +95,6 @@ services:
         target: object_store_application_access_key
       - source: object_store_application_secret_key
         target: object_store_application_secret_key
-      - source: auth_delivery_master_key
-        target: auth_delivery_master_key
       - source: auth_token_secret
         target: auth_token_secret
     depends_on:
@@ -199,11 +185,11 @@ services:
 
   admin-web:
     environment:
-      GEO_RUNTIME_AUTH_MODE: session
-      GEO_RUNTIME_SESSION_COOKIE_SECURE: "1"
+      GEO_AUTH_MODE: oidc
       GEO_ADMIN_DEV_TOOLS_ENABLED: "0"
-      GEO_AUTH_RECOVERY_COOKIE_SECRET: ""
-      GEO_AUTH_RECOVERY_COOKIE_SECRET_FILE: /run/secrets/auth_recovery_cookie
+      GEO_ADMIN_OIDC_LOGIN_URL: ${GEO_ADMIN_OIDC_LOGIN_URL:?set GEO_ADMIN_OIDC_LOGIN_URL}
+      GEO_ADMIN_OIDC_LOGOUT_URL: ${GEO_ADMIN_OIDC_LOGOUT_URL:?set GEO_ADMIN_OIDC_LOGOUT_URL}
+      GEO_ADMIN_OIDC_ALLOWED_ORIGINS: ${GEO_ADMIN_OIDC_ALLOWED_ORIGINS:?set GEO_ADMIN_OIDC_ALLOWED_ORIGINS}
       ADMIN_WEB_BASE_URL: ${ADMIN_WEB_BASE_URL:?set ADMIN_WEB_BASE_URL}
       CUSTOMER_WEB_BASE_URL: ${CUSTOMER_WEB_BASE_URL:?set CUSTOMER_WEB_BASE_URL}
     command:
@@ -215,16 +201,9 @@ services:
       - 0.0.0.0
       - -p
       - "${GEO_ADMIN_WEB_CONTAINER_PORT:-3000}"
-    secrets:
-      - source: auth_recovery_cookie
-        target: auth_recovery_cookie
-
   customer-web:
     environment:
-      GEO_RUNTIME_AUTH_MODE: session
-      GEO_RUNTIME_SESSION_COOKIE_SECURE: "1"
-      GEO_AUTH_RECOVERY_COOKIE_SECRET: ""
-      GEO_AUTH_RECOVERY_COOKIE_SECRET_FILE: /run/secrets/auth_recovery_cookie
+      GEO_AUTH_MODE: session
       ADMIN_WEB_BASE_URL: ${ADMIN_WEB_BASE_URL:?set ADMIN_WEB_BASE_URL}
       CUSTOMER_WEB_BASE_URL: ${CUSTOMER_WEB_BASE_URL:?set CUSTOMER_WEB_BASE_URL}
     command:
@@ -236,9 +215,6 @@ services:
       - 0.0.0.0
       - -p
       - "${GEO_CUSTOMER_WEB_CONTAINER_PORT:-3000}"
-    secrets:
-      - source: auth_recovery_cookie
-        target: auth_recovery_cookie
 
 volumes:
   minio_data:
@@ -266,9 +242,5 @@ secrets:
     file: ${GEO_OBJECT_STORE_RETENTION_ACCESS_KEY_SECRET_FILE:?set GEO_OBJECT_STORE_RETENTION_ACCESS_KEY_SECRET_FILE}
   object_store_retention_secret_key:
     file: ${GEO_OBJECT_STORE_RETENTION_SECRET_KEY_SECRET_FILE:?set GEO_OBJECT_STORE_RETENTION_SECRET_KEY_SECRET_FILE}
-  auth_delivery_master_key:
-    file: ${GEO_AUTH_DELIVERY_MASTER_KEY_SECRET_FILE:?set GEO_AUTH_DELIVERY_MASTER_KEY_SECRET_FILE}
   auth_token_secret:
     file: ${GEO_AUTH_TOKEN_SECRET_FILE:?set GEO_AUTH_TOKEN_SECRET_FILE}
-  auth_recovery_cookie:
-    file: ${GEO_AUTH_RECOVERY_COOKIE_SECRET_FILE:?set GEO_AUTH_RECOVERY_COOKIE_SECRET_FILE}

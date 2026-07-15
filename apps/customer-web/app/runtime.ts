@@ -2,18 +2,16 @@ import { cookies } from "next/headers";
 
 import { CustomerApiClient } from "@geo/api-client/customer";
 import {
-  GEO_ACTOR_HEADER,
   GEO_CSRF_COOKIE,
   GEO_CSRF_HEADER,
-  GEO_SESSION_COOKIE,
-  GEO_SESSION_HEADER
+  GEO_SESSION_COOKIE
 } from "@geo/auth";
 import { resolveCounterpartPortalUrl } from "@geo/auth/portal-url";
 import {
-  isRuntimeAuthMeResponse,
+  isAuthIdentity,
   parseAuthError,
   type AuthErrorEnvelope,
-  type RuntimeAuthMeResponse
+  type AuthIdentity
 } from "@geo/types/auth";
 import {
   runtimeGuardHeaders,
@@ -111,11 +109,26 @@ type RuntimePageLoad = {
   failure?: { resource: string; error: AuthErrorEnvelope };
 };
 
-const SURFACE_PROJECT_PAGE_SIZE = 200;
+type StableCustomerProjectPage = {
+  items: Array<{
+    project_id: string;
+    display_name: string;
+    market_code: string;
+    status: string;
+  }>;
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+const SURFACE_PROJECT_PAGE_SIZE = 100;
 const MAX_AUTHORIZED_PROJECTS = 5000;
 
 export function apiBase(): string {
-  return process.env.API_INTERNAL_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "http://api:8000";
+  return process.env.API_CUSTOMER_BASE_URL
+    || process.env.API_INTERNAL_BASE_URL
+    || process.env.NEXT_PUBLIC_API_BASE_URL
+    || "http://customer-api:8000";
 }
 
 export function adminWebBaseUrl(): string {
@@ -128,13 +141,7 @@ export function adminWebBaseUrl(): string {
   });
 }
 
-export async function hasRuntimeSession(): Promise<boolean> {
-  const cookieStore = await cookies();
-  return Boolean(cookieStore.get(GEO_SESSION_COOKIE)?.value);
-}
-
 async function actorHeaders(
-  actorId?: string,
   extra?: HeadersInit,
   includeCsrfProof = true
 ): Promise<HeadersInit> {
@@ -142,24 +149,19 @@ async function actorHeaders(
   const sessionToken = cookieStore.get(GEO_SESSION_COOKIE)?.value || "";
   const csrfToken = cookieStore.get(GEO_CSRF_COOKIE)?.value || "";
   if (sessionToken) {
+    const cookieHeader = [
+      `${GEO_SESSION_COOKIE}=${encodeURIComponent(sessionToken)}`,
+      ...(csrfToken ? [`${GEO_CSRF_COOKIE}=${encodeURIComponent(csrfToken)}`] : [])
+    ].join("; ");
     return {
-      [GEO_SESSION_HEADER]: sessionToken,
+      Cookie: cookieHeader,
       ...(csrfToken && includeCsrfProof
-        ? {
-            [GEO_CSRF_HEADER]: csrfToken,
-            Cookie: `${GEO_CSRF_COOKIE}=${encodeURIComponent(csrfToken)}`
-          }
+        ? { [GEO_CSRF_HEADER]: csrfToken }
         : {}),
       ...(extra || {})
     };
   }
-  if ((process.env.GEO_RUNTIME_AUTH_MODE || "header") === "session") {
-    return { ...(extra || {}) };
-  }
-  return {
-    [GEO_ACTOR_HEADER]: actorId || process.env.GEO_CUSTOMER_RUNTIME_ACTOR_ID || process.env.GEO_ADMIN_ACTOR_ID || "runtime-console",
-    ...(extra || {})
-  };
+  return { ...(extra || {}) };
 }
 
 export async function runtimeHttpRequest<T>(
@@ -169,7 +171,6 @@ export async function runtimeHttpRequest<T>(
   const hasBody = options.body !== undefined;
   const commandHeaders = runtimeGuardHeaders(options);
   const headers = await actorHeaders(
-    options.actorId,
     {
       ...(hasBody ? { "Content-Type": "application/json" } : {}),
       ...commandHeaders
@@ -217,7 +218,7 @@ export async function loadGeoCustomerSummary(projectId: string, actorId?: string
 }
 
 export async function loadSessionPortal(projectId?: string): Promise<SessionPortalResponse> {
-  const authResponse = await runtimeRequest<RuntimeAuthMeResponse>("/v1/auth/me", {
+  const authResponse = await runtimeRequest<AuthIdentity>("/v1/auth/me", {
     includeCsrfProof: false
   });
   if (!authResponse.ok) {
@@ -228,20 +229,19 @@ export async function loadSessionPortal(projectId?: string): Promise<SessionPort
       ...(authResponse.status === 401 ? {} : { error: authResponse.error })
     };
   }
-  if (!isRuntimeAuthMeResponse(authResponse.data)) {
+  if (!isAuthIdentity(authResponse.data)) {
     return {
       authenticated: false,
       authorized_projects: [],
       selection_status: "empty",
       error: {
-        code: "auth_session_delivery_invalid",
+        code: "auth_request_failed",
         detail: "The authentication service returned an invalid session scope.",
         correlation_id: ""
       }
     };
   }
-  const auth = authResponse.data.auth ?? authResponse.data.session;
-  const actorId = auth?.actor_id || "";
+  const actorId = authResponse.data.actor_id;
   const projectPage = await loadAllCustomerProjects();
   if (!projectPage.ok) {
     return {
@@ -291,13 +291,13 @@ async function loadAllCustomerProjects(): Promise<RuntimeResult<AuthorizedProjec
   let expectedTotal: number | null = null;
   let offset = 0;
   while (expectedTotal === null || records.length < expectedTotal) {
-    const page = await runtimeRequest<RuntimePage<AuthorizedProject>>("/v1/projects/runtime", {
-      query: { limit: SURFACE_PROJECT_PAGE_SIZE, offset, surface: "customer" }
+    const page = await runtimeRequest<StableCustomerProjectPage>("/v1/projects", {
+      query: { limit: SURFACE_PROJECT_PAGE_SIZE, offset }
     });
     if (!page.ok) {
       return page;
     }
-    const totalCount = page.data.total_count;
+    const totalCount = page.data.total;
     if (!Number.isInteger(totalCount) || totalCount < 0 || totalCount > MAX_AUTHORIZED_PROJECTS) {
       return projectPaginationFailure("The customer project scope count is invalid.");
     }
@@ -306,19 +306,25 @@ async function loadAllCustomerProjects(): Promise<RuntimeResult<AuthorizedProjec
     } else if (expectedTotal !== totalCount) {
       return projectPaginationFailure("The customer project scope changed while it was loading.");
     }
-    if (!Array.isArray(page.data.records) || page.data.records.length > SURFACE_PROJECT_PAGE_SIZE) {
+    if (!Array.isArray(page.data.items) || page.data.items.length > SURFACE_PROJECT_PAGE_SIZE) {
       return projectPaginationFailure("The customer project page is invalid.");
     }
-    if (page.data.records.length === 0 && records.length < expectedTotal) {
+    if (page.data.items.length === 0 && records.length < expectedTotal) {
       return projectPaginationFailure("The customer project list ended before its declared total.");
     }
-    for (const record of page.data.records) {
-      const recordProjectId = record?.project?.id;
+    for (const item of page.data.items) {
+      const recordProjectId = item.project_id;
       if (!recordProjectId || projectIds.has(recordProjectId)) {
         return projectPaginationFailure("The customer project list contains an invalid or duplicate project.");
       }
       projectIds.add(recordProjectId);
-      records.push(record);
+      records.push({
+        project: {
+          id: item.project_id,
+          name: item.display_name,
+          status: item.status
+        }
+      });
     }
     if (records.length > expectedTotal) {
       return projectPaginationFailure("The customer project list exceeds its declared total.");

@@ -1,6 +1,7 @@
 "use server";
 
 import { adminActorId, customerInvitationUrl, lines, runtimeRequest } from "../../runtime";
+import type { CreatedProjectInvitationResponse } from "@geo/types/auth";
 
 export type CreateProjectActionState = {
   ok: boolean;
@@ -10,12 +11,12 @@ export type CreateProjectActionState = {
   inviteUrl?: string;
   invitationId?: string;
   rawInviteToken?: string;
+  invitationError?: string;
 };
 
 type RuntimeProjectCreateResponse = {
   project_id?: string;
   bootstrap?: { project?: { name?: string; target_brand?: string } };
-  customer_invitation?: { invitation?: { id?: string; invite_token?: string; email?: string } };
 };
 
 function requiredString(formData: FormData, key: string, fallback: string): string {
@@ -66,7 +67,7 @@ export async function createProjectAction(
     launch_status: "draft",
     schedule: { frequency: "weekly", timezone },
     external_connectors: {},
-    create_customer_invitation: true
+    create_customer_invitation: false
   };
   const response = await runtimeRequest<RuntimeProjectCreateResponse>("/v1/projects/runtime", {
     method: "POST",
@@ -78,12 +79,38 @@ export async function createProjectAction(
   if (!response.data?.project_id) {
     return { ok: false, error: "项目创建失败：响应缺少 project_id。" };
   }
-  const invitation = response.data.customer_invitation?.invitation;
+  const invitationResponse = await runtimeRequest<CreatedProjectInvitationResponse>(
+    `/v1/projects/${encodeURIComponent(response.data.project_id)}/invitations`,
+    {
+      method: "POST",
+      body: {
+        email: payload.customer_email,
+        role: "viewer",
+        target_surface: "customer",
+        expires_in_hours: 72
+      },
+      idempotencyKey: requiredString(
+        formData,
+        "invitation_idempotency_key",
+        `project-invitation-${response.data.project_id}`
+      )
+    }
+  );
+  if (!invitationResponse.ok) {
+    return {
+      ok: true,
+      invitationError: invitationResponse.error || "客户邀请创建失败，请在项目详情中重试。",
+      projectId: response.data.project_id,
+      projectName: response.data.bootstrap?.project?.target_brand
+        || response.data.bootstrap?.project?.name
+    };
+  }
+  const invitation = invitationResponse.data.invitation;
   const invitationId = invitation?.id;
-  const rawInviteToken = invitation?.invite_token;
+  const rawInviteToken = invitationResponse.data.invite_token;
   const inviteUrl =
     invitationId && rawInviteToken
-      ? customerInvitationUrl(invitationId, rawInviteToken)
+      ? customerInvitationUrl(invitationId)
       : undefined;
   return {
     ok: true,

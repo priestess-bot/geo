@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import CreateProjectForm from "./CreateProjectForm";
 
 export default function NewProjectPage() {
@@ -17,7 +19,7 @@ export default function NewProjectPage() {
         </nav>
       </section>
 
-      <CreateProjectForm />
+      <CreateProjectForm invitationIdempotencyKey={`project-invitation-${randomUUID()}`} />
     </main>
   );
 }

@@ -13,10 +13,11 @@ x-api-environment: &api-environment
   GEO_DEV_TOOLS_ENABLED: "0"
   GEO_DB_POOL_ENABLED: "1"
   GEO_DB_POOL_MAX_SIZE: "10"
-  GEO_AUTH_MODE: jwks
+  GEO_AUTH_MODE: oidc
   GEO_OIDC_DISCOVERY_URL: ${GEO_OIDC_DISCOVERY_URL:?set GEO_OIDC_DISCOVERY_URL}
   GEO_JWT_ISSUER: ${GEO_JWT_ISSUER:?set GEO_JWT_ISSUER}
   GEO_JWT_AUDIENCE: ${GEO_JWT_AUDIENCE:?set GEO_JWT_AUDIENCE}
+  GEO_AUTH_TOKEN_SECRET_FILE: /run/secrets/auth_token_secret
   DATABASE_URL_FILE: /run/secrets/database_url
   OBJECT_STORE_ENDPOINT: http://minio:9000
   OBJECT_STORE_BUCKET: geo-artifacts
@@ -36,6 +37,7 @@ x-api-secrets: &api-secrets
   - object_store_access_key
   - object_store_secret_key
   - deepseek_api_key
+  - auth_token_secret
 
 x-api-dependencies: &api-dependencies
   migrate:
@@ -224,6 +226,9 @@ services:
     environment:
       API_INTERNAL_BASE_URL: http://internal-api:8000
       CUSTOMER_WEB_BASE_URL: ${GEO_CUSTOMER_WEB_BASE_URL:?set GEO_CUSTOMER_WEB_BASE_URL}
+      GEO_ADMIN_OIDC_LOGIN_URL: ${GEO_ADMIN_OIDC_LOGIN_URL:?set GEO_ADMIN_OIDC_LOGIN_URL}
+      GEO_ADMIN_OIDC_LOGOUT_URL: ${GEO_ADMIN_OIDC_LOGOUT_URL:?set GEO_ADMIN_OIDC_LOGOUT_URL}
+      GEO_ADMIN_OIDC_ALLOWED_ORIGINS: ${GEO_ADMIN_OIDC_ALLOWED_ORIGINS:?set GEO_ADMIN_OIDC_ALLOWED_ORIGINS}
       PORT: "3000"
     ports:
       - "127.0.0.1:${GEO_ADMIN_WEB_HOST_PORT:-3001}:3000"
@@ -241,7 +246,7 @@ services:
     tmpfs:
       - /tmp:size=128m,noexec,nosuid
     environment:
-      API_INTERNAL_BASE_URL: http://customer-api:8000
+      API_CUSTOMER_BASE_URL: http://customer-api:8000
       ADMIN_WEB_BASE_URL: ${GEO_ADMIN_WEB_BASE_URL:?set GEO_ADMIN_WEB_BASE_URL}
       PORT: "3000"
     ports:
@@ -347,5 +352,7 @@ secrets:
     file: ${GEO_OBJECT_STORE_BACKUP_SECRET_KEY_FILE:?set GEO_OBJECT_STORE_BACKUP_SECRET_KEY_FILE}
   deepseek_api_key:
     file: ${GEO_DEEPSEEK_API_KEY_FILE:?set GEO_DEEPSEEK_API_KEY_FILE}
+  auth_token_secret:
+    file: ${GEO_AUTH_TOKEN_SECRET_FILE:?set GEO_AUTH_TOKEN_SECRET_FILE}
   restore_smoke_password:
     file: ${GEO_RESTORE_SMOKE_PASSWORD_FILE:?set GEO_RESTORE_SMOKE_PASSWORD_FILE}

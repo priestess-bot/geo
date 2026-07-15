@@ -29,12 +29,15 @@ def test_internal_and_customer_openapi_are_isolated_and_stable() -> None:
         "/ready",
         "/v1/auth/me",
         "/v1/auth/logout",
+        "/v1/auth/invitations/preflight",
         "/v1/projects",
         "/v1/jobs",
         "/v1/jobs/{job_id}",
     }
     assert shared <= internal_paths
     assert shared <= customer_paths
+    assert "/v1/auth/invitations/redeem" not in internal_paths
+    assert "/v1/auth/invitations/redeem" in customer_paths
     assert "/v1/engineering/status" in internal_paths
     assert "/v1/engineering/work-items" in internal_paths
     assert "/v1/engineering/reconciliations" in internal_paths
@@ -113,9 +116,7 @@ def test_job_accepted_contract_is_typed_in_internal_openapi() -> None:
 
     error_content = document["paths"]["/v1/projects"]["get"]["responses"]["503"]["content"]
     assert "application/problem+json" in error_content
-    assert error_content["application/problem+json"]["schema"]["$ref"].endswith(
-        "/ProblemDetails"
-    )
+    assert error_content["application/problem+json"]["schema"]["$ref"].endswith("/ProblemDetails")
 
 
 def test_engineering_work_items_default_to_unknown_empty_projection() -> None:
