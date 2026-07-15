@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import io
 import json
 import os
@@ -16,10 +17,15 @@ from scripts.verify_schema_v2_parity import (
     ParityVerifierError,
     _parser,
     build_report,
+    load_contract,
     main,
     render_report,
     validate_contract,
 )
+
+
+ROOT = Path(__file__).resolve().parents[1]
+AUTH_CONTRACT_ROOT = ROOT / "infra/db/schema-v2/parity"
 
 
 def _contract() -> dict[str, object]:
@@ -28,9 +34,17 @@ def _contract() -> dict[str, object]:
         "schema_generation": 2,
         "domain": "auth",
         "database_name": "geno_v2",
+        "contract_mode": "synthetic_fixture",
         "source_parity": {"mappings": []},
         "v2_hardening": {"deviations": []},
-        "connection_identity": {"must_not_equal_roles": ["runtime_app", "authz_owner"]},
+        "connection_identity": {
+            "must_not_equal_roles": ["runtime_app", "authz_owner"],
+            "runtime_identity_mapping": {
+                "source_role": "runtime_app",
+                "target_role": "runtime_app",
+                "compatibility_status": "ready",
+            },
+        },
         "roles": [
             {
                 "name": "runtime_app",
@@ -41,6 +55,7 @@ def _contract() -> dict[str, object]:
                 "replication": False,
                 "bypass_rls": False,
                 "member_of": [],
+                "members": [],
             },
             {
                 "name": "authz_owner",
@@ -51,6 +66,7 @@ def _contract() -> dict[str, object]:
                 "replication": False,
                 "bypass_rls": True,
                 "member_of": [],
+                "members": [],
             },
         ],
         "tables": [
@@ -92,8 +108,7 @@ def _contract() -> dict[str, object]:
                         "category": "check",
                         "validated": True,
                         "expression": {
-                            "required": ["label = any", "pending", "complete"],
-                            "forbidden": ["false"],
+                            "exact": "label = ANY (ARRAY['pending'::text, 'complete'::text])"
                         },
                     },
                 ],
@@ -104,7 +119,7 @@ def _contract() -> dict[str, object]:
                         "valid": True,
                         "ready": True,
                         "keys": ["tenant_id", "lower(label)"],
-                        "predicate": {"required": ["label <> 'deleted'::text"]},
+                        "predicate": {"exact": "label <> 'deleted'::text"},
                     }
                 ],
                 "rls": {"enabled": True, "forced": True},
@@ -115,8 +130,7 @@ def _contract() -> dict[str, object]:
                         "permissive": True,
                         "roles": ["runtime_app"],
                         "using": {
-                            "required": ["tenant_id", "current_setting('app.tenant_id'::text)"],
-                            "forbidden": [],
+                            "exact": "tenant_id = current_setting('app.tenant_id'::text)::integer"
                         },
                         "with_check": None,
                     }
@@ -149,8 +163,8 @@ def _contract() -> dict[str, object]:
                 "settings": ["search_path=pg_catalog"],
                 "execute_roles": ["authz_owner"],
                 "definition": {
-                    "required": ["raise exception", "return new"],
-                    "forbidden": ["execute format"],
+                    "exact": "CREATE FUNCTION public.guard_secure_item() RETURNS trigger "
+                    "LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'blocked'; RETURN NEW; END $$"
                 },
             }
         ],
@@ -182,7 +196,14 @@ def _catalog() -> dict[str, object]:
             },
         ],
         "role_memberships": [],
-        "tables": [{"name": "public.secure_items", "rls_enabled": True, "rls_forced": True}],
+        "tables": [
+            {
+                "name": "public.secure_items",
+                "rls_enabled": True,
+                "rls_forced": True,
+                "owner": "schema_installer",
+            }
+        ],
         "columns": [
             {
                 "table_name": "public.secure_items",
@@ -280,6 +301,7 @@ def _catalog() -> dict[str, object]:
                 "events": ["insert", "update"],
                 "row_level": True,
                 "enabled": "O",
+                "when_expression": None,
                 "function_signature": "public.guard_secure_item()",
             }
         ],
@@ -312,9 +334,7 @@ def _catalog() -> dict[str, object]:
                 "LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'blocked'; RETURN NEW; END $$",
             }
         ],
-        "function_acl": [
-            {"signature": "public.guard_secure_item()", "grantee": "authz_owner"}
-        ],
+        "function_acl": [{"signature": "public.guard_secure_item()", "grantee": "authz_owner"}],
     }
 
 
@@ -384,6 +404,13 @@ def test_report_is_deterministic_for_reordered_catalog_rows() -> None:
             "public.secure_items.secure_items_select",
         ),
         (
+            lambda catalog: catalog["policies"][0].update(
+                using_expression="tenant_id = current_setting('app.tenant_id')::integer OR true"
+            ),
+            "policy",
+            "public.secure_items.secure_items_select",
+        ),
+        (
             lambda catalog: catalog["policies"][0].update(roles=["PUBLIC"]),
             "policy",
             "public.secure_items.secure_items_select",
@@ -395,6 +422,11 @@ def test_report_is_deterministic_for_reordered_catalog_rows() -> None:
         ),
         (
             lambda catalog: catalog["triggers"][0].update(events=["update"]),
+            "trigger",
+            "public.secure_items.secure_items_guard",
+        ),
+        (
+            lambda catalog: catalog["triggers"][0].update(when_expression="false"),
             "trigger",
             "public.secure_items.secure_items_guard",
         ),
@@ -430,11 +462,28 @@ def test_report_is_deterministic_for_reordered_catalog_rows() -> None:
             "public.secure_items:PUBLIC",
         ),
         (
+            lambda catalog: catalog["table_acl"][0].update(is_grantable=True),
+            "table_acl",
+            "public.secure_items:runtime_app",
+        ),
+        (
+            lambda catalog: catalog["function_acl"][0].update(is_grantable=True),
+            "function_grant_option",
+            "public.guard_secure_item()",
+        ),
+        (
             lambda catalog: catalog["role_memberships"].append(
                 {"member_name": "runtime_app", "role_name": "authz_owner"}
             ),
             "role_membership",
             "runtime_app",
+        ),
+        (
+            lambda catalog: catalog["role_memberships"].append(
+                {"member_name": "unexpected_login", "role_name": "authz_owner"}
+            ),
+            "role_members",
+            "authz_owner",
         ),
     ],
 )
@@ -533,3 +582,155 @@ def test_contract_rejects_missing_source_or_hardening_mapping() -> None:
         del contract[key]
         with pytest.raises(ParityVerifierError):
             validate_contract(contract, domain="auth")
+
+
+def test_checked_in_auth_contract_covers_final_runtime_objects_and_explicit_exclusions() -> None:
+    contract = load_contract(AUTH_CONTRACT_ROOT, "auth")
+
+    assert len(contract["tables"]) == 12
+    assert len(contract["functions"]) >= 35
+    table_names = {table["name"] for table in contract["tables"]}
+    assert {
+        "public.auth_preflight_rate_limits",
+        "public.runtime_session_reauth_queue",
+        "public.auth_runtime_write_controls",
+        "public.audit_events",
+    }.issubset(table_names)
+    excluded = {
+        item["name"]: item["reason"] for item in contract["source_parity"]["excluded_objects"]
+    }
+    for name in (
+        "public.auth_migration_quarantine",
+        "public.auth_migration_conflicts",
+        "public.auth_migration_reconciliation",
+    ):
+        assert "old" in excluded[name] or "fresh" in excluded[name]
+    serialized = json.dumps(contract, sort_keys=True)
+    assert '"required"' not in serialized
+    assert '"forbidden"' not in serialized
+    assert serialized.count('"pending"') >= 90
+    assert contract["gate_execution"]["effective_after_slice"] == "0011"
+    exceptions = {
+        item["table"]: item for item in contract["v2_hardening"]["global_policy_exceptions"]
+    }
+    assert set(exceptions) == {
+        "public.auth_preflight_rate_limits",
+        "public.auth_runtime_write_controls",
+    }
+    assert all(item["compensating_controls"] for item in exceptions.values())
+
+
+def test_auth_source_contract_hashes_and_role_mapping_are_auditable() -> None:
+    contract = load_contract(AUTH_CONTRACT_ROOT, "auth")
+
+    for source in contract["source_parity"]["source_contracts"]:
+        source_path = ROOT / source["path"]
+        assert hashlib.sha256(source_path.read_bytes()).hexdigest() == source["sha256"]
+    mapping = contract["connection_identity"]["runtime_identity_mapping"]
+    assert mapping == {
+        "source_role": "geno_runtime_app",
+        "target_role": "geno_v2_runtime",
+        "compatibility_status": "pending_runtime_wiring",
+        "cutover_requirement": "Compose and API database identities must inherit or SET ROLE "
+        "geno_v2_runtime before compatibility can be approved",
+        "external_evidence_gate": {
+            "status": "pending",
+            "compose_contract_sha256": None,
+            "api_runtime_contract_sha256": None,
+        },
+    }
+    assert {role["name"] for role in contract["roles"]} == {
+        "geno_v2_runtime",
+        "geno_v2_authz_owner",
+    }
+    assert all(role["login"] is False for role in contract["roles"])
+
+
+def test_pending_runtime_wiring_is_an_explicit_gate_failure() -> None:
+    contract = load_contract(AUTH_CONTRACT_ROOT, "auth")
+    catalog = {
+        "database_name": "geno_v2",
+        "current_user": "schema_installer",
+        "roles": [],
+        "role_memberships": [],
+        "tables": [],
+        "columns": [],
+        "constraints": [],
+        "indexes": [],
+        "policies": [],
+        "triggers": [],
+        "table_acl": [],
+        "column_acl": [],
+        "functions": [],
+        "function_acl": [],
+    }
+
+    report = build_report(contract, catalog)
+
+    assert (
+        "runtime_identity_mapping",
+        "geno_runtime_app->geno_v2_runtime",
+    ) in _missing_requirements(report)
+
+
+def test_ready_runtime_mapping_requires_matching_external_evidence_hashes() -> None:
+    contract = _contract()
+    contract["contract_mode"] = "gate"
+    contract["source_parity"] = {
+        "source_contracts": [{"path": "source.sql", "sha256": "a" * 64}],
+        "role_mappings": [
+            {"source": "runtime_app", "target": "runtime_app"},
+            {"source": "authz_owner", "target": "authz_owner"},
+        ],
+        "object_mappings": [
+            {"source": "public.secure_items", "target": "public.secure_items"}
+        ],
+        "excluded_objects": [],
+    }
+    contract["v2_hardening"] = {
+        "deviations": [
+            {
+                "id": "least-privilege",
+                "source": "broad ACL",
+                "target": "narrow ACL",
+                "reason": "deny privilege escalation",
+            }
+        ]
+    }
+    contract["gate_execution"] = {
+        "requires_slices": ["0010", "0011"],
+        "effective_after_slice": "0011",
+    }
+    mapping = contract["connection_identity"]["runtime_identity_mapping"]
+    mapping["compatibility_status"] = "ready"
+    mapping["external_evidence_gate"] = {
+        "status": "required",
+        "compose_contract_sha256": "b" * 64,
+        "api_runtime_contract_sha256": "c" * 64,
+    }
+    validate_contract(contract, domain="auth")
+
+    without_evidence = build_report(contract, _catalog())
+    wrong_evidence = build_report(
+        contract,
+        _catalog(),
+        runtime_evidence={
+            "status": "verified",
+            "compose_contract_sha256": "d" * 64,
+            "api_runtime_contract_sha256": "c" * 64,
+        },
+    )
+    matching_evidence = build_report(
+        contract,
+        _catalog(),
+        runtime_evidence={
+            "status": "verified",
+            "compose_contract_sha256": "b" * 64,
+            "api_runtime_contract_sha256": "c" * 64,
+        },
+    )
+
+    expected = ("runtime_identity_mapping", "runtime_app->runtime_app")
+    assert expected in _missing_requirements(without_evidence)
+    assert expected in _missing_requirements(wrong_evidence)
+    assert expected not in _missing_requirements(matching_evidence)

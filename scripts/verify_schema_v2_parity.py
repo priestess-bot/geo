@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -59,6 +60,13 @@ def _canonical_signature(value: str) -> str:
     return re.sub(r"\s*,\s*", ",", value.strip())
 
 
+def _valid_signature(value: str) -> bool:
+    qualified_name, separator, arguments = value.partition("(")
+    return bool(
+        separator and arguments.endswith(")") and QUALIFIED_NAME_RE.fullmatch(qualified_name)
+    )
+
+
 def _normalize_sql(value: object) -> str | None:
     if value is None:
         return None
@@ -76,18 +84,23 @@ def _safe_string_list(value: object, *, field: str) -> list[str]:
 def _validate_expression_matcher(value: object, *, field: str, nullable: bool = True) -> None:
     if value is None and nullable:
         return
-    if not isinstance(value, dict) or not set(value).issubset({"exact", "required", "forbidden"}):
-        raise ParityVerifierError(f"{field} must be null or an expression matcher")
-    if "exact" in value and not isinstance(value["exact"], str):
-        raise ParityVerifierError(f"{field}.exact must be a string")
-    for key in ("required", "forbidden"):
-        if key in value:
-            _safe_string_list(value[key], field=f"{field}.{key}")
+    if not isinstance(value, dict) or len(value) != 1:
+        raise ParityVerifierError(f"{field} must use exactly one exact, sha256, or pending key")
+    key, expectation = next(iter(value.items()))
+    if key == "exact" and isinstance(expectation, str):
+        return
+    if key == "sha256" and isinstance(expectation, str) and re.fullmatch(r"[0-9a-f]{64}", expectation):
+        return
+    if key == "pending" and isinstance(expectation, str) and expectation.strip():
+        return
+    raise ParityVerifierError(f"{field} has an invalid exact/hash/pending expectation")
 
 
 def load_contract(contract_root: Path, domain: str) -> dict[str, Any]:
     if not SAFE_TOKEN_RE.fullmatch(domain):
-        raise ParityVerifierError("domain must contain only lowercase letters, digits, and underscores")
+        raise ParityVerifierError(
+            "domain must contain only lowercase letters, digits, and underscores"
+        )
     contract_path = (contract_root / f"{domain}.json").resolve()
     try:
         contract_path.relative_to(contract_root.resolve())
@@ -109,10 +122,54 @@ def validate_contract(payload: object, *, domain: str) -> None:
         raise ParityVerifierError("parity contract domain does not match the requested domain")
     if payload.get("database_name") != EXPECTED_DATABASE_NAME:
         raise ParityVerifierError("parity contract database_name must remain geno_v2")
+    contract_mode = payload.get("contract_mode")
+    if contract_mode not in {"gate", "synthetic_fixture"}:
+        raise ParityVerifierError("parity contract_mode must be gate or synthetic_fixture")
     if not isinstance(payload.get("source_parity"), dict):
         raise ParityVerifierError("source_parity mapping is required")
     if not isinstance(payload.get("v2_hardening"), dict):
         raise ParityVerifierError("v2_hardening deviations are required")
+    if contract_mode == "gate":
+        source_parity = payload["source_parity"]
+        hardening = payload["v2_hardening"]
+        for field in ("source_contracts", "role_mappings", "object_mappings"):
+            if not isinstance(source_parity.get(field), list) or not source_parity[field]:
+                raise ParityVerifierError(f"gate source_parity.{field} must be non-empty")
+        if not isinstance(source_parity.get("excluded_objects"), list):
+            raise ParityVerifierError("gate source_parity.excluded_objects must be a list")
+        if not isinstance(hardening.get("deviations"), list) or not hardening["deviations"]:
+            raise ParityVerifierError("gate v2_hardening.deviations must be non-empty")
+        for source in source_parity["source_contracts"]:
+            if (
+                not isinstance(source, dict)
+                or not isinstance(source.get("path"), str)
+                or not re.fullmatch(r"[0-9a-f]{64}", str(source.get("sha256", "")))
+            ):
+                raise ParityVerifierError("gate source contracts require path and SHA-256")
+        for exclusion in source_parity["excluded_objects"]:
+            if (
+                not isinstance(exclusion, dict)
+                or not isinstance(exclusion.get("name"), str)
+                or not isinstance(exclusion.get("reason"), str)
+                or not exclusion["reason"].strip()
+            ):
+                raise ParityVerifierError("gate exclusions require name and reason")
+        for deviation in hardening["deviations"]:
+            if not isinstance(deviation, dict) or not all(
+                isinstance(deviation.get(field), str) and deviation[field].strip()
+                for field in ("id", "source", "target", "reason")
+            ):
+                raise ParityVerifierError(
+                    "gate hardening deviations require id/source/target/reason"
+                )
+        gate_execution = payload.get("gate_execution")
+        if not isinstance(gate_execution, dict):
+            raise ParityVerifierError("gate_execution is required for gate contracts")
+        required_slices = _safe_string_list(
+            gate_execution.get("requires_slices"), field="gate_execution.requires_slices"
+        )
+        if gate_execution.get("effective_after_slice") not in required_slices:
+            raise ParityVerifierError("gate effective_after_slice must be a required slice")
     connection_identity = payload.get("connection_identity")
     if not isinstance(connection_identity, dict):
         raise ParityVerifierError("connection_identity is required")
@@ -120,11 +177,35 @@ def validate_contract(payload: object, *, domain: str) -> None:
         connection_identity.get("must_not_equal_roles"),
         field="connection_identity.must_not_equal_roles",
     )
+    runtime_mapping = connection_identity.get("runtime_identity_mapping")
+    if not isinstance(runtime_mapping, dict):
+        raise ParityVerifierError("connection_identity.runtime_identity_mapping is required")
+    if runtime_mapping.get("compatibility_status") not in {"ready", "pending_runtime_wiring"}:
+        raise ParityVerifierError("runtime identity compatibility status is invalid")
+    for key in ("source_role", "target_role"):
+        if not SAFE_TOKEN_RE.fullmatch(str(runtime_mapping.get(key, ""))):
+            raise ParityVerifierError(f"runtime identity mapping requires safe {key}")
+    if contract_mode == "gate":
+        evidence_gate = runtime_mapping.get("external_evidence_gate")
+        if not isinstance(evidence_gate, dict):
+            raise ParityVerifierError("gate runtime mapping requires external_evidence_gate")
+        if evidence_gate.get("status") not in {"pending", "required"}:
+            raise ParityVerifierError("external runtime evidence status is invalid")
+        if runtime_mapping["compatibility_status"] == "ready":
+            if evidence_gate["status"] != "required":
+                raise ParityVerifierError("ready runtime mapping requires external evidence")
+            for key in ("compose_contract_sha256", "api_runtime_contract_sha256"):
+                if not re.fullmatch(r"[0-9a-f]{64}", str(evidence_gate.get(key, ""))):
+                    raise ParityVerifierError(f"ready runtime mapping requires {key}")
 
     roles = payload.get("roles")
     tables = payload.get("tables")
     functions = payload.get("functions")
-    if not isinstance(roles, list) or not isinstance(tables, list) or not isinstance(functions, list):
+    if (
+        not isinstance(roles, list)
+        or not isinstance(tables, list)
+        or not isinstance(functions, list)
+    ):
         raise ParityVerifierError("roles, tables, and functions must be lists")
 
     seen_roles: set[str] = set()
@@ -139,10 +220,13 @@ def validate_contract(payload: object, *, domain: str) -> None:
             if not isinstance(role.get(attribute), bool):
                 raise ParityVerifierError(f"role {role_name} requires boolean {attribute}")
         _safe_string_list(role.get("member_of"), field=f"role {role_name}.member_of")
+        _safe_string_list(role.get("members"), field=f"role {role_name}.members")
 
     seen_tables: set[str] = set()
     for table in tables:
-        if not isinstance(table, dict) or not QUALIFIED_NAME_RE.fullmatch(str(table.get("name", ""))):
+        if not isinstance(table, dict) or not QUALIFIED_NAME_RE.fullmatch(
+            str(table.get("name", ""))
+        ):
             raise ParityVerifierError("table entries require a schema-qualified safe name")
         table_name = str(table["name"])
         if table_name in seen_tables:
@@ -155,7 +239,9 @@ def validate_contract(payload: object, *, domain: str) -> None:
         triggers = table.get("triggers", [])
         acl = table.get("acl")
         rls = table.get("rls")
-        if not all(isinstance(value, list) for value in (columns, constraints, indexes, policies, triggers)):
+        if not all(
+            isinstance(value, list) for value in (columns, constraints, indexes, policies, triggers)
+        ):
             raise ParityVerifierError(f"table {table_name} structural requirements must be lists")
         if not isinstance(acl, dict):
             raise ParityVerifierError(f"table {table_name} requires an ACL contract")
@@ -166,18 +252,24 @@ def validate_contract(payload: object, *, domain: str) -> None:
 
         seen_columns: set[str] = set()
         for column in columns:
-            if not isinstance(column, dict) or not SAFE_TOKEN_RE.fullmatch(str(column.get("name", ""))):
+            if not isinstance(column, dict) or not SAFE_TOKEN_RE.fullmatch(
+                str(column.get("name", ""))
+            ):
                 raise ParityVerifierError(f"table {table_name} has an invalid column")
             column_name = str(column["name"])
             if column_name in seen_columns:
                 raise ParityVerifierError(f"table {table_name} repeats column {column_name}")
             seen_columns.add(column_name)
-            if not isinstance(column.get("type"), str) or not isinstance(column.get("not_null"), bool):
+            if not isinstance(column.get("type"), str) or not isinstance(
+                column.get("not_null"), bool
+            ):
                 raise ParityVerifierError(f"column {table_name}.{column_name} lacks type/not_null")
             if "default" not in column or (
                 column["default"] is not None and not isinstance(column["default"], str)
             ):
-                raise ParityVerifierError(f"column {table_name}.{column_name} requires a default contract")
+                raise ParityVerifierError(
+                    f"column {table_name}.{column_name} requires a default contract"
+                )
 
         seen_constraints: set[str] = set()
         for constraint in constraints:
@@ -186,7 +278,9 @@ def validate_contract(payload: object, *, domain: str) -> None:
             name = str(constraint.get("name", ""))
             category = constraint.get("category")
             if not SAFE_TOKEN_RE.fullmatch(name) or category not in CONSTRAINT_TYPES:
-                raise ParityVerifierError(f"table {table_name} has an invalid constraint requirement")
+                raise ParityVerifierError(
+                    f"table {table_name} has an invalid constraint requirement"
+                )
             if name in seen_constraints:
                 raise ParityVerifierError(f"table {table_name} repeats constraint {name}")
             seen_constraints.add(name)
@@ -200,30 +294,44 @@ def validate_contract(payload: object, *, domain: str) -> None:
                 )
 
         for index in indexes:
-            if not isinstance(index, dict) or not SAFE_TOKEN_RE.fullmatch(str(index.get("name", ""))):
+            if not isinstance(index, dict) or not SAFE_TOKEN_RE.fullmatch(
+                str(index.get("name", ""))
+            ):
                 raise ParityVerifierError(f"table {table_name} has an invalid index")
             if not all(isinstance(index.get(key), bool) for key in ("unique", "valid", "ready")):
                 raise ParityVerifierError(f"table {table_name} index flags must be boolean")
             _safe_string_list(index.get("keys"), field=f"index {index['name']}.keys")
-            _validate_expression_matcher(index.get("predicate"), field=f"index {index['name']}.predicate")
+            _validate_expression_matcher(
+                index.get("predicate"), field=f"index {index['name']}.predicate"
+            )
 
         for policy in policies:
-            if not isinstance(policy, dict) or not SAFE_TOKEN_RE.fullmatch(str(policy.get("name", ""))):
+            if not isinstance(policy, dict) or not SAFE_TOKEN_RE.fullmatch(
+                str(policy.get("name", ""))
+            ):
                 raise ParityVerifierError(f"table {table_name} has an invalid policy")
-            if policy.get("command") not in POLICY_COMMANDS or not isinstance(policy.get("permissive"), bool):
+            if policy.get("command") not in POLICY_COMMANDS or not isinstance(
+                policy.get("permissive"), bool
+            ):
                 raise ParityVerifierError(f"policy {policy.get('name')} has invalid command/mode")
             _safe_string_list(policy.get("roles"), field=f"policy {policy['name']}.roles")
-            _validate_expression_matcher(policy.get("using"), field=f"policy {policy['name']}.using")
+            _validate_expression_matcher(
+                policy.get("using"), field=f"policy {policy['name']}.using"
+            )
             _validate_expression_matcher(
                 policy.get("with_check"), field=f"policy {policy['name']}.with_check"
             )
 
         for trigger in triggers:
-            if not isinstance(trigger, dict) or not SAFE_TOKEN_RE.fullmatch(str(trigger.get("name", ""))):
+            if not isinstance(trigger, dict) or not SAFE_TOKEN_RE.fullmatch(
+                str(trigger.get("name", ""))
+            ):
                 raise ParityVerifierError(f"table {table_name} has an invalid trigger")
             if trigger.get("timing") not in TRIGGER_TIMINGS:
                 raise ParityVerifierError(f"trigger {trigger.get('name')} has invalid timing")
-            events = _safe_string_list(trigger.get("events"), field=f"trigger {trigger['name']}.events")
+            events = _safe_string_list(
+                trigger.get("events"), field=f"trigger {trigger['name']}.events"
+            )
             if not events or not set(events).issubset(TRIGGER_EVENTS):
                 raise ParityVerifierError(f"trigger {trigger['name']} has invalid events")
             if not isinstance(trigger.get("row_level"), bool) or trigger.get("enabled") not in {
@@ -240,14 +348,16 @@ def validate_contract(payload: object, *, domain: str) -> None:
                 raise ParityVerifierError(f"table {table_name} has an invalid ACL role")
             values = _safe_string_list(privileges, field=f"table {table_name}.acl.{role_name}")
             if not set(values).issubset(TABLE_PRIVILEGES):
-                raise ParityVerifierError(f"table {table_name} has invalid privileges for {role_name}")
+                raise ParityVerifierError(
+                    f"table {table_name} has invalid privileges for {role_name}"
+                )
 
     seen_functions: set[str] = set()
     for function in functions:
         if not isinstance(function, dict) or not isinstance(function.get("signature"), str):
             raise ParityVerifierError("function entries require a signature")
         signature = _canonical_signature(function["signature"])
-        if not signature.startswith("public.") or "(" not in signature or not signature.endswith(")"):
+        if not _valid_signature(signature):
             raise ParityVerifierError(f"invalid function signature: {signature}")
         if signature in seen_functions:
             raise ParityVerifierError(f"duplicate function requirement: {signature}")
@@ -262,10 +372,32 @@ def validate_contract(payload: object, *, domain: str) -> None:
         if not isinstance(function.get("security_definer"), bool):
             raise ParityVerifierError(f"function {signature} requires security_definer")
         _safe_string_list(function.get("settings"), field=f"function {signature}.settings")
-        _safe_string_list(function.get("execute_roles"), field=f"function {signature}.execute_roles")
+        _safe_string_list(
+            function.get("execute_roles"), field=f"function {signature}.execute_roles"
+        )
         _validate_expression_matcher(
             function.get("definition"), field=f"function {signature}.definition", nullable=False
         )
+
+    if contract_mode == "gate":
+        mapped_role_targets = {
+            str(mapping.get("target"))
+            for mapping in payload["source_parity"]["role_mappings"]
+            if isinstance(mapping, dict)
+        }
+        if mapped_role_targets != seen_roles:
+            raise ParityVerifierError(
+                "gate source_parity.role_mappings must cover every required role exactly"
+            )
+        mapped_targets = {
+            str(mapping.get("target"))
+            for mapping in payload["source_parity"]["object_mappings"]
+            if isinstance(mapping, dict)
+        }
+        if mapped_targets != seen_tables:
+            raise ParityVerifierError(
+                "gate source_parity.object_mappings must cover every required table exactly"
+            )
 
 
 def _dict_rows(cursor: Any) -> list[dict[str, Any]]:
@@ -306,9 +438,11 @@ def read_catalog(connection: Any) -> dict[str, Any]:
                 """
                 SELECT format('%I.%I', namespace.nspname, relation.relname) AS name,
                        relation.relrowsecurity AS rls_enabled,
-                       relation.relforcerowsecurity AS rls_forced
+                       relation.relforcerowsecurity AS rls_forced,
+                       owner.rolname AS owner
                 FROM pg_catalog.pg_class AS relation
                 JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
+                JOIN pg_catalog.pg_roles AS owner ON owner.oid = relation.relowner
                 WHERE relation.relkind IN ('r', 'p')
                 ORDER BY namespace.nspname, relation.relname
                 """
@@ -444,6 +578,9 @@ def read_catalog(connection: Any) -> dict[str, Any]:
                        ], NULL) AS events,
                        (trigger_entry.tgtype & 1) <> 0 AS row_level,
                        trigger_entry.tgenabled AS enabled,
+                       pg_catalog.pg_get_expr(
+                         trigger_entry.tgqual, trigger_entry.tgrelid, false
+                       ) AS when_expression,
                        format('%I.%I(%s)', function_namespace.nspname, routine.proname,
                               pg_catalog.oidvectortypes(routine.proargtypes)) AS function_signature
                 FROM pg_catalog.pg_trigger AS trigger_entry
@@ -461,7 +598,8 @@ def read_catalog(connection: Any) -> dict[str, Any]:
                 """
                 SELECT format('%I.%I', namespace.nspname, relation.relname) AS table_name,
                        CASE WHEN acl.grantee = 0 THEN 'PUBLIC' ELSE grantee.rolname END AS grantee,
-                       acl.privilege_type
+                       acl.privilege_type,
+                       acl.is_grantable
                 FROM pg_catalog.pg_class AS relation
                 JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
                 CROSS JOIN LATERAL pg_catalog.aclexplode(
@@ -478,7 +616,8 @@ def read_catalog(connection: Any) -> dict[str, Any]:
                 SELECT format('%I.%I', namespace.nspname, relation.relname) AS table_name,
                        attribute.attname AS column_name,
                        CASE WHEN acl.grantee = 0 THEN 'PUBLIC' ELSE grantee.rolname END AS grantee,
-                       acl.privilege_type
+                       acl.privilege_type,
+                       acl.is_grantable
                 FROM pg_catalog.pg_attribute AS attribute
                 JOIN pg_catalog.pg_class AS relation ON relation.oid = attribute.attrelid
                 JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = relation.relnamespace
@@ -515,7 +654,8 @@ def read_catalog(connection: Any) -> dict[str, Any]:
                 """
                 SELECT format('%I.%I(%s)', namespace.nspname, routine.proname,
                               pg_catalog.oidvectortypes(routine.proargtypes)) AS signature,
-                       CASE WHEN acl.grantee = 0 THEN 'PUBLIC' ELSE grantee.rolname END AS grantee
+                       CASE WHEN acl.grantee = 0 THEN 'PUBLIC' ELSE grantee.rolname END AS grantee,
+                       acl.is_grantable
                 FROM pg_catalog.pg_proc AS routine
                 JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = routine.pronamespace
                 CROSS JOIN LATERAL pg_catalog.aclexplode(
@@ -554,23 +694,25 @@ def _matches_expression(expectation: object, actual: object) -> bool:
     normalized_actual = _normalize_sql(actual)
     if normalized_actual is None:
         return False
-    exact = expectation.get("exact")
-    if exact is not None and normalized_actual != _normalize_sql(exact):
+    if "pending" in expectation:
         return False
-    for fragment in expectation.get("required", []):
-        if _normalize_sql(fragment) not in normalized_actual:
-            return False
-    for fragment in expectation.get("forbidden", []):
-        if _normalize_sql(fragment) in normalized_actual:
-            return False
-    return True
+    if "exact" in expectation:
+        return normalized_actual == _normalize_sql(expectation["exact"])
+    if "sha256" in expectation:
+        return hashlib.sha256(normalized_actual.encode("utf-8")).hexdigest() == expectation["sha256"]
+    return False
 
 
 def _sorted_strings(values: Iterable[object]) -> list[str]:
     return sorted(str(value) for value in values)
 
 
-def build_report(contract: Mapping[str, Any], catalog: Mapping[str, Any]) -> dict[str, Any]:
+def build_report(
+    contract: Mapping[str, Any],
+    catalog: Mapping[str, Any],
+    *,
+    runtime_evidence: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     present: list[dict[str, str]] = []
     missing: list[dict[str, str]] = []
 
@@ -598,11 +740,32 @@ def build_report(contract: Mapping[str, Any], catalog: Mapping[str, Any]) -> dic
         bool(current_user) and current_user not in forbidden_connection_roles,
         "verifier must connect as the installer/verification identity, not a runtime or definer role",
     )
+    runtime_mapping = contract["connection_identity"]["runtime_identity_mapping"]
+    runtime_compatible = runtime_mapping["compatibility_status"] == "ready"
+    if contract.get("contract_mode") == "gate" and runtime_compatible:
+        evidence_gate = runtime_mapping["external_evidence_gate"]
+        runtime_compatible = bool(
+            runtime_evidence
+            and runtime_evidence.get("status") == "verified"
+            and runtime_evidence.get("compose_contract_sha256")
+            == evidence_gate["compose_contract_sha256"]
+            and runtime_evidence.get("api_runtime_contract_sha256")
+            == evidence_gate["api_runtime_contract_sha256"]
+        )
+    record(
+        "runtime_identity_mapping",
+        f"{runtime_mapping['source_role']}->{runtime_mapping['target_role']}",
+        "deployment_compatibility",
+        runtime_compatible,
+        "runtime Compose/API wiring lacks matching external verification hashes",
+    )
 
     roles = {str(row["name"]): row for row in catalog.get("roles", [])}
     memberships: dict[str, list[str]] = defaultdict(list)
+    role_members: dict[str, list[str]] = defaultdict(list)
     for row in catalog.get("role_memberships", []):
         memberships[str(row["member_name"])].append(str(row["role_name"]))
+        role_members[str(row["role_name"])].append(str(row["member_name"]))
     for expected in contract["roles"]:
         role_name = str(expected["name"])
         actual = roles.get(role_name)
@@ -620,8 +783,17 @@ def build_report(contract: Mapping[str, Any], catalog: Mapping[str, Any]) -> dic
             "role_membership",
             role_name,
             "member_of",
-            _sorted_strings(memberships.get(role_name, [])) == _sorted_strings(expected["member_of"]),
+            _sorted_strings(memberships.get(role_name, []))
+            == _sorted_strings(expected["member_of"]),
             "role membership differs from the least-privilege contract",
+        )
+        record(
+            "role_members",
+            role_name,
+            "granted_to",
+            _sorted_strings(role_members.get(role_name, []))
+            == _sorted_strings(expected["members"]),
+            "the role is granted to an unexpected login or group role",
         )
 
     tables = {str(row["name"]): row for row in catalog.get("tables", [])}
@@ -629,8 +801,7 @@ def build_report(contract: Mapping[str, Any], catalog: Mapping[str, Any]) -> dic
         (str(row["table_name"]), str(row["name"])): row for row in catalog.get("columns", [])
     }
     constraints = {
-        (str(row["table_name"]), str(row["name"])): row
-        for row in catalog.get("constraints", [])
+        (str(row["table_name"]), str(row["name"])): row for row in catalog.get("constraints", [])
     }
     indexes = {
         (str(row["table_name"]), str(row["name"])): row for row in catalog.get("indexes", [])
@@ -643,14 +814,18 @@ def build_report(contract: Mapping[str, Any], catalog: Mapping[str, Any]) -> dic
         triggers_by_table[str(row["table_name"])][str(row["name"])] = row
     table_acl: dict[tuple[str, str], set[str]] = defaultdict(set)
     for row in catalog.get("table_acl", []):
-        table_acl[(str(row["table_name"]), str(row["grantee"]))].add(
-            str(row["privilege_type"]).upper()
-        )
+        privilege = str(row["privilege_type"]).upper()
+        if bool(row.get("is_grantable")):
+            privilege += " WITH GRANT OPTION"
+        table_acl[(str(row["table_name"]), str(row["grantee"]))].add(privilege)
     column_acl: dict[tuple[str, str], dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
     for row in catalog.get("column_acl", []):
-        column_acl[(str(row["table_name"]), str(row["grantee"]))][
-            str(row["column_name"])
-        ].add(str(row["privilege_type"]).upper())
+        privilege = str(row["privilege_type"]).upper()
+        if bool(row.get("is_grantable")):
+            privilege += " WITH GRANT OPTION"
+        column_acl[(str(row["table_name"]), str(row["grantee"]))][str(row["column_name"])].add(
+            privilege
+        )
 
     for expected_table in contract["tables"]:
         table_name = str(expected_table["name"])
@@ -679,12 +854,22 @@ def build_report(contract: Mapping[str, Any], catalog: Mapping[str, Any]) -> dic
             actual = constraints.get((table_name, constraint_name))
             satisfied = actual is not None
             if satisfied:
-                satisfied = str(actual.get("type")) == CONSTRAINT_TYPES[expected_constraint["category"]]
-                satisfied = satisfied and bool(actual.get("validated")) == expected_constraint["validated"]
+                satisfied = (
+                    str(actual.get("type")) == CONSTRAINT_TYPES[expected_constraint["category"]]
+                )
+                satisfied = (
+                    satisfied and bool(actual.get("validated")) == expected_constraint["validated"]
+                )
                 if "columns" in expected_constraint:
-                    satisfied = satisfied and list(actual.get("columns") or []) == expected_constraint["columns"]
+                    satisfied = (
+                        satisfied
+                        and list(actual.get("columns") or []) == expected_constraint["columns"]
+                    )
                 if "deferrable" in expected_constraint:
-                    satisfied = satisfied and bool(actual.get("deferrable")) == expected_constraint["deferrable"]
+                    satisfied = (
+                        satisfied
+                        and bool(actual.get("deferrable")) == expected_constraint["deferrable"]
+                    )
                 if "initially_deferred" in expected_constraint:
                     satisfied = (
                         satisfied
@@ -692,13 +877,20 @@ def build_report(contract: Mapping[str, Any], catalog: Mapping[str, Any]) -> dic
                         == expected_constraint["initially_deferred"]
                     )
                 if "on_update" in expected_constraint:
-                    satisfied = satisfied and actual.get("on_update") == expected_constraint["on_update"]
+                    satisfied = (
+                        satisfied and actual.get("on_update") == expected_constraint["on_update"]
+                    )
                 if "on_delete" in expected_constraint:
-                    satisfied = satisfied and actual.get("on_delete") == expected_constraint["on_delete"]
+                    satisfied = (
+                        satisfied and actual.get("on_delete") == expected_constraint["on_delete"]
+                    )
                 reference = expected_constraint.get("references")
                 if reference is not None:
                     satisfied = satisfied and actual.get("referenced_table") == reference["table"]
-                    satisfied = satisfied and list(actual.get("referenced_columns") or []) == reference["columns"]
+                    satisfied = (
+                        satisfied
+                        and list(actual.get("referenced_columns") or []) == reference["columns"]
+                    )
                 if expected_constraint["category"] == "check":
                     satisfied = satisfied and _matches_expression(
                         expected_constraint["expression"], actual.get("expression")
@@ -748,7 +940,9 @@ def build_report(contract: Mapping[str, Any], catalog: Mapping[str, Any]) -> dic
         )
 
         actual_policies = policies_by_table.get(table_name, {})
-        expected_policy_names = _sorted_strings(policy["name"] for policy in expected_table["policies"])
+        expected_policy_names = _sorted_strings(
+            policy["name"] for policy in expected_table["policies"]
+        )
         record(
             "policy_set",
             table_name,
@@ -779,7 +973,9 @@ def build_report(contract: Mapping[str, Any], catalog: Mapping[str, Any]) -> dic
             )
 
         actual_triggers = triggers_by_table.get(table_name, {})
-        expected_trigger_names = _sorted_strings(trigger["name"] for trigger in expected_table["triggers"])
+        expected_trigger_names = _sorted_strings(
+            trigger["name"] for trigger in expected_table["triggers"]
+        )
         record(
             "trigger_set",
             table_name,
@@ -797,6 +993,9 @@ def build_report(contract: Mapping[str, Any], catalog: Mapping[str, Any]) -> dic
                 == _sorted_strings(expected_trigger["events"])
                 and bool(actual.get("row_level")) == expected_trigger["row_level"]
                 and actual.get("enabled") == expected_trigger["enabled"]
+                and _matches_expression(
+                    expected_trigger.get("when"), actual.get("when_expression")
+                )
                 and _canonical_signature(str(actual.get("function_signature") or ""))
                 == _canonical_signature(expected_trigger["function"])
             )
@@ -817,13 +1016,31 @@ def build_report(contract: Mapping[str, Any], catalog: Mapping[str, Any]) -> dic
                 actual_privileges == _sorted_strings(expected_privileges),
                 "table privileges differ from the least-privilege contract",
             )
+        expected_acl_grantees = {
+            role_name for role_name, privileges in expected_table["acl"].items() if privileges
+        }
+        actual_acl_grantees = {
+            grantee
+            for (acl_table, grantee), privileges in table_acl.items()
+            if acl_table == table_name
+            and grantee != str(actual_table.get("owner") if actual_table else "")
+            and privileges
+        }
+        record(
+            "table_acl_set",
+            table_name,
+            "exact_non_owner_grantees",
+            actual_acl_grantees == expected_acl_grantees,
+            "an unexpected role has table privileges or an expected grantee is absent",
+        )
         for role_name, expected_columns in expected_table.get("column_acl", {}).items():
             actual_columns = {
                 column: _sorted_strings(privileges)
                 for column, privileges in column_acl.get((table_name, role_name), {}).items()
             }
             normalized_expected = {
-                column: _sorted_strings(privileges) for column, privileges in expected_columns.items()
+                column: _sorted_strings(privileges)
+                for column, privileges in expected_columns.items()
             }
             record(
                 "column_acl",
@@ -832,13 +1049,35 @@ def build_report(contract: Mapping[str, Any], catalog: Mapping[str, Any]) -> dic
                 actual_columns == normalized_expected,
                 "column privileges differ from the narrow update contract",
             )
+        expected_column_grantees = {
+            role_name
+            for role_name, columns_for_role in expected_table.get("column_acl", {}).items()
+            if columns_for_role
+        }
+        actual_column_grantees = {
+            grantee
+            for (acl_table, grantee), columns_for_role in column_acl.items()
+            if acl_table == table_name and any(columns_for_role.values())
+        }
+        record(
+            "column_acl_set",
+            table_name,
+            "exact_grantees",
+            actual_column_grantees == expected_column_grantees,
+            "an unexpected role has column privileges or an expected grantee is absent",
+        )
 
     functions = {
         _canonical_signature(str(row["signature"])): row for row in catalog.get("functions", [])
     }
     function_acl: dict[str, list[str]] = defaultdict(list)
+    function_grant_options: dict[str, bool] = defaultdict(bool)
     for row in catalog.get("function_acl", []):
-        function_acl[_canonical_signature(str(row["signature"]))].append(str(row["grantee"]))
+        signature = _canonical_signature(str(row["signature"]))
+        function_acl[signature].append(str(row["grantee"]))
+        function_grant_options[signature] = function_grant_options[signature] or bool(
+            row.get("is_grantable")
+        )
     for expected_function in contract["functions"]:
         signature = _canonical_signature(str(expected_function["signature"]))
         actual = functions.get(signature)
@@ -869,6 +1108,13 @@ def build_report(contract: Mapping[str, Any], catalog: Mapping[str, Any]) -> dic
             _sorted_strings(function_acl.get(signature, []))
             == _sorted_strings(expected_function["execute_roles"]),
             "function EXECUTE ACL differs, including possible PUBLIC exposure",
+        )
+        record(
+            "function_grant_option",
+            signature,
+            "none",
+            not function_grant_options.get(signature, False),
+            "function EXECUTE privileges must not carry grant option",
         )
 
     def order_key(item: Mapping[str, str]) -> tuple[str, str, str]:
@@ -933,6 +1179,11 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--domain", required=True, help="parity domain, currently auth")
     parser.add_argument(
+        "--runtime-evidence-json",
+        type=Path,
+        help="external Compose/API runtime-role verification receipt; contains hashes only",
+    )
+    parser.add_argument(
         "--contract-root",
         type=Path,
         default=DEFAULT_CONTRACT_ROOT,
@@ -946,6 +1197,18 @@ def _parser() -> argparse.ArgumentParser:
         help="write deterministic JSON to PATH, or stdout when PATH is omitted",
     )
     return parser
+
+
+def _load_runtime_evidence(path: Path | None) -> Mapping[str, Any] | None:
+    if path is None:
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ParityVerifierError("cannot read runtime identity evidence") from exc
+    if not isinstance(payload, dict):
+        raise ParityVerifierError("runtime identity evidence must be a JSON object")
+    return payload
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -962,7 +1225,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 connection.close()
             except Exception:
                 pass
-        report = build_report(contract, catalog)
+        runtime_evidence = _load_runtime_evidence(args.runtime_evidence_json)
+        report = build_report(contract, catalog, runtime_evidence=runtime_evidence)
         rendered = render_report(report)
         if args.report_json is None or args.report_json == "-":
             sys.stdout.write(rendered)
