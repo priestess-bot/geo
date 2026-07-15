@@ -7,6 +7,9 @@ ALEMBIC = ROOT / "infra" / "db" / "alembic"
 BASELINE = (ALEMBIC / "sql" / "0001_geo_baseline.sql").read_text(encoding="utf-8")
 ACCESS = (ALEMBIC / "sql" / "0003_access_invitations.sql").read_text(encoding="utf-8")
 ALEMBIC_ENV = (ALEMBIC / "env.py").read_text(encoding="utf-8")
+MONITORING = (ALEMBIC / "sql" / "0004_monitoring_observations.sql").read_text(
+    encoding="utf-8"
+)
 
 
 def test_revision_graph_has_exactly_one_root_and_head() -> None:
@@ -15,21 +18,56 @@ def test_revision_graph_has_exactly_one_root_and_head() -> None:
         "0001_geo_baseline.py",
         "0002_engineering_governance.py",
         "0003_access_invitations.py",
+        "0004_monitoring_observations.py",
     ]
     root = revisions[0].read_text(encoding="utf-8")
     engineering = revisions[1].read_text(encoding="utf-8")
-    head = revisions[2].read_text(encoding="utf-8")
+    invitations = revisions[2].read_text(encoding="utf-8")
+    head = revisions[3].read_text(encoding="utf-8")
     assert 'revision = "0001_geo_baseline"' in root
     assert "down_revision = None" in root
     assert 'revision = "0002_engineering_governance"' in engineering
     assert 'down_revision = "0001_geo_baseline"' in engineering
-    assert 'revision = "0003_access_invitations"' in head
-    assert 'down_revision = "0002_engineering_governance"' in head
+    assert 'revision = "0003_access_invitations"' in invitations
+    assert 'down_revision = "0002_engineering_governance"' in invitations
+    assert 'revision = "0004_monitoring_observations"' in head
+    assert 'down_revision = "0003_access_invitations"' in head
 
 
 def test_alembic_uses_the_installed_psycopg3_driver_for_standard_urls() -> None:
     assert 'value.startswith("postgresql://")' in ALEMBIC_ENV
     assert '"postgresql+psycopg://"' in ALEMBIC_ENV
+
+
+def test_alembic_verifies_external_sql_checksums_in_its_single_ledger() -> None:
+    assert "ensure_ledger(connection)" in ALEMBIC_ENV
+    assert "verify_applied(" in ALEMBIC_ENV
+    assert "synchronize_ledger(" in ALEMBIC_ENV
+    checksums = (ALEMBIC / "checksums.py").read_text(encoding="utf-8")
+    assert "FROM PUBLIC, geo_app, geo_worker, geo_readonly" in checksums
+
+
+def test_database_provision_wrapper_never_accepts_a_database_url_argument() -> None:
+    provisioner = (ROOT / "scripts/provision_database.py").read_text(encoding="utf-8")
+    assert "database_url" not in provisioner
+    assert 'command.upgrade(configuration, "head")' in provisioner
+
+
+def test_monitoring_revision_has_rls_composite_links_and_immutable_records() -> None:
+    required_tables = {
+        "monitoring_protocols",
+        "monitoring_query_suggestions",
+        "monitoring_protocol_queries",
+        "monitoring_observations",
+        "monitoring_observation_citations",
+        "monitoring_metric_snapshots",
+        "monitoring_reports",
+    }
+    assert required_tables <= set(re.findall(r"CREATE TABLE ([a-z_]+)", MONITORING))
+    assert "FORCE ROW LEVEL SECURITY" in MONITORING
+    assert "REFERENCES monitoring_protocol_queries(protocol_id, monitoring_query_id, project_id)" in MONITORING
+    assert "monitoring_observations_immutable" in MONITORING
+    assert "frozen monitoring protocols are immutable" in MONITORING
 
 
 def test_baseline_covers_required_geo_aggregates() -> None:

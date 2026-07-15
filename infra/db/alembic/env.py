@@ -5,7 +5,14 @@ from logging.config import fileConfig
 from pathlib import Path
 
 from alembic import context
+from alembic.script import ScriptDirectory
 from sqlalchemy import engine_from_config, pool
+
+from infra.db.alembic.checksums import (
+    ensure_ledger,
+    synchronize_ledger,
+    verify_applied,
+)
 
 
 config = context.config
@@ -46,7 +53,12 @@ def sqlalchemy_psycopg_url(value: str) -> str:
     return value
 
 
-database_url = database_url_from_environment()
+explicit_database_url = config.attributes.get("geo_database_url_override")
+database_url = (
+    sqlalchemy_psycopg_url(explicit_database_url)
+    if isinstance(explicit_database_url, str) and explicit_database_url.strip()
+    else database_url_from_environment()
+)
 if database_url:
     config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 
@@ -74,7 +86,19 @@ def run_migrations_online() -> None:
     with connectable.connect() as connection:
         context.configure(connection=connection, target_metadata=target_metadata)
         with context.begin_transaction():
+            script = ScriptDirectory.from_config(config)
+            sql_directory = Path(script.dir) / "sql"
+            ensure_ledger(connection)
+            if connection.exec_driver_sql(
+                "SELECT count(*) FROM alembic_sql_checksum_ledger"
+            ).scalar_one():
+                verify_applied(
+                    connection, script=script, sql_directory=sql_directory
+                )
             context.run_migrations()
+            synchronize_ledger(
+                connection, script=script, sql_directory=sql_directory
+            )
 
 
 if context.is_offline_mode():

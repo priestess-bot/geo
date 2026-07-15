@@ -49,12 +49,33 @@ INTERNAL_REQUIRED_OPERATIONS = (
     ("get", "/v1/projects/{project_id}/market-profiles"),
     ("post", "/v1/projects/{project_id}/evidence-items"),
     ("get", "/v1/projects/{project_id}/evidence-items"),
+    ("post", "/v1/projects/{project_id}/monitoring-protocols"),
+    ("get", "/v1/projects/{project_id}/monitoring-protocols"),
+    ("post", "/v1/projects/{project_id}/monitoring-protocols/{protocol_id}/query-suggestions"),
+    ("get", "/v1/projects/{project_id}/monitoring-protocols/{protocol_id}/query-suggestions"),
+    ("post", "/v1/projects/{project_id}/monitoring-protocols/{protocol_id}/query-suggestions/{suggestion_id}/approve"),
+    ("post", "/v1/projects/{project_id}/monitoring-protocols/{protocol_id}/approve"),
+    ("post", "/v1/projects/{project_id}/monitoring-protocols/{protocol_id}/freeze"),
+    ("post", "/v1/projects/{project_id}/monitoring-protocols/{protocol_id}/observations"),
+    ("get", "/v1/projects/{project_id}/monitoring-protocols/{protocol_id}/observations"),
+    ("post", "/v1/projects/{project_id}/monitoring-protocols/{protocol_id}/metrics"),
+    ("get", "/v1/projects/{project_id}/monitoring-metrics"),
+    ("post", "/v1/projects/{project_id}/monitoring-reports"),
+    ("get", "/v1/projects/{project_id}/monitoring-reports"),
+    ("post", "/v1/projects/{project_id}/monitoring-reports/{report_id}/approve"),
     ("get", "/v1/engineering/status"),
     ("get", "/v1/engineering/work-items"),
     ("get", "/v1/engineering/events"),
     ("post", "/v1/engineering/reconciliations"),
     ("post", "/v1/engineering/health-probes"),
     ("post", "/v1/integrations/github/events"),
+)
+CUSTOMER_REQUIRED_OPERATIONS = (
+    ("get", "/v1/projects/{project_id}/geo/summary"),
+    ("get", "/v1/projects/{project_id}/geo/verified-urls"),
+    ("get", "/v1/projects/{project_id}/geo/metrics"),
+    ("get", "/v1/projects/{project_id}/geo/measurement-windows"),
+    ("get", "/v1/projects/{project_id}/geo/reports"),
 )
 CUSTOMER_FORBIDDEN_PREFIXES = (
     "/v1/engineering",
@@ -129,6 +150,8 @@ def validate_document(surface: str, document: Mapping[str, Any]) -> None:
     required: tuple[tuple[str, str], ...] = SHARED_REQUIRED_OPERATIONS
     if surface == "internal":
         required += INTERNAL_REQUIRED_OPERATIONS
+    if surface == "customer":
+        required += CUSTOMER_REQUIRED_OPERATIONS
     for method, path in required:
         path_item = paths.get(path)
         if not isinstance(path_item, dict) or not isinstance(path_item.get(method), dict):

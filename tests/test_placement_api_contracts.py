@@ -24,7 +24,14 @@ def test_placement_routes_are_stable_and_internal_only() -> None:
         "/v1/projects/{project_id}/geo/submissions/{submission_id}/measurements",
     }
     assert expected <= set(internal)
-    assert not any("/geo/" in path for path in customer)
+    assert expected.isdisjoint(customer)
+    assert {
+        "/v1/projects/{project_id}/geo/summary",
+        "/v1/projects/{project_id}/geo/verified-urls",
+        "/v1/projects/{project_id}/geo/metrics",
+        "/v1/projects/{project_id}/geo/measurement-windows",
+        "/v1/projects/{project_id}/geo/reports",
+    } <= set(customer)
     assert not any(term in path for path in internal for term in ("runtime", "p0a", "p0b", "fixture"))
 
 

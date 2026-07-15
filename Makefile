@@ -21,7 +21,9 @@ install:
 	corepack pnpm install --frozen-lockfile
 
 lint:
-	uv run ruff check apps/api/geo_api packages/geo_core/geo_core scripts/export_stable_openapi.py
+	uv run ruff check apps/api/geo_api packages/geo_core/geo_core \
+		scripts/export_stable_openapi.py scripts/provision_database.py \
+		scripts/provision_dev_database.py infra/db/alembic/checksums.py
 
 typecheck:
 	uv run mypy --follow-imports=skip \
@@ -32,9 +34,16 @@ typecheck:
 		apps/api/geo_api/catalog_contracts.py \
 		apps/api/geo_api/catalog_routes.py \
 		apps/api/geo_api/catalog_runtime.py \
+		apps/api/geo_api/monitoring_contracts.py \
+		apps/api/geo_api/monitoring_dependencies.py \
+		apps/api/geo_api/monitoring_presenters.py \
+		apps/api/geo_api/monitoring_routes.py \
+		apps/api/geo_api/customer_geo_routes.py \
+		apps/api/geo_api/monitoring_runtime.py \
 		scripts/export_stable_openapi.py \
 		packages/geo_core/geo_core/jobs \
 		packages/geo_core/geo_core/catalog \
+		packages/geo_core/geo_core/monitoring \
 		packages/geo_core/geo_core/engineering \
 		packages/geo_core/geo_core/model_gateway \
 		packages/geo_core/geo_core/prompts \
@@ -53,6 +62,7 @@ test-migrated:
 		tests/unit \
 		tests/infra/test_production_compose.py \
 		tests/test_api_catalog_slice.py \
+		tests/test_api_monitoring_slice.py \
 		tests/test_api_foundation_contracts.py \
 		tests/test_geo_alembic_baseline.py \
 		tests/test_geo_job_lifecycle.py \

@@ -15,17 +15,23 @@ def required(name: str) -> str:
     return value
 
 
-def provision_login(cursor: psycopg.Cursor[tuple[object, ...]], *, login: str, password: str, group: str) -> None:
+def provision_login(
+    cursor: psycopg.Cursor[tuple[object, ...]], *, login: str, password: str, group: str
+) -> None:
     cursor.execute("SELECT 1 FROM pg_roles WHERE rolname = %s", (login,))
     if cursor.fetchone() is None:
         cursor.execute(
-            sql.SQL("CREATE ROLE {} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS PASSWORD %s").format(
-                sql.Identifier(login)
-            ),
-            (password,),
+            sql.SQL(
+                "CREATE ROLE {} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE "
+                "NOBYPASSRLS PASSWORD {}"
+            ).format(sql.Identifier(login), sql.Literal(password))
         )
     else:
-        cursor.execute(sql.SQL("ALTER ROLE {} PASSWORD %s").format(sql.Identifier(login)), (password,))
+        cursor.execute(
+            sql.SQL("ALTER ROLE {} PASSWORD {}").format(
+                sql.Identifier(login), sql.Literal(password)
+            )
+        )
     cursor.execute(sql.SQL("GRANT {} TO {}").format(sql.Identifier(group), sql.Identifier(login)))
 
 

@@ -23,6 +23,9 @@ jobs:
           apps/api/geo_api
           packages/geo_core/geo_core
           scripts/export_stable_openapi.py
+          scripts/provision_database.py
+          scripts/provision_dev_database.py
+          infra/db/alembic/checksums.py
       - name: Strict types for migrated modules
         run: >-
           uv run mypy --follow-imports=skip
@@ -33,9 +36,16 @@ jobs:
           apps/api/geo_api/catalog_contracts.py
           apps/api/geo_api/catalog_routes.py
           apps/api/geo_api/catalog_runtime.py
+          apps/api/geo_api/monitoring_contracts.py
+          apps/api/geo_api/monitoring_dependencies.py
+          apps/api/geo_api/monitoring_presenters.py
+          apps/api/geo_api/monitoring_routes.py
+          apps/api/geo_api/customer_geo_routes.py
+          apps/api/geo_api/monitoring_runtime.py
           scripts/export_stable_openapi.py
           packages/geo_core/geo_core/jobs
           packages/geo_core/geo_core/catalog
+          packages/geo_core/geo_core/monitoring
           packages/geo_core/geo_core/model_gateway
           packages/geo_core/geo_core/prompts
       - name: Architecture and migrated contracts
@@ -44,6 +54,7 @@ jobs:
           tests/architecture
           tests/unit
           tests/test_api_catalog_slice.py
+          tests/test_api_monitoring_slice.py
           tests/test_api_foundation_contracts.py
           tests/test_geo_alembic_baseline.py
           tests/test_geo_job_lifecycle.py
@@ -69,6 +80,10 @@ jobs:
           --health-retries 12
     env:
       GEO_DATABASE_URL: postgresql://geo_installer:geo_ci_only@localhost:5432/geo
+      GEO_ACCESS_TEST_ADMIN_DATABASE_URL: postgresql://geo_installer:geo_ci_only@localhost:5432/geo
+      GEO_ACCESS_TEST_DATABASE_URL: postgresql://geo_app_dev:geo_app_ci_only@localhost:5432/geo
+      GEO_DEV_APP_PASSWORD: geo_app_ci_only
+      GEO_DEV_WORKER_PASSWORD: geo_worker_ci_only
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -80,8 +95,15 @@ jobs:
         run: uv run alembic upgrade head
       - name: One Alembic head
         run: test "$(uv run alembic heads | wc -l)" -eq 1
+      - name: Provision non-BYPASSRLS test login
+        run: uv run python scripts/provision_dev_database.py
       - name: Baseline and Durable Job tests
         run: uv run pytest -q tests/test_geo_alembic_baseline.py tests/test_geo_job_lifecycle.py
+      - name: Monitoring PostgreSQL and checksum contracts
+        run: >-
+          uv run pytest -q -m integration
+          tests/integration/test_monitoring_postgres.py
+          tests/integration/test_alembic_sql_checksums.py
 
   frontend:
     runs-on: ubuntu-latest

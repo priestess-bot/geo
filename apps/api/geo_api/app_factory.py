@@ -19,12 +19,15 @@ from geo_api.engineering_routes import engineering_router, github_integration_ro
 from geo_api.engineering_runtime import build_engineering_service
 from geo_api.catalog_routes import catalog_bootstrap_router, catalog_router
 from geo_api.catalog_runtime import build_catalog_application
+from geo_api.customer_geo_routes import customer_geo_router
 from geo_api.foundation_services import (
     FoundationServices,
     UnavailableFoundationServices,
     services_from_environment,
 )
 from geo_api.problems import install_problem_handlers
+from geo_api.monitoring_routes import monitoring_router
+from geo_api.monitoring_runtime import build_monitoring_application
 from geo_api.placement_campaign_routes import campaign_router
 from geo_api.placement_generation_routes import generation_router
 from geo_api.placement_publication_routes import publication_router
@@ -78,6 +81,7 @@ def create_api_app(
     engineering_service: object | None = None,
     placement_services: object | None = None,
     catalog_application: object | None = None,
+    monitoring_application: object | None = None,
 ) -> FastAPI:
     """Build one API surface without importing the legacy application module."""
 
@@ -113,6 +117,7 @@ def create_api_app(
         dev_tools_enabled=resolved_settings.dev_tools_enabled,
         deployment_environment=resolved_settings.deployment_environment,
     )
+    app.state.monitoring_application = monitoring_application or build_monitoring_application()
     install_problem_handlers(app)
     _install_request_metadata_middleware(app, surface=surface)
 
@@ -124,6 +129,7 @@ def create_api_app(
     if surface == "internal":
         app.include_router(invitation_management_router())
         app.include_router(catalog_router())
+        app.include_router(monitoring_router())
         app.include_router(campaign_router())
         app.include_router(generation_router())
         app.include_router(publication_router())
@@ -135,6 +141,8 @@ def create_api_app(
         ):
             app.include_router(dev_tools_router())
             app.include_router(catalog_bootstrap_router())
+    else:
+        app.include_router(customer_geo_router())
     return app
 
 
