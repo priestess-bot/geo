@@ -2,7 +2,7 @@
 
 GEO Platform 是一个以证据为基础的 AI 搜索监测与内容投放系统。它帮助团队识别消费者在 ChatGPT、Google 等 AI 搜索工具中的商品咨询问题，分析模型实际引用的信源，为目标网站生成适配渠道的投放内容，并持续验证公开 URL 和推荐结果变化。
 
-当前仓库处于架构整改期。功能开发已冻结，除阻断性缺陷外，所有工作优先完成 GEO 命名、模块边界、数据库基线、双 API、可靠任务、前端收敛和生产部署整改。历史实现仍可能存在于已标记的 legacy 文件中，但不代表稳定公共合同。
+当前稳定合同由双 API、Admin/Customer Web、PostgreSQL Durable Job、MinIO 工件和 GEO Placement 领域组成。历史阶段实现不属于公共合同。
 
 ## 应用入口
 
@@ -18,16 +18,13 @@ GEO Platform 是一个以证据为基础的 AI 搜索监测与内容投放系统
 环境要求：Docker Compose、uv、Node.js 22 和 Corepack。
 
 ```bash
-uv sync
-corepack pnpm install
-docker compose -f infra/docker-compose.yml up -d postgres minio valkey
-uv run uvicorn geo_api.internal_app:app --app-dir apps/api --port 8000
-uv run uvicorn geo_api.customer_app:app --app-dir apps/api --port 8001
-corepack pnpm --filter geo-production-admin-web dev -- --port 3001
-corepack pnpm --filter geo-production-customer-web dev -- --port 3000
+make install
+test -f deepseek_api_key.txt
+chmod 600 deepseek_api_key.txt
+make dev-up
 ```
 
-旧开发 Compose 尚在收敛中。进行客户演示或生产验收前，必须使用独立生产配置并完成空库迁移、Secret、DeepSeek 和浏览器全流程门禁。
+`make dev-up` 会构建并启动 PostgreSQL、迁移、MinIO、Valkey、双 API、Durable Worker 和双 Web。查看日志使用 `make dev-logs`，停止使用 `make dev-down`。进行客户演示或生产验收前，仍必须使用独立生产配置并完成空库迁移、Secret、DeepSeek 和浏览器全流程门禁。
 
 ## 质量检查
 

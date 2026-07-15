@@ -7,7 +7,7 @@ PROD_COMPOSE := docker compose --env-file $(PROD_ENV) -f infra/compose.prod.yml
 .PHONY: bootstrap install lint typecheck quality test test-migrated test-integration \
 	openapi-snapshots openapi-contracts \
 	web-build api-internal api-customer admin-web customer-web \
-	db-up db-down db-reset-dev db-migrate db-heads \
+	dev-up dev-logs dev-down db-up db-down db-reset-dev db-migrate db-heads \
 	docker-config production-config production-up production-down \
 	production-provision-owner \
 	api-image admin-image customer-image images \
@@ -157,3 +157,17 @@ deepseek-live:
 	uv run pytest -q -m live tests/test_geo_deepseek_live_generation.py
 
 ci: quality test-migrated openapi-contracts web-build docker-config
+
+dev-up:
+	@test -f "$(CURDIR)/deepseek_api_key.txt" || (echo "deepseek_api_key.txt is required" >&2; exit 2)
+	@test "$$(stat -c '%a' "$(CURDIR)/deepseek_api_key.txt")" = "600" -o \
+		"$$(stat -c '%a' "$(CURDIR)/deepseek_api_key.txt")" = "400" || \
+		(echo "deepseek_api_key.txt must use mode 0400 or 0600" >&2; exit 2)
+	GEO_DEEPSEEK_API_KEY_FILE="$(CURDIR)/deepseek_api_key.txt" \
+		$(DEV_COMPOSE) --profile workers up -d --build --wait
+
+dev-logs:
+	$(DEV_COMPOSE) --profile workers logs -f --tail=200
+
+dev-down:
+	$(DEV_COMPOSE) --profile workers down
