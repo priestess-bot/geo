@@ -6,6 +6,11 @@ from typing import Any, Mapping, cast
 from uuid import UUID
 
 from geo_core.object_store import RetrievedObject
+from geo_core.placements.default_prompts import (
+    DEFAULT_PROMPT_DEFINITIONS,
+    default_output_schema,
+)
+from geo_core.placements.generation_contract import validate_generation_schema
 from geo_core.placements.domain import (
     DestinationPolicyVersion,
     ExportReceipt,
@@ -51,6 +56,21 @@ class PlacementOperationsApplicationMixin:
     ) -> tuple[Mapping[str, object], ...]:
         with self._uow_factory(project_id) as uow:
             return uow.placements.list_prompt_release_selections(project_id=project_id)
+
+    def install_default_prompt_catalog(
+        self, *, project_id: UUID, actor_id: UUID
+    ) -> tuple[Mapping[str, object], ...]:
+        output_schema = default_output_schema()
+        validate_generation_schema(output_schema)
+        with self._uow_factory(project_id) as uow:
+            result = uow.placements.install_default_prompt_catalog(
+                project_id=project_id,
+                definitions=DEFAULT_PROMPT_DEFINITIONS,
+                output_schema=output_schema,
+                actor_id=actor_id,
+            )
+            uow.commit()
+            return result
 
     def review_destination_policy(
         self,

@@ -19,6 +19,7 @@ def test_placement_routes_are_stable_and_internal_only() -> None:
         "/v1/projects/{project_id}/geo/opportunities/{opportunity_id}/brief-versions",
         "/v1/projects/{project_id}/geo/brief-versions/{brief_version_id}/evidence-pack-attempts",
         "/v1/projects/{project_id}/geo/prompt-skills/{skill_id}/releases",
+        "/v1/projects/{project_id}/geo/prompt-catalog/defaults",
         "/v1/projects/{project_id}/geo/brief-versions/{brief_version_id}/prompt-bundles",
         "/v1/projects/{project_id}/geo/prompt-bundles/{prompt_bundle_id}/generation-jobs",
         "/v1/projects/{project_id}/geo/opportunities/{opportunity_id}/package-versions",

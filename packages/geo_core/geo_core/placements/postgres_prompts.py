@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 from typing import Any, Mapping
 from uuid import UUID, uuid4
 
@@ -14,7 +15,13 @@ from geo_core.placements.domain import (
     PromptSkill,
     canonical_hash,
 )
-from geo_core.prompts.domain import SkillVersion, TemplateRelease, render_bundle
+from geo_core.placements.default_prompts import DefaultPromptDefinition
+from geo_core.prompts.domain import (
+    SkillVersion,
+    TemplateRelease,
+    compile_template,
+    render_bundle,
+)
 
 
 def _one(cursor: Any) -> dict[str, Any]:
@@ -93,6 +100,23 @@ class PostgresPromptRepositoryMixin:
 
     def create_template_release(self, **values: Any) -> PromptReleaseView:
         template: TemplateRelease = values["template"]
+        system_template = "Use only the evidence supplied by the immutable prompt bundle."
+        variable_schema = {
+            "required": template.required_variables,
+            "client_allowed": values["client_variable_names"],
+            "server_authoritative": ["brief", "evidence", "destination_policy"],
+        }
+        compiler_version = "geo-prompt-compiler-v1"
+        release_hash = canonical_hash(
+            {
+                "compiled_template_hash": template.release_hash,
+                "system_template": system_template,
+                "user_template": template.template,
+                "variable_schema": variable_schema,
+                "output_schema": values["output_schema"],
+                "compiler_version": compiler_version,
+            }
+        )
         release_number = _one(
             self._db.execute(
                 """SELECT COALESCE(MAX(release_number), 0) + 1 AS value
@@ -112,22 +136,96 @@ class PostgresPromptRepositoryMixin:
                     values["project_id"],
                     values["skill_version_id"],
                     release_number,
-                    "Use only the evidence supplied by the immutable prompt bundle.",
+                    system_template,
                     template.template,
-                    json.dumps(
-                        {
-                            "required": template.required_variables,
-                            "client_allowed": values["client_variable_names"],
-                            "server_authoritative": ["brief", "evidence", "destination_policy"],
-                        }
-                    ),
+                    json.dumps(variable_schema),
                     json.dumps(values["output_schema"]),
-                    "geo-prompt-compiler-v1",
-                    template.release_hash,
+                    compiler_version,
+                    release_hash,
                 ),
             )
         )
         return PromptReleaseView(**record)
+
+    def install_default_prompt_catalog(
+        self,
+        *,
+        project_id: UUID,
+        definitions: tuple[DefaultPromptDefinition, ...],
+        output_schema: Mapping[str, object],
+        actor_id: UUID,
+    ) -> tuple[Mapping[str, object], ...]:
+        _one(
+            self._db.execute(
+                "SELECT id FROM projects WHERE id = %s FOR UPDATE", (project_id,)
+            )
+        )
+        bindings: list[Mapping[str, object]] = []
+        for definition in definitions:
+            current = _many(
+                self._db.execute(
+                    """SELECT project_id, task_key, template_release_id,
+                              selected_by, selected_at
+                       FROM content_task_prompt_releases
+                       WHERE project_id = %s AND task_key = %s""",
+                    (project_id, definition.task_key),
+                )
+            )
+            if current:
+                bindings.append(current[0])
+                continue
+            skills = _many(
+                self._db.execute(
+                    """SELECT id, project_id, skill_key, status FROM prompt_skills
+                       WHERE project_id = %s AND skill_key = %s""",
+                    (project_id, definition.skill_key),
+                )
+            )
+            skill = (
+                PromptSkill(**skills[0])
+                if skills
+                else self.create_prompt_skill(
+                    project_id=project_id, skill_key=definition.skill_key
+                )
+            )
+            source_hash = hashlib.sha256(definition.source.encode("utf-8")).hexdigest()
+            releases = _many(
+                self._db.execute(
+                    """SELECT r.id FROM generation_template_releases r
+                       JOIN prompt_skill_versions v
+                         ON v.id = r.skill_version_id AND v.project_id = r.project_id
+                       WHERE r.project_id = %s AND v.skill_id = %s
+                         AND v.source_hash = %s AND r.output_schema = %s::jsonb
+                       ORDER BY r.release_number LIMIT 1""",
+                    (project_id, skill.id, source_hash, json.dumps(output_schema)),
+                )
+            )
+            if releases:
+                release_id = releases[0]["id"]
+            else:
+                version = self.create_skill_version(
+                    project_id=project_id,
+                    skill_id=skill.id,
+                    source=definition.source,
+                    actor_id=actor_id,
+                )
+                template = compile_template(release_id=uuid4(), skill=version)
+                release_id = self.create_template_release(
+                    project_id=project_id,
+                    skill_version_id=version.id,
+                    template=template,
+                    output_schema=output_schema,
+                    client_variable_names=(),
+                ).id
+            bindings.append(
+                self.select_prompt_release(
+                    project_id=project_id,
+                    task_key=definition.task_key,
+                    release_id=release_id,
+                    selected_by=actor_id,
+                )
+            )
+        return tuple(bindings)
 
     def get_template_release(self, *, project_id: UUID, release_id: UUID) -> TemplateRelease | None:
         records = _many(

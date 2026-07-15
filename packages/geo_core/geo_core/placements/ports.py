@@ -210,6 +210,8 @@ class PlacementRepository(Protocol):
         self, *, project_id: UUID
     ) -> tuple[Mapping[str, object], ...]: ...
 
+    def install_default_prompt_catalog(self, **values: object) -> tuple[Mapping[str, object], ...]: ...
+
     def create_prompt_bundle(
         self,
         *,

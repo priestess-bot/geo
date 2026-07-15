@@ -272,6 +272,18 @@ def generation_router() -> APIRouter:
         del principal
         return placement_services(request).list_prompt_release_selections(project_id=project_id)
 
+    @router.put(
+        "/prompt-catalog/defaults",
+        response_model=list[PromptTaskBindingView],
+        operation_id="installDefaultPlacementPromptCatalog",
+    )
+    def install_default_prompt_catalog(
+        project_id: UUID, request: Request, principal: PlacementEditor
+    ) -> tuple[object, ...]:
+        return placement_services(request).install_default_prompt_catalog(
+            project_id=project_id, actor_id=principal.identity_id
+        )
+
     @router.post(
         "/prompt-bundles/{prompt_bundle_id}/generation-jobs",
         response_model=JobAccepted,
