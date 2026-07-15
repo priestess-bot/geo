@@ -308,12 +308,12 @@ class AccessApplicationService:
             invitation = unit_of_work.invitations.get_for_update(
                 invitation_id=invitation_id, token_hash=token_hash
             )
-            if invitation is None or invitation.status != "pending":
+            if invitation is None or invitation.status not in {"pending", "redeemed"}:
                 return InvitationPreflight("invalid", requested_surface, None, None)
             unit_of_work.set_project_scope(
                 tenant_id=invitation.tenant_id, project_ids=(invitation.project_id,)
             )
-            if invitation.expires_at <= datetime.now(UTC):
+            if invitation.status == "pending" and invitation.expires_at <= datetime.now(UTC):
                 unit_of_work.invitations.expire(invitation_id=invitation.id)
                 unit_of_work.audit.add(
                     tenant_id=invitation.tenant_id,

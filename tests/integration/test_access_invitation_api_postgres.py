@@ -209,6 +209,12 @@ def test_invitation_lifecycle_preserves_all_memberships_and_session_security() -
             assert idempotent_replay.json()["recovery_status"] == "replayed"
             assert idempotent_replay.cookies["GEO_CUSTOMER_SESSION"] == session_token
 
+            replay_preflight = customer_client.post(
+                "/v1/auth/invitations/preflight", json=credential
+            )
+            assert replay_preflight.status_code == 200
+            assert replay_preflight.json()["compatibility"] == "compatible"
+
             projects = customer_client.get("/v1/projects")
             assert projects.status_code == 200
             assert {item["project_id"] for item in projects.json()["items"]} == {

@@ -19,6 +19,9 @@ from geo_core.access.models import (
 )
 
 
+_MANAGED_ROLES = ("owner", "admin", "analyst")
+
+
 def _persistence_error(operation: str, error: psycopg.Error) -> AccessPersistenceUnavailable:
     return AccessPersistenceUnavailable(f"PostgreSQL could not {operation}.")
 
@@ -121,10 +124,11 @@ class PsycopgMembershipRepository:
                     _MEMBER_SELECT
                     + """
                     WHERE membership.project_id = %s
+                      AND membership.role = ANY(%s::text[])
                     ORDER BY membership.created_at, membership.id
                     LIMIT %s OFFSET %s
                     """,
-                    (project_id, limit, offset),
+                    (project_id, list(_MANAGED_ROLES), limit, offset),
                 )
                 rows = cursor.fetchall()
         except psycopg.Error as error:
@@ -135,8 +139,9 @@ class PsycopgMembershipRepository:
         try:
             with self._connection.cursor() as cursor:
                 cursor.execute(
-                    "SELECT count(*) AS total FROM project_memberships WHERE project_id = %s",
-                    (project_id,),
+                    """SELECT count(*) AS total FROM project_memberships
+                       WHERE project_id = %s AND role = ANY(%s::text[])""",
+                    (project_id, list(_MANAGED_ROLES)),
                 )
                 row = cursor.fetchone()
         except psycopg.Error as error:
@@ -152,9 +157,10 @@ class PsycopgMembershipRepository:
                     _MEMBER_SELECT
                     + """
                     WHERE membership.project_id = %s AND membership.id = %s
+                      AND membership.role = ANY(%s::text[])
                     FOR UPDATE OF membership
                     """,
-                    (project_id, membership_id),
+                    (project_id, membership_id, list(_MANAGED_ROLES)),
                 )
                 row = cursor.fetchone()
         except psycopg.Error as error:

@@ -49,6 +49,7 @@ def test_oidc_member_management_is_idempotent_governed_and_project_scoped() -> N
     owner_subject = f"owner-{marker}"
     analyst_subject = f"analyst-{marker}"
     admin_subject = f"admin-{marker}"
+    customer_subject = f"customer-{marker}"
     _seed(
         tenant_id=tenant_id,
         foreign_tenant_id=foreign_tenant_id,
@@ -140,6 +141,13 @@ def test_oidc_member_management_is_idempotent_governed_and_project_scoped() -> N
             )
             assert second_manager.status_code == 201, second_manager.text
             admin_identity_id = UUID(second_manager.json()["member"]["identity_id"])
+            _seed_customer_membership(
+                tenant_id=tenant_id,
+                project_id=project_id,
+                issuer=issuer,
+                subject=customer_subject,
+                marker=marker,
+            )
 
             listed = client.get(
                 f"/v1/projects/{project_id}/members", headers=owner_headers
@@ -314,7 +322,37 @@ def test_oidc_member_management_is_idempotent_governed_and_project_scoped() -> N
         _cleanup(
             tenant_ids=(tenant_id, foreign_tenant_id),
             issuer=issuer,
-            subjects=(owner_subject, analyst_subject, admin_subject, f"foreign-{marker}"),
+            subjects=(
+                owner_subject,
+                analyst_subject,
+                admin_subject,
+                customer_subject,
+                f"foreign-{marker}",
+            ),
+        )
+
+
+def _seed_customer_membership(
+    *, tenant_id: UUID, project_id: UUID, issuer: str, subject: str, marker: str
+) -> None:
+    with psycopg.connect(ADMIN_URL) as connection:
+        identity_id = uuid4()
+        connection.execute(
+            """INSERT INTO identities (id, issuer, subject, email, display_name)
+               VALUES (%s, %s, %s, %s, %s)""",
+            (
+                identity_id,
+                issuer,
+                subject,
+                f"customer-{marker}@example.com",
+                f"Customer {marker}",
+            ),
+        )
+        connection.execute(
+            """INSERT INTO project_memberships
+                   (tenant_id, project_id, identity_id, role)
+               VALUES (%s, %s, %s, 'customer')""",
+            (tenant_id, project_id, identity_id),
         )
 
 

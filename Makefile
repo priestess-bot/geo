@@ -11,7 +11,7 @@ PROD_COMPOSE := docker compose --env-file $(PROD_ENV) -f infra/compose.prod.yml
 	docker-config production-config production-up production-down \
 	production-provision-owner \
 	api-image admin-image customer-image images \
-	backup restore-smoke deepseek-live ci
+	backup restore-smoke backup-restore-dev-smoke deepseek-live ci
 
 bootstrap: install
 	cp -n .env.example .env 2>/dev/null || true
@@ -127,6 +127,9 @@ backup:
 restore-smoke:
 	@test -n "$$BACKUP_FILE" || (echo "BACKUP_FILE is required" >&2; exit 2)
 	scripts/restore_geo_backup_smoke.sh $(PROD_ENV) "$$BACKUP_FILE"
+
+backup-restore-dev-smoke:
+	scripts/backup_restore_development_smoke.sh
 
 deepseek-live:
 	@test -n "$$GEO_DEEPSEEK_API_KEY_FILE" || (echo "GEO_DEEPSEEK_API_KEY_FILE is required" >&2; exit 2)

@@ -29,27 +29,89 @@ def parser() -> argparse.ArgumentParser:
     value.add_argument("--admin-base", default="http://localhost:3001")
     value.add_argument("--customer-base", default="http://localhost:3000")
     value.add_argument("--project-id", required=True)
+    value.add_argument("--acceptance-result", type=Path)
+    value.add_argument("--customer-invitation", type=Path)
     value.add_argument("--output", type=Path, required=True)
     return value
 
 
-def admin_pages(project_id: str) -> tuple[tuple[str, str], ...]:
+def acceptance_selection(path: Path | None) -> dict[str, str]:
+    if path is None:
+        return {}
+    result = json.loads(path.read_text(encoding="utf-8"))
+    campaign = result["campaign"]
+    placement = result["placement"]
+    completed = next(
+        channel for channel in result["channels"] if channel["task_status"] == "completed"
+    )
+    return {
+        "campaign_id": campaign["campaign_id"],
+        "protocol_id": campaign["protocol_id"],
+        "destination_id": completed["destination_id"],
+        "opportunity_id": completed["opportunity_id"],
+        "brief_version_id": placement["brief_version_id"],
+        "attempt_id": placement["evidence_pack_attempt_id"],
+        "bundle_id": placement["prompt_bundle_id"],
+        "job_id": placement["generation_job_id"],
+        "version_id": placement["package_version_id"],
+        "publication_id": placement["publication_request_id"],
+        "submission_id": placement["submission_id"],
+    }
+
+
+def selected_path(root: str, selection: dict[str, str], **updates: str) -> str:
+    return f"{root}?{urlencode({**selection, **updates})}"
+
+
+def admin_pages(
+    project_id: str, selection: dict[str, str]
+) -> tuple[tuple[str, str], ...]:
     root = f"/projects/{project_id}/geo"
     return (
         ("03-admin-project-list", "/projects"),
         ("04-catalog-members", f"/projects/{project_id}"),
-        ("06-campaign-monitoring", root),
-        ("08-observations", f"{root}?{urlencode({'section': 'observations'})}"),
-        ("07-destinations", f"{root}?{urlencode({'section': 'destinations'})}"),
+        ("06-campaign-monitoring", selected_path(root, selection, section="campaigns")),
+        (
+            "08-observations",
+            selected_path(root, selection, section="observations", measurement_window="t28"),
+        ),
+        ("07-destinations", selected_path(root, selection, section="destinations")),
+        (
+            "09-placement-intake",
+            selected_path(root, selection, section="placement", placement_stage="intake"),
+        ),
         (
             "11-placement-generation",
-            f"{root}?{urlencode({'section': 'placement', 'placement_stage': 'generation'})}",
+            selected_path(
+                root, selection, section="placement", placement_stage="generation"
+            ),
         ),
         (
             "15-placement-publication",
-            f"{root}?{urlencode({'section': 'placement', 'placement_stage': 'publication'})}",
+            selected_path(
+                root, selection, section="placement", placement_stage="publication"
+            ),
         ),
     )
+
+
+def customer_pages(project_id: str) -> tuple[tuple[str, str], ...]:
+    project = urlencode({"project_id": project_id})
+    return (
+        ("16-customer-summary", "/"),
+        ("17-customer-metrics", f"/portal/metrics?{project}"),
+        ("18-customer-placements", f"/portal/placements?{project}"),
+        ("19-customer-reports", f"/portal/reports?{project}"),
+    )
+
+
+def redeem_customer_session(page: Page, *, base_url: str, invitation: Path) -> None:
+    credential = json.loads(invitation.read_text(encoding="utf-8"))
+    page.goto(base_url, wait_until="networkidle")
+    page.locator('input[name="invitation_id"]').fill(credential["invitation"]["id"])
+    page.locator('input[name="invite_token"]').fill(credential["invite_token"])
+    page.get_by_role("button", name="兑换邀请并登录").click()
+    page.locator('nav[aria-label="客户门户视图"]').wait_for()
 
 
 def capture(page: Page, *, name: str, url: str, viewport: str, output: Path) -> CaptureResult:
@@ -93,6 +155,7 @@ def capture(page: Page, *, name: str, url: str, viewport: str, output: Path) -> 
 def main() -> int:
     args = parser().parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
+    selection = acceptance_selection(args.acceptance_result)
     results: list[CaptureResult] = []
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
@@ -101,7 +164,7 @@ def main() -> int:
                 viewport={"width": size[0], "height": size[1]},
                 device_scale_factor=1,
             )
-            for name, path in admin_pages(args.project_id):
+            for name, path in admin_pages(args.project_id, selection):
                 results.append(
                     capture(
                         context.new_page(),
@@ -111,15 +174,34 @@ def main() -> int:
                         output=args.output,
                     )
                 )
-            results.append(
-                capture(
-                    context.new_page(),
-                    name="16-customer-entry",
-                    url=args.customer_base,
-                    viewport=viewport,
-                    output=args.output,
+            if args.customer_invitation:
+                login_page = context.new_page()
+                redeem_customer_session(
+                    login_page,
+                    base_url=args.customer_base,
+                    invitation=args.customer_invitation,
                 )
-            )
+                login_page.close()
+                for name, path in customer_pages(args.project_id):
+                    results.append(
+                        capture(
+                            context.new_page(),
+                            name=name,
+                            url=f"{args.customer_base.rstrip('/')}{path}",
+                            viewport=viewport,
+                            output=args.output,
+                        )
+                    )
+            else:
+                results.append(
+                    capture(
+                        context.new_page(),
+                        name="16-customer-entry",
+                        url=args.customer_base,
+                        viewport=viewport,
+                        output=args.output,
+                    )
+                )
             context.close()
         browser.close()
     report = args.output / "browser-report.json"
