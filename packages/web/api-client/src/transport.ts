@@ -17,6 +17,12 @@ export type RuntimeErrorEnvelope = Readonly<{
   correlation_id: string;
   retryable?: boolean;
   details?: unknown;
+  type?: string;
+  title?: string;
+  status?: number;
+  instance?: string;
+  request_id?: string;
+  errors?: unknown[] | null;
 }>;
 
 export type RuntimeHttpResult<T> =
@@ -94,6 +100,14 @@ export function parseRuntimeError(
     code: nonEmptyString(record?.code) || `runtime_http_${status}`,
     detail,
     correlation_id: correlationId,
+    ...(nonEmptyString(record?.type) ? { type: nonEmptyString(record?.type) } : {}),
+    ...(nonEmptyString(record?.title) ? { title: nonEmptyString(record?.title) } : {}),
+    ...(typeof record?.status === "number" ? { status: record.status } : {}),
+    ...(nonEmptyString(record?.instance) ? { instance: nonEmptyString(record?.instance) } : {}),
+    ...(nonEmptyString(record?.request_id) ? { request_id: nonEmptyString(record?.request_id) } : {}),
+    ...(Array.isArray(record?.errors) || record?.errors === null
+      ? { errors: record.errors }
+      : {}),
     ...(retryable === undefined ? {} : { retryable }),
     ...(explicitDetails !== undefined
       ? { details: explicitDetails }

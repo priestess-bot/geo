@@ -307,20 +307,57 @@ class AdminCustomerWebContractsTest(unittest.TestCase):
         self.assertIn("report_exports", script_source)
         self.assertIn("traceability_bundles", script_source)
 
-    def test_customer_web_uses_runtime_data_instead_of_placeholder_score(self) -> None:
+    def test_customer_web_uses_only_stable_read_only_geo_resources(self) -> None:
         home_source = (ROOT / "apps/customer-web/app/page.tsx").read_text(encoding="utf-8")
         runtime_source = (ROOT / "apps/customer-web/app/runtime.ts").read_text(encoding="utf-8")
         module_source = (ROOT / "apps/customer-web/app/portal/[module]/page.tsx").read_text(encoding="utf-8")
-        artifact_route_source = (ROOT / "apps/customer-web/app/api/report-artifact/route.ts").read_text(encoding="utf-8")
+        client_source = (ROOT / "packages/web/api-client/src/customer.ts").read_text(encoding="utf-8")
+        types_source = (ROOT / "packages/web/types/src/customer.ts").read_text(encoding="utf-8")
+        views_source = (ROOT / "apps/customer-web/app/_components/GeoViews.tsx").read_text(encoding="utf-8")
+        chrome_source = (ROOT / "apps/customer-web/app/_components/PortalChrome.tsx").read_text(encoding="utf-8")
 
         self.assertIn("invitation_id", home_source)
-        self.assertIn("invite_token", home_source)
-        self.assertIn("bundle?.access?.member_user_id", home_source)
-        self.assertIn("actorId?: string", runtime_source)
-        self.assertIn("latestScore(runtime.scores)", home_source)
-        self.assertNotIn("const score = undefined", home_source)
-        self.assertNotIn('"36%"', home_source)
-        for endpoint in (
+        self.assertIn("loadSessionPortal", home_source)
+        self.assertIn("Promise.all", runtime_source)
+        self.assertIn("{ Cookie:", runtime_source)
+        self.assertIn("GEO_SESSION_COOKIE", runtime_source)
+        for client_method in (
+            "listProjects",
+            "getGeoSummary",
+            "listGeoMetrics",
+            "listMeasurementWindows",
+            "listVerifiedUrls",
+            "listApprovedReports",
+        ):
+            self.assertIn(client_method, runtime_source)
+            self.assertIn(client_method, client_source)
+        for stable_path in (
+            '"/v1/projects"',
+            '"summary"',
+            '"metrics"',
+            '"measurement-windows"',
+            '"verified-urls"',
+            '"reports"',
+        ):
+            self.assertIn(stable_path, client_source)
+
+        self.assertIn("CustomerProblemDetails", runtime_source)
+        self.assertIn("CustomerProblemDetails", types_source)
+        self.assertIn("project.role", chrome_source)
+        self.assertIn("session.projects", chrome_source)
+        self.assertIn("SummaryView", module_source)
+        self.assertIn("MetricsView", module_source)
+        self.assertIn("PlacementsView", module_source)
+        self.assertIn("ReportsView", module_source)
+        self.assertIn("已批准报告", views_source)
+        self.assertIn("未验证地址不会在此显示", views_source)
+        self.assertNotIn("Record<string, unknown>", types_source)
+        self.assertNotIn("JSON.stringify", module_source)
+        self.assertNotIn("<pre>", module_source)
+
+        combined = "\n".join((runtime_source, client_source, types_source, views_source, module_source))
+        for forbidden in (
+            "/v1/geo/customer-summary",
             "/v1/visibility-scores/runtime",
             "/v1/evidence-runs/runtime",
             "/v1/collection-runs/runtime",
@@ -329,23 +366,16 @@ class AdminCustomerWebContractsTest(unittest.TestCase):
             "/v1/report-export-jobs/runtime",
             "/v1/action-plans/runtime",
             "/v1/traceability/runtime",
+            "X-GEO-Actor-Id",
+            "X-GEO-Session-Token",
+            "Session-Actor",
+            "raw_observation",
+            "internal_evidence",
+            "prompt_bundle",
+            "unapproved_report",
         ):
-            self.assertIn(endpoint, runtime_source)
-        self.assertIn("/api/report-artifact", module_source)
-        self.assertIn("function KeyValueGrid", module_source)
-        self.assertIn("function RecordList", module_source)
-        self.assertIn("正式交付包准备状态", module_source)
-        self.assertIn("Traceability Bundle", module_source)
-        self.assertIn("行动建议", module_source)
-        self.assertNotIn("JSON.stringify", module_source)
-        self.assertNotIn("<pre>", module_source)
-        self.assertIn("/v1/reports/runtime/", artifact_route_source)
-        self.assertIn("X-GEO-Session-Token", artifact_route_source)
-        self.assertNotIn("/v1/customer-portal/access", artifact_route_source)
-        self.assertNotIn("X-GEO-Actor-Id", artifact_route_source)
-        self.assertNotIn("portal_token", home_source)
-        self.assertNotIn("portal_token", module_source)
-        self.assertNotIn("接入后会在此页", module_source)
+            self.assertNotIn(forbidden, combined)
+        self.assertFalse((ROOT / "apps/customer-web/app/api/report-artifact/route.ts").exists())
 
 
 if __name__ == "__main__":

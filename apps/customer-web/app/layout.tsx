@@ -5,7 +5,7 @@ import "./globals.css";
 
 export const metadata = {
   title: "GEO 客户工作台",
-  description: "AI 搜索可见度、证据、报告与行动交付门户"
+  description: "AI 搜索推荐表现、已验证投放与测量报告门户"
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
