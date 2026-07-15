@@ -45,7 +45,7 @@ services:
     command:
       - /bin/sh
       - -c
-      - uv run alembic upgrade head && uv run python scripts/provision_dev_database.py
+      - alembic upgrade head && python scripts/provision_dev_database.py
     depends_on:
       postgres:
         condition: service_healthy

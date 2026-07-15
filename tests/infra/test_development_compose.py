@@ -31,6 +31,7 @@ def test_development_api_logins_are_not_installer_superuser() -> None:
     assert "geo_app_dev" in services["customer-api"]["environment"]["DATABASE_URL"]
     assert "geo_worker_dev" in services["task-worker"]["environment"]["DATABASE_URL"]
     assert "provision_dev_database.py" in " ".join(services["migrate"]["command"])
+    assert "uv run" not in " ".join(services["migrate"]["command"])
     assert services["migrate"]["environment"]["GEO_DEV_BOOTSTRAP_ENABLED"] == "1"
 
 
