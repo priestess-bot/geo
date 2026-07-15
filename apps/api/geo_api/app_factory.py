@@ -22,6 +22,9 @@ from geo_api.foundation_services import (
     services_from_environment,
 )
 from geo_api.problems import install_problem_handlers
+from geo_api.placement_campaign_routes import campaign_router
+from geo_api.placement_generation_routes import generation_router
+from geo_api.placement_publication_routes import publication_router
 from geo_api.stable_routes import (
     Surface,
     auth_router,
@@ -60,6 +63,7 @@ def create_api_app(
     settings: ApiSettings | None = None,
     services: FoundationServices | None = None,
     engineering_service: object | None = None,
+    placement_services: object | None = None,
 ) -> FastAPI:
     """Build one API surface without importing the legacy application module."""
 
@@ -88,6 +92,7 @@ def create_api_app(
     app.state.services = resolved_services
     app.state.customer_session_cookie_name = resolved_settings.customer_session_cookie_name
     app.state.engineering_service = engineering_service or build_engineering_service()
+    app.state.placement_services = placement_services
     install_problem_handlers(app)
     _install_request_metadata_middleware(app, surface=surface)
 
@@ -96,6 +101,9 @@ def create_api_app(
     app.include_router(projects_router(surface=surface))
     app.include_router(jobs_router())
     if surface == "internal":
+        app.include_router(campaign_router())
+        app.include_router(generation_router())
+        app.include_router(publication_router())
         app.include_router(engineering_router())
         app.include_router(github_integration_router())
         if resolved_settings.dev_tools_enabled:

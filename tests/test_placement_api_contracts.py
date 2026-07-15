@@ -1,0 +1,64 @@
+from geo_api.app_factory import create_api_app
+from pathlib import Path
+
+
+def test_placement_routes_are_stable_and_internal_only() -> None:
+    internal = create_api_app(surface="internal").openapi()["paths"]
+    customer = create_api_app(surface="customer").openapi()["paths"]
+    expected = {
+        "/v1/projects/{project_id}/geo/campaigns",
+        "/v1/projects/{project_id}/geo/campaigns/{campaign_id}/monitoring-queries",
+        "/v1/projects/{project_id}/geo/destinations",
+        "/v1/projects/{project_id}/geo/campaigns/{campaign_id}/opportunities",
+        "/v1/projects/{project_id}/geo/opportunities/{opportunity_id}/brief-versions",
+        "/v1/projects/{project_id}/geo/brief-versions/{brief_version_id}/evidence-pack-attempts",
+        "/v1/projects/{project_id}/geo/prompt-skills/{skill_id}/releases",
+        "/v1/projects/{project_id}/geo/brief-versions/{brief_version_id}/prompt-bundles",
+        "/v1/projects/{project_id}/geo/prompt-bundles/{prompt_bundle_id}/generation-jobs",
+        "/v1/projects/{project_id}/geo/opportunities/{opportunity_id}/package-versions",
+        "/v1/projects/{project_id}/geo/package-versions/{version_id}/claims",
+        "/v1/projects/{project_id}/geo/package-versions/{version_id}/reviews",
+        "/v1/projects/{project_id}/geo/package-versions/{version_id}/publication-requests",
+        "/v1/projects/{project_id}/geo/publication-requests/{publication_request_id}/submissions",
+        "/v1/projects/{project_id}/geo/submissions/{submission_id}/verification-jobs",
+        "/v1/projects/{project_id}/geo/submissions/{submission_id}/measurements",
+    }
+    assert expected <= set(internal)
+    assert not any("/geo/" in path for path in customer)
+    assert not any(term in path for path in internal for term in ("runtime", "p0a", "p0b", "fixture"))
+
+
+def test_generation_and_publication_require_idempotency_header() -> None:
+    document = create_api_app(surface="internal").openapi()
+    paths = (
+        "/v1/projects/{project_id}/geo/prompt-bundles/{prompt_bundle_id}/generation-jobs",
+        "/v1/projects/{project_id}/geo/package-versions/{version_id}/publication-requests",
+        "/v1/projects/{project_id}/geo/submissions/{submission_id}/verification-jobs",
+    )
+    for path in paths:
+        parameters = document["paths"][path]["post"]["parameters"]
+        header = next(item for item in parameters if item["name"] == "Idempotency-Key")
+        assert header["required"] is True
+
+
+def test_export_is_not_a_publication_operation() -> None:
+    document = create_api_app(surface="internal").openapi()["paths"]
+    export_path = "/v1/projects/{project_id}/geo/package-versions/{version_id}/exports"
+    publication_path = (
+        "/v1/projects/{project_id}/geo/package-versions/{version_id}/publication-requests"
+    )
+    assert document[export_path]["post"]["operationId"] == "exportPlacementPackageVersion"
+    assert document[publication_path]["post"]["operationId"] == "requestPlacementPublication"
+
+
+def test_placement_slice_has_no_legacy_dependency_and_respects_file_budget() -> None:
+    roots = (Path("packages/geo_core/geo_core/placements"), Path("apps/api/geo_api"))
+    files = list(roots[0].glob("*.py")) + list(roots[1].glob("placement_*.py"))
+    forbidden = (
+        "geo_api.main", "geo_core.geo_placement", "from scripts", "import scripts",
+        "from workers", "import workers", "content_drafts",
+    )
+    for path in files:
+        source = path.read_text(encoding="utf-8")
+        assert len(source.splitlines()) <= 600, path
+        assert not any(term in source for term in forbidden), path

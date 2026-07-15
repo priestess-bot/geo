@@ -16,6 +16,7 @@ from geo_core.access.models import (
     AccessPersistenceUnavailable,
     AuthenticationRequired,
 )
+from geo_core.placements.domain import ConcurrencyConflict, PlacementRuleViolation
 
 
 _LOGGER = logging.getLogger("geo_api.errors")
@@ -106,6 +107,34 @@ def install_problem_handlers(app: FastAPI) -> None:
                 detail="The access persistence service is unavailable.",
                 type_uri="urn:geo:problem:service-unavailable",
                 headers={"Retry-After": "30"},
+            ),
+        )
+
+    @app.exception_handler(PlacementRuleViolation)
+    async def placement_rule_handler(
+        request: Request, exc: PlacementRuleViolation
+    ) -> JSONResponse:
+        return _response(
+            request,
+            ApiProblem(
+                status=422,
+                title="Placement Rule Violation",
+                detail=str(exc),
+                type_uri="urn:geo:problem:placement-rule-violation",
+            ),
+        )
+
+    @app.exception_handler(ConcurrencyConflict)
+    async def concurrency_handler(
+        request: Request, exc: ConcurrencyConflict
+    ) -> JSONResponse:
+        return _response(
+            request,
+            ApiProblem(
+                status=409,
+                title="Concurrency Conflict",
+                detail=str(exc),
+                type_uri="urn:geo:problem:stale-version",
             ),
         )
 
