@@ -16,7 +16,7 @@ def test_admin_member_ui_uses_only_stable_internal_contracts() -> None:
 
     assert "MemberGovernancePanel" in page
     assert "loadProjectMembers" in page
-    assert 'activeTab === "entry"' in page
+    assert "Promise.all" in page
     assert "/v1/project-members/runtime" not in page
     assert "/v1/project-members/runtime" not in actions
     assert "/v1/projects/${encodeURIComponent(projectId)}/members" in data
