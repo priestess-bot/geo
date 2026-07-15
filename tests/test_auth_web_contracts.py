@@ -121,19 +121,21 @@ class AuthWebContractTests(unittest.TestCase):
         self.assertNotIn("GEO_RUNTIME_AUTH_MODE", runtime)
 
     def test_admin_invitation_ui_uses_stable_management_contract(self) -> None:
-        sources = "\n".join(
+        create_project = source(ADMIN / "app/projects/new/actions.ts")
+        invitation_sources = "\n".join(
             source(path)
             for path in (
-                ADMIN / "app/projects/new/actions.ts",
-                ADMIN / "app/projects/[project_id]/actions.ts",
-                ADMIN / "app/projects/[project_id]/page.tsx",
+                ADMIN / "app/projects/[project_id]/invitationActions.ts",
+                ADMIN / "app/projects/[project_id]/invitationData.ts",
+                ADMIN / "app/projects/[project_id]/InvitationManagementPanel.tsx",
             )
         )
-        self.assertIn("/invitations`,", sources)
-        self.assertIn("/revoke`", sources)
-        self.assertIn("idempotencyKey", sources)
-        self.assertNotIn("/v1/project-member-invitations/runtime", sources)
-        self.assertIn("create_customer_invitation: false", sources)
+        self.assertIn("/invitations`;", invitation_sources)
+        self.assertIn("/revoke`", invitation_sources)
+        self.assertIn("idempotencyKey", invitation_sources)
+        self.assertNotIn("/v1/project-member-invitations/runtime", invitation_sources)
+        self.assertNotIn("invitations", create_project)
+        self.assertNotIn("create_customer_invitation", create_project)
 
     def test_admin_uses_oidc_bearer_or_explicit_development_identity(self) -> None:
         runtime = source(ADMIN / "app/runtime.ts")

@@ -1,26 +1,46 @@
 import type { ProjectInvitationListResponse } from "@geo/types/auth";
 
 import { runtimeRequest } from "../../runtime";
+import {
+  isInvitationListResponse,
+  type InvitationLoadResult
+} from "./invitationTypes";
 
-type InvitationPage = {
-  total_count: number;
-  records: Array<Record<string, unknown>>;
-  limit: number;
-  offset: number;
+const emptyPage: ProjectInvitationListResponse = {
+  items: [],
+  total: 0,
+  limit: 100,
+  offset: 0
 };
 
-export async function loadProjectInvitations(projectId: string): Promise<InvitationPage> {
+export async function loadProjectInvitations(projectId: string): Promise<InvitationLoadResult> {
   const response = await runtimeRequest<ProjectInvitationListResponse>(
     `/v1/projects/${encodeURIComponent(projectId)}/invitations`,
     { query: { limit: 100, offset: 0 } }
   );
   if (!response.ok) {
-    return { total_count: 0, records: [], limit: 100, offset: 0 };
+    return {
+      page: emptyPage,
+      problem: {
+        ...(response.status === undefined ? {} : { status: response.status }),
+        detail: response.error || "客户邀请加载失败。",
+        ...(response.problem.correlation_id
+          ? { correlationId: response.problem.correlation_id }
+          : {})
+      }
+    };
   }
-  return {
-    total_count: response.data.total,
-    records: response.data.items.map((invitation) => ({ invitation })),
-    limit: response.data.limit,
-    offset: response.data.offset
-  };
+  if (!isInvitationListResponse(response.data)) {
+    return {
+      page: emptyPage,
+      problem: {
+        status: 502,
+        detail: "客户邀请接口返回了无法识别的响应。",
+        ...(response.response.correlationId
+          ? { correlationId: response.response.correlationId }
+          : {})
+      }
+    };
+  }
+  return { page: response.data };
 }
