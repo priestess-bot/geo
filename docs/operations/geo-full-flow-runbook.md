@@ -80,7 +80,9 @@ make production-provision-owner PROD_ENV=infra/production.env
 
 ### 3.2 本地开发身份
 
-本地自动化可以在明确启用 Dev Tools 的非生产环境使用 Catalog Bootstrap，然后用返回的 identity/tenant 作为开发认证头。Dev Tools 默认关闭，不能用于客户演示或生产。
+标准 development Compose 会幂等创建 `GEO Development Project` 和本地 Owner，Admin BFF 只在 development 模式自动发送这组固定身份头。执行 `make dev-up` 后直接访问 `http://localhost:3001/projects`，应看到该项目；不需要伪造 Cookie、手填 UUID 或开启 Dev Tools。
+
+只有需要为自动化额外创建隔离项目时，才临时设置 `GEO_DEV_TOOLS_ENABLED=1` 并重启 Internal API，然后调用 Catalog Bootstrap。Dev Tools 默认关闭，不能用于客户演示或生产。
 
 ```bash
 curl -sS -X POST http://localhost:8000/v1/dev-tools/catalog-bootstrap \
@@ -93,7 +95,7 @@ curl -sS -X POST http://localhost:8000/v1/dev-tools/catalog-bootstrap \
   }'
 ```
 
-只有显式 `GEO_DEV_TOOLS_ENABLED=1` 且环境不是 production 时该路由才存在。普通人工 UI 验收使用组织 OIDC，不为绕过登录而开启生产 Dev Tools。
+只有显式 `GEO_DEV_TOOLS_ENABLED=1` 且环境不是 production 时该路由才存在。生产人工 UI 验收使用组织 OIDC，不为绕过登录而开启生产 Dev Tools。
 
 成功标准：`/v1/auth/me` 返回可信身份及完整项目 membership；Admin 项目列表只显示获授权项目。
 

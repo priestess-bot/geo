@@ -167,6 +167,7 @@ services:
       dockerfile: apps/admin-web/Dockerfile
     environment:
       API_INTERNAL_BASE_URL: http://internal-api:8000
+      GEO_DEPLOYMENT_ENVIRONMENT: development
       GEO_AUTH_MODE: development
       GEO_ADMIN_ACTOR_ID: 30000000-0000-4000-8000-000000000003
       GEO_ADMIN_TENANT_ID: 10000000-0000-4000-8000-000000000001
@@ -184,7 +185,9 @@ services:
       dockerfile: apps/customer-web/Dockerfile
     environment:
       API_CUSTOMER_BASE_URL: http://customer-api:8000
+      GEO_DEPLOYMENT_ENVIRONMENT: development
       NEXT_PUBLIC_API_BASE_URL: http://localhost:${GEO_CUSTOMER_API_HOST_PORT:-8001}
+      ADMIN_WEB_BASE_URL: http://localhost:${GEO_ADMIN_WEB_HOST_PORT:-3001}
       PORT: "3000"
     ports:
       - "${GEO_CUSTOMER_WEB_HOST_PORT:-3000}:3000"

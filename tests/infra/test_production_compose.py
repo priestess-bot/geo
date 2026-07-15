@@ -100,6 +100,17 @@ def test_production_compose_contains_no_source_mounts_or_weak_default_credential
     assert "digest-pinned" in raw
 
 
+def test_production_web_portals_use_strict_deployment_url_policy() -> None:
+    services = load_compose()["services"]
+
+    assert services["admin-web"]["environment"]["GEO_DEPLOYMENT_ENVIRONMENT"] == (
+        "production"
+    )
+    assert services["customer-web"]["environment"]["GEO_DEPLOYMENT_ENVIRONMENT"] == (
+        "production"
+    )
+
+
 def test_backup_and_restore_smoke_scripts_are_present() -> None:
     backup = ROOT / "scripts" / "backup_geo_data.sh"
     restore = ROOT / "scripts" / "restore_geo_backup_smoke.sh"

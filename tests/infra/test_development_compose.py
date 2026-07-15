@@ -42,3 +42,10 @@ def test_development_admin_uses_the_deterministic_local_owner() -> None:
     assert environment["GEO_AUTH_MODE"] == "development"
     assert environment["GEO_ADMIN_ACTOR_ID"] == "30000000-0000-4000-8000-000000000003"
     assert environment["GEO_ADMIN_TENANT_ID"] == "10000000-0000-4000-8000-000000000001"
+    assert environment["GEO_DEPLOYMENT_ENVIRONMENT"] == "development"
+    assert services["customer-web"]["environment"]["GEO_DEPLOYMENT_ENVIRONMENT"] == (
+        "development"
+    )
+    assert "GEO_ADMIN_WEB_HOST_PORT" in services["customer-web"]["environment"][
+        "ADMIN_WEB_BASE_URL"
+    ]

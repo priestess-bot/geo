@@ -11,9 +11,66 @@ ADMIN = ROOT / "apps/admin-web"
 CUSTOMER = ROOT / "apps/customer-web"
 TRANSPORT = ROOT / "packages/web/api-client/src/transport.ts"
 CUSTOMER_CLIENT = ROOT / "packages/web/api-client/src/customer.ts"
+PORTAL_URL = ROOT / "packages/web/auth/src/portal-url.ts"
 
 
 class WebRuntimeTransportContractTests(unittest.TestCase):
+    def test_portal_url_policy_uses_deployment_environment_not_next_build_mode(self) -> None:
+        node_script = r"""
+function assert(condition, message) {
+  if (!condition) throw new Error(message);
+}
+
+const { resolveCounterpartPortalUrl } = await import(process.argv[1]);
+const common = {
+  developmentFallback: "http://localhost:3000/",
+  environmentName: "CUSTOMER_WEB_BASE_URL",
+  nodeEnv: "production"
+};
+const local = resolveCounterpartPortalUrl({
+  ...common,
+  configuredValue: "http://localhost:3000/",
+  deploymentEnvironment: "development"
+});
+assert(local === "http://localhost:3000/", "explicit development rejected loopback HTTP");
+
+for (const deploymentEnvironment of ["production", "staging"]) {
+  let rejected = false;
+  try {
+    resolveCounterpartPortalUrl({
+      ...common,
+      configuredValue: "http://localhost:3000/",
+      deploymentEnvironment
+    });
+  } catch (error) {
+    rejected = error instanceof Error && error.message.includes("must use HTTPS");
+  }
+  assert(rejected, `${deploymentEnvironment} accepted loopback HTTP`);
+}
+
+let missingRejected = false;
+try {
+  resolveCounterpartPortalUrl({ ...common, deploymentEnvironment: "production" });
+} catch (error) {
+  missingRejected = error instanceof Error && error.message.includes("is required");
+}
+assert(missingRejected, "production accepted a missing counterpart portal URL");
+"""
+        subprocess.run(
+            [
+                "node",
+                "--experimental-strip-types",
+                "--input-type=module",
+                "-e",
+                node_script,
+                PORTAL_URL.as_uri(),
+            ],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
     def test_transport_has_one_shared_source_of_truth(self) -> None:
         source = TRANSPORT.read_bytes()
         self.assertEqual(len(hashlib.sha256(source).hexdigest()), 64)

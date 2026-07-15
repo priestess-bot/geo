@@ -46,6 +46,7 @@ export function adminActorId(): string {
 export function customerWebBaseUrl(): string {
   return resolveCounterpartPortalUrl({
     configuredValue: process.env.CUSTOMER_WEB_BASE_URL,
+    deploymentEnvironment: process.env.GEO_DEPLOYMENT_ENVIRONMENT,
     developmentFallback: "http://localhost:3000/",
     environmentName: "CUSTOMER_WEB_BASE_URL",
     nodeEnv: process.env.NODE_ENV,

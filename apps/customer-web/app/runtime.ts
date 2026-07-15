@@ -48,6 +48,7 @@ export function apiBase(): string {
 export function adminWebBaseUrl(): string {
   return resolveCounterpartPortalUrl({
     configuredValue: process.env.ADMIN_WEB_BASE_URL,
+    deploymentEnvironment: process.env.GEO_DEPLOYMENT_ENVIRONMENT,
     developmentFallback: "http://localhost:3001/login",
     environmentName: "ADMIN_WEB_BASE_URL",
     nodeEnv: process.env.NODE_ENV,

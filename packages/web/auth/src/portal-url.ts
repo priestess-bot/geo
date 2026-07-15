@@ -1,24 +1,29 @@
 export function resolveCounterpartPortalUrl({
   configuredValue,
+  deploymentEnvironment,
   developmentFallback,
   environmentName,
   nodeEnv,
   publicDevelopmentValue
 }: {
   configuredValue?: string;
+  deploymentEnvironment?: string;
   developmentFallback: string;
   environmentName: "ADMIN_WEB_BASE_URL" | "CUSTOMER_WEB_BASE_URL";
   nodeEnv?: string;
   publicDevelopmentValue?: string;
 }): string {
-  const production = nodeEnv === "production";
+  const deployment = deploymentEnvironment?.trim().toLowerCase();
+  const localDevelopment = deployment
+    ? deployment === "development"
+    : nodeEnv !== "production";
   const configured = configuredValue?.trim() || "";
-  if (production && !configured) {
+  if (!localDevelopment && !configured) {
     throw new Error(`${environmentName} is required in production`);
   }
   const candidate = configured
-    || (!production ? publicDevelopmentValue?.trim() : "")
-    || (!production ? developmentFallback : "");
+    || (localDevelopment ? publicDevelopmentValue?.trim() : "")
+    || (localDevelopment ? developmentFallback : "");
   let url: URL;
   try {
     url = new URL(candidate);
@@ -31,7 +36,7 @@ export function resolveCounterpartPortalUrl({
   if (url.protocol === "https:") {
     return url.toString();
   }
-  if (url.protocol === "http:" && !production && isLoopbackHost(url.hostname)) {
+  if (url.protocol === "http:" && localDevelopment && isLoopbackHost(url.hostname)) {
     return url.toString();
   }
   throw new Error(`${environmentName} must use HTTPS outside local development`);

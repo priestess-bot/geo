@@ -262,6 +262,7 @@ services:
       - /tmp:size=128m,noexec,nosuid
     environment:
       API_INTERNAL_BASE_URL: http://internal-api:8000
+      GEO_DEPLOYMENT_ENVIRONMENT: production
       CUSTOMER_WEB_BASE_URL: ${GEO_CUSTOMER_WEB_BASE_URL:?set GEO_CUSTOMER_WEB_BASE_URL}
       GEO_ADMIN_OIDC_LOGIN_URL: ${GEO_ADMIN_OIDC_LOGIN_URL:?set GEO_ADMIN_OIDC_LOGIN_URL}
       GEO_ADMIN_OIDC_LOGOUT_URL: ${GEO_ADMIN_OIDC_LOGOUT_URL:?set GEO_ADMIN_OIDC_LOGOUT_URL}
@@ -284,6 +285,7 @@ services:
       - /tmp:size=128m,noexec,nosuid
     environment:
       API_CUSTOMER_BASE_URL: http://customer-api:8000
+      GEO_DEPLOYMENT_ENVIRONMENT: production
       ADMIN_WEB_BASE_URL: ${GEO_ADMIN_WEB_BASE_URL:?set GEO_ADMIN_WEB_BASE_URL}
       PORT: "3000"
     ports:
