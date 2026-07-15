@@ -5,16 +5,12 @@ from __future__ import annotations
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Header, Query, Request, status
+from fastapi import APIRouter, Header, Query, Request
 
 from geo_api.contracts import (
     AuthIdentity,
     DevToolsStatus,
-    EngineeringStatus,
-    EngineeringSyncRequest,
-    EngineeringWorkItemList,
     HealthStatus,
-    JobAccepted,
     JobStatus,
     LogoutResult,
     OffsetPage,
@@ -126,38 +122,6 @@ def jobs_router() -> APIRouter:
                 type_uri="urn:geo:problem:job-not-found",
             )
         return job
-
-    return router
-
-
-def engineering_router() -> APIRouter:
-    router = APIRouter(
-        prefix="/v1/engineering",
-        tags=["engineering"],
-        responses=PROBLEM_RESPONSES,
-    )
-
-    @router.get("/status", response_model=EngineeringStatus, operation_id="getEngineeringStatus")
-    def engineering_status() -> EngineeringStatus:
-        return EngineeringStatus(capabilities=["code", "ci", "runtime-health"])
-
-    @router.get(
-        "/work-items",
-        response_model=EngineeringWorkItemList,
-        operation_id="listEngineeringWorkItems",
-    )
-    def list_work_items() -> EngineeringWorkItemList:
-        # An empty projection is truthful until the GitHub/CI health adapters are connected.
-        return EngineeringWorkItemList(items=[])
-
-    @router.post(
-        "/synchronizations",
-        response_model=JobAccepted,
-        status_code=status.HTTP_202_ACCEPTED,
-        operation_id="requestEngineeringSynchronization",
-    )
-    def request_sync(payload: EngineeringSyncRequest, request: Request) -> JobAccepted:
-        return _services(request).request_engineering_sync(payload)
 
     return router
 

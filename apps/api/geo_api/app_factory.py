@@ -15,12 +15,13 @@ from fastapi import FastAPI, Request
 from starlette.responses import Response
 
 from geo_api.foundation_services import FoundationServices, UnavailableFoundationServices
+from geo_api.engineering_routes import engineering_router, github_integration_router
+from geo_api.engineering_runtime import build_engineering_service
 from geo_api.problems import install_problem_handlers
 from geo_api.stable_routes import (
     Surface,
     auth_router,
     dev_tools_router,
-    engineering_router,
     health_router,
     jobs_router,
     projects_router,
@@ -47,6 +48,7 @@ def create_api_app(
     surface: Surface,
     settings: ApiSettings | None = None,
     services: FoundationServices | None = None,
+    engineering_service: object | None = None,
 ) -> FastAPI:
     """Build one API surface without importing the legacy application module."""
 
@@ -70,6 +72,7 @@ def create_api_app(
     )
     app.state.ready = False
     app.state.services = services or UnavailableFoundationServices()
+    app.state.engineering_service = engineering_service or build_engineering_service()
     install_problem_handlers(app)
     _install_request_metadata_middleware(app, surface=surface)
 
@@ -79,6 +82,7 @@ def create_api_app(
     app.include_router(jobs_router())
     if surface == "internal":
         app.include_router(engineering_router())
+        app.include_router(github_integration_router())
         if resolved_settings.dev_tools_enabled:
             app.include_router(dev_tools_router())
     return app

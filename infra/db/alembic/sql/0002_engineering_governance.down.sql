@@ -1,0 +1,11 @@
+DROP FUNCTION IF EXISTS geo_assert_engineering_job_kind() CASCADE;
+DROP TABLE IF EXISTS engineering_job_specs CASCADE;
+DROP TABLE IF EXISTS engineering_events CASCADE;
+DROP TABLE IF EXISTS engineering_webhook_deliveries CASCADE;
+DROP TABLE IF EXISTS engineering_service_health CASCADE;
+DROP TABLE IF EXISTS engineering_ci_checks CASCADE;
+DROP TABLE IF EXISTS engineering_ci_runs CASCADE;
+DROP TABLE IF EXISTS engineering_pull_requests CASCADE;
+DROP TABLE IF EXISTS engineering_work_items CASCADE;
+DROP TABLE IF EXISTS engineering_github_bindings CASCADE;
+DROP TABLE IF EXISTS engineering_repositories CASCADE;

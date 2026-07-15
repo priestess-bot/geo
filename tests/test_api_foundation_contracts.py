@@ -34,7 +34,10 @@ def test_internal_and_customer_openapi_are_isolated_and_stable() -> None:
     assert shared <= customer_paths
     assert "/v1/engineering/status" in internal_paths
     assert "/v1/engineering/work-items" in internal_paths
-    assert "/v1/engineering/synchronizations" in internal_paths
+    assert "/v1/engineering/reconciliations" in internal_paths
+    assert "/v1/engineering/health-probes" in internal_paths
+    assert "/v1/engineering/events" in internal_paths
+    assert "/v1/integrations/github/events" in internal_paths
     assert not any(path.startswith("/v1/engineering") for path in customer_paths)
     assert not any(path.startswith("/v1/dev-tools") for path in customer_paths)
 
@@ -88,7 +91,7 @@ def test_dev_tools_registration_is_internal_and_fail_closed() -> None:
 def test_job_accepted_contract_is_typed_in_internal_openapi() -> None:
     app = create_api_app(surface="internal")
     document = app.openapi()
-    operation = document["paths"]["/v1/engineering/synchronizations"]["post"]
+    operation = document["paths"]["/v1/engineering/reconciliations"]["post"]
     response_schema = operation["responses"]["202"]["content"]["application/json"]["schema"]
 
     assert response_schema["$ref"].endswith("/JobAccepted")

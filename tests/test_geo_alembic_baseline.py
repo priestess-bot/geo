@@ -9,10 +9,16 @@ BASELINE = (ALEMBIC / "sql" / "0001_geo_baseline.sql").read_text(encoding="utf-8
 
 def test_revision_graph_has_exactly_one_root_and_head() -> None:
     revisions = sorted((ALEMBIC / "versions").glob("*.py"))
-    assert [path.name for path in revisions] == ["0001_geo_baseline.py"]
-    revision = revisions[0].read_text(encoding="utf-8")
-    assert 'revision = "0001_geo_baseline"' in revision
-    assert "down_revision = None" in revision
+    assert [path.name for path in revisions] == [
+        "0001_geo_baseline.py",
+        "0002_engineering_governance.py",
+    ]
+    root = revisions[0].read_text(encoding="utf-8")
+    head = revisions[1].read_text(encoding="utf-8")
+    assert 'revision = "0001_geo_baseline"' in root
+    assert "down_revision = None" in root
+    assert 'revision = "0002_engineering_governance"' in head
+    assert 'down_revision = "0001_geo_baseline"' in head
 
 
 def test_baseline_covers_required_geo_aggregates() -> None:
