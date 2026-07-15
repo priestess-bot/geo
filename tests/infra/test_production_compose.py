@@ -56,6 +56,38 @@ def test_durable_worker_and_outbox_relay_use_the_worker_database_identity() -> N
     assert "deepseek_api_key" not in relay["secrets"]
 
 
+def test_minio_bootstrap_receives_every_principal_it_requires() -> None:
+    compose = load_compose()
+    bootstrap = compose["services"]["minio-bootstrap"]
+    required = {
+        "object_store_access_key",
+        "object_store_secret_key",
+        "object_store_backup_access_key",
+        "object_store_backup_secret_key",
+        "object_store_restore_access_key",
+        "object_store_restore_secret_key",
+        "object_store_retention_access_key",
+        "object_store_retention_secret_key",
+    }
+
+    assert required <= set(bootstrap["secrets"])
+    assert required <= set(compose["secrets"])
+    for name in required:
+        assert bootstrap["environment"][name.upper() + "_FILE"] == f"/run/secrets/{name}"
+
+
+def test_production_environment_example_covers_required_secret_files() -> None:
+    example = (ROOT / "infra" / "production.env.example").read_text(encoding="utf-8")
+    for name in (
+        "GEO_WORKER_DATABASE_URL_FILE",
+        "GEO_OBJECT_STORE_RESTORE_ACCESS_KEY_FILE",
+        "GEO_OBJECT_STORE_RESTORE_SECRET_KEY_FILE",
+        "GEO_OBJECT_STORE_RETENTION_ACCESS_KEY_FILE",
+        "GEO_OBJECT_STORE_RETENTION_SECRET_KEY_FILE",
+    ):
+        assert f"{name}=" in example
+
+
 def test_production_compose_contains_no_source_mounts_or_weak_default_credentials() -> None:
     raw = COMPOSE_PATH.read_text(encoding="utf-8")
 

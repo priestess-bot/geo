@@ -128,6 +128,10 @@ services:
       OBJECT_STORE_SECRET_KEY_FILE: /run/secrets/object_store_secret_key
       OBJECT_STORE_BACKUP_ACCESS_KEY_FILE: /run/secrets/object_store_backup_access_key
       OBJECT_STORE_BACKUP_SECRET_KEY_FILE: /run/secrets/object_store_backup_secret_key
+      OBJECT_STORE_RESTORE_ACCESS_KEY_FILE: /run/secrets/object_store_restore_access_key
+      OBJECT_STORE_RESTORE_SECRET_KEY_FILE: /run/secrets/object_store_restore_secret_key
+      OBJECT_STORE_RETENTION_ACCESS_KEY_FILE: /run/secrets/object_store_retention_access_key
+      OBJECT_STORE_RETENTION_SECRET_KEY_FILE: /run/secrets/object_store_retention_secret_key
       MINIO_BOOTSTRAP_ENABLE_EPHEMERAL: "0"
       MINIO_POLICY_VERSION: geo-object-store-policy-v1
     secrets:
@@ -137,6 +141,10 @@ services:
       - object_store_secret_key
       - object_store_backup_access_key
       - object_store_backup_secret_key
+      - object_store_restore_access_key
+      - object_store_restore_secret_key
+      - object_store_retention_access_key
+      - object_store_retention_secret_key
     volumes:
       - ./minio:/bootstrap:ro
     networks:
@@ -409,6 +417,14 @@ secrets:
     file: ${GEO_OBJECT_STORE_BACKUP_ACCESS_KEY_FILE:?set GEO_OBJECT_STORE_BACKUP_ACCESS_KEY_FILE}
   object_store_backup_secret_key:
     file: ${GEO_OBJECT_STORE_BACKUP_SECRET_KEY_FILE:?set GEO_OBJECT_STORE_BACKUP_SECRET_KEY_FILE}
+  object_store_restore_access_key:
+    file: ${GEO_OBJECT_STORE_RESTORE_ACCESS_KEY_FILE:?set GEO_OBJECT_STORE_RESTORE_ACCESS_KEY_FILE}
+  object_store_restore_secret_key:
+    file: ${GEO_OBJECT_STORE_RESTORE_SECRET_KEY_FILE:?set GEO_OBJECT_STORE_RESTORE_SECRET_KEY_FILE}
+  object_store_retention_access_key:
+    file: ${GEO_OBJECT_STORE_RETENTION_ACCESS_KEY_FILE:?set GEO_OBJECT_STORE_RETENTION_ACCESS_KEY_FILE}
+  object_store_retention_secret_key:
+    file: ${GEO_OBJECT_STORE_RETENTION_SECRET_KEY_FILE:?set GEO_OBJECT_STORE_RETENTION_SECRET_KEY_FILE}
   deepseek_api_key:
     file: ${GEO_DEEPSEEK_API_KEY_FILE:?set GEO_DEEPSEEK_API_KEY_FILE}
   auth_token_secret:
