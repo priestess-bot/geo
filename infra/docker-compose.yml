@@ -59,7 +59,8 @@ services:
           /migrations/up/0027_knowledge_pipeline_consolidation.sql \
           /migrations/up/0028_knowledge_pipeline_production_contract.sql \
           /migrations/up/0029_durable_job_lease_recovery.sql \
-          /migrations/up/0030_auth_session_scope_v2.sql
+          /migrations/up/0030_auth_session_scope_v2.sql \
+          /migrations/up/0031_geo_placement_runtime.sql
         do
           psql -h postgres -U geno -d geno -v ON_ERROR_STOP=1 -f "$$file"
         done
@@ -204,6 +205,9 @@ services:
       GENO_NOTIFICATION_EMAIL_PREFERENCE_BASE_URL: ${GENO_NOTIFICATION_EMAIL_PREFERENCE_BASE_URL:-}
       GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET: ${GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET:-}
       GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_TTL_SECONDS: ${GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_TTL_SECONDS:-2592000}
+      GENO_DEEPSEEK_API_KEY_FILE: ${GENO_DEEPSEEK_API_KEY_FILE:-/run/secrets/deepseek_api_key}
+    volumes:
+      - ../deepseek_api_key.txt:/run/secrets/deepseek_api_key:ro
     command:
       - uvicorn
       - geno_api.main:app

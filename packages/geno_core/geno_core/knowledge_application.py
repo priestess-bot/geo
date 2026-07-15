@@ -497,6 +497,7 @@ def deepseek_generate_knowledge_application(
     )
     return {
         "content_markdown": str(payload.get("content_markdown") or "").strip(),
+        "claims": _model_items(payload.get("claims")),
         "faq_candidates": _model_items(payload.get("faq_candidates")),
         "prompt_candidates": _model_items(payload.get("prompt_candidates")),
         "model": model,

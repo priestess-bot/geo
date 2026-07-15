@@ -560,6 +560,7 @@ export default async function ProjectDetailPage({
       <section className="topbar compactTopbar">
         <nav className="nav">
           <a className="button secondary" href="/projects">项目列表</a>
+          <a className="button secondary" href={`/projects/${projectId}/geo`}>GEO 投放工作区</a>
           <a className="button secondary" href="/">返回首页</a>
         </nav>
       </section>

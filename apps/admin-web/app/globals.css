@@ -402,6 +402,7 @@ h3 {
   color: #637482;
   font-size: 13px;
   line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .grid {
@@ -2026,7 +2027,10 @@ pre {
   border-radius: 6px;
   font-size: 12px;
   overflow: auto;
+  overflow-wrap: anywhere;
   padding: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 @media (max-width: 900px) {

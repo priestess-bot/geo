@@ -4998,10 +4998,7 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
         with self.connection.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT role
-                FROM project_members
-                WHERE project_id = %s AND user_id = %s
-                LIMIT 1
+                SELECT role FROM geno_runtime_resolve_header_member(%s::uuid, %s)
                 """,
                 (_uuid(project_id), actor_id),
             )
@@ -5009,6 +5006,20 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
         if not row:
             return None
         return str(row["role"] if isinstance(row, dict) else row[0])
+
+    def get_project_member_tenant_id(self, *, project_id: str, actor_id: str) -> str | None:
+        if not actor_id:
+            return None
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT tenant_id FROM geno_runtime_resolve_header_member(%s::uuid, %s)",
+                (_uuid(project_id), actor_id),
+            )
+            row = cursor.fetchone()
+        if not row:
+            return None
+        value = row["tenant_id"] if isinstance(row, dict) else row[0]
+        return str(value) if value is not None else None
 
     def get_entity_project_id(self, *, entity_id: str, entity_kind: str) -> str | None:
         normalized_kind = entity_kind.strip().lower()
@@ -5221,8 +5232,8 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
             raise ValueError("project_id is required")
         if not user_id:
             raise ValueError("user_id is required")
-        if role not in {"owner", "admin", "analyst", "viewer"}:
-            raise ValueError("role must be owner, admin, analyst, or viewer")
+        if role not in {"owner", "admin", "analyst", "reviewer", "content_operator", "viewer", "client_viewer"}:
+            raise ValueError("role must be owner, admin, analyst, reviewer, content_operator, viewer, or client_viewer")
         member_id = _stable_id("project-member", project_id, user_id)
         after = {
             "id": member_id,
@@ -5417,8 +5428,8 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
             raise ValueError("project_id is required")
         if not email or "@" not in email:
             raise ValueError("email is required")
-        if role not in {"owner", "admin", "analyst", "viewer"}:
-            raise ValueError("role must be owner, admin, analyst, or viewer")
+        if role not in {"owner", "admin", "analyst", "reviewer", "content_operator", "viewer", "client_viewer"}:
+            raise ValueError("role must be owner, admin, analyst, reviewer, content_operator, viewer, or client_viewer")
         metadata = _json_compatible(invitation.metadata or {})
         if not isinstance(metadata, dict):
             raise ValueError("metadata must be an object")
@@ -17663,13 +17674,13 @@ class PostgresEvidenceRepository(RuntimeProjectAccessRepositoryMixin):
             for member in bootstrap.members:
                 cursor.execute(
                     """
-                    INSERT INTO project_members (id, project_id, user_id, role, created_at)
-                    VALUES (%s, %s, %s, %s, %s)
-                    ON CONFLICT (id) DO UPDATE SET role = EXCLUDED.role
+                    INSERT INTO project_members (id, project_id, tenant_id, user_id, role, status, created_at)
+                    VALUES (%s, %s, %s, %s, %s, 'active', %s)
                     """,
                     (
                         _uuid(member.id),
                         _uuid(member.project_id),
+                        _uuid(bootstrap.project.tenant_id),
                         member.user_id,
                         member.role,
                         _datetime(member.created_at),

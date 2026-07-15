@@ -930,6 +930,9 @@ function MemberSaveForm({ projectId }: { projectId: string }) {
           <option value="owner">负责人</option>
           <option value="admin">管理员</option>
           <option value="analyst">分析师</option>
+          <option value="content_operator">内容运营</option>
+          <option value="reviewer">独立审核员</option>
+          <option value="client_viewer">客户只读</option>
           <option value="viewer">客户查看者</option>
         </select>
       </label>

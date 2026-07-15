@@ -4,6 +4,7 @@ import {
   adminWebBaseUrl,
   hasRuntimeSession,
   latestScore,
+  loadGeoCustomerSummary,
   loadPortalRuntimeData,
   loadSessionPortal,
   pct
@@ -17,6 +18,7 @@ const modules = [
   ["evidence", "证据样本", "查看采集样本、引用和可复盘证据链。"],
   ["reports", "报告交付", "查看最近报告、导出状态和客户可见材料。"],
   ["actions", "下一步行动", "查看内容、信源和复测建议。"],
+  ["placements", "已验证投放", "查看已验证公开 URL 和后续测量窗口。"],
   ["handoff", "交付包", "查看正式交付材料和发布准备状态。"],
   ["traceability", "可解释性", "查看审计事件、方法版本和证据映射。"]
 ];
@@ -40,7 +42,9 @@ export default async function CustomerHome({
   const launch = bundle?.launch_config?.launch_config;
   const projectId = project?.id || bundle?.access?.project_id || "";
   const actorId = bundle?.access?.member_user_id;
-  const runtime = projectId ? await loadPortalRuntimeData(projectId, actorId) : null;
+  const [runtime, geo] = projectId
+    ? await Promise.all([loadPortalRuntimeData(projectId, actorId), loadGeoCustomerSummary(projectId, actorId)])
+    : [null, null];
   const score = runtime ? latestScore(runtime.scores) : undefined;
   const progressWidth = typeof score === "number" ? `${Math.max(3, Math.round(score * 100))}%` : "0%";
   const authorizedProjects = sessionData?.authorized_projects || [];
@@ -151,6 +155,10 @@ export default async function CustomerHome({
                   <span className="muted">报告</span>
                   <strong>{runtime?.reports.total_count ?? 0}</strong>
                 </div>
+                <div className="metric">
+                  <span className="muted">已验证投放</span>
+                  <strong>{geo?.verified_placements.length ?? 0}</strong>
+                </div>
               </div>
             </div>
             <div className="panel">
@@ -176,13 +184,22 @@ export default async function CustomerHome({
             <h2>工作台模块</h2>
             <div className="moduleGrid">
               {modules.map(([id, title, description]) => (
-                <a className="moduleTile" href={`/portal/${id}?project_id=${encodeURIComponent(projectId)}`} key={id}>
-                  <span className="statusPill">{moduleCount(id, runtime)} 条</span>
+                <a className="moduleTile" href={id === "placements" ? `#placements` : `/portal/${id}?project_id=${encodeURIComponent(projectId)}`} key={id}>
+                  <span className="statusPill">{moduleCount(id, runtime, geo)} 条</span>
                   <h3>{title}</h3>
                   <p className="muted">{description}</p>
                 </a>
               ))}
             </div>
+          </section>
+          <section className="panel" id="placements" style={{ marginTop: 16 }}>
+            <h2>已验证投放与测量</h2>
+            {geo?.verified_placements.length ? (
+              <div className="list">
+                {geo.verified_placements.map((placement) => <div className="listItem" key={placement.id}><span className="muted">{placement.destination_name || "公开投放"}</span><a href={placement.published_url} target="_blank" rel="noreferrer">{placement.published_url}</a></div>)}
+              </div>
+            ) : <p className="muted">暂无已验证公开投放。草稿、待审核内容和未验证 URL 不会显示在客户门户。</p>}
+            {geo?.measurement_windows.length ? <div className="list" style={{ marginTop: 12 }}>{geo.measurement_windows.map((window, index) => <div className="listItem" key={`${window.campaign_id}-${window.window_key}-${index}`}><span className="muted">{window.window_key} · {window.status}{window.confounded ? " · 存在混杂因素" : ""}</span><strong>{window.due_at || "待排期"}</strong></div>)}</div> : null}
           </section>
         </>
       )}
@@ -190,7 +207,7 @@ export default async function CustomerHome({
   );
 }
 
-function moduleCount(id: string, runtime: Awaited<ReturnType<typeof loadPortalRuntimeData>> | null): number {
+function moduleCount(id: string, runtime: Awaited<ReturnType<typeof loadPortalRuntimeData>> | null, geo: Awaited<ReturnType<typeof loadGeoCustomerSummary>>): number {
   if (!runtime) {
     return 0;
   }
@@ -200,5 +217,6 @@ function moduleCount(id: string, runtime: Awaited<ReturnType<typeof loadPortalRu
   if (id === "reports" || id === "handoff") return runtime.reports.total_count;
   if (id === "actions") return runtime.actions.total_count;
   if (id === "traceability") return runtime.traceability ? 1 : 0;
+  if (id === "placements") return geo?.verified_placements.length ?? 0;
   return 0;
 }

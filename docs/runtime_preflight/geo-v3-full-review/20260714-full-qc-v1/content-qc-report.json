@@ -1,0 +1,201 @@
+{
+  "run_id": "20260714-full-qc-v1",
+  "project_id": "f981915e-945a-5e1e-b1ff-4c5a55d31461",
+  "campaign_id": "ca88107e-e878-407f-9f3e-84b91b49c996",
+  "started_with_submissions": 1,
+  "finished_with_submissions": 1,
+  "summary": {
+    "channel_count": 9,
+    "approved_count": 6,
+    "needs_evidence_count": 3,
+    "submission_delta": 0
+  },
+  "channels": [
+    {
+      "domain": "productreview.com.au",
+      "task_key": "placement.productreview.official_response",
+      "task_type": "business_profile",
+      "ownership": "review_platform_business",
+      "url": "https://www.productreview.com.au/",
+      "name": "ProductReview authorised business response",
+      "status": "needs_evidence",
+      "reason": "No authorised business profile and no specific customer review context were provided.",
+      "destination_id": "1df92499-f4ea-43aa-b426-5ec6560489a9",
+      "task_record_status": "candidate"
+    },
+    {
+      "domain": "ozbargain.com.au",
+      "task_key": "placement.ozbargain.deal_submission",
+      "task_type": "deal_submission",
+      "ownership": "deal_platform",
+      "url": "https://www.ozbargain.com.au/",
+      "name": "OzBargain authorised deal submission",
+      "status": "needs_evidence",
+      "reason": "No current price, discount, stock, validity period, or merchant deal authorisation was provided.",
+      "destination_id": "bbe00cec-799e-4aa4-a1a5-16373a6cd8b0",
+      "task_record_status": "candidate"
+    },
+    {
+      "domain": "quora.com",
+      "task_key": "placement.quora.disclosed_expert_answer",
+      "task_type": "expert_answer",
+      "ownership": "knowledge_contributor",
+      "url": "https://www.quora.com/",
+      "name": "Quora disclosed expert answer",
+      "status": "needs_evidence",
+      "reason": "No authorised contributor profile or approved target question was provided.",
+      "destination_id": "87c995b6-7838-4387-978e-e5ba1ec166e3",
+      "task_record_status": "candidate"
+    },
+    {
+      "domain": "advinsys.com.au",
+      "task_key": "placement.website.product_page",
+      "task_record_status": "approved",
+      "status": "approved",
+      "score": 100.0,
+      "issues": [],
+      "package_id": "cf9355c3-df61-438e-9d79-db2cb044a0b6",
+      "prompt_version_id": "5fbe9150-51ac-4994-bcda-55787843bd18",
+      "version_number": 2,
+      "parent_package_id": "6462372f-6a20-490b-9719-5d95b74216eb",
+      "revision_reason": "Independent QC removed factual wording that was not present in the frozen evidence.",
+      "prompt_bundle_hash": "a4e437c25da3fc5a7f3621946aa3e5febc254bef4ab566c845951c81ca081368",
+      "model": "deepseek-chat",
+      "model_response_hash": "840eb408624956f36b6ee41735f3216a98b23218b9ce5d5f845f5c459cb2eddc",
+      "claims": [
+        {
+          "text": "The official ADVINSYS product page identifies the product as Triple-Cam AI Vision Robot Mower V600, by Advinsys, in the Robotic Lawn Mower category.",
+          "evidence_ids": [
+            "advinsys-v600-identity"
+          ],
+          "support_status": "supported"
+        }
+      ]
+    },
+    {
+      "domain": "amazon.com.au",
+      "task_key": "placement.amazon.listing",
+      "task_record_status": "approved",
+      "status": "approved",
+      "score": 100.0,
+      "issues": [],
+      "package_id": "9184789f-081f-4689-8cbe-3d3dbf877083",
+      "prompt_version_id": "cce2cb2e-bccb-45b4-abfc-17e7300bf253",
+      "version_number": 2,
+      "parent_package_id": "83f35af1-4fb1-4a59-b80e-2758f15ff3a3",
+      "revision_reason": "Independent QC removed factual wording that was not present in the frozen evidence.",
+      "prompt_bundle_hash": "0f8783d1503998e8c4a843bf97fda89e50bee5004e2ef95f69cdbdefa0c62e48",
+      "model": "deepseek-chat",
+      "model_response_hash": "97408137d9eede372f19a9714e780ea8b8ac1f30c41a7464479ddc6378497c0c",
+      "claims": [
+        {
+          "text": "The official ADVINSYS product page identifies the product as Triple-Cam AI Vision Robot Mower V600, by Advinsys, in the Robotic Lawn Mower category.",
+          "evidence_ids": [
+            "advinsys-v600-identity"
+          ],
+          "support_status": "supported"
+        }
+      ]
+    },
+    {
+      "domain": "youtube.com",
+      "task_key": "placement.youtube.video_script",
+      "task_record_status": "approved",
+      "status": "approved",
+      "score": 100.0,
+      "issues": [],
+      "package_id": "0ddc3830-2ad8-4a6b-88c6-8930f9d974cf",
+      "prompt_version_id": "f4c85889-1c66-41f1-81ac-9eafa6e274d4",
+      "version_number": 2,
+      "parent_package_id": "c6802e35-70a0-4498-9bf7-313a200578d5",
+      "revision_reason": "Independent QC removed factual wording that was not present in the frozen evidence.",
+      "prompt_bundle_hash": "ae05afe0c6a20b9607a11d2022a7cbbce9ae1a58446b0e75557532105c0541e3",
+      "model": "deepseek-chat",
+      "model_response_hash": "0415eb1aff6be45f39de466e4a4a43435f1d5a197e1bc9852391cfc10ad06982",
+      "claims": [
+        {
+          "text": "The official ADVINSYS product page identifies the product as Triple-Cam AI Vision Robot Mower V600, by Advinsys, in the Robotic Lawn Mower category.",
+          "evidence_ids": [
+            "advinsys-v600-identity"
+          ],
+          "support_status": "supported"
+        }
+      ]
+    },
+    {
+      "domain": "tiktok.com",
+      "task_key": "placement.tiktok.short_video",
+      "task_record_status": "approved",
+      "status": "approved",
+      "score": 100.0,
+      "issues": [],
+      "package_id": "f66660e4-5bc7-4bcc-a835-7eb7dc2fab84",
+      "prompt_version_id": "bee1063e-9e8d-41cb-a2bf-d47c604966b1",
+      "version_number": 2,
+      "parent_package_id": "594cdf55-e893-479b-a2b3-ac1f2e0b26d5",
+      "revision_reason": "Independent QC removed factual wording that was not present in the frozen evidence.",
+      "prompt_bundle_hash": "779e8b1e5cd273a839e0aafacbc644b468f04b67f288fd0620dfc27b263009bc",
+      "model": "deepseek-chat",
+      "model_response_hash": "f9704c43bf9d300da24a96381f0ed2fa21077f10afdd1451b889eed2465e12fa",
+      "claims": [
+        {
+          "text": "The official ADVINSYS product page identifies the product as Triple-Cam AI Vision Robot Mower V600, by Advinsys, in the Robotic Lawn Mower category.",
+          "evidence_ids": [
+            "advinsys-v600-identity"
+          ],
+          "support_status": "supported"
+        }
+      ]
+    },
+    {
+      "domain": "instagram.com",
+      "task_key": "placement.instagram.social_post",
+      "task_record_status": "approved",
+      "status": "approved",
+      "score": 100.0,
+      "issues": [],
+      "package_id": "0f719126-22b7-4c8c-9c08-5fffaf5141fe",
+      "prompt_version_id": "fe963e28-c1a5-45a8-809b-be34ce4fc9bc",
+      "version_number": 1,
+      "parent_package_id": null,
+      "revision_reason": null,
+      "prompt_bundle_hash": "f475d54e247c18a60608c61995ce9c9026f87c3c6478e2802be7c8d1b06ea1be",
+      "model": "deepseek-chat",
+      "model_response_hash": "490dba209d7d16cf728fabb915a3e58df5a0f0edd2b56e8f0241eb1ccef25e64",
+      "claims": [
+        {
+          "text": "Meet the TerraMow V600, the Triple-Cam AI Vision Robot Mower by ADVINSYS.",
+          "evidence_ids": [
+            "advinsys-v600-identity"
+          ],
+          "support_status": "supported"
+        }
+      ]
+    },
+    {
+      "domain": "reddit.com",
+      "task_key": "placement.reddit.disclosed_official_post",
+      "task_record_status": "approved",
+      "status": "approved",
+      "score": 100.0,
+      "issues": [],
+      "package_id": "b70b7876-0d6c-4237-bcd1-376f6a16aeb3",
+      "prompt_version_id": "fcbcd1fa-3631-4a42-aba4-0ba0f0ae6bf6",
+      "version_number": 2,
+      "parent_package_id": "ad80a4f1-26ba-4b13-a918-80d130f56132",
+      "revision_reason": "Independent QC removed factual wording that was not present in the frozen evidence.",
+      "prompt_bundle_hash": "c3f00b59c914ed19bba31558701594f7b336ef4d6bca6722d571fdf51266d6e2",
+      "model": "deepseek-chat",
+      "model_response_hash": "5b47aeed1adedda96eb01d1a801bfdb6261ea65c607de202f303513fbfc94b3d",
+      "claims": [
+        {
+          "text": "The official ADVINSYS product page identifies the product as Triple-Cam AI Vision Robot Mower V600, by Advinsys, in the Robotic Lawn Mower category.",
+          "evidence_ids": [
+            "advinsys-v600-identity"
+          ],
+          "support_status": "supported"
+        }
+      ]
+    }
+  ]
+}

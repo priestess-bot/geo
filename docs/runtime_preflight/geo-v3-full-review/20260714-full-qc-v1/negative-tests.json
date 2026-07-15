@@ -1,0 +1,47 @@
+{
+  "run_id": "20260714-full-qc-v1",
+  "checks": [
+    {
+      "name": "evidence_without_explicit_usage_rights",
+      "expected_status": 409,
+      "actual_status": 409,
+      "detail": "evidence usage_rights must be explicitly approved"
+    },
+    {
+      "name": "unsupported_claim_submit_review",
+      "expected_status": 409,
+      "actual_status": 409,
+      "detail": "only a package with a complete supported claim inventory can enter review"
+    },
+    {
+      "name": "maker_checker_self_review",
+      "expected_status": 409,
+      "actual_status": 409,
+      "detail": "the person who submitted a package for review cannot approve it"
+    },
+    {
+      "name": "quality_score_below_threshold",
+      "expected_status": 409,
+      "actual_status": 409,
+      "detail": "approval requires a quality score of at least 85"
+    },
+    {
+      "name": "independent_review_at_or_above_threshold",
+      "expected_status": 200,
+      "actual_status": 200,
+      "detail": "approved by geo-reviewer at score 90"
+    },
+    {
+      "name": "publication_side_effect",
+      "expected_submission_delta": 0,
+      "actual_submission_delta": 0
+    },
+    {
+      "name": "cross_project_relationship_integrity",
+      "expected_status": "foreign_key_violation",
+      "actual_status": "foreign_key_violation",
+      "detail": "geo_campaigns_product_project_fk rejected an ADVINSYS product referenced from another project"
+    }
+  ],
+  "status": "passed"
+}

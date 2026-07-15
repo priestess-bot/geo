@@ -56,6 +56,9 @@ export function statusLabel(status?: string): string {
     owner: "负责人",
     admin: "管理员",
     analyst: "分析师",
+    content_operator: "内容运营",
+    reviewer: "独立审核员",
+    client_viewer: "客户只读",
     viewer: "客户查看者"
   };
   return labels[normalized] || status || "未知";

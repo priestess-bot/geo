@@ -71,6 +71,7 @@ from geno_core.google_spike import (
     select_google_spike_prompts,
 )
 from geno_core.graph import build_citation_graph
+from geno_core.geo_placement import GeoPlacementError, GeoPlacementRepository
 from geno_core.industry import build_au_dtc_ecommerce_profile
 from geno_core.knowledge import (
     build_content_drafts,
@@ -414,6 +415,9 @@ RUNTIME_NOTIFICATION_EMAIL_POSTMARK_BASIC_USERNAME_ENV = "GENO_NOTIFICATION_EMAI
 RUNTIME_NOTIFICATION_EMAIL_POSTMARK_BASIC_PASSWORD_ENV = "GENO_NOTIFICATION_EMAIL_POSTMARK_BASIC_PASSWORD"
 RUNTIME_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET_ENV = "GENO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET"
 PROJECT_MANAGE_ROLES = ("owner", "admin")
+GEO_CONTENT_WRITE_ROLES = ("owner", "admin", "content_operator")
+GEO_REVIEW_ROLES = ("owner", "admin", "reviewer")
+GEO_VERIFICATION_ROLES = ("owner", "admin", "reviewer", "analyst", "content_operator")
 KNOWLEDGE_RISK_ACCEPT_ROLES = ("owner", "admin", "project_admin", "internal_operator", "compliance_reviewer")
 PROJECT_ANALYZE_ROLES = ("owner", "admin", "analyst")
 CUSTOMER_PORTAL_REPORT_READY_STATUS = "client_ready"
@@ -1683,10 +1687,17 @@ def assert_runtime_project_access(
         if allowed_roles and role not in allowed_roles:
             allowed = ", ".join(allowed_roles)
             raise HTTPException(status_code=403, detail=f"actor role {role} cannot perform this action; requires {allowed}")
+        get_project_member_tenant_id = getattr(repository, "get_project_member_tenant_id", None)
+        tenant_id = (
+            get_project_member_tenant_id(project_id=normalized_project_id, actor_id=actor_id)
+            if callable(get_project_member_tenant_id)
+            else None
+        )
         apply_runtime_project_db_context(
             repository,
             actor_id=actor_id,
             project_id=normalized_project_id,
+            tenant_id=tenant_id,
         )
         return
     if allowed_roles:
@@ -2711,6 +2722,138 @@ class RuntimeKnowledgeContentGenerationJobRequest(BaseModel):
     forbidden_claims: list[str] = Field(default_factory=list, max_length=100)
     model: str = Field(default="deepseek-v4-flash", min_length=1, max_length=120)
     template_version: str = Field(default="geo_content_draft_v1", min_length=1, max_length=120)
+
+
+class GeoProductRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    name: str = Field(min_length=1, max_length=200)
+    canonical_url: str = Field(min_length=8, max_length=2000)
+    category: str = Field(min_length=1, max_length=160)
+    market_code: str = Field(default="AU", min_length=2, max_length=20)
+    brand_entity_id: str | None = Field(default=None, max_length=80)
+    facts: dict[str, object] = Field(default_factory=dict)
+
+
+class GeoCampaignRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    product_id: str = Field(min_length=1, max_length=80)
+    name: str = Field(min_length=1, max_length=200)
+    market_code: str = Field(default="AU", min_length=2, max_length=20)
+    forbidden_claims: list[str] = Field(default_factory=list, max_length=100)
+
+
+class GeoCampaignQueryRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    query_text: str = Field(min_length=3, max_length=1000)
+    platform: str = Field(pattern="^(chatgpt_search|google)$")
+    device: str = Field(default="desktop", min_length=1, max_length=40)
+    sample_size: int = Field(default=3, ge=1, le=10)
+
+
+class GeoObservationImportRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    campaign_query_id: str = Field(min_length=1, max_length=80)
+    observation_phase: str = Field(default="baseline", pattern="^(baseline|t28|t56|t84|ad_hoc)$")
+    sample_index: int = Field(default=1, ge=1, le=10)
+    observed_at: str | None = Field(default=None, max_length=80)
+    raw_answer: str = Field(min_length=1, max_length=50000)
+    citations: list[dict[str, object]] = Field(default_factory=list, max_length=100)
+    artifact_url: str | None = Field(default=None, max_length=2000)
+    visible_model: str | None = Field(default=None, max_length=200)
+
+
+class GeoDestinationRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    publisher_id: str = Field(min_length=1, max_length=80)
+    name: str = Field(min_length=1, max_length=200)
+    destination_url: str = Field(min_length=8, max_length=2000)
+    task_type: str = Field(min_length=1, max_length=80)
+    task_key: str = Field(min_length=3, max_length=160)
+    ownership_kind: str = Field(min_length=1, max_length=80)
+    operation_mode: str = Field(default="manual_submission", pattern="^(observed_only|manual_submission)$")
+    public_disclosure_required: bool = True
+    policy_snapshot: dict[str, object] = Field(default_factory=dict)
+
+
+class GeoPublisherReviewRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    status: str = Field(pattern="^(approved|restricted|prohibited)$")
+    policy_snapshot: dict[str, object]
+
+
+class GeoOpportunityRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    campaign_id: str = Field(min_length=1, max_length=80)
+    destination_id: str = Field(min_length=1, max_length=80)
+    campaign_query_id: str | None = Field(default=None, max_length=80)
+    title: str = Field(min_length=1, max_length=300)
+    rationale: str = Field(min_length=1, max_length=4000)
+    priority: str = Field(default="medium", pattern="^(low|medium|high|critical)$")
+
+
+class GeoPromptTemplateRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    task_key: str = Field(min_length=3, max_length=160)
+    name: str = Field(min_length=1, max_length=200)
+
+
+class GeoPromptVersionRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    version_number: int = Field(default=1, ge=1, le=1000)
+    system_template: str = Field(min_length=1, max_length=20000)
+    user_template: str = Field(min_length=1, max_length=20000)
+    output_schema: dict[str, object] = Field(default_factory=dict)
+    status: str = Field(default="draft", pattern="^(draft|published|archived)$")
+
+
+class GeoPackageGenerateRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    prompt_template_version_id: str = Field(min_length=1, max_length=80)
+    evidence: list[dict[str, object]] = Field(min_length=1, max_length=100)
+    title: str | None = Field(default=None, max_length=300)
+    rendered_text: str | None = Field(default=None, max_length=50000)
+    disclosure_text: str | None = Field(default=None, max_length=4000)
+    claim_inventory: list[dict[str, object]] = Field(default_factory=list, max_length=200)
+    forbidden_claims: list[str] = Field(default_factory=list, max_length=100)
+    generate_with_model: bool = True
+    model: str = Field(default="deepseek-chat", min_length=1, max_length=120)
+    idempotency_key: str | None = Field(default=None, min_length=8, max_length=200)
+
+
+class GeoPackageRevisionRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    base_content_hash: str = Field(pattern="^[0-9a-f]{64}$")
+    rendered_text: str = Field(min_length=1, max_length=50000)
+    claim_inventory: list[dict[str, object]] = Field(min_length=1, max_length=200)
+    reason: str = Field(min_length=1, max_length=2000)
+
+
+class GeoPackageReviewRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    decision: str = Field(pattern="^(approved|needs_revision|blocked)$")
+    claim_inventory_complete: bool = False
+    qc_score: float | None = Field(default=None, ge=0, le=100)
+    review_notes: str = Field(default="", max_length=4000)
+
+
+class GeoSubmissionRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    submission_evidence_url: str | None = Field(default=None, max_length=2000)
+    external_reference: str | None = Field(default=None, max_length=500)
+    notes: str = Field(default="", max_length=4000)
+
+
+class GeoPublishedUrlRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    published_url: str = Field(min_length=8, max_length=2000)
+
+
+class GeoVerificationRequest(BaseModel):
+    project_id: str = Field(min_length=1)
+    status: str = Field(default="failed", pattern="^(verified|failed|unreachable)$")
+    content_match: bool = False
+    disclosure_match: bool = False
+    details: dict[str, object] = Field(default_factory=dict)
 
 
 class RuntimePromptCandidateReviewRequest(BaseModel):
@@ -11069,6 +11212,290 @@ def runtime_traceability_export_csv(
         )
     finally:
         close_repository_connection(repository)
+
+
+def _run_geo_command(
+    *,
+    project_id: str,
+    actor_id: str | None,
+    allowed_roles: tuple[str, ...] | None,
+    command: Any,
+) -> dict[str, object]:
+    try:
+        repository = build_repository_from_env()
+    except RuntimePersistenceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    try:
+        assert_runtime_project_access(
+            repository,
+            project_id=project_id,
+            actor_id=actor_id,
+            allowed_roles=allowed_roles,
+        )
+        try:
+            return command(GeoPlacementRepository(repository.connection), effective_runtime_actor_id(actor_id))
+        except GeoPlacementError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=502, detail=f"GEO model or workflow command failed: {str(exc)}") from exc
+    finally:
+        close_repository_connection(repository)
+
+
+@app.post("/v1/geo/products")
+def create_geo_product(payload: GeoProductRequest, x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    return _run_geo_command(project_id=payload.project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES,
+        command=lambda geo, actor: {"product": geo.create_product(project_id=payload.project_id, actor_id=actor, payload=payload.model_dump())})
+
+
+@app.get("/v1/geo/products")
+def list_geo_products(project_id: str = Query(min_length=1), x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    return _run_geo_command(project_id=project_id, actor_id=actor_id, allowed_roles=None,
+        command=lambda geo, _actor: geo.list_products(project_id=project_id))
+
+
+@app.post("/v1/geo/campaigns")
+def create_geo_campaign(payload: GeoCampaignRequest, x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    return _run_geo_command(project_id=payload.project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES,
+        command=lambda geo, actor: {"campaign": geo.create_campaign(project_id=payload.project_id, actor_id=actor, payload=payload.model_dump())})
+
+
+@app.get("/v1/geo/campaigns")
+def list_geo_campaigns(project_id: str = Query(min_length=1), x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    return _run_geo_command(project_id=project_id, actor_id=actor_id, allowed_roles=None,
+        command=lambda geo, _actor: geo.list_campaigns(project_id=project_id))
+
+
+@app.post("/v1/geo/campaigns/{campaign_id}/queries")
+def create_geo_campaign_query(campaign_id: str, payload: GeoCampaignQueryRequest, x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    return _run_geo_command(project_id=payload.project_id, actor_id=actor_id, allowed_roles=PROJECT_ANALYZE_ROLES,
+        command=lambda geo, actor: {"campaign_query": geo.create_campaign_query(project_id=payload.project_id, campaign_id=campaign_id, actor_id=actor, payload=payload.model_dump())})
+
+
+@app.get("/v1/geo/campaigns/{campaign_id}/queries")
+def list_geo_campaign_queries(campaign_id: str, project_id: str = Query(min_length=1), x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    return _run_geo_command(project_id=project_id, actor_id=actor_id, allowed_roles=None,
+        command=lambda geo, _actor: geo.list_campaign_queries(project_id=project_id, campaign_id=campaign_id))
+
+
+@app.post("/v1/geo/campaigns/queries/{query_id}/approve")
+def approve_geo_campaign_query(query_id: str, project_id: str = Query(min_length=1), x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    return _run_geo_command(project_id=project_id, actor_id=actor_id, allowed_roles=PROJECT_ANALYZE_ROLES,
+        command=lambda geo, actor: {"campaign_query": geo.approve_campaign_query(project_id=project_id, query_id=query_id, actor_id=actor)})
+
+
+@app.post("/v1/geo/observations/manual-imports")
+def import_geo_observation(payload: GeoObservationImportRequest, x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    return _run_geo_command(project_id=payload.project_id, actor_id=actor_id, allowed_roles=PROJECT_ANALYZE_ROLES,
+        command=lambda geo, actor: {"observation": geo.import_observation(project_id=payload.project_id, actor_id=actor, payload=payload.model_dump())})
+
+
+@app.get("/v1/geo/campaigns/{campaign_id}/observations")
+def list_geo_observations(campaign_id: str, project_id: str = Query(min_length=1), x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    return _run_geo_command(project_id=project_id, actor_id=actor_id, allowed_roles=None,
+        command=lambda geo, _actor: geo.list_observations(project_id=project_id, campaign_id=campaign_id))
+
+
+@app.get("/v1/geo/publishers")
+def list_geo_publishers(project_id: str = Query(min_length=1), x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    return _run_geo_command(project_id=project_id, actor_id=actor_id, allowed_roles=None,
+        command=lambda geo, _actor: geo.list_publishers())
+
+
+@app.post("/v1/geo/publishers/{publisher_id}/review")
+def review_geo_publisher(publisher_id: str, payload: GeoPublisherReviewRequest, x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    return _run_geo_command(project_id=payload.project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES,
+        command=lambda geo, actor: {"publisher": geo.review_publisher(publisher_id=publisher_id, actor_id=actor, status=payload.status, policy_snapshot=payload.policy_snapshot)})
+
+
+@app.post("/v1/geo/destinations")
+def create_geo_destination(payload: GeoDestinationRequest, x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    return _run_geo_command(project_id=payload.project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES,
+        command=lambda geo, actor: {"destination": geo.create_destination(project_id=payload.project_id, actor_id=actor, payload=payload.model_dump())})
+
+
+@app.get("/v1/geo/destinations")
+def list_geo_destinations(project_id: str = Query(min_length=1), x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    return _run_geo_command(project_id=project_id, actor_id=actor_id, allowed_roles=None,
+        command=lambda geo, _actor: geo.list_destinations(project_id=project_id))
+
+
+@app.post("/v1/geo/destinations/{destination_id}/qualify")
+def qualify_geo_destination(destination_id: str, project_id: str = Query(min_length=1), x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    return _run_geo_command(project_id=project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES,
+        command=lambda geo, actor: {"destination": geo.qualify_destination(project_id=project_id, destination_id=destination_id, actor_id=actor)})
+
+
+@app.post("/v1/geo/placement-opportunities")
+def create_geo_placement_opportunity(payload: GeoOpportunityRequest, x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    return _run_geo_command(project_id=payload.project_id, actor_id=actor_id, allowed_roles=PROJECT_ANALYZE_ROLES,
+        command=lambda geo, actor: {"opportunity": geo.create_opportunity(project_id=payload.project_id, actor_id=actor, payload=payload.model_dump())})
+
+
+@app.get("/v1/geo/campaigns/{campaign_id}/placement-opportunities")
+def list_geo_placement_opportunities(campaign_id: str, project_id: str = Query(min_length=1), x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    return _run_geo_command(project_id=project_id, actor_id=actor_id, allowed_roles=None,
+        command=lambda geo, _actor: geo.list_opportunities(project_id=project_id, campaign_id=campaign_id))
+
+
+@app.post("/v1/geo/prompt-templates")
+def create_geo_prompt_template(payload: GeoPromptTemplateRequest, x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    return _run_geo_command(project_id=payload.project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES,
+        command=lambda geo, actor: {"prompt_template": geo.create_prompt_template(project_id=payload.project_id, actor_id=actor, payload=payload.model_dump())})
+
+
+@app.post("/v1/geo/prompt-templates/{template_id}/versions")
+def create_geo_prompt_template_version(template_id: str, payload: GeoPromptVersionRequest, x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    return _run_geo_command(project_id=payload.project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES,
+        command=lambda geo, actor: {"prompt_template_version": geo.create_prompt_version(project_id=payload.project_id, template_id=template_id, actor_id=actor, payload=payload.model_dump())})
+
+
+@app.post("/v1/geo/prompt-templates/{template_id}/publish")
+def publish_geo_prompt_template(template_id: str, project_id: str = Query(min_length=1), version_id: str | None = Query(default=None), x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    return _run_geo_command(project_id=project_id, actor_id=actor_id, allowed_roles=PROJECT_MANAGE_ROLES,
+        command=lambda geo, actor: {"prompt_template": geo.publish_prompt_template(project_id=project_id, template_id=template_id, actor_id=actor, version_id=version_id)})
+
+
+@app.get("/v1/geo/prompt-templates")
+def list_geo_prompt_templates(project_id: str = Query(min_length=1), x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    return _run_geo_command(project_id=project_id, actor_id=actor_id, allowed_roles=None,
+        command=lambda geo, _actor: geo.list_prompt_templates(project_id=project_id))
+
+
+@app.post("/v1/geo/placement-opportunities/{opportunity_id}/packages")
+def generate_geo_package(opportunity_id: str, payload: GeoPackageGenerateRequest, x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    return _run_geo_command(project_id=payload.project_id, actor_id=actor_id, allowed_roles=GEO_CONTENT_WRITE_ROLES,
+        command=lambda geo, actor: {"placement_package": geo.generate_package(project_id=payload.project_id, opportunity_id=opportunity_id, actor_id=actor, payload=payload.model_dump())})
+
+
+@app.get("/v1/geo/campaigns/{campaign_id}/placement-packages")
+def list_geo_packages(campaign_id: str, project_id: str = Query(min_length=1), x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    return _run_geo_command(project_id=project_id, actor_id=actor_id, allowed_roles=None,
+        command=lambda geo, _actor: geo.list_packages(project_id=project_id, campaign_id=campaign_id))
+
+
+@app.post("/v1/geo/placement-packages/{package_id}/versions")
+def revise_geo_package(package_id: str, payload: GeoPackageRevisionRequest, x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    return _run_geo_command(project_id=payload.project_id, actor_id=actor_id, allowed_roles=GEO_CONTENT_WRITE_ROLES,
+        command=lambda geo, actor: {"placement_package": geo.revise_package(project_id=payload.project_id, package_id=package_id, actor_id=actor, payload=payload.model_dump())})
+
+
+@app.post("/v1/geo/placement-packages/{package_id}/submit-review")
+def submit_geo_package_review(package_id: str, project_id: str = Query(min_length=1), x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    return _run_geo_command(project_id=project_id, actor_id=actor_id, allowed_roles=GEO_CONTENT_WRITE_ROLES,
+        command=lambda geo, actor: {"placement_package": geo.submit_package_review(project_id=project_id, package_id=package_id, actor_id=actor)})
+
+
+@app.post("/v1/geo/placement-packages/{package_id}/review")
+def review_geo_package(package_id: str, payload: GeoPackageReviewRequest, x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    return _run_geo_command(project_id=payload.project_id, actor_id=actor_id, allowed_roles=GEO_REVIEW_ROLES,
+        command=lambda geo, actor: {"placement_package": geo.review_package(project_id=payload.project_id, package_id=package_id, actor_id=actor, decision=payload.decision, claim_inventory_complete=payload.claim_inventory_complete, qc_score=payload.qc_score, review_notes=payload.review_notes)})
+
+
+@app.post("/v1/geo/placement-packages/{package_id}/submissions")
+def create_geo_submission(package_id: str, payload: GeoSubmissionRequest, x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    return _run_geo_command(project_id=payload.project_id, actor_id=actor_id, allowed_roles=GEO_CONTENT_WRITE_ROLES,
+        command=lambda geo, actor: {"submission": geo.create_submission(project_id=payload.project_id, package_id=package_id, actor_id=actor, payload=payload.model_dump())})
+
+
+@app.post("/v1/geo/submissions/{submission_id}/published-url")
+def set_geo_published_url(submission_id: str, payload: GeoPublishedUrlRequest, x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    return _run_geo_command(project_id=payload.project_id, actor_id=actor_id, allowed_roles=GEO_CONTENT_WRITE_ROLES,
+        command=lambda geo, actor: {"submission": geo.set_published_url(project_id=payload.project_id, submission_id=submission_id, actor_id=actor, published_url=payload.published_url)})
+
+
+@app.post("/v1/geo/submissions/{submission_id}/verify")
+def verify_geo_submission(submission_id: str, payload: GeoVerificationRequest, x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    return _run_geo_command(project_id=payload.project_id, actor_id=actor_id, allowed_roles=GEO_VERIFICATION_ROLES,
+        command=lambda geo, actor: {"verification": geo.verify_submission(project_id=payload.project_id, submission_id=submission_id, actor_id=actor, payload=payload.model_dump())})
+
+
+@app.post("/v1/geo/submissions/{submission_id}/verify-live")
+def verify_geo_submission_live(submission_id: str, project_id: str = Query(min_length=1), x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+
+    def command(geo: GeoPlacementRepository, actor: str) -> dict[str, object]:
+        target = geo.submission_verification_target(project_id=project_id, submission_id=submission_id)
+        if target["status"] != "published_url_pending_verification" or not target["published_url"]:
+            raise GeoPlacementError("a published URL must be recorded before live verification")
+        destination = urlparse(str(target["destination_url"]))
+        published = urlparse(str(target["published_url"]))
+        if published.scheme != "https" or not published.hostname or not destination.hostname:
+            raise GeoPlacementError("live verification requires an HTTPS URL and a qualified HTTPS destination")
+        if published.hostname.lower() != destination.hostname.lower():
+            raise GeoPlacementError("published URL host does not match the qualified destination host")
+        try:
+            response = httpx.get(str(target["published_url"]), timeout=15.0, follow_redirects=True)
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            return {"verification": geo.verify_submission(
+                project_id=project_id, submission_id=submission_id, actor_id=actor,
+                payload={"status": "unreachable", "details": {"error": type(exc).__name__}},
+            )}
+        if len(response.content) > 2_000_000:
+            raise GeoPlacementError("published page exceeds the live verification size limit")
+        page_text = re.sub(r"\\s+", " ", re.sub(r"<[^>]+>", " ", response.text)).strip().lower()
+        body_probe = re.sub(r"\\s+", " ", str(target["rendered_text"]).strip()).lower()[:100]
+        disclosure = re.sub(r"\\s+", " ", str(target.get("disclosure_text") or "").strip()).lower()
+        content_match = bool(body_probe) and body_probe in page_text
+        disclosure_match = not disclosure or disclosure in page_text
+        status = "verified" if content_match and disclosure_match else "failed"
+        return {"verification": geo.verify_submission(
+            project_id=project_id, submission_id=submission_id, actor_id=actor,
+            payload={"status": status, "content_match": content_match, "disclosure_match": disclosure_match,
+                     "details": {"http_status": response.status_code, "final_url": str(response.url), "verification_mode": "live_http"}},
+        )}
+
+    return _run_geo_command(project_id=project_id, actor_id=actor_id, allowed_roles=GEO_VERIFICATION_ROLES, command=command)
+
+
+@app.get("/v1/geo/campaigns/{campaign_id}/submissions")
+def list_geo_submissions(campaign_id: str, project_id: str = Query(min_length=1), x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    return _run_geo_command(project_id=project_id, actor_id=actor_id, allowed_roles=None,
+        command=lambda geo, _actor: geo.list_submissions(project_id=project_id, campaign_id=campaign_id))
+
+
+@app.get("/v1/geo/campaigns/{campaign_id}/measurements")
+def list_geo_measurements(campaign_id: str, project_id: str = Query(min_length=1), x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    return _run_geo_command(project_id=project_id, actor_id=actor_id, allowed_roles=None,
+        command=lambda geo, _actor: geo.list_measurements(project_id=project_id, campaign_id=campaign_id))
+
+
+@app.get("/v1/geo/customer-summary")
+def geo_customer_summary(project_id: str = Query(min_length=1), x_geno_actor_id: str | None = Header(default=None, alias=RUNTIME_ACTOR_HEADER)) -> dict[str, object]:
+    actor_id = require_runtime_actor_id(x_geno_actor_id)
+    return _run_geo_command(project_id=project_id, actor_id=actor_id, allowed_roles=None,
+        command=lambda geo, _actor: geo.customer_summary(project_id=project_id))
 
 
 @app.get("/v1/google-spikes/au/plan")

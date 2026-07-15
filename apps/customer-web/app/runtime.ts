@@ -92,6 +92,12 @@ export type PortalRuntimeData = {
   errors: Array<{ resource: string; error: AuthErrorEnvelope }>;
 };
 
+export type GeoCustomerSummary = {
+  campaigns: Array<{ id?: string; name?: string; status?: string; product_name?: string }>;
+  verified_placements: Array<{ id?: string; published_url?: string; published_at?: string; campaign_id?: string; destination_name?: string }>;
+  measurement_windows: Array<{ campaign_id?: string; window_key?: string; due_at?: string; status?: string; confounded?: boolean; recommendation_share?: number | null; product_mention_share?: number | null; placement_citation_share?: number | null }>;
+};
+
 type RuntimePageLoad = {
   page: RuntimePage;
   failure?: { resource: string; error: AuthErrorEnvelope };
@@ -206,6 +212,11 @@ export async function runtimeRequest<T>(
     ),
     problem: result.error
   };
+}
+
+export async function loadGeoCustomerSummary(projectId: string, actorId?: string): Promise<GeoCustomerSummary | null> {
+  const response = await runtimeRequest<GeoCustomerSummary>("/v1/geo/customer-summary", { query: { project_id: projectId }, actorId });
+  return response.ok && response.data ? response.data : null;
 }
 
 export async function loadSessionPortal(projectId?: string): Promise<SessionPortalResponse> {
