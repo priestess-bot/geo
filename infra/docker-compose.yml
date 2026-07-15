@@ -41,6 +41,7 @@ services:
       GEO_DATABASE_URL: postgresql://geo_installer:geo_installer_dev@postgres:5432/geo
       GEO_DEV_APP_PASSWORD: geo_app_dev
       GEO_DEV_WORKER_PASSWORD: geo_worker_dev
+      GEO_DEV_BOOTSTRAP_ENABLED: "1"
     command:
       - /bin/sh
       - -c
@@ -166,6 +167,10 @@ services:
       dockerfile: apps/admin-web/Dockerfile
     environment:
       API_INTERNAL_BASE_URL: http://internal-api:8000
+      GEO_AUTH_MODE: development
+      GEO_ADMIN_ACTOR_ID: 30000000-0000-4000-8000-000000000003
+      GEO_ADMIN_TENANT_ID: 10000000-0000-4000-8000-000000000001
+      GEO_ADMIN_DEV_TOOLS_ENABLED: "1"
       NEXT_PUBLIC_CUSTOMER_WEB_BASE_URL: http://localhost:${GEO_CUSTOMER_WEB_HOST_PORT:-3000}
       PORT: "3000"
     ports:

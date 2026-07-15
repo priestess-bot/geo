@@ -22,6 +22,8 @@ docker compose -f infra/docker-compose.yml --profile workers ps
 
 `make dev-up` 会先检查 `deepseek_api_key.txt` 的存在性和权限，再启动基础设施、执行 Alembic、创建开发运行角色，并启动双 API、PostgreSQL Durable `geo_worker`、Outbox Relay 与双 Web。Valkey/Dramatiq 只负责唤醒，Job 真源在 PostgreSQL。空库只通过 Alembic 建立；不要对旧测试库执行 stamp，旧测试数据可以删除并重新 seed。
 
+开发迁移还会幂等建立 `GEO Development Project` 及本地 Owner，Admin BFF 只在 development Compose 中使用这组固定身份头，因此首次打开 `http://localhost:3001` 即可进入项目。该引导不出现在生产 Compose；生产仍只能走组织 OIDC 与一次性首 Owner provisioning。
+
 ## 3. 启动 API
 
 完整 Compose 已启动 API。只在调试单个进程且已经显式设置宿主机 `GEO_DATABASE_URL`、对象存储和 Valkey 配置时，才使用 `make api-internal` 或 `make api-customer`。
