@@ -351,8 +351,10 @@ def _seed_campaign_destinations(
         ):
             connection.execute(
                 """INSERT INTO publication_destinations
-                     (id, project_id, publication_channel, destination_key, policy_status)
-                   VALUES (%s, %s, 'owned_site', %s, %s)""",
+                     (id, project_id, publication_channel, destination_key, policy_status,
+                      canonical_url, canonical_host, allowed_hosts)
+                   VALUES (%s, %s, 'owned_site', %s, %s,
+                           'https://example.com/', 'example.com', ARRAY['example.com'])""",
                 (destination_id, project_id, key, policy),
             )
         for opportunity_id, destination_id, status in (
@@ -378,10 +380,11 @@ def _seed_campaign_destinations(
         connection.execute(
             """INSERT INTO placement_package_versions
                  (id, project_id, package_id, prompt_bundle_id, version_number,
-                  workflow_status, content_json, rendered_text, content_hash)
+                  workflow_status, content_json, rendered_text, content_hash,
+                  edited_by, edit_reason)
                VALUES (%s, %s, %s, %s, 1, 'approved', '{}'::jsonb,
-                       'upstream verified fixture', %s)""",
-            (package_version_id, project_id, package_id, uuid4(), "d" * 64),
+                       'upstream verified fixture', %s, %s, 'monitoring integration fixture')""",
+            (package_version_id, project_id, package_id, uuid4(), "d" * 64, identity_id),
         )
         connection.execute("SET LOCAL session_replication_role = 'origin'")
         connection.execute(
