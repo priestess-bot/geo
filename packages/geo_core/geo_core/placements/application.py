@@ -9,7 +9,6 @@ from urllib.parse import urlparse
 
 from geo_core.placements.application_operations import PlacementOperationsApplicationMixin
 from geo_core.placements.claim_inventory import validate_edited_claims
-from geo_core.placements.generation_contract import validate_generation_schema
 from geo_core.placements.default_prompts import DEFAULT_SYSTEM_TEMPLATE
 from geo_core.placements.domain import (
     AuthenticityRisk,
@@ -40,7 +39,7 @@ from geo_core.placements.domain import (
     validate_authenticity,
 )
 from geo_core.placements.ports import GeneratedClaim, UnitOfWorkFactory
-from geo_core.prompts.domain import SkillVersion, compile_template
+from geo_core.placements.prompt_release import compile_executable_release
 
 
 class PlacementApplication(PlacementOperationsApplicationMixin):
@@ -267,29 +266,17 @@ class PlacementApplication(PlacementOperationsApplicationMixin):
         system_template: str = DEFAULT_SYSTEM_TEMPLATE,
         user_template: str | None = None,
     ) -> PromptReleaseView:
-        validate_generation_schema(output_schema)
-        if not (normalized_system := system_template.strip()):
-            raise PlacementRuleViolation("system prompt is required")
         with self._uow_factory(project_id) as uow:
             skill_version = uow.placements.create_skill_version(
                 project_id=project_id, skill_id=skill_id, source=source, actor_id=actor_id
             )
-            execution_skill = SkillVersion.create(
-                id=skill_version.id,
-                skill_id=skill_version.skill_id,
-                version=skill_version.version,
-                source=user_template if user_template is not None else source,
+            template, normalized_system = compile_executable_release(
+                skill_version=skill_version,
+                system_template=system_template,
+                user_template=user_template,
+                output_schema=output_schema,
+                client_variable_names=client_variable_names,
             )
-            template = compile_template(release_id=uuid4(), skill=execution_skill)
-            authoritative = {"brief", "evidence", "destination_policy"}
-            if not authoritative.issubset(template.required_variables):
-                raise PlacementRuleViolation(
-                    "prompt releases must render brief, evidence and destination_policy"
-                )
-            if not set(client_variable_names).issubset(template.required_variables):
-                raise PlacementRuleViolation("client prompt variables must exist in the template")
-            if authoritative.intersection(client_variable_names):
-                raise PlacementRuleViolation("authoritative prompt variables are server-owned")
             result = uow.placements.create_template_release(
                 project_id=project_id,
                 skill_version_id=skill_version.id,
