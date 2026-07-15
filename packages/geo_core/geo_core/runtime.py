@@ -117,7 +117,7 @@ def connect_postgres_from_env(
     connector: Callable[[str], DbConnection] | None = None,
 ) -> DbConnection:
     runtime_env = os.environ if env is None else env
-    database_url = runtime_env.get("DATABASE_URL", "").strip()
+    database_url = _secret_from_env(runtime_env, "DATABASE_URL")
     if not database_url:
         raise RuntimePersistenceError("DATABASE_URL is required when persistence is enabled")
     if connector is not None:
@@ -448,7 +448,7 @@ def _runtime_postgres_pool_from_env(
     connector: Callable[[str], DbConnection] | None = None,
 ) -> RuntimePostgresConnectionPool:
     global _RUNTIME_POSTGRES_POOL, _RUNTIME_POSTGRES_POOL_CONFIG
-    database_url = env.get("DATABASE_URL", "").strip()
+    database_url = _secret_from_env(env, "DATABASE_URL")
     if not database_url:
         raise RuntimePersistenceError("DATABASE_URL is required when persistence is enabled")
     max_size = _positive_int_from_env(env, RUNTIME_DB_POOL_MAX_SIZE_ENV, DEFAULT_RUNTIME_DB_POOL_MAX_SIZE)
@@ -527,7 +527,7 @@ def build_repository_from_env(
     return PostgresEvidenceRepository(connect_postgres_from_env(env, connector=connector), **repository_kwargs)
 
 
-def _object_store_secret_from_env(env: Mapping[str, str], name: str) -> str:
+def _secret_from_env(env: Mapping[str, str], name: str) -> str:
     direct_value = env.get(name, "").strip()
     file_name = f"{name}_FILE"
     secret_path = env.get(file_name, "").strip()
@@ -565,8 +565,8 @@ def build_object_store_from_env(
     return S3CompatibleObjectStore(
         endpoint=runtime_env.get("OBJECT_STORE_ENDPOINT", "").strip(),
         bucket=runtime_env.get("OBJECT_STORE_BUCKET", "geo-reports").strip(),
-        access_key=_object_store_secret_from_env(runtime_env, "OBJECT_STORE_ACCESS_KEY"),
-        secret_key=_object_store_secret_from_env(runtime_env, "OBJECT_STORE_SECRET_KEY"),
+        access_key=_secret_from_env(runtime_env, "OBJECT_STORE_ACCESS_KEY"),
+        secret_key=_secret_from_env(runtime_env, "OBJECT_STORE_SECRET_KEY"),
         region=runtime_env.get("OBJECT_STORE_REGION", "us-east-1").strip(),
         auto_create_bucket=_object_store_auto_create_bucket(runtime_env),
         requester=requester,
@@ -579,7 +579,7 @@ def runtime_database_diagnostic(
     connector: Callable[[str], DbConnection] | None = None,
 ) -> RuntimeComponentDiagnostic:
     runtime_env = os.environ if env is None else env
-    database_url = runtime_env.get("DATABASE_URL", "").strip()
+    database_url = _secret_from_env(runtime_env, "DATABASE_URL")
     metadata: dict[str, object] = {
         "database_url": _redacted_url_status(database_url),
         "pool": runtime_postgres_pool_snapshot(runtime_env),

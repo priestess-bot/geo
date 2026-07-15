@@ -1,0 +1,351 @@
+name: geo-production
+
+x-service-security: &service-security
+  restart: unless-stopped
+  init: true
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+
+x-api-environment: &api-environment
+  GEO_DEPLOYMENT_ENVIRONMENT: production
+  GEO_DEV_TOOLS_ENABLED: "0"
+  GEO_DB_POOL_ENABLED: "1"
+  GEO_DB_POOL_MAX_SIZE: "10"
+  GEO_AUTH_MODE: jwks
+  GEO_OIDC_DISCOVERY_URL: ${GEO_OIDC_DISCOVERY_URL:?set GEO_OIDC_DISCOVERY_URL}
+  GEO_JWT_ISSUER: ${GEO_JWT_ISSUER:?set GEO_JWT_ISSUER}
+  GEO_JWT_AUDIENCE: ${GEO_JWT_AUDIENCE:?set GEO_JWT_AUDIENCE}
+  DATABASE_URL_FILE: /run/secrets/database_url
+  OBJECT_STORE_ENDPOINT: http://minio:9000
+  OBJECT_STORE_BUCKET: geo-artifacts
+  OBJECT_STORE_REGION: ${GEO_OBJECT_STORE_REGION:-us-east-1}
+  OBJECT_STORE_ACCESS_KEY_FILE: /run/secrets/object_store_access_key
+  OBJECT_STORE_SECRET_KEY_FILE: /run/secrets/object_store_secret_key
+  OBJECT_STORE_AUTO_CREATE_BUCKET: "0"
+  GEO_TASK_QUEUE_ENABLED: "1"
+  GEO_TASK_QUEUE_REQUIRED: "1"
+  GEO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
+  GEO_DEEPSEEK_API_KEY_FILE: /run/secrets/deepseek_api_key
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+  OTEL_SERVICE_NAME: geo-api
+
+x-api-secrets: &api-secrets
+  - database_url
+  - object_store_access_key
+  - object_store_secret_key
+  - deepseek_api_key
+
+x-api-dependencies: &api-dependencies
+  migrate:
+    condition: service_completed_successfully
+  minio-bootstrap:
+    condition: service_completed_successfully
+  valkey:
+    condition: service_healthy
+
+services:
+  postgres:
+    <<: *service-security
+    image: ${GEO_POSTGRES_IMAGE:?set a digest-pinned GEO_POSTGRES_IMAGE}
+    environment:
+      POSTGRES_DB: geo
+      POSTGRES_USER: geo_installer
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_installer_password
+    secrets:
+      - postgres_installer_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U geo_installer -d geo"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 4G
+
+  migrate:
+    <<: *service-security
+    image: ${GEO_API_IMAGE:?set a digest-pinned GEO_API_IMAGE}
+    restart: "no"
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,noexec,nosuid
+    environment:
+      DATABASE_URL_FILE: /run/secrets/installer_database_url
+    secrets:
+      - installer_database_url
+    command: ["alembic", "-c", "/app/alembic.ini", "upgrade", "head"]
+    networks:
+      - backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  minio:
+    <<: *service-security
+    image: ${GEO_MINIO_IMAGE:?set a digest-pinned GEO_MINIO_IMAGE}
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER_FILE: /run/secrets/minio_root_user
+      MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_root_password
+    secrets:
+      - minio_root_user
+      - minio_root_password
+    volumes:
+      - minio_data:/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 2G
+
+  minio-bootstrap:
+    <<: *service-security
+    image: ${GEO_MINIO_MC_IMAGE:?set a digest-pinned GEO_MINIO_MC_IMAGE}
+    restart: "no"
+    entrypoint: ["/bin/sh", "/bootstrap/bootstrap.sh"]
+    environment:
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ROOT_USER_FILE: /run/secrets/minio_root_user
+      MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_root_password
+      OBJECT_STORE_BUCKET: geo-artifacts
+      OBJECT_STORE_BACKUP_BUCKET: geo-backups
+      OBJECT_STORE_ACCESS_KEY_FILE: /run/secrets/object_store_access_key
+      OBJECT_STORE_SECRET_KEY_FILE: /run/secrets/object_store_secret_key
+      OBJECT_STORE_BACKUP_ACCESS_KEY_FILE: /run/secrets/object_store_backup_access_key
+      OBJECT_STORE_BACKUP_SECRET_KEY_FILE: /run/secrets/object_store_backup_secret_key
+      MINIO_BOOTSTRAP_ENABLE_EPHEMERAL: "0"
+      MINIO_POLICY_VERSION: geo-object-store-policy-v1
+    secrets:
+      - minio_root_user
+      - minio_root_password
+      - object_store_access_key
+      - object_store_secret_key
+      - object_store_backup_access_key
+      - object_store_backup_secret_key
+    volumes:
+      - ./minio:/bootstrap:ro
+    networks:
+      - backend
+    depends_on:
+      minio:
+        condition: service_healthy
+
+  valkey:
+    <<: *service-security
+    image: ${GEO_VALKEY_IMAGE:?set a digest-pinned GEO_VALKEY_IMAGE}
+    command: ["valkey-server", "--appendonly", "yes", "--save", "60", "1000"]
+    volumes:
+      - valkey_data:/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+
+  internal-api:
+    <<: *service-security
+    image: ${GEO_API_IMAGE:?set a digest-pinned GEO_API_IMAGE}
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,noexec,nosuid
+    environment:
+      <<: *api-environment
+      OTEL_SERVICE_NAME: geo-internal-api
+    secrets: *api-secrets
+    command: ["uvicorn", "geo_api.internal_app:app", "--host", "0.0.0.0", "--port", "8000"]
+    networks:
+      - backend
+    depends_on: *api-dependencies
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3).read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  customer-api:
+    <<: *service-security
+    image: ${GEO_API_IMAGE:?set a digest-pinned GEO_API_IMAGE}
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,noexec,nosuid
+    environment:
+      <<: *api-environment
+      GEO_AUTH_MODE: session
+      OTEL_SERVICE_NAME: geo-customer-api
+    secrets: *api-secrets
+    command: ["uvicorn", "geo_api.customer_app:app", "--host", "0.0.0.0", "--port", "8000"]
+    networks:
+      - backend
+    depends_on: *api-dependencies
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3).read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  task-worker:
+    <<: *service-security
+    image: ${GEO_API_IMAGE:?set a digest-pinned GEO_API_IMAGE}
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m,noexec,nosuid
+    environment:
+      <<: *api-environment
+      OTEL_SERVICE_NAME: geo-task-worker
+    secrets: *api-secrets
+    command: ["dramatiq", "workers.task_queue.tasks", "--processes", "2", "--threads", "4"]
+    networks:
+      - backend
+    depends_on: *api-dependencies
+
+  admin-web:
+    <<: *service-security
+    image: ${GEO_ADMIN_WEB_IMAGE:?set a digest-pinned GEO_ADMIN_WEB_IMAGE}
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,noexec,nosuid
+    environment:
+      API_INTERNAL_BASE_URL: http://internal-api:8000
+      CUSTOMER_WEB_BASE_URL: ${GEO_CUSTOMER_WEB_BASE_URL:?set GEO_CUSTOMER_WEB_BASE_URL}
+      PORT: "3000"
+    ports:
+      - "127.0.0.1:${GEO_ADMIN_WEB_HOST_PORT:-3001}:3000"
+    networks:
+      - backend
+      - edge
+    depends_on:
+      internal-api:
+        condition: service_healthy
+
+  customer-web:
+    <<: *service-security
+    image: ${GEO_CUSTOMER_WEB_IMAGE:?set a digest-pinned GEO_CUSTOMER_WEB_IMAGE}
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,noexec,nosuid
+    environment:
+      API_INTERNAL_BASE_URL: http://customer-api:8000
+      ADMIN_WEB_BASE_URL: ${GEO_ADMIN_WEB_BASE_URL:?set GEO_ADMIN_WEB_BASE_URL}
+      PORT: "3000"
+    ports:
+      - "127.0.0.1:${GEO_CUSTOMER_WEB_HOST_PORT:-3000}:3000"
+    networks:
+      - backend
+      - edge
+    depends_on:
+      customer-api:
+        condition: service_healthy
+
+  otel-collector:
+    <<: *service-security
+    image: ${GEO_OTEL_COLLECTOR_IMAGE:?set a digest-pinned GEO_OTEL_COLLECTOR_IMAGE}
+    profiles: ["observability"]
+    command: ["--config=/etc/otelcol/config.yml"]
+    volumes:
+      - ./otel/collector.yml:/etc/otelcol/config.yml:ro
+    networks:
+      - backend
+
+  prometheus:
+    <<: *service-security
+    image: ${GEO_PROMETHEUS_IMAGE:?set a digest-pinned GEO_PROMETHEUS_IMAGE}
+    profiles: ["observability"]
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.path=/prometheus"]
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - backend
+
+  backup-object-store:
+    <<: *service-security
+    image: ${GEO_MINIO_MC_IMAGE:?set a digest-pinned GEO_MINIO_MC_IMAGE}
+    profiles: ["backup"]
+    restart: "no"
+    entrypoint: ["/bin/sh", "/backup/backup-object-store.sh"]
+    environment:
+      MINIO_ENDPOINT: http://minio:9000
+      BACKUP_STAMP: ${BACKUP_STAMP:-manual}
+      OBJECT_STORE_BACKUP_ACCESS_KEY_FILE: /run/secrets/object_store_backup_access_key
+      OBJECT_STORE_BACKUP_SECRET_KEY_FILE: /run/secrets/object_store_backup_secret_key
+    secrets:
+      - object_store_backup_access_key
+      - object_store_backup_secret_key
+    volumes:
+      - ./backup:/backup:ro
+      - ${GEO_BACKUP_ROOT:?set GEO_BACKUP_ROOT}:/backup-data
+    networks:
+      - backend
+
+  restore-smoke-postgres:
+    <<: *service-security
+    image: ${GEO_POSTGRES_IMAGE:?set a digest-pinned GEO_POSTGRES_IMAGE}
+    profiles: ["restore-smoke"]
+    restart: "no"
+    environment:
+      POSTGRES_DB: geo_restore_smoke
+      POSTGRES_USER: geo_restore
+      POSTGRES_PASSWORD_FILE: /run/secrets/restore_smoke_password
+    secrets:
+      - restore_smoke_password
+    tmpfs:
+      - /var/lib/postgresql/data:size=2g
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U geo_restore -d geo_restore_smoke"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+networks:
+  backend:
+    internal: true
+  edge:
+
+volumes:
+  postgres_data:
+  minio_data:
+  valkey_data:
+  prometheus_data:
+
+secrets:
+  postgres_installer_password:
+    file: ${GEO_POSTGRES_INSTALLER_PASSWORD_FILE:?set GEO_POSTGRES_INSTALLER_PASSWORD_FILE}
+  installer_database_url:
+    file: ${GEO_INSTALLER_DATABASE_URL_FILE:?set GEO_INSTALLER_DATABASE_URL_FILE}
+  database_url:
+    file: ${GEO_DATABASE_URL_FILE:?set GEO_DATABASE_URL_FILE}
+  minio_root_user:
+    file: ${GEO_MINIO_ROOT_USER_FILE:?set GEO_MINIO_ROOT_USER_FILE}
+  minio_root_password:
+    file: ${GEO_MINIO_ROOT_PASSWORD_FILE:?set GEO_MINIO_ROOT_PASSWORD_FILE}
+  object_store_access_key:
+    file: ${GEO_OBJECT_STORE_ACCESS_KEY_FILE:?set GEO_OBJECT_STORE_ACCESS_KEY_FILE}
+  object_store_secret_key:
+    file: ${GEO_OBJECT_STORE_SECRET_KEY_FILE:?set GEO_OBJECT_STORE_SECRET_KEY_FILE}
+  object_store_backup_access_key:
+    file: ${GEO_OBJECT_STORE_BACKUP_ACCESS_KEY_FILE:?set GEO_OBJECT_STORE_BACKUP_ACCESS_KEY_FILE}
+  object_store_backup_secret_key:
+    file: ${GEO_OBJECT_STORE_BACKUP_SECRET_KEY_FILE:?set GEO_OBJECT_STORE_BACKUP_SECRET_KEY_FILE}
+  deepseek_api_key:
+    file: ${GEO_DEEPSEEK_API_KEY_FILE:?set GEO_DEEPSEEK_API_KEY_FILE}
+  restore_smoke_password:
+    file: ${GEO_RESTORE_SMOKE_PASSWORD_FILE:?set GEO_RESTORE_SMOKE_PASSWORD_FILE}
