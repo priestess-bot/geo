@@ -1,980 +1,175 @@
+name: geo-development
+
+x-api-environment: &api-environment
+  GEO_DEPLOYMENT_ENVIRONMENT: development
+  GEO_AUTH_MODE: development
+  GEO_DEV_TOOLS_ENABLED: ${GEO_DEV_TOOLS_ENABLED:-0}
+  GEO_DB_POOL_ENABLED: "1"
+  GEO_DATABASE_URL: postgresql://geo_app_dev:geo_app_dev@postgres:5432/geo
+  DATABASE_URL: postgresql://geo_app_dev:geo_app_dev@postgres:5432/geo
+  OBJECT_STORE_ENDPOINT: http://minio:9000
+  OBJECT_STORE_BUCKET: geo-artifacts
+  OBJECT_STORE_ACCESS_KEY: geo_dev
+  OBJECT_STORE_SECRET_KEY: geo_dev_secret
+  OBJECT_STORE_AUTO_CREATE_BUCKET: "1"
+  GEO_TASK_QUEUE_ENABLED: "1"
+  GEO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
+
 services:
   postgres:
     image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: geo
-      POSTGRES_USER: geo
-      POSTGRES_PASSWORD: geo
+      POSTGRES_USER: geo_installer
+      POSTGRES_PASSWORD: geo_installer_dev
     ports:
       - "${GEO_POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./db/migrations/up:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U geo -d geo"]
+      test: ["CMD-SHELL", "pg_isready -U geo_installer -d geo"]
       interval: 5s
       timeout: 5s
-      retries: 12
+      retries: 20
 
-  db-migrate:
-    image: pgvector/pgvector:pg16
+  migrate:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
     environment:
-      PGPASSWORD: geo
-    volumes:
-      - ./db/migrations/up:/migrations/up:ro
+      GEO_DATABASE_URL: postgresql://geo_installer:geo_installer_dev@postgres:5432/geo
+      GEO_DEV_APP_PASSWORD: geo_app_dev
+      GEO_DEV_WORKER_PASSWORD: geo_worker_dev
     command:
       - /bin/sh
       - -c
-      - |
-        set -eu
-        until psql -h postgres -U geo -d geo -tAc "SELECT 1" >/dev/null 2>&1; do
-          sleep 1
-        done
-        # The official Postgres entrypoint briefly exposes its temporary init
-        # server before restarting into the final server on a fresh volume.
-        sleep 5
-        until psql -h postgres -U geo -d geo -tAc "SELECT 1" >/dev/null 2>&1; do
-          sleep 1
-        done
-        if [ "$(psql -h postgres -U geo -d geo -tAc "SELECT to_regprocedure('geo_runtime_can_access_project(uuid)') IS NOT NULL")" != "t" ]; then
-          psql -h postgres -U geo -d geo -v ON_ERROR_STOP=1 -f /migrations/up/0010_runtime_project_rls.sql
-        fi
-        for file in \
-          /migrations/up/0011_entity_alias_candidate_reviews.sql \
-          /migrations/up/0012_entity_alias_candidate_review_assignments.sql \
-          /migrations/up/0013_project_member_invitations.sql \
-          /migrations/up/0014_project_member_invitation_acceptance.sql \
-          /migrations/up/0015_customer_portal_launch_access_logs.sql \
-          /migrations/up/0016_runtime_sessions.sql \
-          /migrations/up/0017_tenant_membership_scope.sql \
-          /migrations/up/0018_connector_secret_refs.sql \
-          /migrations/up/0019_evidence_asset_metadata.sql \
-          /migrations/up/0020_action_recommendation_contract.sql \
-          /migrations/up/0021_knowledge_application.sql \
-          /migrations/up/0022_score_profile_cleanup.sql \
-          /migrations/up/0023_knowledge_pipeline_orchestration.sql \
-          /migrations/up/0024_market_neutral_defaults.sql \
-          /migrations/up/0025_global_auth_audit.sql \
-          /migrations/up/0026_collection_jobs.sql \
-          /migrations/up/0027_knowledge_pipeline_consolidation.sql \
-          /migrations/up/0028_knowledge_pipeline_production_contract.sql \
-          /migrations/up/0029_durable_job_lease_recovery.sql \
-          /migrations/up/0030_auth_session_scope_v2.sql \
-          /migrations/up/0031_geo_placement_runtime.sql
-        do
-          psql -h postgres -U geo -d geo -v ON_ERROR_STOP=1 -f "$$file"
-        done
+      - uv run alembic upgrade head && uv run python scripts/provision_dev_database.py
     depends_on:
       postgres:
         condition: service_healthy
 
   minio:
     image: minio/minio:RELEASE.2025-01-20T14-49-07Z
-    command: server /data --console-address ":9001"
+    command: ["server", "/data", "--console-address", ":9001"]
     environment:
-      MINIO_ROOT_USER: minio
-      MINIO_ROOT_PASSWORD: minio123
+      MINIO_ROOT_USER: geo_dev
+      MINIO_ROOT_PASSWORD: geo_dev_secret
     ports:
       - "${GEO_MINIO_HOST_PORT:-9000}:9000"
       - "${GEO_MINIO_CONSOLE_HOST_PORT:-9001}:9001"
     volumes:
       - minio_data:/data
-
-  minio-bootstrap:
-    image: ${GEO_MINIO_MC_IMAGE:-minio/mc:RELEASE.2025-02-21T16-00-46Z}
-    entrypoint:
-      - /bin/sh
-      - /bootstrap/bootstrap.sh
-    environment:
-      MINIO_ENDPOINT: http://minio:9000
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio123}
-      OBJECT_STORE_BUCKET: geo-reports
-      OBJECT_STORE_BACKUP_BUCKET: geo-backups
-      OBJECT_STORE_ACCESS_KEY: ${OBJECT_STORE_ACCESS_KEY:-geo-application-local}
-      OBJECT_STORE_SECRET_KEY: ${OBJECT_STORE_SECRET_KEY:-geo-application-local-secret}
-      OBJECT_STORE_BACKUP_ACCESS_KEY: ${OBJECT_STORE_BACKUP_ACCESS_KEY:-geo-backup-local}
-      OBJECT_STORE_BACKUP_SECRET_KEY: ${OBJECT_STORE_BACKUP_SECRET_KEY:-geo-backup-local-secret}
-      OBJECT_STORE_RESTORE_ACCESS_KEY: ${OBJECT_STORE_RESTORE_ACCESS_KEY:-geo-restore-local}
-      OBJECT_STORE_RESTORE_SECRET_KEY: ${OBJECT_STORE_RESTORE_SECRET_KEY:-geo-restore-local-secret}
-      OBJECT_STORE_RETENTION_ACCESS_KEY: ${OBJECT_STORE_RETENTION_ACCESS_KEY:-geo-retention-local}
-      OBJECT_STORE_RETENTION_SECRET_KEY: ${OBJECT_STORE_RETENTION_SECRET_KEY:-geo-retention-local-secret}
-      OBJECT_STORE_BACKUP_PREFIX: ${OBJECT_STORE_BACKUP_PREFIX:-production/local/}
-      OBJECT_STORE_BACKUP_SMOKE_PREFIX: ${OBJECT_STORE_BACKUP_SMOKE_PREFIX:-smoke/local/}
-      OBJECT_STORE_RESTORE_PREFIX: ${OBJECT_STORE_RESTORE_PREFIX:-restore-smoke/local/}
-      OBJECT_STORE_RETENTION_PREFIX: ${OBJECT_STORE_RETENTION_PREFIX:-retention-approved/local/}
-      MINIO_BOOTSTRAP_ENABLE_EPHEMERAL: ${MINIO_BOOTSTRAP_ENABLE_EPHEMERAL:-1}
-      MINIO_POLICY_VERSION: geo-object-store-policy-v1
-    volumes:
-      - ./minio:/bootstrap:ro
-      - object_store_receipts:/receipts
-    depends_on:
-      minio:
-        condition: service_started
-
-  qdrant:
-    image: qdrant/qdrant:v1.13.4
-    ports:
-      - "${GEO_QDRANT_HTTP_HOST_PORT:-6333}:6333"
-      - "${GEO_QDRANT_GRPC_HOST_PORT:-6334}:6334"
-    volumes:
-      - qdrant_storage:/qdrant/storage
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
   valkey:
     image: valkey/valkey:8.0.2-alpine
-    command:
-      - valkey-server
-      - --appendonly
-      - "yes"
+    command: ["valkey-server", "--appendonly", "yes"]
+    ports:
+      - "${GEO_VALKEY_HOST_PORT:-6379}:6379"
     volumes:
       - valkey_data:/data
     healthcheck:
-      test:
-        - CMD
-        - valkey-cli
-        - ping
+      test: ["CMD", "valkey-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 20
 
-  report-pdf-renderer:
-    image: ${GEO_PDF_RENDERER_IMAGE:-geo-pdf-renderer:local}
-    build:
-      context: ..
-      dockerfile: workers/report_export_worker/Dockerfile.renderer
-    environment:
-      GEO_DEPLOYMENT_ENVIRONMENT: ${GEO_DEPLOYMENT_ENVIRONMENT:-development}
-    healthcheck:
-      test:
-        - CMD
-        - python
-        - -c
-        - import urllib.request; urllib.request.urlopen('http://localhost:8200/health', timeout=5).read()
-      interval: 10s
-      timeout: 5s
-      retries: 12
-
-  litellm:
-    image: docker.litellm.ai/berriai/litellm:main-latest
-    profiles:
-      - llm-gateway
-    command:
-      - --config
-      - /app/config.yaml
-      - --port
-      - "4000"
-    environment:
-      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-geo-local}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-    ports:
-      - "${GEO_LITELLM_HOST_PORT:-4000}:4000"
-    volumes:
-      - ./litellm_config.yaml:/app/config.yaml:ro
-
-  api:
-    image: ${GEO_API_IMAGE:-geo-api:local}
+  internal-api:
     build:
       context: ..
       dockerfile: apps/api/Dockerfile
     environment:
-      DATABASE_URL: postgresql://geo_runtime_app:geo_runtime_app@postgres:5432/geo
-      GEO_RUNTIME_DB_POOL_ENABLED: ${GEO_RUNTIME_DB_POOL_ENABLED:-1}
-      GEO_RUNTIME_DB_POOL_MAX_SIZE: ${GEO_RUNTIME_DB_POOL_MAX_SIZE:-10}
-      GEO_RUNTIME_DB_POOL_TIMEOUT_SECONDS: ${GEO_RUNTIME_DB_POOL_TIMEOUT_SECONDS:-5}
-      OBJECT_STORE_ENDPOINT: http://minio:9000
-      OBJECT_STORE_BUCKET: geo-reports
-      OBJECT_STORE_ACCESS_KEY: minio
-      OBJECT_STORE_SECRET_KEY: minio123
-      OBJECT_STORE_REGION: us-east-1
-      QDRANT_URL: http://qdrant:6333
-      QDRANT_COLLECTION: ${QDRANT_COLLECTION:-geo_knowledge_chunks_bge_m3_v1}
-      KNOWLEDGE_EMBEDDING_API_URL: http://knowledge-embedding-api:8100
-      GEO_PDF_RENDERER_URL: http://report-pdf-renderer:8200
-      GEO_REPORT_PDF_RENDERER_REQUIRED: ${GEO_REPORT_PDF_RENDERER_REQUIRED:-1}
-      GEO_TASK_QUEUE_ENABLED: ${GEO_TASK_QUEUE_ENABLED:-1}
-      GEO_TASK_QUEUE_REQUIRED: ${GEO_TASK_QUEUE_REQUIRED:-1}
-      GEO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
-      LITELLM_BASE_URL: http://litellm:4000
-      LITELLM_API_KEY: ${LITELLM_MASTER_KEY:-sk-geo-local}
-      GEO_CONNECTOR_SECRET_MASTER_KEY: ${GEO_CONNECTOR_SECRET_MASTER_KEY:-geo-local-connector-secret-master-key}
-      GEO_RUNTIME_PROJECT_ACCESS_CONTROL: ${GEO_RUNTIME_PROJECT_ACCESS_CONTROL:-1}
-      GEO_RUNTIME_AUTH_MODE: ${GEO_RUNTIME_AUTH_MODE:-header}
-      GEO_RUNTIME_SESSION_COOKIE_SECURE: ${GEO_RUNTIME_SESSION_COOKIE_SECURE:-0}
-      GEO_DEPLOYMENT_ENVIRONMENT: ${GEO_DEPLOYMENT_ENVIRONMENT:-development}
-      GEO_DEV_TOOLS_ENABLED: ${GEO_DEV_TOOLS_ENABLED:-0}
-      GEO_NOTIFICATION_EMAIL_PREFERENCE_BASE_URL: ${GEO_NOTIFICATION_EMAIL_PREFERENCE_BASE_URL:-}
-      GEO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET: ${GEO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET:-}
-      GEO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_TTL_SECONDS: ${GEO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_TTL_SECONDS:-2592000}
-      GEO_DEEPSEEK_API_KEY_FILE: ${GEO_DEEPSEEK_API_KEY_FILE:-/run/secrets/deepseek_api_key}
-    volumes:
-      - ../deepseek_api_key.txt:/run/secrets/deepseek_api_key:ro
-    command:
-      - uvicorn
-      - geo_api.main:app
-      - --host
-      - 0.0.0.0
-      - --port
-      - "${GEO_API_CONTAINER_PORT:-8000}"
+      <<: *api-environment
+    command: ["uvicorn", "geo_api.internal_app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     ports:
-      - "${GEO_API_HOST_PORT:-8000}:${GEO_API_CONTAINER_PORT:-8000}"
+      - "${GEO_INTERNAL_API_HOST_PORT:-8000}:8000"
+    volumes:
+      - ../apps/api:/app/apps/api
+      - ../packages/geo_core:/app/packages/geo_core
     depends_on:
-      db-migrate:
+      migrate:
         condition: service_completed_successfully
-      postgres:
-        condition: service_healthy
       minio:
-        condition: service_started
-      qdrant:
-        condition: service_started
-      knowledge-embedding-api:
-        condition: service_healthy
-      report-pdf-renderer:
         condition: service_healthy
       valkey:
         condition: service_healthy
 
-  prometheus:
-    image: prom/prometheus:v3.0.1
-    profiles:
-      - observability
-    command:
-      - --config.file=/etc/prometheus/prometheus.yml
-      - --storage.tsdb.path=/prometheus
-      - --web.enable-lifecycle
+  customer-api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    environment:
+      <<: *api-environment
+      GEO_AUTH_MODE: session
+    command: ["uvicorn", "geo_api.customer_app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     ports:
-      - "${GEO_PROMETHEUS_HOST_PORT:-9090}:9090"
+      - "${GEO_CUSTOMER_API_HOST_PORT:-8001}:8000"
     volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus_data:/prometheus
+      - ../apps/api:/app/apps/api
+      - ../packages/geo_core:/app/packages/geo_core
     depends_on:
-      api:
-        condition: service_started
-
-  grafana:
-    image: grafana/grafana:11.4.0
-    profiles:
-      - observability
-    environment:
-      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
-      GF_USERS_ALLOW_SIGN_UP: "false"
-    ports:
-      - "${GEO_GRAFANA_HOST_PORT:-3001}:3000"
-    volumes:
-      - grafana_data:/var/lib/grafana
-      - ./grafana/provisioning:/etc/grafana/provisioning:ro
-    depends_on:
-      prometheus:
-        condition: service_started
-
-  ops-runtime-smoke:
-    image: ${GEO_API_IMAGE:-geo-api:local}
-    build:
-      context: ..
-      dockerfile: apps/api/Dockerfile
-    profiles:
-      - ops-smoke
-    environment:
-      GEO_OPS_SMOKE_API_BASE_URL: http://api:${GEO_API_CONTAINER_PORT:-8000}
-      GEO_OPS_SMOKE_PROMETHEUS_BASE_URL: http://prometheus:9090
-      GEO_OPS_SMOKE_GRAFANA_BASE_URL: http://grafana:3000
-    command:
-      - python
-      - scripts/run_ops_runtime_smoke.py
-    depends_on:
-      api:
-        condition: service_started
-      prometheus:
-        condition: service_started
-      grafana:
-        condition: service_started
-
-  collector-worker:
-    image: ${GEO_API_IMAGE:-geo-api:local}
-    build:
-      context: ..
-      dockerfile: apps/api/Dockerfile
-    profiles:
-      - worker
-    environment:
-      DATABASE_URL: postgresql://geo_runtime_app:geo_runtime_app@postgres:5432/geo
-      OBJECT_STORE_ENDPOINT: http://minio:9000
-      OBJECT_STORE_BUCKET: geo-reports
-      OBJECT_STORE_ACCESS_KEY: minio
-      OBJECT_STORE_SECRET_KEY: minio123
-      OBJECT_STORE_REGION: us-east-1
-      LITELLM_BASE_URL: http://litellm:4000
-      LITELLM_API_KEY: ${LITELLM_MASTER_KEY:-sk-geo-local}
-      GEO_RUNTIME_PROJECT_ACCESS_CONTROL: ${GEO_RUNTIME_PROJECT_ACCESS_CONTROL:-1}
-    command:
-      - python
-      - workers/collector_worker/run_collection_slice.py
-      - --mode
-      - api
-      - --prompt-limit
-      - "1"
-      - --persist
-      - --persist-analysis
-      - --require-ready-collectors
-    depends_on:
-      postgres:
-        condition: service_healthy
-      minio:
-        condition: service_started
-
-  collector-worker-litellm:
-    image: ${GEO_API_IMAGE:-geo-api:local}
-    build:
-      context: ..
-      dockerfile: apps/api/Dockerfile
-    profiles:
-      - llm-gateway
-    environment:
-      DATABASE_URL: postgresql://geo_runtime_app:geo_runtime_app@postgres:5432/geo
-      OBJECT_STORE_ENDPOINT: http://minio:9000
-      OBJECT_STORE_BUCKET: geo-reports
-      OBJECT_STORE_ACCESS_KEY: minio
-      OBJECT_STORE_SECRET_KEY: minio123
-      OBJECT_STORE_REGION: us-east-1
-      LITELLM_BASE_URL: http://litellm:4000
-      LITELLM_API_KEY: ${LITELLM_MASTER_KEY:-sk-geo-local}
-    command:
-      - python
-      - workers/collector_worker/run_collection_slice.py
-      - --mode
-      - api
-      - --prompt-limit
-      - "1"
-      - --persist
-      - --persist-analysis
-      - --require-ready-collectors
-      - --judge-gateway
-      - litellm
-      - --judge-model
-      - geo-gpt-4.1-mini
-    depends_on:
-      postgres:
-        condition: service_healthy
-      minio:
-        condition: service_started
-      litellm:
-        condition: service_started
-
-  browser-fidelity-scheduler:
-    build:
-      context: ..
-      dockerfile: apps/api/Dockerfile
-    profiles:
-      - scheduler
-    environment:
-      DATABASE_URL: postgresql://geo_runtime_app:geo_runtime_app@postgres:5432/geo
-      OBJECT_STORE_ENDPOINT: http://minio:9000
-      OBJECT_STORE_BUCKET: geo-reports
-      OBJECT_STORE_ACCESS_KEY: minio
-      OBJECT_STORE_SECRET_KEY: minio123
-      OBJECT_STORE_REGION: us-east-1
-      PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY:-}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      GEO_BROWSER_COLLECTOR_ENABLED: ${GEO_BROWSER_COLLECTOR_ENABLED:-0}
-      GEO_BROWSER_START_URL: ${GEO_BROWSER_START_URL:-https://chatgpt.com/}
-      GEO_BROWSER_PROMPT_SELECTOR: ${GEO_BROWSER_PROMPT_SELECTOR:-}
-      GEO_BROWSER_ANSWER_SELECTOR: ${GEO_BROWSER_ANSWER_SELECTOR:-}
-      GEO_BROWSER_SUBMIT_SELECTOR: ${GEO_BROWSER_SUBMIT_SELECTOR:-}
-      GEO_BROWSER_CITATION_SELECTOR: ${GEO_BROWSER_CITATION_SELECTOR:-}
-      GEO_BROWSER_STORAGE_STATE: ${GEO_BROWSER_STORAGE_STATE:-}
-      GEO_BROWSER_ARTIFACT_DIR: ${GEO_BROWSER_ARTIFACT_DIR:-/tmp/geo-browser-artifacts}
-      GEO_BROWSER_FIDELITY_EXECUTE: ${GEO_BROWSER_FIDELITY_EXECUTE:-0}
-      GEO_BROWSER_FIDELITY_PERSIST_PLAN: ${GEO_BROWSER_FIDELITY_PERSIST_PLAN:-1}
-      GEO_BROWSER_FIDELITY_PROMPT_COUNT: ${GEO_BROWSER_FIDELITY_PROMPT_COUNT:-10}
-      GEO_BROWSER_FIDELITY_CITY_COUNT: ${GEO_BROWSER_FIDELITY_CITY_COUNT:-2}
-      GEO_BROWSER_FIDELITY_SAMPLE_SIZE: ${GEO_BROWSER_FIDELITY_SAMPLE_SIZE:-1}
-    command:
-      - python
-      - scripts/run_browser_fidelity_scheduler.py
-    depends_on:
-      postgres:
-        condition: service_healthy
-      minio:
-        condition: service_started
-
-  runtime-alert-notification-worker:
-    build:
-      context: ..
-      dockerfile: apps/api/Dockerfile
-    profiles:
-      - scheduler
-    environment:
-      DATABASE_URL: postgresql://geo_runtime_app:geo_runtime_app@postgres:5432/geo
-      GEO_RUNTIME_ALERT_MARKET_CODE: ${GEO_RUNTIME_ALERT_MARKET_CODE:-AU}
-      GEO_RUNTIME_ALERT_MAX_PROJECTS: ${GEO_RUNTIME_ALERT_MAX_PROJECTS:-50}
-    command:
-      - python
-      - workers/notification_worker/run_runtime_alert_notifications.py
-      - --market-code
-      - ${GEO_RUNTIME_ALERT_MARKET_CODE:-AU}
-      - --max-projects
-      - ${GEO_RUNTIME_ALERT_MAX_PROJECTS:-50}
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-  runtime-alert-escalation-worker:
-    build:
-      context: ..
-      dockerfile: apps/api/Dockerfile
-    profiles:
-      - scheduler
-    environment:
-      DATABASE_URL: postgresql://geo_runtime_app:geo_runtime_app@postgres:5432/geo
-      GEO_RUNTIME_ALERT_MARKET_CODE: ${GEO_RUNTIME_ALERT_MARKET_CODE:-AU}
-      GEO_RUNTIME_ALERT_MAX_PROJECTS: ${GEO_RUNTIME_ALERT_MAX_PROJECTS:-50}
-      GEO_RUNTIME_ALERT_ESCALATION_THRESHOLDS: ${GEO_RUNTIME_ALERT_ESCALATION_THRESHOLDS:-critical=4,high=24}
-    command:
-      - python
-      - workers/notification_worker/run_runtime_alert_escalations.py
-      - --market-code
-      - ${GEO_RUNTIME_ALERT_MARKET_CODE:-AU}
-      - --max-projects
-      - ${GEO_RUNTIME_ALERT_MAX_PROJECTS:-50}
-      - --severity-threshold-hours
-      - ${GEO_RUNTIME_ALERT_ESCALATION_THRESHOLDS:-critical=4,high=24}
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-  report-export-worker:
-    build:
-      context: ..
-      dockerfile: apps/api/Dockerfile
-    profiles:
-      - scheduler
-    environment:
-      DATABASE_URL: postgresql://geo_runtime_app:geo_runtime_app@postgres:5432/geo
-      OBJECT_STORE_ENDPOINT: http://minio:9000
-      OBJECT_STORE_BUCKET: geo-reports
-      OBJECT_STORE_ACCESS_KEY: minio
-      OBJECT_STORE_SECRET_KEY: minio123
-      OBJECT_STORE_REGION: us-east-1
-      GEO_REPORT_EXPORT_WORKER_MAX_JOBS: ${GEO_REPORT_EXPORT_WORKER_MAX_JOBS:-1}
-      GEO_REPORT_EXPORT_WORKER_MAX_ATTEMPTS: ${GEO_REPORT_EXPORT_WORKER_MAX_ATTEMPTS:-3}
-      GEO_REPORT_EXPORT_WORKER_RETRY_BACKOFF_SECONDS: ${GEO_REPORT_EXPORT_WORKER_RETRY_BACKOFF_SECONDS:-300}
-      GEO_REPORT_EXPORT_WORKER_LEASE_SECONDS: ${GEO_REPORT_EXPORT_WORKER_LEASE_SECONDS:-900}
-      GEO_PDF_RENDERER_URL: http://report-pdf-renderer:8200
-      GEO_REPORT_PDF_RENDERER_REQUIRED: ${GEO_REPORT_PDF_RENDERER_REQUIRED:-1}
-    command:
-      - python
-      - workers/report_export_worker/run_report_export_jobs.py
-      - --max-jobs
-      - ${GEO_REPORT_EXPORT_WORKER_MAX_JOBS:-1}
-      - --max-attempts
-      - ${GEO_REPORT_EXPORT_WORKER_MAX_ATTEMPTS:-3}
-      - --retry-backoff-seconds
-      - ${GEO_REPORT_EXPORT_WORKER_RETRY_BACKOFF_SECONDS:-300}
-      - --lease-seconds
-      - ${GEO_REPORT_EXPORT_WORKER_LEASE_SECONDS:-900}
-    depends_on:
-      postgres:
-        condition: service_healthy
-      minio:
-        condition: service_started
-      report-pdf-renderer:
-        condition: service_healthy
-
-  knowledge-worker:
-    image: ${GEO_KNOWLEDGE_WORKER_IMAGE:-geo-knowledge-worker:local}
-    build:
-      context: ..
-      dockerfile: workers/knowledge_worker/Dockerfile.heavy
-    profiles:
-      - knowledge
-    environment:
-      DATABASE_URL: postgresql://geo_runtime_app:geo_runtime_app@postgres:5432/geo
-      OBJECT_STORE_ENDPOINT: http://minio:9000
-      OBJECT_STORE_BUCKET: geo-reports
-      OBJECT_STORE_ACCESS_KEY: minio
-      OBJECT_STORE_SECRET_KEY: minio123
-      OBJECT_STORE_REGION: us-east-1
-      QDRANT_URL: http://qdrant:6333
-      QDRANT_COLLECTION: ${QDRANT_COLLECTION:-geo_knowledge_chunks_bge_m3_v1}
-      HF_HUB_OFFLINE: "1"
-      TRANSFORMERS_OFFLINE: "1"
-      GEO_BGE_M3_MODEL: ${GEO_BGE_M3_MODEL:-/models/bge-m3-pytorch}
-      GEO_KNOWLEDGE_COMPONENT_RUNNER: /app/scripts/run_knowledge_component.py
-      GEO_ALLOW_CRAWLER_FALLBACK: ${GEO_ALLOW_CRAWLER_FALLBACK:-false}
-      GEO_KNOWLEDGE_REQUIRE_REAL_MODEL: ${GEO_KNOWLEDGE_REQUIRE_REAL_MODEL:-true}
-      GEO_KNOWLEDGE_REQUIRE_OBJECT_STORE: ${GEO_KNOWLEDGE_REQUIRE_OBJECT_STORE:-true}
-      GEO_KNOWLEDGE_REQUIRE_QDRANT: ${GEO_KNOWLEDGE_REQUIRE_QDRANT:-true}
-      GEO_DEEPSEEK_API_KEY_FILE: ${GEO_DEEPSEEK_API_KEY_FILE:-/run/secrets/deepseek_api_key}
-      GEO_KNOWLEDGE_WORKER_MAX_JOBS: ${GEO_KNOWLEDGE_WORKER_MAX_JOBS:-1}
-      GEO_KNOWLEDGE_WORKER_LEASE_SECONDS: ${GEO_KNOWLEDGE_WORKER_LEASE_SECONDS:-600}
-      GEO_KNOWLEDGE_WORKER_POLL_SECONDS: ${GEO_KNOWLEDGE_WORKER_POLL_SECONDS:-2.0}
-    command:
-      - python
-      - workers/knowledge_worker/run_knowledge_pipeline.py
-      - --max-jobs
-      - ${GEO_KNOWLEDGE_WORKER_MAX_JOBS:-1}
-      - --lease-seconds
-      - ${GEO_KNOWLEDGE_WORKER_LEASE_SECONDS:-600}
-    volumes:
-      - ../deepseek_api_key.txt:/run/secrets/deepseek_api_key:ro
-      - ../.cache/models:/models:ro
-    depends_on:
-      postgres:
-        condition: service_healthy
-      db-migrate:
+      migrate:
         condition: service_completed_successfully
       minio:
-        condition: service_started
-      qdrant:
-        condition: service_started
-
-  knowledge-embedding-api:
-    image: ${GEO_KNOWLEDGE_WORKER_IMAGE:-geo-knowledge-worker:local}
-    build:
-      context: ..
-      dockerfile: workers/knowledge_worker/Dockerfile.heavy
-    environment:
-      HF_HUB_OFFLINE: "1"
-      TRANSFORMERS_OFFLINE: "1"
-      GEO_BGE_M3_MODEL: /models/bge-m3-pytorch
-      GEO_KNOWLEDGE_COMPONENT_RUNNER: /app/scripts/run_knowledge_component.py
-    command:
-      - uvicorn
-      - workers.knowledge_worker.embedding_api:app
-      - --host
-      - 0.0.0.0
-      - --port
-      - "8100"
-    volumes:
-      - ../.cache/models:/models:ro
-    healthcheck:
-      test:
-        - CMD
-        - python
-        - -c
-        - import urllib.request; urllib.request.urlopen('http://localhost:8100/health', timeout=5).read()
-      interval: 15s
-      timeout: 10s
-      retries: 20
-
-  task-worker-runtime:
-    image: ${GEO_API_IMAGE:-geo-api:local}
-    build:
-      context: ..
-      dockerfile: apps/api/Dockerfile
-    environment:
-      DATABASE_URL: postgresql://geo_runtime_app:geo_runtime_app@postgres:5432/geo
-      OBJECT_STORE_ENDPOINT: http://minio:9000
-      OBJECT_STORE_BUCKET: geo-reports
-      OBJECT_STORE_ACCESS_KEY: minio
-      OBJECT_STORE_SECRET_KEY: minio123
-      OBJECT_STORE_REGION: us-east-1
-      GEO_PDF_RENDERER_URL: http://report-pdf-renderer:8200
-      GEO_REPORT_PDF_RENDERER_REQUIRED: "1"
-      GEO_TASK_QUEUE_ENABLED: "1"
-      GEO_TASK_QUEUE_REQUIRED: "1"
-      GEO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
-      GEO_COLLECTION_JOB_LEASE_SECONDS: ${GEO_COLLECTION_JOB_LEASE_SECONDS:-3600}
-      GEO_COLLECTION_JOB_TIMEOUT_SECONDS: ${GEO_COLLECTION_JOB_TIMEOUT_SECONDS:-3600}
-      GEO_COLLECTION_CHILD_TERMINATE_GRACE_SECONDS: ${GEO_COLLECTION_CHILD_TERMINATE_GRACE_SECONDS:-10}
-      GEO_COLLECTION_RETRY_BACKOFF_SECONDS: ${GEO_COLLECTION_RETRY_BACKOFF_SECONDS:-120}
-      GEO_COLLECTION_PROVIDER_CONCURRENCY: ${GEO_COLLECTION_PROVIDER_CONCURRENCY:-1}
-    command:
-      - dramatiq
-      - workers.task_queue.tasks
-      - --queues
-      - collection
-      - report
-      - --processes
-      - "1"
-      - --threads
-      - "2"
-    depends_on:
-      db-migrate:
-        condition: service_completed_successfully
-      postgres:
-        condition: service_healthy
-      minio:
-        condition: service_started
-      report-pdf-renderer:
         condition: service_healthy
       valkey:
         condition: service_healthy
 
-  task-worker-knowledge:
-    image: ${GEO_KNOWLEDGE_WORKER_IMAGE:-geo-knowledge-worker:local}
+  task-worker:
+    profiles: ["workers"]
     build:
       context: ..
-      dockerfile: workers/knowledge_worker/Dockerfile.heavy
+      dockerfile: apps/api/Dockerfile
     environment:
-      DATABASE_URL: postgresql://geo_runtime_app:geo_runtime_app@postgres:5432/geo
-      OBJECT_STORE_ENDPOINT: http://minio:9000
-      OBJECT_STORE_BUCKET: geo-reports
-      OBJECT_STORE_ACCESS_KEY: minio
-      OBJECT_STORE_SECRET_KEY: minio123
-      OBJECT_STORE_REGION: us-east-1
-      QDRANT_URL: http://qdrant:6333
-      QDRANT_COLLECTION: ${QDRANT_COLLECTION:-geo_knowledge_chunks_bge_m3_v1}
-      HF_HUB_OFFLINE: "1"
-      TRANSFORMERS_OFFLINE: "1"
-      GEO_BGE_M3_MODEL: ${GEO_BGE_M3_MODEL:-/models/bge-m3-pytorch}
-      GEO_KNOWLEDGE_COMPONENT_RUNNER: /app/scripts/run_knowledge_component.py
-      GEO_ALLOW_CRAWLER_FALLBACK: ${GEO_ALLOW_CRAWLER_FALLBACK:-false}
-      GEO_KNOWLEDGE_REQUIRE_REAL_MODEL: ${GEO_KNOWLEDGE_REQUIRE_REAL_MODEL:-true}
-      GEO_KNOWLEDGE_REQUIRE_OBJECT_STORE: ${GEO_KNOWLEDGE_REQUIRE_OBJECT_STORE:-true}
-      GEO_KNOWLEDGE_REQUIRE_QDRANT: ${GEO_KNOWLEDGE_REQUIRE_QDRANT:-true}
-      GEO_DEEPSEEK_API_KEY_FILE: ${GEO_DEEPSEEK_API_KEY_FILE:-/run/secrets/deepseek_api_key}
-      GEO_KNOWLEDGE_WORKER_MAX_JOBS: ${GEO_KNOWLEDGE_WORKER_MAX_JOBS:-25}
-      GEO_KNOWLEDGE_WORKER_LEASE_SECONDS: ${GEO_KNOWLEDGE_WORKER_LEASE_SECONDS:-600}
-      GEO_KNOWLEDGE_DRAMATIQ_DRAIN_CYCLES: ${GEO_KNOWLEDGE_DRAMATIQ_DRAIN_CYCLES:-20}
-      GEO_TASK_QUEUE_ENABLED: "1"
-      GEO_TASK_QUEUE_REQUIRED: "1"
-      GEO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
-    command:
-      - dramatiq
-      - workers.task_queue.tasks
-      - --queues
-      - knowledge
-      - --processes
-      - "1"
-      - --threads
-      - "1"
+      <<: *api-environment
+      GEO_DATABASE_URL: postgresql://geo_worker_dev:geo_worker_dev@postgres:5432/geo
+      DATABASE_URL: postgresql://geo_worker_dev:geo_worker_dev@postgres:5432/geo
+      GEO_DEEPSEEK_API_KEY_FILE: /run/secrets/deepseek_api_key
+    command: ["dramatiq", "workers.task_queue.tasks", "--processes", "1", "--threads", "4"]
     volumes:
-      - ../deepseek_api_key.txt:/run/secrets/deepseek_api_key:ro
-      - ../.cache/models:/models:ro
+      - ../apps/api:/app/apps/api
+      - ../packages/geo_core:/app/packages/geo_core
+      - ../workers:/app/workers
+      - ${GEO_DEEPSEEK_API_KEY_FILE:-../deepseek_api_key.txt}:/run/secrets/deepseek_api_key:ro
     depends_on:
-      db-migrate:
+      migrate:
         condition: service_completed_successfully
-      postgres:
-        condition: service_healthy
-      minio:
-        condition: service_started
-      qdrant:
-        condition: service_started
       valkey:
         condition: service_healthy
-
-  task-recovery-dispatcher:
-    image: ${GEO_API_IMAGE:-geo-api:local}
-    build:
-      context: ..
-      dockerfile: apps/api/Dockerfile
-    environment:
-      DATABASE_URL: postgresql://geo_runtime_app:geo_runtime_app@postgres:5432/geo
-      GEO_TASK_QUEUE_ENABLED: "1"
-      GEO_TASK_QUEUE_REQUIRED: "1"
-      GEO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
-    command:
-      - python
-      - workers/task_queue/run_recovery_dispatcher.py
-      - --interval-seconds
-      - ${GEO_TASK_RECOVERY_INTERVAL_SECONDS:-30}
-    depends_on:
-      task-worker-runtime:
-        condition: service_started
-      task-worker-knowledge:
-        condition: service_started
-      valkey:
-        condition: service_healthy
-
-  notification-delivery-worker:
-    build:
-      context: ..
-      dockerfile: apps/api/Dockerfile
-    profiles:
-      - scheduler
-    environment:
-      DATABASE_URL: postgresql://geo_runtime_app:geo_runtime_app@postgres:5432/geo
-      GEO_NOTIFICATION_DELIVERY_MAX_DELIVERIES: ${GEO_NOTIFICATION_DELIVERY_MAX_DELIVERIES:-1}
-      GEO_NOTIFICATION_DELIVERY_MAX_ATTEMPTS: ${GEO_NOTIFICATION_DELIVERY_MAX_ATTEMPTS:-3}
-      GEO_NOTIFICATION_DELIVERY_RETRY_BACKOFF_SECONDS: ${GEO_NOTIFICATION_DELIVERY_RETRY_BACKOFF_SECONDS:-120}
-      GEO_NOTIFICATION_DELIVERY_LEASE_SECONDS: ${GEO_NOTIFICATION_DELIVERY_LEASE_SECONDS:-300}
-      GEO_NOTIFICATION_DELIVERY_TIMEOUT_SECONDS: ${GEO_NOTIFICATION_DELIVERY_TIMEOUT_SECONDS:-5.0}
-      GEO_NOTIFICATION_WEBHOOK_SIGNING_SECRET: ${GEO_NOTIFICATION_WEBHOOK_SIGNING_SECRET:-}
-      GEO_NOTIFICATION_WEBHOOK_SIGNING_SECRET_PREVIOUS: ${GEO_NOTIFICATION_WEBHOOK_SIGNING_SECRET_PREVIOUS:-}
-      GEO_NOTIFICATION_SMTP_HOST: ${GEO_NOTIFICATION_SMTP_HOST:-}
-      GEO_NOTIFICATION_SMTP_PORT: ${GEO_NOTIFICATION_SMTP_PORT:-587}
-      GEO_NOTIFICATION_SMTP_TLS: ${GEO_NOTIFICATION_SMTP_TLS:-1}
-      GEO_NOTIFICATION_SMTP_USERNAME: ${GEO_NOTIFICATION_SMTP_USERNAME:-}
-      GEO_NOTIFICATION_SMTP_PASSWORD: ${GEO_NOTIFICATION_SMTP_PASSWORD:-}
-      GEO_NOTIFICATION_SMTP_FROM: ${GEO_NOTIFICATION_SMTP_FROM:-}
-      GEO_NOTIFICATION_SMTP_TIMEOUT_SECONDS: ${GEO_NOTIFICATION_SMTP_TIMEOUT_SECONDS:-10}
-      GEO_NOTIFICATION_EMAIL_PREFERENCE_BASE_URL: ${GEO_NOTIFICATION_EMAIL_PREFERENCE_BASE_URL:-}
-      GEO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET: ${GEO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_SECRET:-}
-      GEO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_TTL_SECONDS: ${GEO_NOTIFICATION_EMAIL_PREFERENCE_TOKEN_TTL_SECONDS:-2592000}
-    command:
-      - python
-      - workers/notification_worker/run_notification_deliveries.py
-      - --max-deliveries
-      - ${GEO_NOTIFICATION_DELIVERY_MAX_DELIVERIES:-1}
-      - --max-attempts
-      - ${GEO_NOTIFICATION_DELIVERY_MAX_ATTEMPTS:-3}
-      - --retry-backoff-seconds
-      - ${GEO_NOTIFICATION_DELIVERY_RETRY_BACKOFF_SECONDS:-120}
-      - --lease-seconds
-      - ${GEO_NOTIFICATION_DELIVERY_LEASE_SECONDS:-300}
-      - --timeout-seconds
-      - ${GEO_NOTIFICATION_DELIVERY_TIMEOUT_SECONDS:-5.0}
-      - --secondary-signing-secret-env
-      - GEO_NOTIFICATION_WEBHOOK_SIGNING_SECRET_PREVIOUS
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-  entity-alias-assignment-notification-worker:
-    build:
-      context: ..
-      dockerfile: apps/api/Dockerfile
-    profiles:
-      - scheduler
-    environment:
-      DATABASE_URL: postgresql://geo_runtime_app:geo_runtime_app@postgres:5432/geo
-      GEO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE: ${GEO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU}
-      GEO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS: ${GEO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS:-50}
-    command:
-      - python
-      - workers/notification_worker/run_entity_alias_assignment_notifications.py
-      - --market-code
-      - ${GEO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU}
-      - --max-projects
-      - ${GEO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS:-50}
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-  entity-alias-assignment-escalation-worker:
-    build:
-      context: ..
-      dockerfile: apps/api/Dockerfile
-    profiles:
-      - scheduler
-    environment:
-      DATABASE_URL: postgresql://geo_runtime_app:geo_runtime_app@postgres:5432/geo
-      GEO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE: ${GEO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU}
-      GEO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS: ${GEO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS:-50}
-    command:
-      - python
-      - workers/notification_worker/run_entity_alias_assignment_escalations.py
-      - --market-code
-      - ${GEO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU}
-      - --max-projects
-      - ${GEO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS:-50}
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-  entity-alias-assignment-reassignment-worker:
-    build:
-      context: ..
-      dockerfile: apps/api/Dockerfile
-    profiles:
-      - scheduler
-    environment:
-      DATABASE_URL: postgresql://geo_runtime_app:geo_runtime_app@postgres:5432/geo
-      GEO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE: ${GEO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU}
-      GEO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS: ${GEO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS:-50}
-      GEO_ENTITY_ALIAS_ASSIGNMENT_REASSIGN_TO: ${GEO_ENTITY_ALIAS_ASSIGNMENT_REASSIGN_TO:-runtime-console}
-    command:
-      - python
-      - workers/notification_worker/run_entity_alias_assignment_reassignments.py
-      - --market-code
-      - ${GEO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU}
-      - --assigned-to
-      - ${GEO_ENTITY_ALIAS_ASSIGNMENT_REASSIGN_TO:-runtime-console}
-      - --from-assignment-status
-      - escalated
-      - --max-projects
-      - ${GEO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS:-50}
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-  entity-alias-assignment-dispatch-apply-worker:
-    build:
-      context: ..
-      dockerfile: apps/api/Dockerfile
-    profiles:
-      - scheduler
-    environment:
-      DATABASE_URL: postgresql://geo_runtime_app:geo_runtime_app@postgres:5432/geo
-      GEO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE: ${GEO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU}
-      GEO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS: ${GEO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS:-50}
-      GEO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_REVIEWERS: ${GEO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_REVIEWERS:-runtime-console}
-      GEO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_MAX_PER_REVIEWER: ${GEO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_MAX_PER_REVIEWER:-10}
-      GEO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_LIMIT: ${GEO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_LIMIT:-50}
-    command:
-      - python
-      - workers/notification_worker/run_entity_alias_assignment_dispatch_apply.py
-      - --market-code
-      - ${GEO_ENTITY_ALIAS_ASSIGNMENT_MARKET_CODE:-AU}
-      - --reviewer-id
-      - ${GEO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_REVIEWERS:-runtime-console}
-      - --max-per-reviewer
-      - ${GEO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_MAX_PER_REVIEWER:-10}
-      - --limit-per-project
-      - ${GEO_ENTITY_ALIAS_ASSIGNMENT_DISPATCH_LIMIT:-50}
-      - --max-projects
-      - ${GEO_ENTITY_ALIAS_ASSIGNMENT_MAX_PROJECTS:-50}
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-  runtime-e2e:
-    image: ${GEO_API_IMAGE:-geo-api:local}
-    build:
-      context: ..
-      dockerfile: apps/api/Dockerfile
-    profiles:
-      - e2e
-    environment:
-      DATABASE_URL: postgresql://geo_runtime_app:geo_runtime_app@postgres:5432/geo
-      OBJECT_STORE_ENDPOINT: http://minio:9000
-      OBJECT_STORE_BUCKET: geo-reports
-      OBJECT_STORE_ACCESS_KEY: minio
-      OBJECT_STORE_SECRET_KEY: minio123
-      OBJECT_STORE_REGION: us-east-1
-    command:
-      - python
-      - scripts/verify_runtime_e2e.py
-    depends_on:
-      postgres:
-        condition: service_healthy
-      minio:
-        condition: service_started
-
-  db-smoke:
-    image: ${GEO_API_IMAGE:-geo-api:local}
-    build:
-      context: ..
-      dockerfile: apps/api/Dockerfile
-    profiles:
-      - db-smoke
-    environment:
-      DATABASE_URL: postgresql://geo:geo@postgres:5432/geo
-      RUNTIME_DATABASE_URL: postgresql://geo_runtime_app:geo_runtime_app@postgres:5432/geo
-    command:
-      - python
-      - scripts/verify_db_smoke.py
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-  backup-postgres-smoke:
-    image: pgvector/pgvector:pg16
-    profiles:
-      - backup-smoke
-    environment:
-      PGPASSWORD: geo
-    command:
-      - /bin/sh
-      - -c
-      - |
-        set -eu
-        restore_db="geo_restore_smoke"
-        dump_path="/tmp/geo-backup-smoke.dump"
-        trap 'dropdb -h postgres -U geo --if-exists "$$restore_db" >/dev/null 2>&1 || true' EXIT
-        dropdb -h postgres -U geo --if-exists "$$restore_db"
-        pg_dump -h postgres -U geo -d geo --format=custom --file="$$dump_path"
-        createdb -h postgres -U geo "$$restore_db"
-        pg_restore -h postgres -U geo -d "$$restore_db" --no-owner --no-privileges --exit-on-error "$$dump_path"
-        source_tables="$$(psql -h postgres -U geo -d geo -tAc "SELECT count(*) FROM pg_tables WHERE schemaname = 'public'")"
-        restored_tables="$$(psql -h postgres -U geo -d "$$restore_db" -tAc "SELECT count(*) FROM pg_tables WHERE schemaname = 'public'")"
-        source_projects="$$(psql -h postgres -U geo -d geo -tAc "SELECT count(*) FROM projects")"
-        restored_projects="$$(psql -h postgres -U geo -d "$$restore_db" -tAc "SELECT count(*) FROM projects")"
-        test "$$source_tables" = "$$restored_tables"
-        test "$$source_projects" = "$$restored_projects"
-        test "$$(stat -c %s "$$dump_path")" -gt 0
-        echo "postgres backup/restore smoke passed: tables=$$restored_tables projects=$$restored_projects sha256=$$(sha256sum "$$dump_path" | cut -d' ' -f1)"
-    depends_on:
-      db-migrate:
-        condition: service_completed_successfully
-
-  backup-object-smoke:
-    image: ${GEO_MINIO_MC_IMAGE:-minio/mc:RELEASE.2025-02-21T16-00-46Z}
-    profiles:
-      - backup-smoke
-    entrypoint:
-      - /bin/sh
-      - /bootstrap/backup-restore-smoke.sh
-    environment:
-      OBJECT_STORE_ENDPOINT: http://minio:9000
-      OBJECT_STORE_BUCKET: geo-reports
-      OBJECT_STORE_BACKUP_BUCKET: geo-backups
-      OBJECT_STORE_BACKUP_ACCESS_KEY: ${OBJECT_STORE_BACKUP_ACCESS_KEY:-geo-backup-local}
-      OBJECT_STORE_BACKUP_SECRET_KEY: ${OBJECT_STORE_BACKUP_SECRET_KEY:-geo-backup-local-secret}
-      OBJECT_STORE_RESTORE_ACCESS_KEY: ${OBJECT_STORE_RESTORE_ACCESS_KEY:-geo-restore-local}
-      OBJECT_STORE_RESTORE_SECRET_KEY: ${OBJECT_STORE_RESTORE_SECRET_KEY:-geo-restore-local-secret}
-      OBJECT_STORE_BACKUP_PREFIX: ${OBJECT_STORE_BACKUP_PREFIX:-production/local/}
-      OBJECT_STORE_BACKUP_SMOKE_PREFIX: ${OBJECT_STORE_BACKUP_SMOKE_PREFIX:-smoke/local/}
-      OBJECT_STORE_RESTORE_PREFIX: ${OBJECT_STORE_RESTORE_PREFIX:-restore-smoke/local/}
-      OBJECT_STORE_RECEIPT_DIR: /receipts
-    volumes:
-      - ./minio:/bootstrap:ro
-      - object_store_receipts:/receipts
-    depends_on:
-      minio-bootstrap:
-        condition: service_completed_successfully
-
-  customer-web:
-    build:
-      context: ..
-      dockerfile: apps/customer-web/Dockerfile
-    environment:
-      API_INTERNAL_BASE_URL: http://api:${GEO_API_CONTAINER_PORT:-8000}
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:${GEO_API_HOST_PORT:-8000}
-      GEO_RUNTIME_AUTH_MODE: ${GEO_RUNTIME_AUTH_MODE:-header}
-      GEO_RUNTIME_SESSION_COOKIE_SECURE: ${GEO_RUNTIME_SESSION_COOKIE_SECURE:-0}
-      PORT: ${GEO_CUSTOMER_WEB_CONTAINER_PORT:-3000}
-    command:
-      - npm
-      - run
-      - dev
-      - --
-      - -H
-      - 0.0.0.0
-      - -p
-      - "${GEO_CUSTOMER_WEB_CONTAINER_PORT:-3000}"
-    ports:
-      - "${GEO_CUSTOMER_WEB_HOST_PORT:-3000}:${GEO_CUSTOMER_WEB_CONTAINER_PORT:-3000}"
-    depends_on:
-      api:
-        condition: service_started
 
   admin-web:
     build:
       context: ..
       dockerfile: apps/admin-web/Dockerfile
     environment:
-      API_INTERNAL_BASE_URL: http://api:${GEO_API_CONTAINER_PORT:-8000}
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:${GEO_API_HOST_PORT:-8000}
+      API_INTERNAL_BASE_URL: http://internal-api:8000
       NEXT_PUBLIC_CUSTOMER_WEB_BASE_URL: http://localhost:${GEO_CUSTOMER_WEB_HOST_PORT:-3000}
-      GEO_ADMIN_ACTOR_ID: ${GEO_ADMIN_ACTOR_ID:-runtime-console}
-      GEO_ADMIN_DEV_TOOLS_ENABLED: ${GEO_ADMIN_DEV_TOOLS_ENABLED:-0}
-      GEO_RUNTIME_AUTH_MODE: ${GEO_RUNTIME_AUTH_MODE:-header}
-      GEO_RUNTIME_SESSION_COOKIE_SECURE: ${GEO_RUNTIME_SESSION_COOKIE_SECURE:-0}
-      PORT: ${GEO_ADMIN_WEB_CONTAINER_PORT:-3000}
-    command:
-      - npm
-      - run
-      - dev
-      - --
-      - -H
-      - 0.0.0.0
-      - -p
-      - "${GEO_ADMIN_WEB_CONTAINER_PORT:-3000}"
+      PORT: "3000"
     ports:
-      - "${GEO_ADMIN_WEB_HOST_PORT:-3001}:${GEO_ADMIN_WEB_CONTAINER_PORT:-3000}"
-    volumes:
-      - ../docs:/app/docs:ro
+      - "${GEO_ADMIN_WEB_HOST_PORT:-3001}:3000"
     depends_on:
-      api:
+      internal-api:
+        condition: service_started
+
+  customer-web:
+    build:
+      context: ..
+      dockerfile: apps/customer-web/Dockerfile
+    environment:
+      API_INTERNAL_BASE_URL: http://customer-api:8000
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:${GEO_CUSTOMER_API_HOST_PORT:-8001}
+      PORT: "3000"
+    ports:
+      - "${GEO_CUSTOMER_WEB_HOST_PORT:-3000}:3000"
+    depends_on:
+      customer-api:
         condition: service_started
 
 volumes:
   postgres_data:
   minio_data:
-  object_store_receipts:
-  prometheus_data:
-  grafana_data:
-  qdrant_storage:
   valkey_data:

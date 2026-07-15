@@ -4,51 +4,106 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
-  contracts-and-runtime:
+  python-quality:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --frozen
+      - name: Ruff
+        run: uv run ruff check apps/api/geo_api packages/geo_core/geo_core
+      - name: Strict types for migrated modules
+        run: >-
+          uv run mypy --follow-imports=skip
+          apps/api/geo_api/app_factory.py
+          apps/api/geo_api/contracts.py
+          apps/api/geo_api/problems.py
+          apps/api/geo_api/stable_routes.py
+          packages/geo_core/geo_core/jobs
+          packages/geo_core/geo_core/model_gateway
+          packages/geo_core/geo_core/prompts
+      - name: Architecture and migrated contracts
+        run: >-
+          uv run pytest -q
+          tests/architecture
+          tests/unit
+          tests/test_api_foundation_contracts.py
+          tests/test_geo_alembic_baseline.py
+          tests/test_geo_job_lifecycle.py
+          tests/test_geo_v3_qc_contracts.py
+
+  postgres-integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: geo
+          POSTGRES_USER: geo_installer
+          POSTGRES_PASSWORD: geo_ci_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U geo_installer -d geo"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      GEO_DATABASE_URL: postgresql://geo_installer:geo_ci_only@localhost:5432/geo
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --frozen
+      - name: Fresh database baseline
+        run: uv run alembic upgrade head
+      - name: One Alembic head
+        run: test "$(uv run alembic heads | wc -l)" -eq 1
+      - name: Baseline and Durable Job tests
+        run: uv run pytest -q tests/test_geo_alembic_baseline.py tests/test_geo_job_lifecycle.py
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: "npm"
-          cache-dependency-path: |
-            apps/web/package-lock.json
-            apps/customer-web/package-lock.json
-            apps/admin-web/package-lock.json
-      - name: Install Python dev dependencies
-        run: python -m pip install -r requirements-dev.txt
-      - name: Install web dependencies
-        run: |
-          npm --prefix apps/customer-web ci
-          npm --prefix apps/admin-web ci
-      - name: Run static quality gates
-        run: make quality
-      - name: Run Python contract tests
-        run: make test
-      - name: Verify checked-in OpenAPI contract
-        run: make openapi-contracts
-      - name: Build Runtime Console
-        run: make web-build
-      - name: Validate Compose default config
-        run: make docker-config
-      - name: Validate Compose LLM gateway config
-        run: make docker-config-llm
-      - name: Validate Compose scheduler config
-        run: make docker-config-scheduler
-      - name: Validate Compose observability config
-        run: make docker-config-observability
-      - name: Validate Compose DB smoke config
-        run: make docker-config-db-smoke
-      - name: Run DB schema smoke
-        run: make db-smoke
-      - name: Validate Schema v2 Compose config
-        run: make schema-v2-config
-      - name: Run Schema v2 fresh-install gate
-        run: make schema-v2-fresh-install
-      - name: Run runtime E2E
-        run: make runtime-e2e
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+          run_install: false
+      - uses: actions/cache@v4
+        with:
+          path: ~/.pnpm-store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test:contracts
+      - run: pnpm typecheck
+      - run: pnpm build
+
+  deployment-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - run: uv sync --frozen
+      - name: Production Compose contract tests
+        run: uv run pytest -q tests/infra/test_production_compose.py
+      - name: API image builds
+        run: docker build -f apps/api/Dockerfile -t geo-api:ci .
+      - name: Admin image builds
+        run: docker build -f apps/admin-web/Dockerfile -t geo-admin-web:ci .
+      - name: Customer image builds
+        run: docker build -f apps/customer-web/Dockerfile -t geo-customer-web:ci .

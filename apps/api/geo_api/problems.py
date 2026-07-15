@@ -71,7 +71,7 @@ def install_problem_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(RequestValidationError)
     async def validation_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
-        errors = [
+        errors: list[dict[str, object]] = [
             {
                 "location": [str(part) for part in error.get("loc", ())],
                 "message": str(error.get("msg", "Invalid value")),
