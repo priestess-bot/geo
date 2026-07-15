@@ -22,6 +22,7 @@ from geo_core.placements.domain import (
 from geo_core.placements.postgres_prompts import PostgresPromptRepositoryMixin
 from geo_core.placements.postgres_policy import PostgresDestinationPolicyMixin
 from geo_core.placements.postgres_job_control import PostgresJobControlMixin
+from geo_core.placements.postgres_package_versions import PostgresPackageVersionMixin
 from geo_core.placements.postgres_review_publication import PostgresReviewPublicationMixin
 
 
@@ -101,6 +102,7 @@ def _package(value: Mapping[str, Any]) -> PackageVersion:
 
 class PsycopgPlacementRepository(
     PostgresPromptRepositoryMixin,
+    PostgresPackageVersionMixin,
     PostgresReviewPublicationMixin,
     PostgresJobControlMixin,
     PostgresDestinationPolicyMixin,
@@ -483,43 +485,6 @@ class PsycopgPlacementRepository(
             )
         )
         return _package(records[0]) if records else None
-
-    def save_edited_version(
-        self, *, version: PackageVersion, superseded_version_id: UUID
-    ) -> PackageVersion:
-        base = self.get_package_version(
-            project_id=version.project_id, version_id=superseded_version_id
-        )
-        if base is None:
-            raise RuntimeError("base package version does not exist")
-        changed = self._db.execute(
-            """UPDATE placement_package_versions SET workflow_status = 'superseded'
-               WHERE project_id = %s AND id = %s AND content_hash = %s
-                 AND workflow_status <> 'superseded'""",
-            (version.project_id, superseded_version_id, base.content_hash),
-        ).rowcount
-        if changed != 1:
-            raise RuntimeError("base package version changed concurrently")
-        self._db.execute(
-            """INSERT INTO placement_package_versions
-                 (id, project_id, package_id, prompt_bundle_id, version_number, base_version_id,
-                  content_json, rendered_text, content_hash, edited_by, edit_reason)
-               VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s)""",
-            (
-                version.id,
-                version.project_id,
-                version.package_id,
-                version.prompt_bundle_id,
-                version.version_number,
-                version.base_version_id,
-                json.dumps(dict(version.content_json)),
-                version.rendered_text,
-                version.content_hash,
-                version.edited_by,
-                version.edit_reason,
-            ),
-        )
-        return version
 
     def list_claims(self, *, project_id: UUID, version_id: UUID) -> tuple[Claim, ...]:
         records = _rows(

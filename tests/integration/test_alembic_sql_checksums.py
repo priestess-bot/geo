@@ -64,6 +64,7 @@ def test_alembic_external_sql_checksum_ledger_fails_closed_and_tracks_down_up() 
                 "0002_engineering_governance",
                 "0003_access_invitations",
                 "0004_monitoring_observations",
+                "0005_claim_inventory_guard",
             ]
 
             changed = script_root / "sql/0001_geo_baseline.sql"
@@ -73,7 +74,7 @@ def test_alembic_external_sql_checksum_ledger_fails_closed_and_tracks_down_up() 
                 command.upgrade(configuration, "head")
             changed.write_bytes(original)
 
-            command.downgrade(configuration, "0003_access_invitations")
+            command.downgrade(configuration, "0004_monitoring_observations")
             with psycopg.connect(database_url) as connection:
                 revisions = connection.execute(
                     "SELECT revision FROM alembic_sql_checksum_ledger ORDER BY revision"
@@ -82,15 +83,19 @@ def test_alembic_external_sql_checksum_ledger_fails_closed_and_tracks_down_up() 
                 "0001_geo_baseline",
                 "0002_engineering_governance",
                 "0003_access_invitations",
+                "0004_monitoring_observations",
             ]
             command.upgrade(configuration, "head")
             assert ScriptDirectory.from_config(configuration).get_heads() == [
-                "0004_monitoring_observations"
+                "0005_claim_inventory_guard"
             ]
             with psycopg.connect(database_url) as connection:
-                assert connection.execute(
-                    "SELECT count(*) FROM alembic_sql_checksum_ledger"
-                ).fetchone()[0] == 4
+                assert (
+                    connection.execute(
+                        "SELECT count(*) FROM alembic_sql_checksum_ledger"
+                    ).fetchone()[0]
+                    == 5
+                )
     finally:
         with psycopg.connect(make_conninfo(**maintenance_parameters), autocommit=True) as admin:
             admin.execute(

@@ -283,6 +283,14 @@ class PackageEdit(PlacementContract):
     content_json: dict[str, object]
     rendered_text: str = Field(min_length=1)
     reason: str = Field(min_length=1, max_length=2000)
+    claims: list["PackageClaimEdit"] = Field(min_length=1)
+
+
+class PackageClaimEdit(PlacementContract):
+    text: str = Field(min_length=1, max_length=10000)
+    kind: Literal["factual", "comparative", "experience", "non_factual"]
+    support_status: Literal["supported", "unsupported", "conflict", "not_required"]
+    evidence_item_ids: list[UUID] = Field(default_factory=list)
 
 
 class ClaimView(PlacementContract):

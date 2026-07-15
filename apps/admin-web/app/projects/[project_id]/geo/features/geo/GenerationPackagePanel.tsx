@@ -82,9 +82,13 @@ export function GenerationPackagePanel({ projectId, data }: { projectId: string;
               <HiddenProject projectId={projectId} /><input type="hidden" name="package_id" value={version?.package_id || ""} /><input type="hidden" name="base_version_id" value={version?.id || ""} /><input type="hidden" name="base_content_hash" value={version?.content_hash || ""} />
               <label>正文<textarea name="rendered_text" required defaultValue={version?.rendered_text || ""} /></label>
               <label>结构化内容 JSON<textarea name="content_json" required defaultValue={version ? JSON.stringify(version.content_json, null, 2) : "{}"} /></label>
+              <label>完整 Claim 清单 JSON<textarea name="claims" required defaultValue={JSON.stringify(data.claims.data.map((claim) => ({
+                text: claim.claim_text, kind: claim.claim_kind, support_status: claim.support_status,
+                evidence_item_ids: claim.evidence_item_ids
+              })), null, 2)} /></label>
               <label>修改原因<input name="reason" required placeholder="客户要求、事实更新或编辑修订" /></label>
             </ActionForm>
-            <p className={styles.meta}>基于精确 hash 创建新版本；旧审批保留审计，但不会继承到新版本。</p>
+            <p className={styles.meta}>基于精确 hash 创建新版本；Claim 必须逐条更新且只能引用冻结 Evidence Pack，旧审批不会继承。</p>
           </div>
         </div>
         <div className={styles.panel}>

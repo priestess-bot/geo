@@ -1,7 +1,18 @@
 "use server";
 
 import type { JsonObject } from "@geo/types/geo";
-import { checked, client, finish, guards, isActionError, jsonObject, lines, numberValue, type ActionResult, value } from "./action-utils";
+import { checked, client, finish, guards, isActionError, jsonArray, jsonObject, lines, numberValue, type ActionResult, value } from "./action-utils";
+import type { PackageClaimEdit } from "@geo/types/geo";
+
+function isPackageClaimEdit(item: unknown): item is PackageClaimEdit {
+  if (item === null || typeof item !== "object" || Array.isArray(item)) return false;
+  const claim = item as Record<string, unknown>;
+  return typeof claim.text === "string"
+    && ["factual", "comparative", "experience", "non_factual"].includes(String(claim.kind))
+    && ["supported", "unsupported", "conflict", "not_required"].includes(String(claim.support_status))
+    && Array.isArray(claim.evidence_item_ids)
+    && claim.evidence_item_ids.every((id) => typeof id === "string");
+}
 
 export async function createBrief(_state: ActionResult, form: FormData): Promise<ActionResult> {
   const projectId = value(form, "project_id"), goals = jsonObject(form, "goals"), constraints = jsonObject(form, "constraints");
@@ -87,12 +98,17 @@ export async function reviewPackage(_state: ActionResult, form: FormData): Promi
 }
 
 export async function editPackage(_state: ActionResult, form: FormData): Promise<ActionResult> {
-  const projectId = value(form, "project_id"), contentJson = jsonObject(form, "content_json");
-  if (isActionError(contentJson)) return contentJson;
+  const projectId = value(form, "project_id"), contentJson = jsonObject(form, "content_json"), claims = jsonArray(form, "claims");
+  if (isActionError(contentJson)) return contentJson; if (isActionError(claims)) return claims;
+  const editedClaims = claims.filter(isPackageClaimEdit);
+  if (!claims.length || editedClaims.length !== claims.length) {
+    return { error: "claims 必须是非空且结构完整的 Claim 清单", status: 422, code: "invalid_claim_inventory" };
+  }
   const api = await client();
   return finish(projectId, await api.editPackage(projectId, value(form, "package_id"), {
     base_version_id: value(form, "base_version_id"), base_content_hash: value(form, "base_content_hash"),
-    content_json: contentJson, rendered_text: value(form, "rendered_text"), reason: value(form, "reason")
+    content_json: contentJson, rendered_text: value(form, "rendered_text"), reason: value(form, "reason"),
+    claims: editedClaims
   }, { ...guards(form), ifMatch: value(form, "base_content_hash") }), "编辑已创建新版本，旧审批未被复用");
 }
 

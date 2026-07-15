@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import hmac
 import os
 from pathlib import Path
-from typing import Literal, NoReturn, Protocol
+from typing import Literal, NoReturn, Protocol, cast
 from uuid import UUID
 
 from geo_api.contracts import (
@@ -23,6 +23,7 @@ from geo_api.access_contracts import (
     CreateInvitationRequest,
     CreatedInvitationResponse,
     InvitationCredentialRequest,
+    InvitationStatus,
     InvitationListResponse,
     InvitationPreflightResponse,
     InvitationSummary,
@@ -527,7 +528,7 @@ def _invitation_summary(item: object) -> InvitationSummary:
         role=item.role,
         target_surface=item.target_surface,
         token_hint=item.token_hint,
-        status=item.status,
+        status=cast(InvitationStatus, item.status),
         expires_at=item.expires_at,
         created_at=item.created_at,
     )

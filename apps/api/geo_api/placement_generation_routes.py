@@ -34,6 +34,7 @@ from geo_api.placement_access import PlacementApprover, PlacementEditor, Placeme
 from geo_api.placement_routes_shared import IdempotencyHeader, placement_services
 from geo_api.problems import ApiProblem
 from geo_api.stable_routes import PROBLEM_RESPONSES
+from geo_core.placements.ports import GeneratedClaim
 
 
 def generation_router() -> APIRouter:
@@ -368,6 +369,15 @@ def generation_router() -> APIRouter:
             rendered_text=payload.rendered_text,
             edited_by=principal.identity_id,
             reason=payload.reason,
+            claims=tuple(
+                GeneratedClaim(
+                    text=claim.text,
+                    kind=claim.kind,
+                    support_status=claim.support_status,
+                    evidence_item_ids=tuple(claim.evidence_item_ids),
+                )
+                for claim in payload.claims
+            ),
         )
 
     @router.get(

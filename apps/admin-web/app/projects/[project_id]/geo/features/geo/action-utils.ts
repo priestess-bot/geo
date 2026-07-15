@@ -19,7 +19,15 @@ export function jsonObject(form: FormData, key: string): JsonObject | ActionResu
       ? parsed as JsonObject : { error: `${key} 必须是 JSON 对象`, status: 422, code: "invalid_json_object" };
   } catch { return { error: `${key} 不是有效 JSON`, status: 422, code: "invalid_json" }; }
 }
-export function isActionError(value: JsonObject | ActionResult): value is ActionResult { return "error" in value; }
+export function jsonArray(form: FormData, key: string): unknown[] | ActionResult {
+  const raw = value(form, key);
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed)
+      ? parsed : { error: `${key} 必须是 JSON 数组`, status: 422, code: "invalid_json_array" };
+  } catch { return { error: `${key} 不是有效 JSON`, status: 422, code: "invalid_json" }; }
+}
+export function isActionError(value: JsonObject | unknown[] | ActionResult): value is ActionResult { return "error" in value; }
 export function guards(form: FormData) { return { idempotencyKey: value(form, "idempotency_key") || randomUUID() }; }
 export async function client() { return geoClient(); }
 export function finish<T>(projectId: string, result: RuntimeHttpResult<T>, success: string): ActionResult {

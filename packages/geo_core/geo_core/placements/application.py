@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 from urllib.parse import urlparse
 
 from geo_core.placements.application_operations import PlacementOperationsApplicationMixin
+from geo_core.placements.claim_inventory import validate_edited_claims
 from geo_core.placements.generation_contract import validate_generation_schema
 from geo_core.placements.domain import (
     AuthenticityRisk,
@@ -37,7 +38,7 @@ from geo_core.placements.domain import (
     edit_package_version,
     validate_authenticity,
 )
-from geo_core.placements.ports import UnitOfWorkFactory
+from geo_core.placements.ports import GeneratedClaim, UnitOfWorkFactory
 from geo_core.prompts.domain import compile_template
 
 
@@ -380,7 +381,9 @@ class PlacementApplication(PlacementOperationsApplicationMixin):
         rendered_text: str,
         edited_by: UUID,
         reason: str,
+        claims: tuple[GeneratedClaim, ...],
     ) -> PackageVersion:
+        validate_edited_claims(claims)
         with self._uow_factory(project_id) as uow:
             base = uow.placements.get_package_version(
                 project_id=project_id, version_id=base_version_id
@@ -401,7 +404,7 @@ class PlacementApplication(PlacementOperationsApplicationMixin):
                 reason=reason,
             )
             result = uow.placements.save_edited_version(
-                version=version, superseded_version_id=base.id
+                version=version, superseded_version_id=base.id, claims=claims
             )
             uow.commit()
             return result
@@ -414,6 +417,10 @@ class PlacementApplication(PlacementOperationsApplicationMixin):
         self, *, project_id: UUID, version_id: UUID, submitted_by: UUID
     ) -> ReviewSubmission:
         with self._uow_factory(project_id) as uow:
+            if not uow.placements.list_claims(project_id=project_id, version_id=version_id):
+                raise PlacementRuleViolation(
+                    "package version requires a non-empty claim inventory before review"
+                )
             result = uow.placements.submit_for_review(
                 project_id=project_id, version_id=version_id, submitted_by=submitted_by
             )

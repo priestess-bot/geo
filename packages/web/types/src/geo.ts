@@ -115,6 +115,12 @@ export interface ReviewView extends ReviewCreate {
 export interface ReviewSubmissionView { id: string; package_version_id: string; project_id: string; submitted_at: string; submitted_by: string; }
 export interface PackageEdit {
   base_content_hash: string; base_version_id: string; content_json: JsonObject; reason: string; rendered_text: string;
+  claims: PackageClaimEdit[];
+}
+export interface PackageClaimEdit {
+  text: string; kind: "factual" | "comparative" | "experience" | "non_factual";
+  support_status: "supported" | "unsupported" | "conflict" | "not_required";
+  evidence_item_ids: string[];
 }
 export interface ExportView {
   id: string; project_id: string; package_version_id: string; export_format: string; content_hash: string;

@@ -210,7 +210,9 @@ class PlacementRepository(Protocol):
         self, *, project_id: UUID
     ) -> tuple[Mapping[str, object], ...]: ...
 
-    def install_default_prompt_catalog(self, **values: object) -> tuple[Mapping[str, object], ...]: ...
+    def install_default_prompt_catalog(
+        self, **values: object
+    ) -> tuple[Mapping[str, object], ...]: ...
 
     def create_prompt_bundle(
         self,
@@ -243,7 +245,11 @@ class PlacementRepository(Protocol):
     ) -> PackageVersion | None: ...
 
     def save_edited_version(
-        self, *, version: PackageVersion, superseded_version_id: UUID
+        self,
+        *,
+        version: PackageVersion,
+        superseded_version_id: UUID,
+        claims: tuple[GeneratedClaim, ...],
     ) -> PackageVersion: ...
 
     def list_claims(self, *, project_id: UUID, version_id: UUID) -> tuple[Claim, ...]: ...

@@ -339,6 +339,8 @@ def validate_authenticity(
 def assert_approval_allowed(*, review: Review, claims: tuple[Claim, ...]) -> None:
     if review.decision != "approved":
         return
+    if not claims:
+        raise PlacementRuleViolation("approval requires a non-empty claim inventory")
     unsupported = [
         claim
         for claim in claims

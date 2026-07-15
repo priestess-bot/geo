@@ -39,7 +39,9 @@ def test_placement_routes_are_stable_and_internal_only() -> None:
         "/v1/projects/{project_id}/geo/measurement-windows",
         "/v1/projects/{project_id}/geo/reports",
     } <= set(customer)
-    assert not any(term in path for path in internal for term in ("runtime", "p0a", "p0b", "fixture"))
+    assert not any(
+        term in path for path in internal for term in ("runtime", "p0a", "p0b", "fixture")
+    )
 
 
 def test_generation_and_publication_require_idempotency_header() -> None:
@@ -63,6 +65,13 @@ def test_export_is_not_a_publication_operation() -> None:
     )
     assert document[export_path]["post"]["operationId"] == "exportPlacementPackageVersion"
     assert document[publication_path]["post"]["operationId"] == "requestPlacementPublication"
+
+
+def test_manual_package_edit_requires_a_non_empty_claim_inventory() -> None:
+    document = create_api_app(surface="internal").openapi()
+    package_edit = document["components"]["schemas"]["PackageEdit"]
+    assert "claims" in package_edit["required"]
+    assert package_edit["properties"]["claims"]["minItems"] == 1
 
 
 def test_placement_slice_has_no_legacy_dependency_and_respects_file_budget() -> None:

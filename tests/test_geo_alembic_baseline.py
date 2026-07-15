@@ -7,9 +7,7 @@ ALEMBIC = ROOT / "infra" / "db" / "alembic"
 BASELINE = (ALEMBIC / "sql" / "0001_geo_baseline.sql").read_text(encoding="utf-8")
 ACCESS = (ALEMBIC / "sql" / "0003_access_invitations.sql").read_text(encoding="utf-8")
 ALEMBIC_ENV = (ALEMBIC / "env.py").read_text(encoding="utf-8")
-MONITORING = (ALEMBIC / "sql" / "0004_monitoring_observations.sql").read_text(
-    encoding="utf-8"
-)
+MONITORING = (ALEMBIC / "sql" / "0004_monitoring_observations.sql").read_text(encoding="utf-8")
 
 
 def test_revision_graph_has_exactly_one_root_and_head() -> None:
@@ -19,19 +17,29 @@ def test_revision_graph_has_exactly_one_root_and_head() -> None:
         "0002_engineering_governance.py",
         "0003_access_invitations.py",
         "0004_monitoring_observations.py",
+        "0005_claim_inventory_guard.py",
     ]
     root = revisions[0].read_text(encoding="utf-8")
     engineering = revisions[1].read_text(encoding="utf-8")
     invitations = revisions[2].read_text(encoding="utf-8")
-    head = revisions[3].read_text(encoding="utf-8")
+    monitoring = revisions[3].read_text(encoding="utf-8")
+    head = revisions[4].read_text(encoding="utf-8")
     assert 'revision = "0001_geo_baseline"' in root
     assert "down_revision = None" in root
     assert 'revision = "0002_engineering_governance"' in engineering
     assert 'down_revision = "0001_geo_baseline"' in engineering
     assert 'revision = "0003_access_invitations"' in invitations
     assert 'down_revision = "0002_engineering_governance"' in invitations
-    assert 'revision = "0004_monitoring_observations"' in head
-    assert 'down_revision = "0003_access_invitations"' in head
+    assert 'revision = "0004_monitoring_observations"' in monitoring
+    assert 'down_revision = "0003_access_invitations"' in monitoring
+    assert 'revision = "0005_claim_inventory_guard"' in head
+    assert 'down_revision = "0004_monitoring_observations"' in head
+
+
+def test_claim_inventory_guard_fails_closed_on_empty_inventory() -> None:
+    guard = (ALEMBIC / "sql" / "0005_claim_inventory_guard.sql").read_text(encoding="utf-8")
+    assert "OR NOT EXISTS (" in guard
+    assert "FROM placement_claims c" in guard
 
 
 def test_alembic_uses_the_installed_psycopg3_driver_for_standard_urls() -> None:
@@ -65,7 +73,10 @@ def test_monitoring_revision_has_rls_composite_links_and_immutable_records() -> 
     }
     assert required_tables <= set(re.findall(r"CREATE TABLE ([a-z_]+)", MONITORING))
     assert "FORCE ROW LEVEL SECURITY" in MONITORING
-    assert "REFERENCES monitoring_protocol_queries(protocol_id, monitoring_query_id, project_id)" in MONITORING
+    assert (
+        "REFERENCES monitoring_protocol_queries(protocol_id, monitoring_query_id, project_id)"
+        in MONITORING
+    )
     assert "monitoring_observations_immutable" in MONITORING
     assert "frozen monitoring protocols are immutable" in MONITORING
 

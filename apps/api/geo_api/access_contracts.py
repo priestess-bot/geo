@@ -13,6 +13,7 @@ from geo_api.contracts import AuthIdentity, StrictContract
 
 InvitationRole = Literal["analyst", "viewer", "customer"]
 InvitationSurface = Literal["admin", "customer"]
+InvitationStatus = Literal["pending", "redeemed", "revoked", "expired"]
 
 
 class CreateInvitationRequest(StrictContract):
@@ -29,7 +30,7 @@ class InvitationSummary(StrictContract):
     role: InvitationRole
     target_surface: Literal["customer"]
     token_hint: str
-    status: Literal["pending", "redeemed", "revoked", "expired"]
+    status: InvitationStatus
     expires_at: datetime
     created_at: datetime
 

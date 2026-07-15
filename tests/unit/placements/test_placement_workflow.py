@@ -35,6 +35,7 @@ from geo_core.placements.domain import (
     canonical_hash,
 )
 from geo_core.prompts.domain import SkillVersion, TemplateRelease
+from geo_core.placements.ports import GeneratedClaim
 
 
 OUTPUT_SCHEMA = {
@@ -243,6 +244,18 @@ class FakeRepository:
             old, workflow_status=WorkflowStatus.SUPERSEDED
         )
         self.packages.append(values["version"])
+        self.claims.extend(
+            Claim(
+                uuid4(),
+                values["version"].project_id,
+                values["version"].id,
+                item.text,
+                item.kind,
+                item.support_status,
+                item.evidence_item_ids,
+            )
+            for item in values["claims"]
+        )
         return values["version"]
 
     def list_claims(self, **values: Any) -> tuple[Claim, ...]:
@@ -576,6 +589,7 @@ def test_edit_uses_exact_base_hash_and_new_version_invalidates_old_review_lineag
         WorkflowStatus.APPROVED,
     )
     repository.packages.append(base)
+    edited_claims = (GeneratedClaim("Editorial opinion", "non_factual", "not_required", ()),)
     with pytest.raises(ConcurrencyConflict):
         app.edit_package_version(
             project_id=project_id,
@@ -586,6 +600,7 @@ def test_edit_uses_exact_base_hash_and_new_version_invalidates_old_review_lineag
             rendered_text="new",
             edited_by=uuid4(),
             reason="Fix",
+            claims=edited_claims,
         )
     edited = app.edit_package_version(
         project_id=project_id,
@@ -596,10 +611,38 @@ def test_edit_uses_exact_base_hash_and_new_version_invalidates_old_review_lineag
         rendered_text="new",
         edited_by=uuid4(),
         reason="Fix",
+        claims=edited_claims,
     )
     assert edited.workflow_status == WorkflowStatus.GENERATED
     assert edited.base_version_id == base.id
     assert repository.packages[0].workflow_status == WorkflowStatus.SUPERSEDED
+    assert (
+        repository.list_claims(project_id=project_id, version_id=edited.id)[0].claim_text
+        == "Editorial opinion"
+    )
+
+
+def test_edit_and_review_reject_an_empty_claim_inventory() -> None:
+    app, repository = _application()
+    project_id = uuid4()
+    base = PackageVersion(
+        uuid4(), project_id, uuid4(), uuid4(), 1, {"body": "old"}, "old", "b" * 64
+    )
+    repository.packages.append(base)
+    with pytest.raises(PlacementRuleViolation, match="complete claim inventory"):
+        app.edit_package_version(
+            project_id=project_id,
+            package_id=base.package_id,
+            base_version_id=base.id,
+            base_content_hash=base.content_hash,
+            content_json={"body": "new"},
+            rendered_text="new",
+            edited_by=uuid4(),
+            reason="Fix",
+            claims=(),
+        )
+    with pytest.raises(PlacementRuleViolation, match="non-empty claim inventory"):
+        app.submit_for_review(project_id=project_id, version_id=base.id, submitted_by=uuid4())
 
 
 def test_authenticity_hard_blocks_cannot_be_overridden() -> None:

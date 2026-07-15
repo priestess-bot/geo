@@ -15,6 +15,7 @@ from geo_core.placements.application import PlacementApplication
 from geo_core.placements.artifact_worker import PlacementArtifactRepository
 from geo_core.placements.domain import ConsumerExperience, PlacementRuleViolation
 from geo_core.placements.postgres_uow import placement_uow_factory
+from geo_core.placements.ports import GeneratedClaim
 from geo_core.placements.worker_composition import (
     ArtifactFinalizeHandler,
     EvidencePackHandler,
@@ -368,6 +369,39 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
         version = application.list_package_versions(
             project_id=first["project"], opportunity_id=first["opportunity"].id
         )[0]
+        with pytest.raises(RuntimeError, match="outside the frozen pack"):
+            application.edit_package_version(
+                project_id=first["project"],
+                package_id=version.package_id,
+                base_version_id=version.id,
+                base_content_hash=version.content_hash,
+                content_json=dict(version.content_json),
+                rendered_text=version.rendered_text,
+                edited_by=first["owner"],
+                reason="Invalid evidence reference test",
+                claims=(GeneratedClaim("Claim", "factual", "supported", (uuid4(),)),),
+            )
+        version = application.edit_package_version(
+            project_id=first["project"],
+            package_id=version.package_id,
+            base_version_id=version.id,
+            base_content_hash=version.content_hash,
+            content_json=dict(version.content_json),
+            rendered_text=f"{version.rendered_text}\n\nReviewed for channel fit.",
+            edited_by=first["owner"],
+            reason="Editorial review",
+            claims=(
+                GeneratedClaim(
+                    "The product has documented evidence.",
+                    "factual",
+                    "supported",
+                    (first["evidence_id"],),
+                ),
+            ),
+        )
+        assert application.list_claims(project_id=first["project"], version_id=version.id)[
+            0
+        ].evidence_item_ids == (first["evidence_id"],)
         application.submit_for_review(
             project_id=first["project"],
             version_id=version.id,
