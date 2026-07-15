@@ -1,1 +1,1 @@
-"""FastAPI application package for GEO AU."""
+"""FastAPI applications for the GEO platform."""

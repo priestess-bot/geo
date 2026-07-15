@@ -12,4 +12,4 @@ COPY scripts ./scripts
 
 ENV PYTHONPATH=/app:/app/packages/geo_core:/app/apps/api
 
-CMD ["uvicorn", "geo_api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "geo_api.internal_app:app", "--host", "0.0.0.0", "--port", "8000"]
