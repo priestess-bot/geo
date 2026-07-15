@@ -52,7 +52,13 @@ CUSTOMER_FORBIDDEN_PREFIXES = (
     "/v1/dev-tools",
     "/v1/integrations/github",
 )
-CUSTOMER_ALLOWED_WRITES = frozenset({("post", "/v1/auth/logout")})
+CUSTOMER_ALLOWED_WRITES = frozenset(
+    {
+        ("post", "/v1/auth/logout"),
+        ("post", "/v1/auth/invitations/preflight"),
+        ("post", "/v1/auth/invitations/redeem"),
+    }
+)
 ISOLATED_ENVIRONMENT = {
     "GEO_DEPLOYMENT_ENVIRONMENT": "contract",
     "GEO_DEV_TOOLS_ENABLED": "0",
