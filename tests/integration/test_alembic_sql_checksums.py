@@ -66,6 +66,7 @@ def test_alembic_external_sql_checksum_ledger_fails_closed_and_tracks_down_up() 
                 "0004_monitoring_observations",
                 "0005_claim_inventory_guard",
                 "0006_monitoring_lineage",
+                "0007_placement_operations",
             ]
 
             changed = script_root / "sql/0001_geo_baseline.sql"
@@ -89,12 +90,12 @@ def test_alembic_external_sql_checksum_ledger_fails_closed_and_tracks_down_up() 
             ]
             command.upgrade(configuration, "head")
             assert ScriptDirectory.from_config(configuration).get_heads() == [
-                "0006_monitoring_lineage"
+                "0007_placement_operations"
             ]
             with psycopg.connect(database_url) as connection:
                 assert connection.execute(
                     "SELECT count(*) FROM alembic_sql_checksum_ledger"
-                ).fetchone()[0] == 6
+                ).fetchone()[0] == 7
     finally:
         with psycopg.connect(make_conninfo(**maintenance_parameters), autocommit=True) as admin:
             admin.execute(

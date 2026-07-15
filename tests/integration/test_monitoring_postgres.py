@@ -470,9 +470,19 @@ def _seed_campaign_destinations(
         connection.execute(
             """INSERT INTO publication_submissions
                  (id, project_id, publication_request_id, submitted_url,
+                  idempotency_key, payload_hash, submitted_by,
                   status, submitted_at, verified_at)
-               VALUES (%s, %s, %s, %s, 'verified', clock_timestamp(), clock_timestamp())""",
-            (submission_id, project_id, request_id, url),
+               VALUES (%s, %s, %s, %s, %s, %s, %s,
+                       'verified', clock_timestamp(), clock_timestamp())""",
+            (
+                submission_id,
+                project_id,
+                request_id,
+                url,
+                f"monitoring-submission-{marker}",
+                "e" * 64,
+                identity_id,
+            ),
         )
     return url, submission_id, qualified_destination
 
