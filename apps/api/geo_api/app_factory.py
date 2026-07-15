@@ -17,6 +17,8 @@ from starlette.responses import Response
 from geo_api.access_write_routes import invitation_auth_router, invitation_management_router
 from geo_api.engineering_routes import engineering_router, github_integration_router
 from geo_api.engineering_runtime import build_engineering_service
+from geo_api.catalog_routes import catalog_bootstrap_router, catalog_router
+from geo_api.catalog_runtime import build_catalog_application
 from geo_api.foundation_services import (
     FoundationServices,
     UnavailableFoundationServices,
@@ -47,13 +49,15 @@ class ApiSettings:
     customer_session_cookie_name: str = "GEO_CUSTOMER_SESSION"
     csrf_cookie_name: str = "GEO_CSRF_TOKEN"
     cookie_secure: bool = False
+    deployment_environment: str = "development"
 
     @classmethod
     def from_environment(cls) -> "ApiSettings":
         enabled = os.getenv("GEO_DEV_TOOLS_ENABLED", "0").strip().lower() in _TRUE_VALUES
         cookie_name = os.getenv("GEO_CUSTOMER_SESSION_COOKIE_NAME", "GEO_CUSTOMER_SESSION").strip()
         csrf_cookie_name = os.getenv("GEO_CSRF_COOKIE_NAME", "GEO_CSRF_TOKEN").strip()
-        production = os.getenv("GEO_DEPLOYMENT_ENVIRONMENT", "development").strip() == "production"
+        deployment = os.getenv("GEO_DEPLOYMENT_ENVIRONMENT", "development").strip().lower()
+        production = deployment == "production"
         cookie_secure = (
             production or os.getenv("GEO_COOKIE_SECURE", "0").strip().lower() in _TRUE_VALUES
         )
@@ -62,6 +66,7 @@ class ApiSettings:
             customer_session_cookie_name=cookie_name or "GEO_CUSTOMER_SESSION",
             csrf_cookie_name=csrf_cookie_name or "GEO_CSRF_TOKEN",
             cookie_secure=cookie_secure,
+            deployment_environment=deployment or "development",
         )
 
 
@@ -72,6 +77,7 @@ def create_api_app(
     services: FoundationServices | None = None,
     engineering_service: object | None = None,
     placement_services: object | None = None,
+    catalog_application: object | None = None,
 ) -> FastAPI:
     """Build one API surface without importing the legacy application module."""
 
@@ -103,6 +109,10 @@ def create_api_app(
     app.state.cookie_secure = resolved_settings.cookie_secure
     app.state.engineering_service = engineering_service or build_engineering_service()
     app.state.placement_services = placement_services
+    app.state.catalog_application = catalog_application or build_catalog_application(
+        dev_tools_enabled=resolved_settings.dev_tools_enabled,
+        deployment_environment=resolved_settings.deployment_environment,
+    )
     install_problem_handlers(app)
     _install_request_metadata_middleware(app, surface=surface)
 
@@ -113,13 +123,18 @@ def create_api_app(
     app.include_router(jobs_router())
     if surface == "internal":
         app.include_router(invitation_management_router())
+        app.include_router(catalog_router())
         app.include_router(campaign_router())
         app.include_router(generation_router())
         app.include_router(publication_router())
         app.include_router(engineering_router())
         app.include_router(github_integration_router())
-        if resolved_settings.dev_tools_enabled:
+        if (
+            resolved_settings.dev_tools_enabled
+            and resolved_settings.deployment_environment != "production"
+        ):
             app.include_router(dev_tools_router())
+            app.include_router(catalog_bootstrap_router())
     return app
 
 

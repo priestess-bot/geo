@@ -40,6 +40,15 @@ SHARED_REQUIRED_OPERATIONS = (
     ("get", "/v1/jobs/{job_id}"),
 )
 INTERNAL_REQUIRED_OPERATIONS = (
+    ("post", "/v1/projects"),
+    ("get", "/v1/projects/{project_id}"),
+    ("patch", "/v1/projects/{project_id}"),
+    ("post", "/v1/projects/{project_id}/entities"),
+    ("get", "/v1/projects/{project_id}/entities"),
+    ("post", "/v1/projects/{project_id}/market-profiles"),
+    ("get", "/v1/projects/{project_id}/market-profiles"),
+    ("post", "/v1/projects/{project_id}/evidence-items"),
+    ("get", "/v1/projects/{project_id}/evidence-items"),
     ("get", "/v1/engineering/status"),
     ("get", "/v1/engineering/work-items"),
     ("get", "/v1/engineering/events"),

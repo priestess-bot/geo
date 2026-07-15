@@ -28,8 +28,12 @@ typecheck:
 		apps/api/geo_api/contracts.py \
 		apps/api/geo_api/problems.py \
 		apps/api/geo_api/stable_routes.py \
+		apps/api/geo_api/catalog_contracts.py \
+		apps/api/geo_api/catalog_routes.py \
+		apps/api/geo_api/catalog_runtime.py \
 		scripts/export_stable_openapi.py \
 		packages/geo_core/geo_core/jobs \
+		packages/geo_core/geo_core/catalog \
 		packages/geo_core/geo_core/engineering \
 		packages/geo_core/geo_core/model_gateway \
 		packages/geo_core/geo_core/prompts \
@@ -47,6 +51,7 @@ test-migrated:
 		tests/architecture \
 		tests/unit \
 		tests/infra/test_production_compose.py \
+		tests/test_api_catalog_slice.py \
 		tests/test_api_foundation_contracts.py \
 		tests/test_geo_alembic_baseline.py \
 		tests/test_geo_job_lifecycle.py \

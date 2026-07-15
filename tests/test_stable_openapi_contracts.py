@@ -80,6 +80,17 @@ def test_customer_snapshot_excludes_internal_surfaces_and_writes() -> None:
     assert customer_writes <= CUSTOMER_ALLOWED_WRITES
 
 
+def test_internal_snapshot_contains_catalog_and_evidence_contracts() -> None:
+    document = json.loads((CONTRACT_DIR / SNAPSHOT_NAMES["internal"]).read_text())
+    paths = document["paths"]
+
+    assert "post" in paths["/v1/projects"]
+    assert {"get", "patch"} <= set(paths["/v1/projects/{project_id}"])
+    assert {"get", "post"} <= set(paths["/v1/projects/{project_id}/entities"])
+    assert {"get", "post"} <= set(paths["/v1/projects/{project_id}/market-profiles"])
+    assert {"get", "post"} <= set(paths["/v1/projects/{project_id}/evidence-items"])
+
+
 def test_exports_are_byte_reproducible_and_ignore_runtime_environment() -> None:
     with tempfile.TemporaryDirectory(prefix="stable-openapi-") as temporary:
         root = Path(temporary)
