@@ -7,7 +7,7 @@ import {
   parseAuthError,
   type AuthErrorEnvelope,
   type RedeemPrepareResponse
-} from "../../../_auth/contracts";
+} from "@geo/types/auth";
 import {
   createRedemptionRecovery,
   invitationRequest,

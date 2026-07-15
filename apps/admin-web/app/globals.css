@@ -1687,6 +1687,7 @@ textarea {
 }
 
 .developmentBoardShell {
+  align-content: start;
   display: grid;
   gap: 18px;
 }
@@ -2021,6 +2022,157 @@ textarea {
   color: #675832;
 }
 
+.engineeringAxisSummary {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.engineeringAxisSummary article,
+.engineeringWorkItem,
+.developmentUnavailable {
+  background: #ffffff;
+  border: 1px solid #d8e0e8;
+  border-radius: 8px;
+}
+
+.engineeringAxisSummary article {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 14px;
+}
+
+.engineeringAxisSummary strong {
+  color: #10212b;
+  font-size: 30px;
+  line-height: 1;
+}
+
+.engineeringAxisSummary p,
+.engineeringWorkItem p,
+.developmentUnavailable p {
+  color: #536b7a;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.engineeringWorkItems {
+  display: grid;
+  gap: 12px;
+}
+
+.engineeringWorkItem {
+  align-content: start;
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+}
+
+.engineeringWorkItem header {
+  align-items: start;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.32fr);
+}
+
+.engineeringWorkItem header > div {
+  display: grid;
+  gap: 8px;
+}
+
+.engineeringWorkItem h2 {
+  font-size: 18px;
+}
+
+.engineeringWorkItem dl {
+  background: #f7fafc;
+  border: 1px solid #d8e0e8;
+  border-radius: 6px;
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 10px;
+}
+
+.engineeringWorkItem dl div {
+  display: grid;
+  gap: 2px;
+}
+
+.engineeringWorkItem dt {
+  color: #647786;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.engineeringWorkItem dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.engineeringAxisGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.engineeringAxisGrid > section {
+  min-width: 0;
+}
+
+.engineeringAxisGrid h3 {
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.engineeringAxis {
+  border: 1px solid #d8e0e8;
+  border-radius: 6px;
+  display: grid;
+  gap: 8px;
+  min-height: 146px;
+  padding: 10px;
+}
+
+.engineeringAxis-satisfied {
+  background: #eff8f3;
+  border-color: #b9dfc9;
+}
+
+.engineeringAxis-blocked {
+  background: #fff3f0;
+  border-color: #f1c1b8;
+}
+
+.engineeringAxis-unavailable {
+  background: #f1f0eb;
+  border-color: #d9d2bd;
+}
+
+.engineeringAxis ul,
+.developmentBlockers ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.engineeringAxis li,
+.engineeringAxis small,
+.developmentBlockers li {
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.developmentUnavailable {
+  align-content: start;
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+}
+
 pre {
   background: #f2f6f9;
   border: 1px solid #d8e0e8;
@@ -2064,6 +2216,9 @@ pre {
   .developmentGateGrid,
   .developmentPrincipleGrid,
   .developmentFocusItem,
+  .engineeringAxisSummary,
+  .engineeringWorkItem header,
+  .engineeringAxisGrid,
   .tableHeader,
   .tableRow,
   .toolbar,

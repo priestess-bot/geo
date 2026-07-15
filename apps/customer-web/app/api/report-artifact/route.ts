@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { GEO_SESSION_COOKIE, GEO_SESSION_HEADER } from "@geo/auth";
 
 import { apiBase } from "../../runtime";
 
@@ -7,7 +8,7 @@ const ARTIFACT_TYPES = new Set(["markdown", "csv", "pdf"]);
 export async function GET(request: NextRequest) {
   const reportExportId = request.nextUrl.searchParams.get("report_export_id")?.trim() || "";
   const artifactType = request.nextUrl.searchParams.get("type")?.trim() || "markdown";
-  const sessionToken = request.cookies.get("GEO_RUNTIME_SESSION")?.value || "";
+  const sessionToken = request.cookies.get(GEO_SESSION_COOKIE)?.value || "";
 
   if (!reportExportId || !sessionToken) {
     return NextResponse.json({ detail: "An authenticated customer session is required." }, { status: 401 });
@@ -20,7 +21,7 @@ export async function GET(request: NextRequest) {
   artifactUrl.searchParams.set("type", artifactType);
   const artifactResponse = await fetch(artifactUrl.toString(), {
     headers: {
-      "X-GEO-Session-Token": sessionToken,
+      [GEO_SESSION_HEADER]: sessionToken,
       "X-GEO-Customer-Portal-Access": "true"
     },
     cache: "no-store"

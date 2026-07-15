@@ -1,20 +1,28 @@
 import { cookies } from "next/headers";
 
+import { CustomerApiClient } from "@geo/api-client/customer";
+import {
+  GEO_ACTOR_HEADER,
+  GEO_CSRF_COOKIE,
+  GEO_CSRF_HEADER,
+  GEO_SESSION_COOKIE,
+  GEO_SESSION_HEADER
+} from "@geo/auth";
+import { resolveCounterpartPortalUrl } from "@geo/auth/portal-url";
 import {
   isRuntimeAuthMeResponse,
   parseAuthError,
   type AuthErrorEnvelope,
   type RuntimeAuthMeResponse
-} from "./_auth/contracts";
-import { resolveCounterpartPortalUrl } from "./_auth/portalUrl";
+} from "@geo/types/auth";
 import {
-  performRuntimeHttpRequest,
   runtimeGuardHeaders,
   type RuntimeErrorEnvelope,
   type RuntimeHttpResult,
   type RuntimeRequestGuards,
   type RuntimeResponseMetadata
-} from "./_runtime/contracts";
+} from "@geo/api-client/transport";
+import type { CustomerApiPath } from "@geo/types/customer";
 
 export type RuntimeRequestOptions = RuntimeRequestGuards & {
   method?: string;
@@ -122,7 +130,7 @@ export function adminWebBaseUrl(): string {
 
 export async function hasRuntimeSession(): Promise<boolean> {
   const cookieStore = await cookies();
-  return Boolean(cookieStore.get("GEO_RUNTIME_SESSION")?.value);
+  return Boolean(cookieStore.get(GEO_SESSION_COOKIE)?.value);
 }
 
 async function actorHeaders(
@@ -131,15 +139,15 @@ async function actorHeaders(
   includeCsrfProof = true
 ): Promise<HeadersInit> {
   const cookieStore = await cookies();
-  const sessionToken = cookieStore.get("GEO_RUNTIME_SESSION")?.value || "";
-  const csrfToken = cookieStore.get("GEO_CSRF_TOKEN")?.value || "";
+  const sessionToken = cookieStore.get(GEO_SESSION_COOKIE)?.value || "";
+  const csrfToken = cookieStore.get(GEO_CSRF_COOKIE)?.value || "";
   if (sessionToken) {
     return {
-      "X-GEO-Session-Token": sessionToken,
+      [GEO_SESSION_HEADER]: sessionToken,
       ...(csrfToken && includeCsrfProof
         ? {
-            "X-GEO-CSRF-Token": csrfToken,
-            Cookie: `GEO_CSRF_TOKEN=${encodeURIComponent(csrfToken)}`
+            [GEO_CSRF_HEADER]: csrfToken,
+            Cookie: `${GEO_CSRF_COOKIE}=${encodeURIComponent(csrfToken)}`
           }
         : {}),
       ...(extra || {})
@@ -149,23 +157,13 @@ async function actorHeaders(
     return { ...(extra || {}) };
   }
   return {
-    "X-GEO-Actor-Id": actorId || process.env.GEO_CUSTOMER_RUNTIME_ACTOR_ID || process.env.GEO_ADMIN_ACTOR_ID || "runtime-console",
+    [GEO_ACTOR_HEADER]: actorId || process.env.GEO_CUSTOMER_RUNTIME_ACTOR_ID || process.env.GEO_ADMIN_ACTOR_ID || "runtime-console",
     ...(extra || {})
   };
 }
 
-function runtimeUrl(path: string, query?: RuntimeRequestOptions["query"]): string {
-  const url = new URL(path, apiBase());
-  for (const [key, value] of Object.entries(query || {})) {
-    if (value !== undefined && value !== null && String(value).length > 0) {
-      url.searchParams.set(key, String(value));
-    }
-  }
-  return url.toString();
-}
-
 export async function runtimeHttpRequest<T>(
-  path: string,
+  path: CustomerApiPath,
   options: RuntimeRequestOptions = {}
 ): Promise<RuntimeHttpResult<T>> {
   const hasBody = options.body !== undefined;
@@ -178,16 +176,15 @@ export async function runtimeHttpRequest<T>(
     },
     options.includeCsrfProof
   );
-  return performRuntimeHttpRequest<T>(runtimeUrl(path, options.query), {
+  const client = new CustomerApiClient(apiBase(), { headers, cache: options.cache || "no-store" });
+  return client.call<T>(path, options.query, {
     method: options.method || "GET",
-    headers,
-    body: hasBody ? JSON.stringify(options.body) : undefined,
-    cache: options.cache || "no-store"
+    body: hasBody ? JSON.stringify(options.body) : undefined
   });
 }
 
 export async function runtimeRequest<T>(
-  path: string,
+  path: CustomerApiPath,
   options: RuntimeRequestOptions = {}
 ): Promise<RuntimeResult<T>> {
   const result = await runtimeHttpRequest<T>(path, options);
@@ -347,7 +344,7 @@ function projectPaginationFailure(detail: string): RuntimeResult<AuthorizedProje
 }
 
 async function loadPage(
-  path: string,
+  path: CustomerApiPath,
   projectId: string,
   actorId?: string,
   extra?: Record<string, string | number>

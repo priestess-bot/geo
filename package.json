@@ -5,6 +5,7 @@
   "packageManager": "pnpm@9.15.4",
   "scripts": {
     "build": "corepack pnpm --filter geo-production-admin-web --filter geo-production-customer-web build",
+    "test:contracts": "corepack pnpm --filter @geo/api-client test:contracts",
     "typecheck": "corepack pnpm --filter './apps/**' --filter './packages/web/**' typecheck"
   }
 }

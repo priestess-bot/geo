@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { type NextRequest, NextResponse } from "next/server";
 
-import { parseAuthError, type AuthErrorEnvelope } from "../../../_auth/contracts";
+import { parseAuthError, type AuthErrorEnvelope } from "@geo/types/auth";
 import {
   hasCompleteSessionDelivery,
   invitationRequest,

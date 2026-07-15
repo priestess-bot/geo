@@ -7,7 +7,7 @@ import {
   type AuthErrorEnvelope,
   type InvitationSurface,
   type RedeemPrepareResponse
-} from "./contracts";
+} from "@geo/types/auth";
 
 type InvitationFormBody = {
   invitation_id: string;

@@ -1,10 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { GEO_SESSION_COOKIE } from "@geo/auth";
 
 export function middleware(request: NextRequest) {
   if (hasInvitationTokenKey(request.nextUrl.searchParams)) {
     const landing = new URL("/", request.url);
     copySafeValue(request.nextUrl.searchParams, landing.searchParams, "invitation_id", 80);
-    if (request.cookies.get("GEO_RUNTIME_SESSION")?.value) {
+    if (request.cookies.get(GEO_SESSION_COOKIE)?.value) {
       copySafeProjectId(request.nextUrl.searchParams, landing.searchParams);
     }
     return withNoReferrer(NextResponse.redirect(landing, 303));

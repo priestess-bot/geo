@@ -1,10 +1,23 @@
-import type { EngineeringWorkItem } from "@geo/types/internal";
-import { requestJson } from "./transport";
+import type { EngineeringWorkItemsResponse } from "@geo/types/internal";
+import {
+  geoApiUrl,
+  mergeClientRequestInit,
+  performRuntimeHttpRequest,
+  type GeoApiClientOptions,
+  type RuntimeHttpResult
+} from "./transport";
 
 export class InternalApiClient {
-  constructor(private readonly baseUrl: string) {}
+  constructor(
+    private readonly baseUrl: string,
+    private readonly options: GeoApiClientOptions = {}
+  ) {}
 
-  listEngineeringWorkItems(): Promise<{ items: EngineeringWorkItem[] }> {
-    return requestJson(this.baseUrl, "/v1/engineering/work-items");
+  listEngineeringWorkItems(): Promise<RuntimeHttpResult<EngineeringWorkItemsResponse>> {
+    return performRuntimeHttpRequest(
+      geoApiUrl(this.baseUrl, "/v1/engineering/work-items"),
+      mergeClientRequestInit(this.options),
+      this.options.fetcher
+    );
   }
 }

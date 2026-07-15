@@ -1,12 +1,18 @@
 import { randomUUID } from "node:crypto";
 import { type NextRequest, NextResponse } from "next/server";
+import {
+  GEO_CSRF_COOKIE,
+  GEO_CSRF_HEADER,
+  GEO_SESSION_COOKIE,
+  GEO_SESSION_HEADER
+} from "@geo/auth";
 
 import {
   isRuntimeAuthMeResponse,
   parseAuthError,
   type AuthErrorEnvelope,
   type RuntimeAuthMeResponse
-} from "../../../_auth/contracts";
+} from "@geo/types/auth";
 import {
   clearRecoveryCookie,
   inspectSessionDeliveryRecovery,
@@ -19,8 +25,8 @@ import { apiBase } from "../../../runtime";
 const SURFACE = "admin" as const;
 
 export async function POST(request: NextRequest) {
-  const sessionToken = request.cookies.get("GEO_RUNTIME_SESSION")?.value || "";
-  const csrfToken = request.cookies.get("GEO_CSRF_TOKEN")?.value || "";
+  const sessionToken = request.cookies.get(GEO_SESSION_COOKIE)?.value || "";
+  const csrfToken = request.cookies.get(GEO_CSRF_COOKIE)?.value || "";
   if (!sessionToken || !csrfToken) {
     return errorResponse({
       code: "auth_session_delivery_invalid",
@@ -57,11 +63,11 @@ export async function POST(request: NextRequest) {
   try {
     upstream = await fetch(new URL("/v1/auth/me", apiBase()), {
       headers: {
-        "X-GEO-Session-Token": sessionToken,
-        ...(csrfToken ? { "X-GEO-CSRF-Token": csrfToken } : {}),
+        [GEO_SESSION_HEADER]: sessionToken,
+        ...(csrfToken ? { [GEO_CSRF_HEADER]: csrfToken } : {}),
         Cookie: [
-          `GEO_RUNTIME_SESSION=${encodeURIComponent(sessionToken)}`,
-          ...(csrfToken ? [`GEO_CSRF_TOKEN=${encodeURIComponent(csrfToken)}`] : [])
+          `${GEO_SESSION_COOKIE}=${encodeURIComponent(sessionToken)}`,
+          ...(csrfToken ? [`${GEO_CSRF_COOKIE}=${encodeURIComponent(csrfToken)}`] : [])
         ].join("; ")
       },
       cache: "no-store"

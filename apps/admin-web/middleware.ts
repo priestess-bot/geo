@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { GEO_SESSION_COOKIE } from "@geo/auth";
 
 export function middleware(request: NextRequest) {
   if (hasInvitationTokenKey(request.nextUrl.searchParams)) {
@@ -12,7 +13,7 @@ export function middleware(request: NextRequest) {
   if (request.nextUrl.pathname === "/login") {
     return withNoReferrer(NextResponse.next());
   }
-  if (request.cookies.get("GEO_RUNTIME_SESSION")?.value) {
+  if (request.cookies.get(GEO_SESSION_COOKIE)?.value) {
     return withNoReferrer(NextResponse.next());
   }
   const login = new URL("/login", request.url);

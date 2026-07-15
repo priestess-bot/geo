@@ -10,6 +10,18 @@ importers:
 
   apps/admin-web:
     dependencies:
+      '@geo/api-client':
+        specifier: workspace:*
+        version: link:../../packages/web/api-client
+      '@geo/auth':
+        specifier: workspace:*
+        version: link:../../packages/web/auth
+      '@geo/types':
+        specifier: workspace:*
+        version: link:../../packages/web/types
+      '@geo/ui':
+        specifier: workspace:*
+        version: link:../../packages/web/ui
       next:
         specifier: ^15.5.19
         version: 15.5.20(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
@@ -32,50 +44,18 @@ importers:
 
   apps/customer-web:
     dependencies:
-      next:
-        specifier: ^15.5.19
-        version: 15.5.20(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
-      react:
-        specifier: 19.0.0
-        version: 19.0.0
-      react-dom:
-        specifier: 19.0.0
-        version: 19.0.0(react@19.0.0)
-    devDependencies:
-      '@types/node':
-        specifier: 22.10.5
-        version: 22.10.5
-      '@types/react':
-        specifier: 19.0.4
-        version: 19.0.4
-      typescript:
-        specifier: 5.7.3
-        version: 5.7.3
-
-  apps/dashboard-web:
-    dependencies:
-      next:
-        specifier: ^15.5.19
-        version: 15.5.20(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
-      react:
-        specifier: 19.0.0
-        version: 19.0.0
-      react-dom:
-        specifier: 19.0.0
-        version: 19.0.0(react@19.0.0)
-    devDependencies:
-      '@types/node':
-        specifier: 22.10.5
-        version: 22.10.5
-      '@types/react':
-        specifier: 19.0.4
-        version: 19.0.4
-      typescript:
-        specifier: 5.7.3
-        version: 5.7.3
-
-  apps/web:
-    dependencies:
+      '@geo/api-client':
+        specifier: workspace:*
+        version: link:../../packages/web/api-client
+      '@geo/auth':
+        specifier: workspace:*
+        version: link:../../packages/web/auth
+      '@geo/types':
+        specifier: workspace:*
+        version: link:../../packages/web/types
+      '@geo/ui':
+        specifier: workspace:*
+        version: link:../../packages/web/ui
       next:
         specifier: ^15.5.19
         version: 15.5.20(react-dom@19.0.0(react@19.0.0))(react@19.0.0)

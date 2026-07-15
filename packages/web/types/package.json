@@ -6,7 +6,8 @@
   "exports": {
     "./internal": "./src/internal.ts",
     "./customer": "./src/customer.ts",
-    "./common": "./src/common.ts"
+    "./common": "./src/common.ts",
+    "./auth": "./src/auth.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

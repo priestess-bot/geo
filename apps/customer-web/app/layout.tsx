@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { GEO_UI_VERSION } from "@geo/ui";
 
 import "./globals.css";
 
@@ -10,7 +11,7 @@ export const metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="zh-CN" suppressHydrationWarning>
-      <body>{children}</body>
+      <body data-geo-ui={GEO_UI_VERSION}>{children}</body>
     </html>
   );
 }

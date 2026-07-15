@@ -1,6 +1,13 @@
 import { cookies } from "next/headers";
 
-import { resolveCounterpartPortalUrl } from "./_auth/portalUrl";
+import {
+  GEO_ACTOR_HEADER,
+  GEO_CSRF_COOKIE,
+  GEO_CSRF_HEADER,
+  GEO_SESSION_COOKIE,
+  GEO_SESSION_HEADER
+} from "@geo/auth";
+import { resolveCounterpartPortalUrl } from "@geo/auth/portal-url";
 import {
   performRuntimeHttpRequest,
   runtimeGuardHeaders,
@@ -8,7 +15,7 @@ import {
   type RuntimeHttpResult,
   type RuntimeRequestGuards,
   type RuntimeResponseMetadata
-} from "./_runtime/contracts";
+} from "@geo/api-client/transport";
 
 export type RuntimeRequestOptions = RuntimeRequestGuards & {
   method?: string;
@@ -66,20 +73,20 @@ export function customerInvitationUrl(invitationId: string, _inviteToken?: strin
 
 export async function hasRuntimeSession(): Promise<boolean> {
   const cookieStore = await cookies();
-  return Boolean(cookieStore.get("GEO_RUNTIME_SESSION")?.value);
+  return Boolean(cookieStore.get(GEO_SESSION_COOKIE)?.value);
 }
 
 export async function actorHeaders(extra?: HeadersInit): Promise<HeadersInit> {
   const cookieStore = await cookies();
-  const sessionToken = cookieStore.get("GEO_RUNTIME_SESSION")?.value || "";
-  const csrfToken = cookieStore.get("GEO_CSRF_TOKEN")?.value || "";
+  const sessionToken = cookieStore.get(GEO_SESSION_COOKIE)?.value || "";
+  const csrfToken = cookieStore.get(GEO_CSRF_COOKIE)?.value || "";
   if (sessionToken) {
     return {
-      "X-GEO-Session-Token": sessionToken,
+      [GEO_SESSION_HEADER]: sessionToken,
       ...(csrfToken
         ? {
-            "X-GEO-CSRF-Token": csrfToken,
-            Cookie: `GEO_CSRF_TOKEN=${encodeURIComponent(csrfToken)}`
+            [GEO_CSRF_HEADER]: csrfToken,
+            Cookie: `${GEO_CSRF_COOKIE}=${encodeURIComponent(csrfToken)}`
           }
         : {}),
       ...(extra || {})
@@ -88,7 +95,7 @@ export async function actorHeaders(extra?: HeadersInit): Promise<HeadersInit> {
   if ((process.env.GEO_RUNTIME_AUTH_MODE || "header") === "session") {
     return { ...(extra || {}) };
   }
-  return { "X-GEO-Actor-Id": adminActorId(), ...(extra || {}) };
+  return { [GEO_ACTOR_HEADER]: adminActorId(), ...(extra || {}) };
 }
 
 function runtimeUrl(path: string, query?: RuntimeRequestOptions["query"]): string {

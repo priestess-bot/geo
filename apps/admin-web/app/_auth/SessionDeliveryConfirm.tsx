@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { parseAuthError, type AuthErrorEnvelope } from "./contracts";
+import { parseAuthError, type AuthErrorEnvelope } from "@geo/types/auth";
 
 export function SessionDeliveryConfirm({ active }: { active: boolean }) {
   const [error, setError] = useState<AuthErrorEnvelope | null>(null);

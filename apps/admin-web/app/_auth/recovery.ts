@@ -9,15 +9,16 @@ import {
 import { readFileSync } from "node:fs";
 import type { NextResponse } from "next/server";
 
-import type { InvitationRequest, InvitationSurface } from "./contracts";
+import {
+  GEO_CSRF_COOKIE,
+  GEO_SESSION_COOKIE,
+  recoveryCookieName as sharedRecoveryCookieName
+} from "@geo/auth";
+import type { InvitationRequest, InvitationSurface } from "@geo/types/auth";
 
 const RECOVERY_VERSION = 1 as const;
 const RECOVERY_TTL_SECONDS = 10 * 60;
 const RECOVERY_AAD = Buffer.from("geo-auth-recovery:v1", "utf8");
-const COOKIE_NAMES: Record<InvitationSurface, string> = {
-  admin: "GEO_ADMIN_REDEEM_RECOVERY",
-  customer: "GEO_CUSTOMER_REDEEM_RECOVERY"
-};
 
 export interface RedemptionRecoveryPayload {
   version: typeof RECOVERY_VERSION;
@@ -50,7 +51,7 @@ type UntrustedRecoveryPayload = {
 };
 
 export function recoveryCookieName(surface: InvitationSurface): string {
-  return COOKIE_NAMES[surface];
+  return sharedRecoveryCookieName(surface);
 }
 
 export function invitationRequest(
@@ -218,13 +219,13 @@ export function upstreamSetCookies(headers: Headers): string[] {
 
 export function hasCompleteSessionDelivery(cookies: string[]): boolean {
   return (
-    cookies.some((cookie) => /^GEO_RUNTIME_SESSION=/i.test(cookie))
-    && cookies.some((cookie) => /^GEO_CSRF_TOKEN=/i.test(cookie))
+    cookies.some((cookie) => cookieNameMatches(cookie, GEO_SESSION_COOKIE))
+    && cookies.some((cookie) => cookieNameMatches(cookie, GEO_CSRF_COOKIE))
   );
 }
 
 export function sessionTokenFromDelivery(cookies: string[]): string | null {
-  const header = cookies.find((cookie) => /^GEO_RUNTIME_SESSION=/i.test(cookie));
+  const header = cookies.find((cookie) => cookieNameMatches(cookie, GEO_SESSION_COOKIE));
   if (!header) {
     return null;
   }
@@ -234,6 +235,10 @@ export function sessionTokenFromDelivery(cookies: string[]): string | null {
   return value && /^[\x21\x23-\x2B\x2D-\x3A\x3C-\x5B\x5D-\x7E]+$/.test(value)
     ? value
     : null;
+}
+
+function cookieNameMatches(cookie: string, name: string): boolean {
+  return cookie.toLowerCase().startsWith(`${name.toLowerCase()}=`);
 }
 
 export function validateRecoveryConfiguration(): { secureCookies: boolean } {
