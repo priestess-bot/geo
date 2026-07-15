@@ -6,7 +6,7 @@ import type { PackageClaimEdit } from "@geo/types/geo";
 
 function isPackageClaimEdit(item: unknown): item is PackageClaimEdit {
   if (item === null || typeof item !== "object" || Array.isArray(item)) return false;
-  const claim = item as Record<string, unknown>;
+  const claim = item as Partial<PackageClaimEdit>;
   return typeof claim.text === "string"
     && ["factual", "comparative", "experience", "non_factual"].includes(String(claim.kind))
     && ["supported", "unsupported", "conflict", "not_required"].includes(String(claim.support_status))
