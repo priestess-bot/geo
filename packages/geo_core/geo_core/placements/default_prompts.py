@@ -11,7 +11,14 @@ from typing import Any
 class DefaultPromptDefinition:
     task_key: str
     skill_key: str
+    system_template: str
     source: str
+
+
+DEFAULT_SYSTEM_TEMPLATE = (
+    "You create source-grounded GEO placement content for an authorised operator. "
+    "Keep brand relationships explicit and follow the frozen destination policy."
+)
 
 
 def _source(channel_instruction: str) -> str:
@@ -45,6 +52,7 @@ DEFAULT_PROMPT_DEFINITIONS = (
     DefaultPromptDefinition(
         "owned_site",
         "system.placement.owned_site.v1",
+        DEFAULT_SYSTEM_TEMPLATE,
         _source(
             "Write an official product page, comparison section or FAQ selected by the "
             "Brief. Lead with the consumer question, explain verifiable product fit, use "
@@ -54,6 +62,7 @@ DEFAULT_PROMPT_DEFINITIONS = (
     DefaultPromptDefinition(
         "productreview",
         "system.placement.productreview.v1",
+        DEFAULT_SYSTEM_TEMPLATE,
         _source(
             "Write only an identified merchant profile update or an official response to "
             "the real review context in the Brief. Never write a consumer review or imply "
@@ -63,6 +72,7 @@ DEFAULT_PROMPT_DEFINITIONS = (
     DefaultPromptDefinition(
         "youtube",
         "system.placement.youtube.v1",
+        DEFAULT_SYSTEM_TEMPLATE,
         _source(
             "Produce an official video script, title, description, chapter outline and "
             "source-aware call to action. The opening should answer the target consumer "
@@ -72,6 +82,7 @@ DEFAULT_PROMPT_DEFINITIONS = (
     DefaultPromptDefinition(
         "reddit",
         "system.placement.reddit.v1",
+        DEFAULT_SYSTEM_TEMPLATE,
         _source(
             "Draft a useful response for the exact community and thread in the Brief. "
             "State the brand relationship at the start, answer before promoting, follow "
@@ -81,6 +92,7 @@ DEFAULT_PROMPT_DEFINITIONS = (
     DefaultPromptDefinition(
         "amazon",
         "system.placement.amazon.v1",
+        DEFAULT_SYSTEM_TEMPLATE,
         _source(
             "Create seller-authorized Amazon AU listing copy: title guidance, concise "
             "feature bullets, description or A+ sections, search terms and compliance "
@@ -90,6 +102,7 @@ DEFAULT_PROMPT_DEFINITIONS = (
     DefaultPromptDefinition(
         "ozbargain",
         "system.placement.ozbargain.v1",
+        DEFAULT_SYSTEM_TEMPLATE,
         _source(
             "Create a disclosed merchant deal submission for the exact verified offer in "
             "the Brief. State price, dates, eligibility, stock and delivery only when "
@@ -99,6 +112,7 @@ DEFAULT_PROMPT_DEFINITIONS = (
     DefaultPromptDefinition(
         "tiktok",
         "system.placement.tiktok.v1",
+        DEFAULT_SYSTEM_TEMPLATE,
         _source(
             "Create an official or authorized-creator short-video package with hook, shot "
             "list, voiceover, on-screen text, caption and disclosure. Demonstrations and "
@@ -108,6 +122,7 @@ DEFAULT_PROMPT_DEFINITIONS = (
     DefaultPromptDefinition(
         "instagram",
         "system.placement.instagram.v1",
+        DEFAULT_SYSTEM_TEMPLATE,
         _source(
             "Create an official or authorized-creator post or reel package with visual "
             "brief, caption, concise factual points, disclosure, alt text and a relevant "
@@ -117,6 +132,7 @@ DEFAULT_PROMPT_DEFINITIONS = (
     DefaultPromptDefinition(
         "quora",
         "system.placement.quora.v1",
+        DEFAULT_SYSTEM_TEMPLATE,
         _source(
             "Write a direct expert answer to the exact question in the Brief. Disclose the "
             "brand relationship near the beginning, explain selection criteria before the "

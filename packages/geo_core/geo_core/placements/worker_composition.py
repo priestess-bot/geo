@@ -129,6 +129,7 @@ class GenerationHandler:
                         f"{serialized_schema}"
                     ),
                 },
+                {"role": "system", "content": claim.system_prompt},
                 {"role": "user", "content": claim.rendered_prompt},
             ),
             configured_model=claim.configured_model,

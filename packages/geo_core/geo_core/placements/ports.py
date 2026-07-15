@@ -41,6 +41,7 @@ class GenerationClaim:
     fencing_generation: int
     prompt_bundle_id: UUID
     prompt_bundle_hash: str
+    system_prompt: str
     rendered_prompt: str
     configured_model: str
     model_call_budget: int
@@ -184,6 +185,8 @@ class PlacementRepository(Protocol):
         project_id: UUID,
         skill_version_id: UUID,
         template: TemplateRelease,
+        source_text: str,
+        system_template: str,
         output_schema: Mapping[str, object],
         client_variable_names: tuple[str, ...],
     ) -> PromptReleaseView: ...

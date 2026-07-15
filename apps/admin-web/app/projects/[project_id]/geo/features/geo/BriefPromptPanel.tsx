@@ -1,16 +1,17 @@
 import Link from "next/link";
 import { ActionForm } from "./ActionForm";
-import { bindPromptTask, buildEvidence, createBrief, createPromptBundle, createPromptRelease, createPromptSkill } from "./placement-actions";
+import { bindPromptTask, buildEvidence, createBrief, createPromptBundle, createPromptRelease, createPromptSkill, installDefaultPromptCatalog } from "./placement-actions";
 import { Empty, HiddenProject, ResourceBlock, SectionHeader, ShortId, Status, geoHref } from "./common";
 import type { GeoWorkspaceData } from "./model";
 import styles from "./GeoWorkspace.module.css";
+import { DEFAULT_OUTPUT_SCHEMA, DEFAULT_SYSTEM_PROMPT, DEFAULT_USER_PROMPT, PROMPT_TASK_KEYS } from "./prompt-defaults";
 
 export function BriefPromptPanel({ projectId, data }: { projectId: string; data: GeoWorkspaceData }) {
   const { selection } = data;
   const opportunity = data.opportunities.data.find((item) => item.id === selection.opportunityId);
   const brief = data.briefs.data.find((item) => item.id === selection.briefVersionId);
   const readyAttempt = data.attempts.data.find((item) => item.id === selection.attemptId && item.status === "ready");
-  const release = data.releases.data[0];
+  const release = data.releases.data[data.releases.data.length - 1];
   return <div className={styles.workspace}>
     <div className={styles.columns}>
       <div className={styles.panel}>
@@ -61,6 +62,7 @@ export function BriefPromptPanel({ projectId, data }: { projectId: string; data:
     <div className={styles.threeColumns}>
       <div className={styles.panel}>
         <SectionHeader eyebrow="3 · Editable source" title="Prompt Skills" />
+        <ActionForm action={installDefaultPromptCatalog} submitLabel="安装九平台默认 Prompt"><HiddenProject projectId={projectId} /></ActionForm>
         <ResourceBlock resource={data.skills}>{(items) => items.length ? <div className={styles.list}>{items.map((item) => <Link key={item.id}
           className={item.id === selection.skillId ? styles.selectedRow : styles.row}
           href={geoHref(projectId, selection, { skill_id: item.id })}><span className={styles.rowHeader}><strong>{item.skill_key}</strong><Status value={item.status} /></span></Link>)}</div> : <Empty>先建立 Prompt Skill。</Empty>}</ResourceBlock>
@@ -68,19 +70,21 @@ export function BriefPromptPanel({ projectId, data }: { projectId: string; data:
       </div>
       <div className={styles.panel}>
         <SectionHeader eyebrow="4 · Compiled release" title="Prompt Releases" />
-        <ResourceBlock resource={data.releases}>{(items) => items.length ? <div className={styles.list}>{items.map((item) => <div className={styles.row} key={item.id}><span className={styles.rowHeader}><strong>Release {item.release_number}</strong><ShortId value={item.id} /></span><span className={styles.meta}>hash {item.release_hash.slice(0, 12)}</span></div>)}</div> : <Empty>修改 Prompt 时创建新 Release，旧 Bundle 不变。</Empty>}</ResourceBlock>
+        <ResourceBlock resource={data.releases}>{(items) => items.length ? <div className={styles.list}>{items.map((item) => <div className={styles.row} key={item.id}><span className={styles.rowHeader}><strong>Release {item.release_number}</strong><ShortId value={item.id} /></span><span className={styles.meta}>hash {item.release_hash.slice(0, 12)} · {item.compiler_version}</span><details><summary>查看不可变 Prompt</summary><p className={styles.meta}>Source</p><pre className={styles.code}>{item.source_text}</pre><p className={styles.meta}>System</p><pre className={styles.code}>{item.system_template}</pre><p className={styles.meta}>User</p><pre className={styles.code}>{item.user_template}</pre><p className={styles.meta}>Variables / Output schema</p><pre className={styles.code}>{JSON.stringify({ variable_schema: item.variable_schema, output_schema: item.output_schema }, null, 2)}</pre></details></div>)}</div> : <Empty>修改 Prompt 时创建新 Release，旧 Bundle 不变。</Empty>}</ResourceBlock>
         <ActionForm action={createPromptRelease} title="编译新 Release" submitLabel="创建 Release" disabled={!selection.skillId}>
           <HiddenProject projectId={projectId} /><input type="hidden" name="skill_id" value={selection.skillId || ""} />
-          <label>Prompt 源<textarea name="source" required placeholder="You are writing channel-ready copy... Use only supplied evidence." /></label>
-          <label>输出 Schema JSON<textarea name="output_schema" required defaultValue={'{"type":"object","required":["rendered_text","claims"],"properties":{"rendered_text":{"type":"string"},"claims":{"type":"array"}}}'} /></label>
-          <label>客户端变量<textarea name="client_variable_names" defaultValue={'brand_name\nproduct_name\npublication_channel'} /></label>
+          <label>Skill 源<textarea name="source" required defaultValue={DEFAULT_USER_PROMPT} /></label>
+          <label>System Prompt<textarea name="system_template" required defaultValue={DEFAULT_SYSTEM_PROMPT} /></label>
+          <label>User Prompt<textarea name="user_template" required defaultValue={DEFAULT_USER_PROMPT} /></label>
+          <label>输出 Schema JSON<textarea name="output_schema" required defaultValue={DEFAULT_OUTPUT_SCHEMA} /></label>
+          <label>客户端变量<textarea name="client_variable_names" placeholder="仅填写 User Prompt 中除 brief/evidence/destination_policy 外的变量，每行一个" /></label>
         </ActionForm>
       </div>
       <div className={styles.panel}>
         <SectionHeader eyebrow="5 · Runtime selection" title="任务绑定与 Bundle" />
         <ResourceBlock resource={data.bindings}>{(items) => items.length ? <div className={styles.list}>{items.map((item) => <div className={styles.row} key={item.task_key}><strong>{item.task_key}</strong><span className={styles.meta}>Release <ShortId value={item.template_release_id} /></span></div>)}</div> : <Empty>尚无任务绑定。</Empty>}</ResourceBlock>
         <ActionForm action={bindPromptTask} title="绑定任务" submitLabel="保存绑定" disabled={!release}>
-          <HiddenProject projectId={projectId} /><label>Task Key<input name="task_key" required placeholder="placement.productreview.review" /></label>
+          <HiddenProject projectId={projectId} /><label>Task Key<select name="task_key" required defaultValue="owned_site">{PROMPT_TASK_KEYS.map((key) => <option key={key} value={key}>{key}</option>)}</select></label>
           <label>Release<select name="template_release_id" required defaultValue={release?.id || ""}>{data.releases.data.map((item) => <option key={item.id} value={item.id}>Release {item.release_number} · {item.release_hash.slice(0, 8)}</option>)}</select></label>
         </ActionForm>
         <ActionForm action={createPromptBundle} title="冻结 Prompt Bundle" submitLabel="创建 Bundle" disabled={!brief || !readyAttempt || !release}>
@@ -88,7 +92,7 @@ export function BriefPromptPanel({ projectId, data }: { projectId: string; data:
           <label>Ready Evidence Attempt<select name="evidence_pack_attempt_id" required defaultValue={readyAttempt?.id || ""}>{data.attempts.data.filter((item) => item.status === "ready").map((item) => <option key={item.id} value={item.id}>Attempt {item.attempt_number}</option>)}</select></label>
           <label>Release<select name="template_release_id" required defaultValue={release?.id || ""}>{data.releases.data.map((item) => <option key={item.id} value={item.id}>Release {item.release_number}</option>)}</select></label>
           <label>模型策略 Hash<input name="model_policy_hash" required placeholder="sha256 policy hash" /></label>
-          <label>变量 JSON<textarea name="variables" required defaultValue={'{"publication_channel":"productreview","locale":"en-AU"}'} /></label>
+          <label>变量 JSON<textarea name="variables" required defaultValue="{}" /></label>
         </ActionForm>
       </div>
     </div>

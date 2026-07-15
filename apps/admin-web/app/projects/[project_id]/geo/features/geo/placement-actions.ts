@@ -40,12 +40,19 @@ export async function createPromptSkill(_state: ActionResult, form: FormData): P
   return finish(projectId, await api.createPromptSkill(projectId, { skill_key: value(form, "skill_key") }, guards(form)), "Prompt Skill 已创建");
 }
 
+export async function installDefaultPromptCatalog(_state: ActionResult, form: FormData): Promise<ActionResult> {
+  const projectId = value(form, "project_id"), api = await client();
+  return finish(projectId, await api.installDefaultPromptCatalog(projectId, guards(form)), "九平台默认 Prompt Catalog 已安装");
+}
+
 export async function createPromptRelease(_state: ActionResult, form: FormData): Promise<ActionResult> {
   const projectId = value(form, "project_id"), outputSchema = jsonObject(form, "output_schema");
   if (isActionError(outputSchema)) return outputSchema;
   const api = await client();
   return finish(projectId, await api.createPromptRelease(projectId, value(form, "skill_id"), {
-    source: value(form, "source"), output_schema: outputSchema, client_variable_names: lines(form, "client_variable_names")
+    source: value(form, "source"), system_template: value(form, "system_template"),
+    user_template: value(form, "user_template"), output_schema: outputSchema,
+    client_variable_names: lines(form, "client_variable_names")
   }, guards(form)), "不可变 Prompt Release 已创建");
 }
 
@@ -68,8 +75,8 @@ export async function createGenerationJob(_state: ActionResult, form: FormData):
   const projectId = value(form, "project_id"), api = await client();
   const bundleId = value(form, "bundle_id");
   const result = await api.createGenerationJob(projectId, bundleId, {
-    configured_model: value(form, "configured_model") || "deepseek-chat",
-    model_call_budget: numberValue(form, "model_call_budget", 3)
+    configured_model: value(form, "configured_model") || "deepseek-v4-flash",
+    model_call_budget: numberValue(form, "model_call_budget", 2)
   }, guards(form));
   const outcome = finish(projectId, result, "文案生成任务已排队");
   return result.ok ? { ...outcome, nextHref: `/projects/${projectId}/geo?section=placement&bundle_id=${bundleId}&job_id=${result.data.job_id}` } : outcome;

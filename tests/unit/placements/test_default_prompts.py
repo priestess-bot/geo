@@ -23,6 +23,7 @@ def test_default_catalog_covers_every_supported_channel_with_authoritative_input
     assert len({item.skill_key for item in DEFAULT_PROMPT_DEFINITIONS}) == len(expected)
     assert len({item.source for item in DEFAULT_PROMPT_DEFINITIONS}) == len(expected)
     for item in DEFAULT_PROMPT_DEFINITIONS:
+        assert item.system_template.strip()
         version = SkillVersion.create(
             id=uuid4(), skill_id=uuid4(), version=1, source=item.source
         )

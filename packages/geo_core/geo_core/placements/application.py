@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 from geo_core.placements.application_operations import PlacementOperationsApplicationMixin
 from geo_core.placements.claim_inventory import validate_edited_claims
 from geo_core.placements.generation_contract import validate_generation_schema
+from geo_core.placements.default_prompts import DEFAULT_SYSTEM_TEMPLATE
 from geo_core.placements.domain import (
     AuthenticityRisk,
     BriefVersion,
@@ -39,7 +40,7 @@ from geo_core.placements.domain import (
     validate_authenticity,
 )
 from geo_core.placements.ports import GeneratedClaim, UnitOfWorkFactory
-from geo_core.prompts.domain import compile_template
+from geo_core.prompts.domain import SkillVersion, compile_template
 
 
 class PlacementApplication(PlacementOperationsApplicationMixin):
@@ -263,13 +264,23 @@ class PlacementApplication(PlacementOperationsApplicationMixin):
         actor_id: UUID,
         output_schema: Mapping[str, object],
         client_variable_names: tuple[str, ...],
+        system_template: str = DEFAULT_SYSTEM_TEMPLATE,
+        user_template: str | None = None,
     ) -> PromptReleaseView:
         validate_generation_schema(output_schema)
+        if not (normalized_system := system_template.strip()):
+            raise PlacementRuleViolation("system prompt is required")
         with self._uow_factory(project_id) as uow:
             skill_version = uow.placements.create_skill_version(
                 project_id=project_id, skill_id=skill_id, source=source, actor_id=actor_id
             )
-            template = compile_template(release_id=uuid4(), skill=skill_version)
+            execution_skill = SkillVersion.create(
+                id=skill_version.id,
+                skill_id=skill_version.skill_id,
+                version=skill_version.version,
+                source=user_template if user_template is not None else source,
+            )
+            template = compile_template(release_id=uuid4(), skill=execution_skill)
             authoritative = {"brief", "evidence", "destination_policy"}
             if not authoritative.issubset(template.required_variables):
                 raise PlacementRuleViolation(
@@ -283,6 +294,8 @@ class PlacementApplication(PlacementOperationsApplicationMixin):
                 project_id=project_id,
                 skill_version_id=skill_version.id,
                 template=template,
+                source_text=skill_version.source,
+                system_template=normalized_system,
                 output_schema=output_schema,
                 client_variable_names=client_variable_names,
             )

@@ -4321,10 +4321,24 @@
             "minLength": 1,
             "title": "Source",
             "type": "string"
+          },
+          "system_template": {
+            "maxLength": 100000,
+            "minLength": 1,
+            "title": "System Template",
+            "type": "string"
+          },
+          "user_template": {
+            "maxLength": 100000,
+            "minLength": 1,
+            "title": "User Template",
+            "type": "string"
           }
         },
         "required": [
           "source",
+          "system_template",
+          "user_template",
           "output_schema"
         ],
         "title": "PromptReleaseCreate",
@@ -4333,10 +4347,19 @@
       "PromptReleaseView": {
         "additionalProperties": false,
         "properties": {
+          "compiler_version": {
+            "title": "Compiler Version",
+            "type": "string"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "output_schema": {
+            "additionalProperties": true,
+            "title": "Output Schema",
+            "type": "object"
           },
           "project_id": {
             "format": "uuid",
@@ -4355,6 +4378,23 @@
             "format": "uuid",
             "title": "Skill Version Id",
             "type": "string"
+          },
+          "source_text": {
+            "title": "Source Text",
+            "type": "string"
+          },
+          "system_template": {
+            "title": "System Template",
+            "type": "string"
+          },
+          "user_template": {
+            "title": "User Template",
+            "type": "string"
+          },
+          "variable_schema": {
+            "additionalProperties": true,
+            "title": "Variable Schema",
+            "type": "object"
           }
         },
         "required": [
@@ -4362,7 +4402,13 @@
           "project_id",
           "skill_version_id",
           "release_number",
-          "release_hash"
+          "release_hash",
+          "source_text",
+          "system_template",
+          "user_template",
+          "variable_schema",
+          "output_schema",
+          "compiler_version"
         ],
         "title": "PromptReleaseView",
         "type": "object"

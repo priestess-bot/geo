@@ -210,6 +210,8 @@ class PromptSkillView(PlacementContract):
 
 class PromptReleaseCreate(PlacementContract):
     source: str = Field(min_length=1, max_length=100000)
+    system_template: str = Field(min_length=1, max_length=100000)
+    user_template: str = Field(min_length=1, max_length=100000)
     output_schema: dict[str, object]
     client_variable_names: list[str] = Field(default_factory=list)
 
@@ -220,6 +222,12 @@ class PromptReleaseView(PlacementContract):
     skill_version_id: UUID
     release_number: int
     release_hash: str
+    source_text: str
+    system_template: str
+    user_template: str
+    variable_schema: dict[str, object]
+    output_schema: dict[str, object]
+    compiler_version: str
 
 
 class PromptBundleCreate(PlacementContract):

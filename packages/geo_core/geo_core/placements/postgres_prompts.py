@@ -100,7 +100,10 @@ class PostgresPromptRepositoryMixin:
 
     def create_template_release(self, **values: Any) -> PromptReleaseView:
         template: TemplateRelease = values["template"]
-        system_template = "Use only the evidence supplied by the immutable prompt bundle."
+        source_text = str(values["source_text"]).strip()
+        system_template = str(values["system_template"]).strip()
+        if not source_text or not system_template:
+            raise PlacementRuleViolation("prompt source and system template are required")
         variable_schema = {
             "required": template.required_variables,
             "client_allowed": values["client_variable_names"],
@@ -109,7 +112,7 @@ class PostgresPromptRepositoryMixin:
         compiler_version = "geo-prompt-compiler-v1"
         release_hash = canonical_hash(
             {
-                "compiled_template_hash": template.release_hash,
+                "source_text": source_text,
                 "system_template": system_template,
                 "user_template": template.template,
                 "variable_schema": variable_schema,
@@ -130,7 +133,9 @@ class PostgresPromptRepositoryMixin:
                      (id, project_id, skill_version_id, release_number, system_template,
                       user_template, variable_schema, output_schema, compiler_version, release_hash)
                    VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s)
-                   RETURNING id, project_id, skill_version_id, release_number, release_hash""",
+                   RETURNING id, project_id, skill_version_id, release_number, release_hash,
+                             system_template, user_template, variable_schema, output_schema,
+                             compiler_version""",
                 (
                     template.id,
                     values["project_id"],
@@ -145,6 +150,7 @@ class PostgresPromptRepositoryMixin:
                 ),
             )
         )
+        record["source_text"] = source_text
         return PromptReleaseView(**record)
 
     def install_default_prompt_catalog(
@@ -196,8 +202,16 @@ class PostgresPromptRepositoryMixin:
                          ON v.id = r.skill_version_id AND v.project_id = r.project_id
                        WHERE r.project_id = %s AND v.skill_id = %s
                          AND v.source_hash = %s AND r.output_schema = %s::jsonb
+                         AND r.system_template = %s AND r.user_template = %s
                        ORDER BY r.release_number LIMIT 1""",
-                    (project_id, skill.id, source_hash, json.dumps(output_schema)),
+                    (
+                        project_id,
+                        skill.id,
+                        source_hash,
+                        json.dumps(output_schema),
+                        definition.system_template,
+                        definition.source,
+                    ),
                 )
             )
             if releases:
@@ -214,6 +228,8 @@ class PostgresPromptRepositoryMixin:
                     project_id=project_id,
                     skill_version_id=version.id,
                     template=template,
+                    source_text=version.source,
+                    system_template=definition.system_template,
                     output_schema=output_schema,
                     client_variable_names=(),
                 ).id
@@ -254,7 +270,7 @@ class PostgresPromptRepositoryMixin:
             raise RuntimeError("template release disappeared")
         release_record = _one(
             self._db.execute(
-                """SELECT variable_schema, release_hash, compiler_version
+                """SELECT system_template, variable_schema, release_hash, compiler_version
                    FROM generation_template_releases
                    WHERE id = %s AND project_id = %s""",
                 (values["release_id"], values["project_id"]),
@@ -362,13 +378,14 @@ class PostgresPromptRepositoryMixin:
             model_policy_hash=values["model_policy_hash"],
         )
         snapshot = {
-            "schema": "geo-prompt-bundle-v1",
+            "schema": "geo-prompt-bundle-v2",
             "project_id": str(values["project_id"]),
             "brief_version_id": str(values["brief_version_id"]),
             "evidence_pack_attempt_id": str(values["evidence_pack_attempt_id"]),
             "template_release_id": str(values["release_id"]),
             "template_release_hash": release_record["release_hash"],
             "compiler_version": release_record["compiler_version"],
+            "system_prompt": release_record["system_template"],
             "client_variables": client_variables,
             "authoritative": {
                 "brief": brief_snapshot,
@@ -450,7 +467,9 @@ class PostgresPromptRepositoryMixin:
         rows = _many(
             self._db.execute(
                 """SELECT r.id, r.project_id, r.skill_version_id,
-                          r.release_number, r.release_hash
+                          r.release_number, r.release_hash, v.source_text,
+                          r.system_template, r.user_template, r.variable_schema,
+                          r.output_schema, r.compiler_version
                    FROM generation_template_releases r JOIN prompt_skill_versions v
                      ON v.id = r.skill_version_id AND v.project_id = r.project_id
                    WHERE r.project_id = %s AND v.skill_id = %s ORDER BY r.release_number""",

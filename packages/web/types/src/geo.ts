@@ -71,8 +71,15 @@ export interface AsyncResourceCreated { resource: EvidenceAttemptView; job_id: s
 
 export interface PromptSkillCreate { skill_key: string; }
 export interface PromptSkillView { id: string; project_id: string; skill_key: string; status: string; }
-export interface PromptReleaseCreate { source: string; output_schema: JsonObject; client_variable_names?: string[]; }
-export interface PromptReleaseView { id: string; project_id: string; skill_version_id: string; release_number: number; release_hash: string; }
+export interface PromptReleaseCreate {
+  source: string; system_template: string; user_template: string;
+  output_schema: JsonObject; client_variable_names?: string[];
+}
+export interface PromptReleaseView {
+  id: string; project_id: string; skill_version_id: string; release_number: number; release_hash: string;
+  source_text: string; system_template: string; user_template: string; variable_schema: JsonObject;
+  output_schema: JsonObject; compiler_version: string;
+}
 export interface PromptTaskBindingCreate { template_release_id: string; }
 export interface PromptTaskBindingView { project_id: string; selected_at: string; selected_by: string; task_key: string; template_release_id: string; }
 export interface PromptBundleCreate {

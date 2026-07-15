@@ -160,6 +160,8 @@ def generation_router() -> APIRouter:
             project_id=project_id,
             skill_id=skill_id,
             source=payload.source,
+            system_template=payload.system_template,
+            user_template=payload.user_template,
             actor_id=principal.identity_id,
             output_schema=payload.output_schema,
             client_variable_names=tuple(payload.client_variable_names),
