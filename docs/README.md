@@ -5,7 +5,7 @@
 1. Alembic schema、稳定 OpenAPI 和自动化测试；
 2. `architecture/`、`adr/` 与 `operations/`；
 3. [GEO v3 运行与验收合同](GEO-v3-%E5%85%A8%E6%B5%81%E7%A8%8B%E8%BF%90%E8%A1%8C%E6%89%8B%E5%86%8C.md)；
-4. 带日期的进度报告、历史设计和 `runtime_preflight/` 证据。
+4. v1/v2 历史设计输入。
 
 旧文档可以解释决策过程，但不能定义当前 API、端口、模型、部署方式或验收结论。
 
@@ -46,14 +46,12 @@
 - [架构整改方案](engineering/%E9%A1%B9%E7%9B%AE%E6%9E%B6%E6%9E%84%E4%B8%8E%E4%BB%A3%E7%A0%81%E6%B2%BB%E7%90%86%E6%95%B4%E6%94%B9%E6%96%B9%E6%A1%88-2026-07-15.md)
 - [整改执行状态](engineering/remediation-status.md)
 
-## 历史与运行证据
+## 历史设计与运行证据
 
 以下内容不属于当前真源：
 
-- `GEO-文案生成系统设计方案v1_0.md`、`GEO-文案生成系统最终设计方案v2_0.md`：历史设计输入，已由 v3 合同和 ADR 取代。
-- `GEO-Production-v1*`、`GEO-当前项目进度汇报-*`：特定日期的进度快照。
-- `archive/`：旧命名、旧阶段、调研和历史交付资料。
-- `approvals/`、`worktree-plans/`、`worktree-results/`：实施过程记录。
-- `runtime_preflight/`：特定 commit、环境和时间的运行证据。除非重新按当前手册执行，否则不能证明当前版本已验收。
+- `GEO-文案生成系统设计方案v1_0.md`、`GEO-文案生成系统最终设计方案v2_0.md`：仅保留为历史设计输入，已由 v3 合同和 ADR 取代。
+- `operations/images/`：当前版本的脱敏浏览器截图；必须在全流程手册中登记 commit、运行 ID 和视口。
+- `operations/evidence/`：当前版本的小型验收索引。大体积运行产物必须进入受控 artifact store。
 
-新的文档不得把 `geno`、`P0`、`AU fixture`、旧 `/runtime` API、同步模型调用或 `deepseek-chat` 写成当前架构。发现冲突时先修正当前手册，再把旧资料移入 `archive/`。
+新的文档不得把旧产品名、阶段代号、fixture 路由、旧 `/runtime` API、同步模型调用或过时模型别名写成当前架构。历史过程材料不再保存在产品仓库中。

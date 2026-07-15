@@ -104,7 +104,7 @@ infra/
 contracts/openapi/    稳定 API 快照及 manifest
 scripts/              provisioning、OpenAPI、备份与恢复入口
 tests/                architecture、unit、integration、infra、web、live
-docs/                 当前架构、ADR、操作手册、工程治理和历史归档
+docs/                 当前架构、ADR、操作手册、工程治理和两份历史设计输入
 ```
 
 依赖方向固定为 `Router -> Application Service -> Domain + Port <- Adapter`。Domain 不依赖 FastAPI、psycopg、HTTP、MinIO SDK 或环境变量；外部模型调用期间不得持有数据库事务或行锁。

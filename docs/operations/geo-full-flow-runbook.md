@@ -13,7 +13,7 @@
 | 数据 | tenant/project/campaign ID、是否空库初始化 |
 | 人员 | Operator、Reviewer、Publisher、Customer Viewer 身份 |
 | 外部服务 | DeepSeek configured/reported model、受控验证站点 |
-| 证据目录 | `docs/runtime_preflight/<RUN_ID>/` 或受控外部证据库 |
+| 证据目录 | `docs/operations/evidence/<RUN_ID>/` 或受控外部证据库 |
 
 不要在运行记录、截图或终端转储中保存 Authorization、Cookie、邀请 token、DeepSeek Key、内部受限 Evidence 或完整模型敏感输入。
 
