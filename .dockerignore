@@ -1,9 +1,7 @@
 .git
-.next
-node_modules
-apps/web/.next
-apps/web/node_modules
-*.tsbuildinfo
+**/.next
+**/node_modules
+**/*.tsbuildinfo
 __pycache__
 *.pyc
 .pytest_cache
@@ -18,3 +16,4 @@ deepseek_api_key.txt
 *.key
 .venv
 .pnpm-store
+artifacts
