@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from geo_core.model_gateway import ModelCallBudget, ModelGatewayRequest, ModelPolicy
-from scripts.run_geo_acceptance import (
+from scripts.geo_acceptance import (
     AcceptanceConfig,
     CHANNELS,
     DeterministicGateway,

@@ -53,6 +53,20 @@ def test_retired_architecture_cannot_return() -> None:
     assert not any(path.exists() for path in retired_paths)
 
 
+def test_stable_acceptance_scripts_stay_within_module_budget() -> None:
+    scripts_root = ROOT / "scripts"
+    files = (
+        scripts_root / "run_geo_acceptance.py",
+        *(scripts_root / "geo_acceptance").glob("*.py"),
+    )
+    oversized = {
+        path.relative_to(ROOT).as_posix(): line_count(path)
+        for path in files
+        if line_count(path) > 600
+    }
+    assert oversized == {}, f"acceptance script modules exceed 600 lines: {oversized}"
+
+
 def test_new_api_foundation_does_not_import_legacy_or_executable_layers() -> None:
     foundation_files = (
         "app_factory.py",

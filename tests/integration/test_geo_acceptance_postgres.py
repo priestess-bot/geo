@@ -9,7 +9,7 @@ import psycopg
 from psycopg import sql
 import pytest
 
-from scripts.run_geo_acceptance import AcceptanceConfig, run_acceptance
+from scripts.geo_acceptance import AcceptanceConfig, run_acceptance
 
 
 APP_URL = os.getenv("GEO_ACCEPTANCE_TEST_APP_DATABASE_URL", "").strip()
