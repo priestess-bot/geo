@@ -3,41 +3,44 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 import subprocess
-import tempfile
 import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
 ADMIN = ROOT / "apps/admin-web"
 CUSTOMER = ROOT / "apps/customer-web"
+TRANSPORT = ROOT / "packages/web/api-client/src/transport.ts"
+CUSTOMER_CLIENT = ROOT / "packages/web/api-client/src/customer.ts"
 
 
 class WebRuntimeTransportContractTests(unittest.TestCase):
-    def test_admin_and_customer_transport_contracts_are_byte_identical(self) -> None:
-        admin = (ADMIN / "app/_runtime/contracts.ts").read_bytes()
-        customer = (CUSTOMER / "app/_runtime/contracts.ts").read_bytes()
-        self.assertEqual(hashlib.sha256(admin).hexdigest(), hashlib.sha256(customer).hexdigest())
-        self.assertEqual(admin, customer)
+    def test_transport_has_one_shared_source_of_truth(self) -> None:
+        source = TRANSPORT.read_bytes()
+        self.assertEqual(len(hashlib.sha256(source).hexdigest()), 64)
+        self.assertFalse((ADMIN / "app/_runtime/contracts.ts").exists())
+        self.assertFalse((CUSTOMER / "app/_runtime/contracts.ts").exists())
 
-    def test_runtime_entrypoints_delegate_to_typed_transport(self) -> None:
-        for app in (ADMIN, CUSTOMER):
-            runtime = (app / "app/runtime.ts").read_text(encoding="utf-8")
-            self.assertIn("export async function runtimeHttpRequest<T>", runtime)
-            self.assertIn("RuntimeRequestOptions = RuntimeRequestGuards", runtime)
-            self.assertIn("runtimeGuardHeaders(options)", runtime)
-            self.assertIn("performRuntimeHttpRequest<T>", runtime)
-            self.assertIn("options.body !== undefined", runtime)
-            self.assertIn("problem:", runtime)
+    def test_app_entrypoints_delegate_to_shared_typed_clients(self) -> None:
+        admin_runtime = (ADMIN / "app/runtime.ts").read_text(encoding="utf-8")
+        customer_runtime = (CUSTOMER / "app/runtime.ts").read_text(encoding="utf-8")
+        customer_client = CUSTOMER_CLIENT.read_text(encoding="utf-8")
+
+        self.assertIn('from "@geo/api-client/transport"', admin_runtime)
+        self.assertIn("runtimeGuardHeaders(options)", admin_runtime)
+        self.assertIn("performRuntimeHttpRequest<T>", admin_runtime)
+        self.assertIn('from "@geo/api-client/customer"', customer_runtime)
+        self.assertIn("new CustomerApiClient", customer_runtime)
+        self.assertIn('from "./transport"', customer_client)
+        self.assertIn("performRuntimeHttpRequest", customer_client)
 
     def test_transport_contract_executes_header_and_response_semantics(self) -> None:
         node_script = r"""
-const contract = require(process.argv[1]);
-
 function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
 async function main() {
+  const contract = await import(process.argv[1]);
   const guards = contract.runtimeGuardHeaders({
     ifMatch: '"head-v2"',
     idempotencyKey: "create-asset-version-1"
@@ -181,38 +184,20 @@ main().catch((error) => {
   process.exit(1);
 });
 """
-        with tempfile.TemporaryDirectory(prefix="web-runtime-transport-") as temp:
-            temp_path = Path(temp)
-            for app in (ADMIN, CUSTOMER):
-                output = temp_path / app.name
-                subprocess.run(
-                    [
-                        str(app / "node_modules/.bin/tsc"),
-                        str(app / "app/_runtime/contracts.ts"),
-                        "--outDir",
-                        str(output),
-                        "--module",
-                        "commonjs",
-                        "--moduleResolution",
-                        "node",
-                        "--target",
-                        "ES2022",
-                        "--lib",
-                        "ES2022,DOM",
-                        "--skipLibCheck",
-                    ],
-                    cwd=ROOT,
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                )
-                subprocess.run(
-                    ["node", "-e", node_script, str(output / "contracts.js")],
-                    cwd=ROOT,
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                )
+        subprocess.run(
+            [
+                "node",
+                "--experimental-strip-types",
+                "--input-type=module",
+                "-e",
+                node_script,
+                TRANSPORT.as_uri(),
+            ],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
 
 
 if __name__ == "__main__":

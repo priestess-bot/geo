@@ -18,47 +18,11 @@ jobs:
           enable-cache: true
       - run: uv sync --frozen
       - name: Ruff
-        run: >-
-          uv run ruff check
-          apps/api/geo_api
-          packages/geo_core/geo_core
-          scripts/export_stable_openapi.py
-          scripts/provision_database.py
-          scripts/provision_dev_database.py
-          infra/db/alembic/checksums.py
-      - name: Strict types for migrated modules
-        run: >-
-          uv run mypy --follow-imports=skip
-          apps/api/geo_api/app_factory.py
-          apps/api/geo_api/contracts.py
-          apps/api/geo_api/problems.py
-          apps/api/geo_api/stable_routes.py
-          apps/api/geo_api/catalog_contracts.py
-          apps/api/geo_api/catalog_routes.py
-          apps/api/geo_api/catalog_runtime.py
-          apps/api/geo_api/monitoring_contracts.py
-          apps/api/geo_api/monitoring_dependencies.py
-          apps/api/geo_api/monitoring_presenters.py
-          apps/api/geo_api/monitoring_routes.py
-          apps/api/geo_api/customer_geo_routes.py
-          apps/api/geo_api/monitoring_runtime.py
-          scripts/export_stable_openapi.py
-          packages/geo_core/geo_core/jobs
-          packages/geo_core/geo_core/catalog
-          packages/geo_core/geo_core/monitoring
-          packages/geo_core/geo_core/model_gateway
-          packages/geo_core/geo_core/prompts
-      - name: Architecture and migrated contracts
-        run: >-
-          uv run pytest -q
-          tests/architecture
-          tests/unit
-          tests/test_api_catalog_slice.py
-          tests/test_api_monitoring_slice.py
-          tests/test_api_foundation_contracts.py
-          tests/test_geo_alembic_baseline.py
-          tests/test_geo_job_lifecycle.py
-          tests/test_geo_v3_qc_contracts.py
+        run: make lint
+      - name: Strict types for all Python product modules
+        run: make python-typecheck
+      - name: Fast product and architecture tests
+        run: make test-migrated
       - name: Stable internal and customer OpenAPI contracts
         run: make openapi-contracts
 
@@ -82,6 +46,8 @@ jobs:
       GEO_DATABASE_URL: postgresql://geo_installer:geo_ci_only@localhost:5432/geo
       GEO_ACCESS_TEST_ADMIN_DATABASE_URL: postgresql://geo_installer:geo_ci_only@localhost:5432/geo
       GEO_ACCESS_TEST_DATABASE_URL: postgresql://geo_app_dev:geo_app_ci_only@localhost:5432/geo
+      GEO_PLACEMENT_TEST_ADMIN_URL: postgresql://geo_installer:geo_ci_only@localhost:5432/geo
+      GEO_TEST_DATABASE_URL: postgresql://geo_installer:geo_ci_only@localhost:5432/geo
       GEO_DEV_APP_PASSWORD: geo_app_ci_only
       GEO_DEV_WORKER_PASSWORD: geo_worker_ci_only
     steps:
@@ -99,11 +65,8 @@ jobs:
         run: uv run python scripts/provision_dev_database.py
       - name: Baseline and Durable Job tests
         run: uv run pytest -q tests/test_geo_alembic_baseline.py tests/test_geo_job_lifecycle.py
-      - name: Monitoring PostgreSQL and checksum contracts
-        run: >-
-          uv run pytest -q -m integration
-          tests/integration/test_monitoring_postgres.py
-          tests/integration/test_alembic_sql_checksums.py
+      - name: Complete PostgreSQL integration suite
+        run: uv run pytest -q tests/integration tests/test_engineering_governance_postgres.py
 
   frontend:
     runs-on: ubuntu-latest

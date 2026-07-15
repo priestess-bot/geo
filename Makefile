@@ -4,7 +4,7 @@ DEV_COMPOSE := docker compose -f infra/docker-compose.yml
 PROD_ENV ?= infra/production.env
 PROD_COMPOSE := docker compose --env-file $(PROD_ENV) -f infra/compose.prod.yml
 
-.PHONY: bootstrap install lint typecheck quality test test-migrated test-integration \
+.PHONY: bootstrap install lint python-typecheck web-typecheck typecheck quality test test-migrated test-integration \
 	openapi-snapshots openapi-contracts \
 	web-build api-internal api-customer admin-web customer-web \
 	dev-up dev-logs dev-down db-up db-down db-reset-dev db-migrate db-heads \
@@ -23,47 +23,23 @@ install:
 lint:
 	uv run ruff check apps/api/geo_api packages/geo_core/geo_core \
 		scripts/export_stable_openapi.py scripts/provision_database.py \
-		scripts/provision_dev_database.py infra/db/alembic/checksums.py
+		scripts/provision_dev_database.py scripts/provision_initial_owner.py \
+		infra/db/alembic/checksums.py
 
-typecheck:
+python-typecheck:
 	uv run mypy --follow-imports=skip \
-		apps/api/geo_api/app_factory.py \
-		apps/api/geo_api/contracts.py \
-		apps/api/geo_api/problems.py \
-		apps/api/geo_api/stable_routes.py \
-		apps/api/geo_api/catalog_contracts.py \
-		apps/api/geo_api/catalog_routes.py \
-		apps/api/geo_api/catalog_runtime.py \
-		apps/api/geo_api/monitoring_contracts.py \
-		apps/api/geo_api/monitoring_dependencies.py \
-		apps/api/geo_api/monitoring_presenters.py \
-		apps/api/geo_api/monitoring_routes.py \
-		apps/api/geo_api/customer_geo_routes.py \
-		apps/api/geo_api/monitoring_runtime.py \
-		apps/api/geo_api/member_contracts.py \
-		apps/api/geo_api/member_routes.py \
-		apps/api/geo_api/member_runtime.py \
-		apps/api/geo_api/job_control_routes.py \
-		apps/api/geo_api/placement_access.py \
-		apps/api/geo_api/placement_bootstrap.py \
-		apps/api/geo_api/placement_campaign_routes.py \
-		apps/api/geo_api/placement_contracts.py \
-		apps/api/geo_api/placement_generation_routes.py \
-		apps/api/geo_api/placement_publication_routes.py \
+		apps/api/geo_api \
 		apps/api/geo_worker \
+		packages/geo_core/geo_core \
 		scripts/export_stable_openapi.py \
-		packages/geo_core/geo_core/jobs \
-		packages/geo_core/geo_core/catalog \
-		packages/geo_core/geo_core/monitoring \
-		packages/geo_core/geo_core/engineering \
-		packages/geo_core/geo_core/model_gateway \
-		packages/geo_core/geo_core/prompts \
-		packages/geo_core/geo_core/object_store_config.py \
-		packages/geo_core/geo_core/project_scope.py \
-		packages/geo_core/geo_core/access/membership_service.py \
-		packages/geo_core/geo_core/access/membership_postgres.py \
-		apps/api/geo_api/engineering_runtime.py
+		scripts/provision_database.py \
+		scripts/provision_dev_database.py \
+		scripts/provision_initial_owner.py
+
+web-typecheck:
 	corepack pnpm typecheck
+
+typecheck: python-typecheck web-typecheck
 
 quality: lint typecheck
 	uv run pytest -q tests/architecture
@@ -72,17 +48,7 @@ test:
 	uv run pytest
 
 test-migrated:
-	uv run pytest -q \
-		tests/architecture \
-		tests/unit \
-		tests/infra/test_production_compose.py \
-		tests/test_api_catalog_slice.py \
-		tests/test_api_monitoring_slice.py \
-		tests/test_api_foundation_contracts.py \
-		tests/test_api_member_contracts.py \
-		tests/test_geo_alembic_baseline.py \
-		tests/test_geo_job_lifecycle.py \
-		tests/test_geo_v3_qc_contracts.py
+	uv run pytest -q -m "not integration and not live and not browser"
 
 openapi-snapshots:
 	uv run python scripts/export_stable_openapi.py export

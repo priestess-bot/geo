@@ -7,7 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 DEBT_PATH = ROOT / "docs" / "engineering" / "architecture-debt.json"
-SOURCE_ROOTS = (ROOT / "apps", ROOT / "packages", ROOT / "workers")
+SOURCE_ROOTS = (ROOT / "apps", ROOT / "packages")
 SOURCE_SUFFIXES = {".py", ".ts", ".tsx"}
 
 
@@ -15,7 +15,7 @@ def line_count(path: Path) -> int:
     return len(path.read_text(encoding="utf-8").splitlines())
 
 
-def test_oversized_file_debt_can_only_decrease() -> None:
+def test_product_modules_stay_within_size_budget() -> None:
     debt: dict[str, int] = json.loads(DEBT_PATH.read_text(encoding="utf-8"))
     observed: dict[str, int] = {}
     for root in SOURCE_ROOTS + (ROOT / "tests",):
@@ -37,6 +37,20 @@ def test_oversized_file_debt_can_only_decrease() -> None:
         if count > debt[path]
     }
     assert growth == {}, f"architecture debt grew: {growth}"
+
+
+def test_retired_architecture_cannot_return() -> None:
+    retired_paths = (
+        ROOT / "apps" / "api" / "geo_api" / "main.py",
+        ROOT / "apps" / "web" / "package.json",
+        ROOT / "workers" / "task_queue" / "tasks.py",
+        ROOT / "infra" / "db" / "migrations",
+        ROOT / "infra" / "db" / "schema-v2",
+        ROOT / "packages" / "geo_core" / "geo_core" / "repository.py",
+        ROOT / "packages" / "geo_core" / "geo_core" / "runtime.py",
+        ROOT / "packages" / "geo_core" / "geo_core" / "models.py",
+    )
+    assert not any(path.exists() for path in retired_paths)
 
 
 def test_new_api_foundation_does_not_import_legacy_or_executable_layers() -> None:
@@ -91,7 +105,7 @@ def test_new_domain_contracts_do_not_depend_on_frameworks_or_infrastructure() ->
 
 
 def test_active_product_identifiers_use_geo_name() -> None:
-    roots = (ROOT / "apps", ROOT / "packages", ROOT / "workers", ROOT / "infra", ROOT / "contracts")
+    roots = (ROOT / "apps", ROOT / "packages", ROOT / "infra", ROOT / "contracts")
     offenders: list[str] = []
     for root in roots:
         for path in root.rglob("*"):

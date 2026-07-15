@@ -1,1 +1,1 @@
-"""New durable worker composition; deliberately independent of legacy workers."""
+"""Durable worker and outbox-relay entrypoints for GEO background jobs."""

@@ -19,10 +19,8 @@ Verify that the checked-in files match the current application:
 make openapi-contracts
 ```
 
-The exporter clears the caller environment and never imports `geo_api.main`.
-Generation must not depend on deployment configuration or include secret values.
+The exporter clears the caller environment and imports only the deployed Internal
+and Customer application entrypoints. Generation must not depend on deployment
+configuration or include secret values.
 Customer validation also rejects internal routes and non-allowlisted writes.
 Generated JSON files must not be edited by hand.
-
-The root `geo-api.openapi.json` and `manifest.json` are retained only as a
-pre-remediation legacy reference. They are not the stable deployment contracts.
