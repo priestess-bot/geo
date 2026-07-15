@@ -1,0 +1,38 @@
+import type {
+  BriefVersionView, CampaignView, ClaimView, DestinationPolicyView, DestinationView, EvidenceAttemptView,
+  EvidenceItemView, ExportView, JobStatus, MeasurementView, MeasurementWindow, MetricView,
+  MonitoringObservationView, MonitoringProtocolView, MonitoringQueryView, MonitoringReportView,
+  OpportunityView, PackageVersionView, PlacementJobEventView, PromptBundleDetail, PromptBundleView,
+  PromptReleaseView, PromptSkillView, PromptTaskBindingView, PublicationView, QuerySuggestionView,
+  ReviewView, SubmissionView
+} from "@geo/types/geo";
+
+export type GeoSection = "campaigns" | "observations" | "destinations" | "placement";
+export type LoadFailure = { status?: number; code: string; detail: string; correlationId?: string; retryable: boolean; };
+export type Resource<T> = { data: T; failure: null } | { data: T; failure: LoadFailure };
+export type GeoSelection = {
+  section: GeoSection; placementStage: "intake" | "generation" | "publication"; measurementWindow: MeasurementWindow; campaignId?: string; protocolId?: string;
+  destinationId?: string; opportunityId?: string; briefVersionId?: string; attemptId?: string;
+  skillId?: string; bundleId?: string; jobId?: string; versionId?: string;
+  publicationId?: string; submissionId?: string;
+};
+export type GeoWorkspaceData = {
+  selection: GeoSelection;
+  campaigns: Resource<CampaignView[]>; destinations: Resource<DestinationView[]>;
+  protocols: Resource<MonitoringProtocolView[]>; metrics: Resource<MetricView[]>;
+  reports: Resource<MonitoringReportView[]>; skills: Resource<PromptSkillView[]>;
+  bindings: Resource<PromptTaskBindingView[]>; queries: Resource<MonitoringQueryView[]>;
+  opportunities: Resource<OpportunityView[]>; policyReviews: Resource<DestinationPolicyView[]>;
+  observations: Resource<MonitoringObservationView[]>; suggestions: Resource<QuerySuggestionView[]>;
+  briefs: Resource<BriefVersionView[]>; attempts: Resource<EvidenceAttemptView[]>;
+  attempt: Resource<EvidenceAttemptView | null>; evidenceItems: Resource<EvidenceItemView[]>;
+  releases: Resource<PromptReleaseView[]>; bundles: Resource<PromptBundleView[]>;
+  bundle: Resource<PromptBundleDetail | null>; job: Resource<JobStatus | null>;
+  jobEvents: Resource<PlacementJobEventView[]>; packages: Resource<PackageVersionView[]>;
+  packageVersion: Resource<PackageVersionView | null>; claims: Resource<ClaimView[]>;
+  reviews: Resource<ReviewView[]>; exports: Resource<ExportView[]>;
+  publications: Resource<PublicationView[]>; submissions: Resource<SubmissionView[]>;
+  submission: Resource<SubmissionView | null>; measurements: Resource<MeasurementView[]>;
+};
+
+export const emptyResource = <T,>(data: T): Resource<T> => ({ data, failure: null });
