@@ -13,13 +13,17 @@ def test_revision_graph_has_exactly_one_root_and_head() -> None:
     assert [path.name for path in revisions] == [
         "0001_geo_baseline.py",
         "0002_engineering_governance.py",
+        "0003_access_invitations.py",
     ]
     root = revisions[0].read_text(encoding="utf-8")
-    head = revisions[1].read_text(encoding="utf-8")
+    engineering = revisions[1].read_text(encoding="utf-8")
+    head = revisions[2].read_text(encoding="utf-8")
     assert 'revision = "0001_geo_baseline"' in root
     assert "down_revision = None" in root
-    assert 'revision = "0002_engineering_governance"' in head
-    assert 'down_revision = "0001_geo_baseline"' in head
+    assert 'revision = "0002_engineering_governance"' in engineering
+    assert 'down_revision = "0001_geo_baseline"' in engineering
+    assert 'revision = "0003_access_invitations"' in head
+    assert 'down_revision = "0002_engineering_governance"' in head
 
 
 def test_alembic_uses_the_installed_psycopg3_driver_for_standard_urls() -> None:

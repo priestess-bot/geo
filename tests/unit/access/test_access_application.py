@@ -85,9 +85,7 @@ class FakeJobRepository:
         del project_ids
         return len(self.jobs)
 
-    def get_authorized(
-        self, *, job_id: UUID, project_ids: tuple[UUID, ...]
-    ) -> JobRecord | None:
+    def get_authorized(self, *, job_id: UUID, project_ids: tuple[UUID, ...]) -> JobRecord | None:
         del project_ids
         return next((job for job in self.jobs if job.id == job_id), None)
 
@@ -235,3 +233,22 @@ def test_logout_revokes_only_the_authenticated_session() -> None:
     service.logout(principal)
 
     assert unit_of_work.sessions.revoked == [unit_of_work.sessions.session.id]
+
+
+def test_require_project_role_returns_role_and_rejects_other_projects() -> None:
+    service, _, raw_token = _fixture()
+    principal = service.authenticate_customer_session(raw_token=raw_token)
+
+    role = service.require_project_role(
+        principal,
+        project_id=principal.project_ids[0],
+        allowed_roles=frozenset({"customer"}),
+    )
+
+    assert role == "customer"
+    with pytest.raises(AccessForbidden):
+        service.require_project_role(
+            principal,
+            project_id=uuid4(),
+            allowed_roles=frozenset({"owner", "admin"}),
+        )

@@ -14,6 +14,7 @@ from uuid import uuid4
 from fastapi import FastAPI, Request
 from starlette.responses import Response
 
+from geo_api.access_write_routes import invitation_auth_router, invitation_management_router
 from geo_api.engineering_routes import engineering_router, github_integration_router
 from geo_api.engineering_runtime import build_engineering_service
 from geo_api.foundation_services import (
@@ -44,16 +45,23 @@ _ACCESS_LOGGER = logging.getLogger("geo_api.access")
 class ApiSettings:
     dev_tools_enabled: bool = False
     customer_session_cookie_name: str = "GEO_CUSTOMER_SESSION"
+    csrf_cookie_name: str = "GEO_CSRF_TOKEN"
+    cookie_secure: bool = False
 
     @classmethod
     def from_environment(cls) -> "ApiSettings":
         enabled = os.getenv("GEO_DEV_TOOLS_ENABLED", "0").strip().lower() in _TRUE_VALUES
-        cookie_name = os.getenv(
-            "GEO_CUSTOMER_SESSION_COOKIE_NAME", "GEO_CUSTOMER_SESSION"
-        ).strip()
+        cookie_name = os.getenv("GEO_CUSTOMER_SESSION_COOKIE_NAME", "GEO_CUSTOMER_SESSION").strip()
+        csrf_cookie_name = os.getenv("GEO_CSRF_COOKIE_NAME", "GEO_CSRF_TOKEN").strip()
+        production = os.getenv("GEO_DEPLOYMENT_ENVIRONMENT", "development").strip() == "production"
+        cookie_secure = (
+            production or os.getenv("GEO_COOKIE_SECURE", "0").strip().lower() in _TRUE_VALUES
+        )
         return cls(
             dev_tools_enabled=enabled,
             customer_session_cookie_name=cookie_name or "GEO_CUSTOMER_SESSION",
+            csrf_cookie_name=csrf_cookie_name or "GEO_CSRF_TOKEN",
+            cookie_secure=cookie_secure,
         )
 
 
@@ -91,6 +99,8 @@ def create_api_app(
     app.state.surface = surface
     app.state.services = resolved_services
     app.state.customer_session_cookie_name = resolved_settings.customer_session_cookie_name
+    app.state.csrf_cookie_name = resolved_settings.csrf_cookie_name
+    app.state.cookie_secure = resolved_settings.cookie_secure
     app.state.engineering_service = engineering_service or build_engineering_service()
     app.state.placement_services = placement_services
     install_problem_handlers(app)
@@ -98,9 +108,11 @@ def create_api_app(
 
     app.include_router(health_router(service_name=service_name, surface=surface))
     app.include_router(auth_router())
+    app.include_router(invitation_auth_router())
     app.include_router(projects_router(surface=surface))
     app.include_router(jobs_router())
     if surface == "internal":
+        app.include_router(invitation_management_router())
         app.include_router(campaign_router())
         app.include_router(generation_router())
         app.include_router(publication_router())

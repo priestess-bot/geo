@@ -76,9 +76,7 @@ class StubAccessApplication:
             raise AuthenticationRequired("A customer session is required.")
         return self.principal
 
-    def authenticate_development(
-        self, *, identity_id: UUID, tenant_id: UUID
-    ) -> AccessPrincipal:
+    def authenticate_development(self, *, identity_id: UUID, tenant_id: UUID) -> AccessPrincipal:
         if (identity_id, tenant_id) != (self.identity_id, self.tenant_id):
             raise AuthenticationRequired("Development authentication headers are required.")
         return self.principal
@@ -87,9 +85,7 @@ class StubAccessApplication:
         del external
         return self.principal
 
-    def list_projects(
-        self, principal: AccessPrincipal, *, limit: int, offset: int
-    ) -> Page:
+    def list_projects(self, principal: AccessPrincipal, *, limit: int, offset: int) -> Page:
         assert principal == self.principal
         return Page(
             items=self.projects[offset : offset + limit],
@@ -108,6 +104,11 @@ class StubAccessApplication:
 
     def logout(self, principal: AccessPrincipal) -> None:
         assert principal == self.principal
+        self.revoked = True
+
+    def logout_customer_session(self, *, raw_token: str, csrf_token: str) -> None:
+        assert raw_token == "valid-customer-session"
+        assert csrf_token == "valid-csrf"
         self.revoked = True
 
 
@@ -208,7 +209,8 @@ def test_customer_logout_revokes_session_and_expires_cookie() -> None:
     access = StubAccessApplication()
     with TestClient(_customer_app(access)) as client:
         client.cookies.set("GEO_CUSTOMER_SESSION", "valid-customer-session")
-        response = client.post("/v1/auth/logout")
+        client.cookies.set("GEO_CSRF_TOKEN", "valid-csrf")
+        response = client.post("/v1/auth/logout", headers={"X-GEO-CSRF-Token": "valid-csrf"})
 
     assert response.status_code == 200
     assert access.revoked

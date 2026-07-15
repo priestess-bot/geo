@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import datetime
 import json
 from types import TracebackType
 from typing import Any, Literal, TypeAlias, cast
@@ -22,8 +23,10 @@ from geo_core.access.models import (
     SessionRecord,
 )
 from geo_core.access.ports import (
+    AccessAuditRepository,
     AccessUnitOfWork,
     IdentityRepository,
+    InvitationRepository,
     JobRepository,
     ProjectRepository,
     SessionRepository,
@@ -64,6 +67,26 @@ class PsycopgIdentityRepository:
         )
         return _identity(row) if row else None
 
+    def get_or_create_customer(self, *, email: str) -> IdentityRecord:
+        try:
+            with self._connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO identities (issuer, subject, email, display_name)
+                    VALUES ('geo:customer', %s, %s, %s)
+                    ON CONFLICT (issuer, subject) DO UPDATE
+                    SET email = EXCLUDED.email
+                    RETURNING id, issuer, subject, email, display_name, status
+                    """,
+                    (email, email, email),
+                )
+                row = cursor.fetchone()
+        except psycopg.Error as error:
+            raise _database_error("create a customer identity", error) from error
+        if not row:
+            raise RuntimeError("Customer identity upsert did not return a row.")
+        return _identity(row)
+
     def _one(self, query: str, parameters: tuple[object, ...]) -> dict[str, Any] | None:
         try:
             with self._connection.cursor() as cursor:
@@ -82,7 +105,7 @@ class PsycopgSessionRepository:
             with self._connection.cursor() as cursor:
                 cursor.execute(
                     """
-                    SELECT id, identity_id, tenant_id
+                    SELECT id, identity_id, tenant_id, csrf_token_hash, expires_at, surface
                     FROM customer_sessions
                     WHERE token_hash = %s
                       AND status = 'active'
@@ -98,6 +121,9 @@ class PsycopgSessionRepository:
                 id=cast(UUID, row["id"]),
                 identity_id=cast(UUID, row["identity_id"]),
                 tenant_id=cast(UUID, row["tenant_id"]),
+                csrf_token_hash=str(row["csrf_token_hash"]) if row["csrf_token_hash"] else None,
+                expires_at=row["expires_at"],
+                surface=str(row["surface"]),
             )
             if row
             else None
@@ -117,10 +143,85 @@ class PsycopgSessionRepository:
         except psycopg.Error as error:
             raise _database_error("revoke a customer session", error) from error
 
+    def create(
+        self,
+        *,
+        session_id: UUID,
+        identity_id: UUID,
+        tenant_id: UUID,
+        token_hash: str,
+        csrf_token_hash: str,
+        expires_at: datetime,
+    ) -> SessionRecord:
+        try:
+            with self._connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO customer_sessions (
+                        id, identity_id, tenant_id, token_hash, csrf_token_hash,
+                        surface, expires_at
+                    ) VALUES (%s, %s, %s, %s, %s, 'customer', %s)
+                    ON CONFLICT (id) DO NOTHING
+                    RETURNING id, identity_id, tenant_id, csrf_token_hash, expires_at, surface
+                    """,
+                    (
+                        session_id,
+                        identity_id,
+                        tenant_id,
+                        token_hash,
+                        csrf_token_hash,
+                        expires_at,
+                    ),
+                )
+                row = cursor.fetchone()
+                if not row:
+                    cursor.execute(
+                        """
+                        SELECT id, identity_id, tenant_id, csrf_token_hash, expires_at, surface
+                        FROM customer_sessions WHERE id = %s
+                        """,
+                        (session_id,),
+                    )
+                    row = cursor.fetchone()
+        except psycopg.Error as error:
+            raise _database_error("create a customer session", error) from error
+        if not row:
+            raise RuntimeError("Customer session creation did not return a row.")
+        return SessionRecord(
+            id=cast(UUID, row["id"]),
+            identity_id=cast(UUID, row["identity_id"]),
+            tenant_id=cast(UUID, row["tenant_id"]),
+            csrf_token_hash=str(row["csrf_token_hash"]),
+            expires_at=row["expires_at"],
+            surface=str(row["surface"]),
+        )
+
 
 class PsycopgProjectRepository:
     def __init__(self, connection: Connection) -> None:
         self._connection = connection
+
+    def upsert_membership(
+        self,
+        *,
+        identity_id: UUID,
+        tenant_id: UUID,
+        project_id: UUID,
+        role: str,
+    ) -> None:
+        try:
+            with self._connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO project_memberships (tenant_id, project_id, identity_id, role)
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (project_id, identity_id) DO UPDATE
+                    SET role = EXCLUDED.role, status = 'active'
+                    """,
+                    (tenant_id, project_id, identity_id, role),
+                )
+        except psycopg.Error as error:
+            raise _database_error("upsert a project membership", error) from error
 
     def list_memberships(
         self, *, identity_id: UUID, tenant_id: UUID
@@ -247,9 +348,7 @@ class PsycopgJobRepository:
             raise _database_error("count durable jobs", error) from error
         return int(row["total"]) if row else 0
 
-    def get_authorized(
-        self, *, job_id: UUID, project_ids: tuple[UUID, ...]
-    ) -> JobRecord | None:
+    def get_authorized(self, *, job_id: UUID, project_ids: tuple[UUID, ...]) -> JobRecord | None:
         if not project_ids:
             return None
         try:
@@ -275,6 +374,8 @@ class PsycopgAccessUnitOfWork:
     sessions: SessionRepository
     projects: ProjectRepository
     jobs: JobRepository
+    invitations: InvitationRepository
+    audit: AccessAuditRepository
 
     def __init__(self, connection_factory: ConnectionFactory) -> None:
         self._connection_factory = connection_factory
@@ -288,6 +389,13 @@ class PsycopgAccessUnitOfWork:
             self.sessions = PsycopgSessionRepository(self.connection)
             self.projects = PsycopgProjectRepository(self.connection)
             self.jobs = PsycopgJobRepository(self.connection)
+            from geo_core.access.postgres_writes import (
+                PsycopgAccessAuditRepository,
+                PsycopgInvitationRepository,
+            )
+
+            self.invitations = PsycopgInvitationRepository(self.connection)
+            self.audit = PsycopgAccessAuditRepository(self.connection)
             self.set_principal(None)
         except psycopg.Error as error:
             self._close()
@@ -319,6 +427,17 @@ class PsycopgAccessUnitOfWork:
             project_ids=principal.project_ids if principal else (),
         )
 
+    def set_invitation_scope(self, *, token_hash: str) -> None:
+        self._set_config("geo.invitation_token_hash", token_hash)
+
+    def set_project_scope(self, *, tenant_id: UUID, project_ids: tuple[UUID, ...]) -> None:
+        self._set_context(
+            actor_id="invitation-redemption",
+            identity_id="",
+            tenant_id=str(tenant_id),
+            project_ids=project_ids,
+        )
+
     def _set_context(
         self,
         *,
@@ -341,6 +460,16 @@ class PsycopgAccessUnitOfWork:
                         sql.SQL("SELECT set_config({}, %s, true)").format(sql.Literal(name)),
                         (value,),
                     )
+        except psycopg.Error as error:
+            raise _database_error("set the RLS context", error) from error
+
+    def _set_config(self, name: str, value: str) -> None:
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.execute(
+                    sql.SQL("SELECT set_config({}, %s, true)").format(sql.Literal(name)),
+                    (value,),
+                )
         except psycopg.Error as error:
             raise _database_error("set the RLS context", error) from error
 

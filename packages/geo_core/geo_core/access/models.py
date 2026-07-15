@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 
@@ -21,6 +22,30 @@ class AccessForbidden(AccessError):
 
 class AccessPersistenceUnavailable(AccessError):
     """Raised when PostgreSQL cannot complete an access operation."""
+
+
+class AccessConfigurationUnavailable(AccessError):
+    """Raised when a write-only signing secret is not configured."""
+
+
+class InvitationInvalid(AccessError):
+    """Raised when invitation credentials are invalid, expired, or revoked."""
+
+
+class InvitationSurfaceMismatch(AccessError):
+    """Raised before token consumption when a Customer invite reaches Admin."""
+
+
+class InvitationConsumed(AccessError):
+    """Raised when another redemption already consumed the invitation."""
+
+
+class IdempotencyConflict(AccessError):
+    """Raised when an idempotency key is reused with a different request."""
+
+
+class CsrfRejected(AccessError):
+    """Raised when an unsafe Session operation lacks the bound CSRF token."""
 
 
 @dataclass(frozen=True)
@@ -54,6 +79,9 @@ class SessionRecord:
     id: UUID
     identity_id: UUID
     tenant_id: UUID
+    csrf_token_hash: str | None = None
+    expires_at: datetime | None = None
+    surface: str = "customer"
 
 
 @dataclass(frozen=True)
@@ -100,3 +128,59 @@ class Page:
     total: int
     limit: int
     offset: int
+
+
+InvitationRole = Literal["analyst", "viewer", "customer"]
+InvitationSurface = Literal["admin", "customer"]
+
+
+@dataclass(frozen=True)
+class InvitationRecord:
+    id: UUID
+    tenant_id: UUID
+    project_id: UUID
+    email: str
+    role: InvitationRole
+    target_surface: Literal["customer"]
+    token_hash: str
+    token_hint: str
+    status: str
+    expires_at: datetime
+    created_by: UUID
+    created_at: datetime
+    idempotency_key_hash: str
+    request_hash: str
+
+
+@dataclass(frozen=True)
+class InvitationRedemptionRecord:
+    invitation_id: UUID
+    project_id: UUID
+    idempotency_key_hash: str
+    request_hash: str
+    identity_id: UUID
+    session_id: UUID
+
+
+@dataclass(frozen=True)
+class CreatedInvitation:
+    invitation: InvitationRecord
+    invite_token: str
+    replayed: bool
+
+
+@dataclass(frozen=True)
+class InvitationPreflight:
+    compatibility: Literal["compatible", "surface_mismatch", "invalid"]
+    requested_surface: InvitationSurface
+    recommended_surface: Literal["customer"] | None
+    invitation_role: InvitationRole | None
+
+
+@dataclass(frozen=True)
+class RedeemedSession:
+    principal: AccessPrincipal
+    session_token: str
+    csrf_token: str
+    expires_at: datetime
+    replayed: bool

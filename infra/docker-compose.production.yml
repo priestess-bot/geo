@@ -85,6 +85,9 @@ services:
       GEO_RUNTIME_AUTH_MODE: session
       GEO_RUNTIME_SESSION_COOKIE_SECURE: "1"
       GEO_DEV_TOOLS_ENABLED: "0"
+      GEO_AUTH_MODE: oidc
+      GEO_AUTH_TOKEN_SECRET: ""
+      GEO_AUTH_TOKEN_SECRET_FILE: /run/secrets/auth_token_secret
       GEO_CONNECTOR_SECRET_MASTER_KEY: ${GEO_CONNECTOR_SECRET_MASTER_KEY:?set GEO_CONNECTOR_SECRET_MASTER_KEY}
       GEO_AUTH_DELIVERY_MASTER_KEY: ""
       GEO_AUTH_DELIVERY_MASTER_KEY_FILE: /run/secrets/auth_delivery_master_key
@@ -106,6 +109,8 @@ services:
         target: object_store_application_secret_key
       - source: auth_delivery_master_key
         target: auth_delivery_master_key
+      - source: auth_token_secret
+        target: auth_token_secret
     depends_on:
       minio-bootstrap:
         condition: service_completed_successfully
@@ -263,5 +268,7 @@ secrets:
     file: ${GEO_OBJECT_STORE_RETENTION_SECRET_KEY_SECRET_FILE:?set GEO_OBJECT_STORE_RETENTION_SECRET_KEY_SECRET_FILE}
   auth_delivery_master_key:
     file: ${GEO_AUTH_DELIVERY_MASTER_KEY_SECRET_FILE:?set GEO_AUTH_DELIVERY_MASTER_KEY_SECRET_FILE}
+  auth_token_secret:
+    file: ${GEO_AUTH_TOKEN_SECRET_FILE:?set GEO_AUTH_TOKEN_SECRET_FILE}
   auth_recovery_cookie:
     file: ${GEO_AUTH_RECOVERY_COOKIE_SECRET_FILE:?set GEO_AUTH_RECOVERY_COOKIE_SECRET_FILE}

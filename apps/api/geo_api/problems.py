@@ -12,9 +12,15 @@ from starlette.exceptions import HTTPException
 from geo_api.contracts import ProblemDetails
 from geo_api.foundation_services import FoundationServiceUnavailable
 from geo_core.access.models import (
+    AccessConfigurationUnavailable,
     AccessForbidden,
     AccessPersistenceUnavailable,
     AuthenticationRequired,
+    CsrfRejected,
+    IdempotencyConflict,
+    InvitationConsumed,
+    InvitationInvalid,
+    InvitationSurfaceMismatch,
 )
 from geo_core.placements.domain import ConcurrencyConflict, PlacementRuleViolation
 
@@ -63,9 +69,7 @@ def install_problem_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(AuthenticationRequired)
-    async def authentication_handler(
-        request: Request, exc: AuthenticationRequired
-    ) -> JSONResponse:
+    async def authentication_handler(request: Request, exc: AuthenticationRequired) -> JSONResponse:
         return _response(
             request,
             ApiProblem(
@@ -78,9 +82,7 @@ def install_problem_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(AccessForbidden)
-    async def access_forbidden_handler(
-        request: Request, exc: AccessForbidden
-    ) -> JSONResponse:
+    async def access_forbidden_handler(request: Request, exc: AccessForbidden) -> JSONResponse:
         return _response(
             request,
             ApiProblem(
@@ -99,6 +101,71 @@ def install_problem_handlers(app: FastAPI) -> None:
             "Access persistence unavailable",
             extra={"request_id": getattr(request.state, "request_id", "unknown")},
         )
+
+    @app.exception_handler(AccessConfigurationUnavailable)
+    async def access_configuration_handler(
+        request: Request, exc: AccessConfigurationUnavailable
+    ) -> JSONResponse:
+        return _response(
+            request,
+            ApiProblem(
+                status=503,
+                title="Service Unavailable",
+                detail=str(exc),
+                type_uri="urn:geo:problem:access-configuration",
+            ),
+        )
+
+    @app.exception_handler(CsrfRejected)
+    async def csrf_handler(request: Request, exc: CsrfRejected) -> JSONResponse:
+        return _response(
+            request,
+            ApiProblem(
+                status=403,
+                title="Forbidden",
+                detail=str(exc),
+                type_uri="urn:geo:problem:csrf-rejected",
+            ),
+        )
+
+    @app.exception_handler(InvitationInvalid)
+    async def invitation_invalid_handler(request: Request, exc: InvitationInvalid) -> JSONResponse:
+        return _response(
+            request,
+            ApiProblem(
+                status=400,
+                title="Invalid Invitation",
+                detail=str(exc),
+                type_uri="urn:geo:problem:invitation-invalid",
+            ),
+        )
+
+    @app.exception_handler(InvitationSurfaceMismatch)
+    async def invitation_surface_handler(
+        request: Request, exc: InvitationSurfaceMismatch
+    ) -> JSONResponse:
+        return _response(
+            request,
+            ApiProblem(
+                status=409,
+                title="Invitation Surface Mismatch",
+                detail=str(exc),
+                type_uri="urn:geo:problem:invitation-surface-mismatch",
+            ),
+        )
+
+    @app.exception_handler(InvitationConsumed)
+    @app.exception_handler(IdempotencyConflict)
+    async def invitation_conflict_handler(request: Request, exc: Exception) -> JSONResponse:
+        return _response(
+            request,
+            ApiProblem(
+                status=409,
+                title="Invitation Conflict",
+                detail=str(exc),
+                type_uri="urn:geo:problem:invitation-conflict",
+            ),
+        )
         return _response(
             request,
             ApiProblem(
@@ -111,9 +178,7 @@ def install_problem_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(PlacementRuleViolation)
-    async def placement_rule_handler(
-        request: Request, exc: PlacementRuleViolation
-    ) -> JSONResponse:
+    async def placement_rule_handler(request: Request, exc: PlacementRuleViolation) -> JSONResponse:
         return _response(
             request,
             ApiProblem(
@@ -125,9 +190,7 @@ def install_problem_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(ConcurrencyConflict)
-    async def concurrency_handler(
-        request: Request, exc: ConcurrencyConflict
-    ) -> JSONResponse:
+    async def concurrency_handler(request: Request, exc: ConcurrencyConflict) -> JSONResponse:
         return _response(
             request,
             ApiProblem(
@@ -140,7 +203,9 @@ def install_problem_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
-        detail = exc.detail if isinstance(exc.detail, str) else "The request could not be completed."
+        detail = (
+            exc.detail if isinstance(exc.detail, str) else "The request could not be completed."
+        )
         return _response(
             request,
             ApiProblem(
