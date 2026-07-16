@@ -72,10 +72,7 @@ def render_bundle(
     evidence_pack_hash: str,
     model_policy_hash: str,
 ) -> PromptBundle:
-    missing = sorted(set(template.required_variables) - set(variables))
-    if missing:
-        raise PromptCompilationError(f"missing prompt variables: {', '.join(missing)}")
-    rendered = _VARIABLE.sub(lambda match: str(variables[match.group(1)]), template.template)
+    rendered = render_template(template=template, variables=variables)
     payload = {
         "project_id": str(project_id),
         "brief_version_id": str(brief_version_id),
@@ -98,6 +95,17 @@ def render_bundle(
         model_policy_hash,
         _hash(payload),
     )
+
+
+def render_template(
+    *, template: TemplateRelease, variables: Mapping[str, object]
+) -> str:
+    """Render one immutable release without assigning it to a formal content aggregate."""
+
+    missing = sorted(set(template.required_variables) - set(variables))
+    if missing:
+        raise PromptCompilationError(f"missing prompt variables: {', '.join(missing)}")
+    return _VARIABLE.sub(lambda match: str(variables[match.group(1)]), template.template)
 
 
 def _hash(value: object) -> str:

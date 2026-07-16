@@ -26,6 +26,7 @@ from geo_core.placements.postgres_job_control import PostgresJobControlMixin
 from geo_core.placements.postgres_package_versions import PostgresPackageVersionMixin
 from geo_core.placements.postgres_measurement_tasks import PostgresMeasurementTaskMixin
 from geo_core.placements.postgres_review_publication import PostgresReviewPublicationMixin
+from geo_core.placements.postgres_simulations import PostgresPromptSimulationMixin
 
 
 def _row(cursor: Any) -> dict[str, Any]:
@@ -104,6 +105,7 @@ def _package(value: Mapping[str, Any]) -> PackageVersion:
 
 class PsycopgPlacementRepository(
     PostgresMeasurementTaskMixin,
+    PostgresPromptSimulationMixin,
     PostgresPromptRepositoryMixin,
     PostgresPackageVersionMixin,
     PostgresReviewPublicationMixin,

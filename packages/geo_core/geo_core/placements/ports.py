@@ -31,6 +31,7 @@ from geo_core.placements.domain import (
     ReviewSubmission,
     Submission,
 )
+from geo_core.placements.simulation import PromptSimulation
 from geo_core.prompts.domain import SkillVersion, TemplateRelease
 
 
@@ -239,6 +240,18 @@ class PlacementRepository(Protocol):
         idempotency_key: str,
         requested_by: UUID,
     ) -> JobReference: ...
+
+    def create_prompt_simulation(
+        self, **values: object
+    ) -> tuple[PromptSimulation, JobReference]: ...
+
+    def list_prompt_simulations(
+        self, *, project_id: UUID
+    ) -> tuple[PromptSimulation, ...]: ...
+
+    def get_prompt_simulation(
+        self, *, project_id: UUID, simulation_id: UUID
+    ) -> PromptSimulation | None: ...
 
     def list_package_versions(
         self, *, project_id: UUID, opportunity_id: UUID
