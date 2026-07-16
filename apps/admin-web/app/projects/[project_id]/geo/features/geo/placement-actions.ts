@@ -32,7 +32,7 @@ export async function buildEvidence(_state: ActionResult, form: FormData): Promi
   const projectId = value(form, "project_id"), api = await client();
   const result = await api.buildEvidenceAttempt(projectId, value(form, "brief_version_id"), guards(form));
   const outcome = finish(projectId, result, "Evidence Pack 构建任务已创建");
-  return result.ok ? { ...outcome, nextHref: `/projects/${projectId}/geo?section=placement&brief_version_id=${result.data.resource.brief_version_id}&attempt_id=${result.data.resource.id}&job_id=${result.data.job_id}` } : outcome;
+  return result.ok ? { ...outcome, nextHref: `/projects/${projectId}?tab=geo&geo_section=placement&brief_version_id=${result.data.resource.brief_version_id}&attempt_id=${result.data.resource.id}&job_id=${result.data.job_id}` } : outcome;
 }
 
 export async function createPromptSkill(_state: ActionResult, form: FormData): Promise<ActionResult> {
@@ -79,7 +79,7 @@ export async function createGenerationJob(_state: ActionResult, form: FormData):
     model_call_budget: numberValue(form, "model_call_budget", 2)
   }, guards(form));
   const outcome = finish(projectId, result, "文案生成任务已排队");
-  return result.ok ? { ...outcome, nextHref: `/projects/${projectId}/geo?section=placement&bundle_id=${bundleId}&job_id=${result.data.job_id}` } : outcome;
+  return result.ok ? { ...outcome, nextHref: `/projects/${projectId}?tab=geo&geo_section=placement&bundle_id=${bundleId}&job_id=${result.data.job_id}` } : outcome;
 }
 
 export async function controlJob(_state: ActionResult, form: FormData): Promise<ActionResult> {
@@ -159,7 +159,7 @@ export async function verifySubmission(_state: ActionResult, form: FormData): Pr
   const projectId = value(form, "project_id"), api = await client();
   const submissionId = value(form, "submission_id"), result = await api.verifySubmission(projectId, submissionId, guards(form));
   const outcome = finish(projectId, result, "公开 URL 验证任务已排队");
-  return result.ok ? { ...outcome, nextHref: `/projects/${projectId}/geo?section=placement&submission_id=${submissionId}&job_id=${result.data.job_id}` } : outcome;
+  return result.ok ? { ...outcome, nextHref: `/projects/${projectId}?tab=geo&geo_section=placement&submission_id=${submissionId}&job_id=${result.data.job_id}` } : outcome;
 }
 
 export async function createMeasurement(_state: ActionResult, form: FormData): Promise<ActionResult> {

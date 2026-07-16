@@ -66,30 +66,30 @@ def selected_path(root: str, selection: dict[str, str], **updates: str) -> str:
 def admin_pages(
     project_id: str, selection: dict[str, str]
 ) -> tuple[tuple[str, str], ...]:
-    root = f"/projects/{project_id}/geo"
+    root = f"/projects/{project_id}"
     return (
         ("03-admin-project-list", "/projects"),
         ("04-catalog-members", f"/projects/{project_id}"),
-        ("06-campaign-monitoring", selected_path(root, selection, section="campaigns")),
+        ("06-campaign-monitoring", selected_path(root, selection, tab="geo", geo_section="campaigns")),
         (
             "08-observations",
-            selected_path(root, selection, section="observations", measurement_window="t28"),
+            selected_path(root, selection, tab="geo", geo_section="observations", measurement_window="t28"),
         ),
-        ("07-destinations", selected_path(root, selection, section="destinations")),
+        ("07-destinations", selected_path(root, selection, tab="geo", geo_section="destinations")),
         (
             "09-placement-intake",
-            selected_path(root, selection, section="placement", placement_stage="intake"),
+            selected_path(root, selection, tab="geo", geo_section="placement", placement_stage="intake"),
         ),
         (
             "11-placement-generation",
             selected_path(
-                root, selection, section="placement", placement_stage="generation"
+                root, selection, tab="geo", geo_section="placement", placement_stage="generation"
             ),
         ),
         (
             "15-placement-publication",
             selected_path(
-                root, selection, section="placement", placement_stage="publication"
+                root, selection, tab="geo", geo_section="placement", placement_stage="publication"
             ),
         ),
     )

@@ -99,7 +99,7 @@ export function GenerationPackagePanel({ projectId, data }: { projectId: string;
           <ResourceBlock resource={data.exports}>{(items) => items.length ? <div className={styles.list}>{items.map((item) => <div className={styles.row} key={item.id}>
             <span className={styles.rowHeader}><strong>{item.export_format} · {new Date(item.exported_at).toLocaleString("zh-CN")}</strong><Status value={item.artifact_status} /></span>
             <span className={styles.meta}>hash {item.content_hash.slice(0, 12)} · <ShortId value={item.id} /></span>
-            <Link className="button secondary" href={`/projects/${projectId}/geo/export-download/${item.package_version_id}/${item.id}`}>下载工件</Link>
+            <Link className="button secondary" href={`/projects/${projectId}/export-download/${item.package_version_id}/${item.id}`}>下载工件</Link>
           </div>)}</div> : <Empty>导出用于内部复核、交付或备份，不会自动创建待发布记录。</Empty>}</ResourceBlock>
         </div>
       </div>

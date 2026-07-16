@@ -576,6 +576,11 @@ h3 {
   padding: 16px;
 }
 
+.sectionStack {
+  display: grid;
+  gap: 16px;
+}
+
 .unframedPanel {
   border: 0;
   padding: 0;

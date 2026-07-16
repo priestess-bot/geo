@@ -25,14 +25,19 @@ def test_project_list_and_create_use_only_stable_project_contract() -> None:
 
 def test_detail_loads_and_mutates_only_stable_catalog_resources() -> None:
     page = source(DETAIL / "page.tsx")
+    shell = source(DETAIL / "features/project-workbench/WorkbenchShell.tsx")
+    tabs = source(DETAIL / "features/project-workbench/tabs.ts")
     data = source(DETAIL / "catalogData.ts")
     actions = source(DETAIL / "catalogActions.ts")
-    combined = page + data + actions
+    combined = page + shell + tabs + data + actions
 
     assert "Promise.all" in page
     assert "loadCatalog" in page
     assert "loadProjectInvitations" in page
     assert "loadProjectMembers" in page
+    assert "loadGeoWorkspace" in page
+    for label in ("基础配置", "用户入口", "Prompt", "知识库", "运营工作台", "GEO 投放", "项目状态", "全流程测试"):
+        assert label in tabs + shell
     assert "`/v1/projects/${encodeURIComponent(projectId)}`" in data
     for suffix in ("/entities", "/market-profiles", "/evidence-items"):
         assert suffix in data
@@ -70,10 +75,13 @@ def test_catalog_ui_covers_governance_and_error_states() -> None:
     assert "sessionStorage" not in invitation_forms
 
 
-def test_legacy_admin_project_workbench_is_removed_and_files_are_bounded() -> None:
+def test_project_workbench_is_restored_without_legacy_giant_files() -> None:
     assert not (DETAIL / "ProjectActions.tsx").exists()
     assert not (DETAIL / "actions.ts").exists()
     assert not (ADMIN / "status.ts").exists()
+    assert not (DETAIL / "geo/page.tsx").exists()
+    assert not (DETAIL / "geo/loading.tsx").exists()
+    assert not (DETAIL / "geo/error.tsx").exists()
     assert 'aria-busy="true"' in source(ADMIN / "loading.tsx")
     assert 'aria-busy="true"' in source(ADMIN / "new/loading.tsx")
     assert 'aria-busy="true"' in source(DETAIL / "loading.tsx")

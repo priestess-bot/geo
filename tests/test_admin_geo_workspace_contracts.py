@@ -22,6 +22,12 @@ def test_admin_geo_workspace_uses_only_stable_project_scoped_routes() -> None:
     assert "/v1/projects/${projectId}/geo/" in client
     assert "/v1/projects/${projectId}/monitoring-protocols" in client
     assert "/v1/projects/${projectId}/monitoring-reports" in client
+    assert not (GEO_ROOT / "page.tsx").exists()
+    assert not (GEO_ROOT / "loading.tsx").exists()
+    assert not (GEO_ROOT / "error.tsx").exists()
+    assert 'tab: "geo"' in source
+    assert "geo_section" in source
+    assert "`/projects/${projectId}/geo" not in source
 
 
 def test_admin_geo_workspace_is_split_into_complete_operator_surfaces() -> None:
@@ -67,10 +73,14 @@ def test_admin_geo_export_and_publication_are_separate_explicit_actions() -> Non
     actions = (FEATURE_ROOT / "placement-actions.ts").read_text(encoding="utf-8")
     package_panel = (FEATURE_ROOT / "GenerationPackagePanel.tsx").read_text(encoding="utf-8")
     publication_panel = (FEATURE_ROOT / "PublicationPanel.tsx").read_text(encoding="utf-8")
+    export_route = (GEO_ROOT.parent / "export-download/[version_id]/[export_id]/route.ts").read_text(encoding="utf-8")
     assert "createExport" in actions
     assert "createPublication" in actions
     assert "未产生发布任务" in actions
     assert "Export is not publication" in package_panel
+    assert "/export-download/" in package_panel
+    assert "/geo/export-download/" not in package_panel
+    assert "/geo/package-versions/" in export_route
     assert "标记为待发布" in publication_panel
 
 
@@ -111,8 +121,11 @@ def test_admin_prompt_catalog_edits_the_actual_executable_release() -> None:
 
 
 def test_admin_geo_files_stay_below_refactor_size_limits() -> None:
-    page = (GEO_ROOT / "page.tsx").read_text(encoding="utf-8")
+    page = (GEO_ROOT.parent / "page.tsx").read_text(encoding="utf-8")
+    workbench_files = list((GEO_ROOT.parent / "features/project-workbench").glob("*.ts*"))
     assert len(page.splitlines()) < 300
+    for path in workbench_files:
+        assert len(path.read_text(encoding="utf-8").splitlines()) < 600, path
     for path in [*FEATURE_ROOT.glob("*.ts"), *FEATURE_ROOT.glob("*.tsx")]:
         assert len(path.read_text(encoding="utf-8").splitlines()) < 600, path
     source = read_tree(".ts", ".tsx")

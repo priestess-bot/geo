@@ -31,7 +31,7 @@ async function optional<T>(id: string | undefined, load: (id: string) => Promise
 export async function loadGeoWorkspace(projectId: string, params: SearchParams): Promise<GeoWorkspaceData> {
   const client = await geoClient();
   const requested: GeoSelection = {
-    section: section(one(params.section)), placementStage: one(params.placement_stage) === "generation" || one(params.placement_stage) === "publication" ? one(params.placement_stage) as "generation" | "publication" : "intake",
+    section: section(one(params.geo_section) || one(params.section)), placementStage: one(params.placement_stage) === "generation" || one(params.placement_stage) === "publication" ? one(params.placement_stage) as "generation" | "publication" : "intake",
     measurementWindow: window(one(params.measurement_window)),
     campaignId: one(params.campaign_id), protocolId: one(params.protocol_id), destinationId: one(params.destination_id),
     opportunityId: one(params.opportunity_id), briefVersionId: one(params.brief_version_id), attemptId: one(params.attempt_id),

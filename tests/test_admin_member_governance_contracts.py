@@ -11,10 +11,11 @@ def source(name: str) -> str:
 
 def test_admin_member_ui_uses_only_stable_internal_contracts() -> None:
     page = source("page.tsx")
+    shell = source("features/project-workbench/WorkbenchShell.tsx")
     data = source("memberData.ts")
     actions = source("memberActions.ts")
 
-    assert "MemberGovernancePanel" in page
+    assert "MemberGovernancePanel" in shell
     assert "loadProjectMembers" in page
     assert "Promise.all" in page
     assert "/v1/project-members/runtime" not in page
