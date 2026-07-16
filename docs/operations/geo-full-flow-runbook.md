@@ -42,7 +42,7 @@ stat -c '%a %n' deepseek_api_key.txt
 - Internal API：`http://localhost:8000`
 - Customer API：`http://localhost:8001`
 
-如果端口冲突，只在 `.env` 覆盖四个 `GEO_*_HOST_PORT`，并把实际地址写入运行记录。DeepSeek Key 不写入 `.env`；`make dev-up` 将只读文件只挂载给 Worker。
+如果端口冲突，只在 `.env` 覆盖四个 `GEO_*_HOST_PORT`，并把实际地址写入运行记录。DeepSeek Key 不写入 `.env`；`make dev-up` 将只读文件只挂载给 Worker，并自动使用当前宿主 UID/GID 运行开发 Worker，因此 key 继续保持 0600。不要为了容器读取而改成 0644。
 
 ### 2.2 启动与健康检查
 

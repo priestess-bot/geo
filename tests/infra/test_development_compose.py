@@ -35,6 +35,23 @@ def test_development_api_logins_are_not_installer_superuser() -> None:
     assert services["migrate"]["environment"]["GEO_DEV_BOOTSTRAP_ENABLED"] == "1"
 
 
+def test_development_worker_can_read_the_mode_0600_host_key_without_widening_it() -> None:
+    services = yaml.safe_load(COMPOSE.read_text(encoding="utf-8"))["services"]
+    worker = services["task-worker"]
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+
+    assert worker["user"] == "${GEO_DEV_HOST_UID:-1000}:${GEO_DEV_HOST_GID:-1000}"
+    assert worker["environment"]["GEO_DEEPSEEK_API_KEY_FILE"] == (
+        "/run/secrets/deepseek_api_key"
+    )
+    assert any(
+        volume.endswith(":/run/secrets/deepseek_api_key:ro")
+        for volume in worker["volumes"]
+    )
+    assert 'GEO_DEV_HOST_UID="$$(id -u)"' in makefile
+    assert 'GEO_DEV_HOST_GID="$$(id -g)"' in makefile
+
+
 def test_development_admin_uses_the_deterministic_local_owner() -> None:
     services = yaml.safe_load(COMPOSE.read_text(encoding="utf-8"))["services"]
     environment = services["admin-web"]["environment"]

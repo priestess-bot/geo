@@ -142,7 +142,8 @@ dev-up:
 	@test "$$(stat -c '%a' "$(CURDIR)/deepseek_api_key.txt")" = "600" -o \
 		"$$(stat -c '%a' "$(CURDIR)/deepseek_api_key.txt")" = "400" || \
 		(echo "deepseek_api_key.txt must use mode 0400 or 0600" >&2; exit 2)
-	GEO_DEEPSEEK_API_KEY_FILE="$(CURDIR)/deepseek_api_key.txt" \
+	GEO_DEV_HOST_UID="$$(id -u)" GEO_DEV_HOST_GID="$$(id -g)" \
+		GEO_DEEPSEEK_API_KEY_FILE="$(CURDIR)/deepseek_api_key.txt" \
 		$(DEV_COMPOSE) --profile workers up -d --build --wait
 
 dev-logs:

@@ -126,6 +126,7 @@ services:
     build:
       context: ..
       dockerfile: apps/api/Dockerfile
+    user: "${GEO_DEV_HOST_UID:-1000}:${GEO_DEV_HOST_GID:-1000}"
     environment:
       <<: *api-environment
       GEO_DATABASE_URL: postgresql://geo_worker_dev:geo_worker_dev@postgres:5432/geo

@@ -11,7 +11,7 @@ cp -n .env.example .env
 chmod 600 deepseek_api_key.txt
 ```
 
-DeepSeek Key 不得写入 `.env`、命令历史、测试输出或 Git；使用 `GEO_DEEPSEEK_API_KEY_FILE` 指向 mode 0600 文件。
+DeepSeek Key 不得写入 `.env`、命令历史、测试输出或 Git；使用 `GEO_DEEPSEEK_API_KEY_FILE` 指向 mode 0600 文件。`make dev-up` 会把当前宿主用户 UID/GID 注入开发 Worker，使只读 bind mount 保持 0600 时仍可读取；不要通过 `chmod 644` 绕过权限问题。直接运行 Compose 时需显式传入 `GEO_DEV_HOST_UID=$(id -u)` 与 `GEO_DEV_HOST_GID=$(id -g)`。
 
 ## 2. 启动基础设施
 
