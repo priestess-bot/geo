@@ -103,19 +103,11 @@ export default async function ProjectsPage({
               <div><strong>{project.name}</strong><p className="muted">{project.id}</p></div>
               <code>{project.key}</code>
               <span className="statusPill">{roleLabel(project.role)}</span>
-<<<<<<< HEAD
               <a className="button" href={`/projects/${encodeURIComponent(project.id)}`}>
                 打开项目工作台
               </a>
               <a className="button secondary" href={`/projects/${encodeURIComponent(project.id)}?tab=geo`}>
                 GEO 投放
-=======
-              <a className="button secondary" href={`/projects/${encodeURIComponent(project.id)}`}>
-                打开 Catalog
-              </a>
-              <a className="button" href={`/projects/${encodeURIComponent(project.id)}/geo`}>
-                打开投放工作区
->>>>>>> codex/remediation-access
               </a>
             </div>
           ))}
