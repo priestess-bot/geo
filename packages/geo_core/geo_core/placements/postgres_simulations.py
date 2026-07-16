@@ -87,7 +87,9 @@ class PostgresPromptSimulationMixin:
             "publication_eligible": False,
         }
         authoritative_variables = {
-            "brief": json.dumps(brief_snapshot, ensure_ascii=False, sort_keys=True),
+            "brief": json.dumps(
+                brief_snapshot, ensure_ascii=False, sort_keys=True, default=str
+            ),
             "evidence": json.dumps(evidence, ensure_ascii=False, sort_keys=True, default=str),
             "destination_policy": json.dumps(
                 policy_snapshot, ensure_ascii=False, sort_keys=True, default=str

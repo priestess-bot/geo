@@ -10,7 +10,7 @@ from geo_core.jobs.postgres import PostgresDurableJobStore, WorkerLease
 from geo_core.model_gateway import ModelGatewayResult
 from geo_core.placements.evidence_worker_repository import EvidenceWorkerRepositoryMixin
 from geo_core.placements.domain import PackageVersion, WorkflowStatus, canonical_hash
-from geo_core.placements.ports import GeneratedPlacement, GenerationClaim
+from geo_core.placements.ports import GeneratedPlacement, GenerationClaim, ModelCallClaim
 from geo_core.placements.publication_worker_support import (
     advance_generated_opportunity,
     advance_verified_opportunity,
@@ -18,6 +18,9 @@ from geo_core.placements.publication_worker_support import (
     open_measurement_window,
     schedule_measurements,
     string_values,
+)
+from geo_core.placements.simulation_worker_repository import (
+    PromptSimulationWorkerRepositoryMixin,
 )
 from geo_core.placements.worker_models import ModelCallReservation, VerificationSnapshot
 
@@ -41,7 +44,9 @@ def _dicts(cursor: Any) -> list[dict[str, Any]]:
     return [dict(zip(names, row, strict=True)) for row in rows]
 
 
-class PlacementWorkerRepository(EvidenceWorkerRepositoryMixin):
+class PlacementWorkerRepository(
+    EvidenceWorkerRepositoryMixin, PromptSimulationWorkerRepositoryMixin
+):
     def __init__(self, store: PostgresDurableJobStore) -> None:
         self._store = store
 
@@ -121,7 +126,7 @@ class PlacementWorkerRepository(EvidenceWorkerRepositoryMixin):
     def reserve_model_call(
         self,
         lease: WorkerLease,
-        claim: GenerationClaim,
+        claim: ModelCallClaim,
         *,
         provider: str,
         request_hash: str,
@@ -149,7 +154,7 @@ class PlacementWorkerRepository(EvidenceWorkerRepositoryMixin):
                     lease.job_id,
                     call_number,
                     request_hash,
-                    claim.prompt_bundle_hash,
+                    claim.prompt_input_hash,
                     provider,
                     claim.configured_model,
                 ),
@@ -159,7 +164,7 @@ class PlacementWorkerRepository(EvidenceWorkerRepositoryMixin):
     def record_model_call_success(
         self,
         lease: WorkerLease,
-        claim: GenerationClaim,
+        claim: ModelCallClaim,
         reservation: ModelCallReservation,
         result: ModelGatewayResult,
     ) -> None:
@@ -177,7 +182,7 @@ class PlacementWorkerRepository(EvidenceWorkerRepositoryMixin):
                     lease.job_id,
                     reservation.call_number,
                     reservation.request_hash,
-                    claim.prompt_bundle_hash,
+                    claim.prompt_input_hash,
                     reservation.provider,
                     claim.configured_model,
                     result.call_log_id,
@@ -194,7 +199,7 @@ class PlacementWorkerRepository(EvidenceWorkerRepositoryMixin):
     def record_model_call_failure(
         self,
         lease: WorkerLease,
-        claim: GenerationClaim,
+        claim: ModelCallClaim,
         reservation: ModelCallReservation,
         *,
         classification: str,
@@ -212,7 +217,7 @@ class PlacementWorkerRepository(EvidenceWorkerRepositoryMixin):
                     lease.job_id,
                     reservation.call_number,
                     reservation.request_hash,
-                    claim.prompt_bundle_hash,
+                    claim.prompt_input_hash,
                     reservation.provider,
                     claim.configured_model,
                     classification,

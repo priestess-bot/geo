@@ -4,9 +4,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+import hashlib
 from types import MappingProxyType
 from typing import Mapping
 from uuid import UUID
+
+
+DEFAULT_SIMULATION_MODEL_POLICY_HASH = hashlib.sha256(
+    b'{"external_training_allowed":false,"structured_output_required":true}'
+).hexdigest()
 
 
 @dataclass(frozen=True)

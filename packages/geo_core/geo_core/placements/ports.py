@@ -54,6 +54,29 @@ class GenerationClaim:
     public_citation_item_ids: tuple[UUID, ...]
     output_schema: Mapping[str, object]
 
+    @property
+    def prompt_input_hash(self) -> str:
+        return self.prompt_bundle_hash
+
+
+class GenerationEvidenceScope(Protocol):
+    @property
+    def evidence_item_ids(self) -> tuple[UUID, ...]: ...
+
+    @property
+    def public_citation_item_ids(self) -> tuple[UUID, ...]: ...
+
+
+class ModelCallClaim(GenerationEvidenceScope, Protocol):
+    @property
+    def configured_model(self) -> str: ...
+
+    @property
+    def model_call_budget(self) -> int: ...
+
+    @property
+    def prompt_input_hash(self) -> str: ...
+
 
 @dataclass(frozen=True)
 class GeneratedClaim:
