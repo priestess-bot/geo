@@ -165,6 +165,7 @@ def test_api_worker_image_does_not_copy_legacy_workers_or_scripts() -> None:
     assert "scripts/provision_dev_database.py scripts/provision_initial_owner.py" in dockerfile
     assert "COPY apps/api ./apps/api" in dockerfile
     assert "COPY packages/geo_core ./packages/geo_core" in dockerfile
+    assert "--mount=type=cache,id=geo-api-uv,target=/root/.cache/uv" in dockerfile
 
 
 class _AccessServices:

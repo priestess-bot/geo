@@ -16,7 +16,8 @@ COPY apps/api ./apps/api
 COPY infra/db/alembic ./infra/db/alembic
 COPY scripts/provision_dev_database.py scripts/provision_initial_owner.py ./scripts/
 
-RUN uv sync --frozen --no-dev && \
+RUN --mount=type=cache,id=geo-api-uv,target=/root/.cache/uv \
+    uv sync --frozen --no-dev && \
     addgroup --system --gid 10001 geo && \
     adduser --system --uid 10001 --ingroup geo --home /nonexistent --no-create-home geo && \
     chown -R geo:geo /app
