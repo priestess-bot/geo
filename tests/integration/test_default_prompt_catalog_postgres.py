@@ -13,7 +13,7 @@ from geo_core.placements.default_prompts import (
     default_output_schema,
 )
 from geo_core.placements.postgres_uow import placement_uow_factory
-from tests.integration.placement_worker_support import login_url, seed_project
+from tests.integration.placement_worker_support import cleanup_projects, login_url, seed_project
 
 
 ADMIN_URL = os.getenv("GEO_PLACEMENT_TEST_ADMIN_URL", "").strip()
@@ -144,7 +144,9 @@ def test_default_prompt_catalog_converges_without_overwriting_user_selection() -
         assert counts == (9, 9)
     finally:
         with psycopg.connect(ADMIN_URL) as admin:
-            admin.execute("SET LOCAL session_replication_role = 'replica'")
-            admin.execute("DELETE FROM tenants WHERE id = %s", (ids["tenant"],))
-            admin.execute("SET LOCAL session_replication_role = 'origin'")
-            admin.execute(sql.SQL("DROP ROLE IF EXISTS {}").format(sql.Identifier(app_login)))
+            cleanup_projects(
+                admin,
+                projects=[ids],
+                tenant_ids=[ids["tenant"]],
+                app_login=app_login,
+            )

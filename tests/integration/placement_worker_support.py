@@ -219,7 +219,7 @@ def cleanup_projects(
     projects: list[dict[str, UUID]],
     tenant_ids: list[UUID],
     app_login: str,
-    worker_login: str,
+    worker_login: str | None = None,
 ) -> None:
     project_ids = [item["project"] for item in projects]
     identity_ids = [
@@ -239,4 +239,5 @@ def cleanup_projects(
     connection.execute("DELETE FROM identities WHERE id = ANY(%s)", (identity_ids,))
     connection.execute("DELETE FROM tenants WHERE id = ANY(%s)", (tenant_ids,))
     connection.execute(sql.SQL("DROP ROLE IF EXISTS {}").format(sql.Identifier(app_login)))
-    connection.execute(sql.SQL("DROP ROLE IF EXISTS {}").format(sql.Identifier(worker_login)))
+    if worker_login is not None:
+        connection.execute(sql.SQL("DROP ROLE IF EXISTS {}").format(sql.Identifier(worker_login)))
