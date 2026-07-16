@@ -64,7 +64,7 @@ class PlacementResult:
     export: ExportReceipt
     publication: PublicationRequest
     submission: Submission
-    measurement_task: MeasurementCollectionTask
+    measurement_tasks: tuple[MeasurementCollectionTask, ...]
     submitted_url: str
     scheduled_windows: tuple[int, ...]
 
@@ -258,21 +258,27 @@ def run_placement(
     scheduled_windows = _measurement_windows(store, project_id, submission.id)
     if scheduled_windows != (28, 56, 84):
         raise AssertionError("verification must schedule T+28, T+56 and T+84")
-    measurement_job_id = _make_measurement_job_due(
-        store, project_id, submission.id, due_offset_days=28
-    )
-    opened = _dispatcher(
+    measurement_dispatcher = _dispatcher(
         store,
         handlers={"placement.measure": MeasurementWindowHandler(repository)},
         worker_id=f"acceptance-measurement-{setup.suffix}",
-    ).process(job_id=measurement_job_id, project_id=project_id)
-    if opened["status"] != "awaiting_manual_samples":
-        raise AssertionError(f"T+28 collection task did not open: {opened}")
+    )
+    for offset in scheduled_windows:
+        measurement_job_id = _make_measurement_job_due(
+            store, project_id, submission.id, due_offset_days=offset
+        )
+        opened = measurement_dispatcher.process(
+            job_id=measurement_job_id, project_id=project_id
+        )
+        if opened["status"] != "awaiting_manual_samples":
+            raise AssertionError(f"T+{offset} collection task did not open: {opened}")
     tasks = app.list_measurement_collection_tasks(
         project_id=project_id, submission_id=submission.id, status="open"
     )
-    if len(tasks) != 1 or tasks[0].measurement_window != "t28":
-        raise AssertionError("T+28 job must persist one queryable collection task")
+    if tuple(item.measurement_window for item in tasks) != ("t28", "t56", "t84"):
+        raise AssertionError(
+            "scheduled jobs must persist queryable T+28, T+56 and T+84 collection tasks"
+        )
     return PlacementResult(
         store,
         brief,
@@ -286,7 +292,7 @@ def run_placement(
         export,
         publication,
         verified_submission,
-        tasks[0],
+        tasks,
         submitted_url,
         scheduled_windows,
     )

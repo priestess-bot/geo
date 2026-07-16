@@ -9,6 +9,7 @@ from scripts.geo_acceptance import (
     DeterministicGateway,
     PRODUCT_URL,
 )
+from scripts.geo_acceptance.monitoring import FOLLOW_UP_WINDOWS
 
 
 def test_acceptance_channel_matrix_is_complete_and_unique() -> None:
@@ -26,6 +27,10 @@ def test_acceptance_channel_matrix_is_complete_and_unique() -> None:
     assert {item["channel"] for item in CHANNELS} == expected
     assert len({item["key"] for item in CHANNELS}) == 9
     assert all(item["url"].startswith("https://") for item in CHANNELS)
+
+
+def test_acceptance_follow_up_windows_are_complete_and_ordered() -> None:
+    assert [window.value for window in FOLLOW_UP_WINDOWS] == ["t28", "t56", "t84"]
 
 
 def test_live_deepseek_requires_an_explicit_readable_key_file(tmp_path: Path) -> None:

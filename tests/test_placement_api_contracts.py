@@ -29,6 +29,9 @@ def test_placement_routes_are_stable_and_internal_only() -> None:
         "/v1/projects/{project_id}/geo/prompt-catalog/defaults",
         "/v1/projects/{project_id}/geo/brief-versions/{brief_version_id}/prompt-bundles",
         "/v1/projects/{project_id}/geo/prompt-bundles/{prompt_bundle_id}/generation-jobs",
+        "/v1/projects/{project_id}/geo/prompt-simulations",
+        "/v1/projects/{project_id}/geo/prompt-simulations/{simulation_id}",
+        "/v1/projects/{project_id}/geo/prompt-simulations/{simulation_id}/artifact",
         "/v1/projects/{project_id}/geo/opportunities/{opportunity_id}/package-versions",
         "/v1/projects/{project_id}/geo/package-versions/{version_id}/claims",
         "/v1/projects/{project_id}/geo/package-versions/{version_id}/reviews",
@@ -61,6 +64,7 @@ def test_generation_and_publication_require_idempotency_header() -> None:
         "/v1/projects/{project_id}/geo/package-versions/{version_id}/publication-requests",
         "/v1/projects/{project_id}/geo/submissions/{submission_id}/verification-jobs",
         "/v1/projects/{project_id}/geo/publication-requests/{publication_request_id}/submissions",
+        "/v1/projects/{project_id}/geo/prompt-simulations",
     )
     for path in paths:
         parameters = document["paths"][path]["post"]["parameters"]
@@ -88,6 +92,15 @@ def test_prompt_release_contract_exposes_the_complete_executable_snapshot() -> N
     assert generation["configured_model"]["default"] == "deepseek-v4-flash"
     assert generation["model_call_budget"]["default"] == 2
     assert generation["model_call_budget"]["maximum"] == 5
+
+    simulation_create = schemas["PromptSimulationCreate"]["properties"]
+    simulation_view = schemas["PromptSimulationView"]
+    assert simulation_create["configured_model"]["default"] == "deepseek-v4-flash"
+    assert simulation_create["model_call_budget"]["default"] == 2
+    assert simulation_create["model_policy_hash"]["pattern"] == "^[0-9a-f]{64}$"
+    assert {"test_only", "publication_eligible", "input_hash", "artifact_manifest"} <= set(
+        simulation_view["required"]
+    )
 
 
 def test_export_is_not_a_publication_operation() -> None:

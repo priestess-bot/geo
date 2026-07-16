@@ -13,6 +13,10 @@ function section(value: string | undefined): GeoSection {
 function window(value: string | undefined): MeasurementWindow {
   return value === "t28" || value === "t56" || value === "t84" || value === "ad_hoc" ? value : "baseline";
 }
+function placementStage(value: string | undefined): GeoSelection["placementStage"] {
+  return value === "generation" || value === "publication" || value === "simulation"
+    ? value : "intake";
+}
 function resource<T>(result: RuntimeHttpResult<T>, fallback: T): Resource<T> {
   if (result.ok) return emptyResource(result.data);
   return {
@@ -31,29 +35,33 @@ async function optional<T>(id: string | undefined, load: (id: string) => Promise
 export async function loadGeoWorkspace(projectId: string, params: SearchParams): Promise<GeoWorkspaceData> {
   const client = await geoClient();
   const requested: GeoSelection = {
-    section: section(one(params.geo_section) || one(params.section)), placementStage: one(params.placement_stage) === "generation" || one(params.placement_stage) === "publication" ? one(params.placement_stage) as "generation" | "publication" : "intake",
+    section: section(one(params.geo_section) || one(params.section)), placementStage: placementStage(one(params.placement_stage)),
     measurementWindow: window(one(params.measurement_window)),
     campaignId: one(params.campaign_id), protocolId: one(params.protocol_id), destinationId: one(params.destination_id),
     opportunityId: one(params.opportunity_id), briefVersionId: one(params.brief_version_id), attemptId: one(params.attempt_id),
     skillId: one(params.skill_id), bundleId: one(params.bundle_id), jobId: one(params.job_id), versionId: one(params.version_id),
-    publicationId: one(params.publication_id), submissionId: one(params.submission_id)
+    publicationId: one(params.publication_id), submissionId: one(params.submission_id),
+    simulationId: one(params.simulation_id)
   };
-  const [campaigns, destinations, protocols, metrics, reports, skills, bindings] = await Promise.all([
+  const [campaigns, destinations, protocols, metrics, reports, skills, bindings, simulations] = await Promise.all([
     client.listCampaigns(projectId), client.listDestinations(projectId), client.listProtocols(projectId),
     client.listMetrics(projectId), client.listReports(projectId), client.listPromptSkills(projectId),
-    client.listPromptBindings(projectId)
+    client.listPromptBindings(projectId), client.listPromptSimulations(projectId)
   ]);
   const top = {
     campaigns: resource(campaigns, []), destinations: resource(destinations, []), protocols: resource(protocols, []),
-    metrics: resource(metrics, []), reports: resource(reports, []), skills: resource(skills, []), bindings: resource(bindings, [])
+    metrics: resource(metrics, []), reports: resource(reports, []), skills: resource(skills, []),
+    bindings: resource(bindings, []), simulations: resource(simulations, [])
   };
   const selection: GeoSelection = {
     ...requested,
     campaignId: requested.campaignId || top.campaigns.data[0]?.id,
     protocolId: requested.protocolId || top.protocols.data[0]?.id,
     destinationId: requested.destinationId || top.destinations.data[0]?.id,
-    skillId: requested.skillId || top.skills.data[0]?.id
+    skillId: requested.skillId || top.skills.data[0]?.id,
+    simulationId: requested.simulationId || top.simulations.data[0]?.id
   };
+  selection.jobId ||= top.simulations.data.find((item) => item.id === selection.simulationId)?.generation_job_id;
   const [queries, protocolQueries, citationTargets, opportunities, policyReviews, observations, suggestions, briefs, releases] = await Promise.all([
     optional(selection.campaignId, (id) => client.listMonitoringQueries(projectId, id), []),
     optional(selection.protocolId, (id) => client.listProtocolQueries(projectId, id), []),
@@ -79,7 +87,7 @@ export async function loadGeoWorkspace(projectId: string, params: SearchParams):
   selection.attemptId ||= attempts.data[0]?.id;
   selection.bundleId ||= bundles.data[0]?.id;
   selection.versionId ||= packages.data[0]?.id;
-  const [attempt, evidenceItems, bundle, job, jobEvents, packageVersion, claims, reviews, exports, publications] = await Promise.all([
+  const [attempt, evidenceItems, bundle, job, jobEvents, packageVersion, claims, reviews, exports, publications, simulation] = await Promise.all([
     optional(selection.attemptId, (id) => client.getEvidenceAttempt(projectId, id), null),
     optional(selection.attemptId, (id) => client.listEvidenceItems(projectId, id), []),
     optional(selection.bundleId, (id) => client.getPromptBundle(projectId, id), null),
@@ -89,7 +97,8 @@ export async function loadGeoWorkspace(projectId: string, params: SearchParams):
     optional(selection.versionId, (id) => client.listClaims(projectId, id), []),
     optional(selection.versionId, (id) => client.listReviews(projectId, id), []),
     optional(selection.versionId, (id) => client.listExports(projectId, id), []),
-    optional(selection.versionId, (id) => client.listPublications(projectId, id), [])
+    optional(selection.versionId, (id) => client.listPublications(projectId, id), []),
+    optional(selection.simulationId, (id) => client.getPromptSimulation(projectId, id), null)
   ]);
   selection.publicationId ||= publications.data[0]?.id;
   const submissions = await optional(selection.publicationId, (id) => client.listSubmissions(projectId, id), []);
@@ -100,5 +109,5 @@ export async function loadGeoWorkspace(projectId: string, params: SearchParams):
   ]);
   return { ...top, selection, queries, protocolQueries, citationTargets, opportunities, policyReviews, observations, suggestions, briefs, attempts,
     attempt, evidenceItems, releases, bundles, bundle, job, jobEvents, packages, packageVersion, claims, reviews,
-    exports, publications, submissions, submission, measurements };
+    exports, publications, submissions, submission, measurements, simulation };
 }

@@ -68,7 +68,7 @@ class PlacementArtifactRepository:
                         (record["resource_id"], lease.project_id),
                     )
                 )
-            else:
+            elif record["resource_kind"] == "package_export":
                 source = _row(
                     connection.execute(
                         """SELECT manifest AS payload FROM placement_export_receipts
@@ -76,6 +76,17 @@ class PlacementArtifactRepository:
                         (record["resource_id"], lease.project_id),
                     )
                 )
+            elif record["resource_kind"] == "prompt_simulation":
+                source = _row(
+                    connection.execute(
+                        """SELECT artifact_manifest AS payload
+                           FROM prompt_simulation_results
+                           WHERE simulation_id = %s AND project_id = %s""",
+                        (record["resource_id"], lease.project_id),
+                    )
+                )
+            else:
+                raise RuntimeError("pending artifact resource kind is unsupported")
             if source is None:
                 raise RuntimeError("pending artifact source does not exist")
             payload = source["payload"]

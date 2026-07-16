@@ -97,20 +97,30 @@ def run_baseline(setup: AcceptanceSetup, *, app_database_url: str) -> BaselineRe
     return BaselineResult(application, protocol, query, observation, metric)
 
 
-def run_t28_follow_up(
+FOLLOW_UP_WINDOWS = (
+    MeasurementWindow.T28,
+    MeasurementWindow.T56,
+    MeasurementWindow.T84,
+)
+
+
+def run_follow_up(
     setup: AcceptanceSetup,
     baseline: BaselineResult,
     *,
+    window: MeasurementWindow,
     submitted_url: str,
     submission_id: UUID,
 ) -> FollowUpResult:
+    if window not in FOLLOW_UP_WINDOWS:
+        raise ValueError("follow-up window must be T+28, T+56 or T+84")
     observation = baseline.application.import_observation(
         setup.owner,
         project_id=setup.project_id,
         protocol_id=baseline.protocol.id,
         draft=_observation(
             query_id=baseline.query.monitoring_query_id,
-            window=MeasurementWindow.T28,
+            window=window,
             recommendation_present=True,
             product_mentioned=True,
             citation=CitationDraft(
@@ -122,13 +132,13 @@ def run_t28_follow_up(
                 submission_id=submission_id,
             ),
         ),
-        idempotency_key=f"acceptance-t28-observation-{setup.suffix}",
+        idempotency_key=f"acceptance-{window.value}-observation-{setup.suffix}",
     )
     metric = baseline.application.compute_metrics(
         setup.owner,
         project_id=setup.project_id,
         protocol_id=baseline.protocol.id,
-        window=MeasurementWindow.T28,
+        window=window,
     )
     return FollowUpResult(observation, metric)
 

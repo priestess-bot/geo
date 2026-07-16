@@ -218,6 +218,10 @@ class PostgresJobControlMixin:
                 "generation_job_specs",
                 "prompt_bundle_id, configured_model, model_call_budget, requested_by",
             ),
+            "prompt_simulation.generate": (
+                "prompt_simulation_job_specs",
+                "simulation_id, configured_model, model_call_budget, requested_by",
+            ),
             "publication.verify": ("verification_job_specs", "submission_id"),
         }
         if kind == "artifact.finalize":

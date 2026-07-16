@@ -11,6 +11,7 @@ from geo_core.placements.application_operations import PlacementOperationsApplic
 from geo_core.placements.application_publication_operations import (
     PlacementPublicationOperationsMixin,
 )
+from geo_core.placements.application_simulations import PlacementSimulationApplicationMixin
 from geo_core.placements.claim_inventory import validate_edited_claims
 from geo_core.placements.default_prompts import DEFAULT_SYSTEM_TEMPLATE
 from geo_core.placements.domain import (
@@ -44,7 +45,9 @@ from geo_core.placements.prompt_release import compile_executable_release
 
 
 class PlacementApplication(
-    PlacementOperationsApplicationMixin, PlacementPublicationOperationsMixin
+    PlacementSimulationApplicationMixin,
+    PlacementOperationsApplicationMixin,
+    PlacementPublicationOperationsMixin,
 ):
     """Coordinates domain rules and one short Unit of Work per command/query."""
 

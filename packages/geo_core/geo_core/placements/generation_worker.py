@@ -9,12 +9,12 @@ from geo_core.placements.domain import PlacementRuleViolation
 from geo_core.placements.ports import (
     GeneratedClaim,
     GeneratedPlacement,
-    GenerationClaim,
+    GenerationEvidenceScope,
 )
 
 
 def parse_generated_placement(
-    output: Mapping[str, object], *, claim: GenerationClaim
+    output: Mapping[str, object], *, claim: GenerationEvidenceScope
 ) -> GeneratedPlacement:
     content_json = output.get("content_json")
     rendered_text = output.get("rendered_text")

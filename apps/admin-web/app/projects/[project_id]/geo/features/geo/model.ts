@@ -3,7 +3,7 @@ import type {
   EvidenceItemView, ExportView, JobStatus, MeasurementView, MeasurementWindow, MetricView,
   MonitoringObservationView, MonitoringProtocolView, MonitoringQueryView, MonitoringReportView,
   OpportunityView, PackageVersionView, PlacementJobEventView, PromptBundleDetail, PromptBundleView,
-  PromptReleaseView, PromptSkillView, PromptTaskBindingView, ProtocolQueryView, PublicationView,
+  PromptReleaseView, PromptSimulationView, PromptSkillView, PromptTaskBindingView, ProtocolQueryView, PublicationView,
   QuerySuggestionView, ReviewView, SubmissionView, VerifiedCitationTargetView
 } from "@geo/types/geo";
 
@@ -11,16 +11,18 @@ export type GeoSection = "campaigns" | "observations" | "destinations" | "placem
 export type LoadFailure = { status?: number; code: string; detail: string; correlationId?: string; retryable: boolean; };
 export type Resource<T> = { data: T; failure: null } | { data: T; failure: LoadFailure };
 export type GeoSelection = {
-  section: GeoSection; placementStage: "intake" | "generation" | "publication"; measurementWindow: MeasurementWindow; campaignId?: string; protocolId?: string;
+  section: GeoSection; placementStage: "intake" | "generation" | "publication" | "simulation"; measurementWindow: MeasurementWindow; campaignId?: string; protocolId?: string;
   destinationId?: string; opportunityId?: string; briefVersionId?: string; attemptId?: string;
   skillId?: string; bundleId?: string; jobId?: string; versionId?: string;
   publicationId?: string; submissionId?: string;
+  simulationId?: string;
 };
 export type GeoWorkspaceData = {
   selection: GeoSelection;
   campaigns: Resource<CampaignView[]>; destinations: Resource<DestinationView[]>;
   protocols: Resource<MonitoringProtocolView[]>; metrics: Resource<MetricView[]>;
   reports: Resource<MonitoringReportView[]>; skills: Resource<PromptSkillView[]>;
+  simulations: Resource<PromptSimulationView[]>;
   bindings: Resource<PromptTaskBindingView[]>; queries: Resource<MonitoringQueryView[]>;
   protocolQueries: Resource<ProtocolQueryView[]>;
   citationTargets: Resource<VerifiedCitationTargetView[]>;
@@ -35,6 +37,7 @@ export type GeoWorkspaceData = {
   reviews: Resource<ReviewView[]>; exports: Resource<ExportView[]>;
   publications: Resource<PublicationView[]>; submissions: Resource<SubmissionView[]>;
   submission: Resource<SubmissionView | null>; measurements: Resource<MeasurementView[]>;
+  simulation: Resource<PromptSimulationView | null>;
 };
 
 export const emptyResource = <T,>(data: T): Resource<T> => ({ data, failure: null });

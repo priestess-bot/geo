@@ -7,7 +7,8 @@ import type {
   MonitoringQueryView, MonitoringReportCreate, MonitoringReportView, OpportunityStateCommand, OpportunityView,
   PackageEdit, PackageVersionView, PlacementJobEventView, PlacementJobView, PromptBundleCreate,
   PromptBundleDetail, PromptBundleView, PromptReleaseCreate, PromptReleaseView, PromptSkillCreate,
-  PromptSkillView, PromptTaskBindingCreate, PromptTaskBindingView, PublicationCreate, PublicationView,
+  PromptSimulationCreate, PromptSimulationCreated, PromptSimulationView, PromptSkillView,
+  PromptTaskBindingCreate, PromptTaskBindingView, PublicationCreate, PublicationView,
   ProtocolQueryView, QuerySuggestionCreate, QuerySuggestionView, ReviewCreate, ReviewSubmissionView, ReviewView,
   StateReasonCreate, SubmissionCreate, SubmissionUrlCreate, SubmissionView, VerifiedCitationTargetView
 } from "@geo/types/geo";
@@ -63,6 +64,9 @@ export class GeoAdminApiClient {
   getPromptBundle(projectId: string, bundleId: string) { return this.request<PromptBundleDetail>(`/v1/projects/${projectId}/geo/prompt-bundles/${bundleId}`); }
 
   createGenerationJob(projectId: string, bundleId: string, body: GenerationCreate, guards: RuntimeRequestGuards) { return this.request<JobAccepted, GenerationCreate>(`/v1/projects/${projectId}/geo/prompt-bundles/${bundleId}/generation-jobs`, { method: "POST", body, ...guards }); }
+  listPromptSimulations(projectId: string) { return this.request<PromptSimulationView[]>(`/v1/projects/${projectId}/geo/prompt-simulations`); }
+  getPromptSimulation(projectId: string, simulationId: string) { return this.request<PromptSimulationView>(`/v1/projects/${projectId}/geo/prompt-simulations/${simulationId}`); }
+  createPromptSimulation(projectId: string, body: PromptSimulationCreate, guards: RuntimeRequestGuards) { return this.request<PromptSimulationCreated, PromptSimulationCreate>(`/v1/projects/${projectId}/geo/prompt-simulations`, { method: "POST", body, ...guards }); }
   getJob(jobId: string) { return this.request<JobStatus>(`/v1/jobs/${jobId}`); }
   listJobEvents(projectId: string, jobId: string) { return this.request<PlacementJobEventView[]>(`/v1/projects/${projectId}/geo/jobs/${jobId}/events`); }
   cancelJob(projectId: string, jobId: string, guards: RuntimeRequestGuards) { return this.request<PlacementJobView>(`/v1/projects/${projectId}/geo/jobs/${jobId}/cancel`, { method: "POST", ...guards }); }

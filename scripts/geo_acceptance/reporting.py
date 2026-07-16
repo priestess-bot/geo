@@ -14,8 +14,9 @@ from geo_core.placements.domain import Measurement, MeasurementCollectionTask
 from scripts.geo_acceptance.contracts import AcceptanceConfig, CHANNELS
 from scripts.geo_acceptance.monitoring import (
     BaselineResult,
+    FOLLOW_UP_WINDOWS,
     FollowUpResult,
-    run_t28_follow_up,
+    run_follow_up,
 )
 from scripts.geo_acceptance.placement import PlacementResult
 from scripts.geo_acceptance.setup import AcceptanceSetup
@@ -23,10 +24,10 @@ from scripts.geo_acceptance.setup import AcceptanceSetup
 
 @dataclass(frozen=True)
 class ReportingResult:
-    placement_measurement: Measurement
-    measurement_task: MeasurementCollectionTask
-    follow_up: FollowUpResult
-    report: MonitoringReport
+    placement_measurements: tuple[Measurement, ...]
+    measurement_tasks: tuple[MeasurementCollectionTask, ...]
+    follow_ups: tuple[FollowUpResult, ...]
+    reports: tuple[MonitoringReport, ...]
     customer_metric_count: int
     customer_verified_url_count: int
     customer_approved_report_count: int
@@ -37,38 +38,50 @@ def run_reporting(
     baseline: BaselineResult,
     placement: PlacementResult,
 ) -> ReportingResult:
-    placement_measurement = setup.placement.record_measurement(
-        project_id=setup.project_id,
-        submission_id=placement.submission.id,
-        monitoring_query_id=baseline.query.monitoring_query_id,
-        measured_at=datetime.now(UTC),
-        citation_present=True,
-        recommendation_position=1,
-        result_snapshot_uri=(
-            f"s3://geo-artifacts/acceptance/{setup.suffix}/placement-result.json"
-        ),
-        metrics={"mode": "controlled_acceptance", "window": "t28"},
-    )
-    follow_up = run_t28_follow_up(
-        setup,
-        baseline,
-        submitted_url=placement.submitted_url,
-        submission_id=placement.submission.id,
-    )
-    completed_task = setup.placement.complete_measurement_collection_task(
-        project_id=setup.project_id,
-        task_id=placement.measurement_task.id,
-        actor_id=setup.owner.identity_id,
-    )
-    report = baseline.application.generate_report(
-        setup.owner,
-        project_id=setup.project_id,
-        metric_snapshot_id=follow_up.metric.id,
-        title=f"Controlled GEO acceptance report {setup.suffix}",
-    )
-    report = baseline.application.approve_report(
-        setup.owner, project_id=setup.project_id, report_id=report.id
-    )
+    tasks_by_window = {item.measurement_window: item for item in placement.measurement_tasks}
+    placement_measurements: list[Measurement] = []
+    completed_tasks: list[MeasurementCollectionTask] = []
+    follow_ups: list[FollowUpResult] = []
+    reports: list[MonitoringReport] = []
+    for window in FOLLOW_UP_WINDOWS:
+        task = tasks_by_window.get(window.value)
+        if task is None:
+            raise AssertionError(f"{window.value} collection task is missing")
+        placement_measurements.append(setup.placement.record_measurement(
+            project_id=setup.project_id,
+            submission_id=placement.submission.id,
+            monitoring_query_id=baseline.query.monitoring_query_id,
+            measured_at=datetime.now(UTC),
+            citation_present=True,
+            recommendation_position=1,
+            result_snapshot_uri=(
+                f"s3://geo-artifacts/acceptance/{setup.suffix}/"
+                f"placement-result-{window.value}.json"
+            ),
+            metrics={"mode": "controlled_acceptance", "window": window.value},
+        ))
+        follow_up = run_follow_up(
+            setup,
+            baseline,
+            window=window,
+            submitted_url=placement.submitted_url,
+            submission_id=placement.submission.id,
+        )
+        follow_ups.append(follow_up)
+        completed_tasks.append(setup.placement.complete_measurement_collection_task(
+            project_id=setup.project_id,
+            task_id=task.id,
+            actor_id=setup.owner.identity_id,
+        ))
+        report = baseline.application.generate_report(
+            setup.owner,
+            project_id=setup.project_id,
+            metric_snapshot_id=follow_up.metric.id,
+            title=f"Controlled GEO {window.value.upper()} acceptance report {setup.suffix}",
+        )
+        reports.append(baseline.application.approve_report(
+            setup.owner, project_id=setup.project_id, report_id=report.id
+        ))
     customer_metrics = baseline.application.list_metrics(
         setup.customer, project_id=setup.project_id
     )
@@ -78,15 +91,15 @@ def run_reporting(
     customer_reports = baseline.application.list_reports(
         setup.customer, project_id=setup.project_id, approved_only=True
     )
-    if not customer_metrics or not customer_urls or not customer_reports:
+    if len(customer_metrics) != 4 or len(customer_urls) != 1 or len(customer_reports) != 3:
         raise AssertionError("customer-safe metrics, verified URL and report are incomplete")
     if any(item.status != "approved" for item in customer_reports):
         raise AssertionError("customer projection exposed an unapproved report")
     return ReportingResult(
-        placement_measurement,
-        completed_task,
-        follow_up,
-        report,
+        tuple(placement_measurements),
+        tuple(completed_tasks),
+        tuple(follow_ups),
+        tuple(reports),
         len(customer_metrics),
         len(customer_urls),
         len(customer_reports),
@@ -126,9 +139,20 @@ def build_result(
             "monitoring_query_id": baseline.query.monitoring_query_id,
             "baseline_observation_id": baseline.observation.id,
             "baseline_metric_id": baseline.metric.id,
-            "t28_observation_id": reporting.follow_up.observation.id,
-            "t28_metric_id": reporting.follow_up.metric.id,
-            "report_id": reporting.report.id,
+            "follow_up_windows": [
+                {
+                    "window": window.value,
+                    "observation_id": follow_up.observation.id,
+                    "metric_id": follow_up.metric.id,
+                    "report_id": report.id,
+                }
+                for window, follow_up, report in zip(
+                    FOLLOW_UP_WINDOWS, reporting.follow_ups, reporting.reports, strict=True
+                )
+            ],
+            "t28_observation_id": reporting.follow_ups[0].observation.id,
+            "t28_metric_id": reporting.follow_ups[0].metric.id,
+            "report_id": reporting.reports[0].id,
         },
         "channels": [
             {
@@ -153,10 +177,23 @@ def build_result(
             "export_id": placement.export.id,
             "publication_request_id": placement.publication.id,
             "submission_id": placement.submission.id,
-            "measurement_collection_task_id": reporting.measurement_task.id,
-            "measurement_collection_task_status": reporting.measurement_task.status,
+            "measurement_collection_tasks": [
+                {
+                    "task_id": task.id,
+                    "window": task.measurement_window,
+                    "status": task.status,
+                    "placement_measurement_id": measurement.id,
+                }
+                for task, measurement in zip(
+                    reporting.measurement_tasks,
+                    reporting.placement_measurements,
+                    strict=True,
+                )
+            ],
+            "measurement_collection_task_id": reporting.measurement_tasks[0].id,
+            "measurement_collection_task_status": reporting.measurement_tasks[0].status,
             "scheduled_measurement_offsets": list(placement.scheduled_windows),
-            "placement_measurement_id": reporting.placement_measurement.id,
+            "placement_measurement_id": reporting.placement_measurements[0].id,
         },
         "customer_projection": {
             "metric_count": reporting.customer_metric_count,
@@ -174,11 +211,17 @@ def build_result(
                 placement.review.submitted_for_review_by != placement.review.reviewer_id
             ),
             "customer_projection_approved_only": True,
+            "follow_up_windows_completed": [
+                task.measurement_window
+                for task in reporting.measurement_tasks
+                if task.status == "completed"
+            ],
         },
         "boundaries": {
             "external_publication_performed": False,
             "public_url_verification_mode": "controlled",
             "monitoring_data_mode": "controlled_acceptance",
+            "controlled_simulation": True,
             "causal_claim": False,
         },
     }
@@ -204,3 +247,5 @@ def _assert_result(result: Mapping[str, object]) -> None:
         raise AssertionError("a selected channel lost its persistent task")
     if assertions.get("export_created_publication") is not False:
         raise AssertionError("export and publication intent are no longer separated")
+    if assertions.get("follow_up_windows_completed") != ["t28", "t56", "t84"]:
+        raise AssertionError("T+28, T+56 and T+84 follow-up tasks are not complete")

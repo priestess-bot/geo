@@ -31,6 +31,7 @@ from geo_core.placements.domain import (
     ReviewSubmission,
     Submission,
 )
+from geo_core.placements.simulation import PromptSimulation
 from geo_core.prompts.domain import SkillVersion, TemplateRelease
 
 
@@ -52,6 +53,29 @@ class GenerationClaim:
     evidence_item_ids: tuple[UUID, ...]
     public_citation_item_ids: tuple[UUID, ...]
     output_schema: Mapping[str, object]
+
+    @property
+    def prompt_input_hash(self) -> str:
+        return self.prompt_bundle_hash
+
+
+class GenerationEvidenceScope(Protocol):
+    @property
+    def evidence_item_ids(self) -> tuple[UUID, ...]: ...
+
+    @property
+    def public_citation_item_ids(self) -> tuple[UUID, ...]: ...
+
+
+class ModelCallClaim(GenerationEvidenceScope, Protocol):
+    @property
+    def configured_model(self) -> str: ...
+
+    @property
+    def model_call_budget(self) -> int: ...
+
+    @property
+    def prompt_input_hash(self) -> str: ...
 
 
 @dataclass(frozen=True)
@@ -239,6 +263,18 @@ class PlacementRepository(Protocol):
         idempotency_key: str,
         requested_by: UUID,
     ) -> JobReference: ...
+
+    def create_prompt_simulation(
+        self, **values: object
+    ) -> tuple[PromptSimulation, JobReference]: ...
+
+    def list_prompt_simulations(
+        self, *, project_id: UUID
+    ) -> tuple[PromptSimulation, ...]: ...
+
+    def get_prompt_simulation(
+        self, *, project_id: UUID, simulation_id: UUID
+    ) -> PromptSimulation | None: ...
 
     def list_package_versions(
         self, *, project_id: UUID, opportunity_id: UUID

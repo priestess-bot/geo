@@ -20,13 +20,16 @@ def test_revision_graph_has_exactly_one_root_and_head() -> None:
         "0005_claim_inventory_guard.py",
         "0006_monitoring_lineage.py",
         "0007_placement_operations.py",
+        "0008_prompt_simulations.py",
     ]
     root = revisions[0].read_text(encoding="utf-8")
     engineering = revisions[1].read_text(encoding="utf-8")
     invitations = revisions[2].read_text(encoding="utf-8")
     monitoring = revisions[3].read_text(encoding="utf-8")
     claim_inventory = revisions[4].read_text(encoding="utf-8")
-    head = revisions[5].read_text(encoding="utf-8")
+    monitoring_lineage = revisions[5].read_text(encoding="utf-8")
+    placement_operations = revisions[6].read_text(encoding="utf-8")
+    head = revisions[7].read_text(encoding="utf-8")
     assert 'revision = "0001_geo_baseline"' in root
     assert "down_revision = None" in root
     assert 'revision = "0002_engineering_governance"' in engineering
@@ -37,8 +40,12 @@ def test_revision_graph_has_exactly_one_root_and_head() -> None:
     assert 'down_revision = "0003_access_invitations"' in monitoring
     assert 'revision = "0005_claim_inventory_guard"' in claim_inventory
     assert 'down_revision = "0004_monitoring_observations"' in claim_inventory
-    assert 'revision = "0006_monitoring_lineage"' in head
-    assert 'down_revision = "0005_claim_inventory_guard"' in head
+    assert 'revision = "0006_monitoring_lineage"' in monitoring_lineage
+    assert 'down_revision = "0005_claim_inventory_guard"' in monitoring_lineage
+    assert 'revision = "0007_placement_operations"' in placement_operations
+    assert 'down_revision = "0006_monitoring_lineage"' in placement_operations
+    assert 'revision = "0008_prompt_simulations"' in head
+    assert 'down_revision = "0007_placement_operations"' in head
 
 
 def test_claim_inventory_guard_fails_closed_on_empty_inventory() -> None:

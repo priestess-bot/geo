@@ -120,6 +120,41 @@ def test_admin_prompt_catalog_edits_the_actual_executable_release() -> None:
     assert 'max="5" defaultValue="2"' in generation
 
 
+def test_prompt_simulation_is_an_internal_test_only_surface() -> None:
+    panel = (FEATURE_ROOT / "PromptSimulationPanel.tsx").read_text(encoding="utf-8")
+    actions = (FEATURE_ROOT / "placement-actions.ts").read_text(encoding="utf-8")
+    client = (ROOT / "packages/web/api-client/src/geo.ts").read_text(encoding="utf-8")
+    customer_source = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (ROOT / "apps/customer-web").rglob("*")
+        if path.is_file() and path.suffix in {".ts", ".tsx"}
+    )
+    download = (
+        GEO_ROOT.parent / "simulation-download/[simulation_id]/route.ts"
+    ).read_text(encoding="utf-8")
+
+    assert "TEST ONLY" in panel
+    assert "publication_eligible=false" in panel
+    assert "eligible_for_generation" in panel
+    assert "createPromptSimulation" in actions
+    assert "createExport" not in panel
+    assert "createPublication" not in panel
+    assert "submitPackageReview" not in panel
+    assert "/geo/prompt-simulations" in client
+    assert "/geo/prompt-simulations" in download
+    assert "x-geo-test-only" in download
+    assert "prompt-simulations" not in customer_source
+
+
+def test_project_page_loads_geo_workspace_without_serial_catalog_waterfall() -> None:
+    page = (GEO_ROOT.parent / "page.tsx").read_text(encoding="utf-8")
+    start = page.index("const [catalog, invitations, members, geoData] = await Promise.all")
+    end = page.index(");", start)
+    parallel_block = page[start:end]
+    assert "loadCatalog(projectId)" in parallel_block
+    assert "loadGeoWorkspace(projectId, query)" in parallel_block
+
+
 def test_admin_geo_files_stay_below_refactor_size_limits() -> None:
     page = (GEO_ROOT.parent / "page.tsx").read_text(encoding="utf-8")
     workbench_files = list((GEO_ROOT.parent / "features/project-workbench").glob("*.ts*"))

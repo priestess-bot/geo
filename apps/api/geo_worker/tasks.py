@@ -18,6 +18,7 @@ from geo_core.model_gateway.deepseek import DeepSeekGateway, default_deepseek_ca
 from geo_core.object_store_config import build_object_store
 from geo_core.placements.artifact_worker import PlacementArtifactRepository
 from geo_core.placements.url_verifier import PublicUrlVerifier
+from geo_core.placements.simulation_worker import PromptSimulationHandler
 from geo_core.placements.worker_composition import (
     EvidencePackHandler,
     ArtifactFinalizeHandler,
@@ -52,6 +53,9 @@ def dispatcher() -> PlacementWorkerDispatcher:
         ),
         "evidence_pack.build": EvidencePackHandler(repository),
         "placement.generate": GenerationHandler(
+            store=store, repository=repository, gateway=gateway, lease_for=lease_for
+        ),
+        "prompt_simulation.generate": PromptSimulationHandler(
             store=store, repository=repository, gateway=gateway, lease_for=lease_for
         ),
         "publication.verify": PublicationVerificationHandler(

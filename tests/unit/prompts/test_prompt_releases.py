@@ -3,7 +3,13 @@ from uuid import uuid4
 
 import pytest
 
-from geo_core.prompts.domain import PromptCompilationError, SkillVersion, compile_template, render_bundle
+from geo_core.prompts.domain import (
+    PromptCompilationError,
+    SkillVersion,
+    compile_template,
+    render_bundle,
+    render_template,
+)
 
 
 def test_skill_compiles_to_immutable_release_and_reproducible_bundle() -> None:
@@ -55,3 +61,12 @@ def test_prompt_bundle_rejects_missing_variables() -> None:
             evidence_pack_hash="e" * 64,
             model_policy_hash="m" * 64,
         )
+
+
+def test_release_renders_without_creating_a_formal_bundle() -> None:
+    skill = SkillVersion.create(
+        id=uuid4(), skill_id=uuid4(), version=1, source="Preview {{brief}}"
+    )
+    release = compile_template(release_id=uuid4(), skill=skill)
+
+    assert render_template(template=release, variables={"brief": "only"}) == "Preview only"

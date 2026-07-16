@@ -87,7 +87,7 @@ export function WorkbenchShell({
         ) : null}
         {activeTab === "operations" ? <OperationsPanel projectId={project.id} /> : null}
         {activeTab === "geo" ? (
-          geoData ? <GeoShell data={geoData} projectId={project.id} /> : <EmptyState text="正在准备 GEO 投放工作区。" />
+          geoData ? <GeoShell catalog={catalog} data={geoData} projectId={project.id} /> : <EmptyState text="正在准备 GEO 投放工作区。" />
         ) : null}
         {activeTab === "status" ? (
           <StatusPanel catalog={catalog} invitations={invitations} members={members} projectId={project.id} />

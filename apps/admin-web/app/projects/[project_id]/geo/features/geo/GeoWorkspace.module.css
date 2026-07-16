@@ -32,6 +32,8 @@
 .form label { color: #435c6b; display: grid; font-size: 12px; font-weight: 750; gap: 5px; }
 .form input:not([type="checkbox"]), .form select, .form textarea { background: #fff; border: 1px solid #bdcad3; border-radius: 5px; color: #203641; font: inherit; min-width: 0; padding: 8px 9px; width: 100%; }
 .form textarea { min-height: 82px; resize: vertical; }
+.form .multiSelect { min-height: 106px; }
+.formInset { display: grid; gap: 10px; padding-top: 10px; }
 .form input[type="checkbox"] { height: 16px; margin: 0; width: 16px; }
 .check { align-items: center; display: flex !important; grid-template-columns: 16px 1fr; }
 .inline { align-items: end; display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -55,6 +57,9 @@
 .toolbar button { font-size: 11px; padding: 6px 9px; }
 .code { background: #152832; border-radius: 5px; color: #d9eef5; font-size: 11px; max-height: 200px; overflow: auto; padding: 10px; white-space: pre-wrap; }
 .content { background: #fbfcfd; border: 1px solid #d8e0e8; border-radius: 5px; line-height: 1.65; max-height: 320px; overflow: auto; padding: 14px; white-space: pre-wrap; }
+.testBanner { align-items: center; background: #fff6df; border: 1px solid #d5aa49; border-radius: 6px; color: #604713; display: flex; flex-wrap: wrap; gap: 10px; padding: 10px 14px; }
+.testBanner strong { background: #604713; border-radius: 3px; color: #fff; font-size: 11px; padding: 3px 6px; }
+.testBanner span { font-size: 12px; font-weight: 700; }
 .timeline { border-left: 2px solid #cad8df; display: grid; gap: 10px; margin-left: 5px; padding-left: 14px; }
 .timelineItem { display: grid; font-size: 12px; gap: 2px; min-width: 0; position: relative; }
 .timelineItem code { display: block; min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }

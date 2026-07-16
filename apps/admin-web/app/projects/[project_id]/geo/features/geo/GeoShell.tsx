@@ -6,8 +6,9 @@ import type { GeoSection, GeoWorkspaceData } from "./model";
 import { ObservationWorkspace } from "./ObservationWorkspace";
 import { PlacementWorkspace } from "./PlacementWorkspace";
 import styles from "./GeoWorkspace.module.css";
+import type { CatalogLoadResult } from "../../../catalogTypes";
 
-export function GeoShell({ projectId, data }: { projectId: string; data: GeoWorkspaceData }) {
+export function GeoShell({ projectId, data, catalog }: { projectId: string; data: GeoWorkspaceData; catalog: CatalogLoadResult }) {
   const tabs: Array<{ id: GeoSection; label: string }> = [
     { id: "campaigns", label: "Campaign 与监测" }, { id: "observations", label: "观察样本" },
     { id: "destinations", label: "渠道与机会" }, { id: "placement", label: "文案投放" }
@@ -26,6 +27,6 @@ export function GeoShell({ projectId, data }: { projectId: string; data: GeoWork
     {data.selection.section === "campaigns" ? <CampaignWorkspace projectId={projectId} data={data} /> : null}
     {data.selection.section === "observations" ? <ObservationWorkspace projectId={projectId} data={data} /> : null}
     {data.selection.section === "destinations" ? <DestinationWorkspace projectId={projectId} data={data} /> : null}
-    {data.selection.section === "placement" ? <PlacementWorkspace projectId={projectId} data={data} /> : null}
+    {data.selection.section === "placement" ? <PlacementWorkspace projectId={projectId} data={data} catalog={catalog} /> : null}
   </div>;
 }

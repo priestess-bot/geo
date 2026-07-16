@@ -55,17 +55,25 @@ def test_stable_geo_acceptance_closes_the_controlled_full_flow(tmp_path: Path) -
         assert placement["prompt_binding_count"] == 9
         assert placement["scheduled_measurement_offsets"] == [28, 56, 84]
         assert placement["measurement_collection_task_status"] == "completed"
+        assert [
+            item["window"] for item in cast(list[dict[str, object]], placement["measurement_collection_tasks"])
+        ] == ["t28", "t56", "t84"]
+        assert all(
+            item["status"] == "completed"
+            for item in cast(list[dict[str, object]], placement["measurement_collection_tasks"])
+        )
         assert len(str(placement["prompt_bundle_hash"])) == 64
         assert len(str(placement["package_content_hash"])) == 64
 
         projection = cast(dict[str, object], result["customer_projection"])
-        assert projection["metric_count"] == 2
+        assert projection["metric_count"] == 4
         assert projection["verified_url_count"] == 1
-        assert projection["approved_report_count"] == 1
+        assert projection["approved_report_count"] == 3
         assert cast(dict[str, object], result["boundaries"]) == {
             "external_publication_performed": False,
             "public_url_verification_mode": "controlled",
             "monitoring_data_mode": "controlled_acceptance",
+            "controlled_simulation": True,
             "causal_claim": False,
         }
         assert (tmp_path / "geo-acceptance.json").is_file()
