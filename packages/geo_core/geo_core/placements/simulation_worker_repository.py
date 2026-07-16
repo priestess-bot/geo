@@ -10,6 +10,7 @@ from geo_core.jobs.postgres import WorkerLease
 from geo_core.model_gateway import ModelGatewayResult
 from geo_core.placements.domain import canonical_hash
 from geo_core.placements.ports import GeneratedPlacement
+from geo_core.placements.simulation import PromptSimulationAuthenticityMode
 from geo_core.placements.worker_models import PromptSimulationClaim
 
 
@@ -82,6 +83,9 @@ class PromptSimulationWorkerRepositoryMixin:
                 project_id=lease.project_id,
                 input_hash=record["input_hash"],
                 input_snapshot=snapshot,
+                authenticity_mode=PromptSimulationAuthenticityMode(
+                    str(snapshot.get("authenticity_mode", "brand_authored"))
+                ),
                 system_prompt=str(snapshot["system_prompt"]),
                 rendered_prompt=str(snapshot["rendered_prompt"]),
                 configured_model=record["configured_model"],
@@ -130,11 +134,12 @@ class PromptSimulationWorkerRepositoryMixin:
         }
         output_hash = canonical_hash(output)
         manifest = {
-            "schema": "geo-prompt-simulation-result-v1",
+            "schema": "geo-prompt-simulation-result-v2",
             "simulation_id": str(claim.simulation_id),
             "project_id": str(lease.project_id),
             "test_only": True,
             "publication_eligible": False,
+            "authenticity_mode": claim.authenticity_mode.value,
             "input_hash": claim.input_hash,
             "output_hash": output_hash,
             "model_call": {
@@ -232,6 +237,7 @@ class PromptSimulationWorkerRepositoryMixin:
                 "artifact_job_id": str(artifact_job_id),
                 "test_only": True,
                 "publication_eligible": False,
+                "authenticity_mode": claim.authenticity_mode.value,
             }
             self._store.complete_in_transaction(
                 connection,

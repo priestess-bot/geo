@@ -111,11 +111,12 @@ class PostgresPromptSimulationMixin:
             f"geo-prompt-simulation:{values['project_id']}:{values['idempotency_key']}",
         )
         snapshot = {
-            "schema": "geo-prompt-simulation-input-v1",
+            "schema": "geo-prompt-simulation-input-v2",
             "simulation_id": str(simulation_id),
             "project_id": str(values["project_id"]),
             "test_only": True,
             "publication_eligible": False,
+            "authenticity_mode": values["authenticity_mode"],
             "template_release": {
                 "id": str(release["id"]),
                 "release_hash": release["release_hash"],
@@ -230,6 +231,10 @@ class PostgresPromptSimulationMixin:
                           simulation.destination_policy_version_id,
                           simulation.template_release_id,
                           simulation.primary_brand_entity_id, simulation.product_entity_id,
+                          COALESCE(
+                            simulation.input_snapshot ->> 'authenticity_mode',
+                            'brand_authored'
+                          ) AS authenticity_mode,
                           simulation.requested_by, simulation.input_hash,
                           simulation.test_only, simulation.publication_eligible,
                           simulation.created_at, latest.job_id AS generation_job_id,

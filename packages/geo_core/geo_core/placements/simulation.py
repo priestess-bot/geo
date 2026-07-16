@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from enum import StrEnum
 import hashlib
 from types import MappingProxyType
 from typing import Mapping
@@ -15,6 +16,12 @@ DEFAULT_SIMULATION_MODEL_POLICY_HASH = hashlib.sha256(
 ).hexdigest()
 
 
+class PromptSimulationAuthenticityMode(StrEnum):
+    BRAND_AUTHORED = "brand_authored"
+    FAKE_PERSONA = "fake_persona"
+    SYNTHETIC_TESTIMONIAL = "synthetic_testimonial"
+
+
 @dataclass(frozen=True)
 class PromptSimulation:
     id: UUID
@@ -24,6 +31,7 @@ class PromptSimulation:
     template_release_id: UUID
     primary_brand_entity_id: UUID
     product_entity_id: UUID
+    authenticity_mode: PromptSimulationAuthenticityMode
     requested_by: UUID
     input_hash: str
     test_only: bool
@@ -43,6 +51,11 @@ class PromptSimulation:
     artifact_manifest: Mapping[str, object] | None = None
 
     def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "authenticity_mode",
+            PromptSimulationAuthenticityMode(self.authenticity_mode),
+        )
         if not self.test_only or self.publication_eligible:
             raise ValueError("prompt simulations must remain test-only and non-publishable")
         if self.input_snapshot is not None:

@@ -33,6 +33,7 @@ def _values() -> dict[str, Any]:
         "template_release_id": uuid4(),
         "primary_brand_entity_id": uuid4(),
         "product_entity_id": uuid4(),
+        "authenticity_mode": "synthetic_testimonial",
         "goals": {},
         "constraints": {},
         "variables": {},
@@ -64,6 +65,15 @@ def test_simulation_rejects_an_invalid_model_policy_hash() -> None:
         application.create_prompt_simulation(evidence_item_ids=(uuid4(),), **values)
 
 
+def test_simulation_rejects_an_unknown_authenticity_mode() -> None:
+    values = _values()
+    values["authenticity_mode"] = "publishable_fake_review"
+    application = PlacementApplication(lambda project_id: _UnitOfWork(SimpleNamespace()))
+
+    with pytest.raises(PlacementRuleViolation, match="authenticity mode is invalid"):
+        application.create_prompt_simulation(evidence_item_ids=(uuid4(),), **values)
+
+
 def test_simulation_domain_cannot_be_marked_publishable() -> None:
     with pytest.raises(ValueError, match="non-publishable"):
         PromptSimulation(
@@ -74,6 +84,7 @@ def test_simulation_domain_cannot_be_marked_publishable() -> None:
             template_release_id=uuid4(),
             primary_brand_entity_id=uuid4(),
             product_entity_id=uuid4(),
+            authenticity_mode="synthetic_testimonial",
             requested_by=uuid4(),
             input_hash="a" * 64,
             test_only=True,
@@ -95,6 +106,7 @@ def test_simulation_create_commits_repository_result() -> None:
     class Repository:
         def create_prompt_simulation(self, **values: object):
             assert values["model_call_budget"] == 1
+            assert values["authenticity_mode"] == "synthetic_testimonial"
             return simulation, job
 
     uow = _UnitOfWork(Repository())

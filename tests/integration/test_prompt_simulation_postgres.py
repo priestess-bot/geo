@@ -112,6 +112,7 @@ def test_prompt_simulation_is_durable_and_cannot_create_formal_placement_objects
             template_release_id=release_id,
             primary_brand_entity_id=brand_id,
             product_entity_id=ids["entity"],
+            authenticity_mode="synthetic_testimonial",
             evidence_item_ids=(evidence_id,),
             goals={"deliverable": "native ProductReview technical preview"},
             constraints={"locale": "en-AU"},
@@ -128,6 +129,7 @@ def test_prompt_simulation_is_durable_and_cannot_create_formal_placement_objects
             template_release_id=release_id,
             primary_brand_entity_id=brand_id,
             product_entity_id=ids["entity"],
+            authenticity_mode="synthetic_testimonial",
             evidence_item_ids=(evidence_id,),
             goals={"deliverable": "native ProductReview technical preview"},
             constraints={"locale": "en-AU"},
@@ -141,6 +143,7 @@ def test_prompt_simulation_is_durable_and_cannot_create_formal_placement_objects
         assert (replayed.id, replayed_job.id) == (simulation.id, job.id)
         assert simulation.test_only is True
         assert simulation.publication_eligible is False
+        assert simulation.authenticity_mode == "synthetic_testimonial"
         assert simulation.destination_policy_version_id is None
 
         store = PostgresDurableJobStore(lambda: psycopg.connect(worker_url))
@@ -186,6 +189,9 @@ def test_prompt_simulation_is_durable_and_cannot_create_formal_placement_objects
         assert detail.artifact_manifest is not None
         assert detail.artifact_manifest["test_only"] is True
         assert detail.artifact_manifest["publication_eligible"] is False
+        assert detail.input_snapshot is not None
+        assert detail.input_snapshot["authenticity_mode"] == "synthetic_testimonial"
+        assert detail.artifact_manifest["authenticity_mode"] == "synthetic_testimonial"
         downloaded = application.download_prompt_simulation_artifact(
             project_id=ids["project"], simulation_id=simulation.id
         )

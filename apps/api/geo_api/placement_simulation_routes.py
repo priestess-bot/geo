@@ -44,6 +44,7 @@ def simulation_router() -> APIRouter:
             template_release_id=payload.template_release_id,
             primary_brand_entity_id=payload.primary_brand_entity_id,
             product_entity_id=payload.product_entity_id,
+            authenticity_mode=payload.authenticity_mode,
             evidence_item_ids=tuple(payload.evidence_item_ids),
             goals=payload.goals,
             constraints=payload.constraints,

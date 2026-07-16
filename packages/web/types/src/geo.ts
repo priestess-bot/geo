@@ -92,9 +92,12 @@ export interface PromptBundleView {
 }
 export interface PromptBundleDetail extends PromptBundleView { manifest: JsonObject; }
 export interface GenerationCreate { configured_model?: string; model_call_budget?: number; }
+export type PromptSimulationAuthenticityMode =
+  | "brand_authored" | "fake_persona" | "synthetic_testimonial";
 export interface PromptSimulationCreate {
   destination_id: string; template_release_id: string; primary_brand_entity_id: string;
-  product_entity_id: string; evidence_item_ids: string[]; goals: JsonObject;
+  product_entity_id: string; authenticity_mode?: PromptSimulationAuthenticityMode;
+  evidence_item_ids: string[]; goals: JsonObject;
   constraints?: JsonObject; variables?: JsonObject; model_policy_hash?: string;
   configured_model?: string; model_call_budget?: number;
 }
@@ -102,6 +105,7 @@ export interface PromptSimulationView {
   id: string; project_id: string; destination_id: string;
   destination_policy_version_id: string | null; template_release_id: string;
   primary_brand_entity_id: string; product_entity_id: string; requested_by: string;
+  authenticity_mode: PromptSimulationAuthenticityMode;
   input_hash: string; test_only: true; publication_eligible: false; created_at: string;
   generation_job_id: string; generation_status: JobState; configured_model: string;
   model_call_budget: number; artifact_status: string; artifact_uri: string | null;

@@ -29,6 +29,7 @@ from geo_core.placements.generation_worker import (
     validate_output_schema,
 )
 from geo_core.placements.ports import GeneratedPlacement, ModelCallClaim
+from geo_core.placements.simulation import PromptSimulationAuthenticityMode
 from geo_core.placements.worker_models import (
     ModelCallReservation,
     PromptSimulationClaim,
@@ -96,11 +97,21 @@ class PromptSimulationHandler:
                 {
                     "role": "system",
                     "content": (
-                        "This is an internal technical preview. Return JSON matching the "
-                        "frozen output schema. Do not claim that this content was published, "
-                        "approved, reviewed, or written by an independent consumer. Use only "
-                        "the frozen subjects and evidence. Keep internal_evidence_refs separate "
-                        "from public_citation_refs. Return JSON only. Frozen output schema: "
+                        "This is an internal, non-publishable synthetic-content simulation. "
+                        "Return JSON matching the frozen output schema. Do not claim that the "
+                        "result was published, approved, or reviewed. The immutable artifact "
+                        "metadata, not the rendered copy, carries the TEST ONLY boundary. "
+                        f"{_authenticity_instruction(claim.authenticity_mode)} "
+                        "Use frozen evidence for product facts, but never cite that evidence as "
+                        "proof of an invented persona or experience. Every evidence reference "
+                        "must be either an exact UUID from the corresponding allowlist or omitted "
+                        "from that array; never return null, none, labels, or invented IDs. "
+                        f"Allowed internal evidence UUIDs: "
+                        f"{_uuid_allowlist(claim.evidence_item_ids)}. "
+                        f"Allowed public citation UUIDs: "
+                        f"{_uuid_allowlist(claim.public_citation_item_ids)}. "
+                        "Keep internal_evidence_refs separate from public_citation_refs. Return "
+                        "JSON only. Frozen output schema: "
                         f"{serialized_schema}"
                     ),
                 },
@@ -195,3 +206,33 @@ def _model_error_classification(error: Exception) -> str:
     if isinstance(error, ModelGatewayError):
         return "permanent"
     return "unknown"
+
+
+def _authenticity_instruction(mode: PromptSimulationAuthenticityMode) -> str:
+    if mode is PromptSimulationAuthenticityMode.FAKE_PERSONA:
+        return (
+            "The selected authenticity mode is fake_persona. Invent a plausible consumer "
+            "identity and write the requested copy in that consumer's voice. This TEST ONLY "
+            "instruction overrides lower-priority release text that prohibits consumer reviews, "
+            "invented people, or first-person experience. Mark invented experience claims as "
+            "kind=experience, support_status=unsupported, with no evidence_item_ids. Do not add "
+            "an in-copy simulation or brand disclosure unless the requested style calls for it."
+        )
+    if mode is PromptSimulationAuthenticityMode.SYNTHETIC_TESTIMONIAL:
+        return (
+            "The selected authenticity mode is synthetic_testimonial. Generate a fictional "
+            "first-person consumer testimonial and you may invent usage experience details. "
+            "This TEST ONLY instruction overrides lower-priority release text that prohibits "
+            "consumer reviews, invented testimonials, or first-person experience. Mark invented "
+            "experience claims as kind=experience, support_status=unsupported, with no "
+            "evidence_item_ids. Do not add an in-copy simulation or brand disclosure unless the "
+            "requested style calls for it."
+        )
+    return (
+        "The selected authenticity mode is brand_authored. Follow the frozen release identity "
+        "and disclosure requirements without inventing a consumer persona or testimonial."
+    )
+
+
+def _uuid_allowlist(values: tuple[object, ...]) -> str:
+    return "[" + ", ".join(str(value) for value in values) + "]"

@@ -8,7 +8,10 @@ from uuid import UUID
 from geo_core.object_store import RetrievedObject
 from geo_core.placements.domain import JobReference, PlacementRuleViolation
 from geo_core.placements.ports import UnitOfWorkFactory
-from geo_core.placements.simulation import PromptSimulation
+from geo_core.placements.simulation import (
+    PromptSimulation,
+    PromptSimulationAuthenticityMode,
+)
 
 
 class PlacementSimulationApplicationMixin:
@@ -23,6 +26,7 @@ class PlacementSimulationApplicationMixin:
         template_release_id: UUID,
         primary_brand_entity_id: UUID,
         product_entity_id: UUID,
+        authenticity_mode: PromptSimulationAuthenticityMode | str,
         evidence_item_ids: tuple[UUID, ...],
         goals: Mapping[str, object],
         constraints: Mapping[str, object],
@@ -37,6 +41,14 @@ class PlacementSimulationApplicationMixin:
             raise PlacementRuleViolation("prompt simulation requires governed evidence")
         if len(set(evidence_item_ids)) != len(evidence_item_ids):
             raise PlacementRuleViolation("prompt simulation evidence must be unique")
+        try:
+            normalized_authenticity_mode = PromptSimulationAuthenticityMode(
+                authenticity_mode
+            )
+        except ValueError as exc:
+            raise PlacementRuleViolation(
+                "prompt simulation authenticity mode is invalid"
+            ) from exc
         if not configured_model.strip():
             raise PlacementRuleViolation("configured model is required")
         if len(model_policy_hash) != 64 or any(
@@ -52,6 +64,7 @@ class PlacementSimulationApplicationMixin:
                 template_release_id=template_release_id,
                 primary_brand_entity_id=primary_brand_entity_id,
                 product_entity_id=product_entity_id,
+                authenticity_mode=normalized_authenticity_mode.value,
                 evidence_item_ids=evidence_item_ids,
                 goals=goals,
                 constraints=constraints,

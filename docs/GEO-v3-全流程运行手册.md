@@ -82,6 +82,12 @@ Destination 保存具体 URL/账号、`destination_key`、`destination_account_i
 - `unsupported_first_person_experience`：没有真实输入支持的第一人称体验；
 - `hidden_commercial_relationship`：隐瞒品牌、商家、付费或赠品关系。
 
+该不可 override 合同只约束正式 Brief 到 Publication 的生产链。内部 `TEST ONLY Prompt Simulation`
+允许显式选择 `fake_persona` 或 `synthetic_testimonial`，生成伪装消费者的测试样本；工件必须同时
+标记 `test_only=true` 和 `publication_eligible=false`，不能提交复核、导出或创建投放任务。
+虚构体验不需要真实消费者描述，但其 Claim inventory 必须标记 `unsupported`，不得把产品 Evidence
+伪造成体验真实性证明。
+
 “允许上传给模型”和“允许公开改写”不自动证明体验真实。`usage_rights=unknown/restricted`、非公开机密数据或缺少主体绑定的事实必须 fail closed。
 
 Evidence Item 使用判别类型，保存 subject、snapshot/hash、source revision、usage rights、confidentiality 和公开 Citation 权限。内部 Evidence 与公开 Citation 分开：内部可追踪不代表可以在网页上公开引用。

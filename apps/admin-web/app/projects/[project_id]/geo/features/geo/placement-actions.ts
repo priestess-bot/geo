@@ -1,6 +1,6 @@
 "use server";
 
-import type { JsonObject } from "@geo/types/geo";
+import type { JsonObject, PromptSimulationAuthenticityMode } from "@geo/types/geo";
 import { checked, client, finish, guards, isActionError, jsonArray, jsonObject, lines, numberValue, type ActionResult, value } from "./action-utils";
 import type { PackageClaimEdit } from "@geo/types/geo";
 
@@ -104,6 +104,7 @@ export async function createPromptSimulation(_state: ActionResult, form: FormDat
     template_release_id: templateReleaseId,
     primary_brand_entity_id: value(form, "primary_brand_entity_id"),
     product_entity_id: value(form, "product_entity_id"),
+    authenticity_mode: value(form, "authenticity_mode") as PromptSimulationAuthenticityMode,
     evidence_item_ids: evidenceItemIds,
     goals,
     constraints,

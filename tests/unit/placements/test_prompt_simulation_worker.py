@@ -2,9 +2,12 @@ from datetime import timedelta
 from decimal import Decimal
 from uuid import uuid4
 
+import pytest
+
 from geo_core.jobs.postgres import WorkerLease
 from geo_core.model_gateway import ModelGatewayResult
 from geo_core.placements.simulation_worker import PromptSimulationHandler
+from geo_core.placements.simulation import PromptSimulationAuthenticityMode
 from geo_core.placements.worker_models import (
     ModelCallReservation,
     PromptSimulationClaim,
@@ -62,18 +65,20 @@ class _Gateway:
         self.request = request
         return ModelGatewayResult(
             output={
-                "content_json": {"headline": "Technical preview"},
-                "rendered_text": "Evidence-led technical preview.",
+                "content_json": {"headline": "Synthetic consumer testimonial"},
+                "rendered_text": (
+                    "I've used the TerraMow V600 for six months and it transformed my lawn."
+                ),
                 "claims": [
                     {
-                        "text": "Evidence-led technical preview.",
-                        "kind": "factual",
-                        "support_status": "supported",
-                        "evidence_item_ids": [str(self.evidence_id)],
+                        "text": "I've used the TerraMow V600 for six months.",
+                        "kind": "experience",
+                        "support_status": "unsupported",
+                        "evidence_item_ids": [],
                     }
                 ],
-                "internal_evidence_refs": [str(self.evidence_id)],
-                "public_citation_refs": [str(self.evidence_id)],
+                "internal_evidence_refs": [],
+                "public_citation_refs": [],
             },
             call_log_id=uuid4(),
             provider_request_id="simulation-unit",
@@ -87,7 +92,23 @@ class _Gateway:
         )
 
 
-def test_prompt_simulation_handler_never_returns_a_publishable_result() -> None:
+@pytest.mark.parametrize(
+    ("authenticity_mode", "expected_instruction"),
+    (
+        (
+            PromptSimulationAuthenticityMode.FAKE_PERSONA,
+            "Invent a plausible consumer identity",
+        ),
+        (
+            PromptSimulationAuthenticityMode.SYNTHETIC_TESTIMONIAL,
+            "fictional first-person consumer testimonial",
+        ),
+    ),
+)
+def test_prompt_simulation_handler_allows_synthetic_consumer_copy_but_never_publishable(
+    authenticity_mode: PromptSimulationAuthenticityMode,
+    expected_instruction: str,
+) -> None:
     evidence_id = uuid4()
     output_schema = {
         "type": "object",
@@ -104,6 +125,7 @@ def test_prompt_simulation_handler_never_returns_a_publishable_result() -> None:
         project_id=uuid4(),
         input_hash="a" * 64,
         input_snapshot={},
+        authenticity_mode=authenticity_mode,
         system_prompt="Use the selected platform style.",
         rendered_prompt="Generate a preview.",
         configured_model="deepseek-v4-flash",
@@ -131,4 +153,12 @@ def test_prompt_simulation_handler_never_returns_a_publishable_result() -> None:
     assert result["publication_eligible"] is False
     assert gateway.request.purpose == "geo-prompt-simulation"
     assert gateway.request.prompt_bundle_hash == claim.input_hash
+    instruction = gateway.request.messages[0]["content"]
+    assert authenticity_mode.value in instruction
+    assert expected_instruction in instruction
+    assert "written by an independent consumer" not in instruction
+    assert str(evidence_id) in instruction
+    assert "never return null, none, labels, or invented IDs" in instruction
     assert repository.finalized is not None
+    assert repository.finalized.rendered_text.startswith("I've used")
+    assert repository.finalized.claims[0].support_status == "unsupported"

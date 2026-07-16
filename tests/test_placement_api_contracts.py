@@ -98,7 +98,8 @@ def test_prompt_release_contract_exposes_the_complete_executable_snapshot() -> N
     assert simulation_create["configured_model"]["default"] == "deepseek-v4-flash"
     assert simulation_create["model_call_budget"]["default"] == 2
     assert simulation_create["model_policy_hash"]["pattern"] == "^[0-9a-f]{64}$"
-    assert {"test_only", "publication_eligible", "input_hash", "artifact_manifest"} <= set(
+    assert simulation_create["authenticity_mode"]["default"] == "synthetic_testimonial"
+    assert {"test_only", "publication_eligible", "authenticity_mode", "input_hash", "artifact_manifest"} <= set(
         simulation_view["required"]
     )
 

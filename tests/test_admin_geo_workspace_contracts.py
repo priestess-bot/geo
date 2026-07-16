@@ -135,6 +135,9 @@ def test_prompt_simulation_is_an_internal_test_only_surface() -> None:
 
     assert "TEST ONLY" in panel
     assert "publication_eligible=false" in panel
+    assert 'name="authenticity_mode"' in panel
+    assert 'value="synthetic_testimonial"' in panel
+    assert 'value="fake_persona"' in panel
     assert "eligible_for_generation" in panel
     assert "createPromptSimulation" in actions
     assert "createExport" not in panel

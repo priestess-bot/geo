@@ -66,7 +66,7 @@ Placement
 | Quora | 明确披露品牌关系的专业回答 | 身份、主题和来源审核通过后是 |
 | 竞品网站、Wikipedia | 竞争或引用观察 | 否，除非另行人工审核 |
 
-系统禁止生成、安排或代发伪装消费者的推广、虚假评价、隐蔽商业关系内容和未经授权账号发布。
+正式 Placement 流程禁止生成、安排或代发伪装消费者的推广、虚假评价、隐蔽商业关系内容和未经授权账号发布。独立的 `TEST ONLY Prompt Simulation` 是唯一例外：它可以生成 `fake_persona` 或 `synthetic_testimonial` 测试文案，但结果不可进入正式 Package、Review、Export、Publication 或 Submission，且永远 `publication_eligible=false`。
 
 每个被运营人员选中的渠道都必须创建持久 `Placement` 任务。渠道未审核、受限、禁止，或缺少账号授权、优惠、原始问题/评价上下文时，任务仍然存在并展示明确的阻断原因，不得被静默省略；只有 Destination Policy、身份、披露和证据门禁均通过后，任务才可进入 Brief、生成、审核和人工提交。任务存在不等于平台允许发布，也不等于系统自动发布。
 

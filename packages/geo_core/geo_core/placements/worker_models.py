@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from typing import Mapping
 from uuid import UUID
 
+from geo_core.placements.simulation import PromptSimulationAuthenticityMode
+
 
 @dataclass(frozen=True)
 class VerificationSnapshot:
@@ -29,6 +31,7 @@ class PromptSimulationClaim:
     project_id: UUID
     input_hash: str
     input_snapshot: Mapping[str, object]
+    authenticity_mode: PromptSimulationAuthenticityMode
     system_prompt: str
     rendered_prompt: str
     configured_model: str

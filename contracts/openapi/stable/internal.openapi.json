@@ -4576,9 +4576,22 @@
         "title": "PromptReleaseView",
         "type": "object"
       },
+      "PromptSimulationAuthenticityMode": {
+        "enum": [
+          "brand_authored",
+          "fake_persona",
+          "synthetic_testimonial"
+        ],
+        "title": "PromptSimulationAuthenticityMode",
+        "type": "string"
+      },
       "PromptSimulationCreate": {
         "additionalProperties": false,
         "properties": {
+          "authenticity_mode": {
+            "$ref": "#/components/schemas/PromptSimulationAuthenticityMode",
+            "default": "synthetic_testimonial"
+          },
           "configured_model": {
             "default": "deepseek-v4-flash",
             "maxLength": 200,
@@ -4712,6 +4725,9 @@
               }
             ],
             "title": "Artifact Uri"
+          },
+          "authenticity_mode": {
+            "$ref": "#/components/schemas/PromptSimulationAuthenticityMode"
           },
           "configured_model": {
             "title": "Configured Model",
@@ -4858,6 +4874,7 @@
           "template_release_id",
           "primary_brand_entity_id",
           "product_entity_id",
+          "authenticity_mode",
           "requested_by",
           "input_hash",
           "test_only",

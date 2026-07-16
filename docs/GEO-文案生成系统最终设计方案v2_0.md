@@ -410,6 +410,13 @@ unsupported_first_person_experience
 hidden_commercial_relationship
 ```
 
+以上硬阻断适用于正式 Brief、Package、Review、Export 和 Publication。独立的
+`TEST ONLY Prompt Simulation` 可以显式选择 `fake_persona` 或
+`synthetic_testimonial`，用于生成虚构消费者身份、第一人称体验或合成评价测试样本；
+该结果必须保持 `test_only=true`、`publication_eligible=false`，不得转换、复制或引用为
+正式 Package，也不得进入审查、导出、Publication 或 Submission。产品事实仍只能来自冻结
+Evidence；虚构体验 Claim 在内部 inventory 中记录为 `unsupported` 且不得伪造 Evidence 引用。
+
 ---
 
 ## 11. Prompt 与流程完全解耦

@@ -9,7 +9,10 @@ from pydantic import Field
 
 from geo_api.contracts import JobState
 from geo_api.placement_contracts import PlacementContract
-from geo_core.placements.simulation import DEFAULT_SIMULATION_MODEL_POLICY_HASH
+from geo_core.placements.simulation import (
+    DEFAULT_SIMULATION_MODEL_POLICY_HASH,
+    PromptSimulationAuthenticityMode,
+)
 
 
 class PromptSimulationCreate(PlacementContract):
@@ -17,6 +20,9 @@ class PromptSimulationCreate(PlacementContract):
     template_release_id: UUID
     primary_brand_entity_id: UUID
     product_entity_id: UUID
+    authenticity_mode: PromptSimulationAuthenticityMode = (
+        PromptSimulationAuthenticityMode.SYNTHETIC_TESTIMONIAL
+    )
     evidence_item_ids: list[UUID] = Field(min_length=1)
     goals: dict[str, object]
     constraints: dict[str, object] = Field(default_factory=dict)
@@ -39,6 +45,7 @@ class PromptSimulationView(PlacementContract):
     template_release_id: UUID
     primary_brand_entity_id: UUID
     product_entity_id: UUID
+    authenticity_mode: PromptSimulationAuthenticityMode
     requested_by: UUID
     input_hash: str
     test_only: bool

@@ -30,7 +30,7 @@ export function PromptSimulationPanel({ projectId, data, catalog }: {
   return <div className={styles.workspace}>
     <div className={styles.testBanner} role="status">
       <strong>TEST ONLY</strong>
-      <span>技术预览不可用于正式审查、导出或发布 · publication_eligible=false</span>
+      <span>允许合成消费者身份与评价 · 不可用于正式审查、导出或发布 · publication_eligible=false</span>
     </div>
     <div className={styles.split}>
       <aside className={`${styles.panel} ${styles.sticky}`}>
@@ -55,6 +55,13 @@ export function PromptSimulationPanel({ projectId, data, catalog }: {
           <label>产品
             <select name="product_entity_id" required defaultValue={products[0]?.id || ""}>
               {products.map((item) => <option key={item.id} value={item.id}>{item.canonical_name}</option>)}
+            </select>
+          </label>
+          <label>模拟身份模式
+            <select name="authenticity_mode" required defaultValue="synthetic_testimonial">
+              <option value="synthetic_testimonial">合成消费者评价</option>
+              <option value="fake_persona">虚构消费者身份</option>
+              <option value="brand_authored">品牌身份</option>
             </select>
           </label>
           <label>治理合格证据（可多选）
@@ -86,7 +93,7 @@ export function PromptSimulationPanel({ projectId, data, catalog }: {
             className={item.id === selection.simulationId ? styles.selectedRow : styles.row}
             href={geoHref(projectId, selection, { simulation_id: item.id, job_id: item.generation_job_id })}>
             <span className={styles.rowHeader}><strong>TEST ONLY · <ShortId value={item.id} /></strong><Status value={item.generation_status} /></span>
-            <span className={styles.meta}><span>{destinationName(data, item)}</span><span>{item.configured_model}</span><span>{new Date(item.created_at).toLocaleString("zh-CN")}</span></span>
+            <span className={styles.meta}><span>{destinationName(data, item)}</span><span>{item.authenticity_mode}</span><span>{item.configured_model}</span><span>{new Date(item.created_at).toLocaleString("zh-CN")}</span></span>
           </Link>)}</div> : <Empty>尚未运行提示词技术预览。</Empty>}</ResourceBlock>
         </div>
         <div className={styles.panel}>
@@ -99,6 +106,7 @@ export function PromptSimulationPanel({ projectId, data, catalog }: {
               <div><span className={styles.meta}>输出 Hash</span><br /><code>{simulation.output_hash?.slice(0, 16) || "pending"}</code></div>
               <div><span className={styles.meta}>Job</span><br /><ShortId value={simulation.generation_job_id} /></div>
             </div>
+            <p className={styles.meta}>模拟身份：{simulation.authenticity_mode}</p>
             {renderedText ? <div className={styles.content}>{renderedText}</div> : <Empty>模型任务完成并 finalize 后显示正文。</Empty>}
             {claims !== undefined ? <details><summary>Claim inventory</summary><pre className={styles.code}>{JSON.stringify(claims, null, 2)}</pre></details> : null}
             {simulation.input_snapshot ? <details><summary>冻结输入快照</summary><pre className={styles.code}>{JSON.stringify(simulation.input_snapshot, null, 2)}</pre></details> : null}
