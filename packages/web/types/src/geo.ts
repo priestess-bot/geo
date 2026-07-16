@@ -92,6 +92,26 @@ export interface PromptBundleView {
 }
 export interface PromptBundleDetail extends PromptBundleView { manifest: JsonObject; }
 export interface GenerationCreate { configured_model?: string; model_call_budget?: number; }
+export interface PromptSimulationCreate {
+  destination_id: string; template_release_id: string; primary_brand_entity_id: string;
+  product_entity_id: string; evidence_item_ids: string[]; goals: JsonObject;
+  constraints?: JsonObject; variables?: JsonObject; model_policy_hash?: string;
+  configured_model?: string; model_call_budget?: number;
+}
+export interface PromptSimulationView {
+  id: string; project_id: string; destination_id: string;
+  destination_policy_version_id: string | null; template_release_id: string;
+  primary_brand_entity_id: string; product_entity_id: string; requested_by: string;
+  input_hash: string; test_only: true; publication_eligible: false; created_at: string;
+  generation_job_id: string; generation_status: JobState; configured_model: string;
+  model_call_budget: number; artifact_status: string; artifact_uri: string | null;
+  storage_key: string | null; output_hash: string | null; manifest_hash: string | null;
+  model_response_hash: string | null; input_snapshot: JsonObject | null;
+  artifact_manifest: JsonObject | null;
+}
+export interface PromptSimulationCreated {
+  simulation: PromptSimulationView; job_id: string; status: JobState; status_url: string;
+}
 export interface JobAccepted { job_id: string; status: JobState; status_url: string; }
 export interface JobStatus {
   id: string; kind: string; status: JobState; created_at: string; updated_at: string;

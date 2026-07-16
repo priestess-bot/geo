@@ -21,13 +21,13 @@ export default async function ProjectDetailPage({
     searchParams || Promise.resolve({})
   ]);
   const activeTab = normalizeWorkbenchTab(queryValue(query, "tab"));
-  const [catalog, invitations, members] = await Promise.all([
+  const [catalog, invitations, members, geoData] = await Promise.all([
     loadCatalog(projectId),
     loadProjectInvitations(projectId),
-    loadProjectMembers(projectId)
+    loadProjectMembers(projectId),
+    activeTab === "geo" ? loadGeoWorkspace(projectId, query) : Promise.resolve(null)
   ]);
   if (catalog.project.problem?.status === 401) redirect("/login");
-  const geoData = activeTab === "geo" ? await loadGeoWorkspace(projectId, query) : null;
   return <WorkbenchShell
     activeTab={activeTab}
     catalog={catalog}

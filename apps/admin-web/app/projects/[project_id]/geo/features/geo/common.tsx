@@ -14,7 +14,8 @@ export function geoHref(projectId: string, selection: GeoSelection, updates: { [
     protocol_id: selection.protocolId, destination_id: selection.destinationId, opportunity_id: selection.opportunityId,
     brief_version_id: selection.briefVersionId, attempt_id: selection.attemptId, skill_id: selection.skillId,
     bundle_id: selection.bundleId, job_id: selection.jobId, version_id: selection.versionId,
-    publication_id: selection.publicationId, submission_id: selection.submissionId, ...normalizedUpdates
+    publication_id: selection.publicationId, submission_id: selection.submissionId,
+    simulation_id: selection.simulationId, ...normalizedUpdates
   };
   Object.entries(current).forEach(([key, value]) => { if (value) params.set(key, value); });
   return `/projects/${projectId}?${params.toString()}`;

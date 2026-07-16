@@ -4,11 +4,13 @@ import { Empty, ResourceBlock, SectionHeader, ShortId, Status, geoHref } from ".
 import { GenerationPackagePanel } from "./GenerationPackagePanel";
 import type { GeoWorkspaceData } from "./model";
 import { PublicationPanel } from "./PublicationPanel";
+import { PromptSimulationPanel } from "./PromptSimulationPanel";
+import type { CatalogLoadResult } from "../../../catalogTypes";
 import styles from "./GeoWorkspace.module.css";
 
-export function PlacementWorkspace({ projectId, data }: { projectId: string; data: GeoWorkspaceData }) {
+export function PlacementWorkspace({ projectId, data, catalog }: { projectId: string; data: GeoWorkspaceData; catalog: CatalogLoadResult }) {
   const { selection } = data;
-  const stages = [{ id: "intake", label: "Brief / Evidence / Prompt" }, { id: "generation", label: "Generation / Review / Export" }, { id: "publication", label: "Publication / Measurement" }] as const;
+  const stages = [{ id: "intake", label: "Brief / Evidence / Prompt" }, { id: "simulation", label: "TEST ONLY 预览" }, { id: "generation", label: "Generation / Review / Export" }, { id: "publication", label: "Publication / Measurement" }] as const;
   return <section className={styles.workspace}>
     <SectionHeader eyebrow="Controlled content production" title="文案投放生产线" />
     <div className={styles.panel}>
@@ -28,6 +30,7 @@ export function PlacementWorkspace({ projectId, data }: { projectId: string; dat
       className={selection.placementStage === stage.id ? styles.active : ""}
       href={geoHref(projectId, selection, { placement_stage: stage.id })}>{stage.label}</Link>)}</nav>
     {selection.placementStage === "intake" ? <BriefPromptPanel projectId={projectId} data={data} /> : null}
+    {selection.placementStage === "simulation" ? <PromptSimulationPanel projectId={projectId} data={data} catalog={catalog} /> : null}
     {selection.placementStage === "generation" ? <GenerationPackagePanel projectId={projectId} data={data} /> : null}
     {selection.placementStage === "publication" ? <PublicationPanel projectId={projectId} data={data} /> : null}
   </section>;

@@ -82,6 +82,43 @@ export async function createGenerationJob(_state: ActionResult, form: FormData):
   return result.ok ? { ...outcome, nextHref: `/projects/${projectId}?tab=geo&geo_section=placement&bundle_id=${bundleId}&job_id=${result.data.job_id}` } : outcome;
 }
 
+export async function createPromptSimulation(_state: ActionResult, form: FormData): Promise<ActionResult> {
+  const projectId = value(form, "project_id");
+  const goals = jsonObject(form, "goals");
+  const constraints = jsonObject(form, "constraints");
+  const variables = jsonObject(form, "variables");
+  if (isActionError(goals)) return goals;
+  if (isActionError(constraints)) return constraints;
+  if (isActionError(variables)) return variables;
+  const [destinationId, templateReleaseId] = value(form, "destination_release").split(":", 2);
+  if (!destinationId || !templateReleaseId) {
+    return { error: "请选择已经绑定 Prompt Release 的投放渠道", status: 422, code: "invalid_destination_release" };
+  }
+  const evidenceItemIds = form.getAll("evidence_item_ids").map(String).map((item) => item.trim()).filter(Boolean);
+  if (!evidenceItemIds.length) {
+    return { error: "至少选择一条可生成证据", status: 422, code: "missing_simulation_evidence" };
+  }
+  const api = await client();
+  const result = await api.createPromptSimulation(projectId, {
+    destination_id: destinationId,
+    template_release_id: templateReleaseId,
+    primary_brand_entity_id: value(form, "primary_brand_entity_id"),
+    product_entity_id: value(form, "product_entity_id"),
+    evidence_item_ids: evidenceItemIds,
+    goals,
+    constraints,
+    variables,
+    model_policy_hash: value(form, "model_policy_hash"),
+    configured_model: value(form, "configured_model") || "deepseek-v4-flash",
+    model_call_budget: numberValue(form, "model_call_budget", 2)
+  }, guards(form));
+  const outcome = finish(projectId, result, "TEST ONLY 文案预览任务已排队");
+  return result.ok ? {
+    ...outcome,
+    nextHref: `/projects/${projectId}?tab=geo&geo_section=placement&placement_stage=simulation&simulation_id=${result.data.simulation.id}&job_id=${result.data.job_id}`
+  } : outcome;
+}
+
 export async function controlJob(_state: ActionResult, form: FormData): Promise<ActionResult> {
   const projectId = value(form, "project_id"), jobId = value(form, "job_id"), command = value(form, "command"), api = await client();
   const result = command === "cancel" ? api.cancelJob(projectId, jobId, guards(form))
