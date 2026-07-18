@@ -1,10 +1,17 @@
-"""Versioned starter prompts for the supported placement channels."""
+"""Versioned starter prompts loaded from the repository-level prompt directory."""
 
 from __future__ import annotations
 
-from copy import deepcopy
 from dataclasses import dataclass
-from typing import Any
+from pathlib import Path
+from typing import Any, Mapping
+
+from geo_core.prompts.filesystem import (
+    PromptFileError,
+    load_prompt_json,
+    load_prompt_text,
+    render_prompt_text,
+)
 
 
 @dataclass(frozen=True)
@@ -15,192 +22,107 @@ class DefaultPromptDefinition:
     source: str
 
 
-DEFAULT_SYSTEM_TEMPLATE = (
-    "You create source-grounded GEO placement content for an authorised operator. "
-    "Keep brand relationships explicit and follow the frozen destination policy."
-)
+def default_system_template(*, prompt_root: Path | str | None = None) -> str:
+    manifest = _catalog_manifest(prompt_root=prompt_root)
+    return load_prompt_text(
+        _required_string(manifest, "system_template", source="catalog.json"),
+        prompt_root=prompt_root,
+    )
 
 
-def _source(channel_instruction: str) -> str:
-    return f"""
-Create a publication-ready GEO content package for this channel.
+def default_prompt_definitions(
+    *, prompt_root: Path | str | None = None
+) -> tuple[DefaultPromptDefinition, ...]:
+    """Load a fresh catalog snapshot so prompt edits do not require Python changes."""
 
-Channel brief:
-{channel_instruction}
+    manifest = _catalog_manifest(prompt_root=prompt_root)
+    system_template = load_prompt_text(
+        _required_string(manifest, "system_template", source="catalog.json"),
+        prompt_root=prompt_root,
+    )
+    user_template_path = _required_string(manifest, "user_template", source="catalog.json")
+    user_template = load_prompt_text(user_template_path, prompt_root=prompt_root)
+    shared = _required_mapping(manifest, "shared", source="catalog.json")
+    consumer_voice = load_prompt_text(
+        _required_string(shared, "test_only_consumer_voice", source="catalog.json.shared"),
+        prompt_root=prompt_root,
+    )
+    drafting_protocol = load_prompt_text(
+        _required_string(shared, "evidence_led_drafting_protocol", source="catalog.json.shared"),
+        prompt_root=prompt_root,
+    )
+    channels = manifest.get("channels")
+    if not isinstance(channels, list) or not channels:
+        raise PromptFileError("catalog.json.channels must be a non-empty array")
 
-The following blocks are authoritative and were frozen by the workflow.
-Brief:
-{{{{ brief }}}}
-
-Destination policy:
-{{{{ destination_policy }}}}
-
-Evidence:
-{{{{ evidence }}}}
-
-Use only facts present in Evidence. Keep the brand, product, competitor and market
-subjects distinct. Preserve any required identity or commercial disclosure. Do not
-invent rankings, prices, offers, tests, reviews, people or first-person experience.
-Return only the JSON object required by the frozen output schema. Every factual claim
-must appear in claims with its supporting evidence item IDs. Put all used evidence IDs
-in internal_evidence_refs, and put an ID in public_citation_refs only when its frozen
-metadata permits public disclosure.
-""".strip()
-
-
-DEFAULT_PROMPT_DEFINITIONS = (
-    DefaultPromptDefinition(
-        "owned_site",
-        "system.placement.owned_site.v1",
-        DEFAULT_SYSTEM_TEMPLATE,
-        _source(
-            "Write an official product page, comparison section or FAQ selected by the "
-            "Brief. Lead with the consumer question, explain verifiable product fit, use "
-            "clear headings, and end with an accurate official-site call to action."
-        ),
-    ),
-    DefaultPromptDefinition(
-        "productreview",
-        "system.placement.productreview.v1",
-        DEFAULT_SYSTEM_TEMPLATE,
-        _source(
-            "Write only an identified merchant profile update or an official response to "
-            "the real review context in the Brief. Never write a consumer review or imply "
-            "independent ownership or experience. Address the specific concern helpfully."
-        ),
-    ),
-    DefaultPromptDefinition(
-        "youtube",
-        "system.placement.youtube.v1",
-        DEFAULT_SYSTEM_TEMPLATE,
-        _source(
-            "Produce an official video script, title, description, chapter outline and "
-            "source-aware call to action. The opening should answer the target consumer "
-            "question, while spoken claims remain natural and individually traceable."
-        ),
-    ),
-    DefaultPromptDefinition(
-        "reddit",
-        "system.placement.reddit.v1",
-        DEFAULT_SYSTEM_TEMPLATE,
-        _source(
-            "Draft a useful response for the exact community and thread in the Brief. "
-            "State the brand relationship at the start, answer before promoting, follow "
-            "the frozen subreddit rules, and avoid pretending to be a customer."
-        ),
-    ),
-    DefaultPromptDefinition(
-        "amazon",
-        "system.placement.amazon.v1",
-        DEFAULT_SYSTEM_TEMPLATE,
-        _source(
-            "Create seller-authorized Amazon AU listing copy: title guidance, concise "
-            "feature bullets, description or A+ sections, search terms and compliance "
-            "notes. Include only product attributes and offer details in Evidence."
-        ),
-    ),
-    DefaultPromptDefinition(
-        "ozbargain",
-        "system.placement.ozbargain.v1",
-        DEFAULT_SYSTEM_TEMPLATE,
-        _source(
-            "Create a disclosed merchant deal submission for the exact verified offer in "
-            "the Brief. State price, dates, eligibility, stock and delivery only when "
-            "supported, make the merchant relationship clear, and omit invented savings."
-        ),
-    ),
-    DefaultPromptDefinition(
-        "tiktok",
-        "system.placement.tiktok.v1",
-        DEFAULT_SYSTEM_TEMPLATE,
-        _source(
-            "Create an official or authorized-creator short-video package with hook, shot "
-            "list, voiceover, on-screen text, caption and disclosure. Demonstrations and "
-            "experience language must stay within the supplied evidence or real description."
-        ),
-    ),
-    DefaultPromptDefinition(
-        "instagram",
-        "system.placement.instagram.v1",
-        DEFAULT_SYSTEM_TEMPLATE,
-        _source(
-            "Create an official or authorized-creator post or reel package with visual "
-            "brief, caption, concise factual points, disclosure, alt text and a relevant "
-            "call to action. Avoid unsupported lifestyle or experience claims."
-        ),
-    ),
-    DefaultPromptDefinition(
-        "quora",
-        "system.placement.quora.v1",
-        DEFAULT_SYSTEM_TEMPLATE,
-        _source(
-            "Write a direct expert answer to the exact question in the Brief. Disclose the "
-            "brand relationship near the beginning, explain selection criteria before the "
-            "product, cite public sources where allowed, and avoid an advertorial tone."
-        ),
-    ),
-)
-
-
-_OUTPUT_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "additionalProperties": False,
-    "required": [
-        "content_json",
-        "rendered_text",
-        "claims",
-        "internal_evidence_refs",
-        "public_citation_refs",
-    ],
-    "properties": {
-        "content_json": {
-            "type": "object",
-            "description": (
-                "Channel-specific structured content including title, body, disclosure, "
-                "CTA, links, metadata and submission notes when applicable."
-            ),
-        },
-        "rendered_text": {"type": "string"},
-        "claims": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "additionalProperties": False,
-                "required": [
-                    "text",
-                    "kind",
-                    "support_status",
-                    "evidence_item_ids",
-                ],
-                "properties": {
-                    "text": {"type": "string"},
-                    "kind": {
-                        "type": "string",
-                        "enum": ["factual", "comparative", "experience", "non_factual"],
-                    },
-                    "support_status": {
-                        "type": "string",
-                        "enum": ["supported", "unsupported", "not_applicable"],
-                    },
-                    "evidence_item_ids": {
-                        "type": "array",
-                        "items": {"type": "string", "format": "uuid"},
-                    },
-                },
+    definitions: list[DefaultPromptDefinition] = []
+    task_keys: set[str] = set()
+    skill_keys: set[str] = set()
+    for index, raw_channel in enumerate(channels):
+        source = f"catalog.json.channels[{index}]"
+        if not isinstance(raw_channel, dict):
+            raise PromptFileError(f"{source} must be an object")
+        task_key = _required_string(raw_channel, "task_key", source=source)
+        skill_key = _required_string(raw_channel, "skill_key", source=source)
+        prompt_path = _required_string(raw_channel, "prompt", source=source)
+        if task_key in task_keys or skill_key in skill_keys:
+            raise PromptFileError(f"duplicate task_key or skill_key in {source}")
+        channel_instruction = render_prompt_text(
+            load_prompt_text(prompt_path, prompt_root=prompt_root),
+            {"test_only_consumer_voice": consumer_voice},
+            source=prompt_path,
+        )
+        prompt_source = render_prompt_text(
+            user_template,
+            {
+                "channel_instruction": channel_instruction,
+                "evidence_led_drafting_protocol": drafting_protocol,
             },
-        },
-        "internal_evidence_refs": {
-            "type": "array",
-            "items": {"type": "string", "format": "uuid"},
-        },
-        "public_citation_refs": {
-            "type": "array",
-            "items": {"type": "string", "format": "uuid"},
-        },
-    },
-}
+            source=user_template_path,
+        )
+        definitions.append(
+            DefaultPromptDefinition(task_key, skill_key, system_template, prompt_source)
+        )
+        task_keys.add(task_key)
+        skill_keys.add(skill_key)
+    return tuple(definitions)
 
 
-def default_output_schema() -> dict[str, Any]:
-    """Return an isolated schema so callers cannot mutate the catalog constant."""
-    return deepcopy(_OUTPUT_SCHEMA)
+def default_output_schema(*, prompt_root: Path | str | None = None) -> dict[str, Any]:
+    """Return a fresh output contract loaded alongside the editable prompt assets."""
+
+    schema = load_prompt_json("contracts/placement-output-schema.json", prompt_root=prompt_root)
+    if not isinstance(schema, dict):
+        raise PromptFileError("placement output schema must be a JSON object")
+    return schema
+
+
+def _catalog_manifest(*, prompt_root: Path | str | None = None) -> Mapping[str, object]:
+    manifest = load_prompt_json("catalog.json", prompt_root=prompt_root)
+    if not isinstance(manifest, dict):
+        raise PromptFileError("catalog.json must contain an object")
+    if manifest.get("version") != 1:
+        raise PromptFileError("catalog.json.version must be 1")
+    return manifest
+
+
+def _required_mapping(
+    values: Mapping[str, object], key: str, *, source: str
+) -> Mapping[str, object]:
+    value = values.get(key)
+    if not isinstance(value, dict):
+        raise PromptFileError(f"{source}.{key} must be an object")
+    return value
+
+
+def _required_string(values: Mapping[str, object], key: str, *, source: str) -> str:
+    value = values.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise PromptFileError(f"{source}.{key} must be a non-empty string")
+    return value.strip()
+
+
+# Compatibility snapshots for callers that import the historical constants. Runtime catalog
+# installation uses ``default_prompt_definitions`` and therefore reads files afresh.
+DEFAULT_SYSTEM_TEMPLATE = default_system_template()
+DEFAULT_PROMPT_DEFINITIONS = default_prompt_definitions()

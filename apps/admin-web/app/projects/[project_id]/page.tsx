@@ -6,6 +6,7 @@ import { WorkbenchShell } from "./features/project-workbench/WorkbenchShell";
 import { loadProjectInvitations } from "./invitationData";
 import { loadProjectMembers } from "./memberData";
 import { loadGeoWorkspace } from "./geo/features/geo/data";
+import { loadKnowledgeWorkspace } from "./knowledgeData";
 
 type SearchParams = { [key: string]: string | string[] | undefined };
 
@@ -21,11 +22,12 @@ export default async function ProjectDetailPage({
     searchParams || Promise.resolve({})
   ]);
   const activeTab = normalizeWorkbenchTab(queryValue(query, "tab"));
-  const [catalog, invitations, members, geoData] = await Promise.all([
+  const [catalog, invitations, members, geoData, knowledgeData] = await Promise.all([
     loadCatalog(projectId),
     loadProjectInvitations(projectId),
     loadProjectMembers(projectId),
-    activeTab === "geo" ? loadGeoWorkspace(projectId, query) : Promise.resolve(null)
+    activeTab === "geo" ? loadGeoWorkspace(projectId, query) : Promise.resolve(null),
+    activeTab === "knowledge" ? loadKnowledgeWorkspace(projectId, query) : Promise.resolve(null)
   ]);
   if (catalog.project.problem?.status === 401) redirect("/login");
   return <WorkbenchShell
@@ -33,6 +35,7 @@ export default async function ProjectDetailPage({
     catalog={catalog}
     geoData={geoData}
     invitations={invitations}
+    knowledgeData={knowledgeData}
     members={members}
     projectId={projectId}
   />;

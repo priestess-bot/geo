@@ -35,6 +35,7 @@ from geo_core.placements.domain import (
     canonical_json_bytes,
 )
 from geo_core.placements.generation_worker import parse_generated_placement, validate_output_schema
+from geo_core.placements.runtime_prompts import generation_system_prompt
 from geo_core.placements.url_verifier import (
     PermanentVerificationError,
     PublicUrlVerifier,
@@ -120,14 +121,7 @@ class GenerationHandler:
             messages=(
                 {
                     "role": "system",
-                    "content": (
-                        "Return JSON matching the frozen output schema. Use only the "
-                        "brief, destination policy and evidence in this prompt bundle. "
-                        "Return JSON only. Keep internal_evidence_refs separate from "
-                        "public_citation_refs; public refs must obey the frozen disclosure, "
-                        "attribution and quotation metadata. Frozen output schema: "
-                        f"{serialized_schema}"
-                    ),
+                    "content": generation_system_prompt(serialized_schema),
                 },
                 {"role": "system", "content": claim.system_prompt},
                 {"role": "user", "content": claim.rendered_prompt},

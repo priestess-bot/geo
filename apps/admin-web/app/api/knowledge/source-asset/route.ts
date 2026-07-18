@@ -4,16 +4,15 @@ import { actorHeaders, apiBase } from "../../../runtime";
 
 export async function GET(request: NextRequest) {
   const projectId = request.nextUrl.searchParams.get("project_id")?.trim() || "";
-  const sourceAssetId = request.nextUrl.searchParams.get("source_asset_id")?.trim() || "";
-  if (!projectId || !sourceAssetId) {
-    return NextResponse.json({ detail: "project_id and source_asset_id are required" }, { status: 400 });
+  const sourceId = request.nextUrl.searchParams.get("source_id")?.trim() || "";
+  if (!projectId || !sourceId) {
+    return NextResponse.json({ detail: "project_id and source_id are required" }, { status: 400 });
   }
 
   const upstreamUrl = new URL(
-    `/v1/knowledge/source-assets/runtime/${encodeURIComponent(sourceAssetId)}/download`,
+    `/v1/projects/${encodeURIComponent(projectId)}/knowledge/sources/${encodeURIComponent(sourceId)}/download`,
     apiBase()
   );
-  upstreamUrl.searchParams.set("project_id", projectId);
   const upstream = await fetch(upstreamUrl, {
     headers: await actorHeaders(),
     cache: "no-store"

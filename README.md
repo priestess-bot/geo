@@ -37,6 +37,14 @@ make dev-down
 make ci
 ```
 
+首次建立 ADVINSYS Australia 演示项目时，在开发栈健康后执行：
+
+```bash
+uv run python scripts/provision_advinsys_project.py
+```
+
+该命令可重复执行，不会复制项目对象。它为当前开发 owner 创建或复用项目，初始化品牌、三款产品、AU 市场、九个渠道、三条 Campaign、每条 Campaign 的九个渠道任务、六个知识来源、四条官方 Evidence 和九平台 Prompt Catalog。项目入口为脚本输出的 `project_id`；默认开发数据对应 `http://localhost:3001/projects/983fa88d-097a-4252-9ab3-fc4371799c55`。
+
 开发 Key 只允许放在被 Git 忽略的只读文件中。不得把 DeepSeek Key 写入 `.env`、请求体、日志、截图或提交记录。
 
 ## 运行架构
@@ -61,6 +69,7 @@ flowchart LR
 - MinIO 保存 Evidence、Prompt Bundle、导出包等不可变工件。
 - DeepSeek 只由 Worker 调用；API 不接触模型 Key。
 - Customer API 不注册内部审核、Prompt、Job、成员或工程路由。
+- Admin Web 的“知识库”支持 URL、文本、TXT、Markdown、CSV、JSON、HTML、PDF 和 DOCX；来源通过接收、解析、清洗、分块、事实提取和质检六阶段 Durable Job 后才可进入 Evidence 治理。
 
 完整业务链为：
 
@@ -68,7 +77,7 @@ flowchart LR
 Project Catalog
 -> Campaign + frozen Monitoring Protocol
 -> baseline observations
--> nine governed Destinations + nine Opportunities
+-> nine governed Destinations + nine Opportunities per Campaign
 -> Brief Version
 -> Evidence Pack Attempt
 -> Prompt Release + frozen Prompt Bundle
@@ -96,6 +105,7 @@ packages/
   geo_core/
     geo_core/         Domain、Application Service、Port、PostgreSQL/MinIO Adapter
   web/                双 Web 共享的 auth、API client、types 与 UI
+prompt/               所有模型提示词、九渠道目录和默认输出合同的唯一文件真源
 infra/
   db/alembic/         唯一数据库基线、版本与 checksum
   docker-compose.yml  完整开发栈
@@ -114,6 +124,7 @@ docs/                 当前架构、ADR、操作手册、工程治理和两份�
 - 每个选中渠道都创建持久投放任务；政策未审核或证据不足时任务保持可见并显示阻断原因。
 - `owned_site`、`amazon`、`youtube`、`tiktok`、`instagram`、`productreview`、`reddit`、`ozbargain`、`quora` 是九个标准渠道。
 - Prompt/Skill 可独立编辑和发布；每次生成冻结 Prompt Bundle，不把提示词硬编码进工作流。
+- 仓库默认提示词统一位于 [`prompt/`](prompt/README.md)；同步只创建新 Release，不覆盖当前绑定。
 - Evidence Pack 重试创建新 Attempt，旧 Attempt 永不原地重建。
 - Package Version 不可变；人工编辑创建新版本并重新执行 Claim QA 和审核。
 - `submitted_for_review_by` 与 `reviewer_id` 必须不同，批准分数不得低于 85。
@@ -121,12 +132,24 @@ docs/                 当前架构、ADR、操作手册、工程治理和两份�
 - 公开 URL 验证成功后才计入已验证覆盖，并进入 T+28/T+56/T+84 测量。
 - 项目内关系同时使用复合外键和 RLS；RLS 不能替代关系完整性。
 
+## 下一阶段发展目标
+
+以下能力已明确列为当前效果优先原型之后的必做目标，不因本阶段采用人工流程而取消：
+
+1. **完整连接器平台（F-006）**：建立统一的连接定义、项目级授权、secret reference、同步游标、限流重试、原始工件、schema/version、freshness 和运行状态；优先交付 GSC、GA4 与官方 Google/Bing AI 报告文件导入，再按价值扩展 Bing Webmaster、Clarity、CRM、CMS 和 warehouse。
+2. **完整跨引擎观测平台（F-009）**：建设 Sampling Suite/Run/Task、官方 API adapter、官方报告导入、受控人工 UI 抽样、运行进度和不可变原始工件；严格区分 official report、manual UI、provider API、proxy grounded API 和 synthetic。没有公开合规 API 的消费者 AI surface 不以 UI 抓取补齐。
+3. **完整实验统计与告警平台（F-021）**：实现自动重复采样、按 engine/model/source/locale/region/query cluster 分层、区间、胜平负、最差结果、跨查询负收益、模型/来源漂移、阈值与基线告警及处置记录；样本不足不得形成稳定结论，不同来源不得合并分母。
+4. **业务结果与 AI referral 归因（F-007）**：串联 AI referrer/UTM、landing page、session、conversion/key event、qualified lead、CRM stage 和 revenue，并回溯到 Campaign、问题、内容、engine/source mode 与版本；明确 last-click、assisted attribution、零点击影响和非因果边界。
+5. **可解释建议与不修改机制（F-020）**：用问题、证据等级、影响链、页面/问题簇、风险、工作量、业务价值、置信度和验证计划形成可回溯建议；支持 blocker、gap、experiment、optional、`no_change` 和 `insufficient_evidence`，并保留人工审批。
+
+具体范围、调研结论和验收边界见 [GEO 效果优先整改决策记录](docs/audits/GEO-effect-first-remediation-decisions-2026-07-18.md)。
+
 ## 文档与质量门禁
 
 - [文档索引](docs/README.md)
 - [当前系统架构](docs/architecture/system-overview.md)
 - [GEO v3 运行与验收合同](docs/GEO-v3-%E5%85%A8%E6%B5%81%E7%A8%8B%E8%BF%90%E8%A1%8C%E6%89%8B%E5%86%8C.md)
-- [逐步全流程操作手册](docs/operations/geo-full-flow-runbook.md)
+- [ADVINSYS GEO 独立全流程操作手册](docs/operations/geo-ui-operator-guide.md)（[PDF](docs/operations/ADVINSYS-GEO-%E5%85%A8%E6%B5%81%E7%A8%8B%E9%83%A8%E7%BD%B2%E8%BF%90%E7%BB%B4%E6%89%8B%E5%86%8C.pdf)）
 - [生产部署](docs/operations/production-runbook.md)
 - [备份与恢复](docs/operations/backup-restore.md)
 

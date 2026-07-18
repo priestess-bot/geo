@@ -15,17 +15,32 @@ function isPackageClaimEdit(item: unknown): item is PackageClaimEdit {
 }
 
 export async function createBrief(_state: ActionResult, form: FormData): Promise<ActionResult> {
-  const projectId = value(form, "project_id"), goals = jsonObject(form, "goals"), constraints = jsonObject(form, "constraints");
+  const projectId = value(form, "project_id"), structured = !value(form, "goals");
+  const goals = structured ? {
+    audience: value(form, "audience"), intent: value(form, "intent"),
+    deliverable: value(form, "deliverable"), value_propositions: lines(form, "value_propositions")
+  } : jsonObject(form, "goals");
+  const constraints = structured ? {
+    unsupported_superlatives: checked(form, "unsupported_superlatives"),
+    public_citations_required: checked(form, "public_citations_required"),
+    commercial_disclosure_required: checked(form, "commercial_disclosure_required"),
+    maximum_words: numberValue(form, "maximum_words", 500)
+  } : jsonObject(form, "constraints");
   if (isActionError(goals)) return goals; if (isActionError(constraints)) return constraints;
   const api = await client(), description = value(form, "consumer_experience_description");
   return finish(projectId, await api.createBriefVersion(projectId, value(form, "opportunity_id"), {
     primary_brand_entity_id: value(form, "primary_brand_entity_id"), base_version_id: value(form, "base_version_id") || null,
-    allowed_subject_entity_ids: lines(form, "allowed_subject_entity_ids"), compared_entity_ids: lines(form, "compared_entity_ids"),
+    allowed_subject_entity_ids: multiValues(form, "allowed_subject_entity_ids"),
+    compared_entity_ids: multiValues(form, "compared_entity_ids"),
     goals, constraints, consumer_experience: description ? {
       description, source: value(form, "consumer_experience_source"), usage_rights: value(form, "consumer_experience_usage_rights"),
       disclosure: value(form, "consumer_experience_disclosure")
     } : null
   }, guards(form)), "Brief 新版本已创建");
+}
+
+function multiValues(form: FormData, field: string): string[] {
+  return form.getAll(field).flatMap((item) => String(item).split(/\r?\n|,/)).map((item) => item.trim()).filter(Boolean);
 }
 
 export async function buildEvidence(_state: ActionResult, form: FormData): Promise<ActionResult> {
@@ -84,8 +99,15 @@ export async function createGenerationJob(_state: ActionResult, form: FormData):
 
 export async function createPromptSimulation(_state: ActionResult, form: FormData): Promise<ActionResult> {
   const projectId = value(form, "project_id");
-  const goals = jsonObject(form, "goals");
-  const constraints = jsonObject(form, "constraints");
+  const structured = !value(form, "goals");
+  const goals = structured ? {
+    intent: value(form, "intent"), audience: value(form, "audience"), deliverable: value(form, "deliverable")
+  } : jsonObject(form, "goals");
+  const constraints = structured ? {
+    test_only: true,
+    unsupported_superlatives: checked(form, "unsupported_superlatives"),
+    public_citations_required: checked(form, "public_citations_required")
+  } : jsonObject(form, "constraints");
   const variables = jsonObject(form, "variables");
   if (isActionError(goals)) return goals;
   if (isActionError(constraints)) return constraints;
@@ -201,7 +223,10 @@ export async function verifySubmission(_state: ActionResult, form: FormData): Pr
 }
 
 export async function createMeasurement(_state: ActionResult, form: FormData): Promise<ActionResult> {
-  const projectId = value(form, "project_id"), metrics = jsonObject(form, "metrics");
+  const projectId = value(form, "project_id"), metrics = value(form, "metrics") ? jsonObject(form, "metrics") : {
+    product_mentioned: checked(form, "product_mentioned"),
+    recommendation_present: checked(form, "recommendation_present")
+  };
   if (isActionError(metrics)) return metrics;
   const api = await client();
   return finish(projectId, await api.createMeasurement(projectId, value(form, "submission_id"), {

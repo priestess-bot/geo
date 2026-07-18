@@ -61,12 +61,35 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="write artifacts to configured S3-compatible storage instead of memory",
     )
+    parser.add_argument(
+        "--environment",
+        choices=("staging", "test"),
+        required=True,
+        help="controlled acceptance is refused outside staging/test",
+    )
+    parser.add_argument(
+        "--confirm-controlled-simulation",
+        action="store_true",
+        help="acknowledge that generated URLs, observations and time windows are simulated",
+    )
+    parser.add_argument(
+        "--manifest",
+        type=Path,
+        default=Path("docs/target_company/advinsys-geo-project.json"),
+    )
+    parser.add_argument(
+        "--customer-invitation-output",
+        type=Path,
+        help="write a mode-0600 staging-only browser credential; delete it after capture",
+    )
     return parser
 
 
 def main() -> int:
     args = _parser().parse_args()
     try:
+        if not args.confirm_controlled_simulation:
+            raise ValueError("--confirm-controlled-simulation is required")
         config = AcceptanceConfig(
             app_database_url=args.app_database_url,
             worker_database_url=args.worker_database_url,
@@ -75,6 +98,9 @@ def main() -> int:
             live_deepseek=args.live_deepseek,
             deepseek_key_file=args.deepseek_key_file,
             runtime_object_store=args.runtime_object_store,
+            environment=args.environment,
+            target_manifest=args.manifest,
+            customer_invitation_output=args.customer_invitation_output,
         )
         result = run_acceptance(config)
     except (AssertionError, RuntimeError, ValueError, psycopg.Error) as error:

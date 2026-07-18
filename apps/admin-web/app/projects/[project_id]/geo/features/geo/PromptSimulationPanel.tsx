@@ -71,9 +71,12 @@ export function PromptSimulationPanel({ projectId, data, catalog }: {
               </option>)}
             </select>
           </label>
-          <label>生成目标 JSON<textarea name="goals" required defaultValue={'{"intent":"product recommendation","audience":"Australian consumers","deliverable":"channel-specific draft"}'} /></label>
-          <label>约束 JSON<textarea name="constraints" defaultValue={'{"test_only":true,"unsupported_superlatives":false,"public_citations_required":true}'} /></label>
-          <label>Prompt 客户变量 JSON<textarea name="variables" defaultValue="{}" /></label>
+          <label>测试目标<select name="intent" defaultValue="product recommendation"><option value="product recommendation">商品推荐</option><option value="product comparison">产品比较</option><option value="buying guide">购买指南</option></select></label>
+          <label>模拟受众<input name="audience" defaultValue="Australian consumers" required /></label>
+          <label>输出形式<select name="deliverable" defaultValue="channel-specific draft"><option value="channel-specific draft">渠道适配文案</option><option value="short review">短评</option><option value="community post">社区帖子</option></select></label>
+          <label className={styles.check}><input type="checkbox" name="public_citations_required" defaultChecked />公开事实需要引用</label>
+          <label className={styles.check}><input type="checkbox" name="unsupported_superlatives" />允许无证据最高级表述</label>
+          <input type="hidden" name="variables" value="{}" />
           <details>
             <summary>模型设置</summary>
             <div className={styles.formInset}>

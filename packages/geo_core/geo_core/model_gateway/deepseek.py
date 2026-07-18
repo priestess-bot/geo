@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 import hashlib
+from http.client import HTTPException
 import json
 from pathlib import Path
 from typing import Protocol
@@ -110,7 +111,7 @@ class DeepSeekGateway:
                     f"DeepSeek temporarily rejected the request with HTTP {exc.code}"
                 ) from exc
             raise ModelGatewayError(f"DeepSeek rejected the request with HTTP {exc.code}") from exc
-        except (TimeoutError, URLError, ConnectionError) as exc:
+        except (TimeoutError, URLError, ConnectionError, HTTPException) as exc:
             raise RetryableModelGatewayError("DeepSeek request could not be completed") from exc
         output, finish_reason = _extract_output(response.body)
         canonical = json.dumps(
@@ -174,18 +175,18 @@ def default_deepseek_capability_registry() -> ProviderCapabilityRegistry:
 def _extract_output(body: dict[str, object]) -> tuple[dict[str, object], str | None]:
     choices = body.get("choices")
     if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
-        raise ModelGatewayError("DeepSeek response has no choices")
+        raise RetryableModelGatewayError("DeepSeek response has no choices")
     choice: dict[str, object] = choices[0]
     message = choice.get("message")
     if not isinstance(message, dict):
-        raise ModelGatewayError("DeepSeek response has no message")
+        raise RetryableModelGatewayError("DeepSeek response has no message")
     content = message.get("content")
     if not isinstance(content, str) or not content.strip():
-        raise ModelGatewayError("DeepSeek response content is empty")
+        raise RetryableModelGatewayError("DeepSeek response content is empty")
     try:
         output = json.loads(content)
     except json.JSONDecodeError as exc:
-        raise ModelGatewayError("DeepSeek response is not valid JSON") from exc
+        raise RetryableModelGatewayError("DeepSeek response is not valid JSON") from exc
     if not isinstance(output, dict):
         raise ModelGatewayError("DeepSeek response JSON must be an object")
     return output, _optional_text(choice.get("finish_reason"))

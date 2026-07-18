@@ -1,109 +1,99 @@
-import Link from "next/link";
 import { ActionForm } from "./ActionForm";
 import { bindPromptTask, buildEvidence, createBrief, createPromptBundle, createPromptRelease, createPromptSkill, installDefaultPromptCatalog } from "./placement-actions";
-import { Empty, HiddenProject, ResourceBlock, SectionHeader, ShortId, Status, geoHref } from "./common";
+import { CommandPanel, Empty, geoHref, HiddenProject, ResourceBlock, Status, TechnicalInfo } from "./common";
+import { channelLabel, entityName } from "./display";
 import type { GeoWorkspaceData } from "./model";
+import type { CatalogLoadResult } from "../../../catalogTypes";
 import styles from "./GeoWorkspace.module.css";
-import { DEFAULT_OUTPUT_SCHEMA, DEFAULT_SYSTEM_PROMPT, DEFAULT_USER_PROMPT, PROMPT_TASK_KEYS } from "./prompt-defaults";
+import { DEFAULT_OUTPUT_SCHEMA, PROMPT_TASK_KEYS } from "./prompt-defaults";
 
-export function BriefPromptPanel({ projectId, data }: { projectId: string; data: GeoWorkspaceData }) {
+const MODEL_POLICY_HASH = "18d6221a72c4f929f2b3e04f089f7c72ec9d32ad811e1e1443cd34dcc8df61b7";
+
+export function BriefPromptPanel({ projectId, data, catalog, mode }: {
+  projectId: string; data: GeoWorkspaceData; catalog: CatalogLoadResult; mode: "brief" | "evidence";
+}) {
   const { selection } = data;
   const opportunity = data.opportunities.data.find((item) => item.id === selection.opportunityId);
-  const brief = data.briefs.data.find((item) => item.id === selection.briefVersionId);
-  const readyAttempt = data.attempts.data.find((item) => item.id === selection.attemptId && item.status === "ready");
+  const brief = data.briefs.data.find((item) => item.id === selection.briefVersionId) || data.briefs.data[0];
+  const readyAttempt = data.attempts.data.find((item) => item.id === selection.attemptId && item.status === "ready") || data.attempts.data.find((item) => item.status === "ready");
   const release = data.releases.data[data.releases.data.length - 1];
-  return <div className={styles.workspace}>
-    <div className={styles.columns}>
-      <div className={styles.panel}>
-        <SectionHeader eyebrow="1 · Content contract" title="Brief 版本" />
-        <ResourceBlock resource={data.briefs}>{(items) => items.length ? <div className={styles.list}>{items.map((item) => <Link key={item.id}
-          className={item.id === selection.briefVersionId ? styles.selectedRow : styles.row}
-          href={geoHref(projectId, selection, { brief_version_id: item.id, attempt_id: undefined, bundle_id: undefined })}>
-          <span className={styles.rowHeader}><strong>Brief v{item.version_number}</strong><ShortId value={item.id} /></span>
-          <span className={styles.meta}>hash {item.content_hash.slice(0, 12)} · base <ShortId value={item.base_version_id} /></span>
-        </Link>)}</div> : <Empty>资格化机会后创建首个 Brief。</Empty>}</ResourceBlock>
-        <ActionForm action={createBrief} title="创建 Brief 新版本" submitLabel="冻结 Brief" disabled={!opportunity}>
-          <HiddenProject projectId={projectId} /><input type="hidden" name="opportunity_id" value={opportunity?.id || ""} />
-          <input type="hidden" name="base_version_id" value={brief?.id || ""} />
-          <label>主品牌实体 ID<input name="primary_brand_entity_id" required placeholder="UUID" /></label>
-          <label>允许事实主体 ID<textarea name="allowed_subject_entity_ids" placeholder="每行一个品牌、产品或市场实体 UUID" /></label>
-          <label>比较实体 ID<textarea name="compared_entity_ids" placeholder="每行一个竞品实体 UUID" /></label>
-          <label>目标 JSON<textarea name="goals" required defaultValue={'{"audience":"Australian consumers","intent":"product recommendation","deliverable":"channel-ready copy"}'} /></label>
-          <label>约束 JSON<textarea name="constraints" defaultValue={'{"unsupported_superlatives":false,"public_citations_required":true}'} /></label>
-          <label>真实消费者使用描述<textarea name="consumer_experience_description" placeholder="可选：一段真实消费者使用描述，不虚构人物或体验" /></label>
-          <label>描述来源<input name="consumer_experience_source" placeholder="访谈、已授权评论或客服记录" /></label>
-          <div className={styles.inline}><label>使用权<input name="consumer_experience_usage_rights" placeholder="public_rewrite_authorized" /></label><label>披露<input name="consumer_experience_disclosure" placeholder="customer statement, edited for clarity" /></label></div>
-        </ActionForm>
-      </div>
-      <div className={styles.panel}>
-        <SectionHeader eyebrow="2 · Immutable evidence" title="Evidence Pack Attempts" />
-        <ResourceBlock resource={data.attempts}>{(items) => items.length ? <div className={styles.list}>{items.map((item) => <Link key={item.id}
-          className={item.id === selection.attemptId ? styles.selectedRow : styles.row}
-          href={geoHref(projectId, selection, { attempt_id: item.id })}>
-          <span className={styles.rowHeader}><strong>Attempt {item.attempt_number}</strong><Status value={item.status} /></span>
-          <span className={styles.meta}><span>{item.pack_hash?.slice(0, 12) || "尚无 pack hash"}</span><span>{item.failure_reason || "不可变快照"}</span></span>
-        </Link>)}</div> : <Empty>尚无 Evidence Pack Attempt。</Empty>}</ResourceBlock>
-        <ActionForm action={buildEvidence} submitLabel="创建构建 Attempt" disabled={!brief}>
-          <HiddenProject projectId={projectId} /><input type="hidden" name="brief_version_id" value={brief?.id || ""} />
-        </ActionForm>
-        {data.attempt.data ? <div className={styles.keyValues}><div><span className={styles.meta}>状态</span><br /><Status value={data.attempt.data.status} /></div><div><span className={styles.meta}>Pack hash</span><br /><ShortId value={data.attempt.data.pack_hash} /></div><div><span className={styles.meta}>Attempt</span><br /><strong>{data.attempt.data.attempt_number}</strong></div></div> : null}
-        {data.job.data ? <div className={styles.row}>
-          <span className={styles.rowHeader}><strong>Evidence Job <ShortId value={data.job.data.id} /></strong><Status value={data.job.data.status} /></span>
-          <span className={styles.meta}>{data.job.data.result_ref || data.job.data.error_code || "等待 Evidence Pack finalize"}</span>
-        </div> : null}
-        <h3>证据条目</h3>
-        <ResourceBlock resource={data.evidenceItems}>{(items) => items.length ? <div className={styles.list}>{items.map((item) => <div className={styles.row} key={item.id}>
-          <span className={styles.rowHeader}><strong>{item.item_type} · {item.subject_role}</strong><Status value={item.public_disclosure_allowed ? "public" : "internal"} /></span>
-          <span className={styles.meta}><span>{item.citation_label || item.public_source_title || "内部证据"}</span><span>{item.usage_rights}</span><span>hash {item.snapshot_hash.slice(0, 10)}</span></span>
-          {item.public_source_url ? <a href={item.public_source_url} target="_blank" rel="noreferrer">{item.public_source_url}</a> : null}
-        </div>)}</div> : <Empty>选择 Attempt 后查看内部证据和公开 Citation 属性。</Empty>}</ResourceBlock>
-      </div>
-    </div>
-    <div className={styles.threeColumns}>
-      <div className={styles.panel}>
-        <SectionHeader eyebrow="3 · Editable source" title="Prompt Skills" />
-        <ActionForm action={installDefaultPromptCatalog} submitLabel="安装九平台默认 Prompt"><HiddenProject projectId={projectId} /></ActionForm>
-        <ResourceBlock resource={data.skills}>{(items) => items.length ? <div className={styles.list}>{items.map((item) => <Link key={item.id}
-          className={item.id === selection.skillId ? styles.selectedRow : styles.row}
-          href={geoHref(projectId, selection, { skill_id: item.id })}><span className={styles.rowHeader}><strong>{item.skill_key}</strong><Status value={item.status} /></span></Link>)}</div> : <Empty>先建立 Prompt Skill。</Empty>}</ResourceBlock>
-        <ActionForm action={createPromptSkill} title="新建 Skill" submitLabel="创建"><HiddenProject projectId={projectId} /><label>Skill Key<input name="skill_key" required placeholder="placement.productreview.review" /></label></ActionForm>
-      </div>
-      <div className={styles.panel}>
-        <SectionHeader eyebrow="4 · Compiled release" title="Prompt Releases" />
-        <ResourceBlock resource={data.releases}>{(items) => items.length ? <div className={styles.list}>{items.map((item) => <div className={styles.row} key={item.id}><span className={styles.rowHeader}><strong>Release {item.release_number}</strong><ShortId value={item.id} /></span><span className={styles.meta}>hash {item.release_hash.slice(0, 12)} · {item.compiler_version}</span><details><summary>查看不可变 Prompt</summary><p className={styles.meta}>Source</p><pre className={styles.code}>{item.source_text}</pre><p className={styles.meta}>System</p><pre className={styles.code}>{item.system_template}</pre><p className={styles.meta}>User</p><pre className={styles.code}>{item.user_template}</pre><p className={styles.meta}>Variables / Output schema</p><pre className={styles.code}>{JSON.stringify({ variable_schema: item.variable_schema, output_schema: item.output_schema }, null, 2)}</pre></details></div>)}</div> : <Empty>修改 Prompt 时创建新 Release，旧 Bundle 不变。</Empty>}</ResourceBlock>
-        <ActionForm action={createPromptRelease} title="编译新 Release" submitLabel="创建 Release" disabled={!selection.skillId}>
-          <HiddenProject projectId={projectId} /><input type="hidden" name="skill_id" value={selection.skillId || ""} />
-          <label>Skill 源<textarea name="source" required defaultValue={DEFAULT_USER_PROMPT} /></label>
-          <label>System Prompt<textarea name="system_template" required defaultValue={DEFAULT_SYSTEM_PROMPT} /></label>
-          <label>User Prompt<textarea name="user_template" required defaultValue={DEFAULT_USER_PROMPT} /></label>
-          <label>输出 Schema JSON<textarea name="output_schema" required defaultValue={DEFAULT_OUTPUT_SCHEMA} /></label>
-          <label>客户端变量<textarea name="client_variable_names" placeholder="仅填写 User Prompt 中除 brief/evidence/destination_policy 外的变量，每行一个" /></label>
-        </ActionForm>
-      </div>
-      <div className={styles.panel}>
-        <SectionHeader eyebrow="5 · Runtime selection" title="任务绑定与 Bundle" />
-        <ResourceBlock resource={data.bindings}>{(items) => items.length ? <div className={styles.list}>{items.map((item) => <div className={styles.row} key={item.task_key}><strong>{item.task_key}</strong><span className={styles.meta}>Release <ShortId value={item.template_release_id} /></span></div>)}</div> : <Empty>尚无任务绑定。</Empty>}</ResourceBlock>
-        <ActionForm action={bindPromptTask} title="绑定任务" submitLabel="保存绑定" disabled={!release}>
-          <HiddenProject projectId={projectId} /><label>Task Key<select name="task_key" required defaultValue="owned_site">{PROMPT_TASK_KEYS.map((key) => <option key={key} value={key}>{key}</option>)}</select></label>
-          <label>Release<select name="template_release_id" required defaultValue={release?.id || ""}>{data.releases.data.map((item) => <option key={item.id} value={item.id}>Release {item.release_number} · {item.release_hash.slice(0, 8)}</option>)}</select></label>
-        </ActionForm>
-        <ActionForm action={createPromptBundle} title="冻结 Prompt Bundle" submitLabel="创建 Bundle" disabled={!brief || !readyAttempt || !release}>
-          <HiddenProject projectId={projectId} /><input type="hidden" name="brief_version_id" value={brief?.id || ""} />
-          <label>Ready Evidence Attempt<select name="evidence_pack_attempt_id" required defaultValue={readyAttempt?.id || ""}>{data.attempts.data.filter((item) => item.status === "ready").map((item) => <option key={item.id} value={item.id}>Attempt {item.attempt_number}</option>)}</select></label>
-          <label>Release<select name="template_release_id" required defaultValue={release?.id || ""}>{data.releases.data.map((item) => <option key={item.id} value={item.id}>Release {item.release_number}</option>)}</select></label>
-          <label>模型策略 Hash<input name="model_policy_hash" required placeholder="sha256 policy hash" /></label>
-          <label>变量 JSON<textarea name="variables" required defaultValue="{}" /></label>
-        </ActionForm>
-      </div>
-    </div>
-    <div className={styles.panel}>
-      <SectionHeader eyebrow="Immutable runtime artifact" title="Prompt Bundles" />
-      <ResourceBlock resource={data.bundles}>{(items) => items.length ? <div className={styles.list}>{items.map((item) => <Link key={item.id}
-        className={item.id === selection.bundleId ? styles.selectedRow : styles.row} href={geoHref(projectId, selection, { bundle_id: item.id })}>
-        <span className={styles.rowHeader}><strong>Bundle <ShortId value={item.id} /></strong><Status value={item.artifact_status} /></span>
-        <span className={styles.meta}><span>hash {item.bundle_hash.slice(0, 12)}</span><span>{item.storage_uri || item.storage_key}</span></span>
-      </Link>)}</div> : <Empty>Evidence Ready 与 Release 均存在后才能冻结 Bundle。</Empty>}</ResourceBlock>
-      {data.bundle.data ? <pre className={styles.code}>{JSON.stringify(data.bundle.data.manifest, null, 2)}</pre> : null}
-    </div>
+  return mode === "brief"
+    ? <BriefStep projectId={projectId} data={data} catalog={catalog} opportunityId={opportunity?.id} brief={brief} />
+    : <EvidenceStep projectId={projectId} data={data} brief={brief} readyAttempt={readyAttempt} release={release} />;
+}
+
+function BriefStep({ projectId, data, catalog, opportunityId, brief }: {
+  projectId: string; data: GeoWorkspaceData; catalog: CatalogLoadResult; opportunityId?: string; brief: GeoWorkspaceData["briefs"]["data"][number] | undefined;
+}) {
+  const brands = catalog.entities.data.filter((item) => item.entity_type === "brand");
+  const subjects = catalog.entities.data.filter((item) => item.entity_type !== "competitor");
+  const competitors = catalog.entities.data.filter((item) => item.entity_type === "competitor");
+  return <div className={styles.columns}>
+    <section className={styles.panel}>
+      <div className={styles.sectionHeader}><div><p>当前内容要求</p><h2>Brief 版本</h2></div><span className={styles.meta}>{data.briefs.data.length} 个版本</span></div>
+      <ResourceBlock resource={data.briefs}>{(items) => items.length ? <div className={styles.list}>{items.map((item) => <div key={item.id} className={item.id === data.selection.briefVersionId ? styles.selectedRow : styles.row}><a href={geoHref(projectId, data.selection, { brief_version_id: item.id, attempt_id: undefined, bundle_id: undefined })}><span className={styles.rowHeader}><strong>版本 {item.version_number}</strong>{item.id === brief?.id ? <Status value="active" /> : null}</span></a><TechnicalInfo><code>{item.id}</code><code>{item.content_hash}</code></TechnicalInfo></div>)}</div> : <Empty>先创建一份内容要求，系统才会为当前渠道准备证据。</Empty>}</ResourceBlock>
+      {brief ? <><h3>已冻结目标</h3><div className={styles.content}>{briefSummary(brief.goals)}</div><a className="button" href={geoHref(projectId, data.selection, { placement_stage: "evidence", brief_version_id: brief.id })}>继续选择证据</a></> : null}
+    </section>
+    <section className={styles.panel}>
+      <div className={styles.sectionHeader}><div><p>{brief ? "创建修订版本" : "第一步"}</p><h2>填写内容要求</h2></div></div>
+      <ActionForm action={createBrief} submitLabel={brief ? "保存新版本" : "保存内容要求"} disabled={!opportunityId}>
+        <HiddenProject projectId={projectId} /><input type="hidden" name="opportunity_id" value={opportunityId || ""} /><input type="hidden" name="base_version_id" value={brief?.id || ""} />
+        <label>品牌<select name="primary_brand_entity_id" required defaultValue={brands[0]?.id || ""}>{brands.map((item) => <option key={item.id} value={item.id}>{item.canonical_name}</option>)}</select></label>
+        <label>目标受众<input name="audience" required defaultValue="Australian consumers" placeholder="例如：澳大利亚中型草坪家庭" /></label>
+        <label>内容目标<select name="intent" defaultValue="product recommendation"><option value="product recommendation">商品推荐</option><option value="product comparison">产品比较</option><option value="buying guide">购买指南</option><option value="expert answer">专业问答</option></select></label>
+        <label>交付内容<select name="deliverable" defaultValue="channel-ready copy"><option value="channel-ready copy">适合当前渠道发布的文案</option><option value="article draft">文章草稿</option><option value="video script">视频脚本</option><option value="merchant response">商家回复</option></select></label>
+        <label>需要表达的卖点<textarea name="value_propositions" placeholder="每行一个卖点；生成时仍必须有证据支持" /></label>
+        <label>允许使用的事实主体<select name="allowed_subject_entity_ids" multiple size={Math.min(6, Math.max(3, subjects.length))}>{subjects.map((item) => <option key={item.id} value={item.id}>{item.canonical_name}</option>)}</select></label>
+        {competitors.length ? <label>比较对象<select name="compared_entity_ids" multiple size={Math.min(5, competitors.length)}>{competitors.map((item) => <option key={item.id} value={item.id}>{item.canonical_name}</option>)}</select></label> : null}
+        <fieldset><legend>生成约束</legend><label className={styles.check}><input type="checkbox" name="public_citations_required" defaultChecked />公开事实必须带可公开引用来源</label><label className={styles.check}><input type="checkbox" name="commercial_disclosure_required" defaultChecked />需要时披露品牌或商业关系</label><label className={styles.check}><input type="checkbox" name="unsupported_superlatives" />允许无证据的最高级表述</label><label>字数上限<input name="maximum_words" type="number" min="50" max="5000" defaultValue="500" /></label></fieldset>
+        <details><summary>消费者使用描述（可选）</summary><div className={styles.formInset}><label>真实使用描述<textarea name="consumer_experience_description" placeholder="粘贴一段已获授权的真实消费者使用描述" /></label><label>来源<input name="consumer_experience_source" placeholder="访谈、授权评论或客服记录" /></label><div className={styles.inline}><label>使用权<input name="consumer_experience_usage_rights" defaultValue="public_rewrite_authorized" /></label><label>披露方式<input name="consumer_experience_disclosure" defaultValue="customer statement, edited for clarity" /></label></div></div></details>
+      </ActionForm>
+    </section>
   </div>;
+}
+
+function EvidenceStep({ projectId, data, brief, readyAttempt, release }: {
+  projectId: string; data: GeoWorkspaceData; brief: GeoWorkspaceData["briefs"]["data"][number] | undefined;
+  readyAttempt: GeoWorkspaceData["attempts"]["data"][number] | undefined; release: GeoWorkspaceData["releases"]["data"][number] | undefined;
+}) {
+  return <div className={styles.workspace}>
+    {!brief ? <div className={styles.notice}><span>需要先完成内容要求。</span><a href={geoHref(projectId, data.selection, { placement_stage: "brief" })}>返回第一步</a></div> : null}
+    <div className={styles.columns}>
+      <section className={styles.panel}><div className={styles.sectionHeader}><div><p>不可变证据快照</p><h2>证据准备</h2></div>{readyAttempt ? <Status value="ready" /> : null}</div>
+        <ResourceBlock resource={data.attempts}>{(items) => items.length ? <div className={styles.list}>{items.map((item) => <div key={item.id} className={item.id === data.selection.attemptId ? styles.selectedRow : styles.row}><a href={geoHref(projectId, data.selection, { attempt_id: item.id })}><span className={styles.rowHeader}><strong>第 {item.attempt_number} 次构建</strong><Status value={item.status} /></span><span className={styles.meta}>{item.failure_reason || "已冻结所用来源与版本"}</span></a><TechnicalInfo><code>{item.id}</code><code>{item.pack_hash || "pending"}</code></TechnicalInfo></div>)}</div> : <Empty>尚未为当前 Brief 构建证据。</Empty>}</ResourceBlock>
+        <ActionForm action={buildEvidence} submitLabel={data.attempts.data.length ? "重新构建证据" : "构建证据"} disabled={!brief}><HiddenProject projectId={projectId} /><input type="hidden" name="brief_version_id" value={brief?.id || ""} /></ActionForm>
+        {data.job.data ? <div className={styles.notice}><span>证据任务：{data.job.data.status}</span><TechnicalInfo><code>{data.job.data.id}</code><span>{data.job.data.result_ref || data.job.data.error_code}</span></TechnicalInfo></div> : null}
+      </section>
+      <section className={styles.panel}><div className={styles.sectionHeader}><div><p>可追踪事实</p><h2>本次使用的证据</h2></div><span className={styles.meta}>{data.evidenceItems.data.length} 条</span></div>
+        <ResourceBlock resource={data.evidenceItems}>{(items) => items.length ? <table className={styles.table}><thead><tr><th>事实或来源</th><th>使用权</th><th>公开引用</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><strong>{item.citation_label || item.public_source_title || item.item_type}</strong><div className={styles.meta}>{item.subject_role}</div></td><td>{item.usage_rights}</td><td>{item.public_disclosure_allowed ? "允许" : "仅内部"}{item.public_source_url ? <div><a href={item.public_source_url} target="_blank" rel="noreferrer">查看来源</a></div> : null}<TechnicalInfo><code>{item.id}</code><code>{item.snapshot_hash}</code></TechnicalInfo></td></tr>)}</tbody></table> : <Empty>证据构建成功后，这里会显示事实、使用权和公开引用资格。</Empty>}</ResourceBlock>
+      </section>
+    </div>
+    <section className={styles.panel}><div className={styles.sectionHeader}><div><p>生成规则</p><h2>冻结本次生成输入</h2></div></div>
+      <p className={styles.meta}>系统将当前 Brief、证据快照、渠道 Prompt 版本和模型政策冻结为一次可追踪的生成输入。</p>
+      <ActionForm action={createPromptBundle} submitLabel="确认并冻结生成输入" disabled={!brief || !readyAttempt || !release}><HiddenProject projectId={projectId} /><input type="hidden" name="brief_version_id" value={brief?.id || ""} /><input type="hidden" name="model_policy_hash" value={MODEL_POLICY_HASH} /><input type="hidden" name="variables" value="{}" />
+        <label>证据版本<select name="evidence_pack_attempt_id" required defaultValue={readyAttempt?.id || ""}>{data.attempts.data.filter((item) => item.status === "ready").map((item) => <option key={item.id} value={item.id}>第 {item.attempt_number} 次构建 · 可使用</option>)}</select></label>
+        <label>写作规则版本<select name="template_release_id" required defaultValue={release?.id || ""}>{data.releases.data.map((item) => <option key={item.id} value={item.id}>版本 {item.release_number}</option>)}</select></label>
+      </ActionForm>
+      <ResourceBlock resource={data.bundles}>{(items) => items.length ? <div className={styles.list}>{items.map((item, index) => <div key={item.id} className={item.id === data.selection.bundleId ? styles.selectedRow : styles.row}><a href={geoHref(projectId, data.selection, { bundle_id: item.id })}><span className={styles.rowHeader}><strong>生成输入 {items.length - index}</strong><Status value={item.artifact_status} /></span></a><TechnicalInfo><code>{item.id}</code><code>{item.bundle_hash}</code><span>{item.storage_uri || item.storage_key}</span></TechnicalInfo></div>)}</div> : <Empty>证据可用后，确认生成输入即可进入下一步。</Empty>}</ResourceBlock>
+      {data.bundles.data.length ? <a className="button" href={geoHref(projectId, data.selection, { placement_stage: "generation", bundle_id: data.selection.bundleId || data.bundles.data[0]?.id })}>继续生成文案</a> : null}
+    </section>
+    <PromptAdministration projectId={projectId} data={data} release={release} />
+  </div>;
+}
+
+function PromptAdministration({ projectId, data, release }: { projectId: string; data: GeoWorkspaceData; release: GeoWorkspaceData["releases"]["data"][number] | undefined }) {
+  return <CommandPanel label="高级：Prompt 规则与版本管理">
+    <div className={styles.threeColumns}>
+      <section className={styles.unframed}><h3>Prompt Skills</h3><ActionForm action={installDefaultPromptCatalog} submitLabel="同步九平台默认 Prompt"><HiddenProject projectId={projectId} /></ActionForm><ResourceBlock resource={data.skills}>{(items) => <div className={styles.list}>{items.map((item) => <a key={item.id} className={item.id === data.selection.skillId ? styles.selectedRow : styles.row} href={geoHref(projectId, data.selection, { skill_id: item.id })}><strong>{channelLabel(item.skill_key.split(".").at(-2) || item.skill_key)}</strong><Status value={item.status} /></a>)}</div>}</ResourceBlock><ActionForm action={createPromptSkill} submitLabel="创建 Skill"><HiddenProject projectId={projectId} /><label>Skill Key<input name="skill_key" required placeholder="placement.productreview.review" /></label></ActionForm></section>
+      <section className={styles.unframed}><h3>不可变版本</h3><ResourceBlock resource={data.releases}>{(items) => <div className={styles.list}>{items.map((item) => <div className={styles.row} key={item.id}><strong>版本 {item.release_number}</strong><details><summary>查看 Prompt</summary><pre className={styles.code}>{item.system_template}</pre><pre className={styles.code}>{item.user_template}</pre></details><TechnicalInfo><code>{item.id}</code><code>{item.release_hash}</code></TechnicalInfo></div>)}</div>}</ResourceBlock><ActionForm action={createPromptRelease} submitLabel="创建新版本" disabled={!data.selection.skillId}><HiddenProject projectId={projectId} /><input type="hidden" name="skill_id" value={data.selection.skillId || ""} /><label>规则源<textarea name="source" required defaultValue={release?.source_text || ""} /></label><label>System Prompt<textarea name="system_template" required defaultValue={release?.system_template || ""} /></label><label>User Prompt<textarea name="user_template" required defaultValue={release?.user_template || ""} /></label><label>输出结构 JSON<textarea name="output_schema" required defaultValue={release ? JSON.stringify(release.output_schema, null, 2) : DEFAULT_OUTPUT_SCHEMA} /></label><label>客户端变量<textarea name="client_variable_names" placeholder="每行一个" /></label></ActionForm></section>
+      <section className={styles.unframed}><h3>渠道绑定</h3><ResourceBlock resource={data.bindings}>{(items) => <div className={styles.list}>{items.map((item) => <div className={styles.row} key={item.task_key}><strong>{channelLabel(item.task_key)}</strong><span className={styles.meta}>已绑定写作规则</span><TechnicalInfo><code>{item.template_release_id}</code></TechnicalInfo></div>)}</div>}</ResourceBlock><ActionForm action={bindPromptTask} submitLabel="保存绑定" disabled={!release}><HiddenProject projectId={projectId} /><label>渠道<select name="task_key" required defaultValue="owned_site">{PROMPT_TASK_KEYS.map((key) => <option key={key} value={key}>{channelLabel(key)}</option>)}</select></label><label>写作规则版本<select name="template_release_id" required defaultValue={release?.id || ""}>{data.releases.data.map((item) => <option key={item.id} value={item.id}>版本 {item.release_number}</option>)}</select></label></ActionForm></section>
+    </div>
+  </CommandPanel>;
+}
+
+function briefSummary(goals: GeoWorkspaceData["briefs"]["data"][number]["goals"]): string {
+  const audience = typeof goals.audience === "string" ? goals.audience : "目标受众未填写";
+  const intent = typeof goals.intent === "string" ? goals.intent : "内容目标未填写";
+  const deliverable = typeof goals.deliverable === "string" ? goals.deliverable : "交付内容未填写";
+  return `${audience} · ${intent} · ${deliverable}`;
 }

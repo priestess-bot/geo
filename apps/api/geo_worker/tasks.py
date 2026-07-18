@@ -13,6 +13,7 @@ from dramatiq.brokers.redis import RedisBroker
 import psycopg
 
 from geo_core.jobs.postgres import PostgresDurableJobStore
+from geo_core.knowledge.worker import KnowledgeProcessHandler
 from geo_core.model_gateway.contracts import ModelGatewayError
 from geo_core.model_gateway.deepseek import DeepSeekGateway, default_deepseek_capability_registry
 from geo_core.object_store_config import build_object_store
@@ -63,6 +64,7 @@ def dispatcher() -> PlacementWorkerDispatcher:
             lease_for=lease_for,
         ),
         "placement.measure": MeasurementWindowHandler(repository),
+        "knowledge.process": KnowledgeProcessHandler(store),
     }
     worker_id = os.getenv("GEO_WORKER_ID", f"durable:{socket.gethostname()}").strip()
     return PlacementWorkerDispatcher(

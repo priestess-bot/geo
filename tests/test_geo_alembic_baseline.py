@@ -21,6 +21,8 @@ def test_revision_graph_has_exactly_one_root_and_head() -> None:
         "0006_monitoring_lineage.py",
         "0007_placement_operations.py",
         "0008_prompt_simulations.py",
+        "0009_knowledge_pipeline.py",
+        "0010_campaign_destination_opportunities.py",
     ]
     root = revisions[0].read_text(encoding="utf-8")
     engineering = revisions[1].read_text(encoding="utf-8")
@@ -29,7 +31,9 @@ def test_revision_graph_has_exactly_one_root_and_head() -> None:
     claim_inventory = revisions[4].read_text(encoding="utf-8")
     monitoring_lineage = revisions[5].read_text(encoding="utf-8")
     placement_operations = revisions[6].read_text(encoding="utf-8")
-    head = revisions[7].read_text(encoding="utf-8")
+    prompt_simulations = revisions[7].read_text(encoding="utf-8")
+    knowledge_pipeline = revisions[8].read_text(encoding="utf-8")
+    head = revisions[9].read_text(encoding="utf-8")
     assert 'revision = "0001_geo_baseline"' in root
     assert "down_revision = None" in root
     assert 'revision = "0002_engineering_governance"' in engineering
@@ -44,8 +48,12 @@ def test_revision_graph_has_exactly_one_root_and_head() -> None:
     assert 'down_revision = "0005_claim_inventory_guard"' in monitoring_lineage
     assert 'revision = "0007_placement_operations"' in placement_operations
     assert 'down_revision = "0006_monitoring_lineage"' in placement_operations
-    assert 'revision = "0008_prompt_simulations"' in head
-    assert 'down_revision = "0007_placement_operations"' in head
+    assert 'revision = "0008_prompt_simulations"' in prompt_simulations
+    assert 'down_revision = "0007_placement_operations"' in prompt_simulations
+    assert 'revision = "0009_knowledge_pipeline"' in knowledge_pipeline
+    assert 'down_revision = "0008_prompt_simulations"' in knowledge_pipeline
+    assert 'revision = "0010_campaign_destinations"' in head
+    assert 'down_revision = "0009_knowledge_pipeline"' in head
 
 
 def test_claim_inventory_guard_fails_closed_on_empty_inventory() -> None:

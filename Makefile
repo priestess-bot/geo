@@ -11,7 +11,8 @@ PROD_COMPOSE := docker compose --env-file $(PROD_ENV) -f infra/compose.prod.yml
 	docker-config production-config production-up production-down \
 	production-provision-owner \
 	api-image admin-image customer-image images \
-	backup restore-smoke backup-restore-dev-smoke deepseek-live ci
+	backup restore-smoke backup-restore-dev-smoke deepseek-live ci \
+	advinsys-dry-run advinsys-verify operator-guide-pdf
 
 bootstrap: install
 	cp -n .env.example .env 2>/dev/null || true
@@ -134,6 +135,15 @@ backup-restore-dev-smoke:
 deepseek-live:
 	@test -n "$$GEO_DEEPSEEK_API_KEY_FILE" || (echo "GEO_DEEPSEEK_API_KEY_FILE is required" >&2; exit 2)
 	uv run pytest -q -m live tests/test_geo_deepseek_live_generation.py
+
+advinsys-dry-run:
+	uv run python scripts/provision_advinsys_project.py --mode actual --dry-run
+
+advinsys-verify:
+	uv run python scripts/provision_advinsys_project.py --mode actual --verify-only
+
+operator-guide-pdf:
+	uv run python scripts/render_geo_operator_guide.py
 
 ci: quality test-migrated openapi-contracts web-build docker-config
 

@@ -11,7 +11,7 @@ export type GeoSection = "campaigns" | "observations" | "destinations" | "placem
 export type LoadFailure = { status?: number; code: string; detail: string; correlationId?: string; retryable: boolean; };
 export type Resource<T> = { data: T; failure: null } | { data: T; failure: LoadFailure };
 export type GeoSelection = {
-  section: GeoSection; placementStage: "intake" | "generation" | "publication" | "simulation"; measurementWindow: MeasurementWindow; campaignId?: string; protocolId?: string;
+  section: GeoSection; placementStage: "brief" | "evidence" | "generation" | "review" | "publication" | "simulation"; measurementWindow: MeasurementWindow; campaignId?: string; protocolId?: string;
   destinationId?: string; opportunityId?: string; briefVersionId?: string; attemptId?: string;
   skillId?: string; bundleId?: string; jobId?: string; versionId?: string;
   publicationId?: string; submissionId?: string;

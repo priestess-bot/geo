@@ -92,6 +92,7 @@ services:
     volumes:
       - ../apps/api:/app/apps/api
       - ../packages/geo_core:/app/packages/geo_core
+      - ../prompt:/app/prompt:ro
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -113,6 +114,7 @@ services:
     volumes:
       - ../apps/api:/app/apps/api
       - ../packages/geo_core:/app/packages/geo_core
+      - ../prompt:/app/prompt:ro
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -136,6 +138,7 @@ services:
     volumes:
       - ../apps/api:/app/apps/api
       - ../packages/geo_core:/app/packages/geo_core
+      - ../prompt:/app/prompt:ro
       - ${GEO_DEEPSEEK_API_KEY_FILE:-../deepseek_api_key.txt}:/run/secrets/deepseek_api_key:ro
     depends_on:
       migrate:
@@ -156,6 +159,7 @@ services:
     volumes:
       - ../apps/api:/app/apps/api
       - ../packages/geo_core:/app/packages/geo_core
+      - ../prompt:/app/prompt:ro
     depends_on:
       migrate:
         condition: service_completed_successfully

@@ -4,14 +4,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+import json
 from pathlib import Path
 
 
 CHANNELS: tuple[dict[str, str], ...] = (
     {
         "channel": "owned_site",
-        "key": "advinsys.com.au",
-        "url": "https://www.advinsys.com.au/",
+        "key": "simulated.advinsys.example",
+        "url": "https://simulated.advinsys.example/",
     },
     {
         "channel": "productreview",
@@ -69,8 +70,13 @@ class AcceptanceConfig:
     live_deepseek: bool = False
     deepseek_key_file: Path | None = None
     runtime_object_store: bool = False
+    environment: str = "staging"
+    target_manifest: Path | None = None
+    customer_invitation_output: Path | None = None
 
     def validate(self) -> None:
+        if self.environment not in {"staging", "test"}:
+            raise ValueError("controlled acceptance may run only in staging or test")
         if not self.app_database_url.strip() or not self.worker_database_url.strip():
             raise ValueError("app and worker PostgreSQL URLs are required")
         if not self.run_id.strip() or len(self.run_id) > 100:
@@ -80,3 +86,9 @@ class AcceptanceConfig:
                 raise ValueError("--live-deepseek requires --deepseek-key-file")
             if not self.deepseek_key_file.is_file():
                 raise ValueError("the DeepSeek key file does not exist")
+        if self.target_manifest is not None:
+            if not self.target_manifest.is_file():
+                raise ValueError("the target company manifest does not exist")
+            payload = json.loads(self.target_manifest.read_text(encoding="utf-8"))
+            if payload.get("schema_version") != 1:
+                raise ValueError("the target company manifest schema is unsupported")

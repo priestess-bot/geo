@@ -398,6 +398,36 @@ h3 {
   overflow-wrap: anywhere;
 }
 
+.compactProjectHero {
+  align-items: flex-end;
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  padding-bottom: 14px;
+}
+
+.projectTechnical {
+  color: #637482;
+  font-size: 11px;
+  text-align: right;
+}
+
+.projectTechnical summary {
+  cursor: pointer;
+  font-weight: 700;
+  list-style: none;
+}
+
+.projectTechnical code {
+  display: block;
+  margin-top: 5px;
+}
+
+@media (max-width: 620px) {
+  .compactProjectHero { align-items: flex-start; flex-direction: column; gap: 10px; }
+  .projectTechnical { text-align: left; }
+}
+
 .muted {
   color: #637482;
   font-size: 13px;

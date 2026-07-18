@@ -148,11 +148,12 @@ class ControlledUrlVerifier(PublicUrlVerifier):
         for field, value in (
             ("expected_text_fragments", expected_text_fragments),
             ("required_disclosures", required_disclosures),
-            ("expected_links", expected_links),
         ):
             if not value:
                 raise ValueError(f"verification input omitted {field}")
-        if "www.advinsys.com.au" not in allowed_hosts:
+        if any(not value.strip() for value in expected_links):
+            raise ValueError("verification input contains an empty expected link")
+        if "simulated.advinsys.example" not in allowed_hosts:
             raise ValueError("verification did not retain the destination allowlist")
         checked_at = datetime.now(UTC)
         return UrlVerificationResult(

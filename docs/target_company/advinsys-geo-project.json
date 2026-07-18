@@ -1,0 +1,233 @@
+{
+  "schema_version": 1,
+  "project": {
+    "name": "ADVINSYS Australia",
+    "brand": {
+      "canonical_name": "ADVINSYS",
+      "canonical_url": "https://www.advinsys.com.au/",
+      "attributes": {
+        "market": "AU",
+        "official_domain": "advinsys.com.au"
+      }
+    },
+    "market": {
+      "market_code": "AU",
+      "locale": "en-AU",
+      "timezone": "Australia/Sydney",
+      "rules": {
+        "currency": "AUD",
+        "review_locale": "zh-CN"
+      }
+    }
+  },
+  "products": [
+    {
+      "canonical_name": "ADVINSYS TerraMow V600",
+      "canonical_url": "https://www.advinsys.com.au/products/triple-cam-ai-vision-robot-mower-v600",
+      "attributes": {
+        "model": "V600",
+        "category": "robotic_lawn_mower",
+        "marketed_lawn_area_sqm": 600,
+        "sku": "TM-LM-V600-VS-8-600-M"
+      },
+      "queries": [
+        {
+          "kind": "recommendation",
+          "text": "What robotic lawn mower should I consider for a lawn up to 600 square metres in Australia?"
+        },
+        {
+          "kind": "comparison",
+          "text": "Compare robot lawn mowers for a medium Australian garden without a boundary wire."
+        }
+      ]
+    },
+    {
+      "canonical_name": "ADVINSYS TerraMow V1000",
+      "canonical_url": "https://www.advinsys.com.au/products/triple-cam-ai-vision-robot-mower-v1000",
+      "attributes": {
+        "model": "V1000",
+        "category": "robotic_lawn_mower",
+        "marketed_lawn_area_sqm": 1000,
+        "sku": "TM-LM-V100-VS-8-1000-M"
+      },
+      "queries": [
+        {
+          "kind": "recommendation",
+          "text": "What robotic lawn mower should I consider for a lawn up to 1000 square metres in Australia?"
+        },
+        {
+          "kind": "comparison",
+          "text": "Compare vision-based robot lawn mowers for a large Australian garden."
+        }
+      ]
+    },
+    {
+      "canonical_name": "ADVINSYS Seauto SAT30",
+      "canonical_url": "https://www.advinsys.com.au/products/cordless-robotic-pool-vacuum-2026-removable-replaceable-battery",
+      "attributes": {
+        "model": "SAT30",
+        "category": "robotic_pool_cleaner",
+        "sku": "SAT-PC-SAT30-FL-TR-PP-BT-E"
+      },
+      "queries": [
+        {
+          "kind": "recommendation",
+          "text": "What cordless robotic pool cleaner should I consider in Australia?"
+        },
+        {
+          "kind": "comparison",
+          "text": "Compare robotic pool vacuums with removable batteries in Australia."
+        }
+      ]
+    }
+  ],
+  "destinations": [
+    {
+      "publication_channel": "owned_site",
+      "destination_key": "advinsys-owned-site",
+      "canonical_url": "https://www.advinsys.com.au/",
+      "policy_status": "approved",
+      "requirement": "official_brand",
+      "account_authority": "declared_official"
+    },
+    {
+      "publication_channel": "productreview",
+      "destination_key": "productreview-au-brand-participation",
+      "canonical_url": "https://www.productreview.com.au/",
+      "policy_status": "restricted",
+      "requirement": "merchant_or_verified_context_required",
+      "account_authority": "missing"
+    },
+    {
+      "publication_channel": "youtube",
+      "destination_key": "advinsys-youtube-channel",
+      "canonical_url": "https://www.youtube.com/channel/UCmyUEh-krsFHszEC8XFKtuQ",
+      "policy_status": "approved",
+      "requirement": "official_brand_account_revalidation_required",
+      "account_authority": "declared_official"
+    },
+    {
+      "publication_channel": "reddit",
+      "destination_key": "reddit-disclosed-brand-participation",
+      "canonical_url": "https://www.reddit.com/",
+      "policy_status": "restricted",
+      "requirement": "subreddit_rules_and_brand_disclosure_required",
+      "account_authority": "missing"
+    },
+    {
+      "publication_channel": "amazon",
+      "destination_key": "advinsys-amazon-au-store",
+      "canonical_url": "https://www.amazon.com.au/stores/ADVINSYS/page/06C3296A-9B69-48D7-A25E-C79AF94A8CFE",
+      "policy_status": "restricted",
+      "requirement": "seller_authorisation_required",
+      "account_authority": "unconfirmed"
+    },
+    {
+      "publication_channel": "ozbargain",
+      "destination_key": "ozbargain-merchant-submission",
+      "canonical_url": "https://www.ozbargain.com.au/",
+      "policy_status": "restricted",
+      "requirement": "merchant_eligibility_and_real_offer_required",
+      "account_authority": "missing"
+    },
+    {
+      "publication_channel": "tiktok",
+      "destination_key": "advinsys-tiktok-account",
+      "canonical_url": "https://www.tiktok.com/@advinsys",
+      "policy_status": "approved",
+      "requirement": "official_brand_account_revalidation_required",
+      "account_authority": "declared_official"
+    },
+    {
+      "publication_channel": "instagram",
+      "destination_key": "advinsys-instagram-account",
+      "canonical_url": "https://www.instagram.com/advinsysau/",
+      "policy_status": "approved",
+      "requirement": "official_brand_account_revalidation_required",
+      "account_authority": "declared_official"
+    },
+    {
+      "publication_channel": "quora",
+      "destination_key": "quora-disclosed-expert-answer",
+      "canonical_url": "https://www.quora.com/",
+      "policy_status": "restricted",
+      "requirement": "identity_topic_and_disclosure_review_required",
+      "account_authority": "missing"
+    }
+  ],
+  "optional_destinations": [
+    {
+      "publication_channel": "other",
+      "destination_key": "advinsys-facebook-page",
+      "canonical_url": "https://www.facebook.com/profile.php?id=61589659805944",
+      "policy_status": "restricted",
+      "requirement": "optional_channel_account_revalidation_required",
+      "account_authority": "declared_official",
+      "included_in_standard_kpi": false
+    }
+  ],
+  "knowledge_sources": [
+    {
+      "title": "ADVINSYS official website",
+      "source_kind": "url",
+      "source_url": "https://www.advinsys.com.au/",
+      "media_type": "text/html"
+    },
+    {
+      "title": "ADVINSYS TerraMow V600 official product page",
+      "source_kind": "url",
+      "source_url": "https://www.advinsys.com.au/products/triple-cam-ai-vision-robot-mower-v600",
+      "media_type": "text/html"
+    },
+    {
+      "title": "ADVINSYS TerraMow V1000 official product page",
+      "source_kind": "url",
+      "source_url": "https://www.advinsys.com.au/products/triple-cam-ai-vision-robot-mower-v1000",
+      "media_type": "text/html"
+    },
+    {
+      "title": "ADVINSYS Seauto SAT30 official product page",
+      "source_kind": "url",
+      "source_url": "https://www.advinsys.com.au/products/cordless-robotic-pool-vacuum-2026-removable-replaceable-battery",
+      "media_type": "text/html"
+    },
+    {
+      "title": "ADVINSYS Amazon Australia store",
+      "source_kind": "url",
+      "source_url": "https://www.amazon.com.au/stores/ADVINSYS/page/06C3296A-9B69-48D7-A25E-C79AF94A8CFE",
+      "media_type": "text/html"
+    },
+    {
+      "title": "ADVINSYS authorised channel registry",
+      "source_kind": "text_file",
+      "source_path": "docs/target_company/目标公司相关内容.txt",
+      "media_type": "text/plain"
+    }
+  ],
+  "evidence_seeds": [
+    {
+      "source_title": "ADVINSYS official website",
+      "subject_name": "ADVINSYS",
+      "subject_role": "primary_brand",
+      "statement": "ADVINSYS operates the official Australian website at https://www.advinsys.com.au/."
+    },
+    {
+      "source_title": "ADVINSYS TerraMow V600 official product page",
+      "subject_name": "ADVINSYS TerraMow V600",
+      "subject_role": "product",
+      "statement": "ADVINSYS lists the TerraMow V600 as a robotic lawn mower for lawns up to 600 square metres."
+    },
+    {
+      "source_title": "ADVINSYS TerraMow V1000 official product page",
+      "subject_name": "ADVINSYS TerraMow V1000",
+      "subject_role": "product",
+      "statement": "ADVINSYS lists the TerraMow V1000 as a robotic lawn mower for lawns up to 1000 square metres."
+    },
+    {
+      "source_title": "ADVINSYS Seauto SAT30 official product page",
+      "subject_name": "ADVINSYS Seauto SAT30",
+      "subject_role": "product",
+      "statement": "ADVINSYS lists the Seauto SAT30 as a cordless robotic pool cleaner with a removable and replaceable battery."
+    }
+  ]
+}

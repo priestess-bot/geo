@@ -1,0 +1,879 @@
+{
+  "schema_version": "1.0",
+  "audit": {
+    "id": "geo-requirements-audit-20260718T083249Z",
+    "date": "2026-07-18",
+    "timezone": "Asia/Shanghai",
+    "requirements_document": "GEO_REQUIREMENTS.md",
+    "markdown_report": "docs/audits/GEO-project-full-audit-2026-07-18.md",
+    "repository_branch": "main",
+    "repository_head": "ff992dc0ad96d838c14147f60ea970a4f89f9772",
+    "scope": "current_dirty_worktree",
+    "initial_worktree_status_entries": 171,
+    "benchmark": "strict_mature_geo",
+    "evidence_policy": "Documentation, UI copy, source-string assertions and simulations alone cannot produce PASS.",
+    "paid_model_policy": {
+      "allowed_successful_provider_calls": 1,
+      "observed_successful_provider_calls": 1,
+      "external_publication_allowed": false,
+      "external_publication_observed": false
+    }
+  },
+  "verdict": {
+    "maturity_level": "L0",
+    "label": "具备真实专项闭环的功能型原型",
+    "reaches_traditional_seo_equivalence": false,
+    "meets_mature_geo": false,
+    "weighted_score": null,
+    "reason": "项目具备证据驱动内容投放、审批和复测子系统，但缺少传统 SEO 技术资格、官方/一方连接器、爬虫用途策略、真实跨引擎采集及业务转化归因。4 个硬门槛失败。"
+  },
+  "summary": {
+    "requirements": {
+      "total": 40,
+      "PASS": 0,
+      "PARTIAL": 27,
+      "FAIL": 13,
+      "UNVERIFIED": 0,
+      "N/A": 0
+    },
+    "capabilities": {
+      "total": 12,
+      "PASS": 0,
+      "PARTIAL": 9,
+      "FAIL": 3
+    },
+    "functional_requirements": {
+      "total": 20,
+      "PASS": 0,
+      "PARTIAL": 14,
+      "FAIL": 6
+    },
+    "gates": {
+      "total": 8,
+      "PASS": 0,
+      "PARTIAL": 4,
+      "FAIL": 4,
+      "failed_ids": [
+        "GATE-01",
+        "GATE-02",
+        "GATE-03",
+        "GATE-07"
+      ]
+    },
+    "findings": {
+      "total": 27,
+      "P0": 4,
+      "P1": 14,
+      "P2": 9,
+      "P3": 0
+    },
+    "platforms_failed": 5
+  },
+  "status_definitions": {
+    "PASS": "功能完整，存在代码、数据和可重复验证证据。",
+    "PARTIAL": "存在实现但覆盖不足、数据不完整或结论不可复核。",
+    "FAIL": "缺失、行为错误或违反硬门槛。",
+    "UNVERIFIED": "仅有界面或声明，无法证明真实运行。",
+    "N/A": "经业务范围确认不适用。"
+  },
+  "requirements": [
+    {
+      "id": "CAP-01",
+      "section": "capability",
+      "title": "技术资格",
+      "status": "FAIL",
+      "priority": "P1",
+      "finding_refs": ["F-005"],
+      "gap": "无逐 URL robots/canonical/Sitemap/render/index/snippet/citation/WAF 审计。"
+    },
+    {
+      "id": "CAP-02",
+      "section": "capability",
+      "title": "需求研究",
+      "status": "PARTIAL",
+      "priority": "P2",
+      "finding_refs": ["F-019"],
+      "gap": "有 Query 与冻结协议，缺关键词、问题簇、fan-out、人物、漏斗、多轮和权重。"
+    },
+    {
+      "id": "CAP-03",
+      "section": "capability",
+      "title": "内容质量",
+      "status": "PARTIAL",
+      "priority": "P2",
+      "finding_refs": ["F-010", "F-026"],
+      "gap": "有证据和人工审批，缺原创性、意图、专家/亲历真实性、页面体验和低价值检测。"
+    },
+    {
+      "id": "CAP-04",
+      "section": "capability",
+      "title": "证据治理",
+      "status": "PARTIAL",
+      "priority": "P1",
+      "finding_refs": ["F-010"],
+      "gap": "有来源元数据、权利和 hash，缺真实性、时效、冲突和蕴含检查。"
+    },
+    {
+      "id": "CAP-05",
+      "section": "capability",
+      "title": "实体体系",
+      "status": "PARTIAL",
+      "priority": "P2",
+      "finding_refs": ["F-019"],
+      "gap": "有品牌/产品/竞品/市场，缺 Person/Place/Service、关系、有效期和跨载体一致性。"
+    },
+    {
+      "id": "CAP-06",
+      "section": "capability",
+      "title": "页面表达",
+      "status": "PARTIAL",
+      "priority": "P2",
+      "finding_refs": ["F-005", "F-024"],
+      "gap": "能解析公开文本，缺渲染 DOM、结构化数据、语义/ARIA、表格、字幕和 transcript 审计。"
+    },
+    {
+      "id": "CAP-07",
+      "section": "capability",
+      "title": "分发时效",
+      "status": "FAIL",
+      "priority": "P1",
+      "finding_refs": ["F-006", "F-011"],
+      "gap": "无 Search Console、Sitemap、IndexNow、Feed、lastmod、删除通知和重抓延迟。"
+    },
+    {
+      "id": "CAP-08",
+      "section": "capability",
+      "title": "站外权威",
+      "status": "PARTIAL",
+      "priority": "P2",
+      "finding_refs": ["F-019"],
+      "gap": "有九类目的地和渠道 Prompt，缺站外发现、权威分析和虚假提及检测。"
+    },
+    {
+      "id": "CAP-09",
+      "section": "capability",
+      "title": "可见性度量",
+      "status": "PARTIAL",
+      "priority": "P1",
+      "finding_refs": ["F-009", "F-021"],
+      "gap": "有提及/推荐/引用/竞品差值，缺真实采集、引用位置/准确性/吸收度/来源多样性和官方指标。"
+    },
+    {
+      "id": "CAP-10",
+      "section": "capability",
+      "title": "业务结果",
+      "status": "FAIL",
+      "priority": "P1",
+      "finding_refs": ["F-007"],
+      "gap": "无 AI referral、线索、转化、收入、留存或 Agent completion。"
+    },
+    {
+      "id": "CAP-11",
+      "section": "capability",
+      "title": "实验体系",
+      "status": "PARTIAL",
+      "priority": "P2",
+      "finding_refs": ["F-021"],
+      "gap": "有 baseline 和多窗口，缺对照、区间、胜平负、最差结果、负收益和漂移。"
+    },
+    {
+      "id": "CAP-12",
+      "section": "capability",
+      "title": "治理安全",
+      "status": "PARTIAL",
+      "priority": "P1",
+      "finding_refs": ["F-004", "F-026"],
+      "gap": "权限/权利/人工审核已有，缺 Injection、YMYL、恶意 UGC、保留策略和全域审计。"
+    },
+    {
+      "id": "FR-01",
+      "section": "functional_requirement",
+      "title": "项目与工作区",
+      "status": "PARTIAL",
+      "priority": "P2",
+      "finding_refs": ["F-012", "F-017"],
+      "gap": "有多项目/RBAC/RLS，缺多域名、集中业务目标、完整审计且存在 Campaign 串上下文。"
+    },
+    {
+      "id": "FR-02",
+      "section": "functional_requirement",
+      "title": "数据连接器",
+      "status": "FAIL",
+      "priority": "P1",
+      "finding_refs": ["F-006"],
+      "gap": "GSC、Bing WMT、GA4、Clarity、日志、CMS、CRM、warehouse 连接器均缺失。"
+    },
+    {
+      "id": "FR-03",
+      "section": "functional_requirement",
+      "title": "逐 URL 技术审计",
+      "status": "FAIL",
+      "priority": "P1",
+      "finding_refs": ["F-005"],
+      "gap": "无 URL 技术审计实体、任务、结果 schema 和资格结论。"
+    },
+    {
+      "id": "FR-04",
+      "section": "functional_requirement",
+      "title": "AI 爬虫与用途策略中心",
+      "status": "FAIL",
+      "priority": "P1",
+      "finding_refs": ["F-008"],
+      "gap": "无 bot/use-policy matrix、robots/meta/WAF 验证、官方 IP 和策略版本审批。"
+    },
+    {
+      "id": "FR-05",
+      "section": "functional_requirement",
+      "title": "Prompt 与意图库",
+      "status": "PARTIAL",
+      "priority": "P2",
+      "finding_refs": ["F-019"],
+      "gap": "有 Query suggestion/approval/freeze，缺 cluster/fan-out/persona/funnel/source/weight/multiturn。"
+    },
+    {
+      "id": "FR-06",
+      "section": "functional_requirement",
+      "title": "内容库存与主题覆盖",
+      "status": "PARTIAL",
+      "priority": "P2",
+      "finding_refs": ["F-019"],
+      "gap": "Knowledge 不是站点页面库存，缺作者/时间/主题/重复/过期/蚕食/意图缺口。"
+    },
+    {
+      "id": "FR-07",
+      "section": "functional_requirement",
+      "title": "实体与事实一致性",
+      "status": "PARTIAL",
+      "priority": "P2",
+      "finding_refs": ["F-019"],
+      "gap": "缺实体图、别名、冲突、有效期和正文/Schema/Feed/外部档案比对。"
+    },
+    {
+      "id": "FR-08",
+      "section": "functional_requirement",
+      "title": "论断与证据治理",
+      "status": "PARTIAL",
+      "priority": "P1",
+      "finding_refs": ["F-010", "F-013", "F-026"],
+      "gap": "有 Evidence/Claim/双人审批，缺真实性/时效/蕴含、UI 闭环和 YMYL 加强流程。"
+    },
+    {
+      "id": "FR-09",
+      "section": "functional_requirement",
+      "title": "跨引擎观测",
+      "status": "PARTIAL",
+      "priority": "P1",
+      "finding_refs": ["F-001", "F-009"],
+      "gap": "可保存观测但无采集器，来源非强类型，Bing/Claude 缺枚举，生产 egress 被阻断。"
+    },
+    {
+      "id": "FR-10",
+      "section": "functional_requirement",
+      "title": "答案、品牌和引用分析",
+      "status": "PARTIAL",
+      "priority": "P2",
+      "finding_refs": ["F-009", "F-010"],
+      "gap": "缺情感、事实准确性、遗漏、引用位置/蕴含、来源域和答案吸收。"
+    },
+    {
+      "id": "FR-11",
+      "section": "functional_requirement",
+      "title": "竞品与来源缺口",
+      "status": "PARTIAL",
+      "priority": "P2",
+      "finding_refs": ["F-020"],
+      "gap": "有 competitor delta，缺页面/来源类型/问题覆盖和抓取到转化的分层定位。"
+    },
+    {
+      "id": "FR-12",
+      "section": "functional_requirement",
+      "title": "可解释建议与优先级",
+      "status": "FAIL",
+      "priority": "P2",
+      "finding_refs": ["F-020"],
+      "gap": "无 recommendation 实体、证据等级、影响链路、排序及 no-change/insufficient-evidence。"
+    },
+    {
+      "id": "FR-13",
+      "section": "functional_requirement",
+      "title": "内容工作流",
+      "status": "PARTIAL",
+      "priority": "P1",
+      "finding_refs": ["F-010", "F-013", "F-014", "F-026"],
+      "gap": "核心生成审批链已有，缺 CMS、内容质量/安全门禁且 Prompt 渠道绑定可错误。"
+    },
+    {
+      "id": "FR-14",
+      "section": "functional_requirement",
+      "title": "发布与分发",
+      "status": "PARTIAL",
+      "priority": "P1",
+      "finding_refs": ["F-001", "F-011"],
+      "gap": "有人工发布记录和 URL 校验，无 CMS 真发布、技术复验、IndexNow、Feed 和删除通知。"
+    },
+    {
+      "id": "FR-15",
+      "section": "functional_requirement",
+      "title": "实验与版本管理",
+      "status": "PARTIAL",
+      "priority": "P2",
+      "finding_refs": ["F-012", "F-016", "F-021"],
+      "gap": "有不可变版本和多窗口，缺对照/区间/最差结果/跨查询影响，且 acceptance 有竞态。"
+    },
+    {
+      "id": "FR-16",
+      "section": "functional_requirement",
+      "title": "看板与告警",
+      "status": "PARTIAL",
+      "priority": "P1",
+      "finding_refs": ["F-018", "F-021", "F-022", "F-023"],
+      "gap": "有基础 dashboard，无告警和完整 KPI 分层；可观测性、性能和上下文正确性不足。"
+    },
+    {
+      "id": "FR-17",
+      "section": "functional_requirement",
+      "title": "流量与业务归因",
+      "status": "FAIL",
+      "priority": "P1",
+      "finding_refs": ["F-007"],
+      "gap": "无 AI referrer、UTM、session、conversion、revenue 或 CRM。"
+    },
+    {
+      "id": "FR-18",
+      "section": "functional_requirement",
+      "title": "治理、安全与合规",
+      "status": "PARTIAL",
+      "priority": "P0",
+      "finding_refs": ["F-001", "F-002", "F-003", "F-004", "F-017", "F-026"],
+      "gap": "身份/权限/权利/人工审核已有，但生产网络、灾备、SSRF、最小权限和内容治理有严重缺口。"
+    },
+    {
+      "id": "FR-19",
+      "section": "functional_requirement",
+      "title": "Agent 可执行性",
+      "status": "FAIL",
+      "priority": "P2",
+      "finding_refs": ["F-024"],
+      "gap": "无 Agent 任务、步骤、失败类型和完成率；可访问性也未完整验收。"
+    },
+    {
+      "id": "FR-20",
+      "section": "functional_requirement",
+      "title": "API、导出与可复核性",
+      "status": "PARTIAL",
+      "priority": "P1",
+      "finding_refs": ["F-002", "F-015", "F-027"],
+      "gap": "有 OpenAPI/package hash/job replay，缺通用导出、warehouse、删除、重算和可靠 CI/灾备复核。"
+    },
+    {
+      "id": "GATE-01",
+      "section": "gate",
+      "title": "完整 SEO 技术底座",
+      "status": "FAIL",
+      "priority": "P1",
+      "finding_refs": ["F-005"],
+      "gap": "目标页面抓取、渲染和索引资格不可证明。"
+    },
+    {
+      "id": "GATE-02",
+      "section": "gate",
+      "title": "用途策略分离",
+      "status": "FAIL",
+      "priority": "P1",
+      "finding_refs": ["F-008"],
+      "gap": "搜索、训练和用户实时取页不能分别管理。"
+    },
+    {
+      "id": "GATE-03",
+      "section": "gate",
+      "title": "真实公开且用户优先",
+      "status": "FAIL",
+      "priority": "P1",
+      "finding_refs": ["F-010", "F-026"],
+      "gap": "未验证 cloaking、公开可见性、重复/低价值滥用和真实性。"
+    },
+    {
+      "id": "GATE-04",
+      "section": "gate",
+      "title": "事实与引用准确性",
+      "status": "PARTIAL",
+      "priority": "P1",
+      "finding_refs": ["F-010"],
+      "gap": "Claim 可追溯，但无独立来源真实性和引用蕴含检查。"
+    },
+    {
+      "id": "GATE-05",
+      "section": "gate",
+      "title": "数据来源分离",
+      "status": "PARTIAL",
+      "priority": "P1",
+      "finding_refs": ["F-009", "F-014"],
+      "gap": "模拟有边界声明，但来源类型、Prompt 渠道绑定和原始证据强约束不足。"
+    },
+    {
+      "id": "GATE-06",
+      "section": "gate",
+      "title": "多次分层观测",
+      "status": "PARTIAL",
+      "priority": "P2",
+      "finding_refs": ["F-021"],
+      "gap": "有多窗口但允许单样本，缺重复、置信区间和分层稳定性。"
+    },
+    {
+      "id": "GATE-07",
+      "section": "gate",
+      "title": "业务转化结果",
+      "status": "FAIL",
+      "priority": "P1",
+      "finding_refs": ["F-007"],
+      "gap": "没有任何业务转化结果指标。"
+    },
+    {
+      "id": "GATE-08",
+      "section": "gate",
+      "title": "权限、隐私、版权、安全和审核",
+      "status": "PARTIAL",
+      "priority": "P0",
+      "finding_refs": ["F-001", "F-002", "F-003", "F-004", "F-017", "F-026"],
+      "gap": "权限和人工审核已有，生产网络、灾备、SSRF、最小权限和内容安全未闭合。"
+    }
+  ],
+  "platforms": [
+    {
+      "id": "PLATFORM-GOOGLE",
+      "name": "Google Search / AI Overviews / AI Mode",
+      "status": "FAIL",
+      "implemented": ["Google Search 与 AI Overview 平台枚举", "人工观测"],
+      "missing": ["Googlebot/WAF 验证", "snippet 指令", "canonical/Sitemap/render audit", "GSC 普通与 AI 报表", "Google-Extended 训练策略分离"]
+    },
+    {
+      "id": "PLATFORM-BING",
+      "name": "Microsoft Bing / Copilot",
+      "status": "FAIL",
+      "implemented": [],
+      "missing": ["Bing/Copilot 平台枚举", "Bingbot", "IndexNow", "AI Performance", "Bing Places", "robots 差异审计"]
+    },
+    {
+      "id": "PLATFORM-OPENAI",
+      "name": "OpenAI / ChatGPT Search",
+      "status": "FAIL",
+      "implemented": ["chatgpt_search 人工观测类型"],
+      "missing": ["OAI-SearchBot/GPTBot/ChatGPT-User 分离", "官方 IP/WAF 检查", "chatgpt.com UTM/referrer 归因"]
+    },
+    {
+      "id": "PLATFORM-ANTHROPIC",
+      "name": "Anthropic / Claude",
+      "status": "FAIL",
+      "implemented": [],
+      "missing": ["Claude-SearchBot/ClaudeBot/Claude-User 平台与用途策略", "抓取日志审计"]
+    },
+    {
+      "id": "PLATFORM-PERPLEXITY",
+      "name": "Perplexity",
+      "status": "FAIL",
+      "implemented": ["perplexity 人工观测类型"],
+      "missing": ["PerplexityBot/Perplexity-User 分离", "IP/WAF 验证", "robots 限制的结构化声明", "真实采集来源治理"]
+    }
+  ],
+  "findings": [
+    {
+      "id": "F-001",
+      "priority": "P0",
+      "title": "生产环境阻断必要外部访问",
+      "requirements": ["FR-09", "FR-14", "FR-18", "GATE-08"],
+      "evidence": [
+        {"type": "configuration", "ref": "infra/compose.prod.yml:390", "observation": "backend network is internal and Internal API/Worker have no egress path."},
+        {"type": "runtime", "ref": "isolated Docker network reproduction", "observation": "bridge returned HTTP 200; internal network failed DNS with exit 1."}
+      ],
+      "risk": "OIDC/JWKS、DeepSeek、Knowledge URL 导入和发布 URL 校验在生产拓扑不可用。",
+      "recommendation": "增加受控 egress 网络或代理，按外部能力维护 allowlist、DNS/IP 策略和审计。",
+      "acceptance": "生产等价拓扑完成 OIDC、JWKS 轮换、模型调用、URL 导入和发布校验；未授权目标必须可观测地失败。"
+    },
+    {
+      "id": "F-002",
+      "priority": "P0",
+      "title": "损坏备份可被恢复冒烟误判为成功",
+      "requirements": ["FR-18", "FR-20", "GATE-08"],
+      "evidence": [
+        {"type": "code", "ref": "scripts/restore_geo_backup_smoke.sh:26", "observation": "pipeline lacks pipefail/checksum verification and only checks pg_catalog."},
+        {"type": "runtime", "ref": "corrupt gzip reproduction", "observation": "gunzip failed, pipeline exited 0, catalog check passed, public tables were 0."}
+      ],
+      "risk": "灾备演练可能假成功，且没有 MinIO 恢复验证。",
+      "recommendation": "验证签名 manifest 和各管道状态，校验业务 schema/data/FK/hash，并恢复逐对象核验 MinIO。",
+      "acceptance": "正常备份通过；截断、篡改、缺对象和错密钥均非零退出并定位故障。"
+    },
+    {
+      "id": "F-003",
+      "priority": "P0",
+      "title": "备份默认权限与加密不安全",
+      "requirements": ["FR-18", "GATE-08"],
+      "evidence": [
+        {"type": "code", "ref": "scripts/backup_geo_data.sh:18", "observation": "no restrictive umask, chmod or encryption."},
+        {"type": "runtime", "ref": "local permission reproduction", "observation": "umask 0002 produced mode 664."}
+      ],
+      "risk": "数据库和对象存储备份可能被非目标用户读取，完整性链不覆盖全部对象。",
+      "recommendation": "强制 umask 077、owner/mode 校验、加密存储和覆盖 DB+MinIO 的签名 manifest。",
+      "acceptance": "文件 <=0600、目录 <=0700；未解密或 manifest 不匹配时恢复失败。"
+    },
+    {
+      "id": "F-004",
+      "priority": "P0",
+      "title": "Knowledge URL 抓取存在 DNS rebinding TOCTOU",
+      "requirements": ["CAP-12", "FR-18", "GATE-08"],
+      "evidence": [
+        {"type": "code", "ref": "packages/geo_core/geo_core/knowledge/processing.py:199", "observation": "URL is validated, then httpx independently resolves it for connection."}
+      ],
+      "risk": "攻击者可能在校验和连接之间把域名切到内网或 metadata endpoint。",
+      "recommendation": "连接到已验证并 pin 的 IP，每次 redirect 重新校验，核对 certificate hostname 与 peer IP。",
+      "acceptance": "rebinding、双栈、CNAME、redirect-private、IPv6/metadata fixture 均被阻断。"
+    },
+    {
+      "id": "F-005",
+      "priority": "P1",
+      "title": "缺少传统 SEO 与逐 URL 技术资格底座",
+      "requirements": ["CAP-01", "FR-03", "GATE-01"],
+      "evidence": [
+        {"type": "code", "ref": "packages/geo_core/geo_core/placements/url_verifier.py", "observation": "only publication URL/text/disclosure/link checks exist; no crawl/render/index audit."}
+      ],
+      "risk": "无法证明页面可抓取、可渲染、可索引、可摘要或可引用。",
+      "recommendation": "建设 URL inventory、raw/rendered fetch、robots/meta/canonical/Sitemap/link/status/WAF audit。",
+      "acceptance": "对包含 blocked/noindex/JS-only/canonical-conflict 等 fixture 的站点输出正确分层资格结论。"
+    },
+    {
+      "id": "F-006",
+      "priority": "P1",
+      "title": "官方与一方数据连接器全部缺失",
+      "requirements": ["CAP-07", "CAP-09", "FR-02"],
+      "evidence": [
+        {"type": "repository_search", "ref": "repository dependencies/source/config/UI", "observation": "no GSC, Bing WMT, GA4, Clarity, CDN/server log, CMS, CRM or warehouse connector implementation."}
+      ],
+      "risk": "官方可见性、流量、同步新鲜度和业务数据只能人工输入或不可得。",
+      "recommendation": "建立 Connector 契约，优先实现 GSC、Bing WMT、GA4 和 server log。",
+      "acceptance": "权限失效、限流、增量、重复、时区、缺字段和回填均有集成测试；官方数据不可伪造。"
+    },
+    {
+      "id": "F-007",
+      "priority": "P1",
+      "title": "没有业务结果与 AI referral 归因",
+      "requirements": ["CAP-10", "FR-17", "GATE-07"],
+      "evidence": [
+        {"type": "data_model", "ref": "database/API model inventory", "observation": "no referrer, UTM, session, lead, conversion, revenue, retention, CRM outcome or Agent completion model."}
+      ],
+      "risk": "只能报告提及/引用，不能评估线索、收入或任务完成。",
+      "recommendation": "建立一方事件、AI referrer normalization、UTM、conversion、CRM、revenue 和 assisted attribution。",
+      "acceptance": "从 assistant referrer/UTM 到 session、lead、CRM outcome、campaign/content/version 可追溯。"
+    },
+    {
+      "id": "F-008",
+      "priority": "P1",
+      "title": "缺少爬虫用途策略中心",
+      "requirements": ["CAP-12", "FR-04", "GATE-02"],
+      "evidence": [
+        {"type": "repository_search", "ref": "repository source/config", "observation": "no bot/use-policy matrix, robots/meta/WAF generator or versioned approval model."}
+      ],
+      "risk": "搜索、训练和用户实时读取不能独立授权，训练抓取可能被误当搜索证据。",
+      "recommendation": "为各平台建立 bot identity、purpose、rule、WAF/IP、scope、approval 和 effective version。",
+      "acceptance": "同域可分别允许搜索、拒绝训练并控制用户取页，配置与 HTTP/WAF/log 实况一致。"
+    },
+    {
+      "id": "F-009",
+      "priority": "P1",
+      "title": "跨引擎观测依赖人工导入且来源边界不足",
+      "requirements": ["CAP-09", "FR-09", "FR-10", "GATE-05"],
+      "evidence": [
+        {"type": "code", "ref": "apps/admin-web/app/projects/[project_id]/geo/features/geo/ObservationWorkspace.tsx:38", "observation": "eligible defaults true, URL status unknown, model defaults deepseek-chat, raw answer is not strongly required."},
+        {"type": "runtime", "ref": "measurement workflow", "observation": "measurement collection waits for manual samples; Bing and Claude platform enums are absent."}
+      ],
+      "risk": "官方、真实 UI、API、人工抄录和模拟数据可能被错误比较或混入同一分母。",
+      "recommendation": "使用强类型 source mode，并强制原始回答、引擎/UI/model/locale/region/search/citation/runtime metadata。",
+      "acceptance": "缺来源或原始证据不得 eligible；模拟不能进入官方 KPI，各来源独立分母。"
+    },
+    {
+      "id": "F-010",
+      "priority": "P1",
+      "title": "证据真实性、时效和 Claim-citation 蕴含不足",
+      "requirements": ["CAP-03", "CAP-04", "FR-08", "FR-10", "FR-13", "GATE-03", "GATE-04"],
+      "evidence": [
+        {"type": "ui", "ref": "apps/admin-web/app/projects/[project_id]/geo/features/geo/BriefPromptPanel.tsx:38", "observation": "unsupported superlatives and free-text experience/source/rights can be entered."},
+        {"type": "domain", "ref": "catalog and placement evidence/claim workflow", "observation": "rights/hash/support exist but source authenticity, freshness, conflicts and independent entailment do not."}
+      ],
+      "risk": "过期、冲突或不支持 Claim 的证据可能通过审核并发布。",
+      "recommendation": "增加 source identity/freshness/conflict、entailment、edited-claim invalidation 和 superlative policy。",
+      "acceptance": "篡改、过期、冲突、伪来源、无支持和自审均被拒绝，UI 显示 claim/evidence diff。"
+    },
+    {
+      "id": "F-011",
+      "priority": "P1",
+      "title": "发布链仅记录人工提交且真实链路未闭合",
+      "requirements": ["CAP-07", "FR-14"],
+      "evidence": [
+        {"type": "runtime", "ref": "project e1f1373e-1800-437d-94f1-8d8abe4061c4", "observation": "DeepSeek generation succeeded and package was approved; publication.verify entered retry_wait because required_disclosures was omitted."},
+        {"type": "repository_search", "ref": "publication/CMS/distribution implementation", "observation": "no CMS publish, post-publish SEO audit, IndexNow, feed or deletion notification."}
+      ],
+      "risk": "成功生成不能证明成功发布、抓取、索引或引用。",
+      "recommendation": "修复 disclosure payload，并实现 CMS adapter、post-publish audit、IndexNow/Sitemap/feed lifecycle。",
+      "acceptance": "测试 CMS 完成 draft/approve/publish/technical recheck；缺披露在提交前同步阻断。"
+    },
+    {
+      "id": "F-012",
+      "priority": "P1",
+      "title": "多 Campaign 页面跨上下文串数据",
+      "requirements": ["FR-01", "FR-15", "FR-18"],
+      "evidence": [
+        {"type": "code", "ref": "apps/admin-web/app/projects/[project_id]/geo/features/geo/GeoShell.tsx:19", "observation": "campaign switching preserves old protocol/destination/job/publication/submission params."},
+        {"type": "browser", "ref": "artifacts/runs/geo-requirements-audit-20260718T083249Z/browser/admin-geo-campaign-switched-desktop.png", "observation": "campaign content changed while stale destination_id remained in URL."}
+      ],
+      "risk": "操作者可能读取或写入错误 Campaign，污染审计链。",
+      "recommendation": "以 Campaign 为根重新派生并校验全部上下文参数，无效参数立即清除。",
+      "acceptance": "双 Campaign/双目的地 mutation E2E 证明 URL、payload 和 DB 写入只属于目标 Campaign。"
+    },
+    {
+      "id": "F-013",
+      "priority": "P1",
+      "title": "Knowledge 到正式 Evidence 的 UI 工作流断裂",
+      "requirements": ["FR-08", "FR-13"],
+      "evidence": [
+        {"type": "code", "ref": "apps/admin-web/app/projects/[project_id]/features/project-workbench/WorkbenchShell.tsx:103", "observation": "EvidencePanel is not rendered; approved Knowledge facts have no UI promotion path."},
+        {"type": "contract", "ref": "scripts/promote_approved_knowledge_fact.py", "observation": "script accepts public_domain while domain enum expects public_reference."}
+      ],
+      "risk": "运营人员无法从知识导入闭合到 Evidence Pack，脚本路径也可能失败。",
+      "recommendation": "增加 Fact -> Evidence proposal -> rights/citation review -> approve UI，并共享枚举契约。",
+      "acceptance": "浏览器完成 URL/file import 到 evidence pack/claim；缺权利或 citation 时阻断。"
+    },
+    {
+      "id": "F-014",
+      "priority": "P1",
+      "title": "Prompt 渠道绑定和完成度判断可能错误",
+      "requirements": ["FR-05", "FR-13", "GATE-05"],
+      "evidence": [
+        {"type": "code", "ref": "apps/admin-web/app/projects/[project_id]/geo/features/geo/data.ts:61", "observation": "first project skill/latest release is selected rather than current opportunity/channel binding."},
+        {"type": "code", "ref": "apps/admin-web/app/projects/[project_id]/geo/features/geo/GeoShell.tsx:57", "observation": "readiness only checks destinations.length >= 9."}
+      ],
+      "risk": "Bundle 可使用错误 Prompt，重复或 blocked destination 可使完成度虚高。",
+      "recommendation": "从 Opportunity 到 approved release 单向解析，并按九个唯一渠道及政策/证据检查 readiness。",
+      "acceptance": "九渠道不同 release 的生成 hash 全部匹配；重复/blocked destination 不计入完成。"
+    },
+    {
+      "id": "F-015",
+      "priority": "P1",
+      "title": "CI 可假绿且当前集成契约有 3 个失败",
+      "requirements": ["FR-18", "FR-20", "GATE-08"],
+      "evidence": [
+        {"type": "ci", "ref": ".github/workflows/ci.yml:45", "observation": "acceptance DB URLs are absent, so acceptance can skip-success."},
+        {"type": "test", "ref": "Makefile:135", "observation": "deepseek-live selects marker live but the only test has no live marker; 0 collected, exit 5."},
+        {"type": "runtime", "ref": "isolated PostgreSQL integration run", "observation": "11 passed, 3 failed, 0 skipped: stale migration ledger expectation, model-log expectation, and outbox batch contamination."}
+      ],
+      "risk": "迁移、并发、模型日志和 acceptance 回归可在 CI 绿灯下进入主干。",
+      "recommendation": "使用隔离 DB/schema 和 run-scoped data；缺环境不得 skip-success；修正 marker 与当前契约。",
+      "acceptance": "13 个 integration 全执行、0 skip/0 fail；live job 恰好收集 1 项；并行重复无污染。"
+    },
+    {
+      "id": "F-016",
+      "priority": "P1",
+      "title": "Acceptance 与真实 worker/relay 存在竞态",
+      "requirements": ["FR-15", "FR-20"],
+      "evidence": [
+        {"type": "runtime", "ref": "isolated acceptance", "observation": "with worker/relay running, simulation artifact did not finalize; inline-only mode passed."}
+      ],
+      "risk": "验收不代表正常部署拓扑，结果可能随机失败或跨 run 消费。",
+      "recommendation": "显式支持 external-worker polling 或 inline-only 两种模式，并使用 run-scoped queue/project。",
+      "acceptance": "两模式各连续 20 次，无重复、丢 artifact 或跨 run outbox claim。"
+    },
+    {
+      "id": "F-017",
+      "priority": "P1",
+      "title": "数据库角色最小权限不足",
+      "requirements": ["FR-01", "FR-18", "GATE-08"],
+      "evidence": [
+        {"type": "database", "ref": "runtime privilege inventory", "observation": "geo_app and geo_worker have CRUD on 85 tables; geo_readonly SELECT on 85; only 80/86 tables use RLS."}
+      ],
+      "risk": "服务攻破后权限过大，session hash、身份和审计数据暴露面不必要。",
+      "recommendation": "撤销 blanket/default grants，按服务/用例建立 table/function matrix，并隔离敏感 schema。",
+      "acceptance": "CI 对每个 runtime role 执行允许/禁止矩阵；worker/readonly 无身份会话越权。"
+    },
+    {
+      "id": "F-018",
+      "priority": "P1",
+      "title": "可观测性、readiness 和生产预检不可信",
+      "requirements": ["FR-16", "FR-18"],
+      "evidence": [
+        {"type": "runtime", "ref": "isolated APIs", "observation": "health/ready returned 200, metrics returned 404."},
+        {"type": "configuration", "ref": "infra/prometheus/prometheus.yml:6", "observation": "Prometheus targets nonexistent api:8000; no application instrumentation or alerting stack."}
+      ],
+      "risk": "依赖故障时部署仍显示健康，任务/同步错误不可观测。",
+      "recommendation": "深度 readiness、正确 metrics/targets、structured logs/traces、queue/outbox alerts 和严格 production preflight。",
+      "acceptance": "逐一断开依赖时 readiness/alerts 正确；Prometheus targets 全绿；trace 可定位 project/job 且日志不泄密。"
+    },
+    {
+      "id": "F-019",
+      "priority": "P2",
+      "title": "问题体系、内容库存和实体图谱过薄",
+      "requirements": ["CAP-02", "CAP-05", "CAP-08", "FR-05", "FR-06", "FR-07"],
+      "evidence": [
+        {"type": "data_model", "ref": "monitoring, knowledge and catalog domains", "observation": "no query cluster/fan-out/persona/funnel/multiturn, site URL inventory, or full entity/fact graph."}
+      ],
+      "risk": "无法系统发现需求、内容和事实缺口，也无法解释站外权威差异。",
+      "recommendation": "统一 Query Graph、Content Inventory 和 Entity/Fact Graph，节点保存来源、版本、市场、有效期和冲突。",
+      "acceptance": "业务目标可追踪到问题簇、页面、实体、事实、Evidence、观测和业务结果。"
+    },
+    {
+      "id": "F-020",
+      "priority": "P2",
+      "title": "没有可解释建议和不修改机制",
+      "requirements": ["FR-11", "FR-12"],
+      "evidence": [
+        {"type": "data_model", "ref": "repository model/API inventory", "observation": "no recommendation/evidence level/impact-effort-confidence/no-change model."}
+      ],
+      "risk": "系统不能把差距定位到影响链，也不能给出证据不足或无需修改。",
+      "recommendation": "建议保存 issue、evidence level、impact chain、page/cluster、risk、effort、value、confidence、validation 和 decision。",
+      "acceptance": "支持 blocker/gap/experiment/optional/no-change/insufficient-evidence 且可回溯输入和规则版本。"
+    },
+    {
+      "id": "F-021",
+      "priority": "P2",
+      "title": "实验统计、分层 KPI 与告警不完整",
+      "requirements": ["CAP-09", "CAP-11", "FR-15", "FR-16", "GATE-06"],
+      "evidence": [
+        {"type": "domain", "ref": "monitoring metrics/report model", "observation": "sample_size=1 is valid; no confidence interval, win/tie/loss, worst result, negative cross-query effect or drift."}
+      ],
+      "risk": "单次/小样本波动可被解释成稳定提升，异常无法主动发现。",
+      "recommendation": "分层重复采样，拆分技术/官方/观测/答案/流量/业务 KPI，并建立阈值告警。",
+      "acceptance": "低于最小样本禁止稳定结论；报告显示区间/最差结果；来源分母不能合并。"
+    },
+    {
+      "id": "F-022",
+      "priority": "P2",
+      "title": "Admin GEO 页面请求瀑布与整页重验证放大",
+      "requirements": ["FR-01", "FR-16"],
+      "evidence": [
+        {"type": "code", "ref": "apps/admin-web/app/projects/[project_id]/geo/features/geo/data.ts:35", "observation": "a populated render can issue about 35 GEO requests plus 7 base requests with serial dependencies."}
+      ],
+      "risk": "数据或 API 延迟增长时页面和后台负载恶化。",
+      "recommendation": "聚合 BFF endpoint、并行 fetch、阶段 lazy load 和局部 mutation/cache invalidation。",
+      "acceptance": "首屏请求降至可控常数；Campaign 切换和 mutation 不重取无关模块。"
+    },
+    {
+      "id": "F-023",
+      "priority": "P2",
+      "title": "Customer 最新指标和 Campaign 上下文可能错误",
+      "requirements": ["FR-15", "FR-16"],
+      "evidence": [
+        {"type": "code", "ref": "customer portal summary/data flow", "observation": "latest metric uses index 0 from an unsorted backend collection; campaign filter is hidden/lost in navigation."}
+      ],
+      "risk": "客户可能把旧指标当最新，并混淆多 Campaign 数据。",
+      "recommendation": "后端返回明确 latest，并在门户提供持久 Campaign selector/context。",
+      "acceptance": "乱序多 Campaign/多窗口 fixture 下四个门户页面始终一致显示选定 Campaign 最新有效版本。"
+    },
+    {
+      "id": "F-024",
+      "priority": "P2",
+      "title": "移动端表格与可访问性不完整",
+      "requirements": ["CAP-06", "FR-19"],
+      "evidence": [
+        {"type": "browser", "ref": "artifacts/runs/geo-requirements-audit-20260718T083249Z/browser", "observation": "document overflow and focus passed, but mobile tabs/select/tables are clipped internal scrollers with weak affordance and character-by-character headers."}
+      ],
+      "risk": "移动运营和 Agent/辅助技术难以发现或操作隐藏内容。",
+      "recommendation": "可发现滚动或列表布局、table semantics、aria-live、完整键盘和 screen-reader testing。",
+      "acceptance": "Chromium/Firefox/WebKit x mobile/tablet/desktop 的 keyboard/axe/screen-reader 关键流通过。"
+    },
+    {
+      "id": "F-025",
+      "priority": "P2",
+      "title": "测试覆盖率和前端测试深度不足",
+      "requirements": ["FR-18", "FR-20"],
+      "evidence": [
+        {"type": "coverage", "ref": "audit coverage run", "observation": "56.21% combined, 61.10% statements, 26.93% branches, 3498 missing lines, 1096 missing branches; three critical files at 0%."},
+        {"type": "test_inventory", "ref": "collected tests", "observation": "frontend tests are mostly source-string assertions; no browser marker tests; Knowledge has no PostgreSQL/worker/MinIO/API integration test."}
+      ],
+      "risk": "身份、任务、Knowledge、发布和错误补偿回归缺少行为级保护。",
+      "recommendation": "建立风险型 coverage gate，优先补关键后端 integration 和组件/E2E/权限/错误/跨浏览器测试。",
+      "acceptance": "关键模块 branch >=90%，全仓阈值生效；执行/跳过清晰，缺环境不得假绿。"
+    },
+    {
+      "id": "F-026",
+      "priority": "P2",
+      "title": "Prompt Injection、YMYL、版权和保留策略不完整",
+      "requirements": ["CAP-03", "CAP-12", "FR-08", "FR-13", "FR-18", "GATE-03", "GATE-08"],
+      "evidence": [
+        {"type": "repository_search", "ref": "content governance implementation", "observation": "no dedicated hidden-instruction, malicious UGC, fake-schema, scaled-content or YMYL gates; no unified retention/deletion policy."}
+      ],
+      "risk": "不可信内容可影响 Prompt/输出，高风险内容和版权数据缺少加强治理。",
+      "recommendation": "隔离 untrusted content，扫描 injection/schema leakage，按风险决定 reviewer、evidence、retention 和 deletion。",
+      "acceptance": "攻击 corpus/YMYL fixture 在模型、草稿和发布层均被阻断或升级审核，策略全程可审计。"
+    },
+    {
+      "id": "F-027",
+      "priority": "P2",
+      "title": "通用导出、删除、重算和数据质量能力缺失",
+      "requirements": ["FR-20"],
+      "evidence": [
+        {"type": "api_inventory", "ref": "OpenAPI and artifact implementation", "observation": "package artifact export exists; general raw/aggregate export, warehouse sync, deletion, recomputation and data-quality APIs do not."}
+      ],
+      "risk": "dashboard 数字难以外部复算，删除和迁移无法证明覆盖所有副本。",
+      "recommendation": "versioned export manifest、lineage、schema version、recompute、tombstone/delete 和 quality result。",
+      "acceptance": "任一 KPI 可下载原始记录复算；删除覆盖 DB/object/cache/downstream；迁移可回滚并校验 hash。"
+    }
+  ],
+  "verification": [
+    {"name": "lint", "status": "PASS", "result": "make lint and extended Ruff passed"},
+    {"name": "python_typecheck", "status": "PASS", "result": "122 source files"},
+    {"name": "pnpm_typecheck", "status": "PASS", "result": "6 workspaces"},
+    {"name": "frontend_production_build", "status": "PASS", "result": "Admin 12 routes; Customer 7 routes"},
+    {"name": "openapi_contracts", "status": "PASS", "result": "2 surfaces and 6 tests"},
+    {"name": "architecture_infra_tests", "status": "PASS", "result": "23 passed"},
+    {"name": "non_integration_pytest", "status": "PARTIAL", "result": "239 passed, 2 skipped, 13 deselected"},
+    {"name": "postgres_integration", "status": "FAIL", "result": "11 passed, 3 failed, 0 skipped"},
+    {"name": "coverage", "status": "FAIL", "result": "56.21% combined; 61.10% statements; 26.93% branches"},
+    {"name": "controlled_simulation_acceptance", "status": "PASS", "result": "9 channels/tasks, complete claims, maker-checker, no external auto-publication, T28/T56/T84"},
+    {
+      "name": "deepseek_provider_generation",
+      "status": "PASS",
+      "result": "one successful deepseek-v4-flash call; 2030 prompt tokens; 1422 completion tokens; 2 supported claims; approved package",
+      "project_id": "e1f1373e-1800-437d-94f1-8d8abe4061c4",
+      "provider_request_id": "e0b1c1d2-e837-4929-b3b5-3b884359e2e3",
+      "response_hash": "b906b65118d65c6642a52665314738c6eec274a50b1bf596454a1381824212ee"
+    },
+    {"name": "deepseek_end_to_end_publication_chain", "status": "FAIL", "result": "publication.verify retry_wait: verification input omitted required_disclosures; model was not called again"},
+    {"name": "browser_static_smoke", "status": "PASS", "result": "13 routes x 3 viewports, 40 screenshots, no console/page/5xx/overlay/document-overflow/focus failures"},
+    {"name": "browser_populated_runbook", "status": "PASS", "result": "44 Admin/Customer views, Chromium desktop/mobile, 0 failures"},
+    {"name": "browser_cross_engine_accessibility", "status": "UNVERIFIED", "result": "Firefox/WebKit, full screen reader, role mutations and large-data states not run"}
+  ],
+  "artifacts": [
+    "artifacts/runs/geo-requirements-audit-20260718T083249Z/acceptance/simulation-result-2.json",
+    "artifacts/runs/geo-requirements-audit-20260718T083249Z/browser/browser-smoke-report.json",
+    "artifacts/runs/geo-requirements-audit-20260718T083249Z/browser/simulation-populated/browser-report.json"
+  ],
+  "roadmap": [
+    {
+      "phase": "A",
+      "objective": "消除生产与证据可信度风险",
+      "finding_refs": ["F-001", "F-002", "F-003", "F-004", "F-015", "F-016", "F-017", "F-018"],
+      "exit_criteria": "P0 全部关闭；integration 0 skip/0 fail；部署拓扑验收可重复；灾备故障注入正确失败。"
+    },
+    {
+      "phase": "B",
+      "objective": "达到 L1 SEO 等效",
+      "finding_refs": ["F-005", "F-006", "F-008", "F-019"],
+      "exit_criteria": "GATE-01/02 PASS；真实站点 crawl 到官方 Search 数据可复核；官方数据不依赖人工 JSON。"
+    },
+    {
+      "phase": "C",
+      "objective": "达到 L2 GEO 可用",
+      "finding_refs": ["F-009", "F-010", "F-011", "F-013", "F-014", "F-020", "F-021"],
+      "exit_criteria": "Google/Bing/OpenAI 至少三平台有可复核数据或合规抽样；建议能追踪到发布后复测。"
+    },
+    {
+      "phase": "D",
+      "objective": "达到 L3 成熟 GEO",
+      "finding_refs": ["F-007", "F-024", "F-025", "F-026", "F-027"],
+      "exit_criteria": "8 个硬门槛与 40 项复合要求全部 PASS，平台/抽样/模拟/业务数据严格分层。"
+    }
+  ],
+  "limitations": [
+    "未对真实平台站长账户执行授权和数据拉取，因为项目无连接器且未提供账户授权。",
+    "未向真实 CMS、社区、媒体或其他第三方渠道发布。",
+    "仅执行一次付费 DeepSeek 成功调用，后续发布校验失败后未重试模型。",
+    "浏览器覆盖 Chromium；Firefox/WebKit、完整屏幕阅读器、多角色 mutation 和大数据压力未验证。",
+    "结论针对审计开始时冻结的当前脏工作树。"
+  ]
+}

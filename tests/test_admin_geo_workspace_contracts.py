@@ -42,24 +42,41 @@ def test_admin_geo_workspace_is_split_into_complete_operator_surfaces() -> None:
         assert (FEATURE_ROOT / f"{component}.tsx").exists()
     placement = read_tree(".tsx")
     for control in (
-        "Evidence Pack",
-        "Prompt Bundle",
-        "Job Events",
-        "Claim inventory",
-        "人工编辑",
-        "不可变导出",
+        "证据准备",
+        "冻结本次生成输入",
+        "生成任务事件",
+        "事实与表述",
+        "人工修改并创建新版本",
+        "创建不可变导出",
         "标记为待发布",
-        "回填 URL",
+        "保存公开 URL",
         "请求验证",
-        "记录投放测量",
+        "记录一次测量",
     ):
         assert control in placement
 
 
+def test_admin_geo_redesign_preserves_every_existing_command() -> None:
+    surfaces = read_tree(".tsx")
+    commands = {
+        "approveReport", "approveSuggestion", "changeProtocol", "computeMetrics",
+        "createCampaign", "createDestination", "createMonitoringQuery", "createProtocol",
+        "createReport", "createSuggestion", "importObservation", "reviewDestination",
+        "transitionOpportunity", "bindPromptTask", "blockSubmission", "buildEvidence",
+        "cancelMeasurementCollectionTask", "completeMeasurementCollectionTask", "controlJob",
+        "createBrief", "createExport", "createGenerationJob", "createMeasurement",
+        "createPromptBundle", "createPromptRelease", "createPromptSimulation",
+        "createPromptSkill", "createPublication", "createSubmission", "editPackage",
+        "installDefaultPromptCatalog", "reviewPackage", "setSubmissionUrl",
+        "submitPackageReview", "transitionPublication", "verifySubmission",
+    }
+    missing = sorted(command for command in commands if f"action={{{command}}}" not in surfaces)
+    assert not missing, f"redesign removed GEO commands: {missing}"
+
+
 def test_admin_geo_mutations_use_server_identity_and_idempotency_guards() -> None:
     actions = "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in FEATURE_ROOT.glob("*-actions.ts")
+        path.read_text(encoding="utf-8") for path in FEATURE_ROOT.glob("*-actions.ts")
     )
     client_factory = (GEO_ROOT / "client.ts").read_text(encoding="utf-8")
     assert "actorHeaders()" in client_factory
@@ -69,11 +86,36 @@ def test_admin_geo_mutations_use_server_identity_and_idempotency_guards() -> Non
     assert "idempotencyKey" in (FEATURE_ROOT / "action-utils.ts").read_text(encoding="utf-8")
 
 
+def test_admin_geo_client_forms_work_on_lan_http_origins() -> None:
+    action_form = (FEATURE_ROOT / "ActionForm.tsx").read_text(encoding="utf-8")
+    placement = (FEATURE_ROOT / "PlacementWorkspace.tsx").read_text(encoding="utf-8")
+    assert "crypto.randomUUID" not in action_form
+    assert "crypto.getRandomValues" in action_form
+    assert '<a key={stage.id}' in placement
+
+
+def test_admin_geo_normal_workflows_do_not_require_internal_ids_or_json() -> None:
+    normal_surfaces = "\n".join(
+        (FEATURE_ROOT / name).read_text(encoding="utf-8")
+        for name in (
+            "CampaignWorkspace.tsx", "ObservationWorkspace.tsx", "DestinationWorkspace.tsx",
+            "PlacementWorkspace.tsx", "GenerationPackagePanel.tsx", "PublicationPanel.tsx",
+        )
+    )
+    for leaked_control in (
+        "Market Profile ID", "主商品实体 ID", "Job ID", "目标 JSON", "约束 JSON",
+        "变量 JSON", "附加指标 JSON", "结构化内容 JSON", "完整 Claim 清单 JSON",
+    ):
+        assert leaked_control not in normal_surfaces
+
+
 def test_admin_geo_export_and_publication_are_separate_explicit_actions() -> None:
     actions = (FEATURE_ROOT / "placement-actions.ts").read_text(encoding="utf-8")
     package_panel = (FEATURE_ROOT / "GenerationPackagePanel.tsx").read_text(encoding="utf-8")
     publication_panel = (FEATURE_ROOT / "PublicationPanel.tsx").read_text(encoding="utf-8")
-    export_route = (GEO_ROOT.parent / "export-download/[version_id]/[export_id]/route.ts").read_text(encoding="utf-8")
+    export_route = (
+        GEO_ROOT.parent / "export-download/[version_id]/[export_id]/route.ts"
+    ).read_text(encoding="utf-8")
     assert "createExport" in actions
     assert "createPublication" in actions
     assert "未产生发布任务" in actions
@@ -116,6 +158,11 @@ def test_admin_prompt_catalog_edits_the_actual_executable_release() -> None:
     assert "PROMPT_TASK_KEYS" in prompt_panel
     assert "internal_evidence_refs" in defaults
     assert "public_citation_refs" in defaults
+    assert "DEFAULT_SYSTEM_PROMPT" not in defaults
+    assert "DEFAULT_USER_PROMPT" not in defaults
+    assert (ROOT / "prompt/catalog.json").is_file()
+    assert (ROOT / "prompt/channels/productreview.md").is_file()
+    assert (ROOT / "prompt/runtime/simulation-system.md").is_file()
     assert 'defaultValue="deepseek-v4-flash"' in generation
     assert 'max="5" defaultValue="2"' in generation
 
@@ -129,9 +176,9 @@ def test_prompt_simulation_is_an_internal_test_only_surface() -> None:
         for path in (ROOT / "apps/customer-web").rglob("*")
         if path.is_file() and path.suffix in {".ts", ".tsx"}
     )
-    download = (
-        GEO_ROOT.parent / "simulation-download/[simulation_id]/route.ts"
-    ).read_text(encoding="utf-8")
+    download = (GEO_ROOT.parent / "simulation-download/[simulation_id]/route.ts").read_text(
+        encoding="utf-8"
+    )
 
     assert "TEST ONLY" in panel
     assert "publication_eligible=false" in panel
@@ -151,11 +198,14 @@ def test_prompt_simulation_is_an_internal_test_only_surface() -> None:
 
 def test_project_page_loads_geo_workspace_without_serial_catalog_waterfall() -> None:
     page = (GEO_ROOT.parent / "page.tsx").read_text(encoding="utf-8")
-    start = page.index("const [catalog, invitations, members, geoData] = await Promise.all")
+    start = page.index(
+        "const [catalog, invitations, members, geoData, knowledgeData] = await Promise.all"
+    )
     end = page.index(");", start)
     parallel_block = page[start:end]
     assert "loadCatalog(projectId)" in parallel_block
     assert "loadGeoWorkspace(projectId, query)" in parallel_block
+    assert "loadKnowledgeWorkspace(projectId, query)" in parallel_block
 
 
 def test_admin_geo_files_stay_below_refactor_size_limits() -> None:

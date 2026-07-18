@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
+import shutil
 from uuid import uuid4
 
 import psycopg
@@ -24,7 +26,9 @@ pytestmark = [
 ]
 
 
-def test_default_prompt_catalog_converges_without_overwriting_user_selection() -> None:
+def test_default_prompt_catalog_converges_without_overwriting_user_selection(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     suffix = uuid4().hex[:10]
     app_login = f"geo_prompt_it_{suffix}"
     password = uuid4().hex
@@ -36,9 +40,7 @@ def test_default_prompt_catalog_converges_without_overwriting_user_selection() -
         )
         ids = seed_project(admin, suffix=f"prompt-{suffix}")
     app_url = login_url(ADMIN_URL, user=app_login, password=password)
-    application = PlacementApplication(
-        placement_uow_factory(lambda: psycopg.connect(app_url))
-    )
+    application = PlacementApplication(placement_uow_factory(lambda: psycopg.connect(app_url)))
     try:
         installed = application.install_default_prompt_catalog(
             project_id=ids["project"], actor_id=ids["owner"]
@@ -126,6 +128,15 @@ def test_default_prompt_catalog_converges_without_overwriting_user_selection() -
             selected_by=ids["owner"],
         )
 
+        editable_root = tmp_path / "prompt"
+        shutil.copytree(Path(__file__).resolve().parents[2] / "prompt", editable_root)
+        channel_file = editable_root / "channels" / "owned-site.md"
+        channel_file.write_text(
+            channel_file.read_text(encoding="utf-8") + "\n\nIntegration prompt catalog revision.",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("GEO_PROMPT_ROOT", str(editable_root))
+
         after_customization = application.install_default_prompt_catalog(
             project_id=ids["project"], actor_id=ids["owner"]
         )
@@ -133,6 +144,13 @@ def test_default_prompt_catalog_converges_without_overwriting_user_selection() -
             item for item in after_customization if item["task_key"] == "owned_site"
         )
         assert owned_binding["template_release_id"] == custom_system.id
+        refreshed_releases = application.list_prompt_releases(
+            project_id=ids["project"], skill_id=owned_skill.id
+        )
+        assert any(
+            "Integration prompt catalog revision." in item.source_text
+            for item in refreshed_releases
+        )
 
         with psycopg.connect(ADMIN_URL) as admin:
             counts = admin.execute(

@@ -1,6 +1,7 @@
 import type { CatalogLoadResult } from "../../catalogTypes";
 import { EntityPanel } from "../../EntityPanel";
-import { EvidencePanel } from "../../EvidencePanel";
+import { KnowledgeWorkspace } from "../../KnowledgeWorkspace";
+import type { KnowledgeWorkspaceData } from "../../knowledgeTypes";
 import { InvitationManagementPanel } from "../../InvitationManagementPanel";
 import type { InvitationLoadResult } from "../../invitationTypes";
 import { MarketProfilePanel } from "../../MarketProfilePanel";
@@ -18,6 +19,7 @@ type Props = Readonly<{
   geoData: GeoWorkspaceData | null;
   invitations: InvitationLoadResult;
   members: ProjectMemberLoadResult;
+  knowledgeData: KnowledgeWorkspaceData | null;
   projectId: string;
 }>;
 
@@ -26,6 +28,7 @@ export function WorkbenchShell({
   catalog,
   geoData,
   invitations,
+  knowledgeData,
   members,
   projectId
 }: Props) {
@@ -42,21 +45,20 @@ export function WorkbenchShell({
         </nav>
       </section>
 
-      <section className="projectHero">
-        <p className="eyebrow">项目详情</p>
-        <h1>{project.name}</h1>
-        <p className="projectMeta">
-          {statusLabel(project.status)} · Tenant {project.tenant_id} · {project.id}
-        </p>
+      <section className="projectHero compactProjectHero">
+        <div><p className="eyebrow">项目工作台</p><h1>{project.name}</h1>
+          <p className="projectMeta">{statusLabel(project.status)} · {catalog.markets.data[0]?.market_code || "未配置市场"} · {roleLabel(members.currentRole || "viewer")}</p>
+        </div>
+        <details className="projectTechnical"><summary>技术信息</summary><code>Tenant {project.tenant_id}</code><code>Project {project.id}</code></details>
       </section>
 
-      <section className="stats projectBoard" aria-label="项目看板">
+      {activeTab !== "geo" ? <section className="stats projectBoard" aria-label="项目看板">
         <div className="stat"><span className="muted">状态</span><strong>{statusLabel(project.status)}</strong></div>
         <div className="stat"><span className="muted">实体</span><strong>{catalog.entities.data.length}</strong></div>
         <div className="stat"><span className="muted">市场</span><strong>{catalog.markets.data.length}</strong></div>
         <div className="stat"><span className="muted">证据</span><strong>{catalog.evidence.data.length}</strong></div>
         <div className="stat"><span className="muted">成员角色</span><strong>{members.currentRole ? roleLabel(members.currentRole) : "未识别"}</strong></div>
-      </section>
+      </section> : null}
 
       <nav className="tabBar" aria-label="项目工作台">
         {workbenchTabs.map((tab) => (
@@ -83,7 +85,7 @@ export function WorkbenchShell({
         ) : null}
         {activeTab === "prompts" ? <PromptPanel projectId={project.id} /> : null}
         {activeTab === "knowledge" ? (
-          <KnowledgePanel catalog={catalog} projectId={project.id} />
+          knowledgeData ? <KnowledgeWorkspace data={knowledgeData} projectId={project.id} /> : <EmptyState text="正在准备知识库工作区。" />
         ) : null}
         {activeTab === "operations" ? <OperationsPanel projectId={project.id} /> : null}
         {activeTab === "geo" ? (
@@ -157,35 +159,10 @@ function PromptPanel({ projectId }: { projectId: string }) {
       <p className="muted formIntro">
         旧 Prompt 工作台入口保留；GEO 文案生产使用可编辑 Prompt Skill、不可变 Release 和 Prompt Bundle。
       </p>
-      <a className="button" href={`/projects/${encodeURIComponent(projectId)}?tab=geo&geo_section=placement&placement_stage=intake`}>
+      <a className="button" href={`/projects/${encodeURIComponent(projectId)}?tab=geo&geo_section=placement&placement_stage=brief`}>
         打开 GEO Prompt / Bundle
       </a>
     </section>
-  );
-}
-
-function KnowledgePanel({
-  catalog,
-  projectId
-}: {
-  catalog: CatalogLoadResult;
-  projectId: string;
-}) {
-  return (
-    <div className="sectionStack">
-      <section className="detailPanel unframedPanel">
-        <p className="eyebrow">知识库</p>
-        <h2>证据治理与事实来源</h2>
-        <p className="muted formIntro">
-          这里保留知识库主入口，并接入新的实体、市场、事实证据和真实消费者使用描述治理模型。
-        </p>
-      </section>
-      <EvidencePanel
-        entities={catalog.entities.data}
-        projectId={projectId}
-        resource={catalog.evidence}
-      />
-    </div>
   );
 }
 

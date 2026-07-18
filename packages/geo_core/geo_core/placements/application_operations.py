@@ -7,7 +7,7 @@ from uuid import UUID
 
 from geo_core.object_store import RetrievedObject
 from geo_core.placements.default_prompts import (
-    DEFAULT_PROMPT_DEFINITIONS,
+    default_prompt_definitions,
     default_output_schema,
 )
 from geo_core.placements.generation_contract import validate_generation_schema
@@ -61,11 +61,12 @@ class PlacementOperationsApplicationMixin:
         self, *, project_id: UUID, actor_id: UUID
     ) -> tuple[Mapping[str, object], ...]:
         output_schema = default_output_schema()
+        definitions = default_prompt_definitions()
         validate_generation_schema(output_schema)
         with self._uow_factory(project_id) as uow:
             result = uow.placements.install_default_prompt_catalog(
                 project_id=project_id,
-                definitions=DEFAULT_PROMPT_DEFINITIONS,
+                definitions=definitions,
                 output_schema=output_schema,
                 actor_id=actor_id,
             )

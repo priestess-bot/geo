@@ -1,4 +1,5 @@
 from decimal import Decimal
+from http.client import IncompleteRead
 from pathlib import Path
 from uuid import uuid4
 
@@ -12,6 +13,7 @@ from geo_core.model_gateway.contracts import (
     ProviderCapabilities,
     ProviderCapabilityRegistry,
     ProviderPolicyViolation,
+    RetryableModelGatewayError,
 )
 from geo_core.model_gateway.deepseek import DeepSeekGateway, JsonResponse
 
@@ -29,12 +31,38 @@ class RecordingTransport:
                 "choices": [
                     {
                         "finish_reason": "stop",
-                        "message": {"content": '{"title":"Product review","body":"Evidence-led copy"}'},
+                        "message": {
+                            "content": '{"title":"Product review","body":"Evidence-led copy"}'
+                        },
                     }
                 ],
                 "usage": {"prompt_tokens": 120, "completion_tokens": 40, "cost_usd": "0.0042"},
             },
             headers={"x-request-id": "deepseek-request-1"},
+        )
+
+
+class IncompleteResponseTransport:
+    def post(self, **kwargs: object) -> JsonResponse:
+        del kwargs
+        raise IncompleteRead(b"", 128)
+
+
+class EmptyContentTransport:
+    def post(self, **kwargs: object) -> JsonResponse:
+        del kwargs
+        return JsonResponse(
+            body={"choices": [{"message": {"content": ""}}]},
+            headers={},
+        )
+
+
+class InvalidJsonTransport:
+    def post(self, **kwargs: object) -> JsonResponse:
+        del kwargs
+        return JsonResponse(
+            body={"choices": [{"message": {"content": '{"title":'}}]},
+            headers={},
         )
 
 
@@ -112,4 +140,43 @@ def test_provider_policy_must_be_registered_and_proven_before_call(tmp_path: Pat
     )
 
     with pytest.raises(ProviderPolicyViolation, match="external-training"):
+        gateway.generate(request(), policy=ModelPolicy(), budget=ModelCallBudget(1))
+
+
+def test_incomplete_provider_response_is_classified_as_retryable(tmp_path: Path) -> None:
+    key_file = tmp_path / "deepseek-key"
+    key_file.write_text("secret-value", encoding="utf-8")
+    gateway = DeepSeekGateway(
+        api_key_file=key_file,
+        capability_registry=registry(),
+        transport=IncompleteResponseTransport(),
+    )
+
+    with pytest.raises(RetryableModelGatewayError, match="could not be completed"):
+        gateway.generate(request(), policy=ModelPolicy(), budget=ModelCallBudget(1))
+
+
+def test_empty_provider_content_is_classified_as_retryable(tmp_path: Path) -> None:
+    key_file = tmp_path / "deepseek-key"
+    key_file.write_text("secret-value", encoding="utf-8")
+    gateway = DeepSeekGateway(
+        api_key_file=key_file,
+        capability_registry=registry(),
+        transport=EmptyContentTransport(),
+    )
+
+    with pytest.raises(RetryableModelGatewayError, match="content is empty"):
+        gateway.generate(request(), policy=ModelPolicy(), budget=ModelCallBudget(1))
+
+
+def test_invalid_provider_json_is_classified_as_retryable(tmp_path: Path) -> None:
+    key_file = tmp_path / "deepseek-key"
+    key_file.write_text("secret-value", encoding="utf-8")
+    gateway = DeepSeekGateway(
+        api_key_file=key_file,
+        capability_registry=registry(),
+        transport=InvalidJsonTransport(),
+    )
+
+    with pytest.raises(RetryableModelGatewayError, match="not valid JSON"):
         gateway.generate(request(), policy=ModelPolicy(), budget=ModelCallBudget(1))

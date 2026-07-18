@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { GeoSelection, LoadFailure, Resource } from "./model";
+import { statusLabel } from "./display";
 import styles from "./GeoWorkspace.module.css";
 
 export function geoHref(projectId: string, selection: GeoSelection, updates: { [key: string]: string | undefined }): string {
@@ -24,7 +25,7 @@ export function geoHref(projectId: string, selection: GeoSelection, updates: { [
 export function Status({ value }: { value: string }) {
   const tone = /approved|ready|succeeded|complete|verified|qualified|active/.test(value) ? styles.good
     : /failed|blocked|prohibited|rejected|cancelled|dead/.test(value) ? styles.bad : styles.neutral;
-  return <span className={`${styles.status} ${tone}`}>{value.replaceAll("_", " ")}</span>;
+  return <span className={`${styles.status} ${tone}`}>{statusLabel(value)}</span>;
 }
 export function Empty({ children }: { children: ReactNode }) { return <div className={styles.empty}>{children}</div>; }
 export function SectionHeader({ eyebrow, title, children }: { eyebrow: string; title: string; children?: ReactNode }) {
@@ -44,3 +45,9 @@ export function KeyValue({ label, children }: { label: string; children: ReactNo
 }
 export function ShortId({ value }: { value?: string | null }) { return <code title={value || ""}>{value ? value.slice(0, 8) : "-"}</code>; }
 export function HiddenProject({ projectId }: { projectId: string }) { return <input type="hidden" name="project_id" value={projectId} />; }
+export function TechnicalInfo({ children, label = "技术信息" }: { children: ReactNode; label?: string }) {
+  return <details className={styles.technical}><summary>{label}</summary><div>{children}</div></details>;
+}
+export function CommandPanel({ children, label }: { children: ReactNode; label: string }) {
+  return <details className={styles.commandPanel}><summary>{label}</summary><div className={styles.commandBody}>{children}</div></details>;
+}

@@ -32,6 +32,8 @@ from geo_api.monitoring_routes import monitoring_router
 from geo_api.monitoring_runtime import build_monitoring_application
 from geo_api.placement_campaign_routes import campaign_router
 from geo_api.job_control_routes import job_control_router
+from geo_api.knowledge_routes import knowledge_router
+from geo_api.knowledge_runtime import build_knowledge_application
 from geo_api.placement_generation_routes import generation_router
 from geo_api.placement_publication_routes import publication_router
 from geo_api.placement_simulation_routes import simulation_router
@@ -87,6 +89,7 @@ def create_api_app(
     catalog_application: object | None = None,
     monitoring_application: object | None = None,
     membership_application: object | None = None,
+    knowledge_application: object | None = None,
 ) -> FastAPI:
     """Build one API surface without importing the legacy application module."""
 
@@ -128,6 +131,7 @@ def create_api_app(
         if surface == "internal"
         else None
     )
+    app.state.knowledge_application = knowledge_application or build_knowledge_application()
     install_problem_handlers(app)
     _install_request_metadata_middleware(app, surface=surface)
 
@@ -146,6 +150,7 @@ def create_api_app(
         app.include_router(simulation_router())
         app.include_router(publication_router())
         app.include_router(job_control_router())
+        app.include_router(knowledge_router())
         app.include_router(engineering_router())
         app.include_router(github_integration_router())
         if (

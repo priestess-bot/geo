@@ -14,8 +14,8 @@ function window(value: string | undefined): MeasurementWindow {
   return value === "t28" || value === "t56" || value === "t84" || value === "ad_hoc" ? value : "baseline";
 }
 function placementStage(value: string | undefined): GeoSelection["placementStage"] {
-  return value === "generation" || value === "publication" || value === "simulation"
-    ? value : "intake";
+  return value === "evidence" || value === "generation" || value === "review" || value === "publication" || value === "simulation"
+    ? value : "brief";
 }
 function resource<T>(result: RuntimeHttpResult<T>, fallback: T): Resource<T> {
   if (result.ok) return emptyResource(result.data);

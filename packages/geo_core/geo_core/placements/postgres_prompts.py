@@ -161,11 +161,7 @@ class PostgresPromptRepositoryMixin:
         output_schema: Mapping[str, object],
         actor_id: UUID,
     ) -> tuple[Mapping[str, object], ...]:
-        _one(
-            self._db.execute(
-                "SELECT id FROM projects WHERE id = %s FOR UPDATE", (project_id,)
-            )
-        )
+        _one(self._db.execute("SELECT id FROM projects WHERE id = %s FOR UPDATE", (project_id,)))
         bindings: list[Mapping[str, object]] = []
         for definition in definitions:
             current = _many(
@@ -177,9 +173,6 @@ class PostgresPromptRepositoryMixin:
                     (project_id, definition.task_key),
                 )
             )
-            if current:
-                bindings.append(current[0])
-                continue
             skills = _many(
                 self._db.execute(
                     """SELECT id, project_id, skill_key, status FROM prompt_skills
@@ -190,9 +183,7 @@ class PostgresPromptRepositoryMixin:
             skill = (
                 PromptSkill(**skills[0])
                 if skills
-                else self.create_prompt_skill(
-                    project_id=project_id, skill_key=definition.skill_key
-                )
+                else self.create_prompt_skill(project_id=project_id, skill_key=definition.skill_key)
             )
             source_hash = hashlib.sha256(definition.source.encode("utf-8")).hexdigest()
             releases = _many(
@@ -233,14 +224,17 @@ class PostgresPromptRepositoryMixin:
                     output_schema=output_schema,
                     client_variable_names=(),
                 ).id
-            bindings.append(
-                self.select_prompt_release(
-                    project_id=project_id,
-                    task_key=definition.task_key,
-                    release_id=release_id,
-                    selected_by=actor_id,
+            if current:
+                bindings.append(current[0])
+            else:
+                bindings.append(
+                    self.select_prompt_release(
+                        project_id=project_id,
+                        task_key=definition.task_key,
+                        release_id=release_id,
+                        selected_by=actor_id,
+                    )
                 )
-            )
         return tuple(bindings)
 
     def get_template_release(self, *, project_id: UUID, release_id: UUID) -> TemplateRelease | None:

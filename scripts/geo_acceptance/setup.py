@@ -62,6 +62,8 @@ class AcceptanceSetup:
     destinations: tuple[Destination, ...]
     campaign: Campaign
     owned_opportunity: Opportunity
+    customer_invitation_id: UUID
+    customer_invite_token: str
 
     @property
     def project_id(self) -> UUID:
@@ -82,7 +84,7 @@ def setup_acceptance(config: AcceptanceConfig) -> AcceptanceSetup:
         tenant_name=f"GEO acceptance {suffix}",
         identity_subject=f"owner-{suffix}",
         identity_email=f"owner-{suffix}@example.com",
-        project_name=f"ADVINSYS acceptance {suffix}",
+        project_name=f"[SIMULATION] ADVINSYS acceptance {suffix}",
     )
     owner = access.authenticate_development(
         identity_id=bootstrap.identity_id, tenant_id=bootstrap.tenant_id
@@ -112,6 +114,15 @@ def setup_acceptance(config: AcceptanceConfig) -> AcceptanceSetup:
         requested_surface="customer",
         idempotency_key=f"acceptance-customer-redemption-{suffix}",
     ).principal
+    browser_invitation = access.create_invitation(
+        owner,
+        project_id=bootstrap.project.id,
+        email=f"browser-customer-{suffix}@example.com",
+        role="customer",
+        target_surface="customer",
+        expires_in_hours=1,
+        idempotency_key=f"acceptance-browser-customer-invitation-{suffix}",
+    )
     project_id = bootstrap.project.id
 
     brand = catalog.create_entity(
@@ -205,6 +216,19 @@ def setup_acceptance(config: AcceptanceConfig) -> AcceptanceSetup:
         raise AssertionError("unreviewed destinations must fail closed")
 
     owned_destination, owned_opportunity = destinations[0], opportunities[0]
+    for destination in destinations[1:]:
+        setup_status = placement.review_destination_policy(
+            project_id=project_id,
+            destination_id=destination.id,
+            status="restricted",
+            rules={"manual_submission_only": True, "simulation_allowed": True},
+            identity_requirements={"brand_relationship_disclosure": "required"},
+            disclosure_requirements={"commercial_relationship": "required"},
+            allowed_hosts=(destination.canonical_host,),
+            reviewed_by=owner.identity_id,
+        )
+        if setup_status.status != "restricted":
+            raise AssertionError("non-owned acceptance destinations must remain restricted")
     placement.review_destination_policy(
         project_id=project_id,
         destination_id=owned_destination.id,
@@ -212,7 +236,7 @@ def setup_acceptance(config: AcceptanceConfig) -> AcceptanceSetup:
         rules={"manual_submission_only": True, "official_content": True},
         identity_requirements={"brand_account_authorisation": "required"},
         disclosure_requirements={"brand_relationship": "required"},
-        allowed_hosts=("www.advinsys.com.au",),
+        allowed_hosts=("simulated.advinsys.example",),
         reviewed_by=owner.identity_id,
     )
     placement.transition_opportunity(
@@ -243,6 +267,8 @@ def setup_acceptance(config: AcceptanceConfig) -> AcceptanceSetup:
         destinations,
         campaign,
         owned_opportunity,
+        browser_invitation.invitation.id,
+        browser_invitation.invite_token,
     )
 
 

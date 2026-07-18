@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "system_template": "common/system.md",
+  "user_template": "common/user-template.md",
+  "shared": {
+    "evidence_led_drafting_protocol": "common/evidence-led-drafting-protocol.md",
+    "test_only_consumer_voice": "common/test-only-consumer-voice.md"
+  },
+  "channels": [
+    {
+      "task_key": "owned_site",
+      "skill_key": "system.placement.owned_site.v1",
+      "prompt": "channels/owned-site.md"
+    },
+    {
+      "task_key": "productreview",
+      "skill_key": "system.placement.productreview.v1",
+      "prompt": "channels/productreview.md"
+    },
+    {
+      "task_key": "youtube",
+      "skill_key": "system.placement.youtube.v1",
+      "prompt": "channels/youtube.md"
+    },
+    {
+      "task_key": "reddit",
+      "skill_key": "system.placement.reddit.v1",
+      "prompt": "channels/reddit.md"
+    },
+    {
+      "task_key": "amazon",
+      "skill_key": "system.placement.amazon.v1",
+      "prompt": "channels/amazon.md"
+    },
+    {
+      "task_key": "ozbargain",
+      "skill_key": "system.placement.ozbargain.v1",
+      "prompt": "channels/ozbargain.md"
+    },
+    {
+      "task_key": "tiktok",
+      "skill_key": "system.placement.tiktok.v1",
+      "prompt": "channels/tiktok.md"
+    },
+    {
+      "task_key": "instagram",
+      "skill_key": "system.placement.instagram.v1",
+      "prompt": "channels/instagram.md"
+    },
+    {
+      "task_key": "quora",
+      "skill_key": "system.placement.quora.v1",
+      "prompt": "channels/quora.md"
+    }
+  ]
+}

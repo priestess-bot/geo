@@ -112,7 +112,9 @@ def test_non_rs256_algorithm_and_tampered_signature_are_rejected() -> None:
     }
     invalid_algorithm = _token(private_key, claims, algorithm="HS256")
     valid = _token(private_key, claims)
-    tampered = f"{valid[:-2]}AA"
+    header, payload, signature = valid.split(".")
+    replacement = "A" if signature[0] != "A" else "B"
+    tampered = f"{header}.{payload}.{replacement}{signature[1:]}"
 
     with pytest.raises(OidcAuthenticationError):
         verifier.verify(invalid_algorithm)

@@ -111,7 +111,20 @@ export async function createDestination(_state: ActionResult, form: FormData): P
 
 export async function reviewDestination(_state: ActionResult, form: FormData): Promise<ActionResult> {
   const projectId = value(form, "project_id"), destinationId = value(form, "destination_id"), api = await client();
-  const rules = jsonObject(form, "rules"), identity = jsonObject(form, "identity_requirements"), disclosure = jsonObject(form, "disclosure_requirements");
+  const structured = !value(form, "rules");
+  const rules = structured ? {
+    manual_submission: checked(form, "manual_submission"),
+    automated_posting: checked(form, "automated_posting"),
+    original_context_required: checked(form, "original_context_required")
+  } : jsonObject(form, "rules");
+  const identity = structured ? {
+    brand_identity: value(form, "brand_identity") || "disclosed",
+    authorised_account_required: checked(form, "authorised_account_required")
+  } : jsonObject(form, "identity_requirements");
+  const disclosure = structured ? {
+    commercial_relationship: value(form, "commercial_relationship") || "disclose_when_required",
+    source_attribution_required: checked(form, "source_attribution_required")
+  } : jsonObject(form, "disclosure_requirements");
   if (isActionError(rules)) return rules; if (isActionError(identity)) return identity; if (isActionError(disclosure)) return disclosure;
   return finish(projectId, await api.createPolicyReview(projectId, destinationId, {
     status: value(form, "status") as "approved" | "restricted" | "prohibited", allowed_hosts: lines(form, "allowed_hosts"),

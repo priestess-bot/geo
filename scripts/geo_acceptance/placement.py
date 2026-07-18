@@ -25,6 +25,8 @@ from geo_core.placements.domain import (
     Review,
     Submission,
 )
+from geo_core.placements.simulation import PromptSimulation
+from geo_core.placements.simulation_worker import PromptSimulationHandler
 from geo_core.placements.worker_composition import (
     ArtifactFinalizeHandler,
     EvidencePackHandler,
@@ -36,7 +38,11 @@ from geo_core.placements.worker_composition import (
 )
 from geo_core.placements.worker_repository import PlacementWorkerRepository
 
-from scripts.geo_acceptance.adapters import ControlledUrlVerifier, model_gateway
+from scripts.geo_acceptance.adapters import (
+    ControlledUrlVerifier,
+    DeterministicGateway,
+    model_gateway,
+)
 from scripts.geo_acceptance.contracts import (
     AcceptanceConfig,
     CHANNELS,
@@ -56,6 +62,7 @@ class PlacementResult:
     brief: BriefVersion
     evidence_attempt: EvidencePackAttempt
     prompt_bindings: tuple[Mapping[str, object], ...]
+    prompt_simulations: tuple[PromptSimulation, ...]
     prompt_bundle: PromptBundleView
     generation_job: JobReference
     package: PackageVersion
@@ -127,6 +134,77 @@ def run_placement(
         item["channel"] for item in CHANNELS
     }:
         raise AssertionError("the editable prompt catalog must cover all selected channels")
+    artifact_dispatcher = _artifact_dispatcher(store, setup)
+    simulations: list[PromptSimulation] = []
+    destination_by_channel = {
+        item.publication_channel: item for item in setup.destinations
+    }
+    simulation_dispatcher = _dispatcher(
+        store,
+        handlers={
+            "prompt_simulation.generate": PromptSimulationHandler(
+                store=store,
+                repository=repository,
+                gateway=DeterministicGateway(
+                    evidence_id=setup.fact.id,
+                    product_url=setup.product.canonical_url or "https://example.invalid/",
+                ),
+                lease_for=LEASE_FOR,
+            )
+        },
+        worker_id=f"acceptance-simulation-{setup.suffix}",
+    )
+    for binding in bindings:
+        channel = str(binding["task_key"])
+        simulation, simulation_job = app.create_prompt_simulation(
+            project_id=project_id,
+            destination_id=destination_by_channel[channel].id,
+            template_release_id=cast(UUID, binding["template_release_id"]),
+            primary_brand_entity_id=setup.brand.id,
+            product_entity_id=setup.product.id,
+            authenticity_mode="fake_persona",
+            evidence_item_ids=(setup.fact.id, setup.experience.id),
+            goals={
+                "consumer_query": baseline.query.query_text,
+                "test_objective": f"validate the {channel} prompt contract",
+            },
+            constraints={"test_only": True, "publication_eligible": False},
+            variables={},
+            model_policy_hash=MODEL_POLICY_HASH,
+            configured_model=MODEL,
+            model_call_budget=1,
+            requested_by=setup.owner.identity_id,
+            idempotency_key=f"acceptance-simulation-{channel}-{setup.suffix}",
+        )
+        simulation_result = simulation_dispatcher.process(
+            job_id=simulation_job.id, project_id=project_id
+        )
+        if simulation_result["status"] != "succeeded":
+            raise AssertionError(f"{channel} prompt simulation failed: {simulation_result}")
+        simulation_artifact_job = _artifact_job_id(
+            store,
+            project_id=project_id,
+            resource_kind="prompt_simulation",
+            resource_id=simulation.id,
+        )
+        artifact_result = artifact_dispatcher.process(
+            job_id=simulation_artifact_job, project_id=project_id
+        )
+        if artifact_result["status"] != "finalized":
+            raise AssertionError(f"{channel} simulation artifact did not finalize")
+        finalized = app.get_prompt_simulation(
+            project_id=project_id, simulation_id=simulation.id
+        )
+        if (
+            finalized is None
+            or finalized.publication_eligible
+            or not finalized.test_only
+            or finalized.artifact_status != "finalized"
+        ):
+            raise AssertionError(f"{channel} simulation escaped its TEST ONLY boundary")
+        simulations.append(finalized)
+    if len(simulations) != len(CHANNELS):
+        raise AssertionError("every selected channel must have a prompt simulation")
     owned_binding = next(item for item in bindings if item["task_key"] == "owned_site")
     bundle = app.create_prompt_bundle(
         project_id=project_id,
@@ -136,7 +214,6 @@ def run_placement(
         variables={},
         model_policy_hash=MODEL_POLICY_HASH,
     )
-    artifact_dispatcher = _artifact_dispatcher(store, setup)
     bundle_job = _artifact_job_id(
         store, project_id=project_id, resource_kind="prompt_bundle", resource_id=bundle.id
     )
@@ -222,7 +299,7 @@ def run_placement(
         restricted_policy_acknowledged=False,
         policy_basis=None,
     )
-    submitted_url = f"https://www.advinsys.com.au/geo-acceptance/{setup.suffix}"
+    submitted_url = f"https://simulated.advinsys.example/geo-acceptance/{setup.suffix}"
     submission = app.create_submission(
         project_id=project_id,
         publication_request_id=publication.id,
@@ -284,6 +361,7 @@ def run_placement(
         brief,
         evidence_attempt,
         bindings,
+        tuple(simulations),
         bundle,
         generation_job,
         package,

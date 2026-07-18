@@ -137,8 +137,14 @@ def test_prompt_simulation_handler_allows_synthetic_consumer_copy_but_never_publ
     repository = _Repository(claim)
     gateway = _Gateway(evidence_id)
     lease = WorkerLease(
-        uuid4(), claim.project_id, "prompt_simulation.generate", "unit-worker",
-        uuid4(), 1, 1, 3,
+        uuid4(),
+        claim.project_id,
+        "prompt_simulation.generate",
+        "unit-worker",
+        uuid4(),
+        1,
+        1,
+        3,
     )
 
     result = PromptSimulationHandler(
@@ -153,10 +159,21 @@ def test_prompt_simulation_handler_allows_synthetic_consumer_copy_but_never_publ
     assert result["publication_eligible"] is False
     assert gateway.request.purpose == "geo-prompt-simulation"
     assert gateway.request.prompt_bundle_hash == claim.input_hash
-    instruction = gateway.request.messages[0]["content"]
+    assert gateway.request.temperature == 0.0
+    assert gateway.request.max_output_tokens == 8192
+    assert gateway.request.messages[0]["content"] == claim.system_prompt
+    instruction = " ".join(gateway.request.messages[1]["content"].split())
     assert authenticity_mode.value in instruction
     assert expected_instruction in instruction
     assert "written by an independent consumer" not in instruction
+    assert "does not permit invented product or offer capabilities" in instruction
+    assert "boundary wires, apps, schedules" in instruction
+    assert "Marking one of those statements unsupported is not permission" in instruction
+    assert "remove every unsupported capability" in instruction
+    assert "use it as the only experience storyline" in instruction
+    assert "must remain unsupported with no evidence IDs" in instruction
+    assert "Delete unsupported time-saving, performance, reliability" in instruction
+    assert "do not add unlisted installation steps" in instruction
     assert str(evidence_id) in instruction
     assert "never return null, none, labels, or invented IDs" in instruction
     assert repository.finalized is not None

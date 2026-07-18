@@ -223,7 +223,7 @@ class PsycopgPlacementRepository(
     def create_opportunities(self, **values: Any) -> tuple[Opportunity, ...]:
         result: list[Opportunity] = []
         for destination_id in values["destination_ids"]:
-            reference = f"destination:{destination_id}"
+            reference = f"campaign:{values['campaign_id']}:destination:{destination_id}"
             destination = _row(
                 self._db.execute(
                     """SELECT policy_status FROM publication_destinations

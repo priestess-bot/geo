@@ -1,6 +1,6 @@
 # GEO 全流程操作手册
 
-本文档用于运营执行、交付验收和故障排查。它描述当前稳定双 API、Admin/Customer Web 与 PostgreSQL Durable Worker 的真实操作。产品边界和最终门禁见 [GEO v3 运行与验收合同](../GEO-v3-%E5%85%A8%E6%B5%81%E7%A8%8B%E8%BF%90%E8%A1%8C%E6%89%8B%E5%86%8C.md)。
+> 历史文档：不再作为操作真源。部署、知识治理、内容生产、投放、客户交付和异常恢复统一使用 [ADVINSYS GEO 独立全流程操作手册](geo-ui-operator-guide.md)。
 
 ## 一、开始前先建立运行记录
 
@@ -157,9 +157,11 @@ POST /v1/projects/{project_id}/market-profiles
 
 ## 六、创建 Campaign 与冻结监测协议
 
+Admin 项目页进入 `GEO 投放` 后，页面顶部的 Campaign 选择器决定当前上下文。四个一级入口分别是 `Campaign 总览`、`AI 观察`、`渠道计划` 和 `内容生产`。普通操作不需要复制项目、Campaign 或 Opportunity ID；排障时才展开“技术信息”。
+
 ### 6.1 先创建九个 Destination
 
-进入项目的 GEO 工作区，在 Destinations 区为下列九个渠道各建一条具体目的地：
+进入 `GEO 投放 → 渠道计划`，展开“新增渠道任务”，为下列九个渠道各建一条具体目的地：
 
 ```text
 owned_site, amazon, youtube, tiktok, instagram,
@@ -168,7 +170,7 @@ productreview, reddit, ozbargain, quora
 
 每条填写：`destination_key`、具体页面/账号 URL、`destination_account_id`（有则填）和 `operation_mode=manual`。不要只填平台首页；Reddit 应具体到 subreddit/官方身份，YouTube/社媒应具体到授权账号，Amazon 应具体到卖家/商品目标。
 
-Owner/Admin 随后为每条 Destination 新建不可变 Policy Review：
+在渠道表选择具体目标后，Owner/Admin 展开“复核或更新渠道政策”，新建不可变 Policy Review：
 
 - `approved`：当前身份、内容类型和披露满足要求；
 - `restricted`：可以继续，但创建投放请求时必须显式确认限制及依据；
@@ -178,7 +180,7 @@ Owner/Admin 随后为每条 Destination 新建不可变 Policy Review：
 
 ### 6.2 创建 Campaign
 
-在 Campaign 区选择 Market Profile、主商品、九个 Destination，目标使用 `recommendation_influence`，填写真实业务 rationale。创建后系统为九个 Destination 一次性创建九个持久 Opportunity。
+进入 `Campaign 总览`，展开“新建 Campaign”，按名称选择 Market Profile、主商品和九个 Destination，目标使用 `recommendation_influence`，填写真实业务 rationale。创建后系统为九个 Destination 一次性创建九个持久 Opportunity。
 
 成功标准：Opportunity 列表正好覆盖所选九渠道；不能生成的渠道仍显示任务和阻断原因，不可消失。
 
@@ -186,7 +188,7 @@ Owner/Admin 随后为每条 Destination 新建不可变 Policy Review：
 
 ### 6.3 建立并冻结监测协议
 
-在 Campaign 工作区创建 Monitoring Protocol，固定：平台、market profile、locale、设备、样本数和窗口天数。常见平台包括 `chatgpt_search`、`google_ai_overviews` 和 `google_search`。
+在 `Campaign 总览` 的监测方案区创建 Monitoring Protocol，固定：平台、market profile、locale、设备、样本数和窗口天数。常见平台包括 `chatgpt_search`、`google_ai_overviews` 和 `google_search`。
 
 逐条添加真实消费者 Query Suggestion，写明 `recommendation/comparison/research/support` 意图和 rationale。Owner/Admin 批准建议，使其成为 Monitoring Query；协议至少含一条批准 Query 后，先批准再冻结。
 
@@ -196,7 +198,7 @@ Owner/Admin 随后为每条 Destination 新建不可变 Policy Review：
 
 ## 七、导入基线观察并计算指标
 
-在 Observations 工作区按冻结样本数逐个导入原始样本。每条必须填写：
+进入 `AI 观察`，展开“导入观察样本”，按冻结样本数逐个导入原始样本。每条必须填写：
 
 - Monitoring Query、`measurement_window=baseline`、`sample_index`；
 - 成功/失败、eligible 及不合格原因；
@@ -216,6 +218,8 @@ Owner/Admin 随后为每条 Destination 新建不可变 Policy Review：
 
 ## 八、资格化 Opportunity 并建立 Brief
 
+进入 `内容生产`。页面会显示当前渠道任务选择器和五步导航：`内容要求 → 证据与规则 → 生成文案 → 审核定稿 → 发布与测量`。每一步只展示当前决策所需字段；Prompt 版本和 Job 事件在高级区域中保留。
+
 逐个检查 Opportunity 对应 Destination 的最新政策、账号身份和 Evidence：
 
 - 条件满足：执行 `qualify`；
@@ -223,7 +227,7 @@ Owner/Admin 随后为每条 Destination 新建不可变 Policy Review：
 - 条件补齐：执行 `reopen` 后重新 `qualify`；
 - 业务取消：执行 `cancel`。
 
-每个可生成 Opportunity 创建 Brief Version，绑定主品牌 Entity，填写 goals、constraints、允许主体和比较主体。可选消费者体验只放真实原始描述、来源、授权和披露。任何 authenticity hard risk 都必须阻断，不得通过 accepted risk 放行。
+在第一步“内容要求”为每个可生成 Opportunity 创建 Brief Version，按名称绑定主品牌 Entity，填写受众、内容目标、交付物、卖点、允许主体和比较主体。可选消费者体验只放真实原始描述、来源、授权和披露。任何 authenticity hard risk 都必须阻断，不得通过 accepted risk 放行。
 
 成功标准：Brief 有版本号和 content hash；品牌、产品、竞品和市场主体没有串用。
 
@@ -231,7 +235,7 @@ Owner/Admin 随后为每条 Destination 新建不可变 Policy Review：
 
 ## 九、构建 Evidence Pack Attempt
 
-在 Brief 下点击“构建 Evidence Pack”。Internal API 返回 `202`、Attempt 和 `job_id`；界面轮询 Job，Worker 异步挑选合格项目并固化 snapshot。
+进入第二步“证据与规则”，在 Brief 下点击“构建证据”。Internal API 返回 `202`、Attempt 和 `job_id`；界面轮询 Job，Worker 异步挑选合格项目并固化 snapshot。
 
 ```text
 POST /v1/projects/{project_id}/geo/brief-versions/{brief_version_id}/evidence-pack-attempts
@@ -256,7 +260,7 @@ GET  /v1/projects/{project_id}/geo/evidence-pack-attempts/{attempt_id}/items
 
 ### 10.1 首次安装默认目录
 
-在 Prompt 区点击“安装九渠道默认 Prompt”。该操作为每个 `task_key` 创建系统 Skill/Release 和项目 Binding；重复执行只补缺失绑定，不覆盖自定义选择。
+在第二步“证据与规则”展开“高级：Prompt 规则与版本管理”，点击“同步九平台默认 Prompt”。该操作为每个 `task_key` 创建系统 Skill/Release 和项目 Binding；重复执行只补缺失绑定，不覆盖自定义选择。
 
 ### 10.2 单独修改提示词
 
@@ -281,7 +285,7 @@ GET  /v1/projects/{project_id}/geo/evidence-pack-attempts/{attempt_id}/items
 
 ## 十一、用 DeepSeek 生成具体渠道文案
 
-在 Prompt Bundle 上点击“生成文案”，模型保持 `deepseek-v4-flash`，总调用预算通常为 2。系统返回 Durable `generation` Job；刷新或等待状态由 queued/running 进入 succeeded/failed。
+进入第三步“生成文案”，选择已冻结的生成输入并点击“开始生成”，模型保持 `deepseek-v4-flash`，总调用预算通常为 2。系统返回 Durable `generation` Job；刷新或等待状态由 queued/running 进入 succeeded/failed。
 
 实时验收也可显式运行：
 
@@ -315,7 +319,7 @@ make deepseek-live
 
 ### 12.1 修改内容
 
-需要改文案时，从当前精确 Package Version 创建新版本，提交 `base_version_id`、`base_content_hash`、结构化内容、渲染正文和修改原因。不要直接覆盖旧正文。
+进入第四步“审核定稿”。需要改文案时，展开“人工修改并创建新版本”，编辑正文和逐条 Claim；界面会基于当前精确 Package Version 提交 `base_version_id`、`base_content_hash`、结构化内容、渲染正文和修改原因。不要直接覆盖旧正文。
 
 成功标准：旧版本为 superseded，历史审核/导出/投放 lineage 保留；新版本重新进入 QA/审核。
 
@@ -345,7 +349,7 @@ Reviewer 选择 approved/needs revision/rejected/blocked，填写两个独立布
 
 ### 13.2 创建投放请求
 
-只有确认准备发布时，Owner/Admin 点击“创建投放请求”，选择 Destination 和 `publication_attempt`。restricted Policy 必须勾选确认并写 policy basis；prohibited Policy 不得放行。
+进入第五步“发布与测量”。只有确认准备发布时，Owner/Admin 展开“标记为待发布”，选择 Destination 和 `publication_attempt`。restricted Policy 必须勾选确认并写 policy basis；prohibited Policy 不得放行。
 
 这一步是系统内的明确 Publication Intent，但仍不会登录或操作第三方平台。重复点击使用同一 `Idempotency-Key` 恢复同一结果；合法的新尝试递增 `publication_attempt` 并使用新 key。
 
@@ -522,3 +526,12 @@ make backup-restore-dev-smoke
 | `15-submission-verification.png` | Verification | desktop/mobile | final-live-deepseek-20260715 | 6f6eb5f | 0 |
 | `16-customer-*.png` | Customer 四视图 | desktop/mobile | final-live-deepseek-20260715 | 6f6eb5f | 0 |
 | `17-backup-restore.png` | Backup/restore | desktop | final-live-deepseek-20260715 | 6f6eb5f | N/A |
+| `21-new-project-current.png`、`21-project-list-current.png` | 新建项目与项目列表 | desktop | current-ui-20260717 | ff992dc + working tree | 0 |
+| `22-project-basic-current.png`、`23-project-entry-current.png` | 基础配置与用户入口 | desktop | current-ui-20260717 | ff992dc + working tree | 0 |
+| `24` 至 `29` `knowledge-*-current.png` | 知识导入、处理、Chunk、检索、看板、质检、追踪 | desktop | current-ui-20260717 | ff992dc + working tree | 0 |
+| `30` 至 `33` `*-current.png` | Campaign、观察录入、渠道政策 | desktop | current-ui-20260717 | ff992dc + working tree | 0 |
+| `34` 至 `40` `*-current.png` | 内容生产五步、Prompt 管理与 TEST ONLY | desktop | current-ui-20260717 | ff992dc + working tree | 0 |
+| `41` 至 `43` `*-current.png` | 项目状态、全流程入口、客户登录 | desktop | current-ui-20260717 | ff992dc + working tree | 0 |
+| `44-content-production-mobile-current.png` | 内容生产第一步 | 390x844 | current-ui-20260717 | ff992dc + working tree | 0 |
+
+`current-ui-20260717` 截图在本次文档和界面变更尚未提交时采集，因此登记为 `ff992dc + working tree`。合并提交后应在下一次证据刷新中登记最终 commit；该说明不能被静默删除或改写为不存在的提交。

@@ -1,0 +1,5 @@
+services:
+  admin-web:
+    environment:
+      GEO_ADMIN_ACTOR_ID: ${GEO_ADMIN_ACTOR_ID:?set the staging acceptance owner identity}
+      GEO_ADMIN_TENANT_ID: ${GEO_ADMIN_TENANT_ID:?set the staging acceptance tenant}

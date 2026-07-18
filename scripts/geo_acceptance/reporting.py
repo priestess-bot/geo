@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+import hashlib
 import json
 from pathlib import Path
 from typing import Mapping
@@ -121,7 +122,16 @@ def build_result(
         raise AssertionError("the persisted channel task matrix changed after creation")
     result: dict[str, object] = {
         "run_id": config.run_id,
+        "environment": config.environment,
         "mode": "live_deepseek" if config.live_deepseek else "deterministic",
+        "target_manifest": (
+            {
+                "path": str(config.target_manifest),
+                "sha256": hashlib.sha256(config.target_manifest.read_bytes()).hexdigest(),
+            }
+            if config.target_manifest is not None
+            else None
+        ),
         "project": {
             "tenant_id": setup.bootstrap.tenant_id,
             "project_id": setup.project_id,
@@ -167,6 +177,8 @@ def build_result(
             "brief_version_id": placement.brief.id,
             "evidence_pack_attempt_id": placement.evidence_attempt.id,
             "prompt_binding_count": len(placement.prompt_bindings),
+            "prompt_simulation_count": len(placement.prompt_simulations),
+            "prompt_simulation_ids": [item.id for item in placement.prompt_simulations],
             "prompt_bundle_id": placement.prompt_bundle.id,
             "prompt_bundle_hash": placement.prompt_bundle.bundle_hash,
             "generation_job_id": placement.generation_job.id,
@@ -203,6 +215,10 @@ def build_result(
         "assertions": {
             "selected_channel_count": len(CHANNELS),
             "persistent_task_count": len(opportunities),
+            "prompt_simulation_count": len(placement.prompt_simulations),
+            "prompt_simulations_publication_eligible": any(
+                item.publication_eligible for item in placement.prompt_simulations
+            ),
             "blocked_task_count": sum(item.status == "blocked" for item in opportunities),
             "completed_task_count": sum(item.status == "completed" for item in opportunities),
             "export_created_publication": False,
@@ -245,6 +261,10 @@ def _assert_result(result: Mapping[str, object]) -> None:
         raise AssertionError("the acceptance result does not cover all nine channels")
     if assertions.get("persistent_task_count") != 9:
         raise AssertionError("a selected channel lost its persistent task")
+    if assertions.get("prompt_simulation_count") != 9:
+        raise AssertionError("the acceptance result does not simulate all nine channel prompts")
+    if assertions.get("prompt_simulations_publication_eligible") is not False:
+        raise AssertionError("a TEST ONLY simulation became publication eligible")
     if assertions.get("export_created_publication") is not False:
         raise AssertionError("export and publication intent are no longer separated")
     if assertions.get("follow_up_windows_completed") != ["t28", "t56", "t84"]:

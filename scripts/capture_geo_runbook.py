@@ -22,6 +22,7 @@ class CaptureResult:
     page_errors: tuple[str, ...]
     failed_responses: tuple[str, ...]
     horizontal_overflow: bool
+    mode: str
 
 
 def parser() -> argparse.ArgumentParser:
@@ -32,6 +33,7 @@ def parser() -> argparse.ArgumentParser:
     value.add_argument("--acceptance-result", type=Path)
     value.add_argument("--customer-invitation", type=Path)
     value.add_argument("--output", type=Path, required=True)
+    value.add_argument("--mode", choices=("actual", "simulation"), required=True)
     return value
 
 
@@ -56,6 +58,7 @@ def acceptance_selection(path: Path | None) -> dict[str, str]:
         "version_id": placement["package_version_id"],
         "publication_id": placement["publication_request_id"],
         "submission_id": placement["submission_id"],
+        "simulation_id": (placement.get("prompt_simulation_ids") or [""])[0],
     }
 
 
@@ -70,6 +73,15 @@ def admin_pages(
     return (
         ("03-admin-project-list", "/projects"),
         ("04-catalog-members", f"/projects/{project_id}"),
+        *tuple(
+            (
+                f"05-knowledge-{view}",
+                f"{root}?{urlencode({'tab': 'knowledge', 'knowledge_tab': view})}",
+            )
+            for view in (
+                "import", "processing", "chunks", "search", "dashboard", "quality", "trace"
+            )
+        ),
         ("06-campaign-monitoring", selected_path(root, selection, tab="geo", geo_section="campaigns")),
         (
             "08-observations",
@@ -77,14 +89,26 @@ def admin_pages(
         ),
         ("07-destinations", selected_path(root, selection, tab="geo", geo_section="destinations")),
         (
-            "09-placement-intake",
-            selected_path(root, selection, tab="geo", geo_section="placement", placement_stage="intake"),
+            "09-placement-brief",
+            selected_path(root, selection, tab="geo", geo_section="placement", placement_stage="brief"),
+        ),
+        (
+            "10-placement-evidence",
+            selected_path(root, selection, tab="geo", geo_section="placement", placement_stage="evidence"),
+        ),
+        (
+            "12-placement-review",
+            selected_path(root, selection, tab="geo", geo_section="placement", placement_stage="review"),
         ),
         (
             "11-placement-generation",
             selected_path(
                 root, selection, tab="geo", geo_section="placement", placement_stage="generation"
             ),
+        ),
+        (
+            "14-placement-simulation",
+            selected_path(root, selection, tab="geo", geo_section="placement", placement_stage="simulation"),
         ),
         (
             "15-placement-publication",
@@ -114,7 +138,9 @@ def redeem_customer_session(page: Page, *, base_url: str, invitation: Path) -> N
     page.locator('nav[aria-label="客户门户视图"]').wait_for()
 
 
-def capture(page: Page, *, name: str, url: str, viewport: str, output: Path) -> CaptureResult:
+def capture(
+    page: Page, *, name: str, url: str, viewport: str, output: Path, mode: str
+) -> CaptureResult:
     console_errors: list[str] = []
     page_errors: list[str] = []
     failed_responses: list[str] = []
@@ -133,6 +159,10 @@ def capture(page: Page, *, name: str, url: str, viewport: str, output: Path) -> 
     )
     page.goto(url, wait_until="networkidle")
     page.locator("body").wait_for(state="visible")
+    body_text = page.locator("body").inner_text()
+    for semantic_failure in ("项目不存在", "项目加载失败", "Application error"):
+        if semantic_failure in body_text:
+            page_errors.append(f"semantic failure: {semantic_failure}")
     overflow = bool(
         page.evaluate(
             "document.documentElement.scrollWidth > document.documentElement.clientWidth + 1"
@@ -149,6 +179,7 @@ def capture(page: Page, *, name: str, url: str, viewport: str, output: Path) -> 
         tuple(page_errors),
         tuple(failed_responses),
         overflow,
+        mode,
     )
 
 
@@ -172,6 +203,7 @@ def main() -> int:
                         url=f"{args.admin_base.rstrip('/')}{path}",
                         viewport=viewport,
                         output=args.output,
+                        mode=args.mode,
                     )
                 )
             if args.customer_invitation:
@@ -190,6 +222,7 @@ def main() -> int:
                             url=f"{args.customer_base.rstrip('/')}{path}",
                             viewport=viewport,
                             output=args.output,
+                            mode=args.mode,
                         )
                     )
             else:
@@ -200,6 +233,7 @@ def main() -> int:
                         url=args.customer_base,
                         viewport=viewport,
                         output=args.output,
+                        mode=args.mode,
                     )
                 )
             context.close()

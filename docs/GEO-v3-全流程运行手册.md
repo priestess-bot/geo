@@ -116,6 +116,8 @@ editable Skill source
 
 每个项目可独立安装九渠道默认 Prompt，也可发布自定义 Release 并切换指定 `task_key`。安装默认目录是收敛操作：只补缺失绑定，不覆盖用户已经选择的自定义 Release。
 
+仓库默认提示词的唯一文件真源是根目录 `prompt/`。同步默认目录会确保文件内容对应的不可变 Release 已存在；已有项目仍保留当前绑定，必须人工检查新 Release 后再切换并重新冻结 Prompt Bundle。具体文件结构和修改步骤见 `prompt/README.md`。
+
 Release hash 必须覆盖源码、编译模板、变量 schema、输出 schema 和编译器版本。Prompt Bundle 固定 Brief Version、Evidence Pack Attempt、Release、变量、模型策略和工件 hash。修改提示词不修改工作流状态机，也不能绕过证据、真实性、披露、账号、审核或发布门禁。
 
 ## 七、生成与 Job 合同
