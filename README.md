@@ -110,7 +110,7 @@ infra/
   db/alembic/         唯一数据库基线、版本与 checksum
   docker-compose.yml  完整开发栈
   compose.prod.yml    独立生产栈
-  backup/ minio/ otel/ prometheus/
+  backup/ minio/ otel/  备份、对象存储与遥测传输配置
 contracts/openapi/    稳定 API 快照及 manifest
 scripts/              provisioning、OpenAPI、备份与恢复入口
 tests/                architecture、unit、integration、infra、web、live

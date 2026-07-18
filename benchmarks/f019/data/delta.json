@@ -1,0 +1,67 @@
+{
+  "schema_version": "f019-delta-v1",
+  "operations": [
+    {
+      "operation_id": "delta-001-reimport",
+      "operation": "reimport",
+      "project_id": "project-aurora",
+      "document_id": "aurora-product-002"
+    },
+    {
+      "operation_id": "delta-002-update",
+      "operation": "update",
+      "project_id": "project-aurora",
+      "document_id": "aurora-product-001",
+      "document": {
+        "document_id": "aurora-product-001",
+        "project_id": "project-aurora",
+        "source_format": "html",
+        "category": "product",
+        "title": "星澜 A1 产品页（2026 年更新）",
+        "source_uri": "https://fixtures.invalid/aurora/a1",
+        "license_id": "synthetic-benchmark-v1",
+        "valid_from": "2026-07-01",
+        "conflict_group": "aurora-a1-warranty",
+        "content": "旧促销横幅已删除；更新不应复制既有候选。\n【事实】星澜 A1 的额定净水流量为每分钟 2.2 升。\n【事实】星澜 A1 的滤芯建议更换周期为 12 个月。\n【事实】星澜 A1 支持橱下免改柜安装。\n【实体】Brand｜星澜\n【实体】Product｜星澜 A1\n【实体】Feature｜橱下免改柜安装\n【关系】星澜 A1｜belongs_to｜星澜\n【关系】星澜 A1｜has_feature｜橱下免改柜安装",
+        "question_contexts": [
+          {"dimension_key": "aurora-01-discovery", "persona": "新装修家庭", "scenario": "选择厨房净水器", "intent": "出水速度", "funnel": "discovery", "region": "华东", "language": "zh-CN", "brand_scope": "branded", "platform": "通用问答引擎", "subject": "星澜 A1"},
+          {"dimension_key": "aurora-01-comparison", "persona": "小户型业主", "scenario": "比较橱下安装方案", "intent": "安装空间", "funnel": "comparison", "region": "全国", "language": "zh-CN", "brand_scope": "non_branded", "platform": "搜索助手", "subject": "星澜 A1"}
+        ]
+      }
+    },
+    {
+      "operation_id": "delta-003-delete",
+      "operation": "delete",
+      "project_id": "project-boreal",
+      "document_id": "boreal-competitor-010"
+    },
+    {
+      "operation_id": "delta-004-add",
+      "operation": "add",
+      "project_id": "project-aurora",
+      "document_id": "aurora-market-011",
+      "document": {
+        "document_id": "aurora-market-011",
+        "project_id": "project-aurora",
+        "source_format": "text",
+        "category": "market",
+        "title": "售后咨询增量摘要",
+        "source_uri": "fixture://aurora/service-delta.txt",
+        "license_id": "synthetic-benchmark-v1",
+        "valid_from": "2026-07-10",
+        "content": "客服姓名和订单号均已移除。\n【事实】售后咨询样本中安装空间是出现最多的问题。\n【事实】售后咨询样本共包含 20 条合成记录。\n【事实】售后咨询样本不包含真实客户信息。\n【实体】Persona｜售后咨询用户\n【实体】PainPoint｜安装空间不足\n【实体】Channel｜客服问答\n【关系】售后咨询用户｜has_pain_point｜安装空间不足\n【关系】售后咨询用户｜uses_channel｜客服问答",
+        "question_contexts": [
+          {"dimension_key": "aurora-11-service", "persona": "售后咨询用户", "scenario": "安装前核对橱柜", "intent": "安装空间", "funnel": "support", "region": "全国", "language": "zh-CN", "brand_scope": "non_branded", "platform": "客服问答", "subject": "橱下净水器"},
+          {"dimension_key": "aurora-11-privacy", "persona": "服务运营人员", "scenario": "复核咨询数据", "intent": "样本边界", "funnel": "support", "region": "全国", "language": "zh-CN", "brand_scope": "non_branded", "platform": "内部测试", "subject": "售后咨询样本"}
+        ]
+      }
+    }
+  ],
+  "expected_invariants": {
+    "active_document_count": 20,
+    "reimport_duplicate_count": 0,
+    "orphan_artifact_count": 0,
+    "unchanged_artifact_regression_count": 0,
+    "cross_project_movement_count": 0
+  }
+}

@@ -44,6 +44,7 @@
 - [代码质量与测试](development/code-quality.md)
 - [Worktree 与合并规范](development/worktree-workflow.md)
 - [GEO ACCEPTED 整改统一实施计划](engineering/GEO-accepted-remediation-implementation-plan-2026-07-19.md)
+- [F-019 RAG 选型 Gate 记录](engineering/F019-rag-selection-gate-2026-07-19.md)
 - [真实渠道用户文案研究](engineering/channel-user-copy-research-2026-07-16.md)
 - [Admin GEO 工作区可用性整改与功能保留基线](engineering/admin-geo-workspace-usability-remediation.md)
 - [架构整改方案](engineering/%E9%A1%B9%E7%9B%AE%E6%9E%B6%E6%9E%84%E4%B8%8E%E4%BB%A3%E7%A0%81%E6%B2%BB%E7%90%86%E6%95%B4%E6%94%B9%E6%96%B9%E6%A1%88-2026-07-15.md)

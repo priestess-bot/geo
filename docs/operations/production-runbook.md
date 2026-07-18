@@ -17,10 +17,19 @@ Session Cookie，两个信任域不可互换。
 ## 2. 校验配置
 
 ```bash
-docker compose --env-file infra/production.env -f infra/compose.prod.yml config -q
+make production-config PROD_ENV=infra/production.env
 ```
 
-确认常驻业务服务包含 `internal-api`、`customer-api`、`task-worker`、`outbox-relay`、`admin-web`、`customer-web`、PostgreSQL、MinIO 和 Valkey，并且 `migrate`、`minio-bootstrap` 是受控一次性服务。不得出现 Qdrant、LiteLLM、旧 Dashboard、旧 Web 或历史 Worker。`initial-owner-provision`、观测、备份和恢复服务只应在对应 profile 被显式启用时出现。
+该入口先运行安全 preflight，再渲染 Compose。preflight 会阻断缺失或空 Secret 文件、
+权限超过 `0600` 的 Secret、占位或未固定 digest 的镜像、非 HTTPS OIDC/公开 URL、
+无效 Release 版本和运行阈值；错误只输出稳定错误码和配置项名，不输出配置值或
+Secret 内容。不要绕过该入口直接启动生产栈。
+
+确认常驻业务服务包含 `internal-api`、`customer-api`、`task-worker`、`outbox-relay`、`admin-web`、`customer-web`、PostgreSQL、MinIO 和 Valkey，并且 `migrate`、`minio-bootstrap` 是受控一次性服务。不得出现 Qdrant、LiteLLM、旧 Dashboard、旧 Web、历史 Worker或虚假的 Prometheus scrape target。Prometheus/Grafana 当前阶段未启用。
+
+生产网络中只有 Internal API 和 Task Worker 同时加入 `backend` 与 `egress`；Customer
+API、Relay、PostgreSQL、MinIO 和 Valkey 只能加入内部 `backend`。Customer API 只持有
+PostgreSQL 和 Session 所需 Secret，不能获得对象存储、Valkey 或模型凭据。
 
 ## 3. 启动
 
@@ -31,6 +40,27 @@ docker compose --env-file infra/production.env -f infra/compose.prod.yml ps
 ```
 
 `migrate` 与 `minio-bootstrap` 必须成功退出，API、Worker 和 Web 才能进入可用状态。确认 `task-worker` 仅挂载 Worker 数据库凭据、对象存储应用凭据和 DeepSeek Key；`outbox-relay` 不需要 DeepSeek Key。Admin/Customer Web 只绑定本机回环地址，外部 TLS、域名和访问控制由受管反向代理提供。
+
+`/health` 只表达 API 进程存活；`/ready` 才检查当前 surface 的必需依赖。Customer 只检查
+PostgreSQL，Internal 检查 PostgreSQL、Valkey 和 MinIO。Worker/Relay Compose healthcheck
+读取 PostgreSQL heartbeat、Valkey 连接和队列卡滞分类：
+
+```bash
+docker compose --env-file infra/production.env -f infra/compose.prod.yml \
+  exec internal-api python -c \
+  "import urllib.request; print(urllib.request.urlopen('http://localhost:8000/health').status); print(urllib.request.urlopen('http://localhost:8000/ready').status)"
+docker compose --env-file infra/production.env -f infra/compose.prod.yml \
+  exec customer-api python -c \
+  "import urllib.request; print(urllib.request.urlopen('http://localhost:8000/health').status); print(urllib.request.urlopen('http://localhost:8000/ready').status)"
+docker compose --env-file infra/production.env -f infra/compose.prod.yml \
+  exec task-worker python -m geo_worker.runtime_health heartbeat --service-type task_worker
+docker compose --env-file infra/production.env -f infra/compose.prod.yml \
+  exec outbox-relay python -m geo_worker.runtime_health heartbeat --service-type outbox_relay
+```
+
+默认 heartbeat 间隔/过期阈值为 10/30 秒，queued/retry 为 600 秒，Outbox 为
+300 秒，running/finalizing 为 lease expiry 后 60 秒。命令输出实际阈值、稳定分类及
+Project/Job ID，不输出任务正文、错误正文、客户 URL 或凭据；非零退出必须先处理后上线。
 
 ## 4. 首次 Owner 初始化
 
@@ -88,6 +118,7 @@ IdP 后使用显式 role/reactivate 命令。所有实际变化分别记录 `mem
 - Admin `/api/auth/login` 只跳转到 allowlist 中的 OIDC HTTPS origin；缺配置或非法 URL 必须返回 503。
 - Dev Tools 环境变量固定为 0。
 - 日志只有 JSON 元数据，不包含 Authorization、Cookie、Prompt、正文或模型响应。
+- `/health` 在依赖故障时仍能表达进程存活；`/ready` 和 Compose health 与依赖及 heartbeat 一致。
 - Worker 可接管租约过期任务，且重复消息不会产生第二份业务结果。
 - 使用新建项目完成一次受控 DeepSeek 文案生成和人工审核。
 

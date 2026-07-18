@@ -33,10 +33,14 @@ docker compose -f infra/docker-compose.yml --profile workers ps
 ```bash
 curl -fsS http://localhost:8000/health
 curl -fsS http://localhost:8001/health
+curl -fsS http://localhost:8000/ready
+curl -fsS http://localhost:8001/ready
 curl -i http://localhost:8001/v1/engineering/status
 ```
 
-最后一个请求必须为 404，证明 Customer API 没有注册内部工程路由。
+`/health` 不访问依赖，`/ready` 每次执行真实只读检查；Customer 只依赖 PostgreSQL，
+Internal 还依赖 Valkey 和 MinIO。最后一个请求必须为 404，证明 Customer API 没有注册
+内部工程路由。
 
 ## 4. 启动前端
 

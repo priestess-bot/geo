@@ -114,6 +114,8 @@ jobs:
       - run: uv sync --frozen
       - name: Production Compose contract tests
         run: uv run pytest -q tests/infra/test_production_compose.py
+      - name: Production backend and egress network isolation
+        run: make test-production-network
       - name: API image builds
         run: docker build -f apps/api/Dockerfile -t geo-api:ci .
       - name: Admin image builds

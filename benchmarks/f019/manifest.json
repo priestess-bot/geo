@@ -1,0 +1,91 @@
+{
+  "$schema": "schemas/manifest.schema.json",
+  "schema_version": "f019-benchmark-manifest-v1",
+  "dataset_version": "2026.07.19.1",
+  "name": "F-019 中文 GEO RAG 隔离选型基准",
+  "description": "结构化与自然文本混合的合成基准，覆盖事实、实体、关系、冲突、时间、噪声和项目隔离。",
+  "candidate_output_schema_version": "f019-candidate-output-v1",
+  "report_schema_version": "f019-benchmark-report-v1",
+  "files": {
+    "corpus": {
+      "path": "data/corpus.json",
+      "schema_version": "f019-corpus-v1",
+      "sha256": "1ec8a8e7b300b3c5f5f08ae21d5a68e3ec0718b76b293f981944c0bce4bc7516"
+    },
+    "gold": {
+      "path": "data/gold.json",
+      "schema_version": "f019-gold-v1",
+      "sha256": "4056748f28f4f09152b75e6557bf4981fd7ec4b17ee60657bd01a9a66957b59f"
+    },
+    "delta": {
+      "path": "data/delta.json",
+      "schema_version": "f019-delta-v1",
+      "sha256": "8ce7941236c2fbd7359215a6adb6a870cf49c06f887920cb7ae737c6e0b19b89"
+    },
+    "candidate_output_schema": {
+      "path": "schemas/candidate-output.schema.json",
+      "schema_version": "json-schema-2020-12",
+      "sha256": "0f8d02a5594d3830b8098ebd180768f037898e0e4c19943058138b707c9f4a6c"
+    },
+    "report_schema": {
+      "path": "schemas/report.schema.json",
+      "schema_version": "json-schema-2020-12",
+      "sha256": "c940bda0231957ca5d663cf172fd54fddbce6672802e962d882183bf732d8479"
+    },
+    "manifest_schema": {
+      "path": "schemas/manifest.schema.json",
+      "schema_version": "json-schema-2020-12",
+      "sha256": "da26a8c2404aa5e4189de49c01c405e58953b5896df41eb1e5a35dbec4c4ee33"
+    }
+  },
+  "licenses": [
+    {
+      "license_id": "synthetic-benchmark-v1",
+      "spdx_expression": "LicenseRef-GEO-Synthetic-Benchmark",
+      "scope": "项目创建的合成资料，仅限内部测试、复现与选型；不包含真实客户或第三方受版权保护内容。"
+    }
+  ],
+  "project_boundary": {
+    "partition_key": "project_id",
+    "project_ids": ["project-aurora", "project-boreal"],
+    "rule": "所有候选、来源文档、支持事实和增量操作必须保持同一 project_id；任何越界计为硬门槛失败。"
+  },
+  "coverage": {
+    "document_count": 20,
+    "source_formats": ["html", "pdf", "docx", "text"],
+    "content_categories": ["product", "competitor", "market"],
+    "phenomena": ["facts", "entities", "relations", "conflicts", "time", "noise", "cross_project_isolation"],
+    "normalized_text_note": "PDF 和 DOCX 以人工核对后的规范化文本进入 RAG 选型；文件解析器不在此 Gate 范围。"
+  },
+  "quality_gate": {
+    "entity_precision_min": 0.85,
+    "relation_precision_min": 0.8,
+    "formal_fact_source_traceability": 1.0,
+    "unsupported_question_rate_max": 0.05,
+    "semantic_duplicate_question_rate_max": 0.1,
+    "evidence_backed_dimension_coverage_min": 0.9,
+    "project_leakage_count_max": 0,
+    "approval_bypass_count_max": 0,
+    "test_only_publication_count_max": 0,
+    "incremental_duplicate_count_max": 0,
+    "incremental_orphan_count_max": 0,
+    "incremental_regression_count_max": 0,
+    "diagnostic_only": ["fact_precision", "fact_recall", "entity_recall", "entity_f1", "relation_recall", "relation_f1"]
+  },
+  "quality_formula": {
+    "entity_precision": 0.25,
+    "relation_precision": 0.25,
+    "question_groundedness": 0.2,
+    "question_coverage": 0.2,
+    "question_uniqueness": 0.1
+  },
+  "selection_policy": {
+    "order": ["all_hard_gates", "quality_score", "estimated_cost_usd", "wall_clock_ms", "llamaindex_tiebreak"],
+    "quality_close_threshold": 0.02,
+    "quality_close_comparison": "strictly_less_than",
+    "cost_time_policy": "record_only_no_hard_cap",
+    "llamaindex_is_default_not_guaranteed_winner": true,
+    "graphrag_production_eligible": false
+  },
+  "usage_fields": ["input_tokens", "output_tokens", "model_calls", "estimated_cost_usd", "wall_clock_ms"]
+}

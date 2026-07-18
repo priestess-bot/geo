@@ -8,11 +8,12 @@ PROD_COMPOSE := docker compose --env-file $(PROD_ENV) -f infra/compose.prod.yml
 	openapi-snapshots openapi-contracts \
 	web-build test-browser-chromium api-internal api-customer admin-web customer-web \
 	dev-up dev-logs dev-down db-up db-down db-reset-dev db-migrate db-heads \
-	docker-config production-config production-up production-down \
+	docker-config production-preflight production-config production-up production-down \
+	test-production-network \
 	production-provision-owner \
 	api-image admin-image customer-image images \
 	backup restore-smoke backup-restore-dev-smoke deepseek-live ci \
-	advinsys-dry-run advinsys-verify operator-guide-pdf
+	advinsys-dry-run advinsys-verify f019-benchmark operator-guide-pdf
 
 bootstrap: install
 	cp -n .env.example .env 2>/dev/null || true
@@ -25,6 +26,7 @@ lint:
 	uv run ruff check apps/api/geo_api packages/geo_core/geo_core \
 		scripts/export_stable_openapi.py scripts/provision_database.py \
 		scripts/provision_dev_database.py scripts/provision_initial_owner.py \
+		scripts/production_preflight.py \
 		infra/db/alembic/checksums.py
 
 python-typecheck:
@@ -35,7 +37,8 @@ python-typecheck:
 		scripts/export_stable_openapi.py \
 		scripts/provision_database.py \
 		scripts/provision_dev_database.py \
-		scripts/provision_initial_owner.py
+		scripts/provision_initial_owner.py \
+		scripts/production_preflight.py
 
 web-typecheck:
 	corepack pnpm typecheck
@@ -82,6 +85,16 @@ web-build:
 test-browser-chromium:
 	corepack pnpm test:browser:chromium
 
+test-production-network:
+	uv run pytest -q --strict-markers --fail-on-skipped \
+		--ci-summary-label="Production network isolation" -m integration \
+		tests/infra/test_production_network_runtime.py
+
+f019-benchmark:
+	uv run python -m benchmarks.f019.cli validate
+	uv run python -m benchmarks.f019.cli run --adapter deterministic \
+		--output /tmp/f019-baseline-reference.json
+
 api-internal:
 	uv run uvicorn geo_api.internal_app:app --app-dir apps/api --reload --port 8000
 
@@ -115,7 +128,10 @@ db-heads:
 docker-config:
 	$(DEV_COMPOSE) config -q
 
-production-config:
+production-preflight:
+	uv run python scripts/production_preflight.py --env-file $(PROD_ENV)
+
+production-config: production-preflight
 	$(PROD_COMPOSE) config -q
 
 production-up: production-config

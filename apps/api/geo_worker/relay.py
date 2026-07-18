@@ -10,7 +10,12 @@ import time
 import psycopg
 
 from geo_core.jobs.outbox import PostgresOutboxStore
-from geo_worker.config import secret_setting
+from geo_core.runtime_health import RuntimeHealthRepository, RuntimeHeartbeat
+from geo_worker.config import (
+    runtime_heartbeat_identity,
+    runtime_heartbeat_interval_seconds,
+    secret_setting,
+)
 from geo_worker.tasks import process_durable_job
 
 
@@ -44,18 +49,31 @@ def main() -> int:
     database_url = secret_setting("GEO_DATABASE_URL")
     store = PostgresOutboxStore(lambda: psycopg.connect(database_url))
     worker_id = os.getenv("GEO_OUTBOX_WORKER_ID", f"outbox:{socket.gethostname()}")
+    heartbeat = RuntimeHeartbeat(
+        RuntimeHealthRepository(lambda: psycopg.connect(database_url)),
+        runtime_heartbeat_identity("outbox_relay", process_id=os.getpid()),
+        interval_seconds=runtime_heartbeat_interval_seconds(),
+    )
+    heartbeat.pulse(status="starting", force=True)
     if args.once:
+        heartbeat.pulse(status="ready", force=True)
         relay_once(store, worker_id=worker_id, batch_size=args.batch_size)
         recover_once(store, batch_size=args.batch_size)
+        heartbeat.pulse(status="stopping", force=True)
         return 0
     last_recovery = 0.0
-    while True:
-        relay_once(store, worker_id=worker_id, batch_size=args.batch_size)
-        now = time.monotonic()
-        if now - last_recovery >= max(args.recovery_seconds, 5.0):
-            recover_once(store, batch_size=args.batch_size)
-            last_recovery = now
-        time.sleep(max(args.poll_seconds, 0.1))
+    try:
+        while True:
+            heartbeat.pulse(status="ready")
+            relay_once(store, worker_id=worker_id, batch_size=args.batch_size)
+            now = time.monotonic()
+            if now - last_recovery >= max(args.recovery_seconds, 5.0):
+                recover_once(store, batch_size=args.batch_size)
+                last_recovery = now
+            heartbeat.pulse(status="ready")
+            time.sleep(max(args.poll_seconds, 0.1))
+    finally:
+        heartbeat.pulse(status="stopping", force=True)
 
 
 if __name__ == "__main__":

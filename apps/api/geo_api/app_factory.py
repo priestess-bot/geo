@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Awaitable, Callable
-from contextlib import asynccontextmanager
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 import json
 import logging
@@ -22,7 +21,6 @@ from geo_api.catalog_runtime import build_catalog_application
 from geo_api.customer_geo_routes import customer_geo_router
 from geo_api.foundation_services import (
     FoundationServices,
-    UnavailableFoundationServices,
     services_from_environment,
 )
 from geo_api.member_routes import member_router
@@ -45,6 +43,7 @@ from geo_api.stable_routes import (
     jobs_router,
     projects_router,
 )
+from geo_api.runtime_readiness import ReadinessService, readiness_checker_from_environment
 
 
 REQUEST_ID_HEADER = "X-Request-ID"
@@ -90,30 +89,21 @@ def create_api_app(
     monitoring_application: object | None = None,
     membership_application: object | None = None,
     knowledge_application: object | None = None,
+    readiness_service: ReadinessService | None = None,
 ) -> FastAPI:
     """Build one API surface without importing the legacy application module."""
 
     resolved_settings = settings or ApiSettings.from_environment()
     service_name = f"geo-{surface}-api"
     resolved_services = services or services_from_environment(surface=surface)
-    service_ready = not isinstance(resolved_services, UnavailableFoundationServices)
-
-    @asynccontextmanager
-    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        app.state.ready = service_ready
-        try:
-            yield
-        finally:
-            app.state.ready = False
+    resolved_readiness = readiness_service or readiness_checker_from_environment(surface=surface)
 
     app = FastAPI(
         title=f"GEO {surface.title()} API",
         version="1.0.0",
-        lifespan=lifespan,
         docs_url="/docs" if surface == "internal" else None,
         redoc_url=None,
     )
-    app.state.ready = False
     app.state.surface = surface
     app.state.services = resolved_services
     app.state.customer_session_cookie_name = resolved_settings.customer_session_cookie_name
@@ -135,7 +125,13 @@ def create_api_app(
     install_problem_handlers(app)
     _install_request_metadata_middleware(app, surface=surface)
 
-    app.include_router(health_router(service_name=service_name, surface=surface))
+    app.include_router(
+        health_router(
+            service_name=service_name,
+            surface=surface,
+            readiness_service=resolved_readiness,
+        )
+    )
     app.include_router(auth_router())
     app.include_router(invitation_auth_router(include_redeem=surface == "customer"))
     app.include_router(projects_router(surface=surface))

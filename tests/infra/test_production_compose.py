@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -7,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[2]
 COMPOSE_PATH = ROOT / "infra" / "compose.prod.yml"
 
 
-def load_compose() -> dict[str, object]:
+def load_compose() -> dict[str, Any]:
     return yaml.safe_load(COMPOSE_PATH.read_text(encoding="utf-8"))
 
 
@@ -21,6 +22,35 @@ def test_production_compose_is_standalone_and_has_only_supported_runtime_service
     assert "ports" not in services["postgres"]
     assert "ports" not in services["minio"]
     assert "ports" not in services["valkey"]
+
+
+def test_production_networks_enforce_the_egress_boundary() -> None:
+    compose = load_compose()
+    services = compose["services"]
+
+    assert compose["networks"]["backend"]["internal"] is True
+    assert compose["networks"]["egress"] is None
+    assert set(services["internal-api"]["networks"]) == {"backend", "egress"}
+    assert set(services["task-worker"]["networks"]) == {"backend", "egress"}
+
+    for name in (
+        "postgres",
+        "migrate",
+        "minio",
+        "minio-bootstrap",
+        "valkey",
+        "customer-api",
+        "outbox-relay",
+        "initial-owner-provision",
+        "otel-collector",
+        "backup-object-store",
+        "restore-smoke-postgres",
+    ):
+        assert "egress" not in services[name]["networks"]
+
+    for name, service in services.items():
+        if name not in {"admin-web", "customer-web"}:
+            assert "ports" not in service
 
 
 def test_api_services_use_secrets_read_only_filesystems_and_separate_entrypoints() -> None:
@@ -37,6 +67,65 @@ def test_api_services_use_secrets_read_only_filesystems_and_separate_entrypoints
     assert internal["environment"]["GEO_DEV_TOOLS_ENABLED"] == "0"
     assert "deepseek_api_key" not in internal["secrets"]
     assert "deepseek_api_key" not in customer["secrets"]
+
+    assert set(internal["secrets"]) == {
+        "database_url",
+        "object_store_access_key",
+        "object_store_secret_key",
+        "auth_token_secret",
+    }
+    assert set(customer["secrets"]) == {"database_url", "auth_token_secret"}
+    for key in (
+        "OBJECT_STORE_ENDPOINT",
+        "OBJECT_STORE_ACCESS_KEY_FILE",
+        "OBJECT_STORE_SECRET_KEY_FILE",
+        "GEO_TASK_QUEUE_BROKER_URL",
+        "GEO_TASK_QUEUE_ENABLED",
+        "GEO_OIDC_DISCOVERY_URL",
+        "GEO_JWT_ISSUER",
+        "GEO_JWT_AUDIENCE",
+    ):
+        assert key not in customer["environment"]
+    assert set(customer["depends_on"]) == {"migrate"}
+    assert set(internal["depends_on"]) == {"migrate", "minio-bootstrap", "valkey"}
+
+
+def test_runtime_healthchecks_use_real_readiness_and_heartbeats() -> None:
+    services = load_compose()["services"]
+
+    for name in ("internal-api", "customer-api"):
+        command = services[name]["healthcheck"]["test"]
+        assert "/ready" in " ".join(command)
+        assert "/health" not in " ".join(command)
+
+    expected_service_types = {
+        "task-worker": "task_worker",
+        "outbox-relay": "outbox_relay",
+    }
+    for name, service_type in expected_service_types.items():
+        command = services[name]["healthcheck"]["test"]
+        assert command == [
+            "CMD",
+            "python",
+            "-m",
+            "geo_worker.runtime_health",
+            "heartbeat",
+            "--service-type",
+            service_type,
+        ]
+
+    for name in (
+        "postgres",
+        "minio",
+        "valkey",
+        "internal-api",
+        "customer-api",
+        "task-worker",
+        "outbox-relay",
+        "admin-web",
+        "customer-web",
+    ):
+        assert "healthcheck" in services[name]
 
 
 def test_durable_worker_and_outbox_relay_use_the_worker_database_identity() -> None:
@@ -88,6 +177,59 @@ def test_production_environment_example_covers_required_secret_files() -> None:
         assert f"{name}=" in example
 
 
+def test_production_environment_example_freezes_runtime_truth_defaults() -> None:
+    lines = (ROOT / "infra" / "production.env.example").read_text(encoding="utf-8").splitlines()
+    values = dict(
+        line.split("=", 1)
+        for line in lines
+        if line and not line.startswith("#") and "=" in line
+    )
+
+    assert values["GEO_READINESS_DEPENDENCY_TIMEOUT_SECONDS"] == "2"
+    assert values["GEO_READINESS_TOTAL_TIMEOUT_SECONDS"] == "5"
+    assert values["GEO_RUNTIME_HEARTBEAT_INTERVAL_SECONDS"] == "10"
+    assert values["GEO_RUNTIME_HEARTBEAT_STALE_SECONDS"] == "30"
+    assert values["GEO_RUNTIME_QUEUED_STALE_SECONDS"] == "600"
+    assert values["GEO_RUNTIME_OUTBOX_STALE_SECONDS"] == "300"
+    assert values["GEO_RUNTIME_RUNNING_GRACE_SECONDS"] == "60"
+    assert values["GEO_RUNTIME_FAILURE_WINDOW_SECONDS"] == "86400"
+    assert values["GEO_RUNTIME_EXPECTED_TASK_WORKER_INSTANCES"] == "2"
+    assert values["GEO_RUNTIME_EXPECTED_OUTBOX_RELAY_INSTANCES"] == "1"
+
+    services = load_compose()["services"]
+    for name in ("internal-api", "customer-api"):
+        environment = services[name]["environment"]
+        for field in (
+            "GEO_READINESS_DEPENDENCY_TIMEOUT_SECONDS",
+            "GEO_READINESS_TOTAL_TIMEOUT_SECONDS",
+        ):
+            assert environment[field] == f"${{{field}:-{values[field]}}}"
+    worker_environment = services["task-worker"]["environment"]
+    relay_environment = services["outbox-relay"]["environment"]
+    worker_count_field = "GEO_RUNTIME_EXPECTED_TASK_WORKER_INSTANCES"
+    relay_count_field = "GEO_RUNTIME_EXPECTED_OUTBOX_RELAY_INSTANCES"
+    assert worker_environment[worker_count_field] == (
+        f"${{{worker_count_field}:-{values[worker_count_field]}}}"
+    )
+    assert relay_environment[relay_count_field] == (
+        f"${{{relay_count_field}:-{values[relay_count_field]}}}"
+    )
+    assert "--processes" in services["task-worker"]["command"]
+    process_index = services["task-worker"]["command"].index("--processes")
+    assert services["task-worker"]["command"][process_index + 1] == values[worker_count_field]
+    for name in ("task-worker", "outbox-relay"):
+        environment = services[name]["environment"]
+        for field in (
+            "GEO_RUNTIME_HEARTBEAT_INTERVAL_SECONDS",
+            "GEO_RUNTIME_HEARTBEAT_STALE_SECONDS",
+            "GEO_RUNTIME_QUEUED_STALE_SECONDS",
+            "GEO_RUNTIME_OUTBOX_STALE_SECONDS",
+            "GEO_RUNTIME_RUNNING_GRACE_SECONDS",
+            "GEO_RUNTIME_FAILURE_WINDOW_SECONDS",
+        ):
+            assert environment[field] == f"${{{field}:-{values[field]}}}"
+
+
 def test_production_compose_contains_no_source_mounts_or_weak_default_credentials() -> None:
     raw = COMPOSE_PATH.read_text(encoding="utf-8")
 
@@ -98,6 +240,17 @@ def test_production_compose_contains_no_source_mounts_or_weak_default_credential
     assert ":-postgres" not in raw
     assert "GEO_DEEPSEEK_API_KEY_FILE" in raw
     assert "digest-pinned" in raw
+
+
+def test_production_compose_does_not_claim_nonexistent_prometheus_metrics() -> None:
+    compose = load_compose()
+
+    assert "prometheus" not in compose["services"]
+    assert "prometheus_data" not in compose["volumes"]
+    assert not (ROOT / "infra" / "prometheus" / "prometheus.yml").exists()
+    assert not (
+        ROOT / "infra" / "grafana" / "provisioning" / "datasources" / "prometheus.yml"
+    ).exists()
 
 
 def test_production_web_portals_use_strict_deployment_url_policy() -> None:

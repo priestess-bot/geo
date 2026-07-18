@@ -77,11 +77,13 @@ make dev-up
 docker compose -f infra/docker-compose.yml --profile workers ps
 curl -fsS http://localhost:8000/health
 curl -fsS http://localhost:8001/health
+curl -fsS http://localhost:8000/ready
+curl -fsS http://localhost:8001/ready
 curl -fsS -o /dev/null http://localhost:3001/projects
 curl -fsS -o /dev/null http://localhost:3000
 ```
 
-正常结果：PostgreSQL、MinIO、Valkey 为 `healthy`；两个 API、两个 Web、Worker 和 Outbox Relay 为 `Up`；健康接口返回 2xx。
+正常结果：PostgreSQL、MinIO、Valkey 为 `healthy`；两个 API、两个 Web、Worker 和 Outbox Relay 为 `Up`；`/health` 与 `/ready` 均返回 2xx。`/health` 只表达进程存活；Customer `/ready` 检查 PostgreSQL，Internal `/ready` 还检查 Valkey 和 MinIO。
 
 ![服务健康样例](images/02-stack-health.png)
 
@@ -125,7 +127,7 @@ docker volume ls | grep -E 'geo-development|geo-advinsys-staging'
 ```bash
 cp infra/production.env.example infra/production.env
 chmod 600 infra/production.env
-docker compose --env-file infra/production.env -f infra/compose.prod.yml config -q
+make production-config PROD_ENV=infra/production.env
 make production-up PROD_ENV=infra/production.env
 make production-provision-owner PROD_ENV=infra/production.env
 ```
@@ -549,6 +551,12 @@ docker compose -f infra/docker-compose.yml --profile workers logs --tail=300 \
   internal-api customer-api task-worker outbox-relay admin-web customer-web
 curl -fsS http://localhost:8000/health
 curl -fsS http://localhost:8001/health
+curl -fsS http://localhost:8000/ready
+curl -fsS http://localhost:8001/ready
+docker compose -f infra/docker-compose.yml --profile workers exec task-worker \
+  python -m geo_worker.runtime_health heartbeat --service-type task_worker
+docker compose -f infra/docker-compose.yml --profile workers exec outbox-relay \
+  python -m geo_worker.runtime_health heartbeat --service-type outbox_relay
 ```
 
 ## 27. 异常处理矩阵

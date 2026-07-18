@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:geo:f019:benchmark-manifest:v1",
+  "title": "F-019 Benchmark Manifest",
+  "type": "object",
+  "required": ["schema_version", "dataset_version", "files", "licenses", "project_boundary", "quality_gate", "selection_policy"],
+  "properties": {
+    "schema_version": {"const": "f019-benchmark-manifest-v1"},
+    "dataset_version": {"type": "string", "minLength": 1},
+    "files": {"type": "object"},
+    "licenses": {"type": "array", "minItems": 1},
+    "project_boundary": {"type": "object"},
+    "quality_gate": {"type": "object"},
+    "selection_policy": {"type": "object"}
+  }
+}

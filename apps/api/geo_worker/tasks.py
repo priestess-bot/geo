@@ -6,10 +6,12 @@ from datetime import timedelta
 from functools import lru_cache
 import os
 import socket
+import threading
 from uuid import UUID
 
 import dramatiq
 from dramatiq.brokers.redis import RedisBroker
+from dramatiq.middleware import Middleware
 import psycopg
 
 from geo_core.jobs.postgres import PostgresDurableJobStore
@@ -30,13 +32,61 @@ from geo_core.placements.worker_composition import (
     PublicationVerificationHandler,
 )
 from geo_core.placements.worker_repository import PlacementWorkerRepository
-from geo_worker.config import secret_setting
+from geo_core.runtime_health import PeriodicHeartbeat, RuntimeHealthRepository, RuntimeHeartbeat
+from geo_worker.config import (
+    runtime_heartbeat_identity,
+    runtime_heartbeat_interval_seconds,
+    secret_setting,
+)
 
 
 BROKER_URL = os.getenv("GEO_TASK_QUEUE_BROKER_URL", "redis://valkey:6379/0").strip()
 if not BROKER_URL:
     raise RuntimeError("GEO_TASK_QUEUE_BROKER_URL is required")
-dramatiq.set_broker(RedisBroker(url=BROKER_URL))
+
+
+class RuntimeHeartbeatMiddleware(Middleware):
+    """Start heartbeats in each real Dramatiq process after its consumer boots."""
+
+    def __init__(self) -> None:
+        self._periodic: PeriodicHeartbeat | None = None
+        self._lock = threading.Lock()
+
+    def after_process_boot(self, broker) -> None:
+        del broker
+        self._heartbeat().mark_starting()
+
+    def after_consumer_thread_boot(self, broker, thread) -> None:
+        del broker, thread
+        self._heartbeat().start()
+
+    def before_consumer_thread_shutdown(self, broker, thread) -> None:
+        del broker, thread
+        with self._lock:
+            periodic = self._periodic
+        if periodic is not None:
+            periodic.stop()
+
+    def _heartbeat(self) -> PeriodicHeartbeat:
+        with self._lock:
+            if self._periodic is None:
+                interval = runtime_heartbeat_interval_seconds()
+                database_url = secret_setting("GEO_DATABASE_URL")
+                repository = RuntimeHealthRepository(lambda: psycopg.connect(database_url))
+                heartbeat = RuntimeHeartbeat(
+                    repository,
+                    runtime_heartbeat_identity("task_worker", process_id=os.getpid()),
+                    interval_seconds=interval,
+                )
+                self._periodic = PeriodicHeartbeat(
+                    heartbeat, interval_seconds=float(interval)
+                )
+            return self._periodic
+
+
+broker = RedisBroker(url=BROKER_URL)
+broker.add_middleware(RuntimeHeartbeatMiddleware())
+dramatiq.set_broker(broker)
 
 
 @lru_cache(maxsize=1)
