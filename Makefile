@@ -4,9 +4,9 @@ DEV_COMPOSE := docker compose -f infra/docker-compose.yml
 PROD_ENV ?= infra/production.env
 PROD_COMPOSE := docker compose --env-file $(PROD_ENV) -f infra/compose.prod.yml
 
-.PHONY: bootstrap install lint python-typecheck web-typecheck typecheck quality test test-migrated test-integration \
+.PHONY: bootstrap install lint python-typecheck web-typecheck typecheck quality test test-migrated test-integration test-integration-required \
 	openapi-snapshots openapi-contracts \
-	web-build api-internal api-customer admin-web customer-web \
+	web-build test-browser-chromium api-internal api-customer admin-web customer-web \
 	dev-up dev-logs dev-down db-up db-down db-reset-dev db-migrate db-heads \
 	docker-config production-config production-up production-down \
 	production-provision-owner \
@@ -58,13 +58,29 @@ openapi-contracts:
 	uv run python scripts/export_stable_openapi.py verify
 	uv run pytest -q tests/test_stable_openapi_contracts.py
 
-test-integration:
-	@test -n "$$GEO_DATABASE_URL" -o -n "$$DATABASE_URL" || (echo "GEO_DATABASE_URL or DATABASE_URL is required" >&2; exit 2)
+test-integration: test-integration-required
+
+test-integration-required:
+	@missing=0; \
+	for name in GEO_DATABASE_URL \
+		GEO_ACCESS_TEST_ADMIN_DATABASE_URL GEO_ACCESS_TEST_DATABASE_URL \
+		GEO_ACCEPTANCE_TEST_ADMIN_DATABASE_URL GEO_ACCEPTANCE_TEST_APP_DATABASE_URL \
+		GEO_ACCEPTANCE_TEST_ISOLATION_MARKER GEO_ACCEPTANCE_TEST_WORKER_DATABASE_URL \
+		GEO_PLACEMENT_TEST_ADMIN_URL \
+		GEO_TEST_DATABASE_URL; do \
+		if test -z "$${!name:-}"; then echo "$$name is required" >&2; missing=1; fi; \
+	done; \
+	test "$$missing" -eq 0
 	uv run alembic upgrade head
-	uv run pytest -q -m integration
+	uv run pytest -q --strict-markers --fail-on-skipped \
+		--ci-summary-label="PostgreSQL integration" -m integration \
+		tests/integration tests/test_engineering_governance_postgres.py
 
 web-build:
 	corepack pnpm build
+
+test-browser-chromium:
+	corepack pnpm test:browser:chromium
 
 api-internal:
 	uv run uvicorn geo_api.internal_app:app --app-dir apps/api --reload --port 8000
@@ -133,8 +149,11 @@ backup-restore-dev-smoke:
 	scripts/backup_restore_development_smoke.sh
 
 deepseek-live:
+	@test "$$GEO_RUN_LIVE_DEEPSEEK_TEST" = "1" || \
+		(echo "Paid DeepSeek call was not requested; set GEO_RUN_LIVE_DEEPSEEK_TEST=1 to opt in" >&2; exit 2)
 	@test -n "$$GEO_DEEPSEEK_API_KEY_FILE" || (echo "GEO_DEEPSEEK_API_KEY_FILE is required" >&2; exit 2)
-	uv run pytest -q -m live tests/test_geo_deepseek_live_generation.py
+	uv run pytest -q --strict-markers --fail-on-skipped \
+		--ci-summary-label="DeepSeek live" -m live tests/test_geo_deepseek_live_generation.py
 
 advinsys-dry-run:
 	uv run python scripts/provision_advinsys_project.py --mode actual --dry-run

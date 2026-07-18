@@ -9,7 +9,6 @@ import psycopg
 from psycopg import sql
 import pytest
 
-from geo_core.jobs.outbox import PostgresOutboxStore
 from geo_core.jobs.postgres import PostgresDurableJobStore
 from geo_core.placements.application import PlacementApplication
 from geo_core.placements.artifact_worker import PlacementArtifactRepository
@@ -28,6 +27,7 @@ from geo_core.placements.worker_composition import (
 )
 from geo_core.placements.worker_repository import PlacementWorkerRepository
 from tests.integration.placement_worker_support import (
+    assert_run_scoped_outbox_delivery,
     cleanup_projects,
     FakeGateway,
     FakeVerifier,
@@ -197,12 +197,12 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
                 }
             )
 
-        outbox = PostgresOutboxStore(lambda: psycopg.connect(worker_url))
-        messages = outbox.claim(worker_id="integration-relay", batch_size=10, lease_seconds=30)
-        expected_projects = {item["project"] for item in records}
-        assert expected_projects <= {item.project_id for item in messages}
-        for message in messages:
-            assert outbox.acknowledge(message, worker_id="integration-relay")
+        assert_run_scoped_outbox_delivery(
+            admin_url=ADMIN_URL,
+            worker_url=worker_url,
+            run_id=suffix,
+            expected_messages={(item["project"], item["evidence_job"].id) for item in records},
+        )
 
         store = PostgresDurableJobStore(lambda: psycopg.connect(worker_url))
         repository = PlacementWorkerRepository(store)

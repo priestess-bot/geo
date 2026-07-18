@@ -440,19 +440,27 @@ Customer Web 默认 `http://localhost:3000`，Staging 为 `http://localhost:1300
 
 ## 23. 完整 Staging 仿真
 
-在独立 Staging 数据库执行：
+在专用、可丢弃的 Acceptance 数据库执行。不得使用当前 development `5432` 或
+ADVINSYS staging `55433`；真实 Worker/Relay 不得连接该数据库。
 
 ```bash
-export OBJECT_STORE_ENDPOINT=http://127.0.0.1:19000
-export OBJECT_STORE_BUCKET=geo-artifacts
-export OBJECT_STORE_ACCESS_KEY=geo_dev
-export OBJECT_STORE_SECRET_KEY=geo_dev_secret
+export RUN_ID="geo-acceptance-$(date -u +%Y%m%dT%H%M%SZ)"
+export GEO_ACCEPTANCE_ISOLATION_MARKER=geo-accepted-remediation
+cp -n infra/remediation.env.example infra/.env.remediation
+docker compose -p geo-accepted-remediation --env-file infra/.env.remediation \
+  -f infra/docker-compose.yml up -d postgres migrate
+docker compose -p geo-accepted-remediation --env-file infra/.env.remediation \
+  -f infra/docker-compose.yml exec -T postgres psql -U geo_installer -d postgres \
+  -v marker="$GEO_ACCEPTANCE_ISOLATION_MARKER" -c \
+  "ALTER DATABASE geo SET geo.acceptance_isolation_marker TO :'marker';"
 uv run python scripts/run_geo_acceptance.py \
   --environment staging --confirm-controlled-simulation \
-  --app-database-url postgresql://geo_app_dev:geo_app_dev@127.0.0.1:55433/geo \
-  --worker-database-url postgresql://geo_worker_dev:geo_worker_dev@127.0.0.1:55433/geo \
+  --app-database-url postgresql://geo_app_dev:geo_app_dev@127.0.0.1:55434/geo \
+  --worker-database-url postgresql://geo_worker_dev:geo_worker_dev@127.0.0.1:55434/geo \
+  --admin-database-url postgresql://geo_installer:geo_installer_dev@127.0.0.1:55434/geo \
+  --isolation-marker "$GEO_ACCEPTANCE_ISOLATION_MARKER" \
   --manifest docs/target_company/advinsys-geo-project.json \
-  --run-id "$RUN_ID" --runtime-object-store \
+  --run-id "$RUN_ID" \
   --customer-invitation-output "artifacts/runs/$RUN_ID/staging-customer-invitation.json" \
   --output "artifacts/runs/$RUN_ID/simulation-acceptance-result.json"
 ```
@@ -463,7 +471,12 @@ uv run python scripts/run_geo_acceptance.py \
 --live-deepseek --deepseek-key-file "$PWD/deepseek_api_key.txt"
 ```
 
-结果必须包含九个持久任务、九条 `TEST ONLY` Prompt Simulation、九条 Simulation 均 `publication_eligible=false`、一个完成的 Owned Site 受控链、Export 未自动发布、Claim inventory 完整、不同审核人、受控 `.example` URL、T+28/T+56/T+84、4 个 Metric、3 个已批准报告和 Customer 安全投影。项目名必须带 `[SIMULATION]`。
+结果必须声明 `execution_mode=inline_isolated`，记录受控 Adapter 和哈希化环境指纹，
+并明确 `production_worker_relay_topology_validated=false`。同时必须包含九个持久任务、
+九条 `TEST ONLY` Prompt Simulation、九条 Simulation 均 `publication_eligible=false`、
+一个完成的 Owned Site 受控链、Export 未自动发布、Claim inventory 完整、不同审核人、
+受控 `.example` URL、T+28/T+56/T+84、4 个 Metric、3 个已批准报告和 Customer 安全投影。
+项目名必须带 `[SIMULATION]`。
 
 受控验收会创建独立 Tenant 和 Owner。采集 Admin 页面前，把 Staging Admin 身份切到该 Owner；这里只重建无状态 Web 容器：
 

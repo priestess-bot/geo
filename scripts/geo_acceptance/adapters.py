@@ -177,3 +177,42 @@ def model_gateway(config: AcceptanceConfig, *, evidence_id: UUID) -> ModelGatewa
         api_key_file=config.deepseek_key_file,
         capability_registry=default_deepseek_capability_registry(),
     )
+
+
+def adapter_manifest(config: AcceptanceConfig) -> tuple[dict[str, object], ...]:
+    """Describe exactly what the inline run did and did not exercise."""
+
+    return (
+        {
+            "purpose": "job_execution",
+            "adapter": "inline_postgres_dispatcher",
+            "controlled": True,
+        },
+        {
+            "purpose": "generation_model",
+            "adapter": "deepseek_gateway" if config.live_deepseek else "deterministic_gateway",
+            "controlled": not config.live_deepseek,
+        },
+        {
+            "purpose": "prompt_simulation_model",
+            "adapter": "deterministic_gateway",
+            "controlled": True,
+        },
+        {
+            "purpose": "publication_url_verification",
+            "adapter": "controlled_url_verifier",
+            "controlled": True,
+        },
+        {
+            "purpose": "artifact_storage",
+            "adapter": (
+                "runtime_object_store" if config.runtime_object_store else "memory_artifact_store"
+            ),
+            "controlled": not config.runtime_object_store,
+        },
+        {
+            "purpose": "worker_relay_topology",
+            "adapter": "not_exercised",
+            "controlled": True,
+        },
+    )

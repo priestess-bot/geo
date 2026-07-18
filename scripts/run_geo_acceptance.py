@@ -36,6 +36,19 @@ def _parser() -> argparse.ArgumentParser:
         default=os.getenv("GEO_ACCEPTANCE_WORKER_DATABASE_URL", ""),
         help="geo_worker PostgreSQL URL (or GEO_ACCEPTANCE_WORKER_DATABASE_URL)",
     )
+    parser.add_argument(
+        "--admin-database-url",
+        default=os.getenv("GEO_ACCEPTANCE_ADMIN_DATABASE_URL", ""),
+        help="database-owner PostgreSQL URL (or GEO_ACCEPTANCE_ADMIN_DATABASE_URL)",
+    )
+    parser.add_argument(
+        "--isolation-marker",
+        default=os.getenv("GEO_ACCEPTANCE_ISOLATION_MARKER", ""),
+        help=(
+            "expected database-scoped geo.acceptance_isolation_marker "
+            "(or GEO_ACCEPTANCE_ISOLATION_MARKER)"
+        ),
+    )
     parser.add_argument("--run-id", default=f"geo-acceptance-{datetime.now(UTC):%Y%m%d%H%M%S}")
     parser.add_argument(
         "--output",
@@ -93,6 +106,8 @@ def main() -> int:
         config = AcceptanceConfig(
             app_database_url=args.app_database_url,
             worker_database_url=args.worker_database_url,
+            admin_database_url=args.admin_database_url,
+            isolation_marker=args.isolation_marker,
             run_id=args.run_id,
             output_path=args.output,
             live_deepseek=args.live_deepseek,

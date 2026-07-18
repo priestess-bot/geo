@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import hashlib
 import json
 from pathlib import Path
+import re
 
 
 CHANNELS: tuple[dict[str, str], ...] = (
@@ -59,6 +60,12 @@ CHANNELS: tuple[dict[str, str], ...] = (
 PRODUCT_URL = "https://www.advinsys.com.au/products/triple-cam-ai-vision-robot-mower-v600"
 MODEL = "deepseek-v4-flash"
 MODEL_POLICY_HASH = hashlib.sha256(b"geo-acceptance-model-policy-v1").hexdigest()
+EXECUTION_MODE = "inline_isolated"
+_ISOLATION_MARKER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{2,99}$")
+
+
+def run_scope_suffix(run_id: str) -> str:
+    return hashlib.sha256(run_id.encode()).hexdigest()[:10]
 
 
 @dataclass(frozen=True)
@@ -67,6 +74,8 @@ class AcceptanceConfig:
     worker_database_url: str
     run_id: str
     output_path: Path
+    admin_database_url: str = ""
+    isolation_marker: str = ""
     live_deepseek: bool = False
     deepseek_key_file: Path | None = None
     runtime_object_store: bool = False
@@ -92,3 +101,15 @@ class AcceptanceConfig:
             payload = json.loads(self.target_manifest.read_text(encoding="utf-8"))
             if payload.get("schema_version") != 1:
                 raise ValueError("the target company manifest schema is unsupported")
+
+    def validate_inline_isolation(self) -> None:
+        if not self.admin_database_url.strip():
+            raise ValueError("inline_isolated acceptance requires an admin PostgreSQL URL")
+        if not _ISOLATION_MARKER.fullmatch(self.isolation_marker.strip()):
+            raise ValueError(
+                "isolation_marker must contain 3-100 letters, digits, dots, dashes or underscores"
+            )
+        if self.runtime_object_store:
+            raise ValueError(
+                "inline_isolated acceptance requires the process-local memory artifact store"
+            )

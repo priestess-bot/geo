@@ -4,7 +4,8 @@ import hashlib
 import hmac
 import json
 import os
-from uuid import uuid4
+from collections.abc import Iterator
+from uuid import UUID, uuid4
 
 import psycopg
 import pytest
@@ -14,12 +15,16 @@ from geo_core.engineering.service import EngineeringService
 
 
 DATABASE_URL = os.getenv("GEO_TEST_DATABASE_URL", "").strip()
-pytestmark = pytest.mark.skipif(
-    not DATABASE_URL, reason="GEO_TEST_DATABASE_URL is required for PostgreSQL integration"
-)
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(
+        not DATABASE_URL, reason="GEO_TEST_DATABASE_URL is required for PostgreSQL integration"
+    ),
+]
 
 
-def test_signed_delivery_persists_inbox_job_spec_and_outbox_atomically() -> None:
+@pytest.fixture
+def engineering_project() -> Iterator[tuple[UUID, UUID]]:
     tenant_id, project_id = uuid4(), uuid4()
     with psycopg.connect(DATABASE_URL, autocommit=True) as connection:
         connection.execute(
@@ -30,6 +35,18 @@ def test_signed_delivery_persists_inbox_job_spec_and_outbox_atomically() -> None
             "INSERT INTO projects (id, tenant_id, name) VALUES (%s, %s, 'Board')",
             (project_id, tenant_id),
         )
+    try:
+        yield tenant_id, project_id
+    finally:
+        with psycopg.connect(DATABASE_URL, autocommit=True) as connection:
+            connection.execute("DELETE FROM projects WHERE id = %s", (project_id,))
+            connection.execute("DELETE FROM tenants WHERE id = %s", (tenant_id,))
+
+
+def test_signed_delivery_persists_inbox_job_spec_and_outbox_atomically(
+    engineering_project: tuple[UUID, UUID],
+) -> None:
+    _, project_id = engineering_project
 
     def unit_of_work() -> PostgresEngineeringUnitOfWork:
         return PostgresEngineeringUnitOfWork(

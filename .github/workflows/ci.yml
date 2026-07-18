@@ -46,6 +46,10 @@ jobs:
       GEO_DATABASE_URL: postgresql://geo_installer:geo_ci_only@localhost:5432/geo
       GEO_ACCESS_TEST_ADMIN_DATABASE_URL: postgresql://geo_installer:geo_ci_only@localhost:5432/geo
       GEO_ACCESS_TEST_DATABASE_URL: postgresql://geo_app_dev:geo_app_ci_only@localhost:5432/geo
+      GEO_ACCEPTANCE_TEST_ADMIN_DATABASE_URL: postgresql://geo_installer:geo_ci_only@localhost:5432/geo
+      GEO_ACCEPTANCE_TEST_APP_DATABASE_URL: postgresql://geo_app_dev:geo_app_ci_only@localhost:5432/geo
+      GEO_ACCEPTANCE_TEST_ISOLATION_MARKER: github-actions-postgres-integration
+      GEO_ACCEPTANCE_TEST_WORKER_DATABASE_URL: postgresql://geo_worker_dev:geo_worker_ci_only@localhost:5432/geo
       GEO_PLACEMENT_TEST_ADMIN_URL: postgresql://geo_installer:geo_ci_only@localhost:5432/geo
       GEO_TEST_DATABASE_URL: postgresql://geo_installer:geo_ci_only@localhost:5432/geo
       GEO_DEV_APP_PASSWORD: geo_app_ci_only
@@ -63,10 +67,18 @@ jobs:
         run: test "$(uv run alembic heads | wc -l)" -eq 1
       - name: Provision non-BYPASSRLS test login
         run: uv run python scripts/provision_dev_database.py
+      - name: Mark the disposable database for isolated inline acceptance
+        run: >-
+          uv run python -c 'import os, psycopg; from psycopg import sql;
+          connection = psycopg.connect(os.environ["GEO_DATABASE_URL"], autocommit=True);
+          connection.execute(sql.SQL("ALTER DATABASE {} SET geo.acceptance_isolation_marker = {}")
+          .format(sql.Identifier(connection.info.dbname),
+          sql.Literal(os.environ["GEO_ACCEPTANCE_TEST_ISOLATION_MARKER"])));
+          connection.close()'
       - name: Baseline and Durable Job tests
         run: uv run pytest -q tests/test_geo_alembic_baseline.py tests/test_geo_job_lifecycle.py
       - name: Complete PostgreSQL integration suite
-        run: uv run pytest -q tests/integration tests/test_engineering_governance_postgres.py
+        run: make test-integration-required
 
   frontend:
     runs-on: ubuntu-latest
@@ -87,6 +99,10 @@ jobs:
       - run: pnpm test:contracts
       - run: pnpm typecheck
       - run: pnpm build
+      - name: Install Chromium for required browser smoke
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Required Admin core browser smoke
+        run: make test-browser-chromium
 
   deployment-contracts:
     runs-on: ubuntu-latest

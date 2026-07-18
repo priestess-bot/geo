@@ -41,6 +41,7 @@ from geo_core.placements.worker_repository import PlacementWorkerRepository
 from scripts.geo_acceptance.adapters import (
     ControlledUrlVerifier,
     DeterministicGateway,
+    MemoryArtifactStore,
     model_gateway,
 )
 from scripts.geo_acceptance.contracts import (
@@ -74,6 +75,7 @@ class PlacementResult:
     measurement_tasks: tuple[MeasurementCollectionTask, ...]
     submitted_url: str
     scheduled_windows: tuple[int, ...]
+    terminal_artifact_replay_count: int
 
 
 def run_placement(
@@ -135,6 +137,7 @@ def run_placement(
     }:
         raise AssertionError("the editable prompt catalog must cover all selected channels")
     artifact_dispatcher = _artifact_dispatcher(store, setup)
+    terminal_artifact_replay_count = 0
     simulations: list[PromptSimulation] = []
     destination_by_channel = {
         item.publication_channel: item for item in setup.destinations
@@ -192,6 +195,13 @@ def run_placement(
         )
         if artifact_result["status"] != "finalized":
             raise AssertionError(f"{channel} simulation artifact did not finalize")
+        _assert_terminal_artifact_replay(
+            store,
+            artifact_dispatcher,
+            setup,
+            job_id=simulation_artifact_job,
+        )
+        terminal_artifact_replay_count += 1
         finalized = app.get_prompt_simulation(
             project_id=project_id, simulation_id=simulation.id
         )
@@ -220,6 +230,10 @@ def run_placement(
     bundle_result = artifact_dispatcher.process(job_id=bundle_job, project_id=project_id)
     if bundle_result["status"] != "finalized":
         raise AssertionError(f"prompt bundle artifact did not finalize: {bundle_result}")
+    _assert_terminal_artifact_replay(
+        store, artifact_dispatcher, setup, job_id=bundle_job
+    )
+    terminal_artifact_replay_count += 1
 
     generation_job = app.request_generation(
         project_id=project_id,
@@ -283,6 +297,10 @@ def run_placement(
     export_result = artifact_dispatcher.process(job_id=export_job, project_id=project_id)
     if export_result["status"] != "finalized":
         raise AssertionError(f"package export artifact did not finalize: {export_result}")
+    _assert_terminal_artifact_replay(
+        store, artifact_dispatcher, setup, job_id=export_job
+    )
+    terminal_artifact_replay_count += 1
     exported = app.download_export(
         project_id=project_id, version_id=package.id, export_id=export.id
     )
@@ -373,6 +391,7 @@ def run_placement(
         tasks,
         submitted_url,
         scheduled_windows,
+        terminal_artifact_replay_count,
     )
 
 
@@ -426,6 +445,51 @@ def _artifact_job_id(
     if row is None:
         raise AssertionError(f"{resource_kind} has no artifact finalization job")
     return row[0]
+
+
+def _assert_terminal_artifact_replay(
+    store: PostgresDurableJobStore,
+    dispatcher: PlacementWorkerDispatcher,
+    setup: AcceptanceSetup,
+    *,
+    job_id: UUID,
+) -> None:
+    before = _artifact_record(store, setup.project_id, job_id)
+    artifact_store = setup.artifact_store
+    object_count = (
+        len(artifact_store.objects) if isinstance(artifact_store, MemoryArtifactStore) else None
+    )
+    repeated = dispatcher.process(job_id=job_id, project_id=setup.project_id)
+    after = _artifact_record(store, setup.project_id, job_id)
+    if repeated["status"] != "terminal":
+        raise AssertionError("a finalized artifact job was not observed as terminal")
+    if after != before:
+        raise AssertionError("terminal artifact observation mutated its immutable record")
+    if (
+        object_count is not None
+        and isinstance(artifact_store, MemoryArtifactStore)
+        and len(artifact_store.objects) != object_count
+    ):
+        raise AssertionError("terminal artifact observation wrote another object")
+
+
+def _artifact_record(
+    store: PostgresDurableJobStore, project_id: UUID, job_id: UUID
+) -> tuple[object, ...]:
+    connection = store.open_project(project_id)
+    try:
+        rows = connection.execute(
+            """SELECT status, attempt_count, final_uri, finalized_at, content_hash
+               FROM artifact_finalize_outbox
+               WHERE project_id = %s AND job_id = %s""",
+            (project_id, job_id),
+        ).fetchall()
+        connection.commit()
+    finally:
+        connection.close()
+    if len(rows) != 1 or rows[0][0] != "finalized":
+        raise AssertionError("finalized artifact record is missing or duplicated")
+    return tuple(rows[0])
 
 
 def _measurement_windows(

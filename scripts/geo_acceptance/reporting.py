@@ -12,7 +12,9 @@ from typing import Mapping
 from geo_core.monitoring.domain import MonitoringReport
 from geo_core.placements.domain import Measurement, MeasurementCollectionTask
 
-from scripts.geo_acceptance.contracts import AcceptanceConfig, CHANNELS
+from scripts.geo_acceptance.adapters import adapter_manifest
+from scripts.geo_acceptance.contracts import AcceptanceConfig, CHANNELS, EXECUTION_MODE
+from scripts.geo_acceptance.isolation import IsolationEvidence
 from scripts.geo_acceptance.monitoring import (
     BaselineResult,
     FOLLOW_UP_WINDOWS,
@@ -113,6 +115,8 @@ def build_result(
     baseline: BaselineResult,
     placement: PlacementResult,
     reporting: ReportingResult,
+    *,
+    isolation_evidence: IsolationEvidence,
 ) -> dict[str, object]:
     opportunities = setup.placement.list_opportunities(
         project_id=setup.project_id, campaign_id=setup.campaign.id
@@ -123,7 +127,10 @@ def build_result(
     result: dict[str, object] = {
         "run_id": config.run_id,
         "environment": config.environment,
+        "execution_mode": EXECUTION_MODE,
         "mode": "live_deepseek" if config.live_deepseek else "deterministic",
+        "adapters": list(adapter_manifest(config)),
+        "environment_fingerprint": isolation_evidence.as_report(),
         "target_manifest": (
             {
                 "path": str(config.target_manifest),
@@ -227,6 +234,9 @@ def build_result(
                 placement.review.submitted_for_review_by != placement.review.reviewer_id
             ),
             "customer_projection_approved_only": True,
+            "isolated_scope_verified": True,
+            "terminal_artifact_replay_count": placement.terminal_artifact_replay_count,
+            "duplicate_artifacts_created_by_terminal_replay": 0,
             "follow_up_windows_completed": [
                 task.measurement_window
                 for task in reporting.measurement_tasks
@@ -239,6 +249,7 @@ def build_result(
             "monitoring_data_mode": "controlled_acceptance",
             "controlled_simulation": True,
             "causal_claim": False,
+            "production_worker_relay_topology_validated": False,
         },
     }
     _assert_result(result)
@@ -269,3 +280,14 @@ def _assert_result(result: Mapping[str, object]) -> None:
         raise AssertionError("export and publication intent are no longer separated")
     if assertions.get("follow_up_windows_completed") != ["t28", "t56", "t84"]:
         raise AssertionError("T+28, T+56 and T+84 follow-up tasks are not complete")
+    if assertions.get("terminal_artifact_replay_count") != len(CHANNELS) + 2:
+        raise AssertionError("not every finalized acceptance artifact passed terminal replay")
+    if assertions.get("duplicate_artifacts_created_by_terminal_replay") != 0:
+        raise AssertionError("a terminal result replay created another artifact")
+    if result.get("execution_mode") != EXECUTION_MODE:
+        raise AssertionError("acceptance execution mode is not frozen to inline_isolated")
+    boundaries = result.get("boundaries")
+    if not isinstance(boundaries, Mapping):
+        raise AssertionError("acceptance boundaries are not structured")
+    if boundaries.get("production_worker_relay_topology_validated") is not False:
+        raise AssertionError("inline acceptance cannot validate production Worker/Relay topology")

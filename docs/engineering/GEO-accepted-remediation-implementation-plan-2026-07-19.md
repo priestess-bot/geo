@@ -23,6 +23,14 @@
 
 本计划明确不包含状态为 `ACCEPTED_RISK`、`DEFERRED`、`MANUAL_WORKAROUND`、`OUT_OF_SCOPE` 或 `NEXT_PHASE_REQUIRED` 的完整平台能力。
 
+### 1.1 Git 与运行环境保护
+
+- 当前原型已经以提交 `267d970` 保存于 `main`，并创建本地保护标签 `geo-pre-remediation-20260719`。
+- 全部整改只在本地分支 `feat/geo-accepted-remediation-20260719` 和 sibling worktree `/home/ymm/ym/gz/20260608-geo-accepted-remediation` 中实施；不向 `origin` 推送。
+- 原工作树 `/home/ymm/ym/gz/20260608-geo` 保持在 `main`，现有 `geo-development` 和 `geo-advinsys-staging` 运行栈不用于整改迁移或测试。
+- 整改栈使用 Compose project `geo-accepted-remediation`、独立数据卷以及端口 PostgreSQL `55434`、Valkey `26379`、MinIO `29000/29001`、API `28000/28001`、Web `23000/23001`。
+- 每批在整改栈独立验收并创建本地批次标签；批次 5 全部通过前不更新 `main`。最终优先 `--ff-only` 合并；若 `main` 存在必要热修复，先同步热修复并重跑全部门禁。
+
 ## 2. 总体依赖顺序
 
 ```text
@@ -148,7 +156,9 @@ F-011 + F-009 + F-021 + F-023 --------+-> F-027 JSON/CSV 导出
 - LlamaIndex 与当前项目内基线使用同一语料、模型策略和 gold set；GraphRAG 只允许隔离对比，不直接接入生产。
 - 进入生产实现的最低门槛：实体 precision `>= 0.85`、关系 precision `>= 0.80`、正式候选事实来源可追踪率 `= 100%`、无事实支持问题比例 `<= 5%`、语义重复问题比例 `<= 10%`、有证据支撑的计划维度覆盖率 `>= 90%`。
 - 项目间数据泄漏、候选绕过人工批准、`test_only` 产物变为可发布，三类测试必须零失败。
-- 索引和问题生成的最大成本、最长墙钟时间在 benchmark manifest 中先填写预算再运行；预算未冻结时选型 Gate 不得通过。
+- benchmark manifest 必须记录每个候选的输入/输出 token、模型调用数、估算成本和墙钟时间，但这些指标不设置固定或相对基线硬上限，也不单独淘汰质量更好的方案。
+- 继续保留单 Job 调用预算、网络/任务超时和人工中止能力，防止循环或失控；这些是运行保护，不是选型成本门槛。
+- 候选先通过本节全部质量硬门槛，再按实体、关系、问题支持度、覆盖度和去重结果的综合质量选择；质量差距小于 2 个百分点时才以成本和耗时作为次级条件，仍相同时优先 LlamaIndex。
 - 框架版本固定；框架类型不得进入 Domain、稳定 API 或业务主数据。
 
 ### 4.9 Runtime truth 默认阈值
@@ -214,7 +224,7 @@ F-011 + F-009 + F-021 + F-023 --------+-> F-027 JSON/CSV 导出
 - Worker/Relay 停止后在阈值内 stale；队列、lease、Outbox 和 dead-letter fixture 能被准确分类。
 - Compose 显示真实 unhealthy；坏 secret/digest/config 被 preflight 阻断且不泄密。
 - 仓库不再启用不存在的 `/metrics` target。
-- F-019 benchmark 数据集和预算 manifest 已冻结，PoC 尚不能被描述为正式功能完成。
+- F-019 benchmark 数据集、质量评分规则和成本/耗时记录格式已冻结；PoC 尚不能被描述为正式功能完成。
 
 ### 批次 2：共享领域合同
 

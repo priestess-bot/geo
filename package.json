@@ -5,7 +5,13 @@
   "packageManager": "pnpm@9.15.4",
   "scripts": {
     "build": "corepack pnpm --filter geo-production-admin-web --filter geo-production-customer-web build",
+    "test:browser": "playwright test",
+    "test:browser:chromium": "playwright test --project=chromium-desktop",
+    "test:browser:collect": "playwright test --list --project=chromium-desktop",
     "test:contracts": "corepack pnpm --filter @geo/api-client test:contracts",
     "typecheck": "corepack pnpm --filter './apps/**' --filter './packages/web/**' typecheck"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.60.0"
   }
 }

@@ -36,7 +36,12 @@ from geo_core.placements.ports import UnitOfWorkFactory
 from geo_core.placements.postgres_uow import placement_uow_factory
 
 from scripts.geo_acceptance.adapters import ArtifactStore, MemoryArtifactStore
-from scripts.geo_acceptance.contracts import AcceptanceConfig, CHANNELS, PRODUCT_URL
+from scripts.geo_acceptance.contracts import (
+    AcceptanceConfig,
+    CHANNELS,
+    PRODUCT_URL,
+    run_scope_suffix,
+)
 
 
 EXPERIENCE_TEXT = (
@@ -72,7 +77,7 @@ class AcceptanceSetup:
 
 def setup_acceptance(config: AcceptanceConfig) -> AcceptanceSetup:
     app_url = config.app_database_url.strip()
-    suffix = hashlib.sha256(config.run_id.encode()).hexdigest()[:10]
+    suffix = run_scope_suffix(config.run_id)
     catalog = CatalogApplication(
         PsycopgCatalogUnitOfWorkFactory(app_url), development_bootstrap_allowed=True
     )

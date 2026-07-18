@@ -3,9 +3,11 @@ from decimal import Decimal
 import hashlib
 from uuid import UUID, uuid4
 
+import psycopg
 from psycopg import sql
 from psycopg.conninfo import conninfo_to_dict, make_conninfo
 
+from geo_core.jobs.outbox import PostgresOutboxStore
 from geo_core.model_gateway import ModelGatewayRequest, ModelGatewayResult
 from geo_core.model_gateway.contracts import RetryableModelGatewayError
 from geo_core.object_store import ObjectStoreError, RetrievedObject, StoredObject
@@ -115,6 +117,40 @@ class MemoryArtifactStore:
             digest,
             "integration-etag",
         )
+
+
+def assert_run_scoped_outbox_delivery(
+    *,
+    admin_url: str,
+    worker_url: str,
+    run_id: str,
+    expected_messages: set[tuple[UUID, UUID]],
+) -> None:
+    worker_id = f"integration-relay-{run_id}"
+    with psycopg.connect(admin_url, autocommit=True) as claim_lock:
+        claim_lock.execute("SELECT pg_advisory_lock(1501520250719)")
+        try:
+            with psycopg.connect(admin_url) as admin:
+                owned_rows = admin.execute(
+                    """UPDATE broker_outbox
+                       SET available_at = '-infinity'::timestamptz
+                       WHERE job_id = ANY(%s) AND published_at IS NULL
+                       RETURNING project_id, job_id""",
+                    ([job_id for _, job_id in expected_messages],),
+                ).fetchall()
+                assert set(owned_rows) == expected_messages
+                admin.commit()
+            outbox = PostgresOutboxStore(lambda: psycopg.connect(worker_url))
+            messages = outbox.claim(
+                worker_id=worker_id,
+                batch_size=len(expected_messages),
+                lease_seconds=30,
+            )
+            assert {(item.project_id, item.job_id) for item in messages} == expected_messages
+            for message in messages:
+                assert outbox.acknowledge(message, worker_id=worker_id)
+        finally:
+            claim_lock.execute("SELECT pg_advisory_unlock(1501520250719)")
 
 
 def login_url(base: str, *, user: str, password: str) -> str:
