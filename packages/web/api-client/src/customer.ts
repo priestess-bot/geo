@@ -2,6 +2,8 @@ import { isAuthIdentity, type AuthIdentity } from "@geo/types/auth";
 import type {
   CustomerApprovedReport,
   CustomerApiPath,
+  CustomerCampaign,
+  CustomerCampaignReadModel,
   CustomerGeoMetric,
   CustomerGeoResource,
   CustomerGeoSummary,
@@ -11,6 +13,7 @@ import type {
   CustomerVerifiedUrl
 } from "@geo/types/customer";
 
+import { isSourceStratum } from "./customer-source-contract";
 import {
   geoApiUrl,
   mergeClientRequestInit,
@@ -50,23 +53,38 @@ export class CustomerApiClient {
     return this.get("/v1/projects", { limit, offset }, isCustomerProjectPage);
   }
 
+  listGeoCampaigns(projectId: string): Promise<CustomerApiResult<CustomerCampaign[]>> {
+    return this.get(this.campaignsPath(projectId), undefined, isCampaignList);
+  }
+
+  getGeoCampaignReadModel(
+    projectId: string,
+    campaignId: string
+  ): Promise<CustomerApiResult<CustomerCampaignReadModel>> {
+    return this.get(
+      this.campaignReadModelPath(projectId, campaignId),
+      undefined,
+      isCampaignReadModel
+    );
+  }
+
   getGeoSummary(
     projectId: string,
-    campaignId?: string
+    campaignId: string
   ): Promise<CustomerApiResult<CustomerGeoSummary>> {
     return this.get(this.geoPath(projectId, "summary"), campaignQuery(campaignId), isGeoSummary);
   }
 
   listGeoMetrics(
     projectId: string,
-    campaignId?: string
+    campaignId: string
   ): Promise<CustomerApiResult<CustomerGeoMetric[]>> {
     return this.get(this.geoPath(projectId, "metrics"), campaignQuery(campaignId), isMetricList);
   }
 
   listMeasurementWindows(
     projectId: string,
-    campaignId?: string
+    campaignId: string
   ): Promise<CustomerApiResult<CustomerMeasurementWindow[]>> {
     return this.get(
       this.geoPath(projectId, "measurement-windows"),
@@ -77,7 +95,7 @@ export class CustomerApiClient {
 
   listVerifiedUrls(
     projectId: string,
-    campaignId?: string
+    campaignId: string
   ): Promise<CustomerApiResult<CustomerVerifiedUrl[]>> {
     return this.get(
       this.geoPath(projectId, "verified-urls"),
@@ -88,7 +106,7 @@ export class CustomerApiClient {
 
   listApprovedReports(
     projectId: string,
-    campaignId?: string
+    campaignId: string
   ): Promise<CustomerApiResult<CustomerApprovedReport[]>> {
     return this.get(
       this.geoPath(projectId, "reports"),
@@ -99,6 +117,14 @@ export class CustomerApiClient {
 
   private geoPath(projectId: string, resource: CustomerGeoResource): CustomerApiPath {
     return `/v1/projects/${encodeURIComponent(projectId)}/geo/${resource}`;
+  }
+
+  private campaignsPath(projectId: string): CustomerApiPath {
+    return `/v1/projects/${encodeURIComponent(projectId)}/geo/campaigns`;
+  }
+
+  private campaignReadModelPath(projectId: string, campaignId: string): CustomerApiPath {
+    return `/v1/projects/${encodeURIComponent(projectId)}/geo/campaigns/${encodeURIComponent(campaignId)}/read-model`;
   }
 
   private async get<T>(
@@ -158,8 +184,52 @@ function customerProblem(
   };
 }
 
-function campaignQuery(campaignId?: string): GeoApiQuery | undefined {
-  return campaignId ? { campaign_id: campaignId } : undefined;
+function campaignQuery(campaignId: string): GeoApiQuery {
+  return { campaign_id: campaignId };
+}
+
+function isCampaignList(value: unknown): value is CustomerCampaign[] {
+  return Array.isArray(value) && value.every(isCampaign);
+}
+
+function isCampaign(value: unknown): value is CustomerCampaign {
+  const record = objectValue(value);
+  return Boolean(
+    record
+    && strings(record, "id", "project_id", "name", "objective", "status")
+    && integer(record.approved_report_count)
+    && (record.latest_approved_at === null || text(record.latest_approved_at))
+  );
+}
+
+function isCampaignReadModel(value: unknown): value is CustomerCampaignReadModel {
+  const record = objectValue(value);
+  return Boolean(
+    record
+    && isCampaign(record.campaign)
+    && isGeoSummary(record.summary)
+    && Array.isArray(record.approved_measurements)
+    && record.approved_measurements.every((item) => {
+      const approved = objectValue(item);
+      return Boolean(
+        approved
+        && isApprovedReport(approved.report)
+        && isMetric(approved.snapshot)
+        && (
+          (
+            approved.snapshot_contract === "statistics_v2"
+            && objectValue(approved.snapshot)?.statistics_contract_version
+              === "geo-observation-statistics-v2"
+          )
+          || (
+            approved.snapshot_contract === "legacy_unknown"
+            && objectValue(approved.snapshot)?.statistics_contract_version === "legacy-v1"
+          )
+        )
+      );
+    })
+    && isVerifiedUrlList(record.verified_urls)
+  );
 }
 
 function isCustomerProjectPage(value: unknown): value is CustomerProjectPage {
@@ -189,7 +259,13 @@ function isGeoSummary(value: unknown): value is CustomerGeoSummary {
   return Boolean(
     record
     && text(record.project_id)
-    && (record.campaign_id === null || text(record.campaign_id))
+    && strings(
+      record,
+      "campaign_id",
+      "campaign_name",
+      "campaign_objective",
+      "campaign_status"
+    )
     && integer(record.frozen_protocol_count)
     && integer(record.measurement_window_count)
     && integer(record.verified_url_count)
@@ -206,11 +282,38 @@ function isMetricList(value: unknown): value is CustomerGeoMetric[] {
 
 function isMetric(value: unknown): value is CustomerGeoMetric {
   const record = objectValue(value);
-  return Boolean(
+  const common = Boolean(
     record
-    && strings(record, "id", "project_id", "protocol_id", "campaign_id", "method_version", "computed_at")
+    && strings(
+      record,
+      "id",
+      "project_id",
+      "protocol_id",
+      "campaign_id",
+      "statistics_contract_version",
+      "method_version",
+      "input_hash",
+      "computed_at"
+    )
     && windowValue(record.measurement_window)
+    && captureMethodValue(record.capture_method)
+    && (record.source_stratum === null || isSourceStratum(record.source_stratum))
+    && nullableText(record.source_stratum_hash)
+    && nullableText(record.query_cluster_key)
+    && nullableText(record.analysis_stratum_hash)
+    && nullableInteger(record.minimum_valid_repeats)
     && integers(record, "expected_sample_count", "eligible_sample_count")
+    && nullableInteger(record.sampled_sample_count)
+    && nullableInteger(record.invalid_sample_count)
+    && nullableInteger(record.missing_sample_count)
+    && nullableNumber(record.sampling_completion_ratio)
+    && nullableNumber(record.valid_completion_ratio)
+    && nullableInteger(record.query_count)
+    && nullableInteger(record.sufficient_query_count)
+    && integerRecord(record.invalid_reason_counts)
+    && stringArray(record.declared_confounding_factors)
+    && Array.isArray(record.query_results)
+    && record.query_results.every(isQueryMetricResult)
     && numbers(
       record,
       "recommendation_share",
@@ -220,8 +323,110 @@ function isMetric(value: unknown): value is CustomerGeoMetric {
       "verified_placement_coverage",
       "competitive_delta"
     )
+    && nullableNumber(record.recommendation_ci_low)
+    && nullableNumber(record.recommendation_ci_high)
+    && nullableNumber(record.product_mention_ci_low)
+    && nullableNumber(record.product_mention_ci_high)
+    && nullableNumber(record.placement_citation_ci_low)
+    && nullableNumber(record.placement_citation_ci_high)
+    && nullableNumber(record.recommendation_query_min)
+    && nullableNumber(record.recommendation_query_max)
+    && nullableNumber(record.product_mention_query_min)
+    && nullableNumber(record.product_mention_query_max)
+    && nullableNumber(record.placement_citation_query_min)
+    && nullableNumber(record.placement_citation_query_max)
+    && nullableText(record.worst_query_id)
+    && stringArray(record.selected_destination_ids)
+    && stringArray(record.qualified_destination_ids)
+    && stringArray(record.verified_destination_ids)
     && statusValue(record.status)
     && stringArray(record.confounded_reasons)
+    && nullableText(record.result_hash)
+    && nullableText(record.observation_membership_version)
+    && nullableText(record.observation_membership_hash)
+    && nullableInteger(record.observation_membership_count)
+  );
+  if (!common || !record) return false;
+  if (record.statistics_contract_version === "legacy-v1") return true;
+  if (record.statistics_contract_version !== "geo-observation-statistics-v2") return false;
+  return record.method_version === "geo-observation-statistics-v2"
+    && record.source_stratum !== null
+    && text(record.source_stratum_hash)
+    && text(record.query_cluster_key)
+    && text(record.analysis_stratum_hash)
+    && integer(record.minimum_valid_repeats)
+    && integer(record.sampled_sample_count)
+    && integer(record.invalid_sample_count)
+    && integer(record.missing_sample_count)
+    && finiteNumber(record.sampling_completion_ratio)
+    && finiteNumber(record.valid_completion_ratio)
+    && integer(record.query_count)
+    && integer(record.sufficient_query_count)
+    && finiteNumber(record.recommendation_ci_low)
+    && finiteNumber(record.recommendation_ci_high)
+    && finiteNumber(record.product_mention_ci_low)
+    && finiteNumber(record.product_mention_ci_high)
+    && finiteNumber(record.placement_citation_ci_low)
+    && finiteNumber(record.placement_citation_ci_high)
+    && finiteNumber(record.recommendation_query_min)
+    && finiteNumber(record.recommendation_query_max)
+    && finiteNumber(record.product_mention_query_min)
+    && finiteNumber(record.product_mention_query_max)
+    && finiteNumber(record.placement_citation_query_min)
+    && finiteNumber(record.placement_citation_query_max)
+    && text(record.worst_query_id)
+    && text(record.result_hash);
+}
+
+function isQueryMetricResult(value: unknown): boolean {
+  const record = objectValue(value);
+  return Boolean(
+    record
+    && hasExactKeys(record, [
+      "monitoring_query_id",
+      "query_text_snapshot",
+      "query_cluster_key",
+      "expected_sample_count",
+      "sampled_sample_count",
+      "valid_sample_count",
+      "invalid_sample_count",
+      "missing_sample_count",
+      "meets_threshold",
+      "invalid_reason_counts",
+      "confounding_factors",
+      "recommendation",
+      "product_mention",
+      "placement_citation",
+      "competitor",
+      "competitive_delta"
+    ])
+    && strings(record, "monitoring_query_id", "query_text_snapshot", "query_cluster_key")
+    && integers(
+      record,
+      "expected_sample_count",
+      "sampled_sample_count",
+      "valid_sample_count",
+      "invalid_sample_count",
+      "missing_sample_count"
+    )
+    && typeof record.meets_threshold === "boolean"
+    && integerRecord(record.invalid_reason_counts)
+    && stringArray(record.confounding_factors)
+    && isBinaryEstimate(record.recommendation)
+    && isBinaryEstimate(record.product_mention)
+    && isBinaryEstimate(record.placement_citation)
+    && isBinaryEstimate(record.competitor)
+    && finiteNumber(record.competitive_delta)
+  );
+}
+
+function isBinaryEstimate(value: unknown): boolean {
+  const record = objectValue(value);
+  return Boolean(
+    record
+    && hasExactKeys(record, ["numerator", "denominator", "share", "ci_low", "ci_high"])
+    && integers(record, "numerator", "denominator")
+    && numbers(record, "share", "ci_low", "ci_high")
   );
 }
 
@@ -254,27 +459,29 @@ function isVerifiedUrlList(value: unknown): value is CustomerVerifiedUrl[] {
 }
 
 function isApprovedReportList(value: unknown): value is CustomerApprovedReport[] {
-  return Array.isArray(value) && value.every((item) => {
-    const record = objectValue(item);
-    return Boolean(
-      record
-      && strings(
-        record,
-        "id",
-        "project_id",
-        "protocol_id",
-        "campaign_id",
-        "metric_snapshot_id",
-        "title",
-        "body",
-        "methodology_statement",
-        "report_hash",
-        "generated_at",
-        "approved_at"
-      )
-      && record.status === "approved"
-    );
-  });
+  return Array.isArray(value) && value.every(isApprovedReport);
+}
+
+function isApprovedReport(value: unknown): value is CustomerApprovedReport {
+  const record = objectValue(value);
+  return Boolean(
+    record
+    && strings(
+      record,
+      "id",
+      "project_id",
+      "protocol_id",
+      "campaign_id",
+      "metric_snapshot_id",
+      "title",
+      "body",
+      "methodology_statement",
+      "report_hash",
+      "generated_at",
+      "approved_at"
+    )
+    && record.status === "approved"
+  );
 }
 
 function objectValue(value: unknown): { [key: string]: unknown } | null {
@@ -291,6 +498,34 @@ function integer(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
 
+function finiteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function nullableNumber(value: unknown): boolean {
+  return value === null || finiteNumber(value);
+}
+
+function nullableInteger(value: unknown): boolean {
+  return value === null || integer(value);
+}
+
+function nullableText(value: unknown): boolean {
+  return value === null || text(value);
+}
+
+function integerRecord(value: unknown): boolean {
+  const record = objectValue(value);
+  return Boolean(record && Object.values(record).every(integer));
+}
+
+function hasExactKeys(record: { [key: string]: unknown }, keys: string[]): boolean {
+  const actual = Object.keys(record).sort();
+  const expected = [...keys].sort();
+  return actual.length === expected.length
+    && actual.every((key, index) => key === expected[index]);
+}
+
 function strings(record: { [key: string]: unknown }, ...keys: string[]): boolean {
   return keys.every((key) => text(record[key]));
 }
@@ -300,7 +535,7 @@ function integers(record: { [key: string]: unknown }, ...keys: string[]): boolea
 }
 
 function numbers(record: { [key: string]: unknown }, ...keys: string[]): boolean {
-  return keys.every((key) => typeof record[key] === "number" && Number.isFinite(record[key]));
+  return keys.every((key) => finiteNumber(record[key]));
 }
 
 function stringArray(value: unknown): value is string[] {
@@ -312,6 +547,15 @@ function windowValue(value: unknown): boolean {
     || value === "t84" || value === "ad_hoc";
 }
 
+function captureMethodValue(value: unknown): boolean {
+  return value === "official_report_import"
+    || value === "manual_ui"
+    || value === "provider_api"
+    || value === "proxy_grounded_api"
+    || value === "synthetic"
+    || value === "unknown";
+}
+
 function statusValue(value: unknown): boolean {
-  return value === "complete" || value === "confounded";
+  return ["complete", "confounded", "insufficient_evidence"].includes(String(value));
 }

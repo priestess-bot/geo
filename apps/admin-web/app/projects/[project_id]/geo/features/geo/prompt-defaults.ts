@@ -8,7 +8,14 @@ export const DEFAULT_OUTPUT_SCHEMA = JSON.stringify({
   additionalProperties: false,
   required: ["content_json", "rendered_text", "claims", "internal_evidence_refs", "public_citation_refs"],
   properties: {
-    content_json: { type: "object" },
+    content_json: {
+      type: "object",
+      required: ["required_disclosures", "expected_links"],
+      properties: {
+        required_disclosures: { type: "array", items: { type: "string", minLength: 1 } },
+        expected_links: { type: "array", items: { type: "string", minLength: 1 } }
+      }
+    },
     rendered_text: { type: "string" },
     claims: {
       type: "array",

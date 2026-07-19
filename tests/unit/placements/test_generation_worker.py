@@ -81,7 +81,11 @@ class FakeGateway:
         budget.consume()
         return ModelGatewayResult(
             output={
-                "content_json": {"title": "Robot vacuum review"},
+                "content_json": {
+                    "title": "Robot vacuum review",
+                    "required_disclosures": [],
+                    "expected_links": [],
+                },
                 "rendered_text": "Robot vacuum review",
                 "claims": [
                     {
@@ -175,7 +179,7 @@ def test_internal_evidence_cannot_be_promoted_to_public_citation() -> None:
         output_schema={},
     )
     output = {
-        "content_json": {},
+        "content_json": {"required_disclosures": [], "expected_links": []},
         "rendered_text": "Supported internally.",
         "claims": [
             {
@@ -188,5 +192,8 @@ def test_internal_evidence_cannot_be_promoted_to_public_citation() -> None:
         "internal_evidence_refs": [str(evidence_id)],
         "public_citation_refs": [str(evidence_id)],
     }
+    omitted_contract = {**output, "content_json": {"nested": {"disclosure": "decoy"}}}
+    with pytest.raises(PlacementRuleViolation, match="required_disclosures"):
+        parse_generated_placement(omitted_contract, claim=claim)
     with pytest.raises(PlacementRuleViolation, match="non-disclosable"):
         parse_generated_placement(output, claim=claim)

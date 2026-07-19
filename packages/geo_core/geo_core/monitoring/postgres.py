@@ -20,24 +20,37 @@ from geo_core.monitoring.domain import (
     CitationDraft,
     MeasurementWindow,
     MonitoringConflict,
-    MonitoringNotFound,
     MonitoringObservation,
     MonitoringPersistenceUnavailable,
-    MonitoringProtocol,
     ObservationDraft,
-    ProtocolQuery,
-    QuerySuggestion,
     ResultStatus,
     VerificationStatus,
 )
 from geo_core.monitoring.ports import MonitoringRepository, MonitoringUnitOfWork
 from geo_core.monitoring.postgres_mappers import (
     citation_from_row as _citation,
-    protocol_from_row as _protocol,
-    protocol_query_from_row as _protocol_query_from_row,
-    suggestion_from_row as _suggestion,
+)
+from geo_core.monitoring.source_contract import (
+    CaptureMethod,
+    ClientKind,
+    ModelIdentity,
+    ModelIdentityState,
+    ObservationDevice,
+    ObservationPlatform,
+    ObservationRunParameters,
+    ObservationSource,
+    ObservationSurface,
+    RawEvidence,
+    RawEvidenceKind,
+    SearchMode,
+    SurfaceKind,
 )
 from geo_core.monitoring.postgres_lineage import MonitoringLineageMixin
+from geo_core.monitoring.postgres_customer_projection import (
+    MonitoringCustomerProjectionMixin,
+)
+from geo_core.monitoring.postgres_official_reports import MonitoringOfficialReportsMixin
+from geo_core.monitoring.postgres_protocols import MonitoringProtocolsMixin
 from geo_core.monitoring.postgres_reporting import MonitoringReportingMixin
 
 
@@ -51,223 +64,114 @@ def _failure(operation: str, error: psycopg.Error) -> RuntimeError:
     return MonitoringPersistenceUnavailable(f"PostgreSQL could not {operation}.")
 
 
-class PsycopgMonitoringRepository(MonitoringLineageMixin, MonitoringReportingMixin):
+def _observation_source_from_row(row: Mapping[str, Any]) -> ObservationSource:
+    capture_method = CaptureMethod(str(row.get("capture_method", "unknown")))
+    evidence_kind = RawEvidenceKind(str(row.get("raw_evidence_kind", "legacy_unknown")))
+    configured_value = cast(str | None, row.get("configured_model"))
+    reported_value = cast(str | None, row.get("provider_reported_model"))
+    if capture_method == CaptureMethod.UNKNOWN:
+        legacy_result = cast(Mapping[str, object], row.get("raw_result") or {})
+        return ObservationSource.legacy_unknown(
+            raw_evidence=RawEvidence(
+                RawEvidenceKind.LEGACY_UNKNOWN,
+                answer=cast(str | None, row.get("raw_answer")),
+                inline_response=legacy_result or None,
+                artifact_uri=cast(str | None, row.get("artifact_uri")),
+                artifact_hash=cast(str | None, row.get("artifact_hash")),
+            ),
+            configured_model=configured_value or "legacy-unreported",
+            reported_model=reported_value,
+        )
+    if evidence_kind == RawEvidenceKind.ANSWER:
+        evidence = RawEvidence(evidence_kind, answer=cast(str | None, row.get("raw_answer")))
+    elif evidence_kind == RawEvidenceKind.INLINE_RESPONSE:
+        evidence = RawEvidence(
+            evidence_kind,
+            inline_response=cast(Mapping[str, object], row.get("raw_result") or {}),
+        )
+    elif evidence_kind == RawEvidenceKind.ARTIFACT:
+        evidence = RawEvidence(
+            evidence_kind,
+            artifact_uri=cast(str | None, row.get("artifact_uri")),
+            artifact_hash=cast(str | None, row.get("artifact_hash")),
+            artifact_verified=True,
+        )
+    else:
+        evidence = RawEvidence(RawEvidenceKind.LEGACY_UNKNOWN)
+    return ObservationSource(
+        capture_method=capture_method,
+        platform=ObservationPlatform(str(row["platform"])),
+        surface=ObservationSurface(str(row["surface"])),
+        surface_kind=SurfaceKind(str(row["surface_kind"])),
+        platform_detail=cast(str | None, row.get("platform_detail")),
+        surface_detail=cast(str | None, row.get("surface_detail")),
+        configured_model=ModelIdentity(
+            ModelIdentityState(str(row["configured_model_state"])), configured_value
+        ),
+        reported_model=ModelIdentity(
+            ModelIdentityState(str(row["provider_reported_model_state"])),
+            reported_value,
+        ),
+        run=ObservationRunParameters(
+            engine=cast(str | None, row.get("engine")),
+            locale=cast(str | None, row.get("locale")),
+            region=cast(str | None, row.get("region")),
+            language=cast(str | None, row.get("language")),
+            device=(
+                ObservationDevice(str(row["observation_device"]))
+                if row.get("observation_device")
+                else None
+            ),
+            client_kind=(ClientKind(str(row["client_kind"])) if row.get("client_kind") else None),
+            search_enabled=cast(bool | None, row.get("search_enabled")),
+            search_mode=(SearchMode(str(row["search_mode"])) if row.get("search_mode") else None),
+            prompt_text=cast(str | None, row.get("prompt_text")),
+            follow_up_prompts=tuple(row.get("follow_up_prompts") or ()),
+            adapter_name=cast(str | None, row.get("adapter_name")),
+            adapter_version=cast(str | None, row.get("adapter_version")),
+            provider_request_id=cast(str | None, row.get("provider_request_id")),
+        ),
+        raw_evidence=evidence,
+        citations_captured=bool(row.get("citations_captured", False)),
+        source_contract_version=str(row.get("source_contract_version") or "legacy-v1"),
+        source_job_id=cast(UUID | None, row.get("source_job_id")),
+        model_call_log_id=cast(UUID | None, row.get("model_call_log_id")),
+        test_only=bool(row.get("test_only", False)),
+        publication_eligible=bool(row.get("publication_eligible", False)),
+    )
+
+
+class PsycopgMonitoringRepository(
+    MonitoringProtocolsMixin,
+    MonitoringCustomerProjectionMixin,
+    MonitoringLineageMixin,
+    MonitoringReportingMixin,
+    MonitoringOfficialReportsMixin,
+):
     def __init__(self, connection: Connection) -> None:
         self._connection = connection
-
-    def create_protocol(self, **values: Any) -> MonitoringProtocol:
-        return _protocol(
-            self._one(
-                """
-                INSERT INTO monitoring_protocols
-                  (project_id, campaign_id, market_profile_id, name, platform, locale, device,
-                   sample_size, window_days, created_by)
-                VALUES (%(project_id)s, %(campaign_id)s, %(market_profile_id)s, %(name)s,
-                        %(platform)s, %(locale)s, %(device)s, %(sample_size)s,
-                        %(window_days)s, %(actor_id)s)
-                RETURNING *
-                """,
-                {**values, "platform": values["platform"].value, "device": values["device"].value},
-                "create the monitoring protocol",
-            )
-        )
-
-    def get_protocol(
-        self, *, project_id: UUID, protocol_id: UUID
-    ) -> MonitoringProtocol | None:
-        row = self._optional(
-            "SELECT * FROM monitoring_protocols WHERE project_id = %s AND id = %s",
-            (project_id, protocol_id),
-            "read the monitoring protocol",
-        )
-        return _protocol(row) if row else None
-
-    def list_protocols(self, *, project_id: UUID) -> tuple[MonitoringProtocol, ...]:
-        rows = self._many(
-            """SELECT * FROM monitoring_protocols
-               WHERE project_id = %s ORDER BY created_at DESC, id DESC""",
-            (project_id,),
-            "list monitoring protocols",
-        )
-        return tuple(_protocol(row) for row in rows)
-
-    def create_suggestion(self, **values: Any) -> QuerySuggestion:
-        row = self._one(
-            """
-            INSERT INTO monitoring_query_suggestions
-              (project_id, protocol_id, query_text, query_kind, rationale, suggested_by)
-            VALUES (%(project_id)s, %(protocol_id)s, %(query_text)s, %(query_kind)s,
-                    %(rationale)s, %(actor_id)s)
-            RETURNING *, NULL::uuid AS monitoring_query_id
-            """,
-            values,
-            "create the monitoring query suggestion",
-        )
-        return _suggestion(row)
-
-    def list_suggestions(
-        self, *, project_id: UUID, protocol_id: UUID
-    ) -> tuple[QuerySuggestion, ...]:
-        rows = self._many(
-            """
-            SELECT s.*, pq.monitoring_query_id
-            FROM monitoring_query_suggestions s
-            LEFT JOIN monitoring_protocol_queries pq
-              ON pq.suggestion_id = s.id AND pq.project_id = s.project_id
-            WHERE s.project_id = %s AND s.protocol_id = %s
-            ORDER BY s.created_at, s.id
-            """,
-            (project_id, protocol_id),
-            "list monitoring query suggestions",
-        )
-        return tuple(_suggestion(row) for row in rows)
-
-    def approve_suggestion(
-        self,
-        *,
-        project_id: UUID,
-        protocol: MonitoringProtocol,
-        suggestion_id: UUID,
-        actor_id: UUID,
-    ) -> tuple[QuerySuggestion, ProtocolQuery]:
-        row = self._optional(
-            """
-            SELECT s.*, pq.monitoring_query_id
-            FROM monitoring_query_suggestions s
-            LEFT JOIN monitoring_protocol_queries pq
-              ON pq.suggestion_id = s.id AND pq.project_id = s.project_id
-            WHERE s.project_id = %s AND s.protocol_id = %s AND s.id = %s
-            FOR UPDATE OF s
-            """,
-            (project_id, protocol.id, suggestion_id),
-            "lock the monitoring query suggestion",
-        )
-        if row is None:
-            raise MonitoringNotFound("The query suggestion does not exist in this project.")
-        if row["status"] == "approved" and row["monitoring_query_id"]:
-            query = self._protocol_query(project_id, protocol.id, row["monitoring_query_id"])
-            return _suggestion(row), query
-        if row["status"] != "suggested":
-            raise MonitoringConflict("A rejected query suggestion cannot be approved.")
-        query_row = self._one(
-            """
-            INSERT INTO monitoring_queries
-              (project_id, market_profile_id, query_text, query_kind, locale)
-            VALUES (%s, %s, %s, %s, %s)
-            RETURNING id
-            """,
-            (
-                project_id,
-                protocol.market_profile_id,
-                row["query_text"],
-                row["query_kind"],
-                protocol.locale,
-            ),
-            "create the approved monitoring query",
-        )
-        ordinal_row = self._one(
-            """SELECT COALESCE(max(ordinal), 0) + 1 AS ordinal
-               FROM monitoring_protocol_queries
-               WHERE project_id = %s AND protocol_id = %s""",
-            (project_id, protocol.id),
-            "allocate the monitoring query ordinal",
-        )
-        membership = self._one(
-            """
-            INSERT INTO monitoring_protocol_queries
-              (project_id, protocol_id, monitoring_query_id, suggestion_id, ordinal,
-               query_text_snapshot, query_kind_snapshot, locale_snapshot, approved_by)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            RETURNING *
-            """,
-            (
-                project_id,
-                protocol.id,
-                query_row["id"],
-                suggestion_id,
-                ordinal_row["ordinal"],
-                row["query_text"],
-                row["query_kind"],
-                protocol.locale,
-                actor_id,
-            ),
-            "bind the approved query to the monitoring protocol",
-        )
-        self._one(
-            """
-            INSERT INTO campaign_monitoring_queries
-              (campaign_id, project_id, monitoring_query_id)
-            VALUES (%s, %s, %s)
-            ON CONFLICT (campaign_id, monitoring_query_id) DO UPDATE
-            SET project_id = EXCLUDED.project_id
-            RETURNING monitoring_query_id
-            """,
-            (protocol.campaign_id, project_id, query_row["id"]),
-            "bind the approved query to the campaign",
-        )
-        decided = self._one(
-            """
-            UPDATE monitoring_query_suggestions
-            SET status = 'approved', decided_by = %s, decided_at = clock_timestamp()
-            WHERE project_id = %s AND id = %s
-            RETURNING *, %s::uuid AS monitoring_query_id
-            """,
-            (actor_id, project_id, suggestion_id, query_row["id"]),
-            "approve the monitoring query suggestion",
-        )
-        return _suggestion(decided), _protocol_query_from_row(membership)
-
-    def approve_protocol(self, **values: Any) -> MonitoringProtocol:
-        row = self._optional(
-            """
-            UPDATE monitoring_protocols
-            SET status = 'approved', approved_by = %(actor_id)s,
-                approved_at = clock_timestamp()
-            WHERE project_id = %(project_id)s AND id = %(protocol_id)s AND status = 'draft'
-            RETURNING *
-            """,
-            values,
-            "approve the monitoring protocol",
-        )
-        if row is None:
-            raise MonitoringConflict("The monitoring protocol is not an approvable draft.")
-        return _protocol(row)
-
-    def freeze_protocol(self, **values: Any) -> MonitoringProtocol:
-        row = self._optional(
-            """
-            UPDATE monitoring_protocols
-            SET status = 'frozen', frozen_by = %(actor_id)s,
-                frozen_at = clock_timestamp(), protocol_hash = %(protocol_hash)s
-            WHERE project_id = %(project_id)s AND id = %(protocol_id)s
-              AND status = 'approved'
-            RETURNING *
-            """,
-            values,
-            "freeze the monitoring protocol",
-        )
-        if row is None:
-            raise MonitoringConflict("The monitoring protocol is not approved or was frozen.")
-        return _protocol(row)
 
     def import_observation(self, **values: Any) -> MonitoringObservation:
         draft = cast(ObservationDraft, values["draft"])
         existing = self._optional(
             """
             SELECT * FROM monitoring_observations
-            WHERE project_id = %s AND (
+            WHERE project_id = %s AND campaign_id = %s AND (
                 idempotency_key = %s OR
                 (protocol_id = %s AND monitoring_query_id = %s
-                 AND measurement_window = %s AND sample_index = %s)
+                 AND measurement_window = %s AND source_stratum_hash = %s
+                 AND sample_index = %s)
             )
             ORDER BY (idempotency_key = %s) DESC LIMIT 1
             """,
             (
                 values["project_id"],
+                values["campaign_id"],
                 values["idempotency_key"],
                 values["protocol_id"],
                 draft.monitoring_query_id,
                 draft.measurement_window.value,
+                draft.source_stratum_hash,
                 draft.sample_index,
                 values["idempotency_key"],
             ),
@@ -287,33 +191,104 @@ class PsycopgMonitoringRepository(MonitoringLineageMixin, MonitoringReportingMix
             }
             for item in draft.citations
         ]
+        source = draft.source
+        run = source.run
+        evidence = source.raw_evidence
+        insert_values = {
+            **values,
+            "monitoring_query_id": draft.monitoring_query_id,
+            "measurement_window": draft.measurement_window.value,
+            "sample_index": draft.sample_index,
+            "result_status": draft.result_status.value,
+            "eligibility_requested": draft.requested_eligible,
+            "eligible": draft.eligible,
+            "ineligible_reasons": list(draft.ineligible_reasons),
+            "url_verification_status": draft.url_verification_status.value,
+            "recommendation_present": draft.recommendation_present,
+            "primary_product_mentioned": draft.primary_product_mentioned,
+            "competitor_mentioned": draft.competitor_mentioned,
+            "raw_answer": draft.raw_answer,
+            "raw_result": Jsonb(dict(draft.raw_result)),
+            "raw_citations": Jsonb(raw_citations),
+            "artifact_uri": draft.artifact_uri,
+            "artifact_hash": draft.artifact_hash,
+            "configured_model": draft.configured_model,
+            "provider_reported_model": draft.provider_reported_model,
+            "ui_surface": draft.ui_surface,
+            "ui_metadata": Jsonb(dict(draft.ui_metadata)),
+            "confounding_factors": list(draft.confounding_factors),
+            "observed_at": draft.observed_at,
+            "capture_method": source.capture_method.value,
+            "platform": source.platform.value,
+            "platform_detail": source.platform_detail,
+            "surface": source.surface.value,
+            "surface_kind": source.surface_kind.value,
+            "surface_detail": source.surface_detail,
+            "engine": run.engine,
+            "configured_model_state": source.configured_model.state.value,
+            "provider_reported_model_state": source.reported_model.state.value,
+            "locale": run.locale,
+            "region": run.region,
+            "language": run.language,
+            "observation_device": run.device.value if run.device else None,
+            "client_kind": run.client_kind.value if run.client_kind else None,
+            "search_enabled": run.search_enabled,
+            "search_mode": run.search_mode.value if run.search_mode else None,
+            "prompt_text": run.prompt_text,
+            "follow_up_prompts": Jsonb(list(run.follow_up_prompts)),
+            "adapter_name": run.adapter_name,
+            "adapter_version": run.adapter_version,
+            "provider_request_id": run.provider_request_id,
+            "raw_evidence_kind": evidence.kind.value,
+            "citations_captured": source.citations_captured,
+            "source_contract_version": source.source_contract_version,
+            "source_stratum_hash": draft.source_stratum_hash,
+            "query_cluster_key": draft.query_cluster_key,
+            "source_job_id": source.source_job_id,
+            "model_call_log_id": source.model_call_log_id,
+            "test_only": source.test_only,
+            "publication_eligible": source.publication_eligible,
+        }
         row = self._one(
             """
             INSERT INTO monitoring_observations
               (project_id, protocol_id, campaign_id, monitoring_query_id, measurement_window,
-               sample_index, result_status, eligible, ineligible_reasons,
+               sample_index, result_status, eligibility_requested, eligible, ineligible_reasons,
                url_verification_status, recommendation_present,
                primary_product_mentioned, competitor_mentioned, raw_answer,
                raw_result, raw_citations, artifact_uri, artifact_hash,
                configured_model, provider_reported_model, ui_surface, ui_metadata,
-               confounding_factors, observed_at, imported_by, idempotency_key, payload_hash)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+               confounding_factors, observed_at, capture_method, platform, platform_detail,
+               surface, surface_kind, surface_detail, engine, configured_model_state,
+               provider_reported_model_state, locale, region, language, observation_device,
+               client_kind, search_enabled, search_mode, prompt_text, follow_up_prompts,
+               adapter_name, adapter_version, provider_request_id, raw_evidence_kind,
+               citations_captured, source_contract_version, source_stratum_hash,
+               query_cluster_key, source_job_id, model_call_log_id, test_only,
+               publication_eligible, imported_by, idempotency_key, payload_hash)
+            VALUES
+              (%(project_id)s, %(protocol_id)s, %(campaign_id)s, %(monitoring_query_id)s,
+               %(measurement_window)s, %(sample_index)s, %(result_status)s,
+               %(eligibility_requested)s, %(eligible)s, %(ineligible_reasons)s,
+               %(url_verification_status)s, %(recommendation_present)s,
+               %(primary_product_mentioned)s, %(competitor_mentioned)s, %(raw_answer)s,
+               %(raw_result)s, %(raw_citations)s, %(artifact_uri)s, %(artifact_hash)s,
+               %(configured_model)s, %(provider_reported_model)s, %(ui_surface)s,
+               %(ui_metadata)s, %(confounding_factors)s, %(observed_at)s,
+               %(capture_method)s, %(platform)s, %(platform_detail)s, %(surface)s,
+               %(surface_kind)s, %(surface_detail)s, %(engine)s,
+               %(configured_model_state)s, %(provider_reported_model_state)s,
+               %(locale)s, %(region)s, %(language)s, %(observation_device)s,
+               %(client_kind)s, %(search_enabled)s, %(search_mode)s, %(prompt_text)s,
+               %(follow_up_prompts)s, %(adapter_name)s, %(adapter_version)s,
+               %(provider_request_id)s, %(raw_evidence_kind)s, %(citations_captured)s,
+               %(source_contract_version)s, %(source_stratum_hash)s,
+               %(query_cluster_key)s, %(source_job_id)s, %(model_call_log_id)s,
+               %(test_only)s, %(publication_eligible)s, %(actor_id)s,
+               %(idempotency_key)s, %(payload_hash)s)
             RETURNING *
             """,
-            (
-                values["project_id"], values["protocol_id"], values["campaign_id"],
-                draft.monitoring_query_id,
-                draft.measurement_window.value, draft.sample_index, draft.result_status.value,
-                draft.eligible, list(draft.ineligible_reasons),
-                draft.url_verification_status.value, draft.recommendation_present,
-                draft.primary_product_mentioned, draft.competitor_mentioned, draft.raw_answer,
-                Jsonb(dict(draft.raw_result)), Jsonb(raw_citations), draft.artifact_uri,
-                draft.artifact_hash, draft.configured_model, draft.provider_reported_model,
-                draft.ui_surface, Jsonb(dict(draft.ui_metadata)),
-                list(draft.confounding_factors), draft.observed_at, values["actor_id"],
-                values["idempotency_key"], values["payload_hash"],
-            ),
+            insert_values,
             "import the monitoring observation",
         )
         for index, citation in enumerate(draft.citations):
@@ -326,9 +301,15 @@ class PsycopgMonitoringRepository(MonitoringLineageMixin, MonitoringReportingMix
                 RETURNING id
                 """,
                 (
-                    values["project_id"], row["id"], index, citation.url, citation.title,
-                    citation.destination_id, citation.submission_id,
-                    citation.verification_status.value, citation.verified_at,
+                    values["project_id"],
+                    row["id"],
+                    index,
+                    citation.url,
+                    citation.title,
+                    citation.destination_id,
+                    citation.submission_id,
+                    citation.verification_status.value,
+                    citation.verified_at,
                 ),
                 "import the observation citation",
             )
@@ -338,19 +319,49 @@ class PsycopgMonitoringRepository(MonitoringLineageMixin, MonitoringReportingMix
         self,
         *,
         project_id: UUID,
+        campaign_id: UUID,
         protocol_id: UUID,
         window: MeasurementWindow | None,
     ) -> tuple[MonitoringObservation, ...]:
         condition = "AND measurement_window = %s" if window else ""
         parameters: tuple[object, ...] = (
-            (project_id, protocol_id, window.value) if window else (project_id, protocol_id)
+            (project_id, campaign_id, protocol_id, window.value)
+            if window
+            else (project_id, campaign_id, protocol_id)
         )
         rows = self._many(
             f"""SELECT * FROM monitoring_observations
-                WHERE project_id = %s AND protocol_id = %s {condition}
-                ORDER BY measurement_window, monitoring_query_id, sample_index""",
+                WHERE project_id = %s AND campaign_id = %s AND protocol_id = %s {condition}
+                ORDER BY measurement_window, monitoring_query_id,
+                         source_stratum_hash, sample_index""",
             parameters,
             "list monitoring observations",
+        )
+        return tuple(self._observation(row, replayed=False) for row in rows)
+
+    def list_campaign_observations(
+        self,
+        *,
+        project_id: UUID,
+        campaign_id: UUID,
+        protocol_id: UUID | None,
+        window: MeasurementWindow | None,
+    ) -> tuple[MonitoringObservation, ...]:
+        conditions: list[str] = []
+        parameters: list[object] = [project_id, campaign_id]
+        if protocol_id is not None:
+            conditions.append("AND protocol_id = %s")
+            parameters.append(protocol_id)
+        if window is not None:
+            conditions.append("AND measurement_window = %s")
+            parameters.append(window.value)
+        rows = self._many(
+            f"""SELECT * FROM monitoring_observations
+                WHERE project_id = %s AND campaign_id = %s {' '.join(conditions)}
+                ORDER BY protocol_id, measurement_window, monitoring_query_id,
+                         source_stratum_hash, sample_index""",
+            tuple(parameters),
+            "list campaign monitoring observations",
         )
         return tuple(self._observation(row, replayed=False) for row in rows)
 
@@ -393,27 +404,10 @@ class PsycopgMonitoringRepository(MonitoringLineageMixin, MonitoringReportingMix
             if row["policy_status"] == "approved"
             and row["status"] in {"qualified", "briefing", "in_progress", "completed"}
         )
-        verified = frozenset(
-            cast(UUID, row["destination_id"]) for row in rows if row["verified"]
-        )
+        verified = frozenset(cast(UUID, row["destination_id"]) for row in rows if row["verified"])
         return CampaignDestinationState(selected, qualified, verified)
 
-    def _protocol_query(
-        self, project_id: UUID, protocol_id: UUID, query_id: UUID
-    ) -> ProtocolQuery:
-        row = self._optional(
-            """SELECT * FROM monitoring_protocol_queries
-               WHERE project_id = %s AND protocol_id = %s AND monitoring_query_id = %s""",
-            (project_id, protocol_id, query_id),
-            "read the approved protocol query",
-        )
-        if row is None:
-            raise MonitoringNotFound("The approved protocol query does not exist.")
-        return _protocol_query_from_row(row)
-
-    def _observation(
-        self, row: Mapping[str, Any], *, replayed: bool
-    ) -> MonitoringObservation:
+    def _observation(self, row: Mapping[str, Any], *, replayed: bool) -> MonitoringObservation:
         citation_rows = self._many(
             """
             SELECT c.*, EXISTS (
@@ -452,11 +446,13 @@ class PsycopgMonitoringRepository(MonitoringLineageMixin, MonitoringReportingMix
             )
             for index, item in enumerate(citations)
         )
+        source = _observation_source_from_row(row)
         draft = ObservationDraft(
             monitoring_query_id=cast(UUID, row["monitoring_query_id"]),
             measurement_window=MeasurementWindow(str(row["measurement_window"])),
             sample_index=int(row["sample_index"]),
             result_status=ResultStatus(str(row["result_status"])),
+            requested_eligible=bool(row.get("eligibility_requested", False)),
             eligible=bool(row["eligible"]),
             ineligible_reasons=tuple(row["ineligible_reasons"]),
             url_verification_status=VerificationStatus(str(row["url_verification_status"])),
@@ -468,12 +464,14 @@ class PsycopgMonitoringRepository(MonitoringLineageMixin, MonitoringReportingMix
             citations=draft_citations,
             artifact_uri=cast(str | None, row["artifact_uri"]),
             artifact_hash=cast(str | None, row["artifact_hash"]),
-            configured_model=str(row["configured_model"]),
+            configured_model=cast(str | None, row["configured_model"]),
             provider_reported_model=cast(str | None, row["provider_reported_model"]),
             ui_surface=str(row["ui_surface"]),
             ui_metadata=cast(Mapping[str, object], row["ui_metadata"]),
             confounding_factors=tuple(row["confounding_factors"]),
             observed_at=cast(datetime, row["observed_at"]),
+            source=source,
+            query_cluster_key=cast(str | None, row.get("query_cluster_key")),
         )
         return MonitoringObservation(
             id=cast(UUID, row["id"]),
@@ -483,6 +481,7 @@ class PsycopgMonitoringRepository(MonitoringLineageMixin, MonitoringReportingMix
             draft=draft,
             payload_hash=str(row["payload_hash"]),
             citations=citations,
+            captured_by=cast(UUID, row["imported_by"]),
             created_at=cast(datetime, row["created_at"]),
             replayed=replayed,
         )
@@ -495,9 +494,7 @@ class PsycopgMonitoringRepository(MonitoringLineageMixin, MonitoringReportingMix
             )
         return row
 
-    def _optional(
-        self, query: str, parameters: Any, operation: str
-    ) -> dict[str, Any] | None:
+    def _optional(self, query: str, parameters: Any, operation: str) -> dict[str, Any] | None:
         try:
             with self._connection.cursor() as cursor:
                 cursor.execute(query, parameters)

@@ -41,13 +41,17 @@ class PromptSimulationWorkerRepositoryMixin:
         try:
             record = _one(
                 connection.execute(
-                    """SELECT spec.simulation_id, spec.configured_model,
+                    """SELECT spec.simulation_id, spec.campaign_id, spec.opportunity_id,
+                              simulation.destination_id, spec.configured_model,
                               spec.model_call_budget, simulation.input_hash,
                               simulation.input_snapshot, release.output_schema
+                              , simulation.simulation_purpose
                        FROM prompt_simulation_job_specs spec
                        JOIN prompt_simulations simulation
-                         ON simulation.id = spec.simulation_id
+                        ON simulation.id = spec.simulation_id
                         AND simulation.project_id = spec.project_id
+                        AND simulation.campaign_id = spec.campaign_id
+                        AND simulation.opportunity_id = spec.opportunity_id
                        JOIN generation_template_releases release
                          ON release.id = simulation.template_release_id
                         AND release.project_id = simulation.project_id
@@ -97,6 +101,15 @@ class PromptSimulationWorkerRepositoryMixin:
                     if item["public_disclosure_allowed"] and item["public_source_url"]
                 ),
                 output_schema=record["output_schema"],
+                campaign_id=record["campaign_id"],
+                opportunity_id=record["opportunity_id"],
+                destination_id=record["destination_id"],
+                simulation_purpose=str(record["simulation_purpose"]),
+                question_binding=(
+                    dict(snapshot["question_binding"])
+                    if isinstance(snapshot.get("question_binding"), Mapping)
+                    else None
+                ),
             )
         except BaseException:
             connection.rollback()
@@ -134,9 +147,11 @@ class PromptSimulationWorkerRepositoryMixin:
         }
         output_hash = canonical_hash(output)
         manifest = {
-            "schema": "geo-prompt-simulation-result-v2",
+            "schema": "geo-prompt-simulation-result-v3",
             "simulation_id": str(claim.simulation_id),
             "project_id": str(lease.project_id),
+            "campaign_id": str(claim.campaign_id),
+            "opportunity_id": str(claim.opportunity_id),
             "test_only": True,
             "publication_eligible": False,
             "authenticity_mode": claim.authenticity_mode.value,
@@ -155,6 +170,8 @@ class PromptSimulationWorkerRepositoryMixin:
             },
             "output": output,
         }
+        if claim.question_binding is not None:
+            manifest["question_binding"] = dict(claim.question_binding)
         manifest_hash = canonical_hash(manifest)
         storage_key = (
             f"content-simulations/{lease.project_id}/{claim.simulation_id}/"
@@ -173,12 +190,16 @@ class PromptSimulationWorkerRepositoryMixin:
         with self._store.fenced_transaction(lease) as connection:
             connection.execute(
                 """INSERT INTO prompt_simulation_results
-                     (simulation_id, project_id, generated_by_job_id, artifact_manifest,
-                      output_hash, manifest_hash, model_response_hash, storage_key)
-                   VALUES (%s, %s, %s, %s::jsonb, %s, %s, %s, %s)""",
+                     (simulation_id, project_id, campaign_id, opportunity_id,
+                      generated_by_job_id, artifact_manifest, output_hash, manifest_hash,
+                      model_response_hash, storage_key, lineage_contract_version)
+                   VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s,
+                           'opportunity-binding-v2')""",
                 (
                     claim.simulation_id,
                     lease.project_id,
+                    claim.campaign_id,
+                    claim.opportunity_id,
                     lease.job_id,
                     json.dumps(manifest, ensure_ascii=False),
                     output_hash,
@@ -189,12 +210,13 @@ class PromptSimulationWorkerRepositoryMixin:
             )
             connection.execute(
                 """INSERT INTO durable_jobs
-                     (id, project_id, kind, input_hash, idempotency_key)
-                   VALUES (%s, %s, 'artifact.finalize', %s, %s)
+                     (id, project_id, campaign_id, kind, input_hash, idempotency_key)
+                   VALUES (%s, %s, %s, 'artifact.finalize', %s, %s)
                    ON CONFLICT DO NOTHING""",
                 (
                     artifact_job_id,
                     lease.project_id,
+                    claim.campaign_id,
                     canonical_hash(artifact_input),
                     artifact_idempotency,
                 ),
@@ -207,17 +229,26 @@ class PromptSimulationWorkerRepositoryMixin:
                 (
                     lease.project_id,
                     artifact_job_id,
-                    json.dumps({"job_id": str(artifact_job_id)}),
+                    json.dumps(
+                        {
+                            "job_id": str(artifact_job_id),
+                            "project_id": str(lease.project_id),
+                            "campaign_id": str(claim.campaign_id),
+                        }
+                    ),
                     f"wake:artifact.finalize:{artifact_idempotency}",
                 ),
             )
             connection.execute(
                 """INSERT INTO artifact_finalize_outbox
-                     (project_id, job_id, resource_kind, resource_id, pending_uri,
-                      storage_key, content_hash)
-                   VALUES (%s, %s, 'prompt_simulation', %s, %s, %s, %s)""",
+                     (project_id, campaign_id, opportunity_id, destination_id, job_id,
+                      resource_kind, resource_id, pending_uri, storage_key, content_hash)
+                   VALUES (%s, %s, %s, %s, %s, 'prompt_simulation', %s, %s, %s, %s)""",
                 (
                     lease.project_id,
+                    claim.campaign_id,
+                    claim.opportunity_id,
+                    claim.destination_id,
                     artifact_job_id,
                     claim.simulation_id,
                     (

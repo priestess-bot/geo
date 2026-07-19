@@ -1,9 +1,14 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import type { CustomerProblemDetails, CustomerProjectSummary } from "@geo/types/customer";
+import type {
+  CustomerCampaign,
+  CustomerProblemDetails,
+  CustomerProjectSummary
+} from "@geo/types/customer";
 
-import type { SessionPortalResponse } from "../runtime";
+import type { CampaignPortalResponse, SessionPortalResponse } from "../runtime";
+import { ProjectExportButton } from "./ProjectExportButton";
 
 export type PortalModule = "summary" | "metrics" | "placements" | "reports";
 
@@ -19,29 +24,40 @@ const NAVIGATION: ReadonlyArray<Readonly<{
 
 export function PortalChrome({
   active,
+  campaignPortal,
   children,
   problems,
   session
 }: Readonly<{
   active: PortalModule;
+  campaignPortal: CampaignPortalResponse | null;
   children: ReactNode;
   problems: CustomerProblemDetails[];
   session: SessionPortalResponse;
 }>) {
   const project = session.selectedProject;
-  const projectId = project?.project_id || "";
+  const campaign = campaignPortal?.selectedCampaign || null;
   return (
     <main className="shell">
       <header className="topbar">
         <div className="brandBlock">
           <p className="eyebrow">GEO 客户门户</p>
-          <h1>{project?.display_name || "项目工作台"}</h1>
-          <p className="muted">
-            {project ? `${project.market_code} 市场 · ${project.status}` : "客户只读视图"}
-          </p>
+          <h1>{project?.display_name || "选择项目"}</h1>
+          <p className="muted">{contextLine(project, campaign)}</p>
         </div>
         <div className="sessionActions">
           <ProjectSelector active={active} projects={session.projects} selected={project} />
+          {project && campaignPortal ? (
+            <CampaignSelector
+              active={active}
+              campaigns={campaignPortal.campaigns}
+              projectId={project.project_id}
+              selected={campaign}
+            />
+          ) : null}
+          {project && campaign ? (
+            <ProjectExportButton campaignId={campaign.id} projectId={project.project_id} />
+          ) : null}
           <form action="/api/auth/logout" method="post">
             <button className="secondary" type="submit">退出</button>
           </form>
@@ -54,7 +70,7 @@ export function PortalChrome({
             <Link
               aria-current={active === item.id ? "page" : undefined}
               className={active === item.id ? "active" : undefined}
-              href={`/portal/${item.id}?project_id=${encodeURIComponent(projectId)}`}
+              href={portalHref(item.id, project?.project_id, campaign?.id)}
               key={item.id}
             >
               {item.label}
@@ -62,14 +78,11 @@ export function PortalChrome({
           ))}
         </nav>
         <p className="roleLine">
-          当前项目角色：{project?.role || "未提供"}
+          当前项目角色：{project?.role || "未选择"}
           {session.roles.length ? ` · 会话角色：${session.roles.join("、")}` : ""}
         </p>
       </div>
 
-      {session.selectionStatus === "fallback" ? (
-        <Notice detail="请求的项目已不在当前授权范围，已切换到另一个授权项目。" />
-      ) : null}
       {problems.length ? <ProblemSummary problems={problems} /> : null}
       <div className="portalContent">{children}</div>
     </main>
@@ -96,6 +109,19 @@ export function PortalAccessState({
   );
 }
 
+export function PortalSelectionState({
+  detail,
+  title
+}: Readonly<{ detail: string; title: string }>) {
+  return (
+    <section aria-live="polite" className="selectionState" role="status">
+      <p className="eyebrow">当前视图</p>
+      <h2>{title}</h2>
+      <p>{detail}</p>
+    </section>
+  );
+}
+
 function ProjectSelector({
   active,
   projects,
@@ -105,12 +131,13 @@ function ProjectSelector({
   projects: CustomerProjectSummary[];
   selected: CustomerProjectSummary | null;
 }>) {
-  if (projects.length <= 1) return null;
+  if (!projects.length) return null;
   return (
     <form action={`/portal/${active}`} className="projectSelector" method="get">
       <label>
         <span>授权项目</span>
-        <select defaultValue={selected?.project_id} name="project_id">
+        <select defaultValue={selected?.project_id || ""} name="project_id" required>
+          <option disabled value="">选择项目</option>
           {projects.map((project) => (
             <option key={project.project_id} value={project.project_id}>
               {project.display_name} · {project.market_code} · {project.role}
@@ -123,11 +150,34 @@ function ProjectSelector({
   );
 }
 
-function Notice({ detail }: Readonly<{ detail: string }>) {
+function CampaignSelector({
+  active,
+  campaigns,
+  projectId,
+  selected
+}: Readonly<{
+  active: PortalModule;
+  campaigns: CustomerCampaign[];
+  projectId: string;
+  selected: CustomerCampaign | null;
+}>) {
+  if (!campaigns.length) return null;
   return (
-    <section aria-live="polite" className="noticeBand" role="status">
-      <p>{detail}</p>
-    </section>
+    <form action={`/portal/${active}`} className="projectSelector" method="get">
+      <input name="project_id" type="hidden" value={projectId} />
+      <label>
+        <span>Campaign</span>
+        <select defaultValue={selected?.id || ""} name="campaign_id" required>
+          <option disabled value="">选择 Campaign</option>
+          {campaigns.map((campaign) => (
+            <option key={campaign.id} value={campaign.id}>
+              {campaign.name} · {campaign.status}
+            </option>
+          ))}
+        </select>
+      </label>
+      <button type="submit">切换</button>
+    </form>
   );
 }
 
@@ -143,4 +193,25 @@ function ProblemSummary({ problems }: Readonly<{ problems: CustomerProblemDetail
       ))}
     </section>
   );
+}
+
+function portalHref(
+  module: PortalModule,
+  projectId?: string,
+  campaignId?: string
+): string {
+  const query = new URLSearchParams();
+  if (projectId) query.set("project_id", projectId);
+  if (campaignId) query.set("campaign_id", campaignId);
+  const value = query.toString();
+  return `/portal/${module}${value ? `?${value}` : ""}`;
+}
+
+function contextLine(
+  project: CustomerProjectSummary | null,
+  campaign: CustomerCampaign | null
+): string {
+  if (!project) return "客户只读视图";
+  const market = `${project.market_code} 市场 · ${project.status}`;
+  return campaign ? `${market} · ${campaign.name}` : market;
 }

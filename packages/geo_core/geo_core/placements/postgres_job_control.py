@@ -24,7 +24,7 @@ class PostgresJobControlMixin:
     def cancel_job(self, *, project_id: UUID, job_id: UUID, actor_id: UUID) -> JobReference:
         job = _row(
             self._db.execute(
-                """SELECT id, project_id, kind, status FROM durable_jobs
+                """SELECT id, project_id, campaign_id, kind, status FROM durable_jobs
                    WHERE id = %s AND project_id = %s FOR UPDATE""",
                 (job_id, project_id),
             )
@@ -61,7 +61,7 @@ class PostgresJobControlMixin:
     ) -> JobReference:
         previous = _row(
             self._db.execute(
-                """SELECT j.id, j.project_id, j.kind, j.status
+                """SELECT j.id, j.project_id, j.campaign_id, j.kind, j.status
                    FROM job_retry_requests r JOIN durable_jobs j
                      ON j.id = r.job_id AND j.project_id = r.project_id
                    WHERE r.project_id = %s AND r.job_id = %s
@@ -76,7 +76,7 @@ class PostgresJobControlMixin:
                 """UPDATE durable_jobs SET next_run_at = clock_timestamp(),
                      updated_at = clock_timestamp()
                    WHERE id = %s AND project_id = %s AND status = 'retry_wait'
-                   RETURNING id, project_id, kind, status""",
+                   RETURNING id, project_id, campaign_id, kind, status""",
                 (job_id, project_id),
             )
         )
@@ -114,7 +114,7 @@ class PostgresJobControlMixin:
     ) -> JobReference:
         existing = _row(
             self._db.execute(
-                """SELECT j.id, j.project_id, j.kind, j.status
+                """SELECT j.id, j.project_id, j.campaign_id, j.kind, j.status
                    FROM job_replay_requests r JOIN durable_jobs j
                      ON j.id = r.replay_job_id AND j.project_id = r.project_id
                    WHERE r.project_id = %s AND r.source_job_id = %s
@@ -126,7 +126,7 @@ class PostgresJobControlMixin:
             return JobReference(**existing)
         source = _row(
             self._db.execute(
-                """SELECT id, project_id, kind, status, priority, input_hash,
+                """SELECT id, project_id, campaign_id, kind, status, priority, input_hash,
                           idempotency_key, max_attempts
                    FROM durable_jobs WHERE id = %s AND project_id = %s FOR UPDATE""",
                 (source_job_id, project_id),
@@ -156,12 +156,13 @@ class PostgresJobControlMixin:
         replay_id = uuid5(NAMESPACE_URL, f"geo-job-replay:{source_job_id}:{idempotency_key}")
         self._db.execute(
             """INSERT INTO durable_jobs
-                 (id, project_id, kind, priority, input_hash, idempotency_key,
+                 (id, project_id, campaign_id, kind, priority, input_hash, idempotency_key,
                   max_attempts, parent_job_id, replay_nonce)
-               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
             (
                 replay_id,
                 project_id,
+                source["campaign_id"],
                 source["kind"],
                 source["priority"],
                 source["input_hash"],
@@ -186,14 +187,22 @@ class PostgresJobControlMixin:
                 project_id,
                 replay_id,
                 source["kind"],
-                json.dumps({"job_id": str(replay_id), "project_id": str(project_id)}),
+                json.dumps(
+                    {
+                        "job_id": str(replay_id),
+                        "project_id": str(project_id),
+                        "campaign_id": str(source["campaign_id"]),
+                    }
+                ),
                 f"replay:{replay_id}",
             ),
         )
         self._event(
             project_id, replay_id, "job_replayed", actor_id, {"parent_job_id": str(source_job_id)}
         )
-        return JobReference(replay_id, project_id, source["kind"], "queued")
+        return JobReference(
+            replay_id, project_id, source["kind"], "queued", source["campaign_id"]
+        )
 
     def list_job_events(
         self, *, project_id: UUID, job_id: UUID
@@ -212,17 +221,22 @@ class PostgresJobControlMixin:
         contracts = {
             "evidence_pack.build": (
                 "evidence_pack_job_specs",
-                "brief_version_id, evidence_pack_attempt_id",
+                "campaign_id, opportunity_id, brief_version_id, evidence_pack_attempt_id",
             ),
             "placement.generate": (
                 "generation_job_specs",
-                "prompt_bundle_id, configured_model, model_call_budget, requested_by",
+                "campaign_id, opportunity_id, prompt_bundle_id, configured_model, "
+                "model_call_budget, requested_by",
             ),
             "prompt_simulation.generate": (
                 "prompt_simulation_job_specs",
-                "simulation_id, configured_model, model_call_budget, requested_by",
+                "campaign_id, opportunity_id, simulation_id, configured_model, "
+                "model_call_budget, requested_by",
             ),
-            "publication.verify": ("verification_job_specs", "submission_id"),
+            "publication.verify": (
+                "verification_job_specs",
+                "campaign_id, opportunity_id, submission_id",
+            ),
         }
         if kind == "artifact.finalize":
             changed = self._db.execute(

@@ -12,6 +12,7 @@ from geo_api.placement_contracts import (
     BriefVersionView,
     CampaignCreate,
     CampaignCreated,
+    CampaignPlacementReadinessView,
     CampaignView,
     DestinationCreate,
     DestinationPolicyReviewCreate,
@@ -21,9 +22,11 @@ from geo_api.placement_contracts import (
     MonitoringQueryView,
     OpportunityView,
     OpportunityStateCommand,
+    OpportunityPromptReleaseBindingCreate,
+    OpportunityPromptReleaseBindingView,
 )
 from geo_api.placement_access import PlacementEditor, PlacementOwnerAdmin, PlacementViewer
-from geo_api.placement_routes_shared import placement_services
+from geo_api.placement_routes_shared import IdempotencyHeader, placement_services
 from geo_api.problems import ApiProblem
 from geo_api.stable_routes import PROBLEM_RESPONSES
 from geo_core.placements.domain import AuthenticityRisk, ConsumerExperience
@@ -80,6 +83,22 @@ def campaign_router() -> APIRouter:
         if campaign is None:
             raise ApiProblem(status=404, title="Not Found", detail="Campaign does not exist.")
         return campaign
+
+    @router.get(
+        "/campaigns/{campaign_id}/placement-readiness",
+        response_model=CampaignPlacementReadinessView,
+        operation_id="getCampaignPlacementReadiness",
+    )
+    def get_placement_readiness(
+        project_id: UUID,
+        campaign_id: UUID,
+        request: Request,
+        principal: PlacementViewer,
+    ) -> object:
+        del principal
+        return placement_services(request).get_campaign_placement_readiness(
+            project_id=project_id, campaign_id=campaign_id
+        )
 
     @router.post(
         "/campaigns/{campaign_id}/monitoring-queries",
@@ -203,6 +222,7 @@ def campaign_router() -> APIRouter:
     )
     def transition_opportunity(
         project_id: UUID,
+        campaign_id: UUID,
         opportunity_id: UUID,
         command: Literal["qualify", "block", "reopen", "cancel"],
         payload: OpportunityStateCommand,
@@ -212,6 +232,7 @@ def campaign_router() -> APIRouter:
         del principal
         return placement_services(request).transition_opportunity(
             project_id=project_id,
+            campaign_id=campaign_id,
             opportunity_id=opportunity_id,
             command=command,
             reason=payload.reason,
@@ -225,6 +246,7 @@ def campaign_router() -> APIRouter:
     )
     def create_brief(
         project_id: UUID,
+        campaign_id: UUID,
         opportunity_id: UUID,
         payload: BriefVersionCreate,
         request: Request,
@@ -237,6 +259,7 @@ def campaign_router() -> APIRouter:
         )
         return placement_services(request).create_brief_version(
             project_id=project_id,
+            campaign_id=campaign_id,
             opportunity_id=opportunity_id,
             primary_brand_entity_id=payload.primary_brand_entity_id,
             goals=payload.goals,
@@ -257,11 +280,79 @@ def campaign_router() -> APIRouter:
         operation_id="listPlacementBriefVersions",
     )
     def list_briefs(
-        project_id: UUID, opportunity_id: UUID, request: Request, principal: PlacementViewer
+        project_id: UUID,
+        campaign_id: UUID,
+        opportunity_id: UUID,
+        request: Request,
+        principal: PlacementViewer,
     ) -> tuple[object, ...]:
         del principal
         return placement_services(request).list_brief_versions(
-            project_id=project_id, opportunity_id=opportunity_id
+            project_id=project_id, campaign_id=campaign_id, opportunity_id=opportunity_id
+        )
+
+    @router.get(
+        "/campaigns/{campaign_id}/opportunities/{opportunity_id}/prompt-release-binding",
+        response_model=OpportunityPromptReleaseBindingView | None,
+        operation_id="getOpportunityPromptReleaseBinding",
+    )
+    def get_prompt_release_binding(
+        project_id: UUID,
+        campaign_id: UUID,
+        opportunity_id: UUID,
+        request: Request,
+        principal: PlacementViewer,
+    ) -> object:
+        del principal
+        return placement_services(request).get_current_prompt_release_binding(
+            project_id=project_id,
+            campaign_id=campaign_id,
+            opportunity_id=opportunity_id,
+        )
+
+    @router.get(
+        "/campaigns/{campaign_id}/opportunities/{opportunity_id}/prompt-release-bindings",
+        response_model=list[OpportunityPromptReleaseBindingView],
+        operation_id="listOpportunityPromptReleaseBindings",
+    )
+    def list_prompt_release_bindings(
+        project_id: UUID,
+        campaign_id: UUID,
+        opportunity_id: UUID,
+        request: Request,
+        principal: PlacementViewer,
+    ) -> tuple[object, ...]:
+        del principal
+        return placement_services(request).list_prompt_release_binding_history(
+            project_id=project_id,
+            campaign_id=campaign_id,
+            opportunity_id=opportunity_id,
+        )
+
+    @router.post(
+        "/campaigns/{campaign_id}/opportunities/{opportunity_id}/prompt-release-bindings",
+        response_model=OpportunityPromptReleaseBindingView,
+        status_code=status.HTTP_201_CREATED,
+        operation_id="bindOpportunityPromptRelease",
+    )
+    def bind_prompt_release(
+        project_id: UUID,
+        campaign_id: UUID,
+        opportunity_id: UUID,
+        payload: OpportunityPromptReleaseBindingCreate,
+        request: Request,
+        idempotency_key: IdempotencyHeader,
+        principal: PlacementEditor,
+    ) -> object:
+        return placement_services(request).bind_opportunity_prompt_release(
+            project_id=project_id,
+            campaign_id=campaign_id,
+            opportunity_id=opportunity_id,
+            release_id=payload.template_release_id,
+            expected_binding_version=payload.expected_binding_version,
+            reason=payload.reason,
+            actor_id=principal.identity_id,
+            idempotency_key=idempotency_key,
         )
 
     return router

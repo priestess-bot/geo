@@ -109,7 +109,8 @@ class AuthWebContractTests(unittest.TestCase):
 
     def test_customer_forwards_cookie_auth_and_uses_stable_access_contracts(self) -> None:
         runtime = source(CUSTOMER / "app/runtime.ts")
-        self.assertIn("Cookie: cookieHeader", runtime)
+        self.assertIn("Cookie:", runtime)
+        self.assertIn("encodeURIComponent(sessionToken)", runtime)
         self.assertIn("new CustomerApiClient(apiBase()", runtime)
         self.assertIn("client.currentIdentity()", runtime)
         self.assertIn("client.listProjects(PROJECT_PAGE_SIZE, offset)", runtime)

@@ -11,6 +11,9 @@ from geo_core.placements.ports import (
     GeneratedPlacement,
     GenerationEvidenceScope,
 )
+from geo_core.placements.publication_contract import (
+    parse_publication_verification_contract,
+)
 
 
 def parse_generated_placement(
@@ -23,6 +26,7 @@ def parse_generated_placement(
     raw_public_refs = output.get("public_citation_refs")
     if not isinstance(content_json, Mapping):
         raise PlacementRuleViolation("model output content_json must be an object")
+    parse_publication_verification_contract(content_json, disclosure_required=False)
     if not isinstance(rendered_text, str) or not rendered_text.strip():
         raise PlacementRuleViolation("model output rendered_text is required")
     if not isinstance(raw_claims, list):

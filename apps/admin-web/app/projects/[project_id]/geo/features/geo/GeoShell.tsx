@@ -1,10 +1,11 @@
 import { CampaignWorkspace } from "./CampaignWorkspace";
 import { DestinationWorkspace } from "./DestinationWorkspace";
 import { entityName, marketName } from "./display";
-import { geoHref, Status } from "./common";
+import { Empty, geoHref, Status } from "./common";
 import type { GeoSection, GeoWorkspaceData } from "./model";
 import { ObservationWorkspace } from "./ObservationWorkspace";
 import { PlacementWorkspace } from "./PlacementWorkspace";
+import { ProjectExportButtons } from "./ProjectExportButtons";
 import { RouteSelect } from "./RouteSelect";
 import styles from "./GeoWorkspace.module.css";
 import type { CatalogLoadResult } from "../../../catalogTypes";
@@ -21,13 +22,18 @@ export function GeoShell({ projectId, data, catalog }: { projectId: string; data
     label: item.name,
     href: geoHref(projectId, data.selection, {
       campaign_id: item.id, opportunity_id: undefined, brief_version_id: undefined,
-      attempt_id: undefined, bundle_id: undefined, version_id: undefined
+      protocol_id: undefined, destination_id: undefined, attempt_id: undefined,
+      skill_id: undefined, bundle_id: undefined, job_id: undefined, version_id: undefined,
+      publication_id: undefined, submission_id: undefined, simulation_id: undefined,
+      question_generation_job_id: undefined,
+      placement_stage: "brief", measurement_window: "baseline"
     })
   }));
   return <div className={styles.shell}>
     <section className={styles.commandCenter}>
       <div className={styles.contextMain}>
-        {campaignOptions.length ? <RouteSelect label="当前 Campaign" options={campaignOptions} value={campaign?.id} /> : <strong>尚未创建 Campaign</strong>}
+        {campaignOptions.length ? <RouteSelect label="当前 Campaign" options={campaignOptions}
+          placeholder="选择 Campaign" value={campaign?.id} /> : <strong>尚未创建 Campaign</strong>}
         <div className={styles.contextMeta}>
           <span>{entityName(catalog.entities.data, campaign?.primary_product_entity_id)}</span>
           <span>{marketName(catalog.markets.data, campaign?.market_profile_id)}</span>
@@ -47,22 +53,35 @@ export function GeoShell({ projectId, data, catalog }: { projectId: string; data
       className={data.selection.section === tab.id ? styles.active : ""}
       href={geoHref(projectId, data.selection, { section: tab.id })}>{tab.label}</a>)}</nav>
 
+    <ProjectExportButtons campaignId={campaign?.id} projectId={projectId} />
+
     {data.selection.section === "campaigns" ? <CampaignWorkspace projectId={projectId} data={data} catalog={catalog} /> : null}
-    {data.selection.section === "observations" ? <ObservationWorkspace projectId={projectId} data={data} /> : null}
-    {data.selection.section === "destinations" ? <DestinationWorkspace projectId={projectId} data={data} /> : null}
-    {data.selection.section === "placement" ? <PlacementWorkspace projectId={projectId} data={data} catalog={catalog} /> : null}
+    {data.selection.section !== "campaigns" && !campaign ? <Empty>未选择 Campaign。</Empty> : null}
+    {campaign && data.selection.section === "observations" ? <ObservationWorkspace projectId={projectId} data={data} /> : null}
+    {campaign && data.selection.section === "destinations" ? <DestinationWorkspace projectId={projectId} data={data} /> : null}
+    {campaign && data.selection.section === "placement" ? <PlacementWorkspace projectId={projectId} data={data} catalog={catalog} /> : null}
   </div>;
 }
 
 function readinessState(data: GeoWorkspaceData): {
   complete: number; label: string; updates: { [key: string]: string | undefined };
 } {
-  const checks = [data.queries.data.length > 0, data.protocols.data.length > 0,
-    data.destinations.data.length >= 9, data.briefs.data.length > 0, data.packages.data.length > 0];
-  if (!checks[0]) return { complete: 0, label: "添加消费者问题", updates: { section: "campaigns" } };
-  if (!checks[1]) return { complete: 1, label: "建立监测方案", updates: { section: "campaigns" } };
-  if (!checks[2]) return { complete: 2, label: "补齐渠道任务", updates: { section: "destinations" } };
-  if (!checks[3]) return { complete: 3, label: "准备内容要求", updates: { section: "placement", placement_stage: "brief" } };
-  if (!checks[4]) return { complete: 4, label: "生成并审核文案", updates: { section: "placement", placement_stage: "generation" } };
+  if (!data.selection.campaignId) {
+    return { complete: 0, label: "选择 Campaign", updates: { section: "campaigns" } };
+  }
+  if (!data.queries.data.length) {
+    return { complete: 1, label: "添加消费者问题", updates: { section: "campaigns" } };
+  }
+  if (!data.protocols.data.length) {
+    return { complete: 2, label: "建立监测方案", updates: { section: "campaigns" } };
+  }
+  const readiness = data.placementReadiness.data;
+  if (!readiness?.is_ready) {
+    const count = readiness?.ready_count ?? 0;
+    return { complete: 3, label: `处理渠道就绪项 ${count}/9`, updates: { section: "destinations" } };
+  }
+  if (!data.packages.data.length) {
+    return { complete: 4, label: "生成并审核文案", updates: { section: "placement", placement_stage: "generation" } };
+  }
   return { complete: 5, label: "查看发布任务", updates: { section: "placement", placement_stage: "publication" } };
 }

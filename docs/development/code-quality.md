@@ -26,8 +26,9 @@ corepack pnpm test:browser:chromium
 
 Admin 路由最多读取 5 个领域资源，Customer 模块最多 2 个或一个组合投影。Customer 代码不得导入 internal types/client。
 
-F-019 隔离选型基准使用 `make f019-benchmark`。该命令只验证数据集和确定性 harness
-reference，不等于 LlamaIndex/GraphRAG 已完成正式选型。
+F-019 基准使用 `make f019-benchmark`。该命令验证数据集、确定性 harness，以及已选报告
+的 hash 和全部运行时 Gate；不会重跑付费候选。正式选择和合格回退记录见
+`benchmarks/f019/selection.json`。
 
 ## 架构门禁
 

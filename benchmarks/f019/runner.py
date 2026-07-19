@@ -10,17 +10,20 @@ from .adapters import (
     DeterministicBaselineAdapter,
     graphrag_adapter,
     llamaindex_adapter,
+    project_native_adapter,
 )
 from .contracts import BenchmarkAdapter
 from .dataset import MANIFEST_PATH, load_dataset
 from .scoring import score_candidate
 
 
-def adapter_by_name(name: str) -> BenchmarkAdapter:
+def adapter_by_name(name: str, *, model=None) -> BenchmarkAdapter:
     if name == "deterministic":
         return DeterministicBaselineAdapter()
+    if name == "project-native":
+        return project_native_adapter(model)
     if name == "llamaindex":
-        return llamaindex_adapter()
+        return llamaindex_adapter(model)
     if name == "graphrag":
         return graphrag_adapter()
     raise ValueError(f"unknown benchmark adapter: {name}")
@@ -34,7 +37,7 @@ def run_candidate(
     dataset = load_dataset(manifest_path)
     run = adapter.run(dataset.documents, dataset.delta_operations)
     score = score_candidate(run, dataset)
-    return {
+    report = {
         **score,
         "dataset": {
             "schema_version": dataset.manifest["schema_version"],
@@ -44,6 +47,13 @@ def run_candidate(
         },
         "raw_candidate_output": run.to_dict(),
     }
+    evidence = getattr(adapter, "usage_evidence", None)
+    if callable(evidence):
+        report["usage_evidence"] = evidence()
+    validation_evidence = getattr(adapter, "validation_evidence", None)
+    if callable(validation_evidence):
+        report["validation_evidence"] = validation_evidence()
+    return report
 
 
 def write_report(report: dict[str, Any], destination: Path) -> None:

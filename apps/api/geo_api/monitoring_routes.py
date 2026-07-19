@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Header, Request, status
+from fastapi import APIRouter, Header, Request, Response, status
 
 from geo_api.monitoring_dependencies import (
     authorize_monitoring_project as _principal,
@@ -13,38 +13,50 @@ from geo_api.monitoring_dependencies import (
     monitoring_call as _call,
 )
 from geo_api.monitoring_presenters import metric_response, report_response
+from geo_api.monitoring_route_adapters import (
+    citation_target_response as _citation_target_response,
+    observation_draft as _observation_draft,
+    observation_response as _observation_response,
+    official_report_draft as _official_report_draft,
+    official_report_response as _official_report_response,
+    official_report_rows as _official_report_rows,
+    protocol_response as _protocol_response,
+    query_response as _query_response,
+    suggestion_response as _suggestion_response,
+)
 from geo_api.monitoring_contracts import (
     ComputeMetricsRequest,
+    BindQuestionSetRequest,
     CreateMonitoringProtocolRequest,
     CreateQuerySuggestionRequest,
     GenerateReportRequest,
+    ImportOfficialReportRequest,
     ImportObservationRequest,
     MetricResponse,
     MonitoringObservationResponse,
     MonitoringProtocolResponse,
     MonitoringReportResponse,
-    ObservationCitationResponse,
+    OfficialReportImportResponse,
     ProtocolQueryResponse,
     QuerySuggestionResponse,
     VerifiedCitationTargetResponse,
+)
+from geo_api.monitoring_source_adapters import (
+    raw_evidence,
+    source_stratum,
 )
 from geo_api.stable_routes import PROBLEM_RESPONSES
 from geo_core.monitoring.domain import (
     APPROVER_ROLES,
     CONTRIBUTOR_ROLES,
     READER_ROLES,
-    CitationDraft,
     Device,
     MeasurementWindow,
-    MonitoringObservation,
-    MonitoringProtocol,
-    ObservationDraft,
     Platform,
-    ProtocolQuery,
-    QuerySuggestion,
-    ResultStatus,
-    VerificationStatus,
-    VerifiedCitationTarget,
+)
+from geo_core.monitoring.exporter import render_observation_csv
+from geo_core.monitoring.source_contract import (
+    CaptureMethod,
 )
 
 
@@ -83,7 +95,9 @@ def monitoring_router() -> APIRouter:
                 locale=payload.locale,
                 device=Device(payload.device),
                 sample_size=payload.sample_size,
+                minimum_valid_repeats=payload.minimum_valid_repeats,
                 window_days=payload.window_days,
+                source_strata=tuple(source_stratum(item) for item in payload.source_strata),
             )
         )
         return _protocol_response(result)
@@ -95,14 +109,42 @@ def monitoring_router() -> APIRouter:
     )
     def list_protocols(
         project_id: UUID,
+        campaign_id: UUID,
         request: Request,
         authorization: AuthorizationHeader = None,
     ) -> list[MonitoringProtocolResponse]:
         principal = _principal(request, authorization, project_id, READER_ROLES)
         items = _call(
-            lambda: _application(request).list_protocols(principal, project_id=project_id)
+            lambda: _application(request).list_protocols(
+                principal, project_id=project_id, campaign_id=campaign_id
+            )
         )
         return [_protocol_response(item) for item in items]
+
+    @router.post(
+        "/monitoring-protocols/{protocol_id}/question-set-binding",
+        response_model=MonitoringProtocolResponse,
+        operation_id="bindMonitoringProtocolQuestionSet",
+    )
+    def bind_question_set(
+        project_id: UUID,
+        protocol_id: UUID,
+        payload: BindQuestionSetRequest,
+        request: Request,
+        authorization: AuthorizationHeader = None,
+    ) -> MonitoringProtocolResponse:
+        principal = _principal(request, authorization, project_id, APPROVER_ROLES)
+        result = _call(
+            lambda: _application(request).bind_question_set(
+                principal,
+                project_id=project_id,
+                campaign_id=payload.campaign_id,
+                protocol_id=protocol_id,
+                question_set_id=payload.question_set_id,
+                confirmed_content_hash=payload.confirmed_content_hash,
+            )
+        )
+        return _protocol_response(result)
 
     @router.post(
         "/monitoring-protocols/{protocol_id}/query-suggestions",
@@ -122,10 +164,12 @@ def monitoring_router() -> APIRouter:
             lambda: _application(request).suggest_query(
                 principal,
                 project_id=project_id,
+                campaign_id=payload.campaign_id,
                 protocol_id=protocol_id,
                 query_text=payload.query_text,
                 query_kind=payload.query_kind,
                 rationale=payload.rationale,
+                query_cluster_key=payload.query_cluster_key,
             )
         )
         return _suggestion_response(result)
@@ -138,13 +182,17 @@ def monitoring_router() -> APIRouter:
     def list_suggestions(
         project_id: UUID,
         protocol_id: UUID,
+        campaign_id: UUID,
         request: Request,
         authorization: AuthorizationHeader = None,
     ) -> list[QuerySuggestionResponse]:
         principal = _principal(request, authorization, project_id, READER_ROLES)
         items = _call(
             lambda: _application(request).list_suggestions(
-                principal, project_id=project_id, protocol_id=protocol_id
+                principal,
+                project_id=project_id,
+                campaign_id=campaign_id,
+                protocol_id=protocol_id,
             )
         )
         return [_suggestion_response(item) for item in items]
@@ -158,6 +206,7 @@ def monitoring_router() -> APIRouter:
         project_id: UUID,
         protocol_id: UUID,
         suggestion_id: UUID,
+        campaign_id: UUID,
         request: Request,
         authorization: AuthorizationHeader = None,
     ) -> ProtocolQueryResponse:
@@ -166,6 +215,7 @@ def monitoring_router() -> APIRouter:
             lambda: _application(request).approve_suggestion(
                 principal,
                 project_id=project_id,
+                campaign_id=campaign_id,
                 protocol_id=protocol_id,
                 suggestion_id=suggestion_id,
             )
@@ -180,13 +230,17 @@ def monitoring_router() -> APIRouter:
     def list_protocol_queries(
         project_id: UUID,
         protocol_id: UUID,
+        campaign_id: UUID,
         request: Request,
         authorization: AuthorizationHeader = None,
     ) -> list[ProtocolQueryResponse]:
         principal = _principal(request, authorization, project_id, READER_ROLES)
         items = _call(
             lambda: _application(request).list_protocol_queries(
-                principal, project_id=project_id, protocol_id=protocol_id
+                principal,
+                project_id=project_id,
+                campaign_id=campaign_id,
+                protocol_id=protocol_id,
             )
         )
         return [_query_response(item) for item in items]
@@ -199,13 +253,17 @@ def monitoring_router() -> APIRouter:
     def list_citation_targets(
         project_id: UUID,
         protocol_id: UUID,
+        campaign_id: UUID,
         request: Request,
         authorization: AuthorizationHeader = None,
     ) -> list[VerifiedCitationTargetResponse]:
         principal = _principal(request, authorization, project_id, CONTRIBUTOR_ROLES)
         items = _call(
             lambda: _application(request).list_citation_targets(
-                principal, project_id=project_id, protocol_id=protocol_id
+                principal,
+                project_id=project_id,
+                campaign_id=campaign_id,
+                protocol_id=protocol_id,
             )
         )
         return [_citation_target_response(item) for item in items]
@@ -218,13 +276,17 @@ def monitoring_router() -> APIRouter:
     def approve_protocol(
         project_id: UUID,
         protocol_id: UUID,
+        campaign_id: UUID,
         request: Request,
         authorization: AuthorizationHeader = None,
     ) -> MonitoringProtocolResponse:
         principal = _principal(request, authorization, project_id, APPROVER_ROLES)
         result = _call(
             lambda: _application(request).approve_protocol(
-                principal, project_id=project_id, protocol_id=protocol_id
+                principal,
+                project_id=project_id,
+                campaign_id=campaign_id,
+                protocol_id=protocol_id,
             )
         )
         return _protocol_response(result)
@@ -237,13 +299,17 @@ def monitoring_router() -> APIRouter:
     def freeze_protocol(
         project_id: UUID,
         protocol_id: UUID,
+        campaign_id: UUID,
         request: Request,
         authorization: AuthorizationHeader = None,
     ) -> MonitoringProtocolResponse:
         principal = _principal(request, authorization, project_id, APPROVER_ROLES)
         result = _call(
             lambda: _application(request).freeze_protocol(
-                principal, project_id=project_id, protocol_id=protocol_id
+                principal,
+                project_id=project_id,
+                campaign_id=campaign_id,
+                protocol_id=protocol_id,
             )
         )
         return _protocol_response(result)
@@ -267,8 +333,16 @@ def monitoring_router() -> APIRouter:
             lambda: _application(request).import_observation(
                 principal,
                 project_id=project_id,
+                campaign_id=payload.campaign_id,
                 protocol_id=protocol_id,
-                draft=_observation_draft(payload),
+                draft=_observation_draft(
+                    payload,
+                    _application(request).verify_raw_evidence(
+                        project_id=project_id,
+                        capture_method=CaptureMethod(payload.capture_method),
+                        evidence=raw_evidence(payload.source.raw_evidence),
+                    ),
+                ),
                 idempotency_key=idempotency_key,
             )
         )
@@ -283,6 +357,7 @@ def monitoring_router() -> APIRouter:
         project_id: UUID,
         protocol_id: UUID,
         request: Request,
+        campaign_id: UUID,
         measurement_window: MeasurementWindow | None = None,
         authorization: AuthorizationHeader = None,
     ) -> list[MonitoringObservationResponse]:
@@ -291,6 +366,7 @@ def monitoring_router() -> APIRouter:
             lambda: _application(request).list_observations(
                 principal,
                 project_id=project_id,
+                campaign_id=campaign_id,
                 protocol_id=protocol_id,
                 window=measurement_window,
             )
@@ -315,8 +391,11 @@ def monitoring_router() -> APIRouter:
             lambda: _application(request).compute_metrics(
                 principal,
                 project_id=project_id,
+                campaign_id=payload.campaign_id,
                 protocol_id=protocol_id,
                 window=MeasurementWindow(payload.measurement_window),
+                source_stratum_hash=payload.source_stratum_hash,
+                query_cluster_key=payload.query_cluster_key,
             )
         )
         return metric_response(result)
@@ -329,11 +408,14 @@ def monitoring_router() -> APIRouter:
     def list_metrics(
         project_id: UUID,
         request: Request,
+        campaign_id: UUID,
         authorization: AuthorizationHeader = None,
     ) -> list[MetricResponse]:
         principal = _principal(request, authorization, project_id, READER_ROLES)
         items = _call(
-            lambda: _application(request).list_metrics(principal, project_id=project_id)
+            lambda: _application(request).list_metrics(
+                principal, project_id=project_id, campaign_id=campaign_id
+            )
         )
         return [metric_response(item) for item in items]
 
@@ -354,6 +436,7 @@ def monitoring_router() -> APIRouter:
             lambda: _application(request).generate_report(
                 principal,
                 project_id=project_id,
+                campaign_id=payload.campaign_id,
                 metric_snapshot_id=payload.metric_snapshot_id,
                 title=payload.title,
             )
@@ -368,12 +451,16 @@ def monitoring_router() -> APIRouter:
     def list_reports(
         project_id: UUID,
         request: Request,
+        campaign_id: UUID,
         authorization: AuthorizationHeader = None,
     ) -> list[MonitoringReportResponse]:
         principal = _principal(request, authorization, project_id, READER_ROLES)
         items = _call(
             lambda: _application(request).list_reports(
-                principal, project_id=project_id, approved_only=False
+                principal,
+                project_id=project_id,
+                campaign_id=campaign_id,
+                approved_only=False,
             )
         )
         return [report_response(item) for item in items]
@@ -387,102 +474,107 @@ def monitoring_router() -> APIRouter:
         project_id: UUID,
         report_id: UUID,
         request: Request,
+        campaign_id: UUID,
         authorization: AuthorizationHeader = None,
     ) -> MonitoringReportResponse:
         principal = _principal(request, authorization, project_id, APPROVER_ROLES)
         result = _call(
             lambda: _application(request).approve_report(
-                principal, project_id=project_id, report_id=report_id
+                principal,
+                project_id=project_id,
+                campaign_id=campaign_id,
+                report_id=report_id,
             )
         )
         return report_response(result)
 
+    @router.post(
+        "/monitoring-official-report-imports",
+        response_model=OfficialReportImportResponse,
+        status_code=status.HTTP_201_CREATED,
+        operation_id="importMonitoringOfficialReport",
+    )
+    def import_official_report(
+        project_id: UUID,
+        payload: ImportOfficialReportRequest,
+        request: Request,
+        idempotency_key: IdempotencyHeader,
+        authorization: AuthorizationHeader = None,
+    ) -> OfficialReportImportResponse:
+        principal = _principal(request, authorization, project_id, CONTRIBUTOR_ROLES)
+        evidence = raw_evidence(payload.artifact)
+        verified = _call(
+            lambda: _application(request).verify_raw_evidence(
+                project_id=project_id,
+                capture_method=CaptureMethod.OFFICIAL_REPORT_IMPORT,
+                evidence=evidence,
+            )
+        )
+        draft = _call(lambda: _official_report_draft(payload, verified))
+        rows = _call(lambda: _official_report_rows(payload))
+        result = _call(
+            lambda: _application(request).import_official_report(
+                principal,
+                project_id=project_id,
+                campaign_id=payload.campaign_id,
+                draft=draft,
+                rows=rows,
+                idempotency_key=idempotency_key,
+            )
+        )
+        return _official_report_response(result)
+
+    @router.get(
+        "/monitoring-official-report-imports",
+        response_model=list[OfficialReportImportResponse],
+        operation_id="listMonitoringOfficialReports",
+    )
+    def list_official_reports(
+        project_id: UUID,
+        campaign_id: UUID,
+        request: Request,
+        authorization: AuthorizationHeader = None,
+    ) -> list[OfficialReportImportResponse]:
+        principal = _principal(request, authorization, project_id, READER_ROLES)
+        items = _call(
+            lambda: _application(request).list_official_reports(
+                principal, project_id=project_id, campaign_id=campaign_id
+            )
+        )
+        return [_official_report_response(item) for item in items]
+
+    @router.get(
+        "/geo/campaigns/{campaign_id}/monitoring-observations.csv",
+        response_class=Response,
+        operation_id="exportMonitoringObservationsCsv",
+    )
+    def export_observations_csv(
+        project_id: UUID,
+        campaign_id: UUID,
+        request: Request,
+        protocol_id: UUID | None = None,
+        measurement_window: MeasurementWindow | None = None,
+        authorization: AuthorizationHeader = None,
+    ) -> Response:
+        principal = _principal(request, authorization, project_id, CONTRIBUTOR_ROLES)
+        items = _call(
+            lambda: _application(request).list_campaign_observations(
+                principal,
+                project_id=project_id,
+                campaign_id=campaign_id,
+                protocol_id=protocol_id,
+                window=measurement_window,
+            )
+        )
+        content = render_observation_csv(items)
+        return Response(
+            content=content,
+            media_type="text/csv; charset=utf-8",
+            headers={
+                "Content-Disposition": (
+                    f'attachment; filename="monitoring-observations-{campaign_id}.csv"'
+                )
+            },
+        )
+
     return router
-
-
-def _protocol_response(item: MonitoringProtocol) -> MonitoringProtocolResponse:
-    return MonitoringProtocolResponse(
-        id=item.id, project_id=item.project_id, market_profile_id=item.market_profile_id,
-        campaign_id=item.campaign_id,
-        name=item.name, platform=item.platform.value, locale=item.locale,
-        device=item.device.value, sample_size=item.sample_size, window_days=item.window_days,
-        status=item.status.value, protocol_hash=item.protocol_hash, created_at=item.created_at,
-        approved_at=item.approved_at, frozen_at=item.frozen_at,
-    )
-
-
-def _suggestion_response(item: QuerySuggestion) -> QuerySuggestionResponse:
-    return QuerySuggestionResponse(
-        id=item.id, project_id=item.project_id, protocol_id=item.protocol_id,
-        query_text=item.query_text, query_kind=item.query_kind, rationale=item.rationale,
-        status=item.status.value, monitoring_query_id=item.monitoring_query_id,
-        created_at=item.created_at,
-    )
-
-
-def _query_response(item: ProtocolQuery) -> ProtocolQueryResponse:
-    return ProtocolQueryResponse(**item.__dict__)
-
-
-def _citation_target_response(
-    item: VerifiedCitationTarget,
-) -> VerifiedCitationTargetResponse:
-    return VerifiedCitationTargetResponse(**item.__dict__)
-
-
-def _observation_draft(payload: ImportObservationRequest) -> ObservationDraft:
-    return ObservationDraft(
-        monitoring_query_id=payload.monitoring_query_id,
-        measurement_window=MeasurementWindow(payload.measurement_window),
-        sample_index=payload.sample_index, result_status=ResultStatus(payload.result_status),
-        eligible=payload.eligible, ineligible_reasons=tuple(payload.ineligible_reasons),
-        url_verification_status=VerificationStatus(payload.url_verification_status),
-        recommendation_present=payload.recommendation_present,
-        primary_product_mentioned=payload.primary_product_mentioned,
-        competitor_mentioned=payload.competitor_mentioned, raw_answer=payload.raw_answer,
-        raw_result=payload.raw_result,
-        citations=tuple(
-            CitationDraft(
-                url=item.url, title=item.title,
-                verification_status=VerificationStatus.UNKNOWN,
-                verified_at=None, destination_id=None,
-                submission_id=item.submission_id,
-            ) for item in payload.citations
-        ),
-        artifact_uri=payload.artifact_uri, artifact_hash=payload.artifact_hash,
-        configured_model=payload.configured_model,
-        provider_reported_model=payload.provider_reported_model,
-        ui_surface=payload.ui_surface, ui_metadata=payload.ui_metadata,
-        confounding_factors=tuple(payload.confounding_factors), observed_at=payload.observed_at,
-    )
-
-
-def _observation_response(item: MonitoringObservation) -> MonitoringObservationResponse:
-    draft = item.draft
-    return MonitoringObservationResponse(
-        id=item.id, project_id=item.project_id, protocol_id=item.protocol_id,
-        campaign_id=item.campaign_id,
-        monitoring_query_id=draft.monitoring_query_id,
-        measurement_window=draft.measurement_window.value, sample_index=draft.sample_index,
-        result_status=draft.result_status.value, eligible=draft.eligible,
-        ineligible_reasons=list(draft.ineligible_reasons),
-        url_verification_status=draft.url_verification_status.value,
-        recommendation_present=draft.recommendation_present,
-        primary_product_mentioned=draft.primary_product_mentioned,
-        competitor_mentioned=draft.competitor_mentioned, raw_answer=draft.raw_answer,
-        raw_result=dict(draft.raw_result),
-        citations=[
-            ObservationCitationResponse(
-                id=value.id, url=value.url, title=value.title,
-                verification_status=value.verification_status.value,
-                destination_id=value.destination_id, submission_id=value.submission_id,
-                verified_placement=value.verified_placement,
-            ) for value in item.citations
-        ],
-        artifact_uri=draft.artifact_uri, artifact_hash=draft.artifact_hash,
-        configured_model=draft.configured_model,
-        provider_reported_model=draft.provider_reported_model, ui_surface=draft.ui_surface,
-        ui_metadata=dict(draft.ui_metadata),
-        confounding_factors=list(draft.confounding_factors), observed_at=draft.observed_at,
-        payload_hash=item.payload_hash, replayed=item.replayed, created_at=item.created_at,
-    )

@@ -73,6 +73,7 @@ _ENV_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _IMAGE_DIGEST = re.compile(r"^[^\s@]+@sha256:[0-9a-fA-F]{64}$")
 _RELEASE_VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _RELEASE_PLACEHOLDERS = {"development", "latest", "replace", "unknown"}
+_MAX_SECRET_BYTES = 65_536
 
 
 @dataclass(frozen=True, order=True)
@@ -169,8 +170,16 @@ def _validate_secret_file(field: str, value: str, issues: list[PreflightIssue]) 
         return
     if not stat.S_ISREG(metadata.st_mode):
         issues.append(PreflightIssue("SECRET_FILE_NOT_REGULAR", field))
-    if metadata.st_size == 0:
-        issues.append(PreflightIssue("SECRET_FILE_EMPTY", field))
+    try:
+        with path.open("rb") as secret_file:
+            content = secret_file.read(_MAX_SECRET_BYTES + 1)
+    except OSError:
+        issues.append(PreflightIssue("SECRET_FILE_UNREADABLE", field))
+    else:
+        if len(content) > _MAX_SECRET_BYTES:
+            issues.append(PreflightIssue("SECRET_FILE_TOO_LARGE", field))
+        elif not content.strip():
+            issues.append(PreflightIssue("SECRET_FILE_EMPTY", field))
     mode = stat.S_IMODE(metadata.st_mode)
     if mode & 0o077 or not mode & stat.S_IRUSR:
         issues.append(PreflightIssue("SECRET_FILE_PERMISSIONS", field))

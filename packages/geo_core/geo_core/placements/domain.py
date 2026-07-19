@@ -15,21 +15,51 @@ from types import MappingProxyType
 from typing import Mapping
 from uuid import UUID
 
+from geo_core.placements.campaign_prompt_contracts import (  # noqa: F401
+    CampaignPlacementReadiness,
+    CampaignResourceContext,
+    CampaignResourceKind,
+    CampaignScope,
+    ChannelReadiness,
+    ChannelReadinessReason,
+    OpportunityPromptReleaseBinding,
+    PromptBundleView,
+    PromptReleaseBindingStatus,
+    PromptReleaseState,
+    PromptReleaseStatus,
+    PromptReleaseView,
+    STANDARD_PLACEMENT_CHANNELS,
+    assert_same_campaign_lineage,
+    transition_prompt_release_status,
+)
+from geo_core.placements.errors import (  # noqa: F401
+    CampaignContextMismatch,
+    ConcurrencyConflict,
+    PlacementConflict,
+    PlacementNotFound,
+    PlacementRuleViolation,
+)
 
-class PlacementRuleViolation(ValueError):
-    """A placement command violates an explicit business invariant."""
-
-
-class ConcurrencyConflict(RuntimeError):
-    """The caller edited a stale immutable version."""
-
-
-class PlacementConflict(RuntimeError):
-    """The command conflicts with the aggregate's current state."""
-
-
-class PlacementNotFound(RuntimeError):
-    """A project-scoped placement resource does not exist."""
+_STABLE_REEXPORTS = (
+    CampaignPlacementReadiness,
+    CampaignResourceContext,
+    CampaignResourceKind,
+    CampaignScope,
+    ChannelReadiness,
+    ChannelReadinessReason,
+    OpportunityPromptReleaseBinding,
+    PromptBundleView,
+    PromptReleaseBindingStatus,
+    PromptReleaseState,
+    PromptReleaseStatus,
+    PromptReleaseView,
+    STANDARD_PLACEMENT_CHANNELS,
+    assert_same_campaign_lineage,
+    transition_prompt_release_status,
+    CampaignContextMismatch,
+    ConcurrencyConflict,
+    PlacementNotFound,
+)
 
 
 class OpportunityStatus(StrEnum):
@@ -198,6 +228,9 @@ class BriefVersion:
     constraints: Mapping[str, object]
     content_hash: str
     base_version_id: UUID | None = None
+    campaign_id: UUID | None = None
+    opportunity_id: UUID | None = None
+    destination_id: UUID | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "goals", MappingProxyType(dict(self.goals)))
@@ -213,6 +246,9 @@ class EvidencePackAttempt:
     status: str = "building"
     pack_hash: str | None = None
     failure_reason: str | None = None
+    campaign_id: UUID | None = None
+    opportunity_id: UUID | None = None
+    destination_id: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -224,43 +260,12 @@ class PromptSkill:
 
 
 @dataclass(frozen=True)
-class PromptReleaseView:
-    id: UUID
-    project_id: UUID
-    skill_version_id: UUID
-    release_number: int
-    release_hash: str
-    source_text: str
-    system_template: str
-    user_template: str
-    variable_schema: Mapping[str, object]
-    output_schema: Mapping[str, object]
-    compiler_version: str
-
-    def __post_init__(self) -> None:
-        object.__setattr__(self, "variable_schema", MappingProxyType(dict(self.variable_schema)))
-        object.__setattr__(self, "output_schema", MappingProxyType(dict(self.output_schema)))
-
-
-@dataclass(frozen=True)
-class PromptBundleView:
-    id: UUID
-    project_id: UUID
-    brief_version_id: UUID
-    evidence_pack_attempt_id: UUID
-    template_release_id: UUID
-    bundle_hash: str
-    storage_key: str
-    artifact_status: str
-    storage_uri: str | None
-
-
-@dataclass(frozen=True)
 class JobReference:
     id: UUID
     project_id: UUID
     kind: str
     status: str
+    campaign_id: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -289,6 +294,9 @@ class PackageVersion:
     edited_by: UUID | None = None
     edit_reason: str | None = None
     generated_by_job_id: UUID | None = None
+    campaign_id: UUID | None = None
+    opportunity_id: UUID | None = None
+    destination_id: UUID | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "content_json", MappingProxyType(dict(self.content_json)))
@@ -342,6 +350,9 @@ class ExportReceipt:
     artifact_uri: str | None
     package_version: PackageVersion
     claims: tuple[Claim, ...]
+    campaign_id: UUID | None = None
+    opportunity_id: UUID | None = None
+    destination_id: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -357,6 +368,8 @@ class PublicationRequest:
     restricted_policy_acknowledged: bool = False
     policy_basis: str | None = None
     status: str = "requested"
+    campaign_id: UUID | None = None
+    opportunity_id: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -372,6 +385,9 @@ class Submission:
     verification_result: Mapping[str, object] | None = None
     url_backfilled_by: UUID | None = None
     url_backfilled_at: datetime | None = None
+    campaign_id: UUID | None = None
+    opportunity_id: UUID | None = None
+    destination_id: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -385,6 +401,9 @@ class Measurement:
     result_snapshot_uri: str
     recommendation_position: int | None = None
     metrics: Mapping[str, object] = field(default_factory=dict)
+    campaign_id: UUID | None = None
+    opportunity_id: UUID | None = None
+    destination_id: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -404,6 +423,9 @@ class MeasurementCollectionTask:
     cancelled_at: datetime | None = None
     acted_by: UUID | None = None
     state_reason: str | None = None
+    campaign_id: UUID | None = None
+    opportunity_id: UUID | None = None
+    destination_id: UUID | None = None
 
 
 def canonical_hash(value: object) -> str:
@@ -473,4 +495,7 @@ def edit_package_version(
         content_hash=canonical_hash(payload),
         edited_by=edited_by,
         edit_reason=reason,
+        campaign_id=base.campaign_id,
+        opportunity_id=base.opportunity_id,
+        destination_id=base.destination_id,
     )

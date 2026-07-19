@@ -38,7 +38,154 @@
         "title": "AuthIdentity",
         "type": "object"
       },
-      "CustomerGeoSummaryResponse": {
+      "BinaryEstimateResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "ci_high": {
+            "title": "Ci High",
+            "type": "number"
+          },
+          "ci_low": {
+            "title": "Ci Low",
+            "type": "number"
+          },
+          "denominator": {
+            "title": "Denominator",
+            "type": "integer"
+          },
+          "numerator": {
+            "title": "Numerator",
+            "type": "integer"
+          },
+          "share": {
+            "title": "Share",
+            "type": "number"
+          }
+        },
+        "required": [
+          "numerator",
+          "denominator",
+          "share",
+          "ci_low",
+          "ci_high"
+        ],
+        "title": "BinaryEstimateResponse",
+        "type": "object"
+      },
+      "CustomerApprovedMeasurementResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "report": {
+            "$ref": "#/components/schemas/MonitoringReportResponse"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/MetricResponse"
+          },
+          "snapshot_contract": {
+            "enum": [
+              "statistics_v2",
+              "legacy_unknown"
+            ],
+            "title": "Snapshot Contract",
+            "type": "string"
+          }
+        },
+        "required": [
+          "report",
+          "snapshot",
+          "snapshot_contract"
+        ],
+        "title": "CustomerApprovedMeasurementResponse",
+        "type": "object"
+      },
+      "CustomerCampaignReadModelResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "approved_measurements": {
+            "items": {
+              "$ref": "#/components/schemas/CustomerApprovedMeasurementResponse"
+            },
+            "title": "Approved Measurements",
+            "type": "array"
+          },
+          "campaign": {
+            "$ref": "#/components/schemas/CustomerCampaignResponse"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/CustomerCampaignSummaryResponse"
+          },
+          "verified_urls": {
+            "items": {
+              "$ref": "#/components/schemas/VerifiedUrlResponse"
+            },
+            "title": "Verified Urls",
+            "type": "array"
+          }
+        },
+        "required": [
+          "campaign",
+          "summary",
+          "approved_measurements",
+          "verified_urls"
+        ],
+        "title": "CustomerCampaignReadModelResponse",
+        "type": "object"
+      },
+      "CustomerCampaignResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "approved_report_count": {
+            "title": "Approved Report Count",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "latest_approved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Approved At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "objective": {
+            "title": "Objective",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "name",
+          "objective",
+          "status",
+          "approved_report_count",
+          "latest_approved_at"
+        ],
+        "title": "CustomerCampaignResponse",
+        "type": "object"
+      },
+      "CustomerCampaignSummaryResponse": {
         "additionalProperties": false,
         "properties": {
           "approved_report_count": {
@@ -46,16 +193,21 @@
             "type": "integer"
           },
           "campaign_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Campaign Id"
+            "format": "uuid",
+            "title": "Campaign Id",
+            "type": "string"
+          },
+          "campaign_name": {
+            "title": "Campaign Name",
+            "type": "string"
+          },
+          "campaign_objective": {
+            "title": "Campaign Objective",
+            "type": "string"
+          },
+          "campaign_status": {
+            "title": "Campaign Status",
+            "type": "string"
           },
           "frozen_protocol_count": {
             "title": "Frozen Protocol Count",
@@ -89,6 +241,9 @@
         "required": [
           "project_id",
           "campaign_id",
+          "campaign_name",
+          "campaign_objective",
+          "campaign_status",
           "frozen_protocol_count",
           "measurement_window_count",
           "verified_url_count",
@@ -96,7 +251,7 @@
           "latest_metrics",
           "interpretation"
         ],
-        "title": "CustomerGeoSummaryResponse",
+        "title": "CustomerCampaignSummaryResponse",
         "type": "object"
       },
       "CustomerProjectSummary": {
@@ -344,7 +499,8 @@
           "status": {
             "enum": [
               "complete",
-              "confounded"
+              "confounded",
+              "insufficient_evidence"
             ],
             "title": "Status",
             "type": "string"
@@ -366,9 +522,32 @@
       "MetricResponse": {
         "additionalProperties": false,
         "properties": {
+          "analysis_stratum_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analysis Stratum Hash"
+          },
           "campaign_id": {
             "format": "uuid",
             "title": "Campaign Id",
+            "type": "string"
+          },
+          "capture_method": {
+            "enum": [
+              "official_report_import",
+              "manual_ui",
+              "provider_api",
+              "proxy_grounded_api",
+              "synthetic",
+              "unknown"
+            ],
+            "title": "Capture Method",
             "type": "string"
           },
           "competitive_delta": {
@@ -387,6 +566,13 @@
             "title": "Confounded Reasons",
             "type": "array"
           },
+          "declared_confounding_factors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Declared Confounding Factors",
+            "type": "array"
+          },
           "eligible_sample_count": {
             "title": "Eligible Sample Count",
             "type": "integer"
@@ -399,6 +585,28 @@
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "input_hash": {
+            "title": "Input Hash",
+            "type": "string"
+          },
+          "invalid_reason_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Invalid Reason Counts",
+            "type": "object"
+          },
+          "invalid_sample_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invalid Sample Count"
           },
           "measurement_window": {
             "enum": [
@@ -415,9 +623,152 @@
             "title": "Method Version",
             "type": "string"
           },
+          "minimum_valid_repeats": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minimum Valid Repeats"
+          },
+          "missing_sample_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Missing Sample Count"
+          },
+          "observation_membership_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observation Membership Count"
+          },
+          "observation_membership_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observation Membership Hash"
+          },
+          "observation_membership_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observation Membership Version"
+          },
+          "placement_citation_ci_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Placement Citation Ci High"
+          },
+          "placement_citation_ci_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Placement Citation Ci Low"
+          },
+          "placement_citation_query_max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Placement Citation Query Max"
+          },
+          "placement_citation_query_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Placement Citation Query Min"
+          },
           "placement_citation_share": {
             "title": "Placement Citation Share",
             "type": "number"
+          },
+          "product_mention_ci_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Mention Ci High"
+          },
+          "product_mention_ci_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Mention Ci Low"
+          },
+          "product_mention_query_max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Mention Query Max"
+          },
+          "product_mention_query_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Mention Query Min"
           },
           "product_mention_share": {
             "title": "Product Mention Share",
@@ -437,21 +788,211 @@
             "title": "Qualified Destination Coverage",
             "type": "number"
           },
+          "qualified_destination_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Qualified Destination Ids",
+            "type": "array"
+          },
+          "query_cluster_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Query Cluster Key"
+          },
+          "query_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Query Count"
+          },
+          "query_results": {
+            "items": {
+              "$ref": "#/components/schemas/QueryMetricResultResponse"
+            },
+            "title": "Query Results",
+            "type": "array"
+          },
+          "recommendation_ci_high": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommendation Ci High"
+          },
+          "recommendation_ci_low": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommendation Ci Low"
+          },
+          "recommendation_query_max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommendation Query Max"
+          },
+          "recommendation_query_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommendation Query Min"
+          },
           "recommendation_share": {
             "title": "Recommendation Share",
             "type": "number"
           },
+          "result_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Hash"
+          },
+          "sampled_sample_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sampled Sample Count"
+          },
+          "sampling_completion_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sampling Completion Ratio"
+          },
+          "selected_destination_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Selected Destination Ids",
+            "type": "array"
+          },
+          "source_stratum": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceStratumContract"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source_stratum_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Stratum Hash"
+          },
+          "statistics_contract_version": {
+            "title": "Statistics Contract Version",
+            "type": "string"
+          },
           "status": {
             "enum": [
               "complete",
-              "confounded"
+              "confounded",
+              "insufficient_evidence"
             ],
             "title": "Status",
             "type": "string"
           },
+          "sufficient_query_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sufficient Query Count"
+          },
+          "valid_completion_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid Completion Ratio"
+          },
+          "verified_destination_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Verified Destination Ids",
+            "type": "array"
+          },
           "verified_placement_coverage": {
             "title": "Verified Placement Coverage",
             "type": "number"
+          },
+          "worst_query_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worst Query Id"
           }
         },
         "required": [
@@ -460,20 +1001,90 @@
           "protocol_id",
           "campaign_id",
           "measurement_window",
+          "capture_method",
+          "source_stratum",
+          "source_stratum_hash",
+          "statistics_contract_version",
+          "query_cluster_key",
+          "analysis_stratum_hash",
+          "minimum_valid_repeats",
           "expected_sample_count",
+          "sampled_sample_count",
           "eligible_sample_count",
+          "invalid_sample_count",
+          "missing_sample_count",
+          "sampling_completion_ratio",
+          "valid_completion_ratio",
+          "query_count",
+          "sufficient_query_count",
+          "invalid_reason_counts",
+          "declared_confounding_factors",
+          "query_results",
           "recommendation_share",
+          "recommendation_ci_low",
+          "recommendation_ci_high",
           "product_mention_share",
+          "product_mention_ci_low",
+          "product_mention_ci_high",
           "placement_citation_share",
+          "placement_citation_ci_low",
+          "placement_citation_ci_high",
+          "recommendation_query_min",
+          "recommendation_query_max",
+          "product_mention_query_min",
+          "product_mention_query_max",
+          "placement_citation_query_min",
+          "placement_citation_query_max",
+          "worst_query_id",
+          "selected_destination_ids",
+          "qualified_destination_ids",
+          "verified_destination_ids",
           "qualified_destination_coverage",
           "verified_placement_coverage",
           "competitive_delta",
           "status",
           "confounded_reasons",
           "method_version",
+          "input_hash",
+          "result_hash",
+          "observation_membership_version",
+          "observation_membership_hash",
+          "observation_membership_count",
           "computed_at"
         ],
         "title": "MetricResponse",
+        "type": "object"
+      },
+      "ModelIdentityContract": {
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "disclosed",
+              "not_disclosed",
+              "not_applicable"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "ModelIdentityContract",
         "type": "object"
       },
       "MonitoringReportResponse": {
@@ -653,6 +1264,283 @@
           "request_id"
         ],
         "title": "ProblemDetails",
+        "type": "object"
+      },
+      "QueryMetricResultResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "competitive_delta": {
+            "title": "Competitive Delta",
+            "type": "number"
+          },
+          "competitor": {
+            "$ref": "#/components/schemas/BinaryEstimateResponse"
+          },
+          "confounding_factors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Confounding Factors",
+            "type": "array"
+          },
+          "expected_sample_count": {
+            "title": "Expected Sample Count",
+            "type": "integer"
+          },
+          "invalid_reason_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Invalid Reason Counts",
+            "type": "object"
+          },
+          "invalid_sample_count": {
+            "title": "Invalid Sample Count",
+            "type": "integer"
+          },
+          "meets_threshold": {
+            "title": "Meets Threshold",
+            "type": "boolean"
+          },
+          "missing_sample_count": {
+            "title": "Missing Sample Count",
+            "type": "integer"
+          },
+          "monitoring_query_id": {
+            "format": "uuid",
+            "title": "Monitoring Query Id",
+            "type": "string"
+          },
+          "placement_citation": {
+            "$ref": "#/components/schemas/BinaryEstimateResponse"
+          },
+          "product_mention": {
+            "$ref": "#/components/schemas/BinaryEstimateResponse"
+          },
+          "query_cluster_key": {
+            "title": "Query Cluster Key",
+            "type": "string"
+          },
+          "query_text_snapshot": {
+            "title": "Query Text Snapshot",
+            "type": "string"
+          },
+          "recommendation": {
+            "$ref": "#/components/schemas/BinaryEstimateResponse"
+          },
+          "sampled_sample_count": {
+            "title": "Sampled Sample Count",
+            "type": "integer"
+          },
+          "valid_sample_count": {
+            "title": "Valid Sample Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "monitoring_query_id",
+          "query_text_snapshot",
+          "query_cluster_key",
+          "expected_sample_count",
+          "sampled_sample_count",
+          "valid_sample_count",
+          "invalid_sample_count",
+          "missing_sample_count",
+          "meets_threshold",
+          "invalid_reason_counts",
+          "confounding_factors",
+          "recommendation",
+          "product_mention",
+          "placement_citation",
+          "competitor",
+          "competitive_delta"
+        ],
+        "title": "QueryMetricResultResponse",
+        "type": "object"
+      },
+      "SourceStratumContract": {
+        "additionalProperties": false,
+        "properties": {
+          "capture_method": {
+            "enum": [
+              "official_report_import",
+              "manual_ui",
+              "provider_api",
+              "proxy_grounded_api",
+              "synthetic",
+              "unknown"
+            ],
+            "title": "Capture Method",
+            "type": "string"
+          },
+          "client_kind": {
+            "enum": [
+              "browser",
+              "native_app",
+              "api",
+              "internal_worker",
+              "report_import"
+            ],
+            "title": "Client Kind",
+            "type": "string"
+          },
+          "configured_model": {
+            "$ref": "#/components/schemas/ModelIdentityContract"
+          },
+          "device": {
+            "enum": [
+              "desktop",
+              "mobile",
+              "tablet",
+              "api",
+              "internal_worker",
+              "report"
+            ],
+            "title": "Device",
+            "type": "string"
+          },
+          "engine": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Engine",
+            "type": "string"
+          },
+          "language": {
+            "maxLength": 35,
+            "minLength": 1,
+            "title": "Language",
+            "type": "string"
+          },
+          "locale": {
+            "maxLength": 35,
+            "minLength": 1,
+            "title": "Locale",
+            "type": "string"
+          },
+          "platform": {
+            "enum": [
+              "openai",
+              "google",
+              "perplexity",
+              "microsoft",
+              "anthropic",
+              "other"
+            ],
+            "title": "Platform",
+            "type": "string"
+          },
+          "platform_detail": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Platform Detail"
+          },
+          "region": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Region",
+            "type": "string"
+          },
+          "reported_model": {
+            "$ref": "#/components/schemas/ModelIdentityContract"
+          },
+          "search_enabled": {
+            "title": "Search Enabled",
+            "type": "boolean"
+          },
+          "search_mode": {
+            "enum": [
+              "disabled",
+              "live_web",
+              "grounded_web",
+              "automatic",
+              "not_applicable"
+            ],
+            "title": "Search Mode",
+            "type": "string"
+          },
+          "source_contract_version": {
+            "default": "geo-observation-source-v3",
+            "enum": [
+              "geo-observation-source-v2",
+              "geo-observation-source-v3"
+            ],
+            "title": "Source Contract Version",
+            "type": "string"
+          },
+          "surface": {
+            "enum": [
+              "chatgpt_search",
+              "google_search",
+              "google_ai_overviews",
+              "google_ai_mode",
+              "gemini",
+              "perplexity_answer",
+              "bing_search",
+              "bing_copilot",
+              "claude_ai",
+              "openai_api",
+              "google_gemini_api",
+              "perplexity_api",
+              "anthropic_api",
+              "microsoft_foundry_bing_grounding",
+              "google_vertex_grounding",
+              "google_generative_ai_performance_report",
+              "bing_ai_performance_report",
+              "internal_benchmark",
+              "other"
+            ],
+            "title": "Surface",
+            "type": "string"
+          },
+          "surface_detail": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Surface Detail"
+          },
+          "surface_kind": {
+            "enum": [
+              "consumer_ui",
+              "official_report",
+              "provider_api",
+              "grounded_proxy",
+              "internal_benchmark",
+              "other"
+            ],
+            "title": "Surface Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "capture_method",
+          "platform",
+          "surface",
+          "surface_kind",
+          "engine",
+          "configured_model",
+          "reported_model",
+          "locale",
+          "region",
+          "language",
+          "device",
+          "client_kind",
+          "search_enabled",
+          "search_mode"
+        ],
+        "title": "SourceStratumContract",
         "type": "object"
       },
       "VerifiedUrlResponse": {
@@ -1525,6 +2413,328 @@
         ]
       }
     },
+    "/v1/projects/{project_id}/geo/campaigns": {
+      "get": {
+        "operationId": "listCustomerGeoCampaigns",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CustomerCampaignResponse"
+                  },
+                  "title": "Response Listcustomergeocampaigns",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Campaigns",
+        "tags": [
+          "customer GEO reporting"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/geo/campaigns/{campaign_id}/read-model": {
+      "get": {
+        "operationId": "getCustomerGeoCampaignReadModel",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "campaign_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Campaign Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerCampaignReadModelResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Campaign Read Model",
+        "tags": [
+          "customer GEO reporting"
+        ]
+      }
+    },
     "/v1/projects/{project_id}/geo/measurement-windows": {
       "get": {
         "operationId": "listCustomerMeasurementWindows",
@@ -1542,18 +2752,11 @@
           {
             "in": "query",
             "name": "campaign_id",
-            "required": false,
+            "required": true,
             "schema": {
-              "anyOf": [
-                {
-                  "format": "uuid",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Campaign Id"
+              "format": "uuid",
+              "title": "Campaign Id",
+              "type": "string"
             }
           },
           {
@@ -1717,18 +2920,11 @@
           {
             "in": "query",
             "name": "campaign_id",
-            "required": false,
+            "required": true,
             "schema": {
-              "anyOf": [
-                {
-                  "format": "uuid",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Campaign Id"
+              "format": "uuid",
+              "title": "Campaign Id",
+              "type": "string"
             }
           },
           {
@@ -1892,18 +3088,11 @@
           {
             "in": "query",
             "name": "campaign_id",
-            "required": false,
+            "required": true,
             "schema": {
-              "anyOf": [
-                {
-                  "format": "uuid",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Campaign Id"
+              "format": "uuid",
+              "title": "Campaign Id",
+              "type": "string"
             }
           },
           {
@@ -2067,18 +3256,11 @@
           {
             "in": "query",
             "name": "campaign_id",
-            "required": false,
+            "required": true,
             "schema": {
-              "anyOf": [
-                {
-                  "format": "uuid",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Campaign Id"
+              "format": "uuid",
+              "title": "Campaign Id",
+              "type": "string"
             }
           },
           {
@@ -2103,7 +3285,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CustomerGeoSummaryResponse"
+                  "$ref": "#/components/schemas/CustomerCampaignSummaryResponse"
                 }
               }
             },
@@ -2238,18 +3420,11 @@
           {
             "in": "query",
             "name": "campaign_id",
-            "required": false,
+            "required": true,
             "schema": {
-              "anyOf": [
-                {
-                  "format": "uuid",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Campaign Id"
+              "format": "uuid",
+              "title": "Campaign Id",
+              "type": "string"
             }
           },
           {
@@ -2391,6 +3566,163 @@
           }
         },
         "summary": "Verified Urls",
+        "tags": [
+          "customer GEO reporting"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/project-exports/campaigns/{campaign_id}/download": {
+      "get": {
+        "operationId": "downloadCustomerLatestApprovedProjectExport",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "campaign_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Campaign Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Download Latest Approved",
         "tags": [
           "customer GEO reporting"
         ]

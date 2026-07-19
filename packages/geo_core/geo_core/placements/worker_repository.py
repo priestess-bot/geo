@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from typing import Any, Mapping
-from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
+from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from geo_core.jobs.postgres import PostgresDurableJobStore, WorkerLease
 from geo_core.model_gateway import ModelGatewayResult
@@ -13,16 +13,21 @@ from geo_core.placements.domain import PackageVersion, WorkflowStatus, canonical
 from geo_core.placements.ports import GeneratedPlacement, GenerationClaim, ModelCallClaim
 from geo_core.placements.publication_worker_support import (
     advance_generated_opportunity,
-    advance_verified_opportunity,
-    content_fragments,
     open_measurement_window,
-    schedule_measurements,
-    string_values,
+)
+from geo_core.placements.publication_verification_worker import (
+    begin_publication_verification,
+    persist_completed_verification,
+    persist_verification_error,
 )
 from geo_core.placements.simulation_worker_repository import (
     PromptSimulationWorkerRepositoryMixin,
 )
 from geo_core.placements.worker_models import ModelCallReservation, VerificationSnapshot
+from geo_core.placements.url_verification_contracts import (
+    UrlVerificationResult,
+    VerificationError,
+)
 
 
 def _dict(cursor: Any) -> dict[str, Any] | None:
@@ -56,18 +61,17 @@ class PlacementWorkerRepository(
             row = _dict(
                 connection.execute(
                     """SELECT s.prompt_bundle_id, s.configured_model, s.model_call_budget,
+                              s.campaign_id, s.opportunity_id, pb.destination_id,
                               pb.bundle_hash, pb.input_snapshot, pb.evidence_pack_attempt_id,
-                              b.opportunity_id, r.output_schema
+                              r.output_schema
                        FROM generation_job_specs s
                        JOIN prompt_bundles pb
                          ON pb.id = s.prompt_bundle_id AND pb.project_id = s.project_id
                        JOIN generation_template_releases r
                          ON r.id = pb.template_release_id AND r.project_id = pb.project_id
-                       JOIN placement_brief_versions bv
-                         ON bv.id = pb.brief_version_id AND bv.project_id = pb.project_id
-                       JOIN placement_briefs b
-                         ON b.id = bv.brief_id AND b.project_id = bv.project_id
-                       WHERE s.job_id = %s AND s.project_id = %s""",
+                       WHERE s.job_id = %s AND s.project_id = %s
+                         AND s.campaign_id = pb.campaign_id
+                         AND s.opportunity_id = pb.opportunity_id""",
                     (lease.job_id, lease.project_id),
                 )
             )
@@ -116,6 +120,9 @@ class PlacementWorkerRepository(
                     if value["public_disclosure_allowed"] and value["public_source_url"]
                 ),
                 output_schema=row["output_schema"],
+                campaign_id=row["campaign_id"],
+                opportunity_id=row["opportunity_id"],
+                destination_id=row["destination_id"],
             )
         except BaseException:
             connection.rollback()
@@ -241,21 +248,26 @@ class PlacementWorkerRepository(
         with self._store.fenced_transaction(lease) as connection:
             opportunity = _dict(
                 connection.execute(
-                    """SELECT b.opportunity_id FROM prompt_bundles pb
-                       JOIN placement_brief_versions bv
-                         ON bv.id = pb.brief_version_id AND bv.project_id = pb.project_id
-                       JOIN placement_briefs b
-                         ON b.id = bv.brief_id AND b.project_id = bv.project_id
-                       WHERE pb.project_id = %s AND pb.id = %s""",
+                    """SELECT campaign_id, opportunity_id, destination_id
+                       FROM prompt_bundles
+                       WHERE project_id = %s AND id = %s""",
                     (lease.project_id, claim.prompt_bundle_id),
                 )
             )
             if opportunity is None:
                 raise RuntimeError("generation opportunity no longer exists")
             connection.execute(
-                """INSERT INTO placement_packages (id, project_id, opportunity_id)
-                   VALUES (%s, %s, %s) ON CONFLICT (opportunity_id) DO NOTHING""",
-                (claim.package_id, lease.project_id, opportunity["opportunity_id"]),
+                """INSERT INTO placement_packages
+                     (id, project_id, campaign_id, opportunity_id, destination_id)
+                   VALUES (%s, %s, %s, %s, %s)
+                   ON CONFLICT (opportunity_id) DO NOTHING""",
+                (
+                    claim.package_id,
+                    lease.project_id,
+                    opportunity["campaign_id"],
+                    opportunity["opportunity_id"],
+                    opportunity["destination_id"],
+                ),
             )
             if claim.base_version_id is not None:
                 changed = connection.execute(
@@ -273,13 +285,18 @@ class PlacementWorkerRepository(
                     raise RuntimeError("generation package lineage changed concurrently")
             connection.execute(
                 """INSERT INTO placement_package_versions
-                     (id, project_id, package_id, prompt_bundle_id, version_number,
-                      base_version_id, workflow_status, content_json, rendered_text,
-                      content_hash, generated_by_job_id)
-                   VALUES (%s, %s, %s, %s, %s, %s, 'generated', %s::jsonb, %s, %s, %s)""",
+                     (id, project_id, campaign_id, opportunity_id, destination_id,
+                      package_id, prompt_bundle_id, version_number, base_version_id,
+                      workflow_status, content_json, rendered_text, content_hash,
+                      generated_by_job_id)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'generated',
+                           %s::jsonb, %s, %s, %s)""",
                 (
                     version_id,
                     lease.project_id,
+                    opportunity["campaign_id"],
+                    opportunity["opportunity_id"],
+                    opportunity["destination_id"],
                     claim.package_id,
                     claim.prompt_bundle_id,
                     claim.next_version_number,
@@ -342,156 +359,31 @@ class PlacementWorkerRepository(
             content_hash=content_hash,
             workflow_status=WorkflowStatus.GENERATED,
             generated_by_job_id=lease.job_id,
+            campaign_id=opportunity["campaign_id"],
+            opportunity_id=opportunity["opportunity_id"],
+            destination_id=opportunity["destination_id"],
         )
 
     def begin_verification(self, lease: WorkerLease) -> VerificationSnapshot:
-        with self._store.fenced_transaction(lease) as connection:
-            row = _dict(
-                connection.execute(
-                    """SELECT s.id AS submission_id, s.submitted_url,
-                              s.publication_request_id, v.rendered_text, v.content_json,
-                              r.policy_basis, d.allowed_hosts
-                       FROM verification_job_specs spec
-                       JOIN publication_submissions s
-                         ON s.id = spec.submission_id AND s.project_id = spec.project_id
-                       JOIN publication_requests r
-                         ON r.id = s.publication_request_id AND r.project_id = s.project_id
-                       JOIN publication_destinations d
-                         ON d.id = r.destination_id AND d.project_id = r.project_id
-                       JOIN placement_package_versions v
-                         ON v.id = r.package_version_id AND v.project_id = r.project_id
-                       WHERE spec.job_id = %s AND spec.project_id = %s""",
-                    (lease.job_id, lease.project_id),
-                )
-            )
-            if row is None or not row["submitted_url"]:
-                raise RuntimeError("verification requires a submitted URL")
-            connection.execute(
-                """UPDATE publication_submissions SET status = 'verifying'
-                   WHERE id = %s AND project_id = %s""",
-                (row["submission_id"], lease.project_id),
-            )
-            connection.execute(
-                """UPDATE publication_requests SET status = 'publishing'
-                   WHERE id = %s AND project_id = %s""",
-                (row["publication_request_id"], lease.project_id),
-            )
-            fragments = content_fragments(row["rendered_text"])
-            disclosures = string_values(row["content_json"], key_hint="disclosure")
-            links = string_values(row["content_json"], key_hint="url")
-            return VerificationSnapshot(
-                row["submission_id"],
-                row["publication_request_id"],
-                row["submitted_url"],
-                fragments,
-                disclosures,
-                links,
-                tuple(row["allowed_hosts"]),
-            )
+        return begin_publication_verification(self._store, lease)
 
-    def finalize_verification(
+    def persist_completed_verification(
         self,
         lease: WorkerLease,
         snapshot: VerificationSnapshot,
         *,
-        success: bool,
-        result: Mapping[str, object],
-    ) -> None:
-        with self._store.fenced_transaction(lease) as connection:
-            submission_status = "verified" if success else "failed"
-            publication_status = "published" if success else "failed"
-            connection.execute(
-                """UPDATE publication_submissions SET status = %s,
-                     verified_at = CASE WHEN %s THEN clock_timestamp() ELSE NULL END,
-                     verification_result = %s::jsonb
-                   WHERE id = %s AND project_id = %s""",
-                (
-                    submission_status,
-                    success,
-                    json.dumps(dict(result)),
-                    snapshot.submission_id,
-                    lease.project_id,
-                ),
-            )
-            connection.execute(
-                """UPDATE publication_requests SET status = %s
-                   WHERE id = %s AND project_id = %s""",
-                (publication_status, snapshot.publication_request_id, lease.project_id),
-            )
-            if success:
-                advance_verified_opportunity(
-                    connection, lease.project_id, snapshot.submission_id
-                )
-            scheduled = (
-                self._schedule_measurements(connection, lease, snapshot.submission_id)
-                if success
-                else 0
-            )
-            details = {**dict(result), "verified": success, "measurement_jobs": scheduled}
-            self._store.complete_in_transaction(
-                connection,
-                lease,
-                result_ref=f"publication-verification:{snapshot.submission_id}",
-                details=details,
-            )
+        result: UrlVerificationResult,
+    ) -> bool:
+        return persist_completed_verification(self._store, lease, snapshot, result)
 
-    def fail_verification_permanently(
+    def persist_verification_error(
         self,
         lease: WorkerLease,
         snapshot: VerificationSnapshot,
         *,
-        error_code: str,
-        result: Mapping[str, object],
-    ) -> None:
-        with self._store.fenced_transaction(lease) as connection:
-            connection.execute(
-                """UPDATE publication_submissions SET status = 'failed',
-                     verification_result = %s::jsonb
-                   WHERE id = %s AND project_id = %s""",
-                (json.dumps(dict(result)), snapshot.submission_id, lease.project_id),
-            )
-            connection.execute(
-                """UPDATE publication_requests SET status = 'failed'
-                   WHERE id = %s AND project_id = %s""",
-                (snapshot.publication_request_id, lease.project_id),
-            )
-            self._store.fail_in_transaction(
-                connection,
-                lease,
-                error_code=error_code,
-                details=result,
-            )
-
-    def mark_verification_retry(
-        self, lease: WorkerLease, snapshot: VerificationSnapshot, *, terminal: bool
-    ) -> None:
-        connection = self._store.open_project(lease.project_id)
-        try:
-            connection.execute(
-                """UPDATE publication_submissions SET status = %s
-                   WHERE id = %s AND project_id = %s""",
-                ("failed" if terminal else "verifying", snapshot.submission_id, lease.project_id),
-            )
-            connection.execute(
-                """UPDATE publication_requests SET status = %s
-                   WHERE id = %s AND project_id = %s""",
-                (
-                    "failed" if terminal else "retrying",
-                    snapshot.publication_request_id,
-                    lease.project_id,
-                ),
-            )
-            connection.commit()
-        except BaseException:
-            connection.rollback()
-            raise
-        finally:
-            connection.close()
+        error: VerificationError,
+    ) -> str:
+        return persist_verification_error(self._store, lease, snapshot, error)
 
     def open_measurement_window(self, lease: WorkerLease) -> Mapping[str, object]:
         return open_measurement_window(self._store, lease)
-
-    def _schedule_measurements(
-        self, connection: Any, lease: WorkerLease, submission_id: UUID
-    ) -> int:
-        return schedule_measurements(connection, lease, submission_id)

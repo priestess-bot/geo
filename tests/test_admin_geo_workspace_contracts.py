@@ -61,8 +61,9 @@ def test_admin_geo_redesign_preserves_every_existing_command() -> None:
     commands = {
         "approveReport", "approveSuggestion", "changeProtocol", "computeMetrics",
         "createCampaign", "createDestination", "createMonitoringQuery", "createProtocol",
-        "createReport", "createSuggestion", "importObservation", "reviewDestination",
-        "transitionOpportunity", "bindPromptTask", "blockSubmission", "buildEvidence",
+        "createReport", "createSuggestion", "importObservation", "importOfficialReport",
+        "reviewDestination", "transitionOpportunity", "bindOpportunityPromptRelease",
+        "transitionPromptRelease", "blockSubmission", "buildEvidence",
         "cancelMeasurementCollectionTask", "completeMeasurementCollectionTask", "controlJob",
         "createBrief", "createExport", "createGenerationJob", "createMeasurement",
         "createPromptBundle", "createPromptRelease", "createPromptSimulation",
@@ -91,6 +92,7 @@ def test_admin_geo_client_forms_work_on_lan_http_origins() -> None:
     placement = (FEATURE_ROOT / "PlacementWorkspace.tsx").read_text(encoding="utf-8")
     assert "crypto.randomUUID" not in action_form
     assert "crypto.getRandomValues" in action_form
+    assert "disabled={disabled || pending || !idempotencyKey}" in action_form
     assert '<a key={stage.id}' in placement
 
 
@@ -142,6 +144,47 @@ def test_observation_workspace_uses_protocol_queries_and_verified_submission_tar
     assert 'verification_status: "unknown"' not in actions
 
 
+def test_monitoring_statistics_ui_uses_frozen_protocol_denominators_and_full_v2_evidence() -> None:
+    workspace = (FEATURE_ROOT / "CampaignWorkspace.tsx").read_text(encoding="utf-8")
+    actions = (FEATURE_ROOT / "campaign-actions.ts").read_text(encoding="utf-8")
+    sampling = (FEATURE_ROOT / "ProtocolSamplingFields.tsx").read_text(encoding="utf-8")
+    metric = (FEATURE_ROOT / "MonitoringMetricSnapshot.tsx").read_text(encoding="utf-8")
+    hashing = (FEATURE_ROOT / "monitoring-statistics.ts").read_text(encoding="utf-8")
+    web_types = (ROOT / "packages/web/types/src/geo.ts").read_text(encoding="utf-8")
+    client = (ROOT / "packages/web/api-client/src/geo.ts").read_text(encoding="utf-8")
+
+    assert "selectedProtocol?.source_strata" in workspace
+    assert "data.observations.data.flatMap" not in workspace
+    assert "sourceStratumHash(stratum)" in workspace
+    assert 'name="query_cluster_key"' in workspace
+    assert "data.protocolQueries.data" in workspace
+    assert "minimum_valid_repeats" in actions
+    assert "query_cluster_key: value" in actions
+    assert 'min="3"' in sampling
+    assert "Math.ceil(sampleSize * 0.8)" in sampling
+    assert "source_stratum_hash: string; query_cluster_key: string" in web_types
+    assert '"complete" | "confounded" | "insufficient_evidence"' in web_types
+    assert "MetricCompute" in client
+    assert 'createHash("sha256")' in hashing
+    for evidence_field in (
+        "sampled_sample_count", "eligible_sample_count", "invalid_sample_count",
+        "missing_sample_count", "sampling_completion_ratio", "valid_completion_ratio",
+        "invalid_reason_counts", "declared_confounding_factors", "recommendation_ci_low",
+        "recommendation_query_min", "worst_query_id", "query_results", "result_hash",
+        "observation_membership_version", "observation_membership_hash",
+        "observation_membership_count",
+    ):
+        assert evidence_field in web_types
+    for visible_evidence in (
+        "已采样", "有效", "无效", "缺失", "采样完成度", "有效完成度",
+        "Wilson 95% CI", "问题区间", "无效原因", "混杂因素", "最弱问题",
+        "逐问题分母与区间", "指标审计信息",
+    ):
+        assert visible_evidence in metric
+    assert "不作趋势判断" in metric
+    assert all(word not in metric.casefold() for word in ("improved", "declined", "stable"))
+
+
 def test_admin_prompt_catalog_edits_the_actual_executable_release() -> None:
     prompt_panel = (FEATURE_ROOT / "BriefPromptPanel.tsx").read_text(encoding="utf-8")
     actions = (FEATURE_ROOT / "placement-actions.ts").read_text(encoding="utf-8")
@@ -155,7 +198,12 @@ def test_admin_prompt_catalog_edits_the_actual_executable_release() -> None:
     assert 'name="user_template"' in prompt_panel
     assert "system_template: value" in actions
     assert "user_template: value" in actions
-    assert "PROMPT_TASK_KEYS" in prompt_panel
+    assert "bindOpportunityPromptRelease" in prompt_panel
+    assert 'name="expected_binding_version"' in prompt_panel
+    assert 'name="confirmed_release_hash"' in prompt_panel
+    assert "transitionPromptRelease" in prompt_panel
+    assert "bindPromptTask" not in prompt_panel
+    assert "PROMPT_TASK_KEYS" not in prompt_panel
     assert "internal_evidence_refs" in defaults
     assert "public_citation_refs" in defaults
     assert "DEFAULT_SYSTEM_PROMPT" not in defaults

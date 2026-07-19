@@ -8,14 +8,15 @@ const CHANNEL_LABELS: Record<string, string> = {
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  active: "进行中", draft: "草稿", paused: "已暂停", archived: "已归档",
+  active: "进行中", draft: "草稿", frozen: "已冻结", paused: "已暂停", archived: "已归档",
   identified: "待准备", qualified: "已就绪", briefing: "准备内容", in_progress: "进行中",
   blocked: "受阻", completed: "已完成", cancelled: "已取消", approved: "已批准",
   restricted: "受限", prohibited: "禁止", pending: "等待中", pending_review: "待审核",
   ready: "可使用", succeeded: "成功", failed: "失败", verified: "已验证",
   awaiting_url: "等待网址", needs_revision: "需要修改", rejected: "已拒绝",
   policy_approved: "政策已批准", missing: "未配置", open: "待处理",
-  finalized: "已完成", queued: "排队中", running: "处理中", retry_wait: "等待重试"
+  finalized: "已完成", queued: "排队中", running: "处理中", retry_wait: "等待重试",
+  complete: "完整", confounded: "存在混杂", insufficient_evidence: "证据不足"
 };
 
 export function channelLabel(channel: string): string {

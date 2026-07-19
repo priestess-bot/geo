@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from typing import Mapping, Protocol
 from uuid import UUID
 
@@ -238,51 +238,13 @@ class PublicationVerificationHandler:
                     allowed_hosts=snapshot.allowed_hosts,
                 )
                 heartbeat.raise_if_stopped()
-        except RetryableVerificationError as exc:
-            status = self._store.fail(
-                lease,
-                error_code=type(exc).__name__,
-                details={"message": str(exc)},
-                retry_delay=timedelta(seconds=30),
-            )
-            self._repository.mark_verification_retry(
-                lease, snapshot, terminal=status in {"failed", "dead_lettered"}
+        except (RetryableVerificationError, PermanentVerificationError) as exc:
+            status = self._repository.persist_verification_error(
+                lease, snapshot, error=exc
             )
             return {"status": status, "job_id": str(lease.job_id)}
-        except PermanentVerificationError as exc:
-            checked_at = datetime.now(UTC).isoformat()
-            result = {
-                "status_code": 0,
-                "final_url": snapshot.submitted_url,
-                "checked_at": checked_at,
-                "metadata_hash": canonical_hash(
-                    {"url": snapshot.submitted_url, "error": str(exc), "checked_at": checked_at}
-                ),
-                "accessibility": False,
-                "content_match": False,
-                "disclosure_match": False,
-                "link_match": False,
-                "error": str(exc),
-            }
-            self._repository.fail_verification_permanently(
-                lease,
-                snapshot,
-                error_code=type(exc).__name__,
-                result=result,
-            )
-            return {"status": "failed", "job_id": str(lease.job_id)}
-        result = {
-            "status_code": verification.status_code,
-            "final_url": verification.final_url,
-            "checked_at": verification.checked_at.isoformat(),
-            "metadata_hash": verification.metadata_hash,
-            "accessibility": verification.accessibility,
-            "content_match": verification.content_match,
-            "disclosure_match": verification.disclosure_match,
-            "link_match": verification.link_match,
-        }
-        self._repository.finalize_verification(
-            lease, snapshot, success=verification.success, result=result
+        self._repository.persist_completed_verification(
+            lease, snapshot, result=verification
         )
         return {
             "status": "verified" if verification.success else "verification_failed",

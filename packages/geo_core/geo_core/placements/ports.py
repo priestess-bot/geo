@@ -12,6 +12,10 @@ from uuid import UUID
 from geo_core.placements.domain import (
     BriefVersion,
     Campaign,
+    CampaignPlacementReadiness,
+    CampaignResourceContext,
+    CampaignResourceKind,
+    CampaignScope,
     Claim,
     Destination,
     DestinationPolicyVersion,
@@ -22,6 +26,7 @@ from geo_core.placements.domain import (
     MeasurementCollectionTask,
     MonitoringQuery,
     Opportunity,
+    OpportunityPromptReleaseBinding,
     PackageVersion,
     PromptBundleView,
     PromptReleaseView,
@@ -32,6 +37,9 @@ from geo_core.placements.domain import (
     Submission,
 )
 from geo_core.placements.simulation import PromptSimulation
+from geo_core.placements.publication_verification_records import (
+    PublicationVerificationAttempt,
+)
 from geo_core.prompts.domain import SkillVersion, TemplateRelease
 
 
@@ -53,6 +61,9 @@ class GenerationClaim:
     evidence_item_ids: tuple[UUID, ...]
     public_citation_item_ids: tuple[UUID, ...]
     output_schema: Mapping[str, object]
+    campaign_id: UUID | None = None
+    opportunity_id: UUID | None = None
+    destination_id: UUID | None = None
 
     @property
     def prompt_input_hash(self) -> str:
@@ -96,6 +107,15 @@ class GeneratedPlacement:
 
 
 class PlacementRepository(Protocol):
+    def resolve_campaign_resource(
+        self,
+        *,
+        scope: CampaignScope,
+        kind: CampaignResourceKind,
+        resource_id: UUID,
+        lock: bool = False,
+    ) -> CampaignResourceContext | None: ...
+
     def create_campaign(
         self,
         *,
@@ -157,6 +177,7 @@ class PlacementRepository(Protocol):
         campaign_id: UUID,
         destination_ids: tuple[UUID, ...],
         rationale: str,
+        actor_id: UUID,
     ) -> tuple[Opportunity, ...]: ...
 
     def list_opportunities(
@@ -214,7 +235,48 @@ class PlacementRepository(Protocol):
         system_template: str,
         output_schema: Mapping[str, object],
         client_variable_names: tuple[str, ...],
+        actor_id: UUID,
     ) -> PromptReleaseView: ...
+
+    def get_prompt_release_view(
+        self, *, project_id: UUID, release_id: UUID
+    ) -> PromptReleaseView | None: ...
+
+    def transition_prompt_release_state(
+        self,
+        *,
+        project_id: UUID,
+        release_id: UUID,
+        expected_state_version: int,
+        target_status: str,
+        reason: str | None,
+        actor_id: UUID,
+        idempotency_key: str,
+    ) -> PromptReleaseView: ...
+
+    def get_current_prompt_release_binding(
+        self, *, scope: CampaignScope, opportunity_id: UUID
+    ) -> OpportunityPromptReleaseBinding | None: ...
+
+    def list_prompt_release_binding_history(
+        self, *, scope: CampaignScope, opportunity_id: UUID
+    ) -> tuple[OpportunityPromptReleaseBinding, ...]: ...
+
+    def bind_opportunity_prompt_release(
+        self,
+        *,
+        scope: CampaignScope,
+        opportunity_id: UUID,
+        release_id: UUID,
+        expected_binding_version: int,
+        reason: str | None,
+        actor_id: UUID,
+        idempotency_key: str,
+    ) -> OpportunityPromptReleaseBinding: ...
+
+    def get_campaign_placement_readiness(
+        self, *, scope: CampaignScope
+    ) -> CampaignPlacementReadiness: ...
 
     def get_template_release(
         self, *, project_id: UUID, release_id: UUID
@@ -245,18 +307,22 @@ class PlacementRepository(Protocol):
     def create_prompt_bundle(
         self,
         *,
-        project_id: UUID,
+        scope: CampaignScope,
+        opportunity_id: UUID,
         brief_version_id: UUID,
         evidence_pack_attempt_id: UUID,
-        release_id: UUID,
+        prompt_release_binding_id: UUID,
+        confirmed_release_hash: str,
         variables: Mapping[str, object],
         model_policy_hash: str,
+        idempotency_key: str,
+        requested_by: UUID,
     ) -> PromptBundleView: ...
 
     def enqueue_generation(
         self,
         *,
-        project_id: UUID,
+        scope: CampaignScope,
         prompt_bundle_id: UUID,
         configured_model: str,
         model_call_budget: int,
@@ -269,7 +335,7 @@ class PlacementRepository(Protocol):
     ) -> tuple[PromptSimulation, JobReference]: ...
 
     def list_prompt_simulations(
-        self, *, project_id: UUID
+        self, *, project_id: UUID, campaign_id: UUID
     ) -> tuple[PromptSimulation, ...]: ...
 
     def get_prompt_simulation(
@@ -349,6 +415,10 @@ class PlacementRepository(Protocol):
 
     def get_submission(self, *, project_id: UUID, submission_id: UUID) -> Submission | None: ...
 
+    def list_verification_attempts(
+        self, *, project_id: UUID, submission_id: UUID
+    ) -> tuple[PublicationVerificationAttempt, ...]: ...
+
     def backfill_submission_url(
         self, *, project_id: UUID, submission_id: UUID, submitted_url: str, actor_id: UUID
     ) -> Submission: ...
@@ -379,7 +449,12 @@ class PlacementRepository(Protocol):
     ) -> tuple[Measurement, ...]: ...
 
     def list_measurement_collection_tasks(
-        self, *, project_id: UUID, submission_id: UUID | None, status: str | None
+        self,
+        *,
+        project_id: UUID,
+        campaign_id: UUID,
+        submission_id: UUID | None,
+        status: str | None,
     ) -> tuple[MeasurementCollectionTask, ...]: ...
 
     def complete_measurement_collection_task(

@@ -11,7 +11,27 @@
   "properties": {
     "content_json": {
       "type": "object",
-      "description": "Channel-specific structured content including title, body, disclosure, CTA, links, metadata and submission notes when applicable."
+      "description": "Channel-specific structured content with an explicit frozen publication verification contract.",
+      "required": [
+        "required_disclosures",
+        "expected_links"
+      ],
+      "properties": {
+        "required_disclosures": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "expected_links": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
     },
     "rendered_text": {
       "type": "string"

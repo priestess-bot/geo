@@ -109,7 +109,7 @@ def test_catalog_project_evidence_rls_cross_project_and_rollback() -> None:
             expanded,
             project_id=created_project.id,
             draft=EvidenceDraft(
-                item_type=EvidenceItemType.APPROVED_FACT,
+                item_type=EvidenceItemType.CITATION,
                 source_id=uuid4(),
                 subject_entity_id=entity.id,
                 subject_role=SubjectRole.PRODUCT,

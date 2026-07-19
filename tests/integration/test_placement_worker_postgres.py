@@ -12,9 +12,8 @@ import pytest
 from geo_core.jobs.postgres import PostgresDurableJobStore
 from geo_core.placements.application import PlacementApplication
 from geo_core.placements.artifact_worker import PlacementArtifactRepository
-from geo_core.placements.domain import (
-    ConsumerExperience, PlacementConflict, PlacementRuleViolation,
-)
+from geo_core.placements.default_prompts import default_output_schema
+from geo_core.placements.domain import ConsumerExperience, PlacementConflict, PlacementRuleViolation
 from geo_core.placements.postgres_uow import placement_uow_factory
 from geo_core.placements.ports import GeneratedClaim
 from geo_core.placements.worker_composition import (
@@ -32,11 +31,17 @@ from tests.integration.placement_worker_support import (
     FakeGateway,
     FakeVerifier,
     MemoryArtifactStore,
-    PermanentVerifier,
     RetryableGateway,
     login_url,
     seed_frozen_protocol,
     seed_project,
+)
+from tests.integration.placement_worker_scenarios import (
+    assert_generation_call_log,
+    assert_legacy_publication_contract_rejected,
+    assert_worker_persistence,
+    exercise_artifact_replay_context,
+    exercise_invalid_submission_verification,
 )
 
 
@@ -96,6 +101,7 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
             with pytest.raises(PlacementConflict, match="not allowed from 'blocked'"):
                 application.transition_opportunity(
                     project_id=seeded["project"],
+                    campaign_id=campaign.id,
                     opportunity_id=opportunities[0].id,
                     command="qualify",
                     reason=None,
@@ -129,18 +135,21 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
                 admin.commit()
             application.transition_opportunity(
                 project_id=seeded["project"],
+                campaign_id=campaign.id,
                 opportunity_id=opportunities[0].id,
                 command="reopen",
                 reason="policy approved",
             )
             opportunity = application.transition_opportunity(
                 project_id=seeded["project"],
+                campaign_id=campaign.id,
                 opportunity_id=opportunities[0].id,
                 command="qualify",
                 reason="approved policy and channel fit",
             )
             brief = application.create_brief_version(
                 project_id=seeded["project"],
+                campaign_id=campaign.id,
                 opportunity_id=opportunities[0].id,
                 primary_brand_entity_id=seeded["entity"],
                 goals={"goal": "recommendation"},
@@ -180,6 +189,7 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
                 admin.commit()
             attempt, job = application.create_evidence_attempt(
                 project_id=seeded["project"],
+                campaign_id=campaign.id,
                 brief_version_id=brief.id,
                 idempotency_key=f"evidence-{suffix}-{index:04d}",
             )
@@ -229,12 +239,16 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
             assert result["status"] == "ready"
             assert (
                 application.get_evidence_attempt(
-                    project_id=record["project"], attempt_id=record["attempt"].id
+                    project_id=record["project"],
+                    campaign_id=record["campaign"].id,
+                    attempt_id=record["attempt"].id,
                 ).status
                 == "ready"
             )
             assert application.list_evidence_attempt_items(
-                project_id=record["project"], attempt_id=record["attempt"].id
+                project_id=record["project"],
+                campaign_id=record["campaign"].id,
+                attempt_id=record["attempt"].id,
             )
 
         first = records[0]
@@ -246,30 +260,7 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
             skill_id=skill.id,
             source="Use {{brief}} {{evidence}} {{destination_policy}} and write {{tone}}.",
             actor_id=first["owner"],
-            output_schema={
-                "type": "object",
-                "required": [
-                    "content_json",
-                    "rendered_text",
-                    "claims",
-                    "internal_evidence_refs",
-                    "public_citation_refs",
-                ],
-                "properties": {
-                    "claims": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "required": [
-                                "text",
-                                "kind",
-                                "support_status",
-                                "evidence_item_ids",
-                            ],
-                        },
-                    }
-                },
-            },
+            output_schema=default_output_schema(),
             client_variable_names=("tone",),
             system_template="Use the published integration system voice.",
             user_template=("Use {{brief}} {{evidence}} {{destination_policy}} and write {{tone}}."),
@@ -279,23 +270,76 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
         assert release.user_template.endswith("write {{tone}}.")
         assert release.variable_schema["client_allowed"] == ["tone"]
         assert release.compiler_version == "geo-prompt-compiler-v1"
+        release = application.transition_prompt_release(
+            project_id=first["project"],
+            release_id=release.id,
+            command="approve",
+            expected_state_version=release.state_version,
+            reason="Approve integration Release",
+            actor_id=first["owner"],
+            idempotency_key=f"approve-release-{suffix}",
+        )
         application.select_prompt_release(
             project_id=first["project"],
             task_key="reddit",
             release_id=release.id,
             selected_by=first["owner"],
         )
+        binding = application.bind_opportunity_prompt_release(
+            project_id=first["project"],
+            campaign_id=first["campaign"].id,
+            opportunity_id=first["opportunity"].id,
+            release_id=release.id,
+            expected_binding_version=1,
+            reason="Freeze integration Prompt Release",
+            actor_id=first["owner"],
+            idempotency_key=f"bind-release-{suffix}",
+        )
         bundle = application.create_prompt_bundle(
             project_id=first["project"],
+            campaign_id=first["campaign"].id,
+            opportunity_id=first["opportunity"].id,
             brief_version_id=first["brief"].id,
             evidence_pack_attempt_id=first["attempt"].id,
-            release_id=release.id,
+            prompt_release_binding_id=binding.id,
+            confirmed_release_hash=release.release_hash,
             variables={"tone": "practical"},
             model_policy_hash="f" * 64,
+            idempotency_key=f"bundle-{suffix}",
+            requested_by=first["owner"],
         )
-        with pytest.raises(PlacementRuleViolation, match="not finalized"):
+        replayed_bundle = application.create_prompt_bundle(
+            project_id=first["project"],
+            campaign_id=first["campaign"].id,
+            opportunity_id=first["opportunity"].id,
+            brief_version_id=first["brief"].id,
+            evidence_pack_attempt_id=first["attempt"].id,
+            prompt_release_binding_id=binding.id,
+            confirmed_release_hash=release.release_hash,
+            variables={"tone": "practical"},
+            model_policy_hash="f" * 64,
+            idempotency_key=f"bundle-{suffix}",
+            requested_by=first["owner"],
+        )
+        assert replayed_bundle.id == bundle.id
+        with pytest.raises(PlacementConflict, match="different input"):
+            application.create_prompt_bundle(
+                project_id=first["project"],
+                campaign_id=first["campaign"].id,
+                opportunity_id=first["opportunity"].id,
+                brief_version_id=first["brief"].id,
+                evidence_pack_attempt_id=first["attempt"].id,
+                prompt_release_binding_id=binding.id,
+                confirmed_release_hash=release.release_hash,
+                variables={"tone": "different"},
+                model_policy_hash="f" * 64,
+                idempotency_key=f"bundle-{suffix}",
+                requested_by=first["owner"],
+            )
+        with pytest.raises(PlacementConflict, match="finalized Bundle"):
             application.request_generation(
                 project_id=first["project"],
+                campaign_id=first["campaign"].id,
                 prompt_bundle_id=bundle.id,
                 configured_model="deepseek-v4-flash",
                 model_call_budget=2,
@@ -341,7 +385,9 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
             == "finalized"
         )
         bundle_detail = application.get_prompt_bundle(
-            project_id=first["project"], bundle_id=bundle.id
+            project_id=first["project"],
+            campaign_id=first["campaign"].id,
+            bundle_id=bundle.id,
         )
         assert bundle_detail["artifact_status"] == "finalized"
         assert bundle_detail["manifest"]["template_release_id"] == str(release.id)
@@ -352,6 +398,7 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
         )
         generation = application.request_generation(
             project_id=first["project"],
+            campaign_id=first["campaign"].id,
             prompt_bundle_id=bundle.id,
             configured_model="deepseek-v4-flash",
             model_call_budget=2,
@@ -382,18 +429,16 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
             "role": "system",
             "content": release.system_template,
         }
-        with psycopg.connect(ADMIN_URL) as admin:
-            assert admin.execute(
-                """SELECT array_agg(status ORDER BY created_at)
-                   FROM model_call_logs WHERE project_id = %s AND job_id = %s""",
-                (first["project"], generation.id),
-            ).fetchone()[0] == ["reserved", "succeeded"]
+        assert_generation_call_log(ADMIN_URL, first["project"], generation.id)
         version = application.list_package_versions(
-            project_id=first["project"], opportunity_id=first["opportunity"].id
+            project_id=first["project"],
+            campaign_id=first["campaign"].id,
+            opportunity_id=first["opportunity"].id,
         )[0]
         with pytest.raises(PlacementRuleViolation, match="outside the frozen pack"):
             application.edit_package_version(
                 project_id=first["project"],
+                campaign_id=first["campaign"].id,
                 package_id=version.package_id,
                 base_version_id=version.id,
                 base_content_hash=version.content_hash,
@@ -405,6 +450,7 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
             )
         version = application.edit_package_version(
             project_id=first["project"],
+            campaign_id=first["campaign"].id,
             package_id=version.package_id,
             base_version_id=version.id,
             base_content_hash=version.content_hash,
@@ -421,16 +467,22 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
                 ),
             ),
         )
-        assert application.list_claims(project_id=first["project"], version_id=version.id)[
+        assert application.list_claims(
+            project_id=first["project"],
+            campaign_id=first["campaign"].id,
+            version_id=version.id,
+        )[
             0
         ].evidence_item_ids == (first["evidence_id"],)
         application.submit_for_review(
             project_id=first["project"],
+            campaign_id=first["campaign"].id,
             version_id=version.id,
             submitted_by=first["owner"],
         )
         application.submit_review(
             project_id=first["project"],
+            campaign_id=first["campaign"].id,
             version_id=version.id,
             reviewer_id=first["reviewer"],
             decision="approved",
@@ -440,11 +492,16 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
             notes=None,
         )
         assert (
-            application.list_reviews(project_id=first["project"], version_id=version.id)[0].score
+            application.list_reviews(
+                project_id=first["project"],
+                campaign_id=first["campaign"].id,
+                version_id=version.id,
+            )[0].score
             == 90
         )
         export = application.export_package(
             project_id=first["project"],
+            campaign_id=first["campaign"].id,
             version_id=version.id,
             requested_by=first["owner"],
         )
@@ -469,18 +526,24 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
             == "finalized"
         )
         finalized_export = application.list_exports(
-            project_id=first["project"], version_id=version.id
+            project_id=first["project"],
+            campaign_id=first["campaign"].id,
+            version_id=version.id,
         )[0]
         assert finalized_export.artifact_status == "finalized"
         assert finalized_export.artifact_uri == f"s3://geo-artifacts/{export.storage_key}"
         downloaded = application.download_export(
-            project_id=first["project"], version_id=version.id, export_id=export.id
+            project_id=first["project"],
+            campaign_id=first["campaign"].id,
+            version_id=version.id,
+            export_id=export.id,
         )
         assert downloaded.content_hash == export.content_hash
 
         retrying_gateway = RetryableGateway()
         budget_job = application.request_generation(
             project_id=first["project"],
+            campaign_id=first["campaign"].id,
             prompt_bundle_id=bundle.id,
             configured_model="deepseek-v4-flash",
             model_call_budget=2,
@@ -506,6 +569,7 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
         )
         first_retry = application.retry_job_now(
             project_id=first["project"],
+            campaign_id=first["campaign"].id,
             job_id=budget_job.id,
             actor_id=first["owner"],
             idempotency_key=f"retry-{suffix}-1",
@@ -517,6 +581,7 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
         )
         repeated_retry = application.retry_job_now(
             project_id=first["project"],
+            campaign_id=first["campaign"].id,
             job_id=budget_job.id,
             actor_id=first["owner"],
             idempotency_key=f"retry-{suffix}-1",
@@ -524,6 +589,7 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
         assert repeated_retry.id == budget_job.id
         application.retry_job_now(
             project_id=first["project"],
+            campaign_id=first["campaign"].id,
             job_id=budget_job.id,
             actor_id=first["owner"],
             idempotency_key=f"retry-{suffix}-2",
@@ -535,6 +601,7 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
         assert retrying_gateway.calls == 2
         replay = application.replay_job(
             project_id=first["project"],
+            campaign_id=first["campaign"].id,
             source_job_id=budget_job.id,
             actor_id=first["owner"],
             idempotency_key=f"replay-{suffix}-1",
@@ -543,6 +610,7 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
         assert (
             application.replay_job(
                 project_id=first["project"],
+                campaign_id=first["campaign"].id,
                 source_job_id=budget_job.id,
                 actor_id=first["owner"],
                 idempotency_key=f"replay-{suffix}-1",
@@ -551,6 +619,7 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
         )
         cancel_job = application.request_generation(
             project_id=first["project"],
+            campaign_id=first["campaign"].id,
             prompt_bundle_id=bundle.id,
             configured_model="deepseek-v4-flash",
             model_call_budget=1,
@@ -559,20 +628,37 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
         )
         assert (
             application.cancel_job(
-                project_id=first["project"], job_id=cancel_job.id, actor_id=first["owner"]
+                project_id=first["project"], campaign_id=first["campaign"].id,
+                job_id=cancel_job.id, actor_id=first["owner"]
             ).status
             == "cancelled"
         )
         assert (
             application.cancel_job(
-                project_id=first["project"], job_id=cancel_job.id, actor_id=first["owner"]
+                project_id=first["project"], campaign_id=first["campaign"].id,
+                job_id=cancel_job.id, actor_id=first["owner"]
             ).status
             == "cancelled"
         )
-        assert application.list_job_events(project_id=first["project"], job_id=budget_job.id)
+        assert application.list_job_events(
+            project_id=first["project"],
+            campaign_id=first["campaign"].id,
+            job_id=budget_job.id,
+        )
 
+        assert_legacy_publication_contract_rejected(
+            application,
+            admin_url=ADMIN_URL,
+            project_id=first["project"],
+            campaign_id=first["campaign"].id,
+            version_id=version.id,
+            destination_id=first["destination"].id,
+            owner_id=first["owner"],
+            suffix=suffix,
+        )
         publication = application.request_publication(
             project_id=first["project"],
+            campaign_id=first["campaign"].id,
             version_id=version.id,
             destination_id=first["destination"].id,
             requested_by=first["owner"],
@@ -583,6 +669,7 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
         )
         submission = application.create_submission(
             project_id=first["project"],
+            campaign_id=first["campaign"].id,
             publication_request_id=publication.id,
             submitted_url="https://reddit.com/post",
             provider_submission_id=None,
@@ -590,6 +677,7 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
         )
         verification = application.request_verification(
             project_id=first["project"],
+            campaign_id=first["campaign"].id,
             submission_id=submission.id,
             idempotency_key=f"verification-{suffix}-0001",
         )
@@ -614,89 +702,37 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
         )
         assert (
             application.list_publication_requests(
-                project_id=first["project"], version_id=version.id
+                project_id=first["project"],
+                campaign_id=first["campaign"].id,
+                version_id=version.id,
             )[0].id
             == publication.id
         )
         assert (
             application.list_submissions(
-                project_id=first["project"], publication_request_id=publication.id
+                project_id=first["project"],
+                campaign_id=first["campaign"].id,
+                publication_request_id=publication.id,
             )[0].status
             == "verified"
         )
         verified_submission = application.get_submission(
-            project_id=first["project"], submission_id=submission.id
+            project_id=first["project"],
+            campaign_id=first["campaign"].id,
+            submission_id=submission.id,
         )
         assert verified_submission.verification_result["content_match"] is True
 
-        second_publication = application.request_publication(
+        invalid_job = exercise_invalid_submission_verification(
+            application,
+            store,
+            repository,
             project_id=first["project"],
+            campaign_id=first["campaign"].id,
             version_id=version.id,
             destination_id=first["destination"].id,
-            requested_by=first["owner"],
-            publication_attempt=2,
-            idempotency_key=f"publication-{suffix}-0002",
-            restricted_policy_acknowledged=False,
-            policy_basis=None,
-        )
-        with pytest.raises(PlacementRuleViolation, match="destination HTTPS host"):
-            application.create_submission(
-                project_id=first["project"],
-                publication_request_id=second_publication.id,
-                submitted_url="https://attacker.example/post",
-                provider_submission_id=None,
-                idempotency_key=f"submission-{suffix}-invalid-host", submitted_by=first["owner"],
-            )
-        invalid_submission = application.create_submission(
-            project_id=first["project"],
-            publication_request_id=second_publication.id,
-            submitted_url=None,
-            provider_submission_id=None,
-            idempotency_key=f"submission-{suffix}-0002", submitted_by=first["owner"],
-        )
-        with pytest.raises(PlacementRuleViolation, match="destination HTTPS host"):
-            application.backfill_submission_url(
-                project_id=first["project"],
-                submission_id=invalid_submission.id,
-                submitted_url="https://attacker.example/post",
-                actor_id=first["owner"],
-            )
-        invalid_submission = application.backfill_submission_url(
-            project_id=first["project"],
-            submission_id=invalid_submission.id,
-            submitted_url="https://reddit.com/missing-post",
-            actor_id=first["owner"],
-        )
-        assert (
-            application.backfill_submission_url(
-                project_id=first["project"],
-                submission_id=invalid_submission.id,
-                submitted_url="https://reddit.com/missing-post",
-                actor_id=first["owner"],
-            ).submitted_url
-            == invalid_submission.submitted_url
-        )
-        invalid_job = application.request_verification(
-            project_id=first["project"],
-            submission_id=invalid_submission.id,
-            idempotency_key=f"verification-{suffix}-0002",
-        )
-        invalid_dispatcher = PlacementWorkerDispatcher(
-            store=store,
-            handlers={
-                "publication.verify": PublicationVerificationHandler(
-                    store=store,
-                    repository=repository,
-                    verifier=PermanentVerifier(),
-                    lease_for=timedelta(seconds=30),
-                )
-            },
-            worker_id="integration-invalid-url",
-            lease_for=timedelta(seconds=30),
-        )
-        assert (
-            invalid_dispatcher.process(job_id=invalid_job.id, project_id=first["project"])["status"]
-            == "failed"
+            owner_id=first["owner"],
+            suffix=suffix,
         )
 
         with psycopg.connect(ADMIN_URL) as admin:
@@ -722,70 +758,25 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
             job_id=measurement_job_id, project_id=first["project"]
         )
         assert measurement_result["status"] == "awaiting_manual_samples"
-        with psycopg.connect(ADMIN_URL) as admin:
-            assert (
-                admin.execute(
-                    """SELECT count(*) FROM durable_job_events
-                   WHERE project_id = %s AND job_id = %s
-                     AND event_type = 'lease_reclaimed'""",
-                    (first["project"], first["evidence_job"].id),
-                ).fetchone()[0]
-                >= 1
-            )
-            assert (
-                admin.execute(
-                    """SELECT count(*) FROM measurement_job_specs
-                       WHERE project_id = %s AND submission_id = %s""",
-                    (first["project"], submission.id),
-                ).fetchone()[0]
-                == 3
-            )
-            assert (
-                admin.execute(
-                    """SELECT count(*) FROM placement_measurements
-                   WHERE project_id = %s AND submission_id = %s""",
-                    (first["project"], submission.id),
-                ).fetchone()[0]
-                == 0
-            )
-            assert (
-                admin.execute(
-                    """SELECT count(*) FROM model_call_logs
-                   WHERE project_id = %s AND job_id = %s AND status = 'reserved'""",
-                    (first["project"], budget_job.id),
-                ).fetchone()[0]
-                == 2
-            )
-            assert (
-                admin.execute(
-                    """SELECT count(*) FROM model_call_logs
-                   WHERE project_id = %s AND job_id = %s AND status = 'failed'
-                     AND error_classification = 'retryable'""",
-                    (first["project"], budget_job.id),
-                ).fetchone()[0]
-                == 2
-            )
-            replay_lineage = admin.execute(
-                """SELECT j.parent_job_id, s.prompt_bundle_id,
-                          EXISTS (SELECT 1 FROM broker_outbox o
-                                  WHERE o.project_id = j.project_id AND o.job_id = j.id)
-                   FROM durable_jobs j JOIN generation_job_specs s
-                     ON s.job_id = j.id AND s.project_id = j.project_id
-                   WHERE j.id = %s AND j.project_id = %s""",
-                (replay.id, first["project"]),
-            ).fetchone()
-            assert replay_lineage == (budget_job.id, bundle.id, True)
-            invalid_state = admin.execute(
-                """SELECT j.status, s.status, r.status, s.verification_result
-                   FROM durable_jobs j
-                   JOIN verification_job_specs spec ON spec.job_id = j.id
-                   JOIN publication_submissions s ON s.id = spec.submission_id
-                   JOIN publication_requests r ON r.id = s.publication_request_id
-                   WHERE j.id = %s AND j.project_id = %s""",
-                (invalid_job.id, first["project"]),
-            ).fetchone()
-            assert invalid_state[:3] == ("failed", "failed", "failed")
-            assert invalid_state[3]["accessibility"] is False
+        exercise_artifact_replay_context(
+            application,
+            admin_url=ADMIN_URL,
+            project_id=first["project"],
+            campaign_id=first["campaign"].id,
+            owner_id=first["owner"],
+            artifact_job_id=bundle_artifact_job,
+            suffix=suffix,
+        )
+        assert_worker_persistence(
+            admin_url=ADMIN_URL,
+            project_id=first["project"],
+            evidence_job_id=first["evidence_job"].id,
+            submission_id=submission.id,
+            budget_job_id=budget_job.id,
+            replay_job_id=replay.id,
+            bundle_id=bundle.id,
+            invalid_job_id=invalid_job.id,
+        )
     finally:
         with psycopg.connect(ADMIN_URL) as admin:
             cleanup_projects(

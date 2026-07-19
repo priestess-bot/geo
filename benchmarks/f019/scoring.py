@@ -25,7 +25,9 @@ def _normal(value: str) -> str:
     return re.sub(r"[^0-9a-z\u3400-\u9fff]+", "", value.casefold())
 
 
-def _precision_recall(predicted: set[tuple[Any, ...]], gold: set[tuple[Any, ...]]) -> tuple[float, float]:
+def _precision_recall(
+    predicted: set[tuple[Any, ...]], gold: set[tuple[Any, ...]]
+) -> tuple[float, float]:
     true_positive = len(predicted & gold)
     precision = true_positive / len(predicted) if predicted else 0.0
     recall = true_positive / len(gold) if gold else 0.0
@@ -95,7 +97,8 @@ def _project_leakage_count(
             for document_id in question.source_document_ids
         )
         violations += any(
-            fact_projects.get(fact_id) != question.project_id for fact_id in question.source_fact_ids
+            fact_projects.get(fact_id) != question.project_id
+            for fact_id in question.source_fact_ids
         )
     for simulation in artifacts.simulations:
         violations += any(
@@ -139,7 +142,9 @@ def _incremental_audit(
 
     referenced_documents: list[tuple[str, str]] = []
     referenced_documents.extend((item.source_document_id, item.project_id) for item in delta.facts)
-    referenced_documents.extend((item.source_document_id, item.project_id) for item in delta.relations)
+    referenced_documents.extend(
+        (item.source_document_id, item.project_id) for item in delta.relations
+    )
     for entity in delta.entities:
         referenced_documents.extend(
             (document_id, entity.project_id) for document_id in entity.source_document_ids
@@ -197,15 +202,12 @@ def score_candidate(run: CandidateRun, dataset: BenchmarkDataset) -> dict[str, A
     artifacts = run.base
     gold = dataset.gold
     gold_fact_ids = {
-        (item["project_id"], _normal(item["text"]), item["source_document_id"]): item[
-            "gold_id"
-        ]
+        (item["project_id"], _normal(item["text"]), item["source_document_id"]): item["gold_id"]
         for item in gold["facts"]
     }
     gold_facts = set(gold_fact_ids)
     predicted_facts = {
-        (item.project_id, _normal(item.text), item.source_document_id)
-        for item in artifacts.facts
+        (item.project_id, _normal(item.text), item.source_document_id) for item in artifacts.facts
     }
     fact_precision, fact_recall = _precision_recall(predicted_facts, gold_facts)
 
@@ -271,16 +273,13 @@ def score_candidate(run: CandidateRun, dataset: BenchmarkDataset) -> dict[str, A
             grounded_questions.append(question)
     unsupported_question_rate = (
         round(
-            (len(artifacts.questions) - len(grounded_questions))
-            / len(artifacts.questions),
+            (len(artifacts.questions) - len(grounded_questions)) / len(artifacts.questions),
             12,
         )
         if artifacts.questions
         else 1.0
     )
-    gold_dimensions = {
-        (item["project_id"], item["dimension_key"]) for item in gold["questions"]
-    }
+    gold_dimensions = {(item["project_id"], item["dimension_key"]) for item in gold["questions"]}
     covered_dimensions = {
         (item.project_id, item.dimension_key) for item in grounded_questions
     } & gold_dimensions

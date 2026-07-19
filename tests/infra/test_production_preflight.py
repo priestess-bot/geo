@@ -130,6 +130,34 @@ def test_preflight_rejects_missing_empty_and_overbroad_secret_files(tmp_path: Pa
     assert ("SECRET_FILE_PERMISSIONS", permission_field) in _issue_pairs(env_path)
 
 
+@pytest.mark.parametrize("content", (b"   ", b"\n\r\n\t"))
+def test_preflight_rejects_whitespace_only_secret_without_rendering_it(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    content: bytes,
+) -> None:
+    values = _valid_environment(tmp_path)
+    field = "GEO_DEEPSEEK_API_KEY_FILE"
+    Path(values[field]).write_bytes(content)
+    env_path = tmp_path / "production.env"
+    _write_environment(env_path, values)
+
+    assert main(["--env-file", str(env_path)]) == 2
+    output = capsys.readouterr().out
+    assert f"ERROR code=SECRET_FILE_EMPTY field={field}" in output
+    assert repr(content) not in output
+
+
+def test_preflight_reads_secret_files_with_a_fixed_upper_bound(tmp_path: Path) -> None:
+    values = _valid_environment(tmp_path)
+    field = "GEO_DEEPSEEK_API_KEY_FILE"
+    Path(values[field]).write_bytes(b"x" * 65_537)
+    env_path = tmp_path / "production.env"
+    _write_environment(env_path, values)
+
+    assert ("SECRET_FILE_TOO_LARGE", field) in _issue_pairs(env_path)
+
+
 def test_preflight_rejects_missing_required_configuration(tmp_path: Path) -> None:
     values = _valid_environment(tmp_path)
     del values["GEO_JWT_AUDIENCE"]

@@ -21,6 +21,7 @@ from geo_api.placement_contracts import (
     PromptBundleDetail,
     PromptBundleView,
     PromptReleaseCreate,
+    PromptReleaseTransition,
     PromptReleaseView,
     PromptSkillCreate,
     PromptSkillView,
@@ -35,6 +36,7 @@ from geo_api.placement_routes_shared import IdempotencyHeader, placement_service
 from geo_api.problems import ApiProblem
 from geo_api.stable_routes import PROBLEM_RESPONSES
 from geo_core.placements.ports import GeneratedClaim
+from geo_core.placements.domain import CampaignContextMismatch
 
 
 def generation_router() -> APIRouter:
@@ -52,6 +54,7 @@ def generation_router() -> APIRouter:
     )
     def create_evidence_attempt(
         project_id: UUID,
+        campaign_id: UUID,
         brief_version_id: UUID,
         request: Request,
         idempotency_key: IdempotencyHeader,
@@ -60,6 +63,7 @@ def generation_router() -> APIRouter:
         del principal
         attempt, job = placement_services(request).create_evidence_attempt(
             project_id=project_id,
+            campaign_id=campaign_id,
             brief_version_id=brief_version_id,
             idempotency_key=idempotency_key,
         )
@@ -67,7 +71,10 @@ def generation_router() -> APIRouter:
             resource=EvidenceAttemptView.model_validate(attempt),
             job_id=job.id,
             status=JobState(job.status),
-            status_url=f"/v1/jobs/{job.id}",
+            status_url=(
+                f"/v1/projects/{project_id}/geo/jobs/{job.id}/events"
+                f"?campaign_id={campaign_id}"
+            ),
         )
 
     @router.get(
@@ -77,13 +84,16 @@ def generation_router() -> APIRouter:
     )
     def list_evidence_attempts(
         project_id: UUID,
+        campaign_id: UUID,
         brief_version_id: UUID,
         request: Request,
         principal: PlacementViewer,
     ) -> tuple[object, ...]:
         del principal
         return placement_services(request).list_evidence_attempts(
-            project_id=project_id, brief_version_id=brief_version_id
+            project_id=project_id,
+            campaign_id=campaign_id,
+            brief_version_id=brief_version_id,
         )
 
     @router.get(
@@ -92,11 +102,15 @@ def generation_router() -> APIRouter:
         operation_id="getPlacementEvidencePackAttempt",
     )
     def get_evidence_attempt(
-        project_id: UUID, attempt_id: UUID, request: Request, principal: PlacementViewer
+        project_id: UUID,
+        campaign_id: UUID,
+        attempt_id: UUID,
+        request: Request,
+        principal: PlacementViewer,
     ) -> object:
         del principal
         attempt = placement_services(request).get_evidence_attempt(
-            project_id=project_id, attempt_id=attempt_id
+            project_id=project_id, campaign_id=campaign_id, attempt_id=attempt_id
         )
         if attempt is None:
             raise ApiProblem(status=404, title="Not Found", detail="Evidence attempt not found.")
@@ -108,11 +122,15 @@ def generation_router() -> APIRouter:
         operation_id="listPlacementEvidencePackItems",
     )
     def list_evidence_items(
-        project_id: UUID, attempt_id: UUID, request: Request, principal: PlacementViewer
+        project_id: UUID,
+        campaign_id: UUID,
+        attempt_id: UUID,
+        request: Request,
+        principal: PlacementViewer,
     ) -> tuple[object, ...]:
         del principal
         return placement_services(request).list_evidence_attempt_items(
-            project_id=project_id, attempt_id=attempt_id
+            project_id=project_id, campaign_id=campaign_id, attempt_id=attempt_id
         )
 
     @router.post(
@@ -181,6 +199,30 @@ def generation_router() -> APIRouter:
         )
 
     @router.post(
+        "/prompt-releases/{release_id}/transitions/{command}",
+        response_model=PromptReleaseView,
+        operation_id="transitionPlacementPromptRelease",
+    )
+    def transition_release(
+        project_id: UUID,
+        release_id: UUID,
+        command: Literal["approve", "revoke"],
+        payload: PromptReleaseTransition,
+        request: Request,
+        idempotency_key: IdempotencyHeader,
+        principal: PlacementApprover,
+    ) -> object:
+        return placement_services(request).transition_prompt_release(
+            project_id=project_id,
+            release_id=release_id,
+            command=command,
+            expected_state_version=payload.expected_state_version,
+            reason=payload.reason,
+            actor_id=principal.identity_id,
+            idempotency_key=idempotency_key,
+        )
+
+    @router.post(
         "/brief-versions/{brief_version_id}/prompt-bundles",
         response_model=PromptBundleView,
         status_code=status.HTTP_201_CREATED,
@@ -188,19 +230,29 @@ def generation_router() -> APIRouter:
     )
     def create_bundle(
         project_id: UUID,
+        campaign_id: UUID,
         brief_version_id: UUID,
         payload: PromptBundleCreate,
         request: Request,
+        idempotency_key: IdempotencyHeader,
         principal: PlacementEditor,
     ) -> object:
-        del principal
+        if payload.campaign_id != campaign_id:
+            raise CampaignContextMismatch(
+                "Prompt Bundle body Campaign does not match the requested Campaign"
+            )
         return placement_services(request).create_prompt_bundle(
             project_id=project_id,
+            campaign_id=campaign_id,
+            opportunity_id=payload.opportunity_id,
             brief_version_id=brief_version_id,
             evidence_pack_attempt_id=payload.evidence_pack_attempt_id,
-            release_id=payload.template_release_id,
+            prompt_release_binding_id=payload.prompt_release_binding_id,
+            confirmed_release_hash=payload.confirmed_release_hash,
             variables=payload.variables,
             model_policy_hash=payload.model_policy_hash,
+            idempotency_key=idempotency_key,
+            requested_by=principal.identity_id,
         )
 
     @router.get(
@@ -210,13 +262,16 @@ def generation_router() -> APIRouter:
     )
     def list_bundles(
         project_id: UUID,
+        campaign_id: UUID,
         brief_version_id: UUID,
         request: Request,
         principal: PlacementViewer,
     ) -> tuple[object, ...]:
         del principal
         return placement_services(request).list_prompt_bundles(
-            project_id=project_id, brief_version_id=brief_version_id
+            project_id=project_id,
+            campaign_id=campaign_id,
+            brief_version_id=brief_version_id,
         )
 
     @router.get(
@@ -225,11 +280,15 @@ def generation_router() -> APIRouter:
         operation_id="getPlacementPromptBundle",
     )
     def get_bundle(
-        project_id: UUID, bundle_id: UUID, request: Request, principal: PlacementViewer
+        project_id: UUID,
+        campaign_id: UUID,
+        bundle_id: UUID,
+        request: Request,
+        principal: PlacementViewer,
     ) -> object:
         del principal
         bundle = placement_services(request).get_prompt_bundle(
-            project_id=project_id, bundle_id=bundle_id
+            project_id=project_id, campaign_id=campaign_id, bundle_id=bundle_id
         )
         if bundle is None:
             raise ApiProblem(status=404, title="Not Found", detail="Prompt bundle not found.")
@@ -295,6 +354,7 @@ def generation_router() -> APIRouter:
     )
     def request_generation(
         project_id: UUID,
+        campaign_id: UUID,
         prompt_bundle_id: UUID,
         payload: GenerationCreate,
         request: Request,
@@ -303,6 +363,7 @@ def generation_router() -> APIRouter:
     ) -> JobAccepted:
         job = placement_services(request).request_generation(
             project_id=project_id,
+            campaign_id=campaign_id,
             prompt_bundle_id=prompt_bundle_id,
             configured_model=payload.configured_model,
             model_call_budget=payload.model_call_budget,
@@ -312,7 +373,10 @@ def generation_router() -> APIRouter:
         return JobAccepted(
             job_id=job.id,
             status=JobState(job.status),
-            status_url=f"/v1/jobs/{job.id}",
+            status_url=(
+                f"/v1/projects/{project_id}/geo/jobs/{job.id}/events"
+                f"?campaign_id={campaign_id}"
+            ),
         )
 
     @router.get(
@@ -322,13 +386,14 @@ def generation_router() -> APIRouter:
     )
     def list_versions(
         project_id: UUID,
+        campaign_id: UUID,
         opportunity_id: UUID,
         request: Request,
         principal: PlacementViewer,
     ) -> tuple[object, ...]:
         del principal
         return placement_services(request).list_package_versions(
-            project_id=project_id, opportunity_id=opportunity_id
+            project_id=project_id, campaign_id=campaign_id, opportunity_id=opportunity_id
         )
 
     @router.get(
@@ -337,11 +402,15 @@ def generation_router() -> APIRouter:
         operation_id="getPlacementPackageVersion",
     )
     def get_version(
-        project_id: UUID, version_id: UUID, request: Request, principal: PlacementViewer
+        project_id: UUID,
+        campaign_id: UUID,
+        version_id: UUID,
+        request: Request,
+        principal: PlacementViewer,
     ) -> object:
         del principal
         version = placement_services(request).get_package_version(
-            project_id=project_id, version_id=version_id
+            project_id=project_id, campaign_id=campaign_id, version_id=version_id
         )
         if version is None:
             raise ApiProblem(
@@ -357,6 +426,7 @@ def generation_router() -> APIRouter:
     )
     def edit_version(
         project_id: UUID,
+        campaign_id: UUID,
         package_id: UUID,
         payload: PackageEdit,
         request: Request,
@@ -364,6 +434,7 @@ def generation_router() -> APIRouter:
     ) -> object:
         return placement_services(request).edit_package_version(
             project_id=project_id,
+            campaign_id=campaign_id,
             package_id=package_id,
             base_version_id=payload.base_version_id,
             base_content_hash=payload.base_content_hash,
@@ -388,10 +459,16 @@ def generation_router() -> APIRouter:
         operation_id="listPlacementClaims",
     )
     def list_claims(
-        project_id: UUID, version_id: UUID, request: Request, principal: PlacementViewer
+        project_id: UUID,
+        campaign_id: UUID,
+        version_id: UUID,
+        request: Request,
+        principal: PlacementViewer,
     ) -> tuple[object, ...]:
         del principal
-        return placement_services(request).list_claims(project_id=project_id, version_id=version_id)
+        return placement_services(request).list_claims(
+            project_id=project_id, campaign_id=campaign_id, version_id=version_id
+        )
 
     @router.post(
         "/package-versions/{version_id}/submit-review",
@@ -400,10 +477,15 @@ def generation_router() -> APIRouter:
         operation_id="submitPlacementPackageVersionForReview",
     )
     def submit_for_review(
-        project_id: UUID, version_id: UUID, request: Request, principal: PlacementEditor
+        project_id: UUID,
+        campaign_id: UUID,
+        version_id: UUID,
+        request: Request,
+        principal: PlacementEditor,
     ) -> object:
         return placement_services(request).submit_for_review(
             project_id=project_id,
+            campaign_id=campaign_id,
             version_id=version_id,
             submitted_by=principal.identity_id,
         )
@@ -416,6 +498,7 @@ def generation_router() -> APIRouter:
     )
     def submit_review(
         project_id: UUID,
+        campaign_id: UUID,
         version_id: UUID,
         payload: ReviewCreate,
         request: Request,
@@ -423,6 +506,7 @@ def generation_router() -> APIRouter:
     ) -> object:
         return placement_services(request).submit_review(
             project_id=project_id,
+            campaign_id=campaign_id,
             version_id=version_id,
             reviewer_id=principal.identity_id,
             **payload.model_dump(),
@@ -434,11 +518,15 @@ def generation_router() -> APIRouter:
         operation_id="listPlacementPackageReviews",
     )
     def list_reviews(
-        project_id: UUID, version_id: UUID, request: Request, principal: PlacementViewer
+        project_id: UUID,
+        campaign_id: UUID,
+        version_id: UUID,
+        request: Request,
+        principal: PlacementViewer,
     ) -> tuple[object, ...]:
         del principal
         return placement_services(request).list_reviews(
-            project_id=project_id, version_id=version_id
+            project_id=project_id, campaign_id=campaign_id, version_id=version_id
         )
 
     @router.post(
@@ -448,10 +536,15 @@ def generation_router() -> APIRouter:
         operation_id="exportPlacementPackageVersion",
     )
     def export_package(
-        project_id: UUID, version_id: UUID, request: Request, principal: PlacementEditor
+        project_id: UUID,
+        campaign_id: UUID,
+        version_id: UUID,
+        request: Request,
+        principal: PlacementEditor,
     ) -> object:
         return placement_services(request).export_package(
             project_id=project_id,
+            campaign_id=campaign_id,
             version_id=version_id,
             requested_by=principal.identity_id,
         )
@@ -462,11 +555,15 @@ def generation_router() -> APIRouter:
         operation_id="listPlacementPackageExports",
     )
     def list_exports(
-        project_id: UUID, version_id: UUID, request: Request, principal: PlacementViewer
+        project_id: UUID,
+        campaign_id: UUID,
+        version_id: UUID,
+        request: Request,
+        principal: PlacementViewer,
     ) -> tuple[object, ...]:
         del principal
         return placement_services(request).list_exports(
-            project_id=project_id, version_id=version_id
+            project_id=project_id, campaign_id=campaign_id, version_id=version_id
         )
 
     @router.get(
@@ -476,6 +573,7 @@ def generation_router() -> APIRouter:
     )
     def download_export(
         project_id: UUID,
+        campaign_id: UUID,
         version_id: UUID,
         export_id: UUID,
         request: Request,
@@ -483,7 +581,10 @@ def generation_router() -> APIRouter:
     ) -> Response:
         del principal
         artifact = placement_services(request).download_export(
-            project_id=project_id, version_id=version_id, export_id=export_id
+            project_id=project_id,
+            campaign_id=campaign_id,
+            version_id=version_id,
+            export_id=export_id,
         )
         return Response(
             content=artifact.content,

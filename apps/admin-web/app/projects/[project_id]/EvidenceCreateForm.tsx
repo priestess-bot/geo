@@ -6,7 +6,7 @@ import { createEvidenceAction } from "./catalogActions";
 import { CatalogActionFeedback } from "./CatalogActionFeedback";
 import {
   confidentialityValues,
-  evidenceItemTypes,
+  genericEvidenceItemTypes,
   initialCatalogActionState,
   subjectRoles,
   usageRightsValues,
@@ -35,8 +35,8 @@ export function EvidenceCreateForm({
       <div className={styles.formGrid}>
         <label>
           <span>证据类型</span>
-          <select name="item_type" defaultValue="approved_fact">
-            {evidenceItemTypes.map((type) => <option key={type} value={type}>{evidenceTypeLabel(type)}</option>)}
+          <select name="item_type" defaultValue="citation">
+            {genericEvidenceItemTypes.map((type) => <option key={type} value={type}>{evidenceTypeLabel(type)}</option>)}
           </select>
         </label>
         <label>
@@ -115,7 +115,6 @@ export function EvidenceCreateForm({
 }
 
 function evidenceTypeLabel(type: string): string {
-  if (type === "approved_fact") return "已批准事实";
   if (type === "consumer_experience") return "真实消费者使用描述";
   if (type === "report_extract") return "报告节选";
   if (type === "source_asset") return "来源资产";

@@ -14,9 +14,15 @@ process.env.no_proxy = noProxy;
 
 const configuredAdminBaseUrl = process.env.PLAYWRIGHT_ADMIN_BASE_URL?.trim();
 const adminBaseUrl = configuredAdminBaseUrl || "http://127.0.0.1:3100";
+const fixtureApiBaseUrl = process.env.PLAYWRIGHT_FIXTURE_API_URL?.trim()
+  || "http://127.0.0.1:3199";
+const fixtureApiPort = new URL(fixtureApiBaseUrl).port || "3199";
+const nextDistDir = process.env.PLAYWRIGHT_NEXT_DIST_DIR?.trim()
+  || ".next-playwright";
 
 export default defineConfig({
   testDir: "./tests/browser",
+  testIgnore: "customer-geo-portal.spec.ts",
   outputDir: process.env.PLAYWRIGHT_OUTPUT_DIR
     || path.join(os.tmpdir(), `geo-playwright-output-${process.pid}`),
   fullyParallel: false,
@@ -46,10 +52,18 @@ export default defineConfig({
   ],
   webServer: configuredAdminBaseUrl
     ? undefined
-    : {
-        command: "corepack pnpm --filter geo-production-admin-web exec next dev -H 127.0.0.1 -p 3100",
-        url: adminBaseUrl,
-        reuseExistingServer: false,
-        timeout: 120_000
-      }
+    : [
+        {
+          command: `GEO_BROWSER_FIXTURE_PORT=${fixtureApiPort} node tests/browser/fixtures/admin-geo-api.mjs`,
+          url: `${fixtureApiBaseUrl}/health`,
+          reuseExistingServer: false,
+          timeout: 30_000
+        },
+        {
+          command: `NEXT_DIST_DIR=${nextDistDir} API_INTERNAL_BASE_URL=${fixtureApiBaseUrl} GEO_AUTH_MODE=development corepack pnpm --filter geo-production-admin-web exec next dev -H 127.0.0.1 -p 3100`,
+          url: adminBaseUrl,
+          reuseExistingServer: false,
+          timeout: 120_000
+        }
+      ]
 });

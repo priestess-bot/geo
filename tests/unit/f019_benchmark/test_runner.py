@@ -68,8 +68,8 @@ def test_installed_framework_without_executor_is_still_unavailable(monkeypatch) 
     report = run_candidate(llamaindex_adapter())
 
     assert report["status"] == "unavailable"
-    assert report["candidate"]["framework_version"] == "pinned-test"
-    assert report["candidate"]["unavailable_reason"] == "isolated_executor_not_configured"
+    assert report["candidate"]["framework_version"] == "llama-index-core-pinned-test"
+    assert report["candidate"]["unavailable_reason"] == "model_invoker_not_configured"
     assert report["quality_score"] is None
 
 

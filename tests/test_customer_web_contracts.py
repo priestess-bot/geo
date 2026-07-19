@@ -24,14 +24,20 @@ def test_customer_web_uses_only_stable_read_only_geo_resources() -> None:
     assert "GEO_SESSION_COOKIE" in runtime
     for method in (
         "listProjects",
+        "listGeoCampaigns",
+        "getGeoCampaignReadModel",
+    ):
+        assert method in runtime
+        assert method in client
+    for compatibility_method in (
         "getGeoSummary",
         "listGeoMetrics",
         "listMeasurementWindows",
         "listVerifiedUrls",
         "listApprovedReports",
     ):
-        assert method in runtime
-        assert method in client
+        assert compatibility_method in client
+        assert compatibility_method not in runtime
     for stable_path in (
         '"/v1/projects"',
         '"summary"',
@@ -41,6 +47,8 @@ def test_customer_web_uses_only_stable_read_only_geo_resources() -> None:
         '"reports"',
     ):
         assert stable_path in client
+    assert "/geo/campaigns" in client
+    assert "/read-model" in client
 
     assert "CustomerProblemDetails" in runtime
     assert "CustomerProblemDetails" in types
@@ -51,7 +59,7 @@ def test_customer_web_uses_only_stable_read_only_geo_resources() -> None:
     assert "PlacementsView" in module
     assert "ReportsView" in module
     assert "已批准报告" in views
-    assert "未验证地址不会在此显示" in views
+    assert "暂无验证通过的公开投放 URL" in views
     assert "Record<string, unknown>" not in types
     assert "JSON.stringify" not in module
     assert "<pre>" not in module
@@ -80,14 +88,14 @@ def test_customer_web_uses_only_stable_read_only_geo_resources() -> None:
 
 
 def test_customer_pages_cover_auth_empty_partial_failure_and_loading_states() -> None:
-    home = read("apps/customer-web/app/page.tsx")
     runtime = read("apps/customer-web/app/runtime.ts")
+    module = read("apps/customer-web/app/portal/[module]/page.tsx")
     views = read("apps/customer-web/app/_components/GeoViews.tsx")
     loading = read("apps/customer-web/app/loading.tsx")
 
     assert 'identity.problem.status === 401' in runtime
     assert 'problem.status === 403' in views
-    assert "resourceProblems(model)" in home
+    assert "resourceProblems(model)" in module
     assert "Promise.all" in runtime
     assert "暂无验证通过的公开投放 URL" in views
     assert "暂无已批准报告" in views

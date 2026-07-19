@@ -45,7 +45,19 @@ class _VisibleTextParser(HTMLParser):
         normalized = tag.lower()
         if normalized in {"script", "style", "noscript", "svg", "template"}:
             self._hidden_depth += 1
-        elif normalized in {"p", "div", "section", "article", "li", "br", "h1", "h2", "h3", "h4", "tr"}:
+        elif normalized in {
+            "p",
+            "div",
+            "section",
+            "article",
+            "li",
+            "br",
+            "h1",
+            "h2",
+            "h3",
+            "h4",
+            "tr",
+        }:
             self.parts.append("\n")
 
     def handle_endtag(self, tag: str) -> None:
@@ -128,17 +140,17 @@ def chunk_text(text: str, *, target_chars: int = 1200) -> tuple[ChunkDraft, ...]
 
 def extract_fact_candidates(chunks: tuple[ChunkDraft, ...]) -> tuple[FactDraft, ...]:
     result: list[FactDraft] = []
-    seen: set[str] = set()
+    seen_normalized: set[str] = set()
     for chunk_index, chunk in enumerate(chunks):
         for sentence in _SENTENCE.split(chunk.text.replace("\n", " ")):
             statement = sentence.strip()
             if not 45 <= len(statement) <= 500 or not re.search(r"[A-Za-z]", statement):
                 continue
-            digest = _sha(statement.lower())
-            if digest in seen:
+            normalized_hash = _sha(statement.casefold())
+            if normalized_hash in seen_normalized:
                 continue
-            seen.add(digest)
-            result.append(FactDraft(chunk_index, statement, digest))
+            seen_normalized.add(normalized_hash)
+            result.append(FactDraft(chunk_index, statement, _sha(statement)))
             if len(result) >= 100:
                 return tuple(result)
     return tuple(result)
@@ -226,7 +238,9 @@ def _fetch_public_url(url: str) -> tuple[bytes, str, str]:
     except KnowledgeProcessingError:
         raise
     except (httpx.TimeoutException, httpx.NetworkError) as exc:
-        raise KnowledgeProcessingError("remote source could not be reached", retryable=True) from exc
+        raise KnowledgeProcessingError(
+            "remote source could not be reached", retryable=True
+        ) from exc
     except httpx.HTTPStatusError as exc:
         retryable = exc.response.status_code >= 500 or exc.response.status_code == 429
         raise KnowledgeProcessingError(
@@ -249,7 +263,9 @@ def _require_public_url(url: str) -> None:
             )
         }
     except socket.gaierror as exc:
-        raise KnowledgeProcessingError("source hostname could not be resolved", retryable=True) from exc
+        raise KnowledgeProcessingError(
+            "source hostname could not be resolved", retryable=True
+        ) from exc
     if not addresses:
         raise KnowledgeProcessingError("source hostname resolved to no addresses")
     for address in addresses:
@@ -277,7 +293,10 @@ def _parse(content: bytes, *, media_type: str, filename: str | None) -> str:
             return "\n\n".join((page.extract_text() or "").strip() for page in pages)
         except Exception as exc:
             raise KnowledgeProcessingError("PDF source could not be parsed") from exc
-    if normalized == "application/vnd.openxmlformats-officedocument.wordprocessingml.document" or suffix == "docx":
+    if (
+        normalized == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        or suffix == "docx"
+    ):
         return _parse_docx(content)
     if normalized.startswith("text/") or suffix in {"txt", "md", "csv", "tsv"}:
         return _decode(content)
@@ -329,7 +348,9 @@ def _split_long(text: str, limit: int) -> list[str]:
             if current:
                 result.append(current)
                 current = ""
-            result.extend(sentence[index : index + limit] for index in range(0, len(sentence), limit))
+            result.extend(
+                sentence[index : index + limit] for index in range(0, len(sentence), limit)
+            )
             continue
         candidate = f"{current} {sentence}".strip()
         if current and len(candidate) > limit:

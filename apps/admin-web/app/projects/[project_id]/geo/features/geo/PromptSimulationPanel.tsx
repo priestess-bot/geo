@@ -19,15 +19,27 @@ export function PromptSimulationPanel({ projectId, data, catalog }: {
   const brands = catalog.entities.data.filter((item) => item.entity_type === "brand");
   const products = catalog.entities.data.filter((item) => item.entity_type === "product");
   const evidence = catalog.evidence.data.filter((item) => item.eligible_for_generation);
-  const destinationReleases = data.destinations.data.flatMap((destination) => data.bindings.data
-    .filter((binding) => binding.task_key === destination.publication_channel)
-    .map((binding) => ({ destination, binding })));
+  const frozenQuestionItems = data.questionSets.data.flatMap((set) => set.status === "frozen"
+    && set.content_hash ? set.items.map((item) => ({ set, item })) : []);
+  const selectedQuestionBinding = simulation?.simulation_purpose === "geo_question_test"
+    && simulation.question_set_id && simulation.question_set_hash && simulation.question_set_item_id
+    ? JSON.stringify({
+      question_set_id: simulation.question_set_id,
+      confirmed_question_set_hash: simulation.question_set_hash,
+      question_set_item_id: simulation.question_set_item_id
+    }) : "";
+  const opportunity = data.opportunities.data.find((item) => item.id === selection.opportunityId);
+  const destination = data.destinations.data.find((item) => item.id === opportunity?.destination_id);
+  const binding = data.promptBinding.data;
   const output = objectValue(simulation?.artifact_manifest?.output);
   const renderedText = stringValue(output?.rendered_text);
   const claims = output?.claims;
-  const canCreate = destinationReleases.length > 0 && brands.length > 0 && products.length > 0 && evidence.length > 0;
+  const canCreate = Boolean(
+    destination && binding?.status === "bound" && binding.template_release_id && binding.release_hash
+    && brands.length > 0 && products.length > 0 && evidence.length > 0
+  );
 
-  return <div className={styles.workspace}>
+  return <div className={styles.workspace} data-testid="prompt-simulation-panel">
     <div className={styles.testBanner} role="status">
       <strong>TEST ONLY</strong>
       <span>允许合成消费者身份与评价 · 不可用于正式审查、导出或发布 · publication_eligible=false</span>
@@ -35,33 +47,51 @@ export function PromptSimulationPanel({ projectId, data, catalog }: {
     <div className={styles.split}>
       <aside className={`${styles.panel} ${styles.sticky}`}>
         <SectionHeader eyebrow="Isolated preview input" title="提示词技术预览" />
-        <ActionForm action={createPromptSimulation} submitLabel="运行 TEST ONLY 预览" disabled={!canCreate}>
+        <ActionForm action={createPromptSimulation} submitLabel="运行 TEST ONLY 预览"
+          disabled={!canCreate} key={simulation?.id || "new-simulation"}>
           <HiddenProject projectId={projectId} />
-          <label>渠道与 Prompt Release
-            <select name="destination_release" required defaultValue={destinationReleases[0]
-              ? `${destinationReleases[0].destination.id}:${destinationReleases[0].binding.template_release_id}` : ""}>
-              {destinationReleases.map(({ destination, binding }) => <option
-                key={`${destination.id}:${binding.template_release_id}`}
-                value={`${destination.id}:${binding.template_release_id}`}>
-                {destination.publication_channel} · {destination.destination_key} · Release {binding.template_release_id.slice(0, 8)}
-              </option>)}
-            </select>
-          </label>
+          <input type="hidden" name="campaign_id" value={selection.campaignId || ""} />
+          <input type="hidden" name="opportunity_id" value={selection.opportunityId || ""} />
+          <input type="hidden" name="prompt_release_binding_id" value={binding?.id || ""} />
+          <input type="hidden" name="destination_id" value={destination?.id || ""} />
+          <input type="hidden" name="confirmed_release_hash" value={binding?.release_hash || ""} />
+          <div className={styles.keyValue}><span>渠道与 Prompt Release</span><strong>{destination
+            ? `${destination.publication_channel} · ${destination.destination_key}` : "未选择"}</strong>
+            <code>{binding?.template_release_id || "unbound"}</code>
+            <code>{binding?.release_hash || "no approved release hash"}</code></div>
           <label>主品牌
-            <select name="primary_brand_entity_id" required defaultValue={brands[0]?.id || ""}>
+            <select name="primary_brand_entity_id" required
+              defaultValue={simulation?.primary_brand_entity_id || ""}><option value="" disabled>选择品牌</option>
               {brands.map((item) => <option key={item.id} value={item.id}>{item.canonical_name}</option>)}
             </select>
           </label>
           <label>产品
-            <select name="product_entity_id" required defaultValue={products[0]?.id || ""}>
+            <select name="product_entity_id" required
+              defaultValue={simulation?.product_entity_id || ""}><option value="" disabled>选择产品</option>
               {products.map((item) => <option key={item.id} value={item.id}>{item.canonical_name}</option>)}
             </select>
           </label>
           <label>模拟身份模式
-            <select name="authenticity_mode" required defaultValue="synthetic_testimonial">
+            <select name="authenticity_mode" required
+              defaultValue={simulation?.authenticity_mode || "synthetic_testimonial"}>
               <option value="synthetic_testimonial">合成消费者评价</option>
               <option value="fake_persona">虚构消费者身份</option>
               <option value="brand_authored">品牌身份</option>
+            </select>
+          </label>
+          <label>仿真用途<select name="simulation_purpose" required
+            defaultValue={simulation?.simulation_purpose || "content_preview"}>
+            <option value="content_preview">文案技术预览</option>
+            <option value="geo_question_test">GEO 问题内部测试</option>
+          </select></label>
+          <label>冻结测试问题
+            <select name="question_binding" defaultValue={selectedQuestionBinding}>
+              <option value="">文案预览不绑定问题</option>
+              {frozenQuestionItems.map(({ set, item }) => <option key={item.id} value={JSON.stringify({
+                question_set_id: set.id,
+                confirmed_question_set_hash: set.content_hash,
+                question_set_item_id: item.id
+              })}>{set.name} v{set.version_number} · {item.query_text_snapshot}</option>)}
             </select>
           </label>
           <label>治理合格证据（可多选）
@@ -86,7 +116,7 @@ export function PromptSimulationPanel({ projectId, data, catalog }: {
             </div>
           </details>
         </ActionForm>
-        {!canCreate ? <Empty>需要至少一个渠道 Prompt 绑定、品牌、产品和可生成证据。</Empty> : null}
+        {!canCreate ? <Empty>当前 Opportunity 缺少可用 Prompt 绑定、品牌、产品或证据。</Empty> : null}
       </aside>
       <div className={styles.workspace}>
         <div className={styles.panel}>
@@ -96,7 +126,7 @@ export function PromptSimulationPanel({ projectId, data, catalog }: {
             className={item.id === selection.simulationId ? styles.selectedRow : styles.row}
             href={geoHref(projectId, selection, { simulation_id: item.id, job_id: item.generation_job_id })}>
             <span className={styles.rowHeader}><strong>TEST ONLY · <ShortId value={item.id} /></strong><Status value={item.generation_status} /></span>
-            <span className={styles.meta}><span>{destinationName(data, item)}</span><span>{item.authenticity_mode}</span><span>{item.configured_model}</span><span>{new Date(item.created_at).toLocaleString("zh-CN")}</span></span>
+            <span className={styles.meta}><span>{destinationName(data, item)}</span><span>{item.simulation_purpose}</span><span>{item.authenticity_mode}</span><span>{item.configured_model}</span><span>{new Date(item.created_at).toLocaleString("zh-CN")}</span></span>
           </Link>)}</div> : <Empty>尚未运行提示词技术预览。</Empty>}</ResourceBlock>
         </div>
         <div className={styles.panel}>
@@ -108,8 +138,17 @@ export function PromptSimulationPanel({ projectId, data, catalog }: {
               <div><span className={styles.meta}>输入 Hash</span><br /><code>{simulation.input_hash.slice(0, 16)}</code></div>
               <div><span className={styles.meta}>输出 Hash</span><br /><code>{simulation.output_hash?.slice(0, 16) || "pending"}</code></div>
               <div><span className={styles.meta}>Job</span><br /><ShortId value={simulation.generation_job_id} /></div>
+              <div><span className={styles.meta}>Prompt binding</span><br /><strong>v{simulation.prompt_release_binding_version}</strong><br /><ShortId value={simulation.prompt_release_binding_id} /></div>
+              <div><span className={styles.meta}>Release</span><br /><strong>v{simulation.release_version}</strong><br /><code>{simulation.release_hash.slice(0, 16)}</code></div>
             </div>
             <p className={styles.meta}>模拟身份：{simulation.authenticity_mode}</p>
+            <div className={styles.testBanner} role="status"><strong>NON-PUBLISHABLE</strong>
+              <span>test_only={String(simulation.test_only)} · publication_eligible={String(simulation.publication_eligible)}</span></div>
+            {simulation.simulation_purpose === "geo_question_test" ? <div className={styles.keyValues}>
+              <div><span>QuestionSet</span><br /><ShortId value={simulation.question_set_id} /></div>
+              <div><span>QuestionSet Hash</span><br /><code>{simulation.question_set_hash?.slice(0, 16)}</code></div>
+              <div><span>问题项</span><br /><ShortId value={simulation.question_set_item_id} /></div>
+            </div> : null}
             {renderedText ? <div className={styles.content}>{renderedText}</div> : <Empty>模型任务完成并 finalize 后显示正文。</Empty>}
             {claims !== undefined ? <details><summary>Claim inventory</summary><pre className={styles.code}>{JSON.stringify(claims, null, 2)}</pre></details> : null}
             {simulation.input_snapshot ? <details><summary>冻结输入快照</summary><pre className={styles.code}>{JSON.stringify(simulation.input_snapshot, null, 2)}</pre></details> : null}

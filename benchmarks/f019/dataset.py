@@ -126,7 +126,9 @@ def validate_dataset(dataset: BenchmarkDataset, base: Path = ROOT) -> None:
     for question in dataset.gold["questions"]:
         support_ids = question.get("supporting_fact_gold_ids", [])
         if not support_ids:
-            raise DatasetValidationError(f"gold question has no supporting fact: {question['gold_id']}")
+            raise DatasetValidationError(
+                f"gold question has no supporting fact: {question['gold_id']}"
+            )
         if any(fact_projects.get(fact_id) != question["project_id"] for fact_id in support_ids):
             raise DatasetValidationError(
                 f"gold question support crosses project boundary: {question['gold_id']}"
@@ -136,7 +138,9 @@ def validate_dataset(dataset: BenchmarkDataset, base: Path = ROOT) -> None:
     for operation in dataset.delta_operations:
         key = (operation.project_id, operation.document_id)
         if operation.operation in {"reimport", "update", "delete"} and key not in document_keys:
-            raise DatasetValidationError(f"delta targets missing document: {operation.operation_id}")
+            raise DatasetValidationError(
+                f"delta targets missing document: {operation.operation_id}"
+            )
         if operation.operation in {"add", "update"} and operation.document is None:
             raise DatasetValidationError(f"delta replacement is required: {operation.operation_id}")
         if operation.document and operation.document.project_id != operation.project_id:

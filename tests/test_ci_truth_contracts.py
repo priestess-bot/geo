@@ -16,6 +16,7 @@ REQUIRED_INTEGRATION_ENV = (
     "GEO_ACCEPTANCE_TEST_ISOLATION_MARKER",
     "GEO_ACCEPTANCE_TEST_WORKER_DATABASE_URL",
     "GEO_PLACEMENT_TEST_ADMIN_URL",
+    "GEO_F019_TEST_MINIO_ENDPOINT",
     "GEO_TEST_DATABASE_URL",
 )
 
@@ -61,6 +62,30 @@ def test_selected_skip_fails_and_reports_truthful_counts() -> None:
     assert result.returncode == 1
     assert "CI test summary [F015 contract]" in output
     assert "collected=1 passed=0 failed=0 skipped=1" in output
+
+
+def test_zero_collection_is_nonzero_and_reported_truthfully() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "--fail-on-skipped",
+            "--ci-summary-label=F015 zero collection",
+            "-k",
+            "this_test_name_does_not_exist",
+            "tests/test_ci_truth_contracts.py",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    output = result.stdout + result.stderr
+    assert result.returncode != 0
+    assert "CI test summary [F015 zero collection]" in output
+    assert "collected=0 passed=0 failed=0 skipped=0" in output
 
 
 def test_live_marker_collects_one_test_without_requesting_a_paid_call() -> None:

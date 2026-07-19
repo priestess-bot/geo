@@ -1,0 +1,181 @@
+{
+  "$schema": "schemas/selection.schema.json",
+  "benchmark_manifest_sha256": "ffaf4fb0bdc60098c1593f3b43ab0462b4e381dcdff2ca467540e4604bfa2c0f",
+  "candidates": [
+    {
+      "all_hard_gates_passed": true,
+      "candidate_id": "project-deterministic-baseline-v1",
+      "disposition": "harness_reference_only",
+      "name": "deterministic",
+      "quality_score": 1.0,
+      "report": {
+        "path": "reports/2026-07-19/deterministic.json",
+        "sha256": "2687b6c68ac936ac2b3258a74580eef79e0bb06de12057690debf2e91dac44db"
+      },
+      "selection_status": "harness_reference_only",
+      "status": "passed",
+      "unavailable_reason": null,
+      "validation_evidence": null
+    },
+    {
+      "all_hard_gates_passed": true,
+      "candidate_id": "project-native-rag-v1",
+      "disposition": "selected",
+      "name": "project-native",
+      "quality_score": 0.99,
+      "report": {
+        "path": "reports/2026-07-19/project-native.json",
+        "sha256": "976700c4a60e9df73907e734b264224a1ef93858d41307abf25c0426782fa3bc"
+      },
+      "selection_status": "eligible_candidate_passed",
+      "status": "passed",
+      "unavailable_reason": null,
+      "validation_evidence": {
+        "dropped_candidate_count": 0,
+        "failure_stage": null
+      }
+    },
+    {
+      "all_hard_gates_passed": true,
+      "candidate_id": "llamaindex-property-graph-v1",
+      "disposition": "qualified_fallback",
+      "name": "llamaindex",
+      "quality_score": 0.99,
+      "report": {
+        "path": "reports/2026-07-19/llamaindex.json",
+        "sha256": "13e3e2720a21d42b8f67e338e5bb7682be8f00ab519bd2d806a0107347d14b43"
+      },
+      "selection_status": "eligible_candidate_passed",
+      "status": "passed",
+      "unavailable_reason": null,
+      "validation_evidence": {
+        "dropped_candidate_count": 0,
+        "failure_stage": null
+      }
+    },
+    {
+      "all_hard_gates_passed": null,
+      "candidate_id": "microsoft-graphrag-isolated-poc",
+      "disposition": "unavailable_not_evaluated",
+      "name": "graphrag",
+      "quality_score": null,
+      "report": {
+        "path": "reports/2026-07-19/graphrag.json",
+        "sha256": "f2ece9b1e42c99a1a6bfc2f6a03ab447415d708c212d92f7ee823238d5d1ba67"
+      },
+      "selection_status": "not_selectable_unavailable",
+      "status": "unavailable",
+      "unavailable_reason": "dependency_not_installed",
+      "validation_evidence": null
+    }
+  ],
+  "comparison_note": "llamaindex_executed_and_scored",
+  "dataset_version": "2026.07.19.1",
+  "decision_basis": {
+    "business_source_of_truth": {
+      "framework_owned_business_state": false,
+      "owner": "project_knowledge_catalog_evidence_postgres",
+      "selection_changes_business_source_of_truth": false
+    },
+    "domain_boundary": {
+      "framework_adapter_policy": "optional_adapter_only",
+      "framework_objects_cross_domain_or_stable_api": false,
+      "selected_runtime": "project_owned_adapter",
+      "stable_contract_owner": "geo_core.rag.contracts"
+    },
+    "integration_complexity": {
+      "assessment": "selected_path_has_fewer_runtime_layers_and_dependencies",
+      "fallback_path": "optional_llamaindex_property_graph_adapter_plus_project_grounding",
+      "selected_path": "project_contracts_plus_project_model_gateway"
+    },
+    "primary_reason_code": "project_owned_domain_boundary_and_business_source_of_truth_with_equal_quality",
+    "quality": {
+      "llamaindex_all_hard_gates_passed": true,
+      "llamaindex_score": 0.99,
+      "project_native_all_hard_gates_passed": true,
+      "project_native_score": 0.99,
+      "score_difference": 0.0
+    },
+    "recorded_resource_comparison": {
+      "interpretation": "resource_measurements_are_audited_not_rejection_caps",
+      "llamaindex": {
+        "estimated_cost_usd": 0.01846698,
+        "model_calls": 66,
+        "total_tokens": 84235,
+        "wall_clock_ms": 384035
+      },
+      "policy": "record_only_no_hard_cap",
+      "project_native": {
+        "estimated_cost_usd": 0.01015448,
+        "model_calls": 44,
+        "total_tokens": 45606,
+        "wall_clock_ms": 270218
+      },
+      "project_native_reduction_vs_llamaindex": {
+        "estimated_cost_percent": 45.0128,
+        "estimated_cost_usd": 0.0083125,
+        "model_calls": 22,
+        "model_calls_percent": 33.3333,
+        "total_tokens": 38629,
+        "total_tokens_percent": 45.8586,
+        "wall_clock_ms": 113817,
+        "wall_clock_percent": 29.6371
+      }
+    }
+  },
+  "failed_or_dropped_evidence": {
+    "formal_candidate_validation": {
+      "llamaindex": {
+        "dropped_candidate_count": 0,
+        "failure_stage": null
+      },
+      "project-native": {
+        "dropped_candidate_count": 0,
+        "failure_stage": null
+      }
+    },
+    "hard_gate_failed_candidates": [],
+    "unavailable_candidates": [
+      {
+        "candidate_id": "microsoft-graphrag-isolated-poc",
+        "name": "graphrag",
+        "reason": "dependency_not_installed"
+      }
+    ]
+  },
+  "generated_at": "2026-07-18T23:39:59.822919+00:00",
+  "policy": {
+    "cost_time_policy": "record_only_no_hard_cap",
+    "llamaindex_preferred_only_after_quality_cost_time_tie": true,
+    "quality_close_threshold": 0.02,
+    "quality_first": true
+  },
+  "qualified_fallbacks": [
+    {
+      "activation_requires": "new_hash_addressed_reselection_manifest",
+      "adapter_release": "llamaindex-property-graph-v1",
+      "candidate_id": "llamaindex-property-graph-v1",
+      "reason": "passed_same_frozen_quality_and_safety_gates",
+      "report": {
+        "path": "reports/2026-07-19/llamaindex.json",
+        "sha256": "13e3e2720a21d42b8f67e338e5bb7682be8f00ab519bd2d806a0107347d14b43"
+      },
+      "status": "qualified_fallback"
+    }
+  ],
+  "schema_version": "f019-selection-manifest-v1",
+  "selected": {
+    "adapter_release": "project-native-rag-v1",
+    "candidate_id": "project-native-rag-v1",
+    "estimated_cost_usd": 0.01015448,
+    "quality_score": 0.99,
+    "reason": "project_owned_domain_boundary_and_business_source_of_truth_with_equal_quality",
+    "report": {
+      "path": "reports/2026-07-19/project-native.json",
+      "sha256": "976700c4a60e9df73907e734b264224a1ef93858d41307abf25c0426782fa3bc"
+    },
+    "selection_algorithm_reason": "quality_within_2pp_then_cost_time_then_llamaindex",
+    "wall_clock_ms": 270218
+  },
+  "status": "selected"
+}

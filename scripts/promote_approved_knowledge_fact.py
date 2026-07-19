@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 from datetime import UTC, datetime
-import hashlib
 import json
 from pathlib import Path
 import sys
@@ -25,7 +24,8 @@ def parser() -> argparse.ArgumentParser:
     value.add_argument("--tenant-id", default="10000000-0000-4000-8000-000000000001")
     value.add_argument("--project-id", required=True)
     value.add_argument("--fact-id", required=True)
-    value.add_argument("--subject-entity-id", required=True)
+    value.add_argument("--title")
+    value.add_argument("--subject-entity-id")
     value.add_argument(
         "--subject-role",
         choices=("primary_brand", "competitor", "market", "product", "neutral"),
@@ -33,14 +33,18 @@ def parser() -> argparse.ArgumentParser:
     )
     value.add_argument(
         "--usage-rights",
-        choices=("owned", "licensed", "public_domain", "authorised_experience"),
+        choices=("owned", "licensed", "public_reference"),
         required=True,
     )
-    value.add_argument("--confidentiality", choices=("public", "internal"), default="public")
+    value.add_argument(
+        "--confidentiality",
+        choices=("public", "internal", "confidential"),
+        default="public",
+    )
     value.add_argument("--public-disclosure", action="store_true")
     value.add_argument("--public-source-url")
     value.add_argument("--public-source-title")
-    value.add_argument("--citation-label", default="Approved source")
+    value.add_argument("--citation-label")
     value.add_argument("--quotation-allowed", action="store_true")
     value.add_argument("--attribution-required", action="store_true")
     value.add_argument("--dry-run", action="store_true")
@@ -49,84 +53,66 @@ def parser() -> argparse.ArgumentParser:
 
 
 def promote(api: Api, args: argparse.Namespace) -> dict[str, Any]:
-    facts = api.request(
-        "GET", f"/v1/projects/{args.project_id}/knowledge/fact-candidates"
+    proposal_path = (
+        f"/v1/projects/{args.project_id}/knowledge/fact-candidates/"
+        f"{args.fact_id}/evidence-proposal"
     )
-    fact = next((item for item in facts if item["id"] == args.fact_id), None)
-    if fact is None:
-        raise ValueError("knowledge fact candidate does not exist in this project")
-    if fact["status"] != "approved":
-        raise ValueError("knowledge fact must be approved before Evidence promotion")
-
-    entities = api.request("GET", f"/v1/projects/{args.project_id}/entities?limit=500")
-    if not any(item["id"] == args.subject_entity_id for item in entities):
-        raise ValueError("subject entity does not belong to this project")
-    sources = api.request("GET", f"/v1/projects/{args.project_id}/knowledge/sources")
-    source = next((item for item in sources if item["id"] == fact["source_id"]), None)
-    if source is None or source["status"] != "ready" or not source.get("content_hash"):
-        raise ValueError("knowledge source must be ready and content-addressed")
-
-    statement = fact["statement"]
-    snapshot_hash = hashlib.sha256(statement.encode()).hexdigest()
-    if snapshot_hash != fact["statement_hash"]:
-        raise ValueError("fact statement hash does not match its immutable statement")
-    if args.public_disclosure:
-        if args.confidentiality != "public":
-            raise ValueError("public disclosure requires public confidentiality")
-        public_url = args.public_source_url or source.get("source_url")
-        if not public_url:
-            raise ValueError("public disclosure requires a public source URL")
-    else:
-        public_url = args.public_source_url
-
+    proposal = api.request("GET", proposal_path)
+    if args.subject_role == "neutral" and args.subject_entity_id:
+        raise ValueError("neutral Evidence cannot bind a subject entity")
+    if args.subject_role != "neutral" and not args.subject_entity_id:
+        raise ValueError("non-neutral Evidence requires --subject-entity-id")
+    public_url = args.public_source_url or proposal["defaults"].get("source_url")
+    public_title = args.public_source_title or proposal["defaults"]["source_title"]
+    citation_label = args.citation_label or proposal["defaults"]["citation_label"]
     payload = {
-        "item_type": "approved_fact",
-        "source_id": source["id"],
+        "title": args.title or proposal["defaults"]["title"],
         "subject_entity_id": args.subject_entity_id,
         "subject_role": args.subject_role,
-        "locator": {
-            "knowledge_fact_id": fact["id"],
-            "chunk_id": fact["chunk_id"],
-            "source_url": source.get("source_url"),
-        },
-        "snapshot": {"kind": "text", "text": statement, "sha256": snapshot_hash},
-        "source_revision": {"kind": "content_hash", "value": source["content_hash"]},
         "usage_rights": args.usage_rights,
         "confidentiality": args.confidentiality,
         "public_citation": {
             "disclosure_allowed": args.public_disclosure,
             "source_url": public_url,
-            "source_title": args.public_source_title or source["title"],
-            "label": args.citation_label,
+            "source_title": public_title,
+            "label": citation_label,
             "quotation_allowed": args.quotation_allowed,
             "attribution_required": args.attribution_required,
         },
     }
-    existing = api.request("GET", f"/v1/projects/{args.project_id}/evidence-items?limit=500")
-    evidence = next(
-        (item for item in existing if item["snapshot"]["sha256"] == snapshot_hash), None
+    if args.dry_run:
+        return {
+            "receipt_version": 2,
+            "generated_at": datetime.now(UTC).isoformat(),
+            "mode": "dry_run",
+            "project_id": args.project_id,
+            "fact_id": args.fact_id,
+            "proposal": proposal,
+            "request": payload,
+        }
+    result = api.request(
+        "POST",
+        proposal_path.removesuffix("-proposal"),
+        payload,
+        key=f"knowledge-fact-evidence:{args.project_id}:{args.fact_id}",
     )
-    created = False
-    if evidence is None and not args.dry_run:
-        evidence = api.request(
-            "POST", f"/v1/projects/{args.project_id}/evidence-items", payload
-        )
-        created = True
+    evidence = result["evidence"]
+    lineage = result["lineage"]
     return {
-        "receipt_version": 1,
+        "receipt_version": 2,
         "generated_at": datetime.now(UTC).isoformat(),
         "mode": "actual",
-        "action": "dry_run" if args.dry_run else "promote",
         "project_id": args.project_id,
         "fact_id": args.fact_id,
-        "source_id": source["id"],
-        "snapshot_sha256": snapshot_hash,
-        "created": created,
-        "reused": evidence is not None and not created,
-        "evidence_id": evidence["id"] if evidence else None,
-        "eligible_for_generation": evidence.get("eligible_for_generation") if evidence else None,
-        "eligible_for_publication": evidence.get("eligible_for_publication") if evidence else None,
-        "payload": payload if args.dry_run else None,
+        "outcome": result["outcome"],
+        "created": result["outcome"] == "created",
+        "reused": result["outcome"] == "existing",
+        "evidence_id": evidence["id"],
+        "source_id": lineage["knowledge_source_id"],
+        "snapshot_sha256": lineage["evidence_snapshot_hash"],
+        "eligible_for_generation": evidence["eligible_for_generation"],
+        "eligible_for_publication": evidence["eligible_for_publication"],
+        "lineage": lineage,
     }
 
 

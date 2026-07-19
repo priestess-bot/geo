@@ -65,7 +65,11 @@ class _Gateway:
         self.request = request
         return ModelGatewayResult(
             output={
-                "content_json": {"headline": "Synthetic consumer testimonial"},
+                "content_json": {
+                    "headline": "Synthetic consumer testimonial",
+                    "required_disclosures": [],
+                    "expected_links": [],
+                },
                 "rendered_text": (
                     "I've used the TerraMow V600 for six months and it transformed my lawn."
                 ),

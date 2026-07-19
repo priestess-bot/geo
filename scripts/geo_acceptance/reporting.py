@@ -52,6 +52,7 @@ def run_reporting(
             raise AssertionError(f"{window.value} collection task is missing")
         placement_measurements.append(setup.placement.record_measurement(
             project_id=setup.project_id,
+            campaign_id=setup.campaign.id,
             submission_id=placement.submission.id,
             monitoring_query_id=baseline.query.monitoring_query_id,
             measured_at=datetime.now(UTC),
@@ -73,28 +74,36 @@ def run_reporting(
         follow_ups.append(follow_up)
         completed_tasks.append(setup.placement.complete_measurement_collection_task(
             project_id=setup.project_id,
+            campaign_id=setup.campaign.id,
             task_id=task.id,
             actor_id=setup.owner.identity_id,
         ))
         report = baseline.application.generate_report(
             setup.owner,
             project_id=setup.project_id,
+            campaign_id=setup.campaign.id,
             metric_snapshot_id=follow_up.metric.id,
             title=f"Controlled GEO {window.value.upper()} acceptance report {setup.suffix}",
         )
         reports.append(baseline.application.approve_report(
-            setup.owner, project_id=setup.project_id, report_id=report.id
+            setup.owner,
+            project_id=setup.project_id,
+            campaign_id=setup.campaign.id,
+            report_id=report.id,
         ))
-    customer_metrics = baseline.application.list_metrics(
-        setup.customer, project_id=setup.project_id
+    customer_approved = baseline.application.list_customer_approved_report_snapshots(
+        setup.customer,
+        project_id=setup.project_id,
+        campaign_id=setup.campaign.id,
     )
-    customer_urls = baseline.application.list_verified_urls(
-        setup.customer, project_id=setup.project_id
+    customer_metrics = tuple(item.snapshot for item in customer_approved)
+    customer_reports = tuple(item.report for item in customer_approved)
+    customer_urls = baseline.application.list_customer_approved_verified_urls(
+        setup.customer,
+        project_id=setup.project_id,
+        campaign_id=setup.campaign.id,
     )
-    customer_reports = baseline.application.list_reports(
-        setup.customer, project_id=setup.project_id, approved_only=True
-    )
-    if len(customer_metrics) != 4 or len(customer_urls) != 1 or len(customer_reports) != 3:
+    if len(customer_metrics) != 3 or len(customer_urls) != 1 or len(customer_reports) != 3:
         raise AssertionError("customer-safe metrics, verified URL and report are incomplete")
     if any(item.status != "approved" for item in customer_reports):
         raise AssertionError("customer projection exposed an unapproved report")
@@ -149,6 +158,7 @@ def build_result(
             "product_entity_id": setup.product.id,
             "market_profile_id": setup.market.id,
             "evidence_item_ids": [setup.fact.id, setup.experience.id],
+            "knowledge_fact_id": setup.knowledge_fact_id,
         },
         "campaign": {
             "campaign_id": setup.campaign.id,

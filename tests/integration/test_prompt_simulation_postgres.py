@@ -67,7 +67,7 @@ def test_prompt_simulation_is_durable_and_cannot_create_formal_placement_objects
                   source_revision_value, usage_rights, confidentiality,
                   public_disclosure_allowed, public_source_url, public_source_title,
                   citation_label, quotation_allowed, attribution_required)
-               VALUES (%s, %s, 'approved_fact', %s, %s, 'product', %s, %s,
+               VALUES (%s, %s, 'citation', %s, %s, 'product', %s, %s,
                        'content_hash', %s, 'owned', 'public', true,
                        'https://example.test/product', 'Product source',
                        'Product source', false, true)""",
@@ -106,10 +106,41 @@ def test_prompt_simulation_is_durable_and_cannot_create_formal_placement_objects
             for item in bindings
             if item["task_key"] == "productreview"
         )
+        campaign, opportunities = application.create_campaign(
+            project_id=ids["project"],
+            market_profile_id=ids["market"],
+            primary_product_entity_id=ids["entity"],
+            name="Prompt simulation Campaign",
+            objective="internal_prompt_validation",
+            actor_id=ids["owner"],
+            destination_ids=(destination.id,),
+            rationale="Exercise bound internal simulation",
+        )
+        release = next(
+            release
+            for skill in application.list_prompt_skills(project_id=ids["project"])
+            for release in application.list_prompt_releases(
+                project_id=ids["project"], skill_id=skill.id
+            )
+            if release.id == release_id
+        )
+        prompt_binding = application.bind_opportunity_prompt_release(
+            project_id=ids["project"],
+            campaign_id=campaign.id,
+            opportunity_id=opportunities[0].id,
+            release_id=release.id,
+            expected_binding_version=1,
+            reason="Freeze Prompt Simulation Release",
+            actor_id=ids["owner"],
+            idempotency_key=f"simulation-binding-{suffix}",
+        )
         simulation, job = application.create_prompt_simulation(
             project_id=ids["project"],
+            campaign_id=campaign.id,
+            opportunity_id=opportunities[0].id,
             destination_id=destination.id,
-            template_release_id=release_id,
+            prompt_release_binding_id=prompt_binding.id,
+            confirmed_release_hash=release.release_hash,
             primary_brand_entity_id=brand_id,
             product_entity_id=ids["entity"],
             authenticity_mode="synthetic_testimonial",
@@ -125,8 +156,11 @@ def test_prompt_simulation_is_durable_and_cannot_create_formal_placement_objects
         )
         replayed, replayed_job = application.create_prompt_simulation(
             project_id=ids["project"],
+            campaign_id=campaign.id,
+            opportunity_id=opportunities[0].id,
             destination_id=destination.id,
-            template_release_id=release_id,
+            prompt_release_binding_id=prompt_binding.id,
+            confirmed_release_hash=release.release_hash,
             primary_brand_entity_id=brand_id,
             product_entity_id=ids["entity"],
             authenticity_mode="synthetic_testimonial",
@@ -181,7 +215,9 @@ def test_prompt_simulation_is_durable_and_cannot_create_formal_placement_objects
         assert finalized["status"] == "finalized"
 
         detail = application.get_prompt_simulation(
-            project_id=ids["project"], simulation_id=simulation.id
+            project_id=ids["project"],
+            campaign_id=campaign.id,
+            simulation_id=simulation.id,
         )
         assert detail is not None
         assert detail.generation_status == "succeeded"
@@ -193,7 +229,9 @@ def test_prompt_simulation_is_durable_and_cannot_create_formal_placement_objects
         assert detail.input_snapshot["authenticity_mode"] == "synthetic_testimonial"
         assert detail.artifact_manifest["authenticity_mode"] == "synthetic_testimonial"
         downloaded = application.download_prompt_simulation_artifact(
-            project_id=ids["project"], simulation_id=simulation.id
+            project_id=ids["project"],
+            campaign_id=campaign.id,
+            simulation_id=simulation.id,
         )
         assert downloaded.content_hash == detail.manifest_hash
 
@@ -204,10 +242,12 @@ def test_prompt_simulation_is_durable_and_cannot_create_formal_placement_objects
                      (SELECT count(*) FROM placement_reviews WHERE project_id = %s),
                      (SELECT count(*) FROM placement_export_receipts WHERE project_id = %s),
                      (SELECT count(*) FROM publication_requests WHERE project_id = %s),
-                     (SELECT count(*) FROM publication_submissions WHERE project_id = %s)""",
-                (ids["project"],) * 5,
+                     (SELECT count(*) FROM publication_submissions WHERE project_id = %s),
+                     (SELECT count(*) FROM monitoring_observations WHERE project_id = %s),
+                     (SELECT count(*) FROM monitoring_metric_snapshots WHERE project_id = %s)""",
+                (ids["project"],) * 7,
             ).fetchone()
-        assert counts == (0, 0, 0, 0, 0)
+        assert counts == (0, 0, 0, 0, 0, 0, 0)
     finally:
         with psycopg.connect(ADMIN_URL) as admin:
             cleanup_projects(

@@ -47,6 +47,8 @@ node_modules/
 npm-debug.log*
 yarn-error.log*
 .next/
+.next-playwright/
+.next-playwright-*/
 *.tsbuildinfo
 
 # Build / coverage

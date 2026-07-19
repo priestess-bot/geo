@@ -30,7 +30,7 @@
     "report_schema": {
       "path": "schemas/report.schema.json",
       "schema_version": "json-schema-2020-12",
-      "sha256": "c940bda0231957ca5d663cf172fd54fddbce6672802e962d882183bf732d8479"
+      "sha256": "e3d23aac0963bf1a5ec9bd5214235a6fafd2f08cfac7a03cfed7e9094a44cd17"
     },
     "manifest_schema": {
       "path": "schemas/manifest.schema.json",

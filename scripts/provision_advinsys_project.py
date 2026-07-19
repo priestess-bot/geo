@@ -270,7 +270,7 @@ def provision(api: Api, manifest: dict[str, Any], repository_root: Path) -> dict
             "POST",
             f"/v1/projects/{project_id}/evidence-items",
             {
-                "item_type": "approved_fact",
+                "item_type": "citation",
                 "source_id": source["id"],
                 "subject_entity_id": entity_by_name[subject_name]["id"],
                 "subject_role": subject_role,

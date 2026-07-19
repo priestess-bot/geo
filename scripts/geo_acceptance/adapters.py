@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from decimal import Decimal
 import hashlib
+from html import escape
 from typing import Protocol
 from uuid import UUID, uuid4
 
@@ -20,7 +20,11 @@ from geo_core.model_gateway.deepseek import (
     default_deepseek_capability_registry,
 )
 from geo_core.object_store import RetrievedObject, StoredObject
-from geo_core.placements.url_verifier import PublicUrlVerifier, UrlVerificationResult
+from geo_core.placements.url_verifier import (
+    FetchedResponse,
+    PublicUrlVerifier,
+    UrlVerificationResult,
+)
 
 from scripts.geo_acceptance.contracts import AcceptanceConfig, MODEL, PRODUCT_URL
 
@@ -98,6 +102,10 @@ class DeterministicGateway:
                     ),
                     "disclosure": "Official information published by ADVINSYS.",
                     "cta_url": self.product_url,
+                    "required_disclosures": [
+                        "Official information published by ADVINSYS."
+                    ],
+                    "expected_links": [self.product_url],
                     "submission_notes": "Publish only through an authorised brand account.",
                 },
                 "rendered_text": (
@@ -155,17 +163,53 @@ class ControlledUrlVerifier(PublicUrlVerifier):
             raise ValueError("verification input contains an empty expected link")
         if "simulated.advinsys.example" not in allowed_hosts:
             raise ValueError("verification did not retain the destination allowlist")
-        checked_at = datetime.now(UTC)
-        return UrlVerificationResult(
-            success=True,
+
+        body = "".join(
+            (
+                "<!doctype html><html><body>",
+                *(f"<p>{escape(value)}</p>" for value in expected_text_fragments),
+                *(f"<p>{escape(value)}</p>" for value in required_disclosures),
+                *(
+                    f'<a href="{escape(value, quote=True)}">approved link</a>'
+                    for value in expected_links
+                ),
+                "</body></html>",
+            )
+        ).encode("utf-8")
+        verifier = PublicUrlVerifier(
+            resolver=lambda _hostname, _port: ("8.8.8.8",),
+            fetcher=_ControlledHttpsFetcher(body),
+        )
+        return verifier.verify(
+            url,
+            expected_text_fragments=expected_text_fragments,
+            required_disclosures=required_disclosures,
+            expected_links=expected_links,
+            allowed_hosts=allowed_hosts,
+        )
+
+
+class _ControlledHttpsFetcher:
+    def __init__(self, body: bytes) -> None:
+        self._body = body
+
+    def fetch(
+        self,
+        url: str,
+        *,
+        pinned_ip: str,
+        timeout_seconds: float,
+        maximum_bytes: int,
+    ) -> FetchedResponse:
+        del url, timeout_seconds
+        if pinned_ip != "8.8.8.8":
+            raise ValueError("controlled verification did not retain its pinned address")
+        if len(self._body) > maximum_bytes:
+            raise ValueError("controlled verification response exceeds its byte budget")
+        return FetchedResponse(
             status_code=200,
-            final_url=url,
-            checked_at=checked_at,
-            metadata_hash=hashlib.sha256(f"{url}:{checked_at.isoformat()}".encode()).hexdigest(),
-            accessibility=True,
-            content_match=True,
-            disclosure_match=True,
-            link_match=True,
+            headers={"content-type": "text/html; charset=utf-8"},
+            body=self._body,
         )
 
 

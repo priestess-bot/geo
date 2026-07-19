@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from geo_core.model_gateway import ModelCallBudget, ModelGatewayRequest, ModelPolicy
+from geo_core.placements.url_verifier import VerificationCheckName
 from scripts.geo_acceptance import (
     AcceptanceConfig,
     CHANNELS,
@@ -11,7 +12,7 @@ from scripts.geo_acceptance import (
     PRODUCT_URL,
 )
 from scripts.geo_acceptance.monitoring import FOLLOW_UP_WINDOWS
-from scripts.geo_acceptance.adapters import adapter_manifest
+from scripts.geo_acceptance.adapters import ControlledUrlVerifier, adapter_manifest
 from scripts.geo_acceptance.isolation import (
     ConnectionKind,
     DatabaseProbe,
@@ -99,6 +100,46 @@ def test_deterministic_gateway_returns_supported_schema_bound_claim() -> None:
             "evidence_item_ids": [str(evidence_id)],
         }
     ]
+
+
+def test_controlled_url_verifier_emits_complete_v2_evidence() -> None:
+    verifier = ControlledUrlVerifier()
+    result = verifier.verify(
+        "https://simulated.advinsys.example/geo-acceptance/contract",
+        expected_text_fragments=("ADVINSYS approved product content.",),
+        required_disclosures=("Official information published by ADVINSYS.",),
+        expected_links=(PRODUCT_URL,),
+        allowed_hosts=("simulated.advinsys.example",),
+    )
+
+    assert result.success is True
+    assert {check.name for check in result.checks} == set(VerificationCheckName)
+    assert all(check.passed for check in result.checks)
+    assert not result.failures
+    evidence_hashes = (
+        result.metadata_hash,
+        result.body_hash,
+        result.visible_text_hash,
+        result.content_rule_hash,
+        result.verification_rule_hash,
+    )
+    replayed = verifier.verify(
+        "https://simulated.advinsys.example/geo-acceptance/contract",
+        expected_text_fragments=("ADVINSYS approved product content.",),
+        required_disclosures=("Official information published by ADVINSYS.",),
+        expected_links=(PRODUCT_URL,),
+        allowed_hosts=("simulated.advinsys.example",),
+    )
+
+    assert all(len(value) == 64 for value in evidence_hashes)
+    assert evidence_hashes == (
+        replayed.metadata_hash,
+        replayed.body_hash,
+        replayed.visible_text_hash,
+        replayed.content_rule_hash,
+        replayed.verification_rule_hash,
+    )
+    assert "body" not in result.to_persistence_dict()
 
 
 def test_inline_acceptance_requires_admin_endpoint_and_isolation_marker(tmp_path: Path) -> None:

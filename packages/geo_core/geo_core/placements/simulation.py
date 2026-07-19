@@ -49,6 +49,18 @@ class PromptSimulation:
     model_response_hash: str | None = None
     input_snapshot: Mapping[str, object] | None = None
     artifact_manifest: Mapping[str, object] | None = None
+    campaign_id: UUID | None = None
+    opportunity_id: UUID | None = None
+    prompt_release_binding_id: UUID | None = None
+    prompt_release_binding_version: int | None = None
+    skill_version_id: UUID | None = None
+    release_version: int | None = None
+    release_hash: str | None = None
+    simulation_purpose: str = "content_preview"
+    question_set_id: UUID | None = None
+    question_set_hash: str | None = None
+    question_set_item_id: UUID | None = None
+    question_candidate_id: UUID | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -58,6 +70,22 @@ class PromptSimulation:
         )
         if not self.test_only or self.publication_eligible:
             raise ValueError("prompt simulations must remain test-only and non-publishable")
+        question_values = (
+            self.question_set_id,
+            self.question_set_hash,
+            self.question_set_item_id,
+            self.question_candidate_id,
+        )
+        if self.simulation_purpose == "content_preview" and any(
+            value is not None for value in question_values
+        ):
+            raise ValueError("content preview cannot claim a QuestionSet binding")
+        if self.simulation_purpose == "geo_question_test" and any(
+            value is None for value in question_values
+        ):
+            raise ValueError("GEO question test requires an exact QuestionSet binding")
+        if self.simulation_purpose not in {"content_preview", "geo_question_test"}:
+            raise ValueError("prompt simulation purpose is unsupported")
         if self.input_snapshot is not None:
             object.__setattr__(
                 self, "input_snapshot", MappingProxyType(dict(self.input_snapshot))

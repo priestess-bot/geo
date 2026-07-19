@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from decimal import Decimal, ROUND_HALF_UP
 from enum import StrEnum
 import hashlib
 import json
@@ -13,6 +12,12 @@ from types import MappingProxyType
 from typing import Mapping, Sequence
 from uuid import UUID
 
+from geo_core.monitoring.source_contract import (
+    CaptureMethod,
+    ObservationSource,
+    SourceStratumKey,
+)
+
 
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 S3_URI_PATTERN = re.compile(r"^s3://[^/]+/.+$")
@@ -20,7 +25,10 @@ REPORT_METHODOLOGY = (
     "Observational monitoring only; results are non-causal and do not prove that a "
     "placement caused any change."
 )
-METRIC_METHOD_VERSION = "geo-observational-v1"
+METRIC_METHOD_VERSION = "geo-observation-statistics-v2"
+STATISTICS_CONTRACT_VERSION = "geo-observation-statistics-v2"
+LEGACY_STATISTICS_CONTRACT_VERSION = "legacy-v1"
+OBSERVATION_MEMBERSHIP_VERSION = "metric-observation-membership-v1"
 
 READER_ROLES = frozenset({"owner", "admin", "analyst", "viewer", "customer"})
 CONTRIBUTOR_ROLES = frozenset({"owner", "admin", "analyst"})
@@ -50,9 +58,14 @@ class MonitoringPersistenceUnavailable(RuntimeError):
 class Platform(StrEnum):
     CHATGPT_SEARCH = "chatgpt_search"
     GOOGLE_AI_OVERVIEWS = "google_ai_overviews"
+    GOOGLE_AI_MODE = "google_ai_mode"
     GOOGLE_SEARCH = "google_search"
     PERPLEXITY = "perplexity"
+    PERPLEXITY_ANSWER = "perplexity_answer"
     GEMINI = "gemini"
+    BING_SEARCH = "bing_search"
+    BING_COPILOT = "bing_copilot"
+    CLAUDE_AI = "claude_ai"
     OTHER = "other"
 
 
@@ -110,6 +123,15 @@ class MonitoringProtocol:
     created_at: datetime
     approved_at: datetime | None = None
     frozen_at: datetime | None = None
+    source_strata: tuple[SourceStratumKey, ...] = ()
+    source_strata_hash: str | None = None
+    minimum_valid_repeats: int | None = None
+    statistics_method_version: str | None = None
+    statistics_contract_version: str = LEGACY_STATISTICS_CONTRACT_VERSION
+    question_set_id: UUID | None = None
+    question_set_hash: str | None = None
+    question_set_bound_by: UUID | None = None
+    question_set_bound_at: datetime | None = None
 
     def __post_init__(self) -> None:
         if not self.name.strip() or not self.locale.strip():
@@ -118,6 +140,43 @@ class MonitoringProtocol:
             raise MonitoringRuleViolation("sample size must be between 1 and 1000")
         if not 1 <= self.window_days <= 365:
             raise MonitoringRuleViolation("window days must be between 1 and 365")
+        hashes = tuple(item.canonical_hash() for item in self.source_strata)
+        if len(set(hashes)) != len(hashes):
+            raise MonitoringRuleViolation("protocol source strata must be unique")
+        expected_hash = source_strata_inventory_hash(self.source_strata)
+        if self.source_strata_hash is not None and self.source_strata_hash != expected_hash:
+            raise MonitoringRuleViolation("protocol source strata hash does not match inventory")
+        if (
+            self.status == ProtocolStatus.FROZEN
+            and self.source_strata
+            and (self.source_strata_hash != expected_hash)
+        ):
+            raise MonitoringRuleViolation(
+                "frozen protocols require a canonical source strata inventory"
+            )
+        if self.statistics_contract_version not in {
+            LEGACY_STATISTICS_CONTRACT_VERSION,
+            STATISTICS_CONTRACT_VERSION,
+        }:
+            raise MonitoringRuleViolation("protocol statistics contract is unsupported")
+        if self.statistics_contract_version == STATISTICS_CONTRACT_VERSION:
+            minimum = max(3, (4 * self.sample_size + 4) // 5)
+            if self.sample_size < 3:
+                raise MonitoringRuleViolation(
+                    "statistics-v2 protocols require at least three repeats per query"
+                )
+            if self.minimum_valid_repeats is None or not (
+                minimum <= self.minimum_valid_repeats <= self.sample_size
+            ):
+                raise MonitoringRuleViolation(
+                    "minimum valid repeats must meet the frozen 80 percent threshold"
+                )
+            if self.statistics_method_version != METRIC_METHOD_VERSION:
+                raise MonitoringRuleViolation(
+                    "statistics-v2 protocol method version does not match"
+                )
+        elif self.minimum_valid_repeats is not None or (self.statistics_method_version is not None):
+            raise MonitoringRuleViolation("legacy protocols cannot claim a statistics-v2 threshold")
 
 
 @dataclass(frozen=True)
@@ -131,6 +190,7 @@ class QuerySuggestion:
     status: SuggestionStatus
     created_at: datetime
     monitoring_query_id: UUID | None = None
+    query_cluster_key: str | None = None
 
 
 @dataclass(frozen=True)
@@ -143,6 +203,9 @@ class ProtocolQuery:
     query_kind: str
     locale: str
     ordinal: int
+    query_cluster_key: str | None = None
+    question_set_item_id: UUID | None = None
+    question_candidate_id: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -187,6 +250,7 @@ class ObservationDraft:
     measurement_window: MeasurementWindow
     sample_index: int
     result_status: ResultStatus
+    requested_eligible: bool
     eligible: bool
     ineligible_reasons: tuple[str, ...]
     url_verification_status: VerificationStatus
@@ -198,22 +262,27 @@ class ObservationDraft:
     citations: tuple[CitationDraft, ...]
     artifact_uri: str | None
     artifact_hash: str | None
-    configured_model: str
+    configured_model: str | None
     provider_reported_model: str | None
     ui_surface: str
     ui_metadata: Mapping[str, object]
     confounding_factors: tuple[str, ...]
     observed_at: datetime
+    source: ObservationSource
+    query_cluster_key: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "raw_result", MappingProxyType(dict(self.raw_result)))
         object.__setattr__(self, "ui_metadata", MappingProxyType(dict(self.ui_metadata)))
         if self.sample_index < 1:
             raise MonitoringRuleViolation("sample index must be positive")
-        if not self.configured_model.strip() or not self.ui_surface.strip():
-            raise MonitoringRuleViolation("configured model and UI surface are required")
-        if not self.eligible and not self.ineligible_reasons:
-            raise MonitoringRuleViolation("ineligible observations require a reason")
+        object.__setattr__(
+            self,
+            "query_cluster_key",
+            self.query_cluster_key.strip() if self.query_cluster_key else None,
+        )
+        if not self.ui_surface.strip():
+            raise MonitoringRuleViolation("observation surface is required")
         if self.result_status == ResultStatus.FAILED and self.eligible:
             raise MonitoringRuleViolation("failed observations cannot be eligible")
         if (self.artifact_uri is None) != (self.artifact_hash is None):
@@ -222,6 +291,55 @@ class ObservationDraft:
             raise MonitoringRuleViolation("observation artifact must use an s3:// URI")
         if self.artifact_hash and not SHA256_PATTERN.fullmatch(self.artifact_hash):
             raise MonitoringRuleViolation("observation artifact hash must be lowercase SHA-256")
+        if self.source.capture_method == CaptureMethod.OFFICIAL_REPORT_IMPORT:
+            raise MonitoringRuleViolation(
+                "official report imports use the dedicated report projection"
+            )
+        hard_violations = self.source.hard_violations()
+        if hard_violations:
+            raise MonitoringRuleViolation(
+                "invalid observation source: " + ", ".join(hard_violations)
+            )
+        source_reasons = self.source.eligibility_reasons(
+            result_succeeded=self.result_status == ResultStatus.SUCCEEDED
+        )
+        if self.eligible and source_reasons:
+            raise MonitoringRuleViolation(
+                "eligible observation is missing source evidence: " + ", ".join(source_reasons)
+            )
+        expected_eligible = self.requested_eligible and not source_reasons
+        if self.eligible != expected_eligible:
+            raise MonitoringRuleViolation("stored eligibility must be derived by the server")
+        if not self.eligible:
+            combined_reasons = tuple(sorted(set(self.ineligible_reasons) | set(source_reasons)))
+            if not combined_reasons:
+                raise MonitoringRuleViolation("ineligible observations require a reason")
+            object.__setattr__(self, "ineligible_reasons", combined_reasons)
+        if self.source.capture_method != CaptureMethod.UNKNOWN:
+            legacy_model = self.source.configured_model.value
+            legacy_reported_model = self.source.reported_model.value
+            if self.configured_model != legacy_model:
+                raise MonitoringRuleViolation("configured model does not match source identity")
+            if self.provider_reported_model != legacy_reported_model:
+                raise MonitoringRuleViolation("reported model does not match source identity")
+            if self.ui_surface != self.source.surface.value:
+                raise MonitoringRuleViolation("UI surface does not match source identity")
+            evidence = self.source.raw_evidence
+            if evidence.answer != (self.raw_answer.strip() if self.raw_answer else None):
+                raise MonitoringRuleViolation("raw answer does not match source evidence")
+            if evidence.kind.value == "inline_response" and dict(
+                evidence.inline_response or {}
+            ) != dict(self.raw_result):
+                raise MonitoringRuleViolation("raw result does not match source evidence")
+            if (evidence.artifact_uri, evidence.artifact_hash) != (
+                self.artifact_uri,
+                self.artifact_hash,
+            ):
+                raise MonitoringRuleViolation("raw artifact does not match source evidence")
+
+    @property
+    def source_stratum_hash(self) -> str:
+        return self.source.source_identity_hash()
 
     def payload_hash(self) -> str:
         return canonical_hash(
@@ -230,6 +348,7 @@ class ObservationDraft:
                 "measurement_window": self.measurement_window.value,
                 "sample_index": self.sample_index,
                 "result_status": self.result_status.value,
+                "requested_eligible": self.requested_eligible,
                 "eligible": self.eligible,
                 "ineligible_reasons": list(self.ineligible_reasons),
                 "url_verification_status": self.url_verification_status.value,
@@ -257,6 +376,8 @@ class ObservationDraft:
                 "ui_metadata": dict(self.ui_metadata),
                 "confounding_factors": list(self.confounding_factors),
                 "observed_at": self.observed_at.isoformat(),
+                "source": self.source.canonical_value(),
+                "query_cluster_key": self.query_cluster_key,
             }
         )
 
@@ -264,6 +385,7 @@ class ObservationDraft:
 @dataclass(frozen=True)
 class ObservationCitation:
     id: UUID
+    citation_index: int
     url: str
     title: str | None
     verification_status: VerificationStatus
@@ -281,6 +403,7 @@ class MonitoringObservation:
     draft: ObservationDraft
     payload_hash: str
     citations: tuple[ObservationCitation, ...]
+    captured_by: UUID
     created_at: datetime
     replayed: bool = False
 
@@ -289,29 +412,32 @@ class MonitoringObservation:
         return (
             self.draft.result_status == ResultStatus.SUCCEEDED
             and self.draft.eligible
+            and self.draft.source.capture_method
+            not in {CaptureMethod.SYNTHETIC, CaptureMethod.UNKNOWN}
         )
 
 
 @dataclass(frozen=True)
-class MetricSnapshot:
-    id: UUID
-    project_id: UUID
-    protocol_id: UUID
-    campaign_id: UUID
-    measurement_window: MeasurementWindow
-    expected_sample_count: int
-    eligible_sample_count: int
-    recommendation_share: Decimal
-    product_mention_share: Decimal
-    placement_citation_share: Decimal
-    qualified_destination_coverage: Decimal
-    verified_placement_coverage: Decimal
-    competitive_delta: Decimal
-    status: str
-    confounded_reasons: tuple[str, ...]
-    input_hash: str
-    method_version: str
-    computed_at: datetime
+class MetricObservationMembership:
+    snapshot_id: UUID
+    observation_id: UUID
+    payload_hash: str
+    ordinal: int
+
+    def __post_init__(self) -> None:
+        if self.ordinal < 1:
+            raise MonitoringRuleViolation("metric observation ordinal must be positive")
+        if not SHA256_PATTERN.fullmatch(self.payload_hash):
+            raise MonitoringRuleViolation(
+                "metric observation payload hash must be lowercase SHA-256"
+            )
+
+    def canonical_value(self) -> dict[str, object]:
+        return {
+            "observation_id": str(self.observation_id),
+            "payload_hash": self.payload_hash,
+            "ordinal": self.ordinal,
+        }
 
 
 @dataclass(frozen=True)
@@ -355,6 +481,12 @@ def canonical_hash(value: object) -> str:
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
+def source_strata_inventory_hash(strata: Sequence[SourceStratumKey]) -> str:
+    return canonical_hash(
+        sorted((item.canonical_value() for item in strata), key=lambda item: canonical_hash(item))
+    )
+
+
 def protocol_hash(protocol: MonitoringProtocol, queries: Sequence[ProtocolQuery]) -> str:
     return canonical_hash(
         {
@@ -365,6 +497,18 @@ def protocol_hash(protocol: MonitoringProtocol, queries: Sequence[ProtocolQuery]
             "device": protocol.device.value,
             "sample_size": protocol.sample_size,
             "window_days": protocol.window_days,
+            "minimum_valid_repeats": protocol.minimum_valid_repeats,
+            "statistics_method_version": protocol.statistics_method_version,
+            "statistics_contract_version": protocol.statistics_contract_version,
+            "source_strata": sorted(
+                (item.canonical_value() for item in protocol.source_strata),
+                key=lambda item: canonical_hash(item),
+            ),
+            "source_strata_hash": protocol.source_strata_hash,
+            "question_set_id": (
+                str(protocol.question_set_id) if protocol.question_set_id is not None else None
+            ),
+            "question_set_hash": protocol.question_set_hash,
             "queries": [
                 {
                     "id": str(item.monitoring_query_id),
@@ -372,6 +516,12 @@ def protocol_hash(protocol: MonitoringProtocol, queries: Sequence[ProtocolQuery]
                     "kind": item.query_kind,
                     "locale": item.locale,
                     "ordinal": item.ordinal,
+                    "query_cluster_key": item.query_cluster_key,
+                    "question_set_item_id": (
+                        str(item.question_set_item_id)
+                        if item.question_set_item_id is not None
+                        else None
+                    ),
                 }
                 for item in sorted(queries, key=lambda item: item.ordinal)
             ],
@@ -379,162 +529,14 @@ def protocol_hash(protocol: MonitoringProtocol, queries: Sequence[ProtocolQuery]
     )
 
 
-def calculate_metric_snapshot(
-    *,
-    snapshot_id: UUID,
-    protocol: MonitoringProtocol,
-    query_count: int,
-    window: MeasurementWindow,
-    observations: Sequence[MonitoringObservation],
-    destination_state: CampaignDestinationState,
-    computed_at: datetime,
-) -> MetricSnapshot:
-    if protocol.status != ProtocolStatus.FROZEN or not protocol.protocol_hash:
-        raise MonitoringRuleViolation("metrics require a frozen monitoring protocol")
-    expected = query_count * protocol.sample_size
-    if expected <= 0:
-        raise MonitoringRuleViolation("frozen protocol has no approved query inventory")
-    window_observations = [
-        item
-        for item in observations
-        if item.draft.measurement_window == window
-        and item.project_id == protocol.project_id
-        and item.protocol_id == protocol.id
-        and item.campaign_id == protocol.campaign_id
-    ]
-    included = [item for item in window_observations if item.included_in_metrics]
-    denominator = len(included)
-    reasons: set[str] = set()
-    if denominator != expected:
-        reasons.add("incomplete_or_ineligible_sample_set")
-    if any(item.draft.result_status == ResultStatus.FAILED for item in window_observations):
-        reasons.add("failed_samples")
-    collection_configs = {
-        (
-            item.draft.configured_model,
-            item.draft.provider_reported_model,
-            item.draft.ui_surface,
-        )
-        for item in included
-    }
-    if len(collection_configs) > 1:
-        reasons.add("mixed_collection_configuration")
-    if any(item.draft.confounding_factors for item in window_observations):
-        reasons.add("declared_confounding_factors")
-    if not destination_state.selected_destination_ids:
-        reasons.add("no_selected_destinations")
-    if not destination_state.qualified_destination_ids:
-        reasons.add("no_qualified_destinations")
-
-    observations_with_valid_campaign_citation = 0
-    for observation in included:
-        has_valid_campaign_citation = False
-        if observation.draft.url_verification_status != VerificationStatus.PASSED:
-            continue
-        for citation in observation.citations:
-            if (
-                citation.verified_placement
-                and citation.submission_id is not None
-                and citation.verification_status == VerificationStatus.PASSED
-                and citation.destination_id in destination_state.selected_destination_ids
-            ):
-                has_valid_campaign_citation = True
-        observations_with_valid_campaign_citation += int(has_valid_campaign_citation)
-
-    recommendation_share = _ratio(
-        sum(item.draft.recommendation_present for item in included), denominator
-    )
-    product_share = _ratio(
-        sum(item.draft.primary_product_mentioned for item in included), denominator
-    )
-    competitor_share = _ratio(
-        sum(item.draft.competitor_mentioned for item in included), denominator
-    )
-    selected_denominator = len(destination_state.selected_destination_ids)
-    qualified_denominator = len(destination_state.qualified_destination_ids)
-    input_hash = canonical_hash(
-        {
-            "protocol_hash": protocol.protocol_hash,
-            "window": window.value,
-            "observation_hashes": sorted(item.payload_hash for item in window_observations),
-            "selected_destination_ids": sorted(
-                map(str, destination_state.selected_destination_ids)
-            ),
-            "qualified_destination_ids": sorted(
-                map(str, destination_state.qualified_destination_ids)
-            ),
-            "verified_destination_ids": sorted(
-                map(str, destination_state.verified_destination_ids)
-            ),
-            "method_version": METRIC_METHOD_VERSION,
-        }
-    )
-    return MetricSnapshot(
-        id=snapshot_id,
-        project_id=protocol.project_id,
-        protocol_id=protocol.id,
-        campaign_id=protocol.campaign_id,
-        measurement_window=window,
-        expected_sample_count=expected,
-        eligible_sample_count=denominator,
-        recommendation_share=recommendation_share,
-        product_mention_share=product_share,
-        placement_citation_share=_ratio(
-            observations_with_valid_campaign_citation, denominator
-        ),
-        qualified_destination_coverage=_ratio(
-            len(destination_state.qualified_destination_ids), selected_denominator
-        ),
-        verified_placement_coverage=_ratio(
-            len(
-                destination_state.verified_destination_ids
-                & destination_state.qualified_destination_ids
-            ),
-            qualified_denominator,
-        ),
-        competitive_delta=_quantize(product_share - competitor_share),
-        status="confounded" if reasons else "complete",
-        confounded_reasons=tuple(sorted(reasons)),
-        input_hash=input_hash,
-        method_version=METRIC_METHOD_VERSION,
-        computed_at=computed_at,
-    )
-
-
-def render_report(snapshot: MetricSnapshot, title: str) -> tuple[str, str]:
-    if not title.strip():
-        raise MonitoringRuleViolation("report title is required")
-    confounded = (
-        " This window is confounded: " + ", ".join(snapshot.confounded_reasons) + "."
-        if snapshot.confounded_reasons
-        else ""
-    )
-    body = (
-        f"Window {snapshot.measurement_window.value} contains "
-        f"{snapshot.eligible_sample_count} eligible observations against a frozen denominator "
-        f"of {snapshot.expected_sample_count}. Recommendation share was "
-        f"{snapshot.recommendation_share}; product mention share was "
-        f"{snapshot.product_mention_share}; placement citation share was "
-        f"{snapshot.placement_citation_share}; qualified destination coverage was "
-        f"{snapshot.qualified_destination_coverage}; verified placement coverage was "
-        f"{snapshot.verified_placement_coverage}; competitive delta was "
-        f"{snapshot.competitive_delta}.{confounded} {REPORT_METHODOLOGY}"
-    )
-    return body, canonical_hash(
-        {
-            "title": title.strip(),
-            "body": body,
-            "methodology_statement": REPORT_METHODOLOGY,
-            "metric_snapshot_id": str(snapshot.id),
-        }
-    )
-
-
-def _ratio(numerator: int, denominator: int) -> Decimal:
-    if denominator == 0:
-        return Decimal("0.000000")
-    return _quantize(Decimal(numerator) / Decimal(denominator))
-
-
-def _quantize(value: Decimal) -> Decimal:
-    return value.quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
+from geo_core.monitoring.statistics import (  # noqa: E402
+    BinaryEstimate as BinaryEstimate,
+    MetricSnapshot as MetricSnapshot,
+    QueryMetricResult as QueryMetricResult,
+    analysis_stratum_hash as analysis_stratum_hash,
+    calculate_metric_snapshot as calculate_metric_snapshot,
+    metric_observation_membership as metric_observation_membership,
+    observation_membership_hash as observation_membership_hash,
+    render_report as render_report,
+    select_metric_observations as select_metric_observations,
+)

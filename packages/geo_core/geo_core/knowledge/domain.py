@@ -33,6 +33,10 @@ class KnowledgeProcessingError(KnowledgeError):
         self.retryable = retryable
 
 
+class KnowledgeSourceRevisionRequired(KnowledgeProcessingError):
+    """A re-fetch changed immutable source content and requires a new source revision."""
+
+
 @dataclass(frozen=True)
 class SourceInput:
     source_kind: str
@@ -54,6 +58,8 @@ class ProcessingInput:
     filename: str | None
     media_type: str
     raw_content: bytes | None
+    expected_content_hash: str | None = None
+    requested_by: UUID | None = None
 
 
 @dataclass(frozen=True)

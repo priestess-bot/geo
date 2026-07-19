@@ -1,0 +1,236 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:geo:f019:selection-manifest:v1",
+  "title": "F-019 RAG Selection Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schema_version",
+    "generated_at",
+    "status",
+    "dataset_version",
+    "benchmark_manifest_sha256",
+    "policy",
+    "comparison_note",
+    "decision_basis",
+    "qualified_fallbacks",
+    "failed_or_dropped_evidence",
+    "candidates",
+    "selected"
+  ],
+  "properties": {
+    "$schema": {"const": "schemas/selection.schema.json"},
+    "schema_version": {"const": "f019-selection-manifest-v1"},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "status": {"enum": ["selected", "not_selected"]},
+    "dataset_version": {"type": "string", "minLength": 1},
+    "benchmark_manifest_sha256": {"$ref": "#/$defs/sha256"},
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "quality_first",
+        "cost_time_policy",
+        "quality_close_threshold",
+        "llamaindex_preferred_only_after_quality_cost_time_tie"
+      ],
+      "properties": {
+        "quality_first": {"const": true},
+        "cost_time_policy": {"const": "record_only_no_hard_cap"},
+        "quality_close_threshold": {"const": 0.02},
+        "llamaindex_preferred_only_after_quality_cost_time_tie": {"const": true}
+      }
+    },
+    "comparison_note": {
+      "enum": [
+        "llamaindex_executed_and_scored",
+        "llamaindex_unavailable_not_a_quality_failure",
+        "candidate_usage_evidence_incomplete"
+      ]
+    },
+    "decision_basis": {
+      "type": ["object", "null"],
+      "required": [
+        "primary_reason_code",
+        "quality",
+        "domain_boundary",
+        "business_source_of_truth",
+        "integration_complexity",
+        "recorded_resource_comparison"
+      ],
+      "properties": {
+        "primary_reason_code": {"type": "string", "minLength": 1},
+        "quality": {"type": "object"},
+        "domain_boundary": {"type": "object"},
+        "business_source_of_truth": {"type": "object"},
+        "integration_complexity": {"type": "object"},
+        "recorded_resource_comparison": {
+          "type": "object",
+          "required": [
+            "policy",
+            "interpretation",
+            "project_native",
+            "llamaindex",
+            "project_native_reduction_vs_llamaindex"
+          ],
+          "properties": {
+            "policy": {"const": "record_only_no_hard_cap"},
+            "interpretation": {
+              "const": "resource_measurements_are_audited_not_rejection_caps"
+            },
+            "project_native": {"$ref": "#/$defs/resourceUsage"},
+            "llamaindex": {"$ref": "#/$defs/resourceUsage"},
+            "project_native_reduction_vs_llamaindex": {"type": "object"}
+          }
+        }
+      }
+    },
+    "qualified_fallbacks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "candidate_id",
+          "adapter_release",
+          "status",
+          "reason",
+          "activation_requires",
+          "report"
+        ],
+        "properties": {
+          "candidate_id": {"type": "string", "minLength": 1},
+          "adapter_release": {"type": "string", "minLength": 1},
+          "status": {"const": "qualified_fallback"},
+          "reason": {"const": "passed_same_frozen_quality_and_safety_gates"},
+          "activation_requires": {"const": "new_hash_addressed_reselection_manifest"},
+          "report": {"$ref": "#/$defs/artifact"}
+        }
+      }
+    },
+    "failed_or_dropped_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hard_gate_failed_candidates",
+        "unavailable_candidates",
+        "formal_candidate_validation"
+      ],
+      "properties": {
+        "hard_gate_failed_candidates": {"type": "array", "items": {"type": "string"}},
+        "unavailable_candidates": {"type": "array", "items": {"type": "object"}},
+        "formal_candidate_validation": {
+          "type": "object",
+          "required": ["project-native", "llamaindex"],
+          "properties": {
+            "project-native": {"$ref": "#/$defs/nullableValidation"},
+            "llamaindex": {"$ref": "#/$defs/nullableValidation"}
+          }
+        }
+      }
+    },
+    "candidates": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "candidate_id",
+          "status",
+          "selection_status",
+          "unavailable_reason",
+          "quality_score",
+          "all_hard_gates_passed",
+          "disposition",
+          "validation_evidence",
+          "report"
+        ],
+        "properties": {
+          "name": {"enum": ["deterministic", "project-native", "llamaindex", "graphrag"]},
+          "candidate_id": {"type": "string", "minLength": 1},
+          "status": {"enum": ["passed", "failed", "unavailable"]},
+          "selection_status": {"type": "string", "minLength": 1},
+          "unavailable_reason": {"type": ["string", "null"]},
+          "quality_score": {"type": ["number", "null"]},
+          "all_hard_gates_passed": {"type": ["boolean", "null"]},
+          "disposition": {
+            "enum": [
+              "selected",
+              "qualified_fallback",
+              "harness_reference_only",
+              "unavailable_not_evaluated",
+              "not_selected_failed_gate"
+            ]
+          },
+          "validation_evidence": {"$ref": "#/$defs/nullableValidation"},
+          "report": {"$ref": "#/$defs/artifact"}
+        }
+      }
+    },
+    "selected": {
+      "type": ["object", "null"],
+      "required": [
+        "candidate_id",
+        "adapter_release",
+        "reason",
+        "selection_algorithm_reason",
+        "quality_score",
+        "estimated_cost_usd",
+        "wall_clock_ms",
+        "report"
+      ],
+      "properties": {
+        "candidate_id": {"type": "string", "minLength": 1},
+        "adapter_release": {"type": "string", "minLength": 1},
+        "reason": {"type": "string", "minLength": 1},
+        "selection_algorithm_reason": {"type": "string", "minLength": 1},
+        "quality_score": {"type": "number"},
+        "estimated_cost_usd": {"type": "number", "minimum": 0},
+        "wall_clock_ms": {"type": "integer", "minimum": 0},
+        "report": {"$ref": "#/$defs/artifact"}
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"type": "string", "minLength": 1},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dropped_candidate_count", "failure_stage"],
+      "properties": {
+        "dropped_candidate_count": {"type": "integer", "minimum": 0},
+        "failure_stage": {"type": ["string", "null"]}
+      }
+    },
+    "nullableValidation": {
+      "anyOf": [
+        {"$ref": "#/$defs/validation"},
+        {"type": "null"}
+      ]
+    },
+    "resourceUsage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model_calls", "total_tokens", "estimated_cost_usd", "wall_clock_ms"],
+      "properties": {
+        "model_calls": {"type": "integer", "minimum": 0},
+        "total_tokens": {"type": "integer", "minimum": 0},
+        "estimated_cost_usd": {"type": "number", "minimum": 0},
+        "wall_clock_ms": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

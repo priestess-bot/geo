@@ -25,11 +25,15 @@ from .contracts import (
 from .dataset import apply_delta
 
 
+def project_native_adapter(model=None):
+    from .live_adapters import ProjectNativeBenchmarkAdapter
+
+    return ProjectNativeBenchmarkAdapter(model)
+
+
 FACT_PATTERN = re.compile(r"^【事实】(?P<text>.+)$")
 ENTITY_PATTERN = re.compile(r"^【实体】(?P<type>[A-Za-z]+)｜(?P<name>.+)$")
-RELATION_PATTERN = re.compile(
-    r"^【关系】(?P<subject>.+?)｜(?P<predicate>[a-z_]+)｜(?P<object>.+)$"
-)
+RELATION_PATTERN = re.compile(r"^【关系】(?P<subject>.+?)｜(?P<predicate>[a-z_]+)｜(?P<object>.+)$")
 
 
 class DeterministicBaselineAdapter:
@@ -203,13 +207,10 @@ class OptionalFrameworkAdapter:
         )
 
 
-def llamaindex_adapter() -> OptionalFrameworkAdapter:
-    return OptionalFrameworkAdapter(
-        candidate_id="llamaindex-property-graph-poc",
-        adapter_kind="llamaindex",
-        import_name="llama_index",
-        distribution_name="llama-index-core",
-    )
+def llamaindex_adapter(model=None):
+    from .live_adapters import LlamaIndexBenchmarkAdapter
+
+    return LlamaIndexBenchmarkAdapter(model)
 
 
 def graphrag_adapter() -> OptionalFrameworkAdapter:

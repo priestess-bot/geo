@@ -70,8 +70,27 @@ class EvidenceWorkerRepositoryMixin:
                               e.snapshot_hash, e.snapshot_text, e.snapshot_uri, e.usage_rights,
                               e.public_disclosure_allowed, e.public_source_url,
                               e.public_source_title, e.citation_label,
-                              e.quotation_allowed, e.attribution_required
+                              e.quotation_allowed, e.attribution_required,
+                              lineage.pipeline_run_id,
+                              lineage.knowledge_source_id,
+                              lineage.knowledge_document_id,
+                              lineage.knowledge_chunk_id,
+                              lineage.knowledge_fact_id,
+                              lineage.evidence_title,
+                              lineage.promoted_by,
+                              lineage.promoted_at,
+                              lineage.idempotency_key,
+                              lineage.promotion_request_hash,
+                              lineage.lineage_contract_version,
+                              lineage.source_content_hash,
+                              lineage.document_cleaned_text_hash,
+                              lineage.chunk_text_hash,
+                              lineage.fact_statement_hash,
+                              lineage.evidence_snapshot_hash
                        FROM evidence_items e
+                       LEFT JOIN knowledge_fact_evidence_lineages lineage
+                         ON lineage.evidence_item_id = e.id
+                        AND lineage.project_id = e.project_id
                        JOIN placement_brief_versions bv
                          ON bv.id = %s AND bv.project_id = e.project_id
                        JOIN placement_briefs b
@@ -80,6 +99,10 @@ class EvidenceWorkerRepositoryMixin:
                          AND e.usage_rights IN
                            ('owned', 'licensed', 'public_reference', 'authorised_experience')
                          AND e.confidentiality <> 'restricted'
+                         AND (e.item_type <> 'approved_fact'
+                              OR (e.fact_lineage_status = 'verified'
+                                  AND lineage.lineage_contract_version =
+                                      'knowledge-fact-evidence-v1'))
                          AND {_SUBJECT_FILTER}
                        ORDER BY e.created_at, e.id""",
                     (spec["brief_version_id"], lease.project_id),
@@ -135,6 +158,15 @@ class EvidenceWorkerRepositoryMixin:
                    JOIN placement_briefs b ON b.id = bv.brief_id AND b.project_id = bv.project_id
                    WHERE e.project_id = %s
                      AND (e.usage_rights = 'restricted' OR e.confidentiality = 'restricted')
+                     AND (e.item_type <> 'approved_fact' OR (
+                       e.fact_lineage_status = 'verified' AND EXISTS (
+                         SELECT 1 FROM knowledge_fact_evidence_lineages lineage
+                         WHERE lineage.project_id = e.project_id
+                           AND lineage.evidence_item_id = e.id
+                           AND lineage.lineage_contract_version =
+                               'knowledge-fact-evidence-v1'
+                       )
+                     ))
                      AND {_SUBJECT_FILTER}""",
                 (spec["brief_version_id"], lease.project_id),
             )

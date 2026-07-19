@@ -312,6 +312,44 @@ class PostgresDurableJobStore:
             raise LostJobLease("job lease was fenced during failure handling")
         self._event(connection, lease, "job_failed", details)
 
+    def fail_with_retry_in_transaction(
+        self,
+        connection: Any,
+        lease: WorkerLease,
+        *,
+        error_code: str,
+        details: Mapping[str, object],
+        retry_delay: timedelta,
+    ) -> str:
+        retry = lease.attempt_count < lease.max_attempts
+        status = "retry_wait" if retry else "dead_lettered"
+        next_run_at = datetime.now(UTC) + retry_delay
+        changed = connection.execute(
+            """UPDATE durable_jobs SET status = %s, error_code = %s,
+                 error_detail = %s::jsonb, next_run_at = %s,
+                 lease_owner = NULL, lease_token = NULL, lease_expires_at = NULL,
+                 heartbeat_at = NULL, updated_at = clock_timestamp(),
+                 completed_at = CASE WHEN %s = 'dead_lettered'
+                                     THEN clock_timestamp() ELSE NULL END
+               WHERE id = %s AND project_id = %s AND lease_token = %s
+                 AND fencing_generation = %s""",
+            (
+                status,
+                error_code,
+                json.dumps(dict(details)),
+                next_run_at,
+                status,
+                lease.job_id,
+                lease.project_id,
+                lease.lease_token,
+                lease.fencing_generation,
+            ),
+        ).rowcount
+        if changed != 1:
+            raise LostJobLease("job lease was fenced during retry handling")
+        self._event(connection, lease, f"job_{status}", details)
+        return status
+
     def cancel(self, lease: WorkerLease) -> None:
         connection = self.open_project(lease.project_id)
         try:

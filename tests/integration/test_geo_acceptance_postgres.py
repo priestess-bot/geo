@@ -116,7 +116,7 @@ def test_stable_geo_acceptance_closes_the_controlled_full_flow(tmp_path: Path) -
         assert len(str(placement["package_content_hash"])) == 64
 
         projection = cast(dict[str, object], result["customer_projection"])
-        assert projection["metric_count"] == 4
+        assert projection["metric_count"] == 3
         assert projection["verified_url_count"] == 1
         assert projection["approved_report_count"] == 3
         assert cast(dict[str, object], result["boundaries"]) == {
@@ -231,8 +231,14 @@ def _cleanup(*, project_id: UUID, tenant_id: UUID) -> None:
                 (identity_ids,),
             )
         project_tables = connection.execute(
-            """SELECT table_name FROM information_schema.columns
-               WHERE table_schema = 'public' AND column_name = 'project_id'"""
+            """SELECT DISTINCT columns.table_name
+               FROM information_schema.columns AS columns
+               JOIN information_schema.tables AS tables
+                 ON tables.table_schema = columns.table_schema
+                AND tables.table_name = columns.table_name
+               WHERE columns.table_schema = 'public'
+                 AND columns.column_name = 'project_id'
+                 AND tables.table_type = 'BASE TABLE'"""
         ).fetchall()
         for (table_name,) in project_tables:
             connection.execute(

@@ -13,7 +13,8 @@ from geo_core.placements.domain import (
 )
 
 
-_TASK_COLUMNS = """id, project_id, job_id, submission_id, protocol_id,
+_TASK_COLUMNS = """id, project_id, campaign_id, opportunity_id, destination_id,
+    job_id, submission_id, protocol_id,
     measurement_window, expected_sample_count, actual_sample_count,
     scheduled_for, status, opened_at, completed_at, cancelled_at,
     acted_by, state_reason"""
@@ -42,16 +43,21 @@ class PostgresMeasurementTaskMixin:
     _db: Any
 
     def list_measurement_collection_tasks(
-        self, *, project_id: UUID, submission_id: UUID | None, status: str | None
+        self,
+        *,
+        project_id: UUID,
+        campaign_id: UUID,
+        submission_id: UUID | None,
+        status: str | None,
     ) -> tuple[MeasurementCollectionTask, ...]:
         records = _rows(
             self._db.execute(
                 f"""SELECT {_TASK_COLUMNS} FROM measurement_collection_tasks
-                    WHERE project_id = %s
+                    WHERE project_id = %s AND campaign_id = %s
                       AND (%s::uuid IS NULL OR submission_id = %s::uuid)
                       AND (%s::text IS NULL OR status = %s::text)
                     ORDER BY scheduled_for, opened_at""",
-                (project_id, submission_id, submission_id, status, status),
+                (project_id, campaign_id, submission_id, submission_id, status, status),
             )
         )
         return tuple(MeasurementCollectionTask(**record) for record in records)

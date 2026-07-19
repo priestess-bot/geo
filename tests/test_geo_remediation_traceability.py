@@ -1,60 +1,53 @@
 from __future__ import annotations
 
-import re
-from pathlib import Path
+import json
+
+from scripts.geo_remediation_clause_map import ACCEPTANCE_EVIDENCE
+from scripts.geo_remediation_registry import TEST_EVIDENCE
+from scripts.validate_geo_remediation_traceability import (
+    PLAN,
+    ROOT,
+    collect_registered_targets,
+    missing_evidence,
+    validate_registry_shape,
+    validate_target_definitions,
+)
 
 
-ROOT = Path(__file__).resolve().parents[1]
-PLAN = ROOT / "docs/engineering/GEO-accepted-remediation-implementation-plan-2026-07-19.md"
-EXPECTED_FINDINGS = {
-    "001",
-    "009",
-    "011",
-    "012",
-    "013",
-    "014",
-    "015",
-    "016",
-    "018",
-    "019",
-    "021",
-    "023",
-    "025",
-    "027",
-}
+def test_all_acceptance_clauses_have_registered_executable_evidence() -> None:
+    validate_registry_shape(PLAN.read_text(encoding="utf-8"))
+    assert len(ACCEPTANCE_EVIDENCE) == 70
+    assert not missing_evidence(), "unfinished stable evidence IDs must keep F025 red"
 
 
-def _traceability_rows(document: str) -> dict[str, str]:
-    section = document.split("### 6.1 验收追踪矩阵", maxsplit=1)[1].split(
-        "## 7. 测试目标与发布门禁", maxsplit=1
-    )[0]
-    rows: dict[str, str] = {}
-    for finding, mapping in re.findall(r"^\| F-(\d{3}) \| (.+) \|$", section, re.MULTILINE):
-        rows[finding] = mapping
-    return rows
+def test_registered_pytest_nodes_playwright_titles_and_commands_are_real() -> None:
+    validate_target_definitions(ROOT)
+    collect_registered_targets(ROOT)
 
 
-def test_every_accepted_finding_has_a_traceability_row() -> None:
-    document = PLAN.read_text(encoding="utf-8")
-    assert set(_traceability_rows(document)) == EXPECTED_FINDINGS
+def test_high_risk_behavior_is_not_backed_only_by_source_contracts() -> None:
+    validate_registry_shape(PLAN.read_text(encoding="utf-8"))
 
 
-def test_every_acceptance_clause_is_mapped_to_a_test_id() -> None:
-    document = PLAN.read_text(encoding="utf-8")
-    defined = {
-        (finding, int(number))
-        for finding, number in re.findall(r"`F(\d{3})-AC(\d+)`", document)
+def test_ordinary_gate_is_chromium_desktop_without_unrelated_quality_thresholds() -> None:
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
+    ordinary_ci = makefile.split("\nci:", maxsplit=1)[1].split("\n\n", maxsplit=1)[0]
+    browser_command = package["scripts"]["test:browser:chromium"]
+    browser_gate = browser_command
+    if browser_command.startswith("node "):
+        browser_gate += (ROOT / browser_command.removeprefix("node ")).read_text(
+            encoding="utf-8"
+        )
+    forbidden = ("coverage", "firefox", "webkit", "mobile", "axe", "screen-reader")
+
+    assert "--project=chromium-desktop" in browser_gate
+    assert "--project=customer-desktop" in browser_gate
+    assert all(word not in (ordinary_ci + browser_gate).lower() for word in forbidden)
+    registered_projects = {
+        target.project
+        for targets in TEST_EVIDENCE.values()
+        for target in targets
+        if target.kind == "playwright"
     }
-    assert len(defined) == 70
-
-    mapped: set[tuple[str, int]] = set()
-    for finding, mapping in _traceability_rows(document).items():
-        for clause in mapping.split("；"):
-            acceptance_numbers = {int(value) for value in re.findall(r"AC(\d+)", clause)}
-            if not acceptance_numbers:
-                continue
-            assert "->" in clause
-            assert re.search(r"`F\d{3}-[A-Z]+-\d+", clause), clause
-            mapped.update((finding, number) for number in acceptance_numbers)
-
-    assert mapped == defined
+    assert registered_projects <= {"chromium-desktop", "customer-desktop"}
