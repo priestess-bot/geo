@@ -5,7 +5,13 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Mapping, Protocol, Sequence
 
-from geo_core.jobs.postgres import LeaseHeartbeat, PostgresDurableJobStore, WorkerLease
+from geo_core.jobs.postgres import (
+    JobCancellationRequested,
+    LeaseHeartbeat,
+    LostJobLease,
+    PostgresDurableJobStore,
+    WorkerLease,
+)
 from geo_core.knowledge.rag_domain import (
     KnowledgeRagClaim,
     KnowledgeRagContractError,
@@ -143,6 +149,8 @@ class KnowledgeRagExtractHandler:
                 StoredRagArtifact(stored.uri, stored.content_hash),
             )
             return {"status": "succeeded", "job_id": str(lease.job_id), **details}
+        except (JobCancellationRequested, LostJobLease):
+            raise
         except Exception as exc:
             return self._fail(lease, exc)
 
@@ -153,7 +161,9 @@ class KnowledgeRagExtractHandler:
             raise KnowledgeRagContractError("RAG job selection manifest changed after enqueue")
 
     def _fail(self, lease: WorkerLease, error: Exception) -> Mapping[str, object]:
-        retryable = isinstance(error, (RetryableModelGatewayError, ObjectStoreError))
+        retryable = isinstance(error, (RetryableModelGatewayError, ObjectStoreError)) or getattr(
+            error, "sqlstate", None
+        ) in {"40001", "40P01"}
         status = self._store.fail(
             lease,
             error_code=type(error).__name__,

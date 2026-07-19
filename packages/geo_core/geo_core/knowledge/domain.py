@@ -58,6 +58,7 @@ class ProcessingInput:
     filename: str | None
     media_type: str
     raw_content: bytes | None
+    logical_source_id: UUID | None = None
     expected_content_hash: str | None = None
     requested_by: UUID | None = None
 

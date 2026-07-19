@@ -115,9 +115,7 @@ class QuestionGateway:
             )
         )
         output = {"questions": questions}
-        response_hash = hashlib.sha256(
-            json.dumps(output, sort_keys=True).encode()
-        ).hexdigest()
+        response_hash = hashlib.sha256(json.dumps(output, sort_keys=True).encode()).hexdigest()
         return ModelGatewayResult(
             output=output,
             call_log_id=uuid4(),
@@ -182,16 +180,10 @@ def test_f019_int_03_question_candidates_freeze_bind_and_immutable_versions() ->
             idempotency_key=f"question-source-{suffix}",
         )
         _process_source(_dispatcher(worker_url, suffix), source, project["project"])
-        entities = knowledge.list_rag_entity_candidates(
-            principal, project_id=project["project"]
-        )
-        relations = knowledge.list_rag_relation_candidates(
-            principal, project_id=project["project"]
-        )
+        entities = knowledge.list_rag_entity_candidates(principal, project_id=project["project"])
+        relations = knowledge.list_rag_relation_candidates(principal, project_id=project["project"])
         _approve_graph(knowledge, principal, project["project"], entities, relations)
-        entities = knowledge.list_rag_entity_candidates(
-            principal, project_id=project["project"]
-        )
+        entities = knowledge.list_rag_entity_candidates(principal, project_id=project["project"])
         fact = knowledge.list_facts(principal, project_id=project["project"])[0]
         knowledge.review_fact(
             principal,
@@ -207,9 +199,7 @@ def test_f019_int_03_question_candidates_freeze_bind_and_immutable_versions() ->
             campaign_id=campaign_id,
             dimensions=_dimensions(),
             fact_candidate_ids=(fact["id"],),
-            graph_entity_ids=tuple(
-                dict.fromkeys(item["graph_entity_id"] for item in entities)
-            ),
+            graph_entity_ids=tuple(dict.fromkeys(item["graph_entity_id"] for item in entities)),
             configured_model="deepseek-v4-flash",
             model_call_budget=10,
             semantic_duplicate_threshold=0.92,
@@ -244,7 +234,9 @@ def test_f019_int_03_question_candidates_freeze_bind_and_immutable_versions() ->
                 campaign_id=campaign_id,
                 candidate_id=candidate["id"],
                 decision="approved",
-                notes="reviewed semantic duplicate" if candidate["dedup_status"] != "unique" else "",
+                notes="reviewed semantic duplicate"
+                if candidate["dedup_status"] != "unique"
+                else "",
             )
 
         question_set = knowledge.create_question_set(
@@ -307,18 +299,6 @@ def test_f019_int_03_question_candidates_freeze_bind_and_immutable_versions() ->
             frozen["id"],
             len(candidates),
         )
-        _assert_geo_question_simulation(
-            knowledge=knowledge,
-            principal=principal,
-            app_url=app_url,
-            worker_url=worker_url,
-            project=project,
-            campaign_id=campaign_id,
-            fact_id=fact["id"],
-            question_set=frozen,
-            suffix=suffix,
-        )
-
         next_version = knowledge.create_question_set(
             principal,
             project_id=project["project"],
@@ -332,9 +312,23 @@ def test_f019_int_03_question_candidates_freeze_bind_and_immutable_versions() ->
         )
         assert next_version["version_number"] == 2
         assert next_version["status"] == "draft"
-        assert frozen["content_hash"] == knowledge.list_question_sets(
-            principal, project_id=project["project"], campaign_id=campaign_id
-        )[1]["content_hash"]
+        assert (
+            frozen["content_hash"]
+            == knowledge.list_question_sets(
+                principal, project_id=project["project"], campaign_id=campaign_id
+            )[1]["content_hash"]
+        )
+        _assert_geo_question_simulation(
+            knowledge=knowledge,
+            principal=principal,
+            app_url=app_url,
+            worker_url=worker_url,
+            project=project,
+            campaign_id=campaign_id,
+            fact_id=fact["id"],
+            question_set=frozen,
+            suffix=suffix,
+        )
     finally:
         with psycopg.connect(ADMIN_URL) as admin:
             cleanup_projects(
@@ -447,16 +441,12 @@ def _assert_geo_question_simulation(
         project_id=project["project"], actor_id=project["owner"]
     )
     release_id = next(
-        item["template_release_id"]
-        for item in bindings
-        if item["task_key"] == "productreview"
+        item["template_release_id"] for item in bindings if item["task_key"] == "productreview"
     )
     release = next(
         item
         for skill in placement.list_prompt_skills(project_id=project["project"])
-        for item in placement.list_prompt_releases(
-            project_id=project["project"], skill_id=skill.id
-        )
+        for item in placement.list_prompt_releases(project_id=project["project"], skill_id=skill.id)
         if item.id == release_id
     )
     prompt_binding = placement.bind_opportunity_prompt_release(
@@ -499,6 +489,30 @@ def _assert_geo_question_simulation(
         model_call_budget=1,
         requested_by=project["owner"],
         idempotency_key=f"question-simulation-{suffix}",
+        simulation_purpose="geo_question_test",
+        question_set_id=question_set["id"],
+        confirmed_question_set_hash=str(question_set["content_hash"]),
+        question_set_item_id=first_item["id"],
+    )
+    stale_simulation, stale_job = placement.create_prompt_simulation(
+        project_id=project["project"],
+        campaign_id=campaign_id,
+        opportunity_id=opportunity_id,
+        destination_id=destination.id,
+        prompt_release_binding_id=prompt_binding.id,
+        confirmed_release_hash=release.release_hash,
+        primary_brand_entity_id=brand_id,
+        product_entity_id=project["entity"],
+        authenticity_mode="synthetic_testimonial",
+        evidence_item_ids=(evidence_id,),
+        goals={"deliverable": "queued stale GEO question test"},
+        constraints={"locale": "en-AU"},
+        variables={},
+        model_policy_hash="b" * 64,
+        configured_model="deepseek-v4-flash",
+        model_call_budget=1,
+        requested_by=project["owner"],
+        idempotency_key=f"question-simulation-stale-{suffix}",
         simulation_purpose="geo_question_test",
         question_set_id=question_set["id"],
         confirmed_question_set_hash=str(question_set["content_hash"]),
@@ -552,11 +566,43 @@ def _assert_geo_question_simulation(
     )
     assert detail is not None and detail.artifact_manifest is not None
     assert detail.input_snapshot is not None
-    assert detail.artifact_manifest["question_binding"] == detail.input_snapshot[
-        "question_binding"
-    ]
+    assert detail.artifact_manifest["question_binding"] == detail.input_snapshot["question_binding"]
     assert detail.artifact_manifest["test_only"] is True
     assert detail.artifact_manifest["publication_eligible"] is False
+    with psycopg.connect(ADMIN_URL) as admin:
+        admin.execute(
+            """UPDATE knowledge_chunks SET status = 'disabled'
+               WHERE project_id = %s AND id = (
+                 SELECT chunk_id FROM knowledge_fact_candidates
+                 WHERE project_id = %s AND id = %s
+               )""",
+            (project["project"], project["project"], fact_id),
+        )
+        admin.commit()
+    stale_gateway = FakeGateway(evidence_id)
+    stale = PlacementWorkerDispatcher(
+        store=store,
+        handlers={
+            "prompt_simulation.generate": PromptSimulationHandler(
+                store=store,
+                repository=repository,
+                gateway=stale_gateway,
+                lease_for=timedelta(seconds=30),
+            )
+        },
+        worker_id=f"question-simulation-stale-{suffix}",
+        lease_for=timedelta(seconds=30),
+    ).process(job_id=stale_job.id, project_id=project["project"])
+    assert stale["status"] == "failed"
+    assert stale_gateway.requests == []
+    assert (
+        placement.get_prompt_simulation(
+            project_id=project["project"],
+            campaign_id=campaign_id,
+            simulation_id=stale_simulation.id,
+        )
+        is not None
+    )
     assert _formal_output_counts(project["project"]) == before
 
 
@@ -610,7 +656,9 @@ def _dimensions() -> tuple[QuestionDimensionDraft, ...]:
     )
 
 
-def _question_dispatcher(worker_url: str, suffix: str) -> PlacementWorkerDispatcher:
+def _question_dispatcher(
+    worker_url: str, suffix: str, *, gateway: Any | None = None
+) -> PlacementWorkerDispatcher:
     store = PostgresDurableJobStore(lambda: psycopg.connect(worker_url))
     return PlacementWorkerDispatcher(
         store=store,
@@ -618,7 +666,7 @@ def _question_dispatcher(worker_url: str, suffix: str) -> PlacementWorkerDispatc
             "knowledge.question.generate": KnowledgeQuestionGenerateHandler(
                 store=store,
                 repository=KnowledgeQuestionPostgresRepository(store),
-                gateway=QuestionGateway(),
+                gateway=gateway or QuestionGateway(),
                 object_store=_object_store(suffix),
                 selection=SELECTION,
                 selection_manifest_hash=SELECTION_HASH,
@@ -669,9 +717,7 @@ def _assert_inventory_and_immutability(
     item_count: int,
 ) -> None:
     with psycopg.connect(app_url) as connection:
-        connection.execute(
-            "SELECT set_config('geo.project_id', %s, true)", (str(project_id),)
-        )
+        connection.execute("SELECT set_config('geo.project_id', %s, true)", (str(project_id),))
         connection.execute(
             "SELECT set_config('geo.project_ids', %s, true)",
             (json.dumps([str(project_id)]),),
@@ -694,9 +740,7 @@ def _assert_inventory_and_immutability(
                 (question_set_id,),
             )
         connection.rollback()
-        connection.execute(
-            "SELECT set_config('geo.project_id', %s, true)", (str(project_id),)
-        )
+        connection.execute("SELECT set_config('geo.project_id', %s, true)", (str(project_id),))
         connection.execute(
             "SELECT set_config('geo.project_ids', %s, true)",
             (json.dumps([str(project_id)]),),

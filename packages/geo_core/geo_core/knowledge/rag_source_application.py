@@ -14,6 +14,7 @@ from geo_core.knowledge.domain import (
     KnowledgeValidationError,
     SourceInput,
 )
+from geo_core.knowledge.locking import lock_source_aggregate, source_logical_id
 from geo_core.knowledge.rag_graph_lifecycle import archive_unreferenced_graph_rows
 
 
@@ -34,6 +35,37 @@ class KnowledgeRagSourceApplicationMixin:
         with self._connection(  # type: ignore[attr-defined]
             principal, project_id, manage=True
         ) as connection:
+            logical_source_id = source_logical_id(
+                connection, project_id=project_id, source_id=source_id
+            )
+            if logical_source_id is None:
+                raise KnowledgeNotFound("Knowledge source does not exist")
+            lock_source_aggregate(connection, logical_source_id)
+            new_source_id = uuid5(
+                NAMESPACE_URL,
+                f"geo-knowledge-source-revision:{project_id}:{logical_source_id}:{key}",
+            )
+            run_id = uuid5(NAMESPACE_URL, f"geo-knowledge-run:{new_source_id}:{key}")
+            input_hash = _source_input_hash(project_id, source, key)
+            existing = _one(
+                connection.execute(
+                    """SELECT run.input_hash
+                       FROM knowledge_sources source
+                       JOIN knowledge_pipeline_runs run
+                         ON run.source_id = source.id AND run.project_id = source.project_id
+                       WHERE source.id = %s AND source.project_id = %s AND run.id = %s""",
+                    (new_source_id, project_id, run_id),
+                )
+            )
+            if existing is not None:
+                if existing["input_hash"] != input_hash:
+                    raise KnowledgeConflict(
+                        "source revision idempotency key was used for different content"
+                    )
+                return cast(
+                    Mapping[str, object],
+                    self._creation_result(connection, project_id, new_source_id, run_id),  # type: ignore[attr-defined]
+                )
             previous = _one(
                 connection.execute(
                     """SELECT id, logical_source_id, status
@@ -47,31 +79,6 @@ class KnowledgeRagSourceApplicationMixin:
             if previous["status"] != "ready":
                 raise KnowledgeConflict("only a ready Knowledge source can create a revision")
             logical_source_id = previous["logical_source_id"] or previous["id"]
-            new_source_id = uuid5(
-                NAMESPACE_URL,
-                f"geo-knowledge-source-revision:{project_id}:{logical_source_id}:{key}",
-            )
-            run_id = uuid5(NAMESPACE_URL, f"geo-knowledge-run:{new_source_id}:{key}")
-            input_hash = _source_input_hash(project_id, source, key)
-            existing = _one(
-                connection.execute(
-                    """SELECT run.input_hash
-                       FROM knowledge_sources source
-                       JOIN knowledge_pipeline_runs run
-                         ON run.source_id = source.id AND run.project_id = source.project_id
-                       WHERE source.id = %s AND source.project_id = %s""",
-                    (new_source_id, project_id),
-                )
-            )
-            if existing is not None:
-                if existing["input_hash"] != input_hash:
-                    raise KnowledgeConflict(
-                        "source revision idempotency key was used for different content"
-                    )
-                return cast(
-                    Mapping[str, object],
-                    self._creation_result(connection, project_id, new_source_id, run_id),  # type: ignore[attr-defined]
-                )
             successor = _one(
                 connection.execute(
                     """SELECT id FROM knowledge_sources
@@ -125,6 +132,19 @@ class KnowledgeRagSourceApplicationMixin:
         with self._connection(  # type: ignore[attr-defined]
             principal, project_id, manage=True
         ) as connection:
+            logical_source_id = source_logical_id(
+                connection, project_id=project_id, source_id=source_id
+            )
+            if logical_source_id is None:
+                raise KnowledgeNotFound("Knowledge source does not exist")
+            _cancel_source_jobs(connection, project_id=project_id, source_id=source_id)
+            lock_source_aggregate(connection, logical_source_id)
+            _cancel_source_jobs(
+                connection,
+                project_id=project_id,
+                source_id=source_id,
+                statuses=("queued", "retry_wait"),
+            )
             source = _one(
                 connection.execute(
                     """SELECT id, logical_source_id, status FROM knowledge_sources
@@ -155,7 +175,8 @@ class KnowledgeRagSourceApplicationMixin:
                     connection.execute(
                         f"""UPDATE {table} SET lifecycle_status = 'withdrawn',
                                   updated_at = clock_timestamp()
-                            WHERE project_id = %s AND rag_revision_id = ANY(%s)""",  # nosec B608
+                            WHERE project_id = %s AND rag_revision_id = ANY(%s)
+                              AND lifecycle_status = 'active'""",  # nosec B608
                         (project_id, revision_ids),
                     )
                 connection.execute(
@@ -184,7 +205,6 @@ class KnowledgeRagSourceApplicationMixin:
                    WHERE project_id = %s AND source_id = %s AND status = 'active'""",
                 (project_id, source_id),
             )
-            _cancel_source_jobs(connection, project_id=project_id, source_id=source_id)
             archived = _one(
                 connection.execute(
                     """UPDATE knowledge_sources SET status = 'archived',
@@ -202,15 +222,21 @@ class KnowledgeRagSourceApplicationMixin:
             }
 
 
-def _cancel_source_jobs(connection: Any, *, project_id: UUID, source_id: UUID) -> None:
+def _cancel_source_jobs(
+    connection: Any,
+    *,
+    project_id: UUID,
+    source_id: UUID,
+    statuses: tuple[str, ...] = ("queued", "retry_wait", "running", "finalizing"),
+) -> None:
     connection.execute(
         """UPDATE durable_jobs job SET cancel_requested_at = clock_timestamp(),
                   updated_at = clock_timestamp()
            FROM knowledge_rag_job_specs spec
            WHERE spec.job_id = job.id AND spec.project_id = job.project_id
              AND spec.source_id = %s AND spec.project_id = %s
-             AND job.status IN ('queued', 'retry_wait', 'running', 'finalizing')""",
-        (source_id, project_id),
+             AND job.status = ANY(%s)""",
+        (source_id, project_id, list(statuses)),
     )
     connection.execute(
         """UPDATE durable_jobs job SET cancel_requested_at = clock_timestamp(),
@@ -220,8 +246,8 @@ def _cancel_source_jobs(connection: Any, *, project_id: UUID, source_id: UUID) -
              ON run.id = spec.pipeline_run_id AND run.project_id = spec.project_id
            WHERE spec.job_id = job.id AND spec.project_id = job.project_id
              AND run.source_id = %s AND spec.project_id = %s
-             AND job.status IN ('queued', 'retry_wait', 'running', 'finalizing')""",
-        (source_id, project_id),
+             AND job.status = ANY(%s)""",
+        (source_id, project_id, list(statuses)),
     )
 
 

@@ -115,7 +115,10 @@ class GenerationHandler:
         self._lease_for = lease_for
 
     def handle(self, lease: WorkerLease) -> Mapping[str, object]:
-        claim = self._repository.load_generation(lease)
+        try:
+            claim = self._repository.load_generation(lease)
+        except PlacementRuleViolation as exc:
+            return self._fail(lease, exc, retry=False, classification="contract")
         serialized_schema = canonical_json_bytes(claim.output_schema).decode("utf-8")
         request = ModelGatewayRequest(
             messages=(
@@ -161,6 +164,8 @@ class GenerationHandler:
                     budget=ModelCallBudget(1),
                 )
                 heartbeat.raise_if_stopped()
+        except (JobCancellationRequested, LostJobLease):
+            raise
         except Exception as exc:
             classification = _model_error_classification(exc)
             self._repository.record_model_call_failure(
@@ -239,15 +244,13 @@ class PublicationVerificationHandler:
                 )
                 heartbeat.raise_if_stopped()
         except (RetryableVerificationError, PermanentVerificationError) as exc:
-            status = self._repository.persist_verification_error(
-                lease, snapshot, error=exc
-            )
+            status = self._repository.persist_verification_error(lease, snapshot, error=exc)
             return {"status": status, "job_id": str(lease.job_id)}
-        self._repository.persist_completed_verification(
+        verified = self._repository.persist_completed_verification(
             lease, snapshot, result=verification
         )
         return {
-            "status": "verified" if verification.success else "verification_failed",
+            "status": "verified" if verified else "verification_failed",
             "job_id": str(lease.job_id),
         }
 
@@ -296,6 +299,12 @@ class PlacementWorkerDispatcher:
             lease_for=self._lease_for,
         )
         if claim.lease is None:
+            handler = self._handlers.get(claim.kind or "")
+            reconcile = getattr(handler, "reconcile_terminal", None)
+            if claim.disposition in {"cancelled", "dead_lettered", "terminal"} and callable(
+                reconcile
+            ):
+                reconcile(job_id=job_id, project_id=project_id)
             return {"status": claim.disposition, "job_id": str(job_id)}
         lease = claim.lease
         handler = self._handlers.get(lease.kind)
@@ -311,6 +320,9 @@ class PlacementWorkerDispatcher:
             return handler.handle(lease)
         except JobCancellationRequested:
             self._store.cancel(lease)
+            reconcile = getattr(handler, "reconcile_terminal", None)
+            if callable(reconcile):
+                reconcile(job_id=job_id, project_id=project_id)
             return {"status": "cancelled", "job_id": str(job_id)}
         except LostJobLease:
             return {"status": "fenced", "job_id": str(job_id)}

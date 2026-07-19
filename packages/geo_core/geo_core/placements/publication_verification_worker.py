@@ -9,6 +9,9 @@ from typing import Any, Mapping
 
 from geo_core.jobs.postgres import PostgresDurableJobStore, WorkerLease
 from geo_core.placements.domain import canonical_hash
+from geo_core.placements.package_execution_eligibility import (
+    publication_request_approved_fact_evidence_is_current,
+)
 from geo_core.placements.publication_worker_support import (
     advance_verified_opportunity,
     content_fragments,
@@ -20,7 +23,10 @@ from geo_core.placements.publication_contract import (
 from geo_core.placements.publication_verification_records import VerificationOutcome
 from geo_core.placements.url_verification_contracts import (
     UrlVerificationResult,
+    VerificationCheck,
+    VerificationCheckName,
     VerificationError,
+    VerificationFailure,
     VerificationFailureDisposition,
 )
 from geo_core.placements.worker_models import VerificationSnapshot
@@ -128,19 +134,31 @@ def persist_completed_verification(
     snapshot: VerificationSnapshot,
     result: UrlVerificationResult,
 ) -> bool:
-    evidence = _completed_evidence(result)
     with store.fenced_transaction(lease) as connection:
+        lineage_current = (
+            not result.success
+            or publication_request_approved_fact_evidence_is_current(
+                connection,
+                project_id=lease.project_id,
+                publication_request_id=snapshot.publication_request_id,
+            )
+        )
+        verified = result.success and lineage_current
+        evidence = (
+            _completed_evidence(result) if lineage_current else _lineage_stale_evidence(result)
+        )
         projection = _insert_attempt(
             connection,
             lease,
             snapshot,
             evidence,
             projection_values={
-                "success": result.success,
+                "success": verified,
                 "accessibility": result.accessibility,
                 "content_match": result.content_match,
                 "disclosure_match": result.disclosure_match,
                 "link_match": result.link_match,
+                "lineage_current": lineage_current,
             },
         )
         _update_submission_projection(
@@ -148,24 +166,22 @@ def persist_completed_verification(
             lease,
             snapshot,
             projection,
-            submission_status="verified" if result.success else "failed",
-            publication_status="published" if result.success else "failed",
+            submission_status="verified" if verified else "failed",
+            publication_status="published" if verified else "failed",
         )
-        if result.success:
+        if verified:
             advance_verified_opportunity(connection, lease.project_id, snapshot.submission_id)
         scheduled = (
-            schedule_measurements(connection, lease, snapshot.submission_id)
-            if result.success
-            else 0
+            schedule_measurements(connection, lease, snapshot.submission_id) if verified else 0
         )
-        details = {**projection, "verified": result.success, "measurement_jobs": scheduled}
+        details = {**projection, "verified": verified, "measurement_jobs": scheduled}
         store.complete_in_transaction(
             connection,
             lease,
             result_ref=f"publication-verification:{snapshot.submission_id}",
             details=details,
         )
-    return result.success
+    return verified
 
 
 def persist_verification_error(
@@ -245,6 +261,42 @@ def _completed_evidence(result: UrlVerificationResult) -> _AttemptEvidence:
         failures=failures,
         error_code=None if result.success else str(failures[0]["code"]),
         failure_disposition=None if result.success else "permanent",
+    )
+
+
+def _lineage_stale_evidence(result: UrlVerificationResult) -> _AttemptEvidence:
+    failure = VerificationFailure(
+        code="lineage_stale",
+        disposition=VerificationFailureDisposition.PERMANENT,
+        check=VerificationCheckName.INPUT_CONTRACT,
+    )
+    stale_check = VerificationCheck(
+        name=VerificationCheckName.INPUT_CONTRACT,
+        passed=False,
+        failure_code=failure.code,
+    )
+    checks = tuple(
+        stale_check if check.name is VerificationCheckName.INPUT_CONTRACT else check
+        for check in result.checks
+    )
+    if not any(check.name is VerificationCheckName.INPUT_CONTRACT for check in result.checks):
+        checks = (stale_check, *checks)
+    return _AttemptEvidence(
+        verifier_version=result.verifier_version,
+        outcome="failed",
+        checked_at=result.checked_at,
+        status_code=result.status_code,
+        final_url=result.final_url,
+        metadata_hash=result.metadata_hash,
+        body_hash=result.body_hash,
+        visible_text_hash=result.visible_text_hash,
+        content_rule_hash=result.content_rule_hash,
+        verification_rule_hash=result.verification_rule_hash,
+        redirect_count=result.redirect_count,
+        checks=tuple(check.to_persistence_dict() for check in checks),
+        failures=(failure.to_persistence_dict(),),
+        error_code=failure.code,
+        failure_disposition=failure.disposition.value,
     )
 
 

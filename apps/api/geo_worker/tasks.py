@@ -137,7 +137,9 @@ def dispatcher() -> PlacementWorkerDispatcher:
             lease_for=lease_for,
         ),
         "placement.measure": MeasurementWindowHandler(repository),
-        "knowledge.process": KnowledgeProcessHandler(store, rag_policy=rag_policy),
+        "knowledge.process": KnowledgeProcessHandler(
+            store, rag_policy=rag_policy, lease_for=lease_for
+        ),
         "knowledge.rag.extract": KnowledgeRagExtractHandler(
             store=store,
             repository=KnowledgeRagPostgresRepository(store),

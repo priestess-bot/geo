@@ -46,6 +46,7 @@ class PromptSimulationClaim:
     destination_id: UUID | None = None
     simulation_purpose: str = "content_preview"
     question_binding: Mapping[str, object] | None = None
+    question_candidate_id: UUID | None = None
 
     @property
     def prompt_input_hash(self) -> str:

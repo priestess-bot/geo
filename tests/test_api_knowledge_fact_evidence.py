@@ -67,6 +67,11 @@ def test_fact_evidence_post_requires_idempotency_and_forbids_derived_lineage(
             headers={"Idempotency-Key": "fact-key"},
             json={**payload, "source_id": str(uuid4())},
         )
+        deprecated_rights = client.post(
+            path,
+            headers={"Idempotency-Key": "deprecated-rights"},
+            json={**payload, "usage_rights": "public_domain"},
+        )
         created = client.post(
             path,
             headers={"Idempotency-Key": "fact-key"},
@@ -75,6 +80,7 @@ def test_fact_evidence_post_requires_idempotency_and_forbids_derived_lineage(
 
     assert missing_key.status_code == 422
     assert derived.status_code == 422
+    assert deprecated_rights.status_code == 422
     assert created.status_code == 200
     assert captured["idempotency_key"] == "fact-key"
     assert captured["fact_id"] == fact_id

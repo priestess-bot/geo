@@ -6,15 +6,22 @@ from datetime import timedelta
 import hashlib
 import json
 from typing import Any, Mapping
-from uuid import NAMESPACE_URL, uuid4, uuid5
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
-from geo_core.jobs.postgres import PostgresDurableJobStore, WorkerLease
+from geo_core.jobs.postgres import (
+    JobCancellationRequested,
+    LeaseHeartbeat,
+    LostJobLease,
+    PostgresDurableJobStore,
+    WorkerLease,
+)
 from geo_core.knowledge.domain import (
     KnowledgeProcessingError,
     KnowledgeSourceRevisionRequired,
     ProcessingInput,
     ProcessingResult,
 )
+from geo_core.knowledge.locking import lock_source_aggregate
 from geo_core.knowledge.processing import process_source
 from geo_core.knowledge.rag_domain import KnowledgeRagEnqueuePolicy
 
@@ -24,28 +31,104 @@ class KnowledgeProcessHandler:
         self,
         store: PostgresDurableJobStore,
         *,
+        lease_for: timedelta,
         rag_policy: KnowledgeRagEnqueuePolicy | None = None,
     ) -> None:
         self._store = store
         self._rag_policy = rag_policy
+        self._lease_for = lease_for
 
     def handle(self, lease: WorkerLease) -> Mapping[str, object]:
         try:
             claim = self._load(lease)
-            result = process_source(claim)
+            with LeaseHeartbeat(
+                self._store,
+                lease,
+                lease_for=self._lease_for,
+                interval=min(self._lease_for / 3, timedelta(seconds=30)),
+            ) as heartbeat:
+                result = process_source(claim)
+                heartbeat.raise_if_stopped()
             return self._finalize(lease, claim, result)
+        except (JobCancellationRequested, LostJobLease):
+            raise
         except KnowledgeProcessingError as exc:
             return self._fail(lease, exc, retry=exc.retryable)
         except Exception as exc:
-            return self._fail(lease, exc, retry=False)
+            return self._fail(lease, exc, retry=_is_retryable_database_error(exc))
 
-    def _load(self, lease: WorkerLease) -> ProcessingInput:
-        connection = self._store.open_project(lease.project_id)
+    def reconcile_terminal(self, *, job_id: UUID, project_id: UUID) -> None:
+        connection = self._store.open_project(project_id)
         try:
             row = _one(
                 connection.execute(
+                    """SELECT job.status AS job_status, run.id AS pipeline_run_id,
+                              run.source_id, source.logical_source_id
+                       FROM durable_jobs job
+                       JOIN knowledge_job_specs spec
+                         ON spec.job_id = job.id AND spec.project_id = job.project_id
+                       JOIN knowledge_pipeline_runs run
+                         ON run.id = spec.pipeline_run_id AND run.project_id = spec.project_id
+                       JOIN knowledge_sources source
+                         ON source.id = run.source_id AND source.project_id = run.project_id
+                       WHERE job.id = %s AND job.project_id = %s""",
+                    (job_id, project_id),
+                )
+            )
+            if row is None or row["job_status"] not in {"cancelled", "dead_lettered"}:
+                connection.rollback()
+                return
+            lock_source_aggregate(connection, row["logical_source_id"] or row["source_id"])
+            cancelled = row["job_status"] == "cancelled"
+            run_status = "cancelled" if cancelled else "failed"
+            error_code = "job_cancelled" if cancelled else "attempt_budget_exhausted"
+            detail = (
+                "knowledge processing was cancelled"
+                if cancelled
+                else "worker lease attempts were exhausted"
+            )
+            connection.execute(
+                """UPDATE knowledge_pipeline_runs
+                   SET status = %s, error_code = %s, error_detail = %s,
+                       completed_at = clock_timestamp(), updated_at = clock_timestamp()
+                   WHERE id = %s AND project_id = %s
+                     AND status IN ('queued', 'running')""",
+                (run_status, error_code, detail, row["pipeline_run_id"], project_id),
+            )
+            connection.execute(
+                """UPDATE knowledge_pipeline_stages
+                   SET status = CASE
+                         WHEN %s OR status = 'pending' THEN 'skipped'
+                         ELSE 'failed'
+                       END,
+                       error_detail = %s,
+                       completed_at = clock_timestamp()
+                   WHERE pipeline_run_id = %s AND project_id = %s
+                     AND status IN ('pending', 'running')""",
+                (cancelled, detail, row["pipeline_run_id"], project_id),
+            )
+            connection.execute(
+                """UPDATE knowledge_sources
+                   SET status = 'failed', error_code = %s, error_detail = %s,
+                       updated_at = clock_timestamp()
+                   WHERE id = %s AND project_id = %s
+                     AND status IN ('queued', 'processing')""",
+                (error_code, detail, row["source_id"], project_id),
+            )
+            connection.commit()
+        except BaseException:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
+    def _load(self, lease: WorkerLease) -> ProcessingInput:
+        with self._store.fenced_transaction(lease) as connection:
+            row = _one(
+                connection.execute(
                     """SELECT source.id AS source_id, run.id AS pipeline_run_id,
-                              source.project_id, source.source_kind, source.title,
+                              source.project_id, source.logical_source_id,
+                              source.source_kind, source.title,
                               source.source_url, source.filename, source.media_type,
                               source.raw_content,
                               source.content_hash AS expected_content_hash,
@@ -61,6 +144,18 @@ class KnowledgeProcessHandler:
             )
             if row is None:
                 raise KnowledgeProcessingError("knowledge job specification is missing")
+            lock_source_aggregate(connection, row["logical_source_id"] or row["source_id"])
+            source = _one(
+                connection.execute(
+                    """SELECT status FROM knowledge_sources
+                       WHERE id = %s AND project_id = %s FOR UPDATE""",
+                    (row["source_id"], lease.project_id),
+                )
+            )
+            if source is None:
+                raise KnowledgeProcessingError("Knowledge source disappeared before processing")
+            if source["status"] == "archived":
+                raise JobCancellationRequested("Knowledge source was archived before processing")
             connection.execute(
                 """UPDATE knowledge_pipeline_runs
                    SET status = 'running', started_at = COALESCE(started_at, clock_timestamp()),
@@ -80,13 +175,7 @@ class KnowledgeProcessHandler:
                    WHERE pipeline_run_id = %s AND project_id = %s AND stage_key = 'ingest'""",
                 (row["pipeline_run_id"], lease.project_id),
             )
-            connection.commit()
             return ProcessingInput(**row)
-        except BaseException:
-            connection.rollback()
-            raise
-        finally:
-            connection.close()
 
     def _finalize(
         self, lease: WorkerLease, claim: ProcessingInput, result: ProcessingResult
@@ -97,6 +186,18 @@ class KnowledgeProcessHandler:
                 "source content changed; create an immutable Knowledge source revision"
             )
         with self._store.fenced_transaction(lease) as connection:
+            lock_source_aggregate(connection, claim.logical_source_id or claim.source_id)
+            source = _one(
+                connection.execute(
+                    """SELECT status FROM knowledge_sources
+                       WHERE id = %s AND project_id = %s FOR UPDATE""",
+                    (claim.source_id, lease.project_id),
+                )
+            )
+            if source is None:
+                raise KnowledgeProcessingError("Knowledge source disappeared during processing")
+            if source["status"] == "archived":
+                raise JobCancellationRequested("Knowledge source was archived during processing")
             document_id = uuid4()
             connection.execute(
                 """INSERT INTO knowledge_documents
@@ -176,6 +277,8 @@ class KnowledgeProcessHandler:
                         json.dumps(dict(finding.details)),
                     ),
                 )
+            if self._rag_policy is None:
+                self._supersede_previous_run_content(connection, lease=lease, claim=claim)
             metrics = {
                 "ingest": {"content_bytes": len(result.raw_content)},
                 "parse": {"raw_char_count": len(result.raw_text)},
@@ -239,6 +342,39 @@ class KnowledgeProcessHandler:
                 details=details,
             )
         return {"status": "succeeded", "job_id": str(lease.job_id), **details}
+
+    @staticmethod
+    def _supersede_previous_run_content(
+        connection: Any, *, lease: WorkerLease, claim: ProcessingInput
+    ) -> None:
+        connection.execute(
+            """UPDATE knowledge_fact_candidates fact
+                   SET lifecycle_status = 'superseded', updated_at = clock_timestamp()
+                 WHERE fact.project_id = %s AND fact.source_id = %s
+                   AND fact.pipeline_run_id <> %s AND fact.lifecycle_status = 'active'
+                   AND EXISTS (
+                     SELECT 1 FROM knowledge_pipeline_runs previous
+                     WHERE previous.id = fact.pipeline_run_id
+                       AND previous.project_id = fact.project_id
+                       AND previous.source_id = fact.source_id
+                       AND previous.status = 'succeeded'
+                   )""",
+            (lease.project_id, claim.source_id, claim.pipeline_run_id),
+        )
+        connection.execute(
+            """UPDATE knowledge_chunks chunk
+                   SET status = 'disabled', updated_at = clock_timestamp()
+                 WHERE chunk.project_id = %s AND chunk.source_id = %s
+                   AND chunk.pipeline_run_id <> %s AND chunk.status = 'active'
+                   AND EXISTS (
+                     SELECT 1 FROM knowledge_pipeline_runs previous
+                     WHERE previous.id = chunk.pipeline_run_id
+                       AND previous.project_id = chunk.project_id
+                       AND previous.source_id = chunk.source_id
+                       AND previous.status = 'succeeded'
+                   )""",
+            (lease.project_id, claim.source_id, claim.pipeline_run_id),
+        )
 
     def _enqueue_rag(
         self,
@@ -343,7 +479,8 @@ class KnowledgeProcessHandler:
                            error_detail = %s, completed_at = CASE WHEN %s = 'failed'
                              THEN clock_timestamp() ELSE NULL END,
                            updated_at = clock_timestamp()
-                       WHERE id = %s AND project_id = %s""",
+                       WHERE id = %s AND project_id = %s
+                         AND status IN ('queued', 'running')""",
                     (
                         status,
                         type(error).__name__,
@@ -356,12 +493,13 @@ class KnowledgeProcessHandler:
                 connection.execute(
                     """UPDATE knowledge_sources SET status = %s, error_code = %s,
                            error_detail = %s, updated_at = clock_timestamp()
-                       WHERE id = %s AND project_id = %s""",
+                       WHERE id = %s AND project_id = %s
+                         AND status IN ('queued', 'processing', 'ready', 'failed')""",
                     (
                         (
                             "ready"
                             if isinstance(error, KnowledgeSourceRevisionRequired)
-                            else "queued"
+                            else "processing"
                             if status == "queued"
                             else "failed"
                         ),
@@ -371,18 +509,33 @@ class KnowledgeProcessHandler:
                         lease.project_id,
                     ),
                 )
-                connection.execute(
-                    """UPDATE knowledge_pipeline_stages
-                       SET status = CASE WHEN status = 'running' THEN 'failed' ELSE status END,
-                           error_detail = CASE WHEN status = 'running' THEN %s ELSE error_detail END,
-                           completed_at = CASE WHEN status = 'running' THEN clock_timestamp()
-                                               ELSE completed_at END
-                       WHERE pipeline_run_id = %s AND project_id = %s""",
-                    (detail, spec["pipeline_run_id"], lease.project_id),
+                if status == "queued":
+                    connection.execute(
+                        """UPDATE knowledge_pipeline_stages
+                           SET status = 'pending', error_detail = %s,
+                               started_at = NULL, completed_at = NULL
+                           WHERE pipeline_run_id = %s AND project_id = %s
+                             AND status = 'running'""",
+                        (detail, spec["pipeline_run_id"], lease.project_id),
+                    )
+                else:
+                    connection.execute(
+                        """UPDATE knowledge_pipeline_stages
+                           SET status = CASE WHEN status = 'running'
+                                             THEN 'failed' ELSE 'skipped' END,
+                               error_detail = %s, completed_at = clock_timestamp()
+                           WHERE pipeline_run_id = %s AND project_id = %s
+                             AND status IN ('pending', 'running')""",
+                        (detail, spec["pipeline_run_id"], lease.project_id),
+                    )
+            if retry:
+                job_status = self._store.fail_with_retry_in_transaction(
+                    connection,
+                    lease,
+                    error_code=type(error).__name__,
+                    details={"message": detail},
+                    retry_delay=timedelta(seconds=30),
                 )
-            if retry and lease.attempt_count < lease.max_attempts:
-                # The store owns retry scheduling and clears the lease in its own transaction.
-                pass
             else:
                 self._store.fail_in_transaction(
                     connection,
@@ -390,14 +543,8 @@ class KnowledgeProcessHandler:
                     error_code=type(error).__name__,
                     details={"message": detail},
                 )
-                return {"status": "failed", "job_id": str(lease.job_id)}
-        status = self._store.fail(
-            lease,
-            error_code=type(error).__name__,
-            details={"message": str(error)[:2000]},
-            retry_delay=timedelta(seconds=30),
-        )
-        return {"status": status, "job_id": str(lease.job_id)}
+                job_status = "failed"
+            return {"status": job_status, "job_id": str(lease.job_id)}
 
 
 def _one(cursor: Any) -> dict[str, Any] | None:
@@ -407,3 +554,7 @@ def _one(cursor: Any) -> dict[str, Any] | None:
     if isinstance(row, Mapping):
         return dict(row)
     return dict(zip((column.name for column in cursor.description), row, strict=True))
+
+
+def _is_retryable_database_error(error: Exception) -> bool:
+    return getattr(error, "sqlstate", None) in {"40001", "40P01"}

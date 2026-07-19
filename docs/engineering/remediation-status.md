@@ -11,10 +11,10 @@
 | CI 与 inline acceptance 真实性 | satisfied | satisfied | local | not_applicable | 缺环境、零收集、必需 skip 和跨 run 污染均 fail closed；报告明确 `inline_isolated` |
 | egress 与运行真实性 | satisfied | satisfied | local_runtime | not_executed | 真实 readiness、heartbeat、队列卡滞、Compose health 和 preflight 已在一次性 Docker 环境验证 |
 | Campaign、Prompt 与人工发布验证 | satisfied | satisfied | local_postgres_browser | not_executed | 精确 Campaign 祖先、Opportunity Release 绑定和人工 URL 验证闭环已通过 |
-| Fact、Evidence 与 F-019 RAG | satisfied | satisfied | local_postgres_minio_browser | not_executed | Project Native 已选中，LlamaIndex 为合格回退；事实/实体/关系/问题均受治理 |
+| Fact、Evidence 与 F-019 RAG | satisfied | satisfied | local_postgres_minio_browser | not_executed | Project Native 已选中；Fact/Chunk 当前性在 RAG、Question、Prompt、Simulation、Generation 与 Publication 最终执行点均 fail closed |
 | 来源、统计、Customer 与导出 | satisfied | satisfied | local_postgres_browser | not_executed | v3 来源分层、冻结成员、Customer latest 和可复算 ZIP/JSON/CSV 已通过 |
-| Alembic 数据基线 | satisfied | satisfied | local | not_executed | 单 head `0022`；空库 `0001→0022`、旧数据修复、回退、Unicode 和冲突保护已验证 |
-| 双 Web 与稳定 OpenAPI | satisfied | satisfied | local | not_executed | Admin/Customer 生产构建、13 条 Chromium 必需流程和 2 个 OpenAPI surface 通过 |
+| Alembic 数据基线 | satisfied | satisfied | local | not_executed | 单 head `0025_monitoring_source_guard`；空库 `0001→0025`、旧数据修复、生命周期退役、active Chunk 与 Monitoring 绑定保护已验证 |
+| 双 Web 与稳定 OpenAPI | satisfied | satisfied | local | not_executed | Admin/Customer 生产构建、14 条 Chromium 必需流程和 2 个 OpenAPI surface 通过 |
 | 外部 staging smoke | satisfied | satisfied | contract_only | not_executed | 命令、双重 opt-in、Secret 脱敏及结果合同已测试；真实请求和付费模型调用待授权 |
 | 客户生产部署 | satisfied | not_executed | not_executed | not_executed | 尚未配置或验证客户生产 OIDC、域名、TLS、Secret 和第三方发布现场 |
 

@@ -5,6 +5,7 @@ from geo_api.app_factory import create_api_app
 
 
 ROOT = Path(__file__).resolve().parents[1]
+ADMIN_ROOT = ROOT / "apps/admin-web"
 WORKSPACE = ROOT / "apps/admin-web/app/projects/[project_id]"
 
 
@@ -70,6 +71,24 @@ def test_fact_promotion_action_never_submits_service_derived_lineage() -> None:
         assert derived not in body
     assert "public_domain" not in promotion
     assert "idempotencyKey" in promotion
+
+
+def test_knowledge_upload_preserves_the_five_mebibyte_file_boundary() -> None:
+    config = (ADMIN_ROOT / "next.config.mjs").read_text(encoding="utf-8")
+    action = (WORKSPACE / "knowledgeActions.ts").read_text(encoding="utf-8")
+
+    experimental = config.index("experimental:")
+    server_actions = config.index("serverActions:", experimental)
+    assert config.index('bodySizeLimit: "6mb"', server_actions) > server_actions
+
+    limit = re.search(
+        r"const MAX_KNOWLEDGE_FILE_BYTES = (\d+) \* (\d+) \* (\d+);",
+        action,
+    )
+    assert limit is not None
+    assert tuple(map(int, limit.groups())) == (5, 1024, 1024)
+    assert "file.size > MAX_KNOWLEDGE_FILE_BYTES" in action
+    assert "file.size >= MAX_KNOWLEDGE_FILE_BYTES" not in action
 
 
 def test_knowledge_slice_is_modular_and_does_not_reintroduce_legacy_names() -> None:

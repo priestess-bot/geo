@@ -4,7 +4,9 @@ from argparse import Namespace
 from typing import Any
 from uuid import uuid4
 
-from scripts.promote_approved_knowledge_fact import promote
+import pytest
+
+from scripts.promote_approved_knowledge_fact import parser, promote
 
 
 class FakeApi:
@@ -23,6 +25,26 @@ class FakeApi:
     ) -> dict[str, Any]:
         self.calls.append((method, path, body, key))
         return self.proposal if method == "GET" else self.result
+
+
+def test_promotion_cli_accepts_public_reference_and_rejects_public_domain() -> None:
+    project_id, fact_id = (str(uuid4()) for _ in range(2))
+    arguments = [
+        "--project-id",
+        project_id,
+        "--fact-id",
+        fact_id,
+        "--subject-role",
+        "neutral",
+        "--usage-rights",
+    ]
+
+    parsed = parser().parse_args([*arguments, "public_reference"])
+
+    assert parsed.usage_rights == "public_reference"
+    with pytest.raises(SystemExit) as rejected:
+        parser().parse_args([*arguments, "public_domain"])
+    assert rejected.value.code == 2
 
 
 def test_promotion_script_uses_service_proposal_and_submits_only_governance_metadata() -> None:

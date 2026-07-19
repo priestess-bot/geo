@@ -15,6 +15,9 @@ from geo_core.placements.domain import (
     PublicationRequest,
     Submission,
 )
+from geo_core.placements.package_execution_eligibility import (
+    package_approved_fact_evidence_is_current,
+)
 from geo_core.placements.publication_verification_records import (
     PublicationVerificationAttempt,
     VerificationOutcome,
@@ -56,6 +59,12 @@ class PostgresPublicationRecordMixin:
         )
         if context["workflow_status"] != "approved":
             raise PlacementRuleViolation("publication requires an approved Package Version")
+        if not package_approved_fact_evidence_is_current(
+            self._db,
+            project_id=values["project_id"],
+            package_version_id=values["version_id"],
+        ):
+            raise PlacementRuleViolation("publication requires current approved Fact Evidence")
         parse_frozen_publication_verification_contract(
             context["content_json"], {"manifest": context["input_snapshot"]}
         )

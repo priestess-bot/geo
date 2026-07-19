@@ -8,6 +8,7 @@ import { runtimeRequest, type RuntimeResult } from "../../runtime";
 import type { KnowledgeActionState } from "./knowledgeTypes";
 
 type Created = { pipeline_run?: { id?: string }; pipeline_run_id?: string };
+const MAX_KNOWLEDGE_FILE_BYTES = 5 * 1024 * 1024;
 
 export async function importKnowledgeSource(
   _previous: KnowledgeActionState,
@@ -28,7 +29,7 @@ export async function importKnowledgeSource(
   if (sourceKind === "file") {
     const file = form.get("file");
     if (!(file instanceof File) || file.size === 0) return error("请选择要导入的文件。", 422);
-    if (file.size > 5 * 1024 * 1024) return error("文件不能超过 5 MB。", 422);
+    if (file.size > MAX_KNOWLEDGE_FILE_BYTES) return error("文件不能超过 5 MB。", 422);
     body.filename = file.name;
     body.media_type = file.type || "text/plain";
     body.content_base64 = Buffer.from(await file.arrayBuffer()).toString("base64");

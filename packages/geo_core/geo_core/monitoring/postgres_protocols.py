@@ -124,6 +124,27 @@ class MonitoringProtocolsMixin:
         )
         if protocol["status"] != "draft" or question_set is None:
             raise MonitoringConflict("A draft protocol can bind only the exact frozen QuestionSet.")
+        items = self._many(
+            """SELECT item.id, item.question_candidate_id, item.ordinal,
+                      item.query_text_snapshot, item.query_kind_snapshot,
+                      item.query_cluster_key,
+                      geo_question_candidate_sources_current(
+                          item.question_candidate_id
+                      ) AS sources_current
+               FROM knowledge_question_set_items AS item
+               WHERE item.question_set_id = %(question_set_id)s
+                 AND item.project_id = %(project_id)s
+                 AND item.campaign_id = %(campaign_id)s
+               ORDER BY item.ordinal""",
+            values,
+            "read the frozen QuestionSet items",
+        )
+        if not items:
+            raise MonitoringConflict("The frozen QuestionSet has no items.")
+        if any(not item["sources_current"] for item in items):
+            raise MonitoringConflict(
+                "The frozen QuestionSet has stale Knowledge sources and cannot be bound."
+            )
         bound = self._one(
             """UPDATE monitoring_protocols
                SET question_set_id = %(question_set_id)s,
@@ -136,18 +157,6 @@ class MonitoringProtocolsMixin:
             values,
             "bind the frozen QuestionSet",
         )
-        items = self._many(
-            """SELECT id, question_candidate_id, ordinal, query_text_snapshot,
-                      query_kind_snapshot, query_cluster_key
-               FROM knowledge_question_set_items
-               WHERE question_set_id = %(question_set_id)s
-                 AND project_id = %(project_id)s AND campaign_id = %(campaign_id)s
-               ORDER BY ordinal""",
-            values,
-            "read the frozen QuestionSet items",
-        )
-        if not items:
-            raise MonitoringConflict("The frozen QuestionSet has no items.")
         for item in items:
             suggestion = self._one(
                 """INSERT INTO monitoring_query_suggestions

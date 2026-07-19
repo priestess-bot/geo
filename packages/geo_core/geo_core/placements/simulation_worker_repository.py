@@ -8,7 +8,11 @@ from uuid import NAMESPACE_URL, uuid5
 
 from geo_core.jobs.postgres import WorkerLease
 from geo_core.model_gateway import ModelGatewayResult
-from geo_core.placements.domain import canonical_hash
+from geo_core.placements.domain import PlacementRuleViolation, canonical_hash
+from geo_core.placements.execution_eligibility import (
+    approved_fact_evidence_is_current,
+    question_candidate_sources_are_current,
+)
 from geo_core.placements.ports import GeneratedPlacement
 from geo_core.placements.simulation import PromptSimulationAuthenticityMode
 from geo_core.placements.worker_models import PromptSimulationClaim
@@ -45,7 +49,8 @@ class PromptSimulationWorkerRepositoryMixin:
                               simulation.destination_id, spec.configured_model,
                               spec.model_call_budget, simulation.input_hash,
                               simulation.input_snapshot, release.output_schema
-                              , simulation.simulation_purpose
+                              , simulation.simulation_purpose,
+                              simulation.question_candidate_id
                        FROM prompt_simulation_job_specs spec
                        JOIN prompt_simulations simulation
                         ON simulation.id = spec.simulation_id
@@ -80,6 +85,29 @@ class PromptSimulationWorkerRepositoryMixin:
                     (record["simulation_id"], lease.project_id),
                 )
             )
+            evidence_ids = tuple(item["evidence_item_id"] for item in evidence)
+            if not approved_fact_evidence_is_current(
+                connection,
+                project_id=lease.project_id,
+                evidence_ids=evidence_ids,
+            ):
+                raise PlacementRuleViolation(
+                    "prompt simulation Evidence includes a retired approved Fact source"
+                )
+            if (
+                record["simulation_purpose"] != "content_preview"
+                or record["question_candidate_id"] is not None
+            ) and (
+                record["question_candidate_id"] is None
+                or not question_candidate_sources_are_current(
+                    connection,
+                    project_id=lease.project_id,
+                    candidate_id=record["question_candidate_id"],
+                )
+            ):
+                raise PlacementRuleViolation(
+                    "prompt simulation question sources are no longer current"
+                )
             connection.commit()
             snapshot = record["input_snapshot"]
             return PromptSimulationClaim(
@@ -94,7 +122,7 @@ class PromptSimulationWorkerRepositoryMixin:
                 rendered_prompt=str(snapshot["rendered_prompt"]),
                 configured_model=record["configured_model"],
                 model_call_budget=record["model_call_budget"],
-                evidence_item_ids=tuple(item["evidence_item_id"] for item in evidence),
+                evidence_item_ids=evidence_ids,
                 public_citation_item_ids=tuple(
                     item["evidence_item_id"]
                     for item in evidence
@@ -110,6 +138,7 @@ class PromptSimulationWorkerRepositoryMixin:
                     if isinstance(snapshot.get("question_binding"), Mapping)
                     else None
                 ),
+                question_candidate_id=record["question_candidate_id"],
             )
         except BaseException:
             connection.rollback()
@@ -188,6 +217,28 @@ class PromptSimulationWorkerRepositoryMixin:
         }
         artifact_idempotency = f"artifact:prompt-simulation:{claim.simulation_id}"
         with self._store.fenced_transaction(lease) as connection:
+            if not approved_fact_evidence_is_current(
+                connection,
+                project_id=lease.project_id,
+                evidence_ids=claim.evidence_item_ids,
+            ):
+                raise PlacementRuleViolation(
+                    "prompt simulation Evidence became stale before result finalization"
+                )
+            if (
+                claim.simulation_purpose != "content_preview"
+                or claim.question_candidate_id is not None
+            ) and (
+                claim.question_candidate_id is None
+                or not question_candidate_sources_are_current(
+                    connection,
+                    project_id=lease.project_id,
+                    candidate_id=claim.question_candidate_id,
+                )
+            ):
+                raise PlacementRuleViolation(
+                    "prompt simulation question sources became stale before finalization"
+                )
             connection.execute(
                 """INSERT INTO prompt_simulation_results
                      (simulation_id, project_id, campaign_id, opportunity_id,

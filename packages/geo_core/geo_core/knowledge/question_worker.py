@@ -8,7 +8,13 @@ import hashlib
 import json
 from typing import Mapping, Protocol, Sequence
 
-from geo_core.jobs.postgres import LeaseHeartbeat, PostgresDurableJobStore, WorkerLease
+from geo_core.jobs.postgres import (
+    JobCancellationRequested,
+    LeaseHeartbeat,
+    LostJobLease,
+    PostgresDurableJobStore,
+    WorkerLease,
+)
 from geo_core.knowledge.question_domain import (
     FrozenQuestionDimension,
     QuestionCandidateDraft,
@@ -172,6 +178,8 @@ class KnowledgeQuestionGenerateHandler:
                 StoredQuestionArtifact(stored.uri, stored.content_hash),
             )
             return {"status": "succeeded", "job_id": str(lease.job_id), **details}
+        except (JobCancellationRequested, LostJobLease):
+            raise
         except Exception as exc:
             return self._fail(lease, exc)
 
@@ -228,9 +236,7 @@ class KnowledgeQuestionGenerateHandler:
             {"role": "system", "content": _SYSTEM_PROMPT},
             {
                 "role": "user",
-                "content": json.dumps(
-                    payload, ensure_ascii=False, sort_keys=True, default=str
-                ),
+                "content": json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str),
             },
         )
         request_hash = hashlib.sha256(

@@ -14,9 +14,13 @@ from geo_core.placements.domain import (
     PackageVersion,
     PlacementConflict,
     PlacementNotFound,
+    PlacementRuleViolation,
     Review,
     ReviewSubmission,
     canonical_hash,
+)
+from geo_core.placements.package_execution_eligibility import (
+    package_approved_fact_evidence_is_current,
 )
 from geo_core.placements.postgres_publication_records import PostgresPublicationRecordMixin
 
@@ -96,6 +100,12 @@ class PostgresReviewPublicationMixin(PostgresPublicationRecordMixin):
         return ReviewSubmission(**rows[0]) if rows else None
 
     def save_review(self, *, review: Review) -> Review:
+        if review.decision == "approved" and not package_approved_fact_evidence_is_current(
+            self._db,
+            project_id=review.project_id,
+            package_version_id=review.package_version_id,
+        ):
+            raise PlacementRuleViolation("package approval requires current approved Fact Evidence")
         reviewed_at = self._db.execute(
             """INSERT INTO placement_reviews
                  (id, project_id, package_version_id, submitted_for_review_by, reviewer_id,
@@ -165,6 +175,12 @@ class PostgresReviewPublicationMixin(PostgresPublicationRecordMixin):
         version = self.get_package_version(project_id=project_id, version_id=version_id)
         if version is None:
             raise PlacementNotFound("package version does not exist")
+        if not package_approved_fact_evidence_is_current(
+            self._db,
+            project_id=project_id,
+            package_version_id=version_id,
+        ):
+            raise PlacementRuleViolation("package export requires current approved Fact Evidence")
         campaign_id = version.campaign_id
         opportunity_id = version.opportunity_id
         destination_id = version.destination_id

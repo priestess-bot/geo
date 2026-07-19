@@ -16,6 +16,7 @@ from uuid import uuid4
 
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.hazmat.primitives.hashes import SHA256
+import httpx
 import pytest
 
 from geo_api.oidc import OidcTokenVerifier, OidcVerifierSettings
@@ -211,12 +212,23 @@ def test_f001_int_01_local_http_fixtures_cover_oidc_knowledge_model_and_publicat
         )
         assert identity.subject == "fixture-operator"
 
-        monkeypatch.setattr(processing, "_require_public_url", lambda _: None)
-        content, final_url, media_type = processing._fetch_public_url(
-            f"{base_url}/knowledge"
-        )
+        knowledge_url = f"http://knowledge.fixture:{server.server_port}/knowledge"
+
+        def local_knowledge_target(url: str) -> processing._PublicUrlTarget:
+            parsed = httpx.URL(url)
+            return processing._PublicUrlTarget(parsed, parsed.host, ("127.0.0.1",))
+
+        with monkeypatch.context() as knowledge_patch:
+            knowledge_patch.setenv("HTTP_PROXY", "http://127.0.0.1:1")
+            knowledge_patch.setenv("HTTPS_PROXY", "http://127.0.0.1:1")
+            knowledge_patch.setattr(
+                processing,
+                "_require_public_url",
+                local_knowledge_target,
+            )
+            content, final_url, media_type = processing._fetch_public_url(knowledge_url)
         assert b"Public product knowledge fixture" in content
-        assert final_url == f"{base_url}/knowledge"
+        assert final_url == knowledge_url
         assert media_type == "text/html"
 
         key_file = tmp_path / "model-key"

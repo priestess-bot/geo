@@ -120,6 +120,10 @@ class KnowledgeRagApplicationMixin(KnowledgeRagSourceApplicationMixin):
                 raise KnowledgeConflict("Knowledge graph entity candidate was already reviewed")
             graph_entity_id: UUID | None = None
             if decision == "approved":
+                if not _lock_entity_candidate_chunks(
+                    connection, project_id=project_id, candidate_id=candidate_id
+                ):
+                    raise KnowledgeConflict("Knowledge graph entity sources require active chunks")
                 graph_entity_id = uuid5(
                     NAMESPACE_URL,
                     (
@@ -228,6 +232,14 @@ class KnowledgeRagApplicationMixin(KnowledgeRagSourceApplicationMixin):
                 raise KnowledgeConflict("Knowledge graph relation candidate was already reviewed")
             graph_relation_id: UUID | None = None
             if decision == "approved":
+                if not _lock_relation_candidate_chunk(
+                    connection,
+                    project_id=project_id,
+                    chunk_id=candidate["chunk_id"],
+                ):
+                    raise KnowledgeConflict(
+                        "Knowledge graph relation source requires an active chunk"
+                    )
                 if (
                     candidate["subject_status"] != "approved"
                     or candidate["object_status"] != "approved"
@@ -320,9 +332,10 @@ class KnowledgeRagApplicationMixin(KnowledgeRagSourceApplicationMixin):
         ) as connection:
             graph = _one(
                 connection.execute(
-                    """SELECT id, entity_type, canonical_name, status, catalog_entity_id
+                    """SELECT id, project_id, entity_type, canonical_name,
+                              status, catalog_entity_id
                        FROM knowledge_graph_entities
-                       WHERE id = %s AND project_id = %s FOR UPDATE""",
+                       WHERE id = %s AND project_id = %s""",
                     (graph_entity_id, project_id),
                 )
             )
@@ -333,10 +346,50 @@ class KnowledgeRagApplicationMixin(KnowledgeRagSourceApplicationMixin):
                 raise KnowledgeValidationError(
                     "only brand, product, competitor and market graph entities map to Catalog"
                 )
+            if graph["catalog_entity_id"] == catalog_entity_id:
+                return graph
+            if graph["catalog_entity_id"] is not None:
+                raise KnowledgeConflict(
+                    "Knowledge graph entity already maps to another Catalog row"
+                )
+            sources = _lock_active_graph_entity_sources(
+                connection, project_id=project_id, graph_entity_id=graph_entity_id
+            )
+            graph = _one(
+                connection.execute(
+                    """SELECT id, project_id, entity_type, canonical_name,
+                              status, catalog_entity_id
+                       FROM knowledge_graph_entities
+                       WHERE id = %s AND project_id = %s FOR UPDATE""",
+                    (graph_entity_id, project_id),
+                )
+            )
+            if graph is None:
+                raise KnowledgeNotFound("approved Knowledge graph entity does not exist")
+            if graph["catalog_entity_id"] == catalog_entity_id:
+                return graph
+            if graph["catalog_entity_id"] is not None:
+                raise KnowledgeConflict(
+                    "Knowledge graph entity already maps to another Catalog row"
+                )
+            if (
+                graph["status"] != "current"
+                or not sources
+                or not _lock_active_graph_source_chunks(
+                    connection,
+                    project_id=project_id,
+                    graph_entity_id=graph_entity_id,
+                    chunk_ids=tuple(source["chunk_id"] for source in sources),
+                )
+            ):
+                raise KnowledgeConflict(
+                    "Catalog mapping requires a current graph entity with an active source Chunk"
+                )
             catalog = _one(
                 connection.execute(
                     """SELECT id, entity_type, canonical_name, status
-                       FROM product_entities WHERE id = %s AND project_id = %s""",
+                       FROM product_entities
+                       WHERE id = %s AND project_id = %s FOR SHARE""",
                     (catalog_entity_id, project_id),
                 )
             )
@@ -348,10 +401,6 @@ class KnowledgeRagApplicationMixin(KnowledgeRagSourceApplicationMixin):
             ):
                 raise KnowledgeConflict(
                     "Catalog mapping must match the graph entity project, type and canonical name"
-                )
-            if graph["catalog_entity_id"] not in {None, catalog_entity_id}:
-                raise KnowledgeConflict(
-                    "Knowledge graph entity already maps to another Catalog row"
                 )
             mapped = _one(
                 connection.execute(
@@ -365,6 +414,82 @@ class KnowledgeRagApplicationMixin(KnowledgeRagSourceApplicationMixin):
             )
             assert mapped is not None
             return mapped
+
+
+def _lock_active_graph_entity_sources(
+    connection: Any, *, project_id: UUID, graph_entity_id: UUID
+) -> list[dict[str, Any]]:
+    return _many(
+        connection.execute(
+            """SELECT rag_revision_id, entity_candidate_id, pipeline_run_id,
+                      source_id, document_id, chunk_id, source_locator,
+                      lifecycle_status
+               FROM knowledge_graph_entity_sources
+               WHERE project_id = %s AND graph_entity_id = %s
+                 AND lifecycle_status = 'active'
+               ORDER BY rag_revision_id, entity_candidate_id, chunk_id, source_locator
+               FOR UPDATE""",
+            (project_id, graph_entity_id),
+        )
+    )
+
+
+def _lock_active_graph_source_chunks(
+    connection: Any,
+    *,
+    project_id: UUID,
+    graph_entity_id: UUID,
+    chunk_ids: tuple[UUID, ...],
+) -> bool:
+    rows = _many(
+        connection.execute(
+            """SELECT chunk.status AS chunk_status
+               FROM knowledge_graph_entity_sources source
+               JOIN knowledge_chunks chunk
+                 ON chunk.id = source.chunk_id AND chunk.project_id = source.project_id
+                AND chunk.pipeline_run_id = source.pipeline_run_id
+                AND chunk.source_id = source.source_id
+                AND chunk.document_id = source.document_id
+               WHERE source.project_id = %s AND source.graph_entity_id = %s
+                 AND source.lifecycle_status = 'active'
+                 AND source.chunk_id = ANY(%s)
+               ORDER BY chunk.id, source.rag_revision_id,
+                        source.entity_candidate_id, source.source_locator
+               FOR UPDATE OF chunk""",
+            (project_id, graph_entity_id, list(chunk_ids)),
+        )
+    )
+    return any(row["chunk_status"] == "active" for row in rows)
+
+
+def _lock_entity_candidate_chunks(connection: Any, *, project_id: UUID, candidate_id: UUID) -> bool:
+    rows = _many(
+        connection.execute(
+            """SELECT chunk.status
+               FROM knowledge_entity_candidate_sources source
+               JOIN knowledge_chunks chunk
+                 ON chunk.id = source.chunk_id AND chunk.project_id = source.project_id
+                AND chunk.pipeline_run_id = source.pipeline_run_id
+                AND chunk.source_id = source.source_id
+                AND chunk.document_id = source.document_id
+               WHERE source.project_id = %s AND source.entity_candidate_id = %s
+               ORDER BY chunk.id FOR UPDATE OF chunk""",
+            (project_id, candidate_id),
+        )
+    )
+    return bool(rows) and all(row["status"] == "active" for row in rows)
+
+
+def _lock_relation_candidate_chunk(connection: Any, *, project_id: UUID, chunk_id: UUID) -> bool:
+    row = _one(
+        connection.execute(
+            """SELECT status FROM knowledge_chunks
+               WHERE id = %s AND project_id = %s FOR UPDATE""",
+            (chunk_id, project_id),
+        )
+    )
+    return row is not None and row["status"] == "active"
+
 
 def _review_decision(value: str) -> None:
     if value not in {"approved", "rejected"}:

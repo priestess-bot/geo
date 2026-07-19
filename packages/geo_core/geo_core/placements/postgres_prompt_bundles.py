@@ -14,6 +14,7 @@ from geo_core.placements.domain import (
     PromptBundleView,
     canonical_hash,
 )
+from geo_core.placements.execution_eligibility import approved_fact_evidence_is_current
 from geo_core.prompts.domain import TemplateRelease, render_bundle
 
 
@@ -311,7 +312,7 @@ class PostgresPromptBundleMixin:
         scope: CampaignScope = values["scope"]
         bundle = _optional_row(
             self._db.execute(
-                """SELECT bundle.opportunity_id
+                """SELECT bundle.opportunity_id, bundle.evidence_pack_attempt_id
                    FROM prompt_bundles AS bundle
                    JOIN artifact_finalize_outbox AS artifact
                      ON artifact.resource_id = bundle.id AND artifact.project_id = bundle.project_id
@@ -329,6 +330,11 @@ class PostgresPromptBundleMixin:
             raise PlacementConflict(
                 "generation requires a finalized Bundle and generation-ready Opportunity"
             )
+        _load_evidence(
+            self._db,
+            project_id=scope.project_id,
+            attempt_id=bundle["evidence_pack_attempt_id"],
+        )
         job = self._enqueue_job(
             project_id=scope.project_id,
             campaign_id=scope.campaign_id,
@@ -371,9 +377,7 @@ class PostgresPromptBundleMixin:
             raise PlacementConflict("idempotency key was already used with different input")
         return self._get_bundle_view(project_id=project_id, bundle_id=row["id"])
 
-    def _get_bundle_view(
-        self, *, project_id: UUID, bundle_id: UUID
-    ) -> PromptBundleView | None:
+    def _get_bundle_view(self, *, project_id: UUID, bundle_id: UUID) -> PromptBundleView | None:
         rows = _rows(
             self._db.execute(
                 _BUNDLE_VIEW_SQL + " WHERE bundle.project_id = %s AND bundle.id = %s",
@@ -443,7 +447,7 @@ def _load_pack(
 
 
 def _load_evidence(db: Any, *, project_id: UUID, attempt_id: UUID) -> list[dict[str, Any]]:
-    return _rows(
+    evidence = _rows(
         db.execute(
             """SELECT evidence.id, evidence.item_type, evidence.subject_entity_id,
                       evidence.subject_role, evidence.snapshot_text, evidence.snapshot_uri,
@@ -460,6 +464,15 @@ def _load_evidence(db: Any, *, project_id: UUID, attempt_id: UUID) -> list[dict[
             (attempt_id, project_id),
         )
     )
+    if not approved_fact_evidence_is_current(
+        db,
+        project_id=project_id,
+        evidence_ids=tuple(item["id"] for item in evidence),
+    ):
+        raise PlacementConflict(
+            "Evidence Pack contains approved Fact Evidence whose source is no longer active"
+        )
+    return evidence
 
 
 def _bundle_view(row: Mapping[str, Any]) -> PromptBundleView:

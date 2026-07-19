@@ -7,11 +7,11 @@ import { fileURLToPath } from "node:url";
 const suites = [
   {
     label: "Admin Chromium desktop",
-    args: ["--config=playwright.config.ts", "--project=chromium-desktop"]
+    args: ["--config=playwright.config.ts", "--project=chromium-desktop", "--workers=1"]
   },
   {
     label: "Customer Chromium desktop",
-    args: ["--config=playwright.customer.config.ts", "--project=customer-desktop"]
+    args: ["--config=playwright.customer.config.ts", "--project=customer-desktop", "--workers=1"]
   }
 ];
 

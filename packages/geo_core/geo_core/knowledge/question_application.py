@@ -96,10 +96,12 @@ class KnowledgeQuestionApplicationMixin:
                        FROM knowledge_fact_candidates fact
                        JOIN knowledge_sources source
                          ON source.id = fact.source_id AND source.project_id = fact.project_id
+                       JOIN knowledge_chunks chunk
+                         ON chunk.id = fact.chunk_id AND chunk.project_id = fact.project_id
                        WHERE fact.project_id = %s AND fact.id = ANY(%s)
                          AND fact.status = 'approved'
                          AND fact.lifecycle_status = 'active'
-                         AND source.status = 'ready'
+                         AND source.status = 'ready' AND chunk.status = 'active'
                        ORDER BY fact.id FOR SHARE OF fact""",
                     (project_id, list(fact_candidate_ids)),
                 )
@@ -119,9 +121,13 @@ class KnowledgeQuestionApplicationMixin:
                          AND entity.status = 'current'
                          AND EXISTS (
                            SELECT 1 FROM knowledge_graph_entity_sources source
+                           JOIN knowledge_chunks chunk
+                             ON chunk.id = source.chunk_id
+                            AND chunk.project_id = source.project_id
                            WHERE source.project_id = entity.project_id
                              AND source.graph_entity_id = entity.id
                              AND source.lifecycle_status = 'active'
+                             AND chunk.status = 'active'
                          )
                        ORDER BY entity.id FOR SHARE OF entity""",
                     (project_id, list(graph_entity_ids)),

@@ -13,19 +13,39 @@ from psycopg import sql
 import pytest
 
 from geo_core.access.models import AccessPrincipal, MembershipRecord
+from geo_core.catalog.domain import (
+    Confidentiality,
+    PublicCitation,
+    SubjectRole,
+    UsageRights,
+)
 from geo_core.jobs.postgres import PostgresDurableJobStore
 from geo_core.knowledge import KnowledgeApplication
-from geo_core.knowledge.domain import KnowledgeForbidden, KnowledgeNotFound, SourceInput
+from geo_core.knowledge.domain import (
+    KnowledgeConflict,
+    KnowledgeForbidden,
+    KnowledgeNotFound,
+    SourceInput,
+)
+from geo_core.knowledge.rag_activation import prepare_rag_activation
 from geo_core.knowledge.rag_domain import KnowledgeRagEnqueuePolicy
+from geo_core.knowledge.rag_domain import KnowledgeRagContractError
 from geo_core.knowledge.rag_postgres import KnowledgeRagPostgresRepository
 from geo_core.knowledge.rag_worker import KnowledgeRagExtractHandler
 from geo_core.knowledge.worker import KnowledgeProcessHandler
 from geo_core.model_gateway import ModelGatewayResult
 from geo_core.object_store import S3CompatibleObjectStore
-from geo_core.placements.worker_composition import PlacementWorkerDispatcher
+from geo_core.placements.application import PlacementApplication
+from geo_core.placements.postgres_uow import placement_uow_factory
+from geo_core.placements.worker_composition import (
+    EvidencePackHandler,
+    PlacementWorkerDispatcher,
+)
+from geo_core.placements.worker_repository import PlacementWorkerRepository
 from geo_core.project_scope import set_project_scope
 from geo_core.rag import RagSelection
 from tests.integration.placement_worker_support import cleanup_projects, login_url, seed_project
+from tests.integration.test_knowledge_fact_evidence_postgres import _seed_brief
 
 
 ADMIN_URL = os.getenv("GEO_PLACEMENT_TEST_ADMIN_URL", "").strip()
@@ -55,9 +75,7 @@ class TraceableGateway:
         user_payload = json.loads(request.messages[1]["content"])
         content = str(user_payload["content"])
         fact = (
-            "A1 的流量为每分钟 3 升。"
-            if "每分钟 3 升" in content
-            else "A1 的流量为每分钟 2 升。"
+            "A1 的流量为每分钟 3 升。" if "每分钟 3 升" in content else "A1 的流量为每分钟 2 升。"
         )
         output = {
             "facts": [{"text": fact, "source_quote": fact}],
@@ -108,6 +126,7 @@ def test_f019_int_01_02_governed_rag_revision_archive_and_project_isolation() ->
         )
         primary = seed_project(admin, suffix=f"rag-primary-{suffix}")
         foreign = seed_project(admin, suffix=f"rag-foreign-{suffix}")
+        campaign_id, brief_version_id = _seed_brief(admin, primary, suffix)
         admin.commit()
 
     app_url = login_url(ADMIN_URL, user=app_login, password=app_password)
@@ -115,6 +134,7 @@ def test_f019_int_01_02_governed_rag_revision_archive_and_project_isolation() ->
     primary_principal = _principal(primary, suffix)
     foreign_principal = _principal(foreign, suffix)
     application = KnowledgeApplication(app_url)
+    placements = PlacementApplication(placement_uow_factory(lambda: psycopg.connect(app_url)))
     dispatcher = _dispatcher(worker_url, suffix)
     try:
         first = application.create_source(
@@ -133,9 +153,7 @@ def test_f019_int_01_02_governed_rag_revision_archive_and_project_isolation() ->
         assert repeated["source"]["id"] == first_ids["source_id"]
         assert repeated["pipeline_run"]["id"] == first_ids["run_id"]
 
-        revisions = application.list_rag_revisions(
-            primary_principal, project_id=primary["project"]
-        )
+        revisions = application.list_rag_revisions(primary_principal, project_id=primary["project"])
         entities = application.list_rag_entity_candidates(
             primary_principal, project_id=primary["project"]
         )
@@ -162,18 +180,283 @@ def test_f019_int_01_02_governed_rag_revision_archive_and_project_isolation() ->
                 (primary["project"], first_ids["run_id"]),
             ).fetchone()
             assert legacy >= 1 and rag == 1
-            assert admin.execute(
-                """SELECT bool_and(lifecycle_status = 'superseded')
+            assert (
+                admin.execute(
+                    """SELECT bool_and(lifecycle_status = 'superseded')
                    FROM knowledge_fact_candidates
                    WHERE project_id = %s AND pipeline_run_id = %s
                      AND rag_revision_id IS NULL""",
-                (primary["project"], first_ids["run_id"]),
-            ).fetchone()[0] is True
+                    (primary["project"], first_ids["run_id"]),
+                ).fetchone()[0]
+                is True
+            )
             assert admin.execute(
                 """SELECT array_agg(status ORDER BY created_at)
                    FROM model_call_logs WHERE project_id = %s AND job_id = %s""",
                 (primary["project"], first_ids["rag_job_id"]),
             ).fetchone()[0] == ["reserved", "succeeded"]
+
+        first_fact = next(
+            fact
+            for fact in application.list_facts(primary_principal, project_id=primary["project"])
+            if fact["pipeline_run_id"] == first_ids["run_id"]
+        )
+        reviewed_fact = application.review_fact(
+            primary_principal,
+            project_id=primary["project"],
+            fact_id=first_fact["id"],
+            decision="approved",
+            notes="approved before reprocessing",
+        )
+        assert reviewed_fact["status"] == "approved"
+
+        promoted = application.promote_fact_to_evidence(
+            primary_principal,
+            project_id=primary["project"],
+            fact_id=first_fact["id"],
+            idempotency_key=f"rag-promoted-fact-{suffix}",
+            title="Approved RAG Fact",
+            subject_entity_id=None,
+            subject_role=SubjectRole.NEUTRAL,
+            usage_rights=UsageRights.OWNED,
+            confidentiality=Confidentiality.INTERNAL,
+            public_citation=PublicCitation(disclosure_allowed=False),
+        )
+        assert promoted["outcome"] == "created"
+        promoted_evidence_id = promoted["evidence"]["id"]
+        frozen_pack, frozen_pack_job = placements.create_evidence_attempt(
+            project_id=primary["project"],
+            campaign_id=campaign_id,
+            brief_version_id=brief_version_id,
+            idempotency_key=f"rag-evidence-pack-before-reprocess-{suffix}",
+        )
+        assert (
+            dispatcher.process(job_id=frozen_pack_job.id, project_id=primary["project"])["status"]
+            == "ready"
+        )
+        assert {
+            item["id"]
+            for item in placements.list_evidence_attempt_items(
+                project_id=primary["project"],
+                campaign_id=campaign_id,
+                attempt_id=frozen_pack.id,
+            )
+        } == {promoted_evidence_id}
+        with pytest.raises(KnowledgeConflict, match="cannot be reviewed again"):
+            application.review_fact(
+                primary_principal,
+                project_id=primary["project"],
+                fact_id=first_fact["id"],
+                decision="rejected",
+                notes="promoted Fact must remain an immutable reviewed snapshot",
+            )
+        stale_fact_id = uuid4()
+        stale_statement = "This old unpromoted candidate must be superseded after reprocessing."
+        with psycopg.connect(ADMIN_URL) as admin:
+            document_id, chunk_id = admin.execute(
+                """SELECT document_id, chunk_id FROM knowledge_fact_candidates
+                   WHERE project_id = %s AND id = %s""",
+                (primary["project"], first_fact["id"]),
+            ).fetchone()
+            admin.execute(
+                """INSERT INTO knowledge_fact_candidates
+                     (id, project_id, pipeline_run_id, source_id, document_id, chunk_id,
+                      statement, statement_hash)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+                (
+                    stale_fact_id,
+                    primary["project"],
+                    first_ids["run_id"],
+                    first_ids["source_id"],
+                    document_id,
+                    chunk_id,
+                    stale_statement,
+                    hashlib.sha256(stale_statement.encode()).hexdigest(),
+                ),
+            )
+            admin.commit()
+
+        reprocessed = application.reprocess_source(
+            primary_principal,
+            project_id=primary["project"],
+            source_id=first_ids["source_id"],
+            idempotency_key=f"rag-reprocess-{suffix}",
+        )
+        reprocessed_run_id = reprocessed["pipeline_run"]["id"]
+        reprocessed_result = dispatcher.process(
+            job_id=reprocessed["job"]["id"], project_id=primary["project"]
+        )
+        assert reprocessed_result["status"] == "succeeded", reprocessed_result
+        with psycopg.connect(ADMIN_URL) as admin:
+            assert (
+                admin.execute(
+                    """SELECT bool_and(status = 'active') FROM knowledge_chunks
+                   WHERE project_id = %s AND pipeline_run_id = %s""",
+                    (primary["project"], first_ids["run_id"]),
+                ).fetchone()[0]
+                is True
+            )
+            assert (
+                admin.execute(
+                    """SELECT lifecycle_status FROM knowledge_fact_candidates
+                   WHERE project_id = %s AND id = %s""",
+                    (primary["project"], first_fact["id"]),
+                ).fetchone()[0]
+                == "active"
+            )
+            assert (
+                admin.execute(
+                    """SELECT lifecycle_status FROM knowledge_rag_revisions
+                   WHERE project_id = %s AND pipeline_run_id = %s""",
+                    (primary["project"], first_ids["run_id"]),
+                ).fetchone()[0]
+                == "active"
+            )
+        reprocessed_rag = dispatcher.process(
+            job_id=UUID(str(reprocessed_result["rag_job_id"])),
+            project_id=primary["project"],
+        )
+        assert reprocessed_rag["status"] == "succeeded", reprocessed_rag
+        with psycopg.connect(ADMIN_URL) as admin:
+            assert (
+                admin.execute(
+                    """SELECT bool_and(status = 'disabled') FROM knowledge_chunks
+                   WHERE project_id = %s AND pipeline_run_id = %s""",
+                    (primary["project"], first_ids["run_id"]),
+                ).fetchone()[0]
+                is True
+            )
+            assert (
+                admin.execute(
+                    """SELECT bool_and(lifecycle_status = 'superseded')
+                   FROM knowledge_fact_candidates
+                   WHERE project_id = %s AND pipeline_run_id = %s""",
+                    (primary["project"], first_ids["run_id"]),
+                ).fetchone()[0]
+                is True
+            )
+            assert admin.execute(
+                """SELECT status, lifecycle_status FROM knowledge_fact_candidates
+                   WHERE project_id = %s AND id = %s""",
+                (primary["project"], first_fact["id"]),
+            ).fetchone() == ("approved", "superseded")
+            assert admin.execute(
+                """SELECT status, lifecycle_status FROM knowledge_fact_candidates
+                   WHERE project_id = %s AND id = %s""",
+                (primary["project"], stale_fact_id),
+            ).fetchone() == ("pending_review", "superseded")
+            assert (
+                admin.execute(
+                    """SELECT count(*) FROM knowledge_fact_evidence_lineages
+                   WHERE project_id = %s AND knowledge_fact_id = %s""",
+                    (primary["project"], first_fact["id"]),
+                ).fetchone()[0]
+                == 1
+            )
+            assert (
+                admin.execute(
+                    """SELECT bool_and(status = 'active') FROM knowledge_chunks
+                   WHERE project_id = %s AND pipeline_run_id = %s""",
+                    (primary["project"], reprocessed_run_id),
+                ).fetchone()[0]
+                is True
+            )
+            assert (
+                admin.execute(
+                    """SELECT status FROM knowledge_pipeline_runs
+                   WHERE project_id = %s AND id = %s""",
+                    (primary["project"], first_ids["run_id"]),
+                ).fetchone()[0]
+                == "succeeded"
+            )
+
+        current_pack, current_pack_job = placements.create_evidence_attempt(
+            project_id=primary["project"],
+            campaign_id=campaign_id,
+            brief_version_id=brief_version_id,
+            idempotency_key=f"rag-evidence-pack-after-reprocess-{suffix}",
+        )
+        assert (
+            dispatcher.process(job_id=current_pack_job.id, project_id=primary["project"])["status"]
+            == "needs_evidence"
+        )
+        assert (
+            placements.list_evidence_attempt_items(
+                project_id=primary["project"],
+                campaign_id=campaign_id,
+                attempt_id=current_pack.id,
+            )
+            == ()
+        )
+        assert {
+            item["id"]
+            for item in placements.list_evidence_attempt_items(
+                project_id=primary["project"],
+                campaign_id=campaign_id,
+                attempt_id=frozen_pack.id,
+            )
+        } == {promoted_evidence_id}
+        with psycopg.connect(ADMIN_URL) as admin:
+            assert (
+                admin.execute(
+                    """SELECT count(*) FROM knowledge_fact_evidence_lineages
+                   WHERE project_id = %s AND knowledge_fact_id = %s
+                     AND evidence_item_id = %s""",
+                    (primary["project"], first_fact["id"], promoted_evidence_id),
+                ).fetchone()[0]
+                == 1
+            )
+            assert (
+                admin.execute(
+                    """SELECT status FROM evidence_pack_attempts
+                   WHERE project_id = %s AND id = %s""",
+                    (primary["project"], frozen_pack.id),
+                ).fetchone()[0]
+                == "ready"
+            )
+
+        stale = application.reprocess_source(
+            primary_principal,
+            project_id=primary["project"],
+            source_id=first_ids["source_id"],
+            idempotency_key=f"rag-stale-{suffix}",
+        )
+        stale_knowledge = dispatcher.process(
+            job_id=stale["job"]["id"], project_id=primary["project"]
+        )
+        assert stale_knowledge["status"] == "succeeded", stale_knowledge
+        stale_rag_job_id = UUID(str(stale_knowledge["rag_job_id"]))
+        stale_store = PostgresDurableJobStore(lambda: psycopg.connect(worker_url))
+        stale_claim_result = stale_store.claim(
+            job_id=stale_rag_job_id,
+            project_id=primary["project"],
+            expected_kind="knowledge.rag.extract",
+            worker_id=f"stale-rag-{suffix}",
+            lease_for=timedelta(minutes=5),
+        )
+        assert stale_claim_result.lease is not None
+        stale_lease = stale_claim_result.lease
+        stale_claim = KnowledgeRagPostgresRepository(stale_store).load(stale_lease)
+
+        newer = application.reprocess_source(
+            primary_principal,
+            project_id=primary["project"],
+            source_id=first_ids["source_id"],
+            idempotency_key=f"rag-newer-{suffix}",
+        )
+        _process_source(dispatcher, newer, primary["project"])
+        with pytest.raises(KnowledgeRagContractError, match="newer run is already active"):
+            with stale_store.fenced_transaction(stale_lease) as connection:
+                prepare_rag_activation(connection, project_id=primary["project"], claim=stale_claim)
+        assert (
+            stale_store.fail(
+                stale_lease,
+                error_code="KnowledgeRagContractError",
+                details={"message": "stale completion rejected"},
+                retry_delay=None,
+            )
+            == "failed"
+        )
 
         second = application.create_source_revision(
             primary_principal,
@@ -182,6 +465,23 @@ def test_f019_int_01_02_governed_rag_revision_archive_and_project_isolation() ->
             source=_source("每分钟 3 升"),
             idempotency_key=f"rag-revision-{suffix}",
         )
+        replayed_reprocess_with_successor = application.reprocess_source(
+            primary_principal,
+            project_id=primary["project"],
+            source_id=first_ids["source_id"],
+            idempotency_key=f"rag-newer-{suffix}",
+        )
+        assert (
+            replayed_reprocess_with_successor["pipeline_run"]["id"] == newer["pipeline_run"]["id"]
+        )
+        assert replayed_reprocess_with_successor["job"]["id"] == newer["job"]["id"]
+        with pytest.raises(KnowledgeConflict, match="latest Knowledge source revision"):
+            application.reprocess_source(
+                primary_principal,
+                project_id=primary["project"],
+                source_id=first_ids["source_id"],
+                idempotency_key=f"stale-predecessor-reprocess-{suffix}",
+            )
         second_ids = _process_source(dispatcher, second, primary["project"])
         with psycopg.connect(ADMIN_URL) as admin:
             source_statuses = dict(
@@ -195,17 +495,53 @@ def test_f019_int_01_02_governed_rag_revision_archive_and_project_isolation() ->
                 first_ids["source_id"]: "archived",
                 second_ids["source_id"]: "ready",
             }
-            assert admin.execute(
-                """SELECT bool_and(status = 'disabled') FROM knowledge_chunks
+            assert (
+                admin.execute(
+                    """SELECT bool_and(status = 'disabled') FROM knowledge_chunks
                    WHERE project_id = %s AND pipeline_run_id = %s""",
-                (primary["project"], first_ids["run_id"]),
-            ).fetchone()[0] is True
+                    (primary["project"], first_ids["run_id"]),
+                ).fetchone()[0]
+                is True
+            )
             assert admin.execute(
                 """SELECT array_agg(lifecycle_status ORDER BY completed_at)
                    FROM knowledge_rag_revisions
                    WHERE project_id = %s AND logical_source_id = %s""",
                 (primary["project"], first_ids["source_id"]),
-            ).fetchone()[0] == ["superseded", "active"]
+            ).fetchone()[0] == [
+                "superseded",
+                "superseded",
+                "superseded",
+                "active",
+            ]
+
+        replayed_revision = application.create_source_revision(
+            primary_principal,
+            project_id=primary["project"],
+            source_id=first_ids["source_id"],
+            source=_source("每分钟 3 升"),
+            idempotency_key=f"rag-revision-{suffix}",
+        )
+        assert replayed_revision["source"]["id"] == second["source"]["id"]
+        assert replayed_revision["pipeline_run"]["id"] == second["pipeline_run"]["id"]
+        assert replayed_revision["job"]["id"] == second["job"]["id"]
+        with pytest.raises(KnowledgeConflict, match="different content"):
+            application.create_source_revision(
+                primary_principal,
+                project_id=primary["project"],
+                source_id=first_ids["source_id"],
+                source=_source("每分钟 4 升"),
+                idempotency_key=f"rag-revision-{suffix}",
+            )
+
+        replayed_reprocess_when_archived = application.reprocess_source(
+            primary_principal,
+            project_id=primary["project"],
+            source_id=first_ids["source_id"],
+            idempotency_key=f"rag-newer-{suffix}",
+        )
+        assert replayed_reprocess_when_archived["pipeline_run"]["id"] == newer["pipeline_run"]["id"]
+        assert replayed_reprocess_when_archived["job"]["id"] == newer["job"]["id"]
 
         archived = application.archive_source(
             primary_principal,
@@ -227,9 +563,10 @@ def test_f019_int_01_02_governed_rag_revision_archive_and_project_isolation() ->
             source_id=queued["source"]["id"],
         )
         assert cancelled["outcome"] == "archived"
-        assert dispatcher.process(
-            job_id=queued["job"]["id"], project_id=primary["project"]
-        )["status"] == "cancelled"
+        assert (
+            dispatcher.process(job_id=queued["job"]["id"], project_id=primary["project"])["status"]
+            == "cancelled"
+        )
 
         foreign_source = application.create_source(
             foreign_principal,
@@ -239,9 +576,7 @@ def test_f019_int_01_02_governed_rag_revision_archive_and_project_isolation() ->
         )
         _process_source(dispatcher, foreign_source, foreign["project"])
         with pytest.raises(KnowledgeForbidden):
-            application.list_rag_revisions(
-                primary_principal, project_id=foreign["project"]
-            )
+            application.list_rag_revisions(primary_principal, project_id=foreign["project"])
         foreign_candidate = application.list_rag_entity_candidates(
             foreign_principal, project_id=foreign["project"]
         )[0]
@@ -255,10 +590,13 @@ def test_f019_int_01_02_governed_rag_revision_archive_and_project_isolation() ->
             )
         with psycopg.connect(app_url) as scoped:
             set_project_scope(scoped, primary["project"])
-            assert scoped.execute(
-                "SELECT count(*) FROM knowledge_rag_revisions WHERE project_id = %s",
-                (foreign["project"],),
-            ).fetchone()[0] == 0
+            assert (
+                scoped.execute(
+                    "SELECT count(*) FROM knowledge_rag_revisions WHERE project_id = %s",
+                    (foreign["project"],),
+                ).fetchone()[0]
+                == 0
+            )
     finally:
         with psycopg.connect(ADMIN_URL) as admin:
             cleanup_projects(
@@ -271,9 +609,12 @@ def test_f019_int_01_02_governed_rag_revision_archive_and_project_isolation() ->
             admin.commit()
 
 
-def _dispatcher(worker_url: str, suffix: str) -> PlacementWorkerDispatcher:
+def _dispatcher(
+    worker_url: str, suffix: str, *, gateway: Any | None = None
+) -> PlacementWorkerDispatcher:
     store = PostgresDurableJobStore(lambda: psycopg.connect(worker_url))
     object_store = _object_store(suffix)
+    placement_repository = PlacementWorkerRepository(store)
 
     policy = KnowledgeRagEnqueuePolicy(
         adapter_release=SELECTION.adapter_release,
@@ -283,11 +624,14 @@ def _dispatcher(worker_url: str, suffix: str) -> PlacementWorkerDispatcher:
     return PlacementWorkerDispatcher(
         store=store,
         handlers={
-            "knowledge.process": KnowledgeProcessHandler(store, rag_policy=policy),
+            "evidence_pack.build": EvidencePackHandler(placement_repository),
+            "knowledge.process": KnowledgeProcessHandler(
+                store, rag_policy=policy, lease_for=timedelta(seconds=30)
+            ),
             "knowledge.rag.extract": KnowledgeRagExtractHandler(
                 store=store,
                 repository=KnowledgeRagPostgresRepository(store),
-                gateway=TraceableGateway(),
+                gateway=gateway or TraceableGateway(),
                 object_store=object_store,
                 selection=SELECTION,
                 selection_manifest_hash=SELECTION_HASH,
@@ -357,12 +701,7 @@ def _approve_graph(
 
 
 def _source(rate: str) -> SourceInput:
-    content = (
-        f"A1 的流量为{rate}。\n"
-        "Product A1\n"
-        "Brand 星澜\n"
-        "A1 belongs_to 星澜"
-    ).encode()
+    content = (f"A1 的流量为{rate}。\n" "Product A1\n" "Brand 星澜\n" "A1 belongs_to 星澜").encode()
     return SourceInput("text", "A1 产品资料", None, "a1.txt", "text/plain", content)
 
 

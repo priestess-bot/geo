@@ -9,7 +9,13 @@ from uuid import NAMESPACE_URL, uuid4, uuid5
 from geo_core.jobs.postgres import PostgresDurableJobStore, WorkerLease
 from geo_core.model_gateway import ModelGatewayResult
 from geo_core.placements.evidence_worker_repository import EvidenceWorkerRepositoryMixin
-from geo_core.placements.domain import PackageVersion, WorkflowStatus, canonical_hash
+from geo_core.placements.domain import (
+    PackageVersion,
+    PlacementRuleViolation,
+    WorkflowStatus,
+    canonical_hash,
+)
+from geo_core.placements.execution_eligibility import approved_fact_evidence_is_current
 from geo_core.placements.ports import GeneratedPlacement, GenerationClaim, ModelCallClaim
 from geo_core.placements.publication_worker_support import (
     advance_generated_opportunity,
@@ -88,6 +94,15 @@ class PlacementWorkerRepository(
                     (lease.project_id, row["evidence_pack_attempt_id"]),
                 )
             )
+            evidence_ids = tuple(value["evidence_item_id"] for value in evidence)
+            if not approved_fact_evidence_is_current(
+                connection,
+                project_id=lease.project_id,
+                evidence_ids=evidence_ids,
+            ):
+                raise PlacementRuleViolation(
+                    "generation Evidence includes a retired approved Fact source"
+                )
             package_id = uuid5(NAMESPACE_URL, f"geo-placement-package:{row['opportunity_id']}")
             latest = _dict(
                 connection.execute(
@@ -113,7 +128,7 @@ class PlacementWorkerRepository(
                 package_id=package_id,
                 next_version_number=(latest["version_number"] + 1) if latest else 1,
                 base_version_id=latest["id"] if latest else None,
-                evidence_item_ids=tuple(value["evidence_item_id"] for value in evidence),
+                evidence_item_ids=evidence_ids,
                 public_citation_item_ids=tuple(
                     value["evidence_item_id"]
                     for value in evidence
@@ -246,6 +261,14 @@ class PlacementWorkerRepository(
         }
         content_hash = canonical_hash(payload)
         with self._store.fenced_transaction(lease) as connection:
+            if not approved_fact_evidence_is_current(
+                connection,
+                project_id=lease.project_id,
+                evidence_ids=claim.evidence_item_ids,
+            ):
+                raise PlacementRuleViolation(
+                    "generation Evidence became stale before result finalization"
+                )
             opportunity = _dict(
                 connection.execute(
                     """SELECT campaign_id, opportunity_id, destination_id

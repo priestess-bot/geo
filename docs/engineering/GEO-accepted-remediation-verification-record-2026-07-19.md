@@ -10,6 +10,8 @@
 
 计划内 14 个 `ACCEPTED` 项均已实现；70 条验收标准映射到 68 个稳定测试 ID，并通过机器校验。最终验证覆盖 Domain、API、PostgreSQL、MinIO、双 Web、Chromium、OpenAPI、Compose 和一次性生产等价 Docker 环境。
 
+代码审查后的加固也已闭合：URL 抓取固定到已校验公网 IP；Knowledge Worker 持续续租并统一取消、fencing、dead-letter 终态；Fact→Evidence 使用精确 Fact 身份和原文哈希；禁用/退役 Chunk 不再进入新 RAG、Question、Evidence Pack、Prompt、Simulation、Generation、Review、Export、Publication 或 Monitoring 执行。历史 Evidence、Pack、Package、Export 和核验记录继续保留用于审计，但不会被误当作当前可消费输入。
+
 本记录只证明本地受控环境与生产等价拓扑验证完成。它不证明客户生产已部署、不证明第三方真实发布已发生，也不把 deterministic/synthetic/inline 结果解释为真实外部 GEO 效果或因果提升。
 
 代码保护点：
@@ -28,9 +30,9 @@
 | F-009 | 5 | 五类 capture method、v3 platform/surface/detail 强合同和来源隔离 | Domain/API/PostgreSQL/Customer/导出测试 |
 | F-011 | 5 | 保留人工发布；追加式 URL 验证 attempt、8 项检查、显式重试和最小结果验证 | PostgreSQL Worker、API、Admin Chromium、真实 verifier 逻辑 |
 | F-012 | 5 | Campaign 成为全链路真根；跨 Campaign read/mutation fail closed | PostgreSQL、API、Admin Chromium |
-| F-013 | 5 | approved Fact 可通过 UI 提升 Evidence，保留 Source→Run→Document→Chunk→Fact 血缘 | PostgreSQL、API、Admin Chromium、0022 迁移 |
+| F-013 | 5 | approved Fact 可通过 UI 提升 Evidence，保留 Source→Run→Document→Chunk→Fact 血缘 | PostgreSQL、API、Admin Chromium、0013/0022-0024 迁移 |
 | F-014 | 5 | Opportunity 显式绑定 approved Prompt Release；历史 ID/version/hash 不变 | PostgreSQL、API、九渠道就绪度、Admin Chromium |
-| F-015 | 4 | 必需测试缺环境、零收集、skip 或失败时非零退出；隔离跨 run 数据 | CI 合同、43 项必需 integration 摘要 |
+| F-015 | 4 | 必需测试缺环境、零收集、skip 或失败时非零退出；隔离跨 run 数据 | CI 合同、60 项必需 integration 摘要 |
 | F-016 | 3 | acceptance 仅允许隔离数据库身份和 marker；报告标记 `inline_isolated` | 串行/并行 acceptance、报告验证器 |
 | F-018 | 8 | 真实 readiness、heartbeat、队列卡滞、Compose health 和 bounded Secret preflight | 34 项静态合同、6 项一次性 Docker runtime |
 | F-019 | 8 | Project Native RAG、治理图谱、QuestionSet、Protocol 绑定及不可发布内部仿真 | 选型 Gate、PostgreSQL/MinIO、100 项定向单测、Admin Chromium |
@@ -43,26 +45,27 @@
 
 | 门禁 | 结果 |
 |---|---|
-| `make test-migrated` | 482 passed，46 deselected |
-| `make quality` | Ruff 通过；Mypy 215 个源文件通过；6 个 Web workspace 类型检查通过；架构 13 passed |
-| `make test-integration-required` | fresh PostgreSQL/MinIO，43 collected / 43 passed / 0 skipped |
-| `make test-browser-chromium` | Admin 9/9、Customer 4/4；0 skipped、0 flaky |
+| `make test-migrated` | 512 passed，63 deselected |
+| `make quality` | Ruff 通过；Mypy 220 个源文件通过；6 个 Web workspace 类型检查通过；架构 13 passed |
+| `make test-integration-required` | fresh PostgreSQL/MinIO，60 collected / 60 passed / 0 skipped |
+| `make test-browser-chromium` | Admin 10/10、Customer 4/4；0 skipped、0 flaky |
 | `make web-build` | Admin 与 Customer 两个 Next.js production build 通过 |
 | `make openapi-contracts` | 2 个稳定 surface 验证通过；6 个快照测试通过 |
 | `make test-infra-contracts` | 34 collected / 34 passed / 0 skipped |
 | `make test-infra-runtime` | fresh Docker/PostgreSQL；6 collected / 6 passed / 0 skipped；故障状态可恢复 |
 | `make f019-benchmark` | Dataset 有效；Project Native 选择清单及报告 hash 有效 |
 | traceability validator | 70 条 acceptance clause、68 个稳定测试 ID 全部有效 |
-| `geo-acceptance-inline` | run `final-accepted-remediation-20260719`；`execution_mode=inline_isolated`；报告验证通过 |
+| `geo-acceptance-inline` | run `review-fixed-20260719`；`execution_mode=inline_isolated`；报告验证通过 |
 
-验收报告保存在本地忽略目录 `artifacts/geo-acceptance/final-accepted-remediation-20260719.json`，其 SHA-256 为 `d3cff011ff0bc022f87c6c8fb041755e12286109f0a70e31314e89ca6d3fe5c0`。仓库只保存该脱敏索引，不提交数据库凭据或大体积运行产物。
+验收报告保存在本地忽略目录 `artifacts/geo-acceptance/review-fixed-20260719.json`，其 SHA-256 为 `753332c8742f88f1cdfcf69e64249b104400916112e0f62a89dd5287cf1d87ae`。仓库只保存该脱敏索引，不提交数据库凭据或大体积运行产物。
 
 ## 4. 数据迁移
 
-- Alembic 单 head：`0022_legacy_fact_hash_repair`。
-- 全新 PostgreSQL 已从 `0001` 顺序升级到 `0022`。
+- Alembic 单 head：`0025_monitoring_source_guard`。
+- 全新 PostgreSQL 已从 `0001` 顺序升级到 `0025`。
 - 单独验证 populated `UP→DOWN→UP`、目标唯一键冲突、Unicode 非精确哈希 fail closed、下游 lineage/JSON 引用保护。
 - 0022 只修复可严格证明为旧 Python lowercase 行为生成的 ASCII 历史哈希；无法证明的历史值不被伪造为有效数据。
+- 0023 允许已提升 Fact 仅做单向生命周期退役；0024 将 active Chunk 纳入 QuestionSet 当前性；0025 阻止新 Monitoring Protocol 绑定失效 QuestionSet。三者均保留历史记录，不把退役内容继续投影为当前输入。
 - App、Worker、Admin 使用独立数据库身份；最终 integration 和 acceptance 无残留测试项目。
 
 ## 5. F-019 选型

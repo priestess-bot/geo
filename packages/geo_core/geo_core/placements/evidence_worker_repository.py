@@ -6,6 +6,11 @@ from typing import Any, Mapping
 
 from geo_core.jobs.postgres import PostgresDurableJobStore, WorkerLease
 from geo_core.placements.domain import canonical_hash
+from geo_core.placements.execution_eligibility import (
+    APPROVED_FACT_LINEAGE_JOINS,
+    CURRENT_APPROVED_FACT_FILTER,
+    approved_fact_evidence_is_current,
+)
 
 
 def _dict(cursor: Any) -> dict[str, Any] | None:
@@ -91,6 +96,7 @@ class EvidenceWorkerRepositoryMixin:
                        LEFT JOIN knowledge_fact_evidence_lineages lineage
                          ON lineage.evidence_item_id = e.id
                         AND lineage.project_id = e.project_id
+                       {APPROVED_FACT_LINEAGE_JOINS}
                        JOIN placement_brief_versions bv
                          ON bv.id = %s AND bv.project_id = e.project_id
                        JOIN placement_briefs b
@@ -99,10 +105,7 @@ class EvidenceWorkerRepositoryMixin:
                          AND e.usage_rights IN
                            ('owned', 'licensed', 'public_reference', 'authorised_experience')
                          AND e.confidentiality <> 'restricted'
-                         AND (e.item_type <> 'approved_fact'
-                              OR (e.fact_lineage_status = 'verified'
-                                  AND lineage.lineage_contract_version =
-                                      'knowledge-fact-evidence-v1'))
+                         AND {CURRENT_APPROVED_FACT_FILTER}
                          AND {_SUBJECT_FILTER}
                        ORDER BY e.created_at, e.id""",
                     (spec["brief_version_id"], lease.project_id),
@@ -110,6 +113,12 @@ class EvidenceWorkerRepositoryMixin:
             )
             if not eligible:
                 return self._finish_without_evidence(connection, lease, spec)
+            if not approved_fact_evidence_is_current(
+                connection,
+                project_id=lease.project_id,
+                evidence_ids=tuple(item["id"] for item in eligible),
+            ):
+                raise RuntimeError("Evidence eligibility changed while the Pack was being frozen")
             for ordinal, item in enumerate(eligible):
                 connection.execute(
                     """INSERT INTO evidence_pack_items
@@ -153,20 +162,16 @@ class EvidenceWorkerRepositoryMixin:
         restricted = _dict(
             connection.execute(
                 f"""SELECT COUNT(*) AS count FROM evidence_items e
+                   LEFT JOIN knowledge_fact_evidence_lineages lineage
+                     ON lineage.evidence_item_id = e.id
+                    AND lineage.project_id = e.project_id
+                   {APPROVED_FACT_LINEAGE_JOINS}
                    JOIN placement_brief_versions bv
                      ON bv.id = %s AND bv.project_id = e.project_id
                    JOIN placement_briefs b ON b.id = bv.brief_id AND b.project_id = bv.project_id
                    WHERE e.project_id = %s
                      AND (e.usage_rights = 'restricted' OR e.confidentiality = 'restricted')
-                     AND (e.item_type <> 'approved_fact' OR (
-                       e.fact_lineage_status = 'verified' AND EXISTS (
-                         SELECT 1 FROM knowledge_fact_evidence_lineages lineage
-                         WHERE lineage.project_id = e.project_id
-                           AND lineage.evidence_item_id = e.id
-                           AND lineage.lineage_contract_version =
-                               'knowledge-fact-evidence-v1'
-                       )
-                     ))
+                     AND {CURRENT_APPROVED_FACT_FILTER}
                      AND {_SUBJECT_FILTER}""",
                 (spec["brief_version_id"], lease.project_id),
             )

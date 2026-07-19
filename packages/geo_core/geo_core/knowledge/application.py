@@ -20,6 +20,8 @@ from geo_core.knowledge.domain import (
     SourceInput,
 )
 from geo_core.knowledge.evidence import KnowledgeEvidenceApplicationMixin
+from geo_core.knowledge.fact_review_application import KnowledgeFactReviewApplicationMixin
+from geo_core.knowledge.locking import lock_source_aggregate, source_logical_id
 from geo_core.knowledge.question_application import KnowledgeQuestionApplicationMixin
 from geo_core.knowledge.question_set_application import KnowledgeQuestionSetApplicationMixin
 from geo_core.knowledge.rag_application import KnowledgeRagApplicationMixin
@@ -40,6 +42,7 @@ class KnowledgeApplication(
     KnowledgeQuestionSetApplicationMixin,
     KnowledgeQuestionApplicationMixin,
     KnowledgeRagApplicationMixin,
+    KnowledgeFactReviewApplicationMixin,
     KnowledgeEvidenceApplicationMixin,
 ):
     def __init__(
@@ -77,6 +80,7 @@ class KnowledgeApplication(
             }
         )
         with self._connection(principal, project_id, manage=True) as connection:
+            lock_source_aggregate(connection, source_id)
             existing = _one(
                 connection.execute(
                     """SELECT source.id, run.id AS pipeline_run_id, run.input_hash,
@@ -88,8 +92,8 @@ class KnowledgeApplication(
                          ON spec.pipeline_run_id = run.id AND spec.project_id = run.project_id
                        JOIN durable_jobs job
                          ON job.id = spec.job_id AND job.project_id = spec.project_id
-                       WHERE source.id = %s AND source.project_id = %s""",
-                    (source_id, project_id),
+                       WHERE source.id = %s AND source.project_id = %s AND run.id = %s""",
+                    (source_id, project_id, run_id),
                 )
             )
             if existing:
@@ -138,10 +142,23 @@ class KnowledgeApplication(
         key = f"reprocess:{source_id}:{_idempotency_key(idempotency_key)}"
         run_id = uuid5(NAMESPACE_URL, f"geo-knowledge-run:{source_id}:{key}")
         with self._connection(principal, project_id, manage=True) as connection:
+            logical_source_id = source_logical_id(
+                connection, project_id=project_id, source_id=source_id
+            )
+            if logical_source_id is None:
+                raise KnowledgeNotFound("knowledge source does not exist")
+            lock_source_aggregate(connection, logical_source_id)
+            if _exists_run(connection, run_id, project_id):
+                return self._creation_result(connection, project_id, source_id, run_id)
             source = _one(
                 connection.execute(
                     """SELECT source_kind, title, source_url, filename, media_type, raw_content,
-                              content_hash, status
+                              content_hash, status,
+                              EXISTS (
+                                SELECT 1 FROM knowledge_sources successor
+                                WHERE successor.supersedes_source_id = knowledge_sources.id
+                                  AND successor.project_id = knowledge_sources.project_id
+                              ) AS has_successor
                        FROM knowledge_sources WHERE id = %s AND project_id = %s""",
                     (source_id, project_id),
                 )
@@ -150,6 +167,10 @@ class KnowledgeApplication(
                 raise KnowledgeNotFound("knowledge source does not exist")
             if source["status"] == "archived":
                 raise KnowledgeConflict("archived Knowledge sources cannot be reprocessed")
+            if source["has_successor"]:
+                raise KnowledgeConflict(
+                    "only the latest Knowledge source revision can be reprocessed"
+                )
             input_hash = _hash(
                 {
                     "project_id": str(project_id),
@@ -163,8 +184,6 @@ class KnowledgeApplication(
                     "reprocess_key": key,
                 }
             )
-            if _exists_run(connection, run_id, project_id):
-                return self._creation_result(connection, project_id, source_id, run_id)
             if source["status"] in {"queued", "processing"}:
                 raise KnowledgeConflict("knowledge source already has an active processing run")
             self._create_pipeline_run(
@@ -402,37 +421,24 @@ class KnowledgeApplication(
             )
             return row or {}
 
-    def review_fact(
-        self,
-        principal: AccessPrincipal,
-        *,
-        project_id: UUID,
-        fact_id: UUID,
-        decision: str,
-        notes: str,
-    ) -> Mapping[str, object]:
-        if decision not in {"approved", "rejected"}:
-            raise KnowledgeValidationError("fact decision must be approved or rejected")
-        with self._connection(principal, project_id, manage=True) as connection:
-            row = _one(
-                connection.execute(
-                    """UPDATE knowledge_fact_candidates
-                       SET status = %s, reviewed_by = %s, review_notes = %s,
-                           reviewed_at = clock_timestamp(), updated_at = clock_timestamp()
-                       WHERE id = %s AND project_id = %s AND lifecycle_status = 'active'
-                       RETURNING id, project_id, statement, status, reviewed_by,
-                                 review_notes, reviewed_at""",
-                    (decision, principal.identity_id, notes.strip() or None, fact_id, project_id),
-                )
-            )
-            if row is None:
-                raise KnowledgeNotFound("knowledge fact candidate does not exist")
-            return row
-
     def disable_chunk(
         self, principal: AccessPrincipal, *, project_id: UUID, chunk_id: UUID
     ) -> Mapping[str, object]:
         with self._connection(principal, project_id, manage=True) as connection:
+            identity = _one(
+                connection.execute(
+                    """SELECT source.logical_source_id
+                       FROM knowledge_chunks chunk
+                       JOIN knowledge_sources source
+                         ON source.id = chunk.source_id
+                        AND source.project_id = chunk.project_id
+                       WHERE chunk.id = %s AND chunk.project_id = %s""",
+                    (chunk_id, project_id),
+                )
+            )
+            if identity is None:
+                raise KnowledgeNotFound("knowledge chunk does not exist")
+            lock_source_aggregate(connection, identity["logical_source_id"])
             row = _one(
                 connection.execute(
                     """UPDATE knowledge_chunks SET status = 'disabled',

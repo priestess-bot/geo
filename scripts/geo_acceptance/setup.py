@@ -316,7 +316,11 @@ def _create_governed_fact_evidence(
     )
     result = PlacementWorkerDispatcher(
         store=store,
-        handlers={"knowledge.process": KnowledgeProcessHandler(store)},
+        handlers={
+            "knowledge.process": KnowledgeProcessHandler(
+                store, lease_for=timedelta(seconds=30)
+            )
+        },
         worker_id=f"acceptance-knowledge-{suffix}",
         lease_for=timedelta(seconds=30),
     ).process(job_id=job_id, project_id=project_id)

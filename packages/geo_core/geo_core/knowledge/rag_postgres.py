@@ -7,6 +7,10 @@ from typing import Any, Mapping
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from geo_core.jobs.postgres import PostgresDurableJobStore, WorkerLease
+from geo_core.knowledge.rag_activation import (
+    prepare_rag_activation,
+    retire_previous_run_content,
+)
 from geo_core.knowledge.rag_graph_lifecycle import archive_unreferenced_graph_rows
 from geo_core.knowledge.rag_domain import (
     KnowledgeRagChunk,
@@ -218,6 +222,7 @@ class KnowledgeRagPostgresRepository:
         revision_id = uuid5(NAMESPACE_URL, f"geo-knowledge-rag-revision:{lease.job_id}")
         chunk_by_id = {str(item.chunk_id): item for item in claim.chunks}
         with self._store.fenced_transaction(lease) as connection:
+            prepare_rag_activation(connection, project_id=lease.project_id, claim=claim)
             previous = _many(
                 connection.execute(
                     """UPDATE knowledge_rag_revisions
@@ -238,7 +243,8 @@ class KnowledgeRagPostgresRepository:
                     connection.execute(
                         f"""UPDATE {table} SET lifecycle_status = 'superseded',
                                   updated_at = clock_timestamp()
-                            WHERE project_id = %s AND rag_revision_id = ANY(%s)""",  # nosec B608
+                            WHERE project_id = %s AND rag_revision_id = ANY(%s)
+                              AND lifecycle_status = 'active'""",  # nosec B608
                         (lease.project_id, previous_ids),
                     )
                 connection.execute(
@@ -254,6 +260,9 @@ class KnowledgeRagPostgresRepository:
                     (lease.project_id, previous_ids),
                 )
                 archive_unreferenced_graph_rows(connection, lease.project_id)
+            retire_previous_run_content(
+                connection, project_id=lease.project_id, claim=claim
+            )
             connection.execute(
                 """INSERT INTO knowledge_rag_revisions
                      (id, project_id, job_id, pipeline_run_id, source_id,
@@ -301,20 +310,6 @@ class KnowledgeRagPostgresRepository:
                 )
             )
             archived_source_ids = [value["id"] for value in archived_sources]
-            if previous_ids:
-                connection.execute(
-                    """UPDATE knowledge_chunks chunk SET status = 'disabled',
-                              updated_at = clock_timestamp()
-                       WHERE chunk.project_id = %s AND chunk.status = 'active'
-                         AND chunk.pipeline_run_id <> %s
-                         AND EXISTS (
-                           SELECT 1 FROM knowledge_rag_revisions revision
-                           WHERE revision.id = ANY(%s)
-                             AND revision.project_id = chunk.project_id
-                             AND revision.pipeline_run_id = chunk.pipeline_run_id
-                         )""",
-                    (lease.project_id, claim.pipeline_run_id, previous_ids),
-                )
             if archived_source_ids:
                 connection.execute(
                     """UPDATE knowledge_chunks SET status = 'disabled',
@@ -363,7 +358,8 @@ class KnowledgeRagPostgresRepository:
         connection.execute(
             """UPDATE knowledge_fact_candidates
                SET lifecycle_status = 'superseded', updated_at = clock_timestamp()
-               WHERE project_id = %s AND pipeline_run_id = %s AND rag_revision_id IS NULL""",
+               WHERE project_id = %s AND pipeline_run_id = %s
+                 AND rag_revision_id IS NULL AND lifecycle_status = 'active'""",
             (lease.project_id, claim.pipeline_run_id),
         )
         fact_ids: dict[str, UUID] = {}

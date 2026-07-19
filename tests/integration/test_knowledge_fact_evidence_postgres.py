@@ -68,9 +68,7 @@ def test_concurrent_fact_promotion_is_idempotent_and_pack_requires_verified_line
         identity_id=seeded["owner"],
         actor_id=f"fact-evidence-{suffix}",
         tenant_id=seeded["tenant"],
-        memberships=(
-            MembershipRecord(seeded["project"], seeded["tenant"], "admin"),
-        ),
+        memberships=(MembershipRecord(seeded["project"], seeded["tenant"], "admin"),),
         auth_method="development",
     )
     knowledge = KnowledgeApplication(app_url)
@@ -171,9 +169,7 @@ def test_concurrent_fact_promotion_is_idempotent_and_pack_requires_verified_line
             "created",
             "existing",
         ]
-        second_evidence_ids = {
-            item["evidence"]["id"] for item in different_key_results
-        }
+        second_evidence_ids = {item["evidence"]["id"] for item in different_key_results}
         assert len(second_evidence_ids) == 1
         second_evidence_id = second_evidence_ids.pop()
         with pytest.raises(KnowledgeConflict, match="different Knowledge Fact"):
@@ -189,9 +185,7 @@ def test_concurrent_fact_promotion_is_idempotent_and_pack_requires_verified_line
             identity_id=foreign["owner"],
             actor_id=f"fact-evidence-foreign-{suffix}",
             tenant_id=foreign["tenant"],
-            memberships=(
-                MembershipRecord(foreign["project"], foreign["tenant"], "admin"),
-            ),
+            memberships=(MembershipRecord(foreign["project"], foreign["tenant"], "admin"),),
             auth_method="development",
         )
         foreign_result = _promote(
@@ -209,11 +203,14 @@ def test_concurrent_fact_promotion_is_idempotent_and_pack_requires_verified_line
             )
         with psycopg.connect(app_url) as scoped:
             set_project_scope(scoped, seeded["project"])
-            assert scoped.execute(
-                """SELECT count(*) FROM knowledge_fact_evidence_lineages
+            assert (
+                scoped.execute(
+                    """SELECT count(*) FROM knowledge_fact_evidence_lineages
                    WHERE project_id = %s AND evidence_item_id = %s""",
-                (foreign["project"], foreign_result["evidence"]["id"]),
-            ).fetchone()[0] == 0
+                    (foreign["project"], foreign_result["evidence"]["id"]),
+                ).fetchone()[0]
+                == 0
+            )
 
         with psycopg.connect(ADMIN_URL) as admin:
             row = admin.execute(
@@ -276,13 +273,11 @@ def test_concurrent_fact_promotion_is_idempotent_and_pack_requires_verified_line
         assert pack_lineage["evidence_item_id"] == str(evidence_id)
         assert pack_lineage["idempotency_key"] == promotion_key
         assert (
-            pack_lineage["promotion_request_hash"]
-            == repeated["lineage"]["promotion_request_hash"]
+            pack_lineage["promotion_request_hash"] == repeated["lineage"]["promotion_request_hash"]
         )
         assert pack_lineage["evidence_snapshot_hash"] == lineage["fact_hash"]
         assert all(
-            item["knowledge_lineage"]["lineage_contract_version"]
-            == "knowledge-fact-evidence-v1"
+            item["knowledge_lineage"]["lineage_contract_version"] == "knowledge-fact-evidence-v1"
             for item in items
         )
     finally:
@@ -293,6 +288,111 @@ def test_concurrent_fact_promotion_is_idempotent_and_pack_requires_verified_line
                 tenant_ids=[seeded["tenant"], foreign["tenant"]],
                 app_login=app_login,
                 worker_login=worker_login,
+            )
+            admin.commit()
+
+
+def test_identical_statement_facts_keep_distinct_evidence_lineage_after_approval() -> None:
+    suffix = uuid4().hex[:10]
+    app_login = f"geo_fact_identity_{suffix}"
+    app_password = uuid4().hex
+    with psycopg.connect(ADMIN_URL) as admin:
+        admin.execute(
+            sql.SQL("CREATE ROLE {} LOGIN PASSWORD {} IN ROLE geo_app").format(
+                sql.Identifier(app_login), sql.Literal(app_password)
+            )
+        )
+        seeded = seed_project(admin, suffix=f"fact-identity-{suffix}")
+        first = _seed_knowledge_chain(admin, seeded, approved=False)
+        duplicate = _seed_knowledge_chain(admin, seeded, approved=False)
+        admin.commit()
+
+    app_url = login_url(ADMIN_URL, user=app_login, password=app_password)
+    principal = AccessPrincipal(
+        identity_id=seeded["owner"],
+        actor_id=f"fact-identity-{suffix}",
+        tenant_id=seeded["tenant"],
+        memberships=(MembershipRecord(seeded["project"], seeded["tenant"], "admin"),),
+        auth_method="development",
+    )
+    knowledge = KnowledgeApplication(app_url)
+    try:
+        assert first["source"] != duplicate["source"]
+        assert first["run"] != duplicate["run"]
+        assert first["fact"] != duplicate["fact"]
+        assert first["statement"] == duplicate["statement"]
+        assert first["fact_hash"] == duplicate["fact_hash"]
+        assert first["fact_hash"] == hashlib.sha256(first["statement"].encode()).hexdigest()
+        assert first["fact_hash"] != hashlib.sha256(first["statement"].lower().encode()).hexdigest()
+
+        promoted: list[tuple[dict[str, Any], dict[str, Any]]] = []
+        for index, fact in enumerate((first, duplicate)):
+            reviewed = knowledge.review_fact(
+                principal,
+                project_id=seeded["project"],
+                fact_id=fact["fact"],
+                decision="approved",
+                notes="approved exact mixed-case Fact for Evidence",
+            )
+            assert reviewed["status"] == "approved"
+            result = _promote(
+                knowledge,
+                principal,
+                seeded,
+                fact["fact"],
+                idempotency_key=f"fact-identity:{index}:{suffix}",
+            )
+            assert result["outcome"] == "created"
+            assert result["evidence"]["snapshot"] == {
+                "kind": "text",
+                "text": fact["statement"],
+                "uri": None,
+                "sha256": fact["fact_hash"],
+            }
+            assert result["evidence"]["source_revision"] == {
+                "kind": "content_hash",
+                "value": fact["fact_hash"],
+            }
+            assert result["lineage"]["knowledge_fact_id"] == fact["fact"]
+            assert result["lineage"]["evidence_item_id"] == result["evidence"]["id"]
+            assert result["lineage"]["knowledge_source_id"] == fact["source"]
+            assert result["lineage"]["pipeline_run_id"] == fact["run"]
+            assert result["lineage"]["fact_statement_hash"] == fact["fact_hash"]
+            assert result["lineage"]["evidence_snapshot_hash"] == fact["fact_hash"]
+            promoted.append((result, fact))
+
+        evidence_ids = {result["evidence"]["id"] for result, _ in promoted}
+        assert len(evidence_ids) == 2
+        with psycopg.connect(ADMIN_URL) as admin:
+            rows = admin.execute(
+                """SELECT evidence.id, evidence.source_id,
+                          lineage.knowledge_fact_id, lineage.knowledge_source_id,
+                          lineage.pipeline_run_id, evidence.snapshot_hash
+                   FROM evidence_items AS evidence
+                   JOIN knowledge_fact_evidence_lineages AS lineage
+                     ON lineage.evidence_item_id = evidence.id
+                    AND lineage.project_id = evidence.project_id
+                   WHERE evidence.project_id = %s AND evidence.id = ANY(%s)""",
+                (seeded["project"], list(evidence_ids)),
+            ).fetchall()
+        assert set(rows) == {
+            (
+                result["evidence"]["id"],
+                fact["fact"],
+                fact["fact"],
+                fact["source"],
+                fact["run"],
+                fact["fact_hash"],
+            )
+            for result, fact in promoted
+        }
+    finally:
+        with psycopg.connect(ADMIN_URL) as admin:
+            cleanup_projects(
+                admin,
+                projects=[seeded],
+                tenant_ids=[seeded["tenant"]],
+                app_login=app_login,
             )
             admin.commit()
 
@@ -330,7 +430,10 @@ def _promote(
 
 
 def _seed_knowledge_chain(
-    connection: psycopg.Connection[Any], seeded: dict[str, UUID]
+    connection: psycopg.Connection[Any],
+    seeded: dict[str, UUID],
+    *,
+    approved: bool = True,
 ) -> dict[str, Any]:
     ids = {
         name: uuid4()
@@ -356,6 +459,8 @@ def _seed_knowledge_chain(
         "fact_hash": hashlib.sha256(statement.encode()).hexdigest(),
         "second_fact_hash": hashlib.sha256(second_statement.encode()).hexdigest(),
         "statement": statement,
+        "fact_status": "approved" if approved else "pending_review",
+        "reviewed_by": seeded["owner"] if approved else None,
     }
     connection.execute(
         """INSERT INTO knowledge_sources
@@ -384,8 +489,14 @@ def _seed_knowledge_chain(
               cleaned_text, raw_text_hash, cleaned_text_hash)
            VALUES (%s, %s, %s, %s, 'test-v1', %s, %s, %s, %s)""",
         (
-            ids["document"], seeded["project"], ids["run"], ids["source"], cleaned,
-            cleaned, values["document_hash"], values["document_hash"],
+            ids["document"],
+            seeded["project"],
+            ids["run"],
+            ids["source"],
+            cleaned,
+            cleaned,
+            values["document_hash"],
+            values["document_hash"],
         ),
     )
     connection.execute(
@@ -394,31 +505,54 @@ def _seed_knowledge_chain(
               text, text_hash, char_count, status)
            VALUES (%s, %s, %s, %s, %s, 0, %s, %s, %s, 'active')""",
         (
-            ids["chunk"], seeded["project"], ids["run"], ids["source"], ids["document"],
-            cleaned, values["chunk_hash"], len(cleaned),
+            ids["chunk"],
+            seeded["project"],
+            ids["run"],
+            ids["source"],
+            ids["document"],
+            cleaned,
+            values["chunk_hash"],
+            len(cleaned),
         ),
     )
     connection.execute(
         """INSERT INTO knowledge_fact_candidates
              (id, project_id, pipeline_run_id, source_id, document_id, chunk_id,
               statement, statement_hash, status, reviewed_by, reviewed_at)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'approved', %s,
-                   clock_timestamp())""",
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                   CASE WHEN %s THEN clock_timestamp() ELSE NULL END)""",
         (
-            ids["fact"], seeded["project"], ids["run"], ids["source"], ids["document"],
-            ids["chunk"], statement, values["fact_hash"], seeded["owner"],
+            ids["fact"],
+            seeded["project"],
+            ids["run"],
+            ids["source"],
+            ids["document"],
+            ids["chunk"],
+            statement,
+            values["fact_hash"],
+            values["fact_status"],
+            values["reviewed_by"],
+            approved,
         ),
     )
     connection.execute(
         """INSERT INTO knowledge_fact_candidates
              (id, project_id, pipeline_run_id, source_id, document_id, chunk_id,
               statement, statement_hash, status, reviewed_by, reviewed_at)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'approved', %s,
-                   clock_timestamp())""",
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                   CASE WHEN %s THEN clock_timestamp() ELSE NULL END)""",
         (
-            ids["second_fact"], seeded["project"], ids["run"], ids["source"],
-            ids["document"], ids["chunk"], second_statement, values["second_fact_hash"],
-            seeded["owner"],
+            ids["second_fact"],
+            seeded["project"],
+            ids["run"],
+            ids["source"],
+            ids["document"],
+            ids["chunk"],
+            second_statement,
+            values["second_fact_hash"],
+            values["fact_status"],
+            values["reviewed_by"],
+            approved,
         ),
     )
     pending_statement = "This candidate has not completed governed human review."
@@ -444,9 +578,7 @@ def _seed_knowledge_chain(
 def _seed_brief(
     connection: psycopg.Connection[Any], seeded: dict[str, UUID], suffix: str
 ) -> tuple[UUID, UUID]:
-    destination_id, campaign_id, opportunity_id, brief_id, version_id = (
-        uuid4() for _ in range(5)
-    )
+    destination_id, campaign_id, opportunity_id, brief_id, version_id = (uuid4() for _ in range(5))
     connection.execute(
         """INSERT INTO publication_destinations
              (id, project_id, publication_channel, destination_key, canonical_url,
@@ -460,8 +592,12 @@ def _seed_brief(
              (id, project_id, market_profile_id, primary_product_entity_id, name, created_by)
            VALUES (%s, %s, %s, %s, %s, %s)""",
         (
-            campaign_id, seeded["project"], seeded["market"], seeded["entity"],
-            f"Fact evidence {suffix}", seeded["owner"],
+            campaign_id,
+            seeded["project"],
+            seeded["market"],
+            seeded["entity"],
+            f"Fact evidence {suffix}",
+            seeded["owner"],
         ),
     )
     connection.execute(
@@ -476,7 +612,10 @@ def _seed_brief(
               binding_state, changed_by)
            VALUES (%s, %s, %s, %s, 1, 'unbound', %s)""",
         (
-            seeded["project"], campaign_id, opportunity_id, destination_id,
+            seeded["project"],
+            campaign_id,
+            opportunity_id,
+            destination_id,
             seeded["owner"],
         ),
     )
@@ -486,7 +625,11 @@ def _seed_brief(
               primary_brand_entity_id)
            VALUES (%s, %s, %s, %s, %s, %s)""",
         (
-            brief_id, seeded["project"], campaign_id, opportunity_id, destination_id,
+            brief_id,
+            seeded["project"],
+            campaign_id,
+            opportunity_id,
+            destination_id,
             seeded["entity"],
         ),
     )
@@ -496,8 +639,14 @@ def _seed_brief(
               version_number, goals, constraints, content_hash, created_by)
            VALUES (%s, %s, %s, %s, %s, %s, 1, '{}'::jsonb, '{}'::jsonb, %s, %s)""",
         (
-            version_id, seeded["project"], campaign_id, opportunity_id, destination_id,
-            brief_id, "d" * 64, seeded["owner"],
+            version_id,
+            seeded["project"],
+            campaign_id,
+            opportunity_id,
+            destination_id,
+            brief_id,
+            "d" * 64,
+            seeded["owner"],
         ),
     )
     return campaign_id, version_id
@@ -519,8 +668,13 @@ def _seed_unverified_approved_fact(
            VALUES (%s, %s, 'approved_fact', %s, %s, 'product', %s, %s,
                    'content_hash', %s, 'owned', 'internal', 'legacy_unverified')""",
         (
-            evidence_id, seeded["project"], lineage["source"], seeded["entity"],
-            lineage["statement"], lineage["fact_hash"], lineage["source_hash"],
+            evidence_id,
+            seeded["project"],
+            lineage["source"],
+            seeded["entity"],
+            lineage["statement"],
+            lineage["fact_hash"],
+            lineage["source_hash"],
         ),
     )
     connection.execute(
@@ -533,10 +687,20 @@ def _seed_unverified_approved_fact(
            VALUES (%s, %s, %s, %s, %s, %s, %s, 'Legacy audit Evidence', %s,
                    %s, %s, %s, %s, %s, %s, %s, 'legacy-relational-v1')""",
         (
-            seeded["project"], lineage["run"], lineage["source"], lineage["document"],
-            lineage["chunk"], lineage["fact"], evidence_id, seeded["owner"], legacy_key,
-            hashlib.sha256(legacy_key.encode()).hexdigest(), lineage["source_hash"],
-            lineage["document_hash"], lineage["chunk_hash"], lineage["fact_hash"],
+            seeded["project"],
+            lineage["run"],
+            lineage["source"],
+            lineage["document"],
+            lineage["chunk"],
+            lineage["fact"],
+            evidence_id,
+            seeded["owner"],
+            legacy_key,
+            hashlib.sha256(legacy_key.encode()).hexdigest(),
+            lineage["source_hash"],
+            lineage["document_hash"],
+            lineage["chunk_hash"],
+            lineage["fact_hash"],
             lineage["fact_hash"],
         ),
     )

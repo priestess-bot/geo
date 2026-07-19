@@ -11,6 +11,7 @@ from geo_core.placements.domain import (
     PlacementRuleViolation,
     canonical_hash,
 )
+from geo_core.placements.execution_eligibility import approved_fact_evidence_is_current
 from geo_core.placements.simulation import PromptSimulation
 from geo_core.prompts.domain import TemplateRelease, render_template
 
@@ -94,9 +95,7 @@ class PostgresPromptSimulationMixin:
             "publication_eligible": False,
         }
         authoritative_variables = {
-            "brief": json.dumps(
-                brief_snapshot, ensure_ascii=False, sort_keys=True, default=str
-            ),
+            "brief": json.dumps(brief_snapshot, ensure_ascii=False, sort_keys=True, default=str),
             "evidence": json.dumps(evidence, ensure_ascii=False, sort_keys=True, default=str),
             "destination_policy": json.dumps(
                 policy_snapshot, ensure_ascii=False, sort_keys=True, default=str
@@ -261,11 +260,7 @@ class PostgresPromptSimulationMixin:
 
     @staticmethod
     def _select(include_payload: bool) -> str:
-        payload = (
-            ", simulation.input_snapshot, result.artifact_manifest"
-            if include_payload
-            else ""
-        )
+        payload = ", simulation.input_snapshot, result.artifact_manifest" if include_payload else ""
         return f"""SELECT simulation.id, simulation.project_id, simulation.campaign_id,
                           simulation.opportunity_id, simulation.destination_id,
                           simulation.destination_policy_version_id,
@@ -500,6 +495,14 @@ class PostgresPromptSimulationMixin:
         if set(by_id) != set(evidence_ids):
             raise PlacementRuleViolation(
                 "prompt simulation evidence is missing or not eligible for generation"
+            )
+        if not approved_fact_evidence_is_current(
+            self._db,
+            project_id=project_id,
+            evidence_ids=evidence_ids,
+        ):
+            raise PlacementRuleViolation(
+                "prompt simulation approved Fact Evidence is no longer active"
             )
         ordered = [by_id[evidence_id] for evidence_id in evidence_ids]
         invalid_subject = next(

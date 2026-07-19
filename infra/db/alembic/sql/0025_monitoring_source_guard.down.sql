@@ -1,0 +1,3 @@
+DROP TRIGGER IF EXISTS monitoring_protocol_question_sources_current_guard
+ON monitoring_protocols;
+DROP FUNCTION IF EXISTS geo_assert_monitoring_question_sources_current();

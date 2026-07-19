@@ -31,6 +31,7 @@ from geo_core.knowledge.evidence_request import (
     promotion_request_hash,
 )
 from geo_core.knowledge.evidence_persistence import insert_evidence
+from geo_core.knowledge.locking import lock_source_aggregate
 
 
 _PROMOTABLE_RIGHTS = frozenset(
@@ -115,6 +116,12 @@ class KnowledgeEvidenceApplicationMixin:
         with self._connection(  # type: ignore[attr-defined]
             principal, project_id, manage=True
         ) as connection:
+            identity = _fact_source_identity(
+                connection, project_id=project_id, fact_id=fact_id
+            )
+            if identity is None:
+                raise KnowledgeNotFound("knowledge fact candidate does not exist")
+            lock_source_aggregate(connection, identity["logical_source_id"])
             locked = _fact_context(
                 connection,
                 project_id=project_id,
@@ -123,6 +130,11 @@ class KnowledgeEvidenceApplicationMixin:
             )
             if locked is None:
                 raise KnowledgeNotFound("knowledge fact candidate does not exist")
+            connection.execute(
+                """SELECT id FROM knowledge_chunks
+                   WHERE id = %s AND project_id = %s FOR UPDATE""",
+                (locked["knowledge_chunk_id"], project_id),
+            )
             context = _fact_context(connection, project_id=project_id, fact_id=fact_id)
             if context is None:
                 raise KnowledgeNotFound("knowledge fact candidate does not exist")
@@ -253,6 +265,21 @@ def _lineage_by_idempotency_key(
     )
 
 
+def _fact_source_identity(
+    connection: Any, *, project_id: UUID, fact_id: UUID
+) -> dict[str, Any] | None:
+    return _one(
+        connection.execute(
+            """SELECT source.logical_source_id
+               FROM knowledge_fact_candidates fact
+               JOIN knowledge_sources source
+                 ON source.id = fact.source_id AND source.project_id = fact.project_id
+               WHERE fact.id = %s AND fact.project_id = %s""",
+            (fact_id, project_id),
+        )
+    )
+
+
 def _fact_context(
     connection: Any,
     *,
@@ -260,7 +287,7 @@ def _fact_context(
     fact_id: UUID,
     for_update: bool = False,
 ) -> dict[str, Any] | None:
-    lock = " FOR UPDATE OF fact, source, chunk" if for_update else ""
+    lock = " FOR UPDATE OF fact" if for_update else ""
     return _one(
         connection.execute(
             f"""SELECT

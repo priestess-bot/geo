@@ -38,6 +38,7 @@ class WorkerLease:
 class ClaimResult:
     disposition: Literal["claimed", "busy", "terminal", "cancelled", "dead_lettered", "missing"]
     lease: WorkerLease | None = None
+    kind: str | None = None
 
 
 def _one(cursor: Any) -> dict[str, Any] | None:
@@ -85,11 +86,11 @@ class PostgresDurableJobStore:
                 raise ValueError("job kind does not match the selected handler")
             if row["status"] in {"succeeded", "failed", "dead_lettered", "cancelled"}:
                 connection.rollback()
-                return ClaimResult("terminal")
+                return ClaimResult("terminal", kind=row["kind"])
             if row["cancel_requested_at"] is not None:
                 self._set_terminal(connection, row, worker_id=worker_id, status="cancelled")
                 connection.commit()
-                return ClaimResult("cancelled")
+                return ClaimResult("cancelled", kind=row["kind"])
             now = datetime.now(UTC)
             due = row["status"] in {"queued", "retry_wait"} and row["next_run_at"] <= now
             expired = (
@@ -99,7 +100,7 @@ class PostgresDurableJobStore:
             )
             if not (due or expired):
                 connection.rollback()
-                return ClaimResult("busy")
+                return ClaimResult("busy", kind=row["kind"])
             if row["attempt_count"] >= row["max_attempts"]:
                 self._set_terminal(
                     connection,
@@ -109,7 +110,7 @@ class PostgresDurableJobStore:
                     error_code="attempt_budget_exhausted",
                 )
                 connection.commit()
-                return ClaimResult("dead_lettered")
+                return ClaimResult("dead_lettered", kind=row["kind"])
             token = uuid4()
             claimed = _one(
                 connection.execute(
@@ -142,7 +143,7 @@ class PostgresDurableJobStore:
                 {"attempt_count": lease.attempt_count},
             )
             connection.commit()
-            return ClaimResult("claimed", lease)
+            return ClaimResult("claimed", lease, claimed["kind"])
         except BaseException:
             connection.rollback()
             raise
