@@ -129,9 +129,14 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
                 locale="en-AU",
             )
             with psycopg.connect(ADMIN_URL) as admin:
-                seed_frozen_protocol(admin, project_id=seeded["project"],
-                    campaign_id=campaign.id, market_profile_id=seeded["market"],
-                    monitoring_query_id=query.id, actor_id=seeded["owner"])
+                seed_frozen_protocol(
+                    admin,
+                    project_id=seeded["project"],
+                    campaign_id=campaign.id,
+                    market_profile_id=seeded["market"],
+                    monitoring_query_id=query.id,
+                    actor_id=seeded["owner"],
+                )
                 admin.commit()
             application.transition_opportunity(
                 project_id=seeded["project"],
@@ -471,9 +476,7 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
             project_id=first["project"],
             campaign_id=first["campaign"].id,
             version_id=version.id,
-        )[
-            0
-        ].evidence_item_ids == (first["evidence_id"],)
+        )[0].evidence_item_ids == (first["evidence_id"],)
         application.submit_for_review(
             project_id=first["project"],
             campaign_id=first["campaign"].id,
@@ -628,15 +631,19 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
         )
         assert (
             application.cancel_job(
-                project_id=first["project"], campaign_id=first["campaign"].id,
-                job_id=cancel_job.id, actor_id=first["owner"]
+                project_id=first["project"],
+                campaign_id=first["campaign"].id,
+                job_id=cancel_job.id,
+                actor_id=first["owner"],
             ).status
             == "cancelled"
         )
         assert (
             application.cancel_job(
-                project_id=first["project"], campaign_id=first["campaign"].id,
-                job_id=cancel_job.id, actor_id=first["owner"]
+                project_id=first["project"],
+                campaign_id=first["campaign"].id,
+                job_id=cancel_job.id,
+                actor_id=first["owner"],
             ).status
             == "cancelled"
         )
@@ -673,7 +680,8 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
             publication_request_id=publication.id,
             submitted_url="https://reddit.com/post",
             provider_submission_id=None,
-            idempotency_key=f"submission-{suffix}-0001", submitted_by=first["owner"],
+            idempotency_key=f"submission-{suffix}-0001",
+            submitted_by=first["owner"],
         )
         verification = application.request_verification(
             project_id=first["project"],
@@ -727,6 +735,7 @@ def test_multi_project_crash_recovery_and_full_worker_chain() -> None:
             application,
             store,
             repository,
+            admin_url=ADMIN_URL,
             project_id=first["project"],
             campaign_id=first["campaign"].id,
             version_id=version.id,

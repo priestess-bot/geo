@@ -16,6 +16,7 @@ const RELEASE_ID = "00000000-0000-4000-8000-000000000073";
 const BINDING_ID = "00000000-0000-4000-8000-000000000074";
 const BRIEF_ID = "00000000-0000-4000-8000-000000000075";
 const ATTEMPT_ID = "00000000-0000-4000-8000-000000000076";
+const LEGACY_BUNDLE_ID = "00000000-0000-4000-8000-000000000078";
 const FACT_ID = "00000000-0000-4000-8000-000000000105";
 const EVIDENCE_ID = "00000000-0000-4000-8000-000000000106";
 const PACKAGE_VERSION_ID = "00000000-0000-4000-8000-000000000112";
@@ -24,6 +25,7 @@ const SUBMISSION_ID = "00000000-0000-4000-8000-000000000114";
 const QUESTION_CANDIDATE_ID = "00000000-0000-4000-8000-000000000132";
 const QUESTION_SET_ID = "00000000-0000-4000-8000-000000000134";
 const QUESTION_SET_ITEM_ID = "00000000-0000-4000-8000-000000000135";
+const LEGACY_SIMULATION_ID = "00000000-0000-4000-8000-000000000138";
 const SOURCE_STRATUM_HASH = "e748f50aa9fef8795a832a9e9b5e3734e5ce49fa0fa8534572f8efabc7cf300f";
 const RELEASE_HASH = "d".repeat(64);
 
@@ -43,6 +45,7 @@ async function resetFixture(request: APIRequestContext): Promise<void> {
 test.beforeEach(async ({ request }) => resetFixture(request));
 
 test("F019-WEB-01: Admin completes governed QuestionSet binding and a non-publishable GEO simulation", async ({ page, request }) => {
+  test.setTimeout(60_000);
   const runtimeErrors = collectRuntimeErrors(page);
   expect((await request.patch(
     `${FIXTURE_API}/v1/projects/${PROJECT_ID}/knowledge/fact-candidates/${FACT_ID}`,
@@ -144,6 +147,16 @@ test("F019-WEB-01: Admin completes governed QuestionSet binding and a non-publis
     .toBeVisible();
   await expect(page.getByTestId("prompt-simulation-panel").getByRole("button", { name: /发布/ }))
     .toHaveCount(0);
+  const currentArtifactLink = page.getByRole("link", { name: "下载 TEST ONLY 工件" });
+  await expect(currentArtifactLink).toHaveAttribute("href", new RegExp(
+    `simulation-download/[^?]+\\?campaign_id=${CAMPAIGN_A_ID}$`
+  ));
+  const currentDownloadPromise = page.waitForEvent("download");
+  await currentArtifactLink.click();
+  const currentDownload = await currentDownloadPromise;
+  expect(currentDownload.suggestedFilename()).toBe(
+    "geo-prompt-simulation-00000000-0000-4000-8000-000000000136.json"
+  );
 
   const logged = await (await request.get(`${FIXTURE_API}/__requests`)).json() as Array<{
     method: string; path: string; body: Record<string, any>;
@@ -184,6 +197,7 @@ test("F019-WEB-01: Admin completes governed QuestionSet binding and a non-publis
   await page.screenshot({ path: path.join(os.tmpdir(), "geo-f019-question-simulation-desktop.png"), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
+  await expect(page.locator('input[name="idempotency_key"]').first()).not.toHaveValue("");
   await expect(page.getByText("NON-PUBLISHABLE", { exact: true })).toBeVisible();
   const width = await page.evaluate(() => ({
     document: document.documentElement.scrollWidth,
@@ -191,6 +205,37 @@ test("F019-WEB-01: Admin completes governed QuestionSet binding and a non-publis
   }));
   expect(width.document).toBeLessThanOrEqual(width.viewport + 1);
   await page.screenshot({ path: path.join(os.tmpdir(), "geo-f019-question-simulation-mobile.png"), fullPage: true });
+  expect(runtimeErrors).toEqual([]);
+});
+
+test("Legacy Prompt Simulation remains project-visible, read-only, and downloadable", async ({ page, request }) => {
+  const runtimeErrors = collectRuntimeErrors(page);
+  await page.goto(`/projects/${PROJECT_ID}?tab=geo&geo_section=placement&placement_stage=simulation&simulation_id=${LEGACY_SIMULATION_ID}`);
+
+  const panel = page.getByTestId("prompt-simulation-panel");
+  await expect(panel.getByText("迁移历史（只读） · 1", { exact: true })).toBeVisible();
+  await expect(panel.getByTestId("legacy-simulation-readonly")).toContainText("不能作为新建、审核、导出或发布输入");
+  await expect(panel.getByText("Migrated legacy simulation remains available for audit and download.", { exact: true }))
+    .toBeVisible();
+  await expect(panel.getByRole("button", { name: "运行 TEST ONLY 预览" })).toHaveCount(0);
+  await expect(panel.getByRole("button", { name: /发布/ })).toHaveCount(0);
+
+  const artifactLink = panel.getByRole("link", { name: "下载 TEST ONLY 工件" });
+  await expect(artifactLink).toHaveAttribute(
+    "href",
+    `/projects/${PROJECT_ID}/simulation-download/${LEGACY_SIMULATION_ID}`
+  );
+  const downloadPromise = page.waitForEvent("download");
+  await artifactLink.click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe(`geo-prompt-simulation-${LEGACY_SIMULATION_ID}.json`);
+
+  const logged = await (await request.get(`${FIXTURE_API}/__requests`)).json() as Array<{
+    method: string;
+    path: string;
+  }>;
+  expect(logged.some((item) => item.method === "POST"
+    && item.path.endsWith("/geo/prompt-simulations"))).toBe(false);
   expect(runtimeErrors).toEqual([]);
 });
 
@@ -361,6 +406,11 @@ test("F021: frozen protocol strata can compute an auditable insufficient-evidenc
 
   const operations = page.locator("details").filter({ has: page.getByText("高级运营：查询建议、指标与客户报告", { exact: true }) });
   await operations.locator(":scope > summary").click();
+  const legacySuggestion = operations.getByTestId("legacy-query-suggestion");
+  await expect(legacySuggestion).toContainText("迁移历史 · 缺少问题簇 · 只读");
+  await expect(legacySuggestion).toContainText("请在上方提交包含问题簇的新建议");
+  await expect(legacySuggestion.getByRole("button", { name: "批准建议" })).toHaveCount(0);
+  await expect(operations.locator('input[name="query_cluster_key"]').first()).toHaveAttribute("required", "");
   const metricSection = operations.getByRole("heading", { name: "指标与报告" }).locator("..");
   const sourceSelect = metricSection.locator('select[name="source_stratum_hash"]');
   const clusterSelect = metricSection.locator('select[name="query_cluster_key"]');
@@ -456,6 +506,7 @@ test("F011: a failed public URL check is retried explicitly after external conte
   await page.screenshot({ path: path.join(os.tmpdir(), "geo-admin-publication-verification-desktop.png"), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
+  await expect(page.locator('input[name="idempotency_key"]').first()).not.toHaveValue("");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
   await page.screenshot({ path: path.join(os.tmpdir(), "geo-admin-publication-verification-mobile.png"), fullPage: true });
   expect(runtimeErrors).toEqual([]);
@@ -575,5 +626,19 @@ test("F014: Opportunity binding and Bundle creation freeze the approved Prompt R
   });
   expect(bundleRequest?.body).not.toHaveProperty("template_release_id");
   await page.screenshot({ path: path.join(os.tmpdir(), "geo-admin-prompt-binding.png"), fullPage: true });
+  expect(runtimeErrors).toEqual([]);
+});
+
+test("legacy Prompt Bundle remains readable but cannot start new generation work", async ({ page, request }) => {
+  const runtimeErrors = collectRuntimeErrors(page);
+  expect((await request.post(`${FIXTURE_API}/__legacy_prompt_bundle`)).ok()).toBe(true);
+
+  await page.goto(`/projects/${PROJECT_ID}?tab=geo&geo_section=placement&placement_stage=generation&campaign_id=${CAMPAIGN_A_ID}&opportunity_id=${OPPORTUNITY_A_ID}&brief_version_id=${BRIEF_ID}&attempt_id=${ATTEMPT_ID}&bundle_id=${LEGACY_BUNDLE_ID}`);
+
+  const legacyNotice = page.getByTestId("legacy-prompt-bundle");
+  await expect(legacyNotice).toContainText("迁移历史生成输入只读");
+  await expect(legacyNotice.getByRole("link", { name: "返回准备证据并重建" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "开始生成" })).toHaveCount(0);
+  await expect(page.getByText("缺少已批准 Prompt Release 绑定", { exact: false })).toBeVisible();
   expect(runtimeErrors).toEqual([]);
 });

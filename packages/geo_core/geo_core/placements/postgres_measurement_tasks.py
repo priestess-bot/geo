@@ -83,6 +83,17 @@ class PostgresMeasurementTaskMixin:
             return MeasurementCollectionTask(**current)
         if current["status"] != "open":
             raise PlacementConflict("only an open measurement collection task can complete")
+        submission = _row(
+            self._db.execute(
+                """SELECT status, verified_at FROM publication_submissions
+                   WHERE id = %s AND project_id = %s FOR UPDATE""",
+                (current["submission_id"], project_id),
+            )
+        )
+        if submission["status"] != "verified" or submission["verified_at"] is None:
+            raise PlacementConflict(
+                "measurement collection requires a currently verified submission"
+            )
         if protocol_status != "frozen":
             raise PlacementConflict("measurement collection requires a frozen protocol")
         actual = _row(

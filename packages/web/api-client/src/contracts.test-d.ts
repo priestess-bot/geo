@@ -1,10 +1,12 @@
 import { CustomerApiClient } from "./customer";
 import { InternalApiClient } from "./internal";
 import { AuthApiClient } from "./auth";
+import { GeoAdminApiClient } from "./geo";
 
 const customer = new CustomerApiClient("https://customer-api.example.test");
 const internal = new InternalApiClient("https://internal-api.example.test");
 const auth = new AuthApiClient("https://customer-api.example.test");
+const geoAdmin = new GeoAdminApiClient("https://internal-api.example.test");
 
 customer.currentIdentity();
 customer.listProjects();
@@ -16,6 +18,10 @@ customer.listMeasurementWindows("project-id", "campaign-id");
 customer.listVerifiedUrls("project-id", "campaign-id");
 customer.listApprovedReports("project-id", "campaign-id");
 internal.listEngineeringWorkItems();
+geoAdmin.listPromptSimulations("project-id");
+geoAdmin.listPromptSimulations("project-id", "campaign-id");
+geoAdmin.getPromptSimulation("project-id", "simulation-id");
+geoAdmin.getPromptSimulation("project-id", "campaign-id", "simulation-id");
 auth.preflight({
   invitation_id: "invitation-id",
   invite_token: "one-time-token",

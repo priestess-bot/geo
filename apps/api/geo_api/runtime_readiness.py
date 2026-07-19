@@ -16,7 +16,7 @@ from geo_core.object_store import ObjectStoreError, S3CompatibleObjectStore
 
 
 Surface = Literal["internal", "customer"]
-ReadinessDependency = Literal["postgres", "valkey", "object_store"]
+ReadinessDependency = Literal["postgres", "valkey", "object_store", "access"]
 EXPECTED_DEPENDENCIES: dict[Surface, tuple[ReadinessDependency, ...]] = {
     "customer": ("postgres",),
     "internal": ("postgres", "valkey", "object_store"),
@@ -118,6 +118,22 @@ class ReadinessChecker:
         except Exception:
             return ReadinessFailure(probe.dependency, f"{probe.dependency}_unavailable")
         return None
+
+
+class AccessConfiguredReadiness:
+    """Keep dependency probes authoritative while failing closed on missing API wiring."""
+
+    def __init__(self, delegate: ReadinessService, *, access_configured: bool) -> None:
+        self._delegate = delegate
+        self._access_configured = access_configured
+
+    async def check(self) -> ReadinessResult:
+        result = await self._delegate.check()
+        if not result.ready or self._access_configured:
+            return result
+        return ReadinessResult(
+            failures=(ReadinessFailure("access", "access_configuration_unavailable"),)
+        )
 
 
 def readiness_checker_from_environment(

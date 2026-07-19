@@ -124,6 +124,57 @@ def test_minimum_three_valid_repeats_is_enforced_per_query(
         assert metric.observation_membership_hash == hashlib.sha256(b"").hexdigest()
 
 
+def test_metric_denominator_is_frozen_and_ineligible_or_unverified_samples_are_excluded() -> None:
+    protocol = _protocol(sample_size=5, minimum_valid_repeats=4)
+    query = _query(protocol, cluster="category")
+    included = tuple(_observation(protocol, query, sample_index=index) for index in range(1, 4))
+    unverified = _observation(
+        protocol,
+        query,
+        sample_index=4,
+        verified=False,
+        destination_id=DESTINATION_ID,
+    )
+    ineligible = _observation(
+        protocol,
+        query,
+        sample_index=5,
+        eligible=False,
+        ineligible_reasons=("manual_exclusion",),
+    )
+    other_campaign = replace(
+        _observation(protocol, query, sample_index=1),
+        id=uuid4(),
+        campaign_id=uuid4(),
+    )
+    destination_state = CampaignDestinationState(
+        selected_destination_ids=frozenset({DESTINATION_ID, uuid4()}),
+        qualified_destination_ids=frozenset({DESTINATION_ID}),
+        verified_destination_ids=frozenset({DESTINATION_ID}),
+    )
+
+    metric = _snapshot(
+        protocol,
+        (query,),
+        "category",
+        included + (unverified, ineligible, other_campaign),
+        destinations=destination_state,
+    )
+
+    assert metric.expected_sample_count == 5
+    assert metric.sampled_sample_count == 5
+    assert metric.eligible_sample_count == 4
+    assert metric.invalid_sample_count == 1
+    assert metric.recommendation_share == Decimal("1.000000")
+    assert metric.product_mention_share == Decimal("1.000000")
+    assert metric.placement_citation_share == Decimal("0.000000")
+    assert metric.qualified_destination_coverage == Decimal("0.500000")
+    assert metric.verified_placement_coverage == Decimal("1.000000")
+    assert metric.competitive_delta == Decimal("1.000000")
+    assert metric.status == "complete"
+    assert metric.confounded_reasons == ()
+
+
 def test_five_repeat_protocol_requires_four_valid_results() -> None:
     protocol = _protocol(sample_size=5, minimum_valid_repeats=4)
     query = _query(protocol, cluster="category")

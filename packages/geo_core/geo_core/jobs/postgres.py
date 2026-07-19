@@ -351,6 +351,54 @@ class PostgresDurableJobStore:
         self._event(connection, lease, f"job_{status}", details)
         return status
 
+    def defer_in_transaction(
+        self,
+        connection: Any,
+        lease: WorkerLease,
+        *,
+        reason_code: str,
+        details: Mapping[str, object],
+        retry_delay: timedelta,
+    ) -> None:
+        next_run_at = datetime.now(UTC) + retry_delay
+        changed = connection.execute(
+            """UPDATE durable_jobs SET status = 'retry_wait',
+                 attempt_count = GREATEST(attempt_count - 1, 0),
+                 error_code = %s, error_detail = %s::jsonb, next_run_at = %s,
+                 lease_owner = NULL, lease_token = NULL, lease_expires_at = NULL,
+                 heartbeat_at = NULL, updated_at = clock_timestamp(), completed_at = NULL
+               WHERE id = %s AND project_id = %s AND lease_token = %s
+                 AND fencing_generation = %s""",
+            (
+                reason_code,
+                json.dumps(dict(details)),
+                next_run_at,
+                lease.job_id,
+                lease.project_id,
+                lease.lease_token,
+                lease.fencing_generation,
+            ),
+        ).rowcount
+        if changed != 1:
+            raise LostJobLease("job lease was fenced during deferral")
+        connection.execute(
+            """INSERT INTO broker_outbox
+                 (project_id, job_id, topic, payload, idempotency_key, available_at)
+               VALUES (%s, %s, %s, %s::jsonb, %s, %s)
+               ON CONFLICT (project_id, idempotency_key) DO NOTHING""",
+            (
+                lease.project_id,
+                lease.job_id,
+                lease.kind,
+                json.dumps(
+                    {"job_id": str(lease.job_id), "project_id": str(lease.project_id)}
+                ),
+                f"defer:{lease.job_id}:{lease.fencing_generation}",
+                next_run_at,
+            ),
+        )
+        self._event(connection, lease, "job_deferred", details)
+
     def cancel(self, lease: WorkerLease) -> None:
         connection = self.open_project(lease.project_id)
         try:

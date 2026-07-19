@@ -124,4 +124,29 @@ IdP 后使用显式 role/reactivate 命令。所有实际变化分别记录 `mem
 
 ## 7. 升级与回退
 
-先执行备份，再拉取新 digest，通过 `migrate` 后滚动 API、Worker、Web。数据库迁移只能向前；应用回退必须兼容已执行迁移，否则从升级前备份恢复到隔离环境重新部署。
+本项目当前只支持维护窗口内的单版本原子升级，不支持旧 API、Web、Worker 或 Relay
+与新数据库混跑，也不支持跨本次合同变更的滚动升级。稳定 OpenAPI 快照用于检测合同变化，
+不等同于自动提供旧客户端后向兼容层。任何仓库外 `/v1` 调用方都必须在维护窗口前完成
+请求参数、请求体和响应类型迁移。
+
+升级按以下顺序执行：
+
+1. 在隔离环境恢复最新生产备份，使用候选镜像完整演练 `alembic upgrade head`、登录、
+   历史数据读取和核心任务处理。升级脚本包含严格的数据完整性门禁；演练失败时不得在
+   生产库继续尝试或手工跳过。
+2. 固定一个发布清单，记录 Internal/Customer API、Admin/Customer Web、Worker、Relay 和
+   migrate 镜像的精确 digest。不得在同一窗口混用不同发布清单。
+3. 启用反向代理维护页，停止 API 和两个 Web 的新输入；暂停 Relay，停止 Worker 领取新任务。
+   等待当前任务完成，或记录经本版本明确支持续跑的历史任务。确认 Outbox 及
+   `queued/retry_wait/running/finalizing` 任务不存在未解释积压。
+4. 停止 API、Web、Worker 和 Relay，创建并校验 PostgreSQL 与对象存储的升级前备份。
+   备份标识、发布清单和维护窗口写入变更记录。
+5. 在旧进程全部停止后，仅使用候选发布的 `migrate` 镜像执行 `alembic upgrade head`。
+   迁移成功后以同一发布清单启动两个 API、两个 Web、Worker 和 Relay。
+6. 保持维护页，验证 `/health`、`/ready`、Worker/Relay heartbeat、队列卡滞检查、OIDC
+   登录、历史记录读取，以及一次不产生外部发布的核心 smoke。全部通过后才恢复流量。
+
+回退只能在恢复流量前进行：停止全部候选进程，将 PostgreSQL 和对象存储恢复到升级前
+一致性备份，再启动完整旧版发布清单。新版本产生写入后不得通过 Alembic downgrade 或只
+回退应用镜像恢复服务；必须整体恢复升级前快照。若已恢复外部流量，则先重新进入维护窗口，
+按事故流程评估新写入，再决定前向修复或全量恢复。

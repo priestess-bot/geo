@@ -6,7 +6,7 @@ PROD_COMPOSE := docker compose --env-file $(PROD_ENV) -f infra/compose.prod.yml
 
 .PHONY: bootstrap install lint python-typecheck web-typecheck typecheck quality test test-migrated test-integration test-integration-required \
 	openapi-snapshots openapi-contracts \
-	web-build test-browser-chromium geo-acceptance-inline geo-staging-smoke \
+	web-contracts web-build test-browser-chromium geo-acceptance-inline geo-staging-smoke \
 	test-infra-contracts test-infra-runtime api-internal api-customer admin-web customer-web \
 	dev-up dev-logs dev-down db-up db-down db-reset-dev db-migrate db-heads \
 	docker-config production-preflight production-config production-up production-down \
@@ -65,6 +65,9 @@ openapi-snapshots:
 openapi-contracts:
 	uv run python scripts/export_stable_openapi.py verify
 	uv run pytest -q tests/test_stable_openapi_contracts.py
+
+web-contracts:
+	corepack pnpm test:contracts
 
 test-integration: test-integration-required
 
@@ -219,7 +222,7 @@ advinsys-verify:
 operator-guide-pdf:
 	uv run python scripts/render_geo_operator_guide.py
 
-ci: quality test-migrated openapi-contracts web-build docker-config
+ci: quality test-migrated openapi-contracts web-contracts web-build docker-config
 
 dev-up:
 	@test -f "$(CURDIR)/deepseek_api_key.txt" || (echo "deepseek_api_key.txt is required" >&2; exit 2)

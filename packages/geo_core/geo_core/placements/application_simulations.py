@@ -133,7 +133,7 @@ class PlacementSimulationApplicationMixin:
             return result
 
     def list_prompt_simulations(
-        self, *, project_id: UUID, campaign_id: UUID
+        self, *, project_id: UUID, campaign_id: UUID | None = None
     ) -> tuple[PromptSimulation, ...]:
         with self._uow_factory(project_id) as uow:
             return uow.placements.list_prompt_simulations(
@@ -141,21 +141,32 @@ class PlacementSimulationApplicationMixin:
             )
 
     def get_prompt_simulation(
-        self, *, project_id: UUID, campaign_id: UUID, simulation_id: UUID
+        self,
+        *,
+        project_id: UUID,
+        simulation_id: UUID,
+        campaign_id: UUID | None = None,
     ) -> PromptSimulation | None:
         with self._uow_factory(project_id) as uow:
-            require_campaign_resource(
-                uow.placements,
-                scope=CampaignScope(project_id, campaign_id),
-                kind=CampaignResourceKind.SIMULATION,
-                resource_id=simulation_id,
-            )
+            if campaign_id is not None:
+                require_campaign_resource(
+                    uow.placements,
+                    scope=CampaignScope(project_id, campaign_id),
+                    kind=CampaignResourceKind.SIMULATION,
+                    resource_id=simulation_id,
+                )
             return uow.placements.get_prompt_simulation(
-                project_id=project_id, simulation_id=simulation_id
+                project_id=project_id,
+                campaign_id=campaign_id,
+                simulation_id=simulation_id,
             )
 
     def download_prompt_simulation_artifact(
-        self, *, project_id: UUID, campaign_id: UUID, simulation_id: UUID
+        self,
+        *,
+        project_id: UUID,
+        simulation_id: UUID,
+        campaign_id: UUID | None = None,
     ) -> RetrievedObject:
         simulation = self.get_prompt_simulation(
             project_id=project_id, campaign_id=campaign_id, simulation_id=simulation_id

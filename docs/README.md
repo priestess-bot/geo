@@ -45,6 +45,7 @@
 - [Worktree 与合并规范](development/worktree-workflow.md)
 - [GEO ACCEPTED 整改统一实施计划](engineering/GEO-accepted-remediation-implementation-plan-2026-07-19.md)
 - [GEO ACCEPTED 整改验证记录](engineering/GEO-accepted-remediation-verification-record-2026-07-19.md)
+- [GEO 旧版功能兼容性复查报告](engineering/GEO-legacy-feature-parity-2026-07-19.md)
 - [GEO 整改门禁与外部 staging 边界](operations/remediation-gates.md)
 - [F-019 RAG 选型 Gate 记录](engineering/F019-rag-selection-gate-2026-07-19.md)
 - [真实渠道用户文案研究](engineering/channel-user-copy-research-2026-07-16.md)

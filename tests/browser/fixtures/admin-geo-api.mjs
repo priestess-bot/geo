@@ -15,6 +15,7 @@ const PROTOCOL_DRAFT_ID = "00000000-0000-4000-8000-000000000042";
 const OPPORTUNITY_A_ID = "00000000-0000-4000-8000-000000000051";
 const QUERY_A_ID = "00000000-0000-4000-8000-000000000061";
 const PROTOCOL_QUERY_A_ID = "00000000-0000-4000-8000-000000000062";
+const LEGACY_SUGGESTION_ID = "00000000-0000-4000-8000-000000000063";
 const BRAND_ID = "00000000-0000-4000-8000-000000000070";
 const SKILL_ID = "00000000-0000-4000-8000-000000000071";
 const SKILL_VERSION_ID = "00000000-0000-4000-8000-000000000072";
@@ -24,6 +25,7 @@ const BINDING_ANCHOR_ID = "00000000-0000-4000-8000-000000000079";
 const BRIEF_ID = "00000000-0000-4000-8000-000000000075";
 const ATTEMPT_ID = "00000000-0000-4000-8000-000000000076";
 const BUNDLE_ID = "00000000-0000-4000-8000-000000000077";
+const LEGACY_BUNDLE_ID = "00000000-0000-4000-8000-000000000078";
 const SOURCE_ID = "00000000-0000-4000-8000-000000000101";
 const PIPELINE_RUN_ID = "00000000-0000-4000-8000-000000000102";
 const DOCUMENT_ID = "00000000-0000-4000-8000-000000000103";
@@ -42,6 +44,8 @@ const QUESTION_SET_ID = "00000000-0000-4000-8000-000000000134";
 const QUESTION_SET_ITEM_ID = "00000000-0000-4000-8000-000000000135";
 const QUESTION_SIMULATION_ID = "00000000-0000-4000-8000-000000000136";
 const QUESTION_SIMULATION_JOB_ID = "00000000-0000-4000-8000-000000000137";
+const LEGACY_SIMULATION_ID = "00000000-0000-4000-8000-000000000138";
+const LEGACY_SIMULATION_JOB_ID = "00000000-0000-4000-8000-000000000139";
 const NOW = "2026-07-19T02:00:00Z";
 const HASH = "a".repeat(64);
 const SOURCE_STRATUM_HASH = "e748f50aa9fef8795a832a9e9b5e3734e5ce49fa0fa8534572f8efabc7cf300f";
@@ -427,6 +431,54 @@ function createQuestionSimulation(payload) {
   };
 }
 
+function legacySimulation() {
+  return {
+    id: LEGACY_SIMULATION_ID,
+    project_id: PROJECT_ID,
+    campaign_id: null,
+    opportunity_id: null,
+    destination_id: DESTINATION_A_ID,
+    destination_policy_version_id: null,
+    template_release_id: RELEASE_ID,
+    prompt_release_binding_id: null,
+    prompt_release_binding_version: null,
+    skill_version_id: SKILL_VERSION_ID,
+    release_version: 2,
+    release_hash: "9a".repeat(32),
+    primary_brand_entity_id: BRAND_ID,
+    product_entity_id: PRODUCT_ID,
+    requested_by: ACTOR_ID,
+    authenticity_mode: "synthetic_testimonial",
+    input_hash: "9b".repeat(32),
+    test_only: true,
+    publication_eligible: false,
+    created_at: "2025-12-01T02:00:00Z",
+    generation_job_id: LEGACY_SIMULATION_JOB_ID,
+    generation_status: "succeeded",
+    configured_model: "legacy-fixture-model",
+    model_call_budget: 1,
+    artifact_status: "finalized",
+    artifact_uri: `s3://geo-fixture/prompt-simulations/${LEGACY_SIMULATION_ID}.json`,
+    storage_key: `prompt-simulations/${LEGACY_SIMULATION_ID}.json`,
+    output_hash: "9c".repeat(32),
+    manifest_hash: "9d".repeat(32),
+    model_response_hash: "9e".repeat(32),
+    input_snapshot: { binding_contract_version: "legacy-v1" },
+    artifact_manifest: {
+      binding_contract_version: "legacy-v1",
+      output: {
+        rendered_text: "Migrated legacy simulation remains available for audit and download.",
+        claims: []
+      }
+    },
+    simulation_purpose: "content_preview",
+    question_set_id: null,
+    question_set_hash: null,
+    question_set_item_id: null,
+    question_candidate_id: null
+  };
+}
+
 function send(response, value, status = 200) {
   response.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
@@ -442,6 +494,21 @@ function sendZip(response) {
     ETag: "f".repeat(64)
   });
   response.end(Buffer.from("fixture-project-export-zip"));
+}
+
+function sendSimulationArtifact(response, simulation) {
+  response.writeHead(200, {
+    "Content-Type": "application/json",
+    "Content-Disposition": `attachment; filename="geo-prompt-simulation-${simulation.id}.json"`,
+    ETag: simulation.manifest_hash,
+    "X-GEO-Test-Only": "true",
+    "X-GEO-Publication-Eligible": "false"
+  });
+  response.end(JSON.stringify({
+    schema_version: "geo-prompt-simulation-artifact-v1",
+    simulation_id: simulation.id,
+    output: simulation.artifact_manifest.output
+  }));
 }
 
 async function body(request) {
@@ -816,6 +883,29 @@ const server = createServer(async (request, response) => {
     }
     return send(response, requests);
   }
+  if (path === "/__legacy_prompt_bundle" && request.method === "POST") {
+    const legacyBundle = {
+      id: LEGACY_BUNDLE_ID,
+      project_id: PROJECT_ID,
+      campaign_id: CAMPAIGN_A_ID,
+      opportunity_id: OPPORTUNITY_A_ID,
+      destination_id: DESTINATION_A_ID,
+      brief_version_id: BRIEF_ID,
+      evidence_pack_attempt_id: ATTEMPT_ID,
+      prompt_release_binding_id: null,
+      prompt_release_binding_version: null,
+      template_release_id: RELEASE_ID,
+      skill_version_id: SKILL_VERSION_ID,
+      release_version: 1,
+      release_hash: "c".repeat(64),
+      bundle_hash: "b".repeat(64),
+      storage_key: `prompt-bundles/${LEGACY_BUNDLE_ID}.json`,
+      storage_uri: `s3://geo-fixture/prompt-bundles/${LEGACY_BUNDLE_ID}.json`,
+      artifact_status: "finalized"
+    };
+    bundles.push(legacyBundle);
+    return send(response, legacyBundle, 201);
+  }
 
   const payload = request.method === "GET" || request.method === "HEAD" ? null : await body(request);
   if (request.method !== "GET" && request.method !== "HEAD") {
@@ -1006,10 +1096,25 @@ const server = createServer(async (request, response) => {
         status_url: `/v1/jobs/${QUESTION_SIMULATION_JOB_ID}`
       }, 201);
     }
-    return send(response, questionSimulation ? [questionSimulation] : []);
+    if (campaignId === null) return send(response, [legacySimulation()]);
+    return send(response,
+      campaignId === CAMPAIGN_A_ID && questionSimulation ? [questionSimulation] : []);
   }
   if (path === `${base}/geo/prompt-simulations/${QUESTION_SIMULATION_ID}`) {
-    return send(response, questionSimulation || {}, questionSimulation ? 200 : 404);
+    const found = campaignId === CAMPAIGN_A_ID ? questionSimulation : null;
+    return send(response, found || {}, found ? 200 : 404);
+  }
+  if (path === `${base}/geo/prompt-simulations/${LEGACY_SIMULATION_ID}`) {
+    const found = campaignId === null ? legacySimulation() : null;
+    return send(response, found || {}, found ? 200 : 404);
+  }
+  if (path === `${base}/geo/prompt-simulations/${QUESTION_SIMULATION_ID}/artifact`) {
+    if (campaignId !== CAMPAIGN_A_ID || !questionSimulation) return send(response, {}, 404);
+    return sendSimulationArtifact(response, questionSimulation);
+  }
+  if (path === `${base}/geo/prompt-simulations/${LEGACY_SIMULATION_ID}/artifact`) {
+    if (campaignId !== null) return send(response, {}, 404);
+    return sendSimulationArtifact(response, legacySimulation());
   }
   if (path === `/v1/jobs/${QUESTION_SIMULATION_JOB_ID}`) return send(response, {
     id: QUESTION_SIMULATION_JOB_ID,
@@ -1026,7 +1131,18 @@ const server = createServer(async (request, response) => {
 
   if (path === `${base}/monitoring-protocols/${PROTOCOL_A_ID}/queries`) return send(response, [{ id: PROTOCOL_QUERY_A_ID, project_id: PROJECT_ID, protocol_id: PROTOCOL_A_ID, monitoring_query_id: QUERY_A_ID, query_text: "Which robotic mower is best for a medium Australian lawn?", query_kind: "recommendation", locale: "en-AU", ordinal: 1, query_cluster_key: "robot-mower-recommendation" }]);
   if (path === `${base}/monitoring-protocols/${PROTOCOL_A_ID}/citation-targets`) return send(response, []);
-  if (path === `${base}/monitoring-protocols/${PROTOCOL_A_ID}/query-suggestions`) return send(response, []);
+  if (path === `${base}/monitoring-protocols/${PROTOCOL_A_ID}/query-suggestions`) return send(response, [{
+    id: LEGACY_SUGGESTION_ID,
+    project_id: PROJECT_ID,
+    protocol_id: PROTOCOL_A_ID,
+    status: "suggested",
+    query_text: "Which legacy mower recommendation should be retained?",
+    query_kind: "recommendation",
+    rationale: "Migrated before query clusters became mandatory.",
+    query_cluster_key: null,
+    monitoring_query_id: null,
+    created_at: "2025-12-01T02:00:00Z"
+  }]);
   if (path === `${base}/monitoring-protocols/${PROTOCOL_DRAFT_ID}/question-set-binding`
     && request.method === "POST") {
     const set = questionSet();

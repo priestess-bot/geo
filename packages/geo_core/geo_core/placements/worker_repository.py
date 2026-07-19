@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from typing import Any, Mapping
-from uuid import NAMESPACE_URL, uuid4, uuid5
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from geo_core.jobs.postgres import PostgresDurableJobStore, WorkerLease
 from geo_core.model_gateway import ModelGatewayResult
@@ -16,6 +16,7 @@ from geo_core.placements.domain import (
     canonical_hash,
 )
 from geo_core.placements.execution_eligibility import approved_fact_evidence_is_current
+from geo_core.placements.errors import PlacementContractMigrationRequired
 from geo_core.placements.ports import GeneratedPlacement, GenerationClaim, ModelCallClaim
 from geo_core.placements.publication_worker_support import (
     advance_generated_opportunity,
@@ -25,6 +26,9 @@ from geo_core.placements.publication_verification_worker import (
     begin_publication_verification,
     persist_completed_verification,
     persist_verification_error,
+)
+from geo_core.placements.publication_verification_reconciliation import (
+    reconcile_terminal_publication_verification,
 )
 from geo_core.placements.simulation_worker_repository import (
     PromptSimulationWorkerRepositoryMixin,
@@ -69,6 +73,7 @@ class PlacementWorkerRepository(
                     """SELECT s.prompt_bundle_id, s.configured_model, s.model_call_budget,
                               s.campaign_id, s.opportunity_id, pb.destination_id,
                               pb.bundle_hash, pb.input_snapshot, pb.evidence_pack_attempt_id,
+                              pb.binding_contract_version,
                               r.output_schema
                        FROM generation_job_specs s
                        JOIN prompt_bundles pb
@@ -83,6 +88,16 @@ class PlacementWorkerRepository(
             )
             if row is None:
                 raise RuntimeError("generation job input does not exist")
+            if row["binding_contract_version"] != "opportunity-binding-v2":
+                raise PlacementContractMigrationRequired(
+                    "legacy Prompt Bundles cannot be executed under the current "
+                    "Opportunity binding contract",
+                    error_code="legacy_prompt_bundle_rebuild_required",
+                    operator_action=(
+                        "Create and finalize a new Opportunity-bound Prompt Bundle, then "
+                        "enqueue a new placement.generate job; keep this job as migration history."
+                    ),
+                )
             evidence = _dicts(
                 connection.execute(
                     """SELECT pi.evidence_item_id, e.public_disclosure_allowed,
@@ -407,6 +422,11 @@ class PlacementWorkerRepository(
         error: VerificationError,
     ) -> str:
         return persist_verification_error(self._store, lease, snapshot, error)
+
+    def reconcile_terminal_verification(self, *, job_id: UUID, project_id: UUID) -> None:
+        reconcile_terminal_publication_verification(
+            self._store, job_id=job_id, project_id=project_id
+        )
 
     def open_measurement_window(self, lease: WorkerLease) -> Mapping[str, object]:
         return open_measurement_window(self._store, lease)

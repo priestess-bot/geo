@@ -96,6 +96,9 @@
 .testBanner { align-items: center; background: #fff6df; border: 1px solid #d5aa49; border-radius: 5px; color: #604713; display: flex; flex-wrap: wrap; gap: 10px; padding: 10px 14px; }
 .testBanner strong { background: #604713; border-radius: 3px; color: #fff; font-size: 11px; padding: 3px 6px; }
 .testBanner span { font-size: 12px; font-weight: 700; }
+.legacyReadOnly, .historyGroups, .historyGroup { display: grid; gap: 10px; }
+.legacyReadOnly { padding-top: 12px; }
+.historyGroup h3 { color: #526b78; font-size: 12px; margin: 10px 0 0; }
 .timeline { border-left: 2px solid #cad8df; display: grid; gap: 10px; margin-left: 5px; padding-left: 14px; }
 .timelineItem { display: grid; font-size: 12px; gap: 2px; min-width: 0; position: relative; }
 .timelineItem code { display: block; min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }

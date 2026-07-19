@@ -16,10 +16,10 @@
       "api_version": "1.0.0",
       "document_version": "3.1.0",
       "file": "internal.openapi.json",
-      "operation_count": 143,
-      "path_count": 111,
-      "sha256": "6aec7f231df0994e7591d1e5fb0096ee6b2c7846598b98980e82fd5c98cbe499",
-      "size_bytes": 1022138
+      "operation_count": 144,
+      "path_count": 112,
+      "sha256": "ced1a47f9a328a7132ec104929edbc597efa8f7cccb082a8dd59c9893f93f854",
+      "size_bytes": 1030286
     }
   }
 }

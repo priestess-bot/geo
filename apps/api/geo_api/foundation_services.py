@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 import hmac
 import os
@@ -41,7 +42,7 @@ from geo_core.access.models import (
     ProjectRecord,
     RedeemedSession,
 )
-from geo_core.access.service import AccessApplicationService
+from geo_core.access.service import AccessApplicationService, auth_token_secret_is_valid
 
 
 Surface = Literal["internal", "customer"]
@@ -127,6 +128,12 @@ class FoundationServices(Protocol):
     def redeem_invitation(
         self, payload: InvitationCredentialRequest, *, idempotency_key: str
     ) -> RedeemedSession: ...
+
+
+@dataclass(frozen=True)
+class ResolvedFoundationServices:
+    services: FoundationServices
+    access_configured: bool
 
 
 class UnavailableFoundationServices:
@@ -434,47 +441,89 @@ class ConnectedFoundationServices:
         return self._access.authenticate_external(external)
 
 
-def services_from_environment(*, surface: Surface) -> FoundationServices:
-    """Build the access slice or return a deterministic fail-closed adapter."""
+@dataclass(frozen=True, repr=False)
+class _AccessRuntimeSettings:
+    database_url: str
+    token_secret: str
+    auth_mode: str
+    oidc: OidcVerifierSettings | None = None
+
+
+def resolve_services_from_environment(
+    *,
+    surface: Surface,
+    environment: Mapping[str, str] | None = None,
+) -> ResolvedFoundationServices:
+    """Resolve the access service and its side-effect-free readiness state once."""
+
+    values = os.environ if environment is None else environment
     try:
-        database_url = _secret_setting("GEO_DATABASE_URL")
-        if not database_url:
-            return UnavailableFoundationServices()
+        settings = _access_runtime_settings(surface=surface, values=values)
         from geo_core.access.postgres import PsycopgAccessUnitOfWorkFactory
 
         access = AccessApplicationService(
-            PsycopgAccessUnitOfWorkFactory(database_url),
-            token_secret=_secret_setting("GEO_AUTH_TOKEN_SECRET"),
+            PsycopgAccessUnitOfWorkFactory(settings.database_url),
+            token_secret=settings.token_secret,
         )
         if surface == "customer":
-            return ConnectedFoundationServices(access, surface=surface, auth_mode="session")
-        auth_mode = os.getenv("GEO_AUTH_MODE", "oidc").strip().lower()
-        if auth_mode == "development":
-            deployment = os.getenv("GEO_DEPLOYMENT_ENVIRONMENT", "development").strip().lower()
-            if deployment == "production":
-                return UnavailableFoundationServices()
-            return ConnectedFoundationServices(access, surface=surface, auth_mode=auth_mode)
-        if auth_mode != "oidc":
-            return UnavailableFoundationServices()
-        settings = OidcVerifierSettings(
-            discovery_url=os.getenv("GEO_OIDC_DISCOVERY_URL", "").strip(),
-            issuer=os.getenv("GEO_JWT_ISSUER", "").strip(),
-            audience=os.getenv("GEO_JWT_AUDIENCE", "").strip(),
-            tenant_claim=os.getenv("GEO_OIDC_TENANT_CLAIM", "tenant_id").strip(),
-        )
-        return ConnectedFoundationServices(
-            access,
-            surface=surface,
-            auth_mode=auth_mode,
-            oidc_verifier=OidcTokenVerifier(settings),
+            services: FoundationServices = ConnectedFoundationServices(
+                access, surface=surface, auth_mode="session"
+            )
+        else:
+            services = ConnectedFoundationServices(
+                access,
+                surface=surface,
+                auth_mode=settings.auth_mode,
+                oidc_verifier=OidcTokenVerifier(settings.oidc) if settings.oidc else None,
+            )
+        return ResolvedFoundationServices(
+            services=services,
+            access_configured=auth_token_secret_is_valid(settings.token_secret),
         )
     except (ImportError, OSError, ValueError, OidcConfigurationError):
-        return UnavailableFoundationServices()
+        return ResolvedFoundationServices(
+            services=UnavailableFoundationServices(),
+            access_configured=False,
+        )
 
 
-def _secret_setting(name: str) -> str:
-    direct = os.getenv(name, "").strip()
-    file_name = os.getenv(f"{name}_FILE", "").strip()
+def services_from_environment(*, surface: Surface) -> FoundationServices:
+    """Build the access slice or return a deterministic fail-closed adapter."""
+
+    return resolve_services_from_environment(surface=surface).services
+
+
+def _access_runtime_settings(
+    *, surface: Surface, values: Mapping[str, str]
+) -> _AccessRuntimeSettings:
+    database_url = _secret_setting("GEO_DATABASE_URL", values)
+    if not database_url:
+        raise ValueError("GEO_DATABASE_URL is required")
+    token_secret = _secret_setting("GEO_AUTH_TOKEN_SECRET", values)
+    if surface == "customer":
+        return _AccessRuntimeSettings(database_url, token_secret, "session")
+
+    auth_mode = values.get("GEO_AUTH_MODE", "oidc").strip().lower()
+    if auth_mode == "development":
+        deployment = values.get("GEO_DEPLOYMENT_ENVIRONMENT", "development").strip().lower()
+        if deployment == "production":
+            raise ValueError("development authentication is unavailable in production")
+        return _AccessRuntimeSettings(database_url, token_secret, auth_mode)
+    if auth_mode != "oidc":
+        raise ValueError("GEO_AUTH_MODE is unsupported")
+    oidc = OidcVerifierSettings(
+        discovery_url=values.get("GEO_OIDC_DISCOVERY_URL", "").strip(),
+        issuer=values.get("GEO_JWT_ISSUER", "").strip(),
+        audience=values.get("GEO_JWT_AUDIENCE", "").strip(),
+        tenant_claim=values.get("GEO_OIDC_TENANT_CLAIM", "tenant_id").strip(),
+    )
+    return _AccessRuntimeSettings(database_url, token_secret, auth_mode, oidc)
+
+
+def _secret_setting(name: str, values: Mapping[str, str] | None = None) -> str:
+    resolved = os.environ if values is None else values
+    direct = resolved.get(name, "").strip()
+    file_name = resolved.get(f"{name}_FILE", "").strip()
     if direct and file_name:
         raise ValueError(f"{name} and {name}_FILE cannot both be configured")
     if file_name:

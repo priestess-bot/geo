@@ -33,6 +33,7 @@ class RuntimeDependencies:
     minio_name: str
     postgres_url: str
     postgres_password: str
+    auth_token_secret: str
     valkey_url: str
     minio_endpoint: str
     minio_access_key: str
@@ -42,6 +43,9 @@ class RuntimeDependencies:
     def readiness_environment(self) -> dict[str, str]:
         return {
             "GEO_DATABASE_URL": self.postgres_url,
+            "GEO_AUTH_TOKEN_SECRET": self.auth_token_secret,
+            "GEO_AUTH_MODE": "development",
+            "GEO_DEPLOYMENT_ENVIRONMENT": "development",
             "GEO_TASK_QUEUE_BROKER_URL": self.valkey_url,
             "OBJECT_STORE_ENDPOINT": self.minio_endpoint,
             "OBJECT_STORE_BUCKET": self.bucket,
@@ -139,6 +143,7 @@ def _isolated_runtime_dependencies() -> Iterator[RuntimeDependencies]:
     minio_name = f"geo-f018-minio-{run_id}"
     postgres_user = f"f018_{run_id}"
     postgres_password = f"pg-{uuid4().hex}"
+    auth_token_secret = f"access-{uuid4().hex}"
     postgres_database = "geo_readiness"
     minio_access_key = f"f018{run_id}"
     minio_secret_key = f"minio-{uuid4().hex}"
@@ -183,6 +188,7 @@ def _isolated_runtime_dependencies() -> Iterator[RuntimeDependencies]:
                 f"@127.0.0.1:{postgres_port}/{postgres_database}"
             ),
             postgres_password=postgres_password,
+            auth_token_secret=auth_token_secret,
             valkey_url=f"redis://127.0.0.1:{valkey_port}/0",
             minio_endpoint=f"http://127.0.0.1:{minio_port}",
             minio_access_key=minio_access_key,
@@ -266,9 +272,15 @@ def _restart_and_wait_ready(
     _wait_until(api_ready, description=description)
 
 
-def test_real_dependency_failures_follow_the_internal_customer_readiness_matrix() -> None:
+def test_real_dependency_failures_follow_the_internal_customer_readiness_matrix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     with _isolated_runtime_dependencies() as dependencies:
         environment = dependencies.readiness_environment()
+        for name, value in environment.items():
+            monkeypatch.setenv(name, value)
+        for name in ("GEO_DATABASE_URL_FILE", "GEO_AUTH_TOKEN_SECRET_FILE"):
+            monkeypatch.delenv(name, raising=False)
         internal_app = create_api_app(
             surface="internal",
             readiness_service=readiness_checker_from_environment(
@@ -284,6 +296,7 @@ def test_real_dependency_failures_follow_the_internal_customer_readiness_matrix(
         forbidden_values = (
             dependencies.postgres_url,
             dependencies.postgres_password,
+            dependencies.auth_token_secret,
             dependencies.valkey_url,
             dependencies.minio_access_key,
             dependencies.minio_secret_key,

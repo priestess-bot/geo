@@ -21,7 +21,8 @@ from geo_api.catalog_runtime import build_catalog_application
 from geo_api.customer_geo_routes import customer_geo_router
 from geo_api.foundation_services import (
     FoundationServices,
-    services_from_environment,
+    UnavailableFoundationServices,
+    resolve_services_from_environment,
 )
 from geo_api.member_routes import member_router
 from geo_api.member_runtime import build_membership_application
@@ -49,7 +50,11 @@ from geo_api.stable_routes import (
     jobs_router,
     projects_router,
 )
-from geo_api.runtime_readiness import ReadinessService, readiness_checker_from_environment
+from geo_api.runtime_readiness import (
+    AccessConfiguredReadiness,
+    ReadinessService,
+    readiness_checker_from_environment,
+)
 
 
 REQUEST_ID_HEADER = "X-Request-ID"
@@ -102,8 +107,18 @@ def create_api_app(
 
     resolved_settings = settings or ApiSettings.from_environment()
     service_name = f"geo-{surface}-api"
-    resolved_services = services or services_from_environment(surface=surface)
-    resolved_readiness = readiness_service or readiness_checker_from_environment(surface=surface)
+    if services is None:
+        foundation_resolution = resolve_services_from_environment(surface=surface)
+        resolved_services = foundation_resolution.services
+        access_configured = foundation_resolution.access_configured
+    else:
+        resolved_services = services
+        access_configured = not isinstance(services, UnavailableFoundationServices)
+    dependency_readiness = readiness_service or readiness_checker_from_environment(surface=surface)
+    resolved_readiness = AccessConfiguredReadiness(
+        dependency_readiness,
+        access_configured=access_configured,
+    )
 
     app = FastAPI(
         title=f"GEO {surface.title()} API",

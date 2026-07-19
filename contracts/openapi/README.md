@@ -24,3 +24,11 @@ and Customer application entrypoints. Generation must not depend on deployment
 configuration or include secret values.
 Customer validation also rejects internal routes and non-allowlisted writes.
 Generated JSON files must not be edited by hand.
+
+These snapshots detect whether a deployed surface changed; matching a freshly
+generated snapshot does not by itself prove backward compatibility with a previous
+release. The current prototype supports synchronized in-repository clients and an
+atomic application/database deployment. Any intentional breaking `/v1` change must
+have a migration note and must not be deployed while older API, Web, Worker, Relay,
+or out-of-repository clients are still active. External long-lived clients require
+an explicit compatibility layer before they can be supported across such a release.

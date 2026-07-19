@@ -16,6 +16,9 @@ export function GeoShell({ projectId, data, catalog }: { projectId: string; data
     { id: "destinations", label: "渠道计划" }, { id: "placement", label: "内容生产" }
   ];
   const campaign = data.campaigns.data.find((item) => item.id === data.selection.campaignId);
+  const hasLegacySimulations = data.simulations.data.some((item) => item.campaign_id === null);
+  const canViewLegacySimulations = data.selection.section === "placement"
+    && data.selection.placementStage === "simulation" && hasLegacySimulations;
   const readiness = readinessState(data);
   const campaignOptions = data.campaigns.data.map((item) => ({
     value: item.id,
@@ -56,10 +59,15 @@ export function GeoShell({ projectId, data, catalog }: { projectId: string; data
     <ProjectExportButtons campaignId={campaign?.id} projectId={projectId} />
 
     {data.selection.section === "campaigns" ? <CampaignWorkspace projectId={projectId} data={data} catalog={catalog} /> : null}
-    {data.selection.section !== "campaigns" && !campaign ? <Empty>未选择 Campaign。</Empty> : null}
+    {data.selection.section !== "campaigns" && !campaign && !canViewLegacySimulations
+      ? <Empty><span>未选择 Campaign。</span>{data.selection.section === "placement" && hasLegacySimulations
+        ? <> <a href={geoHref(projectId, data.selection, { placement_stage: "simulation" })}>
+          查看迁移历史预览
+        </a></> : null}</Empty> : null}
     {campaign && data.selection.section === "observations" ? <ObservationWorkspace projectId={projectId} data={data} /> : null}
     {campaign && data.selection.section === "destinations" ? <DestinationWorkspace projectId={projectId} data={data} /> : null}
-    {campaign && data.selection.section === "placement" ? <PlacementWorkspace projectId={projectId} data={data} catalog={catalog} /> : null}
+    {(campaign || canViewLegacySimulations) && data.selection.section === "placement"
+      ? <PlacementWorkspace projectId={projectId} data={data} catalog={catalog} /> : null}
   </div>;
 }
 

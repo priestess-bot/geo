@@ -79,6 +79,40 @@ def test_generation_and_publication_require_idempotency_header() -> None:
         assert header["required"] is True
 
 
+def test_prompt_simulation_reads_preserve_legacy_access_without_weakening_create() -> None:
+    document = create_api_app(surface="internal").openapi()
+    paths = document["paths"]
+    collection = paths["/v1/projects/{project_id}/geo/prompt-simulations"]
+    detail = paths[
+        "/v1/projects/{project_id}/geo/prompt-simulations/{simulation_id}"
+    ]
+    artifact = paths[
+        "/v1/projects/{project_id}/geo/prompt-simulations/{simulation_id}/artifact"
+    ]
+
+    create_campaign = next(
+        item for item in collection["post"]["parameters"] if item["name"] == "campaign_id"
+    )
+    assert create_campaign["required"] is True
+    for operation in (collection["get"], detail["get"], artifact["get"]):
+        campaign = next(
+            item for item in operation["parameters"] if item["name"] == "campaign_id"
+        )
+        assert campaign["required"] is False
+
+    view = document["components"]["schemas"]["PromptSimulationView"]
+    legacy_nullable = {
+        "campaign_id",
+        "opportunity_id",
+        "prompt_release_binding_id",
+        "prompt_release_binding_version",
+    }
+    assert legacy_nullable <= set(view["required"])
+    for field in legacy_nullable:
+        variants = view["properties"][field]["anyOf"]
+        assert {variant.get("type") for variant in variants} >= {"null"}
+
+
 def test_publication_verification_attempt_contract_is_versioned_and_body_free() -> None:
     document = create_api_app(surface="internal").openapi()
     path = document["paths"][

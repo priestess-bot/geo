@@ -61,6 +61,8 @@ DROP TRIGGER IF EXISTS durable_job_campaign_spec_guard ON durable_jobs;
 DROP TRIGGER IF EXISTS durable_job_campaign_guard ON durable_jobs;
 DROP FUNCTION IF EXISTS geo_require_durable_job_campaign_spec();
 DROP FUNCTION IF EXISTS geo_assert_new_durable_job_campaign();
+DROP FUNCTION IF EXISTS geo_is_exact_legacy_simulation_artifact_job(uuid, uuid);
+DROP FUNCTION IF EXISTS geo_is_exact_legacy_simulation_generation_job(uuid, uuid);
 DROP TRIGGER IF EXISTS prompt_simulation_results_new_contract_guard
 ON prompt_simulation_results;
 DROP FUNCTION IF EXISTS geo_assert_new_prompt_simulation_result();

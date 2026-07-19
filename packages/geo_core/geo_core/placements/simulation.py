@@ -70,6 +70,16 @@ class PromptSimulation:
         )
         if not self.test_only or self.publication_eligible:
             raise ValueError("prompt simulations must remain test-only and non-publishable")
+        binding_lineage = (
+            self.campaign_id,
+            self.opportunity_id,
+            self.prompt_release_binding_id,
+            self.prompt_release_binding_version,
+        )
+        if any(value is None for value in binding_lineage) and not all(
+            value is None for value in binding_lineage
+        ):
+            raise ValueError("prompt simulation binding lineage must be exact or legacy")
         question_values = (
             self.question_set_id,
             self.question_set_hash,

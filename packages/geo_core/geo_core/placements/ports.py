@@ -335,11 +335,15 @@ class PlacementRepository(Protocol):
     ) -> tuple[PromptSimulation, JobReference]: ...
 
     def list_prompt_simulations(
-        self, *, project_id: UUID, campaign_id: UUID
+        self, *, project_id: UUID, campaign_id: UUID | None = None
     ) -> tuple[PromptSimulation, ...]: ...
 
     def get_prompt_simulation(
-        self, *, project_id: UUID, simulation_id: UUID
+        self,
+        *,
+        project_id: UUID,
+        simulation_id: UUID,
+        campaign_id: UUID | None = None,
     ) -> PromptSimulation | None: ...
 
     def list_package_versions(
@@ -466,6 +470,18 @@ class PlacementRepository(Protocol):
     ) -> MeasurementCollectionTask: ...
 
     def cancel_job(self, *, project_id: UUID, job_id: UUID, actor_id: UUID) -> JobReference: ...
+
+    def is_legacy_project_job(self, *, project_id: UUID, job_id: UUID) -> bool: ...
+
+    def get_job_reference(self, *, project_id: UUID, job_id: UUID) -> JobReference | None: ...
+
+    def get_legacy_project_replay_result(
+        self, *, project_id: UUID, source_job_id: UUID, idempotency_key: str
+    ) -> JobReference | None: ...
+
+    def is_legacy_project_replay_source(
+        self, *, project_id: UUID, source_job_id: UUID
+    ) -> bool: ...
 
     def retry_job_now(
         self,

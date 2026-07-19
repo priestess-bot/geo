@@ -12,6 +12,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.12"
@@ -125,7 +128,8 @@ jobs:
           path: ~/.pnpm-store
           key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test:contracts
+      - name: TypeScript and Auth BFF behavior contracts
+        run: make web-contracts
       - run: pnpm typecheck
       - run: pnpm build
       - name: Install Chromium for required browser smoke

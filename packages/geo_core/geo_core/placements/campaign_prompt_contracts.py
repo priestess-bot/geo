@@ -274,6 +274,14 @@ class PromptBundleView:
     release_version: int | None = None
     release_hash: str | None = None
 
+    def __post_init__(self) -> None:
+        lineage = (
+            self.prompt_release_binding_id,
+            self.prompt_release_binding_version,
+        )
+        if any(value is None for value in lineage) and not all(value is None for value in lineage):
+            raise ValueError("Prompt Bundle binding lineage must be exact or legacy")
+
 
 def _is_sha256(value: object) -> bool:
     return (

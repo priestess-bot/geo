@@ -67,13 +67,13 @@ class PromptSimulationCreate(PlacementContract):
 class PromptSimulationView(PlacementContract):
     id: UUID
     project_id: UUID
-    campaign_id: UUID
-    opportunity_id: UUID
+    campaign_id: UUID | None
+    opportunity_id: UUID | None
     destination_id: UUID
     destination_policy_version_id: UUID | None
     template_release_id: UUID
-    prompt_release_binding_id: UUID
-    prompt_release_binding_version: int
+    prompt_release_binding_id: UUID | None
+    prompt_release_binding_version: int | None
     skill_version_id: UUID
     release_version: int
     release_hash: str
@@ -102,6 +102,20 @@ class PromptSimulationView(PlacementContract):
     question_set_hash: str | None
     question_set_item_id: UUID | None
     question_candidate_id: UUID | None
+
+    @model_validator(mode="after")
+    def binding_lineage_shape(self) -> "PromptSimulationView":
+        lineage = (
+            self.campaign_id,
+            self.opportunity_id,
+            self.prompt_release_binding_id,
+            self.prompt_release_binding_version,
+        )
+        if any(value is None for value in lineage) and not all(
+            value is None for value in lineage
+        ):
+            raise ValueError("Prompt Simulation binding lineage must be exact or legacy")
+        return self
 
 
 class PromptSimulationCreated(PlacementContract):

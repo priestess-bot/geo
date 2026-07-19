@@ -10,6 +10,7 @@ from geo_api.app_factory import create_api_app
 from geo_api.foundation_services import (
     ConnectedFoundationServices,
     UnavailableFoundationServices,
+    resolve_services_from_environment,
     services_from_environment,
 )
 from geo_core.access.models import (
@@ -245,6 +246,7 @@ def test_header_development_auth_is_explicit_and_forbidden_in_production(
     monkeypatch: MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("GEO_DATABASE_URL", "postgresql://geo:secret@database.invalid/geo")
+    monkeypatch.setenv("GEO_AUTH_TOKEN_SECRET", "access-signing-secret-at-least-32-bytes")
     monkeypatch.setenv("GEO_AUTH_MODE", "development")
     monkeypatch.setenv("GEO_DEPLOYMENT_ENVIRONMENT", "development")
     development = services_from_environment(surface="internal")
@@ -254,3 +256,16 @@ def test_header_development_auth_is_explicit_and_forbidden_in_production(
 
     assert isinstance(development, ConnectedFoundationServices)
     assert isinstance(production, UnavailableFoundationServices)
+
+
+def test_access_resolution_keeps_read_only_service_but_fails_readiness_for_short_secret() -> None:
+    resolution = resolve_services_from_environment(
+        surface="customer",
+        environment={
+            "GEO_DATABASE_URL": "postgresql://geo:secret@database.invalid/geo",
+            "GEO_AUTH_TOKEN_SECRET": "too-short",
+        },
+    )
+
+    assert isinstance(resolution.services, ConnectedFoundationServices)
+    assert resolution.access_configured is False

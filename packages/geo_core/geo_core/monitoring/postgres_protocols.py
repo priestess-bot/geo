@@ -11,6 +11,7 @@ from geo_core.monitoring.domain import (
     MonitoringConflict,
     MonitoringNotFound,
     MonitoringProtocol,
+    MonitoringRuleViolation,
     ProtocolQuery,
     QuerySuggestion,
 )
@@ -291,6 +292,11 @@ class MonitoringProtocolsMixin:
             return _suggestion(row), query
         if row["status"] != "suggested":
             raise MonitoringConflict("A rejected query suggestion cannot be approved.")
+        if not row["query_cluster_key"]:
+            raise MonitoringRuleViolation(
+                "legacy query suggestions without a query cluster key cannot be approved; "
+                "create a new suggestion with an explicit cluster key"
+            )
         query_row = self._one(
             """
             INSERT INTO monitoring_queries

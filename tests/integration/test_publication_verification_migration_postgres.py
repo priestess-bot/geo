@@ -73,6 +73,7 @@ def test_verification_attempt_migration_round_trip_rls_and_append_only_contract(
                 "campaign",
                 "opportunity",
                 "package",
+                "bundle",
                 "version",
                 "publication",
                 "query",

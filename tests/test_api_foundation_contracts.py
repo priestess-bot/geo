@@ -4,22 +4,41 @@ import json
 import subprocess
 import sys
 from time import sleep
+from typing import cast
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
 import pytest
 
 from geo_api.app_factory import ApiSettings, REQUEST_ID_HEADER, create_api_app
-from geo_api.foundation_services import UnavailableFoundationServices
+from geo_api.foundation_services import FoundationServices, UnavailableFoundationServices
 from geo_api import runtime_readiness
 from geo_api.runtime_readiness import (
     DependencyProbe,
     ReadinessChecker,
+    Surface,
     readiness_checker_from_environment,
 )
 
 
 FORBIDDEN_PATH_TERMS = ("runtime", "p0a", "p0b", "fixture", "/au/", "-au/")
+CONFIGURED_FOUNDATION_SERVICES = cast(FoundationServices, object())
+
+
+def _passing_readiness(surface: Surface) -> ReadinessChecker:
+    if surface == "customer":
+        return ReadinessChecker(
+            surface="customer",
+            probes=(DependencyProbe("postgres", lambda: None),),
+        )
+    return ReadinessChecker(
+        surface="internal",
+        probes=(
+            DependencyProbe("postgres", lambda: None),
+            DependencyProbe("valkey", lambda: None),
+            DependencyProbe("object_store", lambda: None),
+        ),
+    )
 
 
 def _paths(app: object) -> set[str]:
@@ -94,6 +113,156 @@ def test_readiness_reports_missing_postgres_configuration() -> None:
     assert response.headers["X-GEO-Readiness-Codes"] == "postgres_not_configured"
 
 
+def test_readiness_fails_closed_when_access_configuration_is_missing() -> None:
+    calls: list[str] = []
+    readiness = ReadinessChecker(
+        surface="customer",
+        probes=(DependencyProbe("postgres", lambda: calls.append("postgres")),),
+    )
+    app = create_api_app(
+        surface="customer",
+        services=UnavailableFoundationServices(),
+        readiness_service=readiness,
+    )
+
+    with TestClient(app) as client:
+        response = client.get("/ready")
+
+    assert calls == ["postgres"]
+    assert response.status_code == 503
+    assert response.json()["type"] == "urn:geo:problem:not-ready"
+    assert response.headers["X-GEO-Readiness-Codes"] == "access_configuration_unavailable"
+
+
+@pytest.mark.parametrize("surface", ["customer", "internal"])
+@pytest.mark.parametrize(
+    ("token_secret", "sensitive_value"),
+    [
+        (None, ""),
+        ("short-secret-must-not-leak", "short-secret-must-not-leak"),
+    ],
+)
+def test_readiness_rejects_missing_or_short_access_token_secret_without_leaking_it(
+    monkeypatch: pytest.MonkeyPatch,
+    surface: Surface,
+    token_secret: str | None,
+    sensitive_value: str,
+) -> None:
+    monkeypatch.delenv("GEO_DATABASE_URL_FILE", raising=False)
+    monkeypatch.delenv("GEO_AUTH_TOKEN_SECRET_FILE", raising=False)
+    monkeypatch.setenv("GEO_DATABASE_URL", "postgresql://private.invalid/geo")
+    monkeypatch.setenv(
+        "GEO_AUTH_MODE", "session" if surface == "customer" else "development"
+    )
+    monkeypatch.setenv("GEO_DEPLOYMENT_ENVIRONMENT", "development")
+    if token_secret is None:
+        monkeypatch.delenv("GEO_AUTH_TOKEN_SECRET", raising=False)
+    else:
+        monkeypatch.setenv("GEO_AUTH_TOKEN_SECRET", token_secret)
+    readiness = _passing_readiness(surface)
+    app = create_api_app(surface=surface, readiness_service=readiness)
+
+    with TestClient(app) as client:
+        response = client.get("/ready")
+
+    assert response.status_code == 503
+    assert response.headers["X-GEO-Readiness-Codes"] == (
+        "access_configuration_unavailable"
+    )
+    assert response.json()["type"] == "urn:geo:problem:not-ready"
+    if sensitive_value:
+        assert sensitive_value not in response.text
+        assert sensitive_value not in repr(dict(response.headers))
+
+
+@pytest.mark.parametrize("surface", ["customer", "internal"])
+def test_readiness_accepts_valid_access_configuration(
+    monkeypatch: pytest.MonkeyPatch, surface: Surface
+) -> None:
+    monkeypatch.delenv("GEO_DATABASE_URL_FILE", raising=False)
+    monkeypatch.delenv("GEO_AUTH_TOKEN_SECRET_FILE", raising=False)
+    monkeypatch.setenv("GEO_DATABASE_URL", "postgresql://private.invalid/geo")
+    monkeypatch.setenv("GEO_AUTH_TOKEN_SECRET", "access-signing-secret-at-least-32-bytes")
+    monkeypatch.setenv(
+        "GEO_AUTH_MODE", "session" if surface == "customer" else "development"
+    )
+    monkeypatch.setenv("GEO_DEPLOYMENT_ENVIRONMENT", "development")
+    app = create_api_app(
+        surface=surface,
+        readiness_service=_passing_readiness(surface),
+    )
+
+    with TestClient(app) as client:
+        response = client.get("/ready")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "ready"
+
+
+@pytest.mark.parametrize(
+    ("audience", "expected_status"),
+    [("", 503), ("geo-admin", 200)],
+)
+def test_internal_readiness_statically_validates_oidc_configuration_without_remote_calls(
+    monkeypatch: pytest.MonkeyPatch,
+    audience: str,
+    expected_status: int,
+) -> None:
+    monkeypatch.delenv("GEO_DATABASE_URL_FILE", raising=False)
+    monkeypatch.delenv("GEO_AUTH_TOKEN_SECRET_FILE", raising=False)
+    monkeypatch.setenv("GEO_DATABASE_URL", "postgresql://private.invalid/geo")
+    monkeypatch.setenv("GEO_AUTH_TOKEN_SECRET", "access-signing-secret-at-least-32-bytes")
+    monkeypatch.setenv("GEO_AUTH_MODE", "oidc")
+    monkeypatch.setenv("GEO_DEPLOYMENT_ENVIRONMENT", "production")
+    monkeypatch.setenv(
+        "GEO_OIDC_DISCOVERY_URL",
+        "https://must-not-be-contacted.invalid/.well-known/openid-configuration",
+    )
+    monkeypatch.setenv("GEO_JWT_ISSUER", "https://identity.example.com/")
+    monkeypatch.setenv("GEO_JWT_AUDIENCE", audience)
+    app = create_api_app(
+        surface="internal",
+        readiness_service=_passing_readiness("internal"),
+    )
+
+    with TestClient(app) as client:
+        response = client.get("/ready")
+
+    assert response.status_code == expected_status
+    if expected_status == 503:
+        assert response.headers["X-GEO-Readiness-Codes"] == (
+            "access_configuration_unavailable"
+        )
+    assert "must-not-be-contacted.invalid" not in response.text
+
+
+def test_dependency_failure_remains_authoritative_when_access_configuration_is_invalid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_postgres() -> None:
+        raise RuntimeError("database-secret-must-not-leak")
+
+    sensitive_value = "short-secret-must-not-leak"
+    monkeypatch.setenv("GEO_DATABASE_URL", "postgresql://private.invalid/geo")
+    monkeypatch.setenv("GEO_AUTH_TOKEN_SECRET", sensitive_value)
+    readiness = ReadinessChecker(
+        surface="customer",
+        probes=(
+            DependencyProbe("postgres", fail_postgres),
+        ),
+    )
+    app = create_api_app(surface="customer", readiness_service=readiness)
+
+    with TestClient(app) as client:
+        response = client.get("/ready")
+
+    assert response.status_code == 503
+    assert response.headers["X-GEO-Readiness-Codes"] == "postgres_unavailable"
+    rendered = response.text + repr(dict(response.headers))
+    assert sensitive_value not in rendered
+    assert "database-secret-must-not-leak" not in rendered
+
+
 def test_health_is_dependency_free_even_when_readiness_is_unavailable() -> None:
     calls: list[str] = []
 
@@ -138,8 +307,16 @@ def test_readiness_surface_matrix_and_request_scoped_probes() -> None:
             DependencyProbe("object_store", lambda: probe("internal-object-store")),
         ),
     )
-    customer = create_api_app(surface="customer", readiness_service=customer_readiness)
-    internal = create_api_app(surface="internal", readiness_service=internal_readiness)
+    customer = create_api_app(
+        surface="customer",
+        services=CONFIGURED_FOUNDATION_SERVICES,
+        readiness_service=customer_readiness,
+    )
+    internal = create_api_app(
+        surface="internal",
+        services=CONFIGURED_FOUNDATION_SERVICES,
+        readiness_service=internal_readiness,
+    )
 
     with TestClient(customer) as client:
         assert client.get("/ready").status_code == 200
@@ -212,7 +389,11 @@ def test_environment_readiness_parses_bounded_timeouts_without_echoing_values(
             "GEO_READINESS_TOTAL_TIMEOUT_SECONDS": "7",
         },
     )
-    app = create_api_app(surface="customer", readiness_service=checker)
+    app = create_api_app(
+        surface="customer",
+        services=CONFIGURED_FOUNDATION_SERVICES,
+        readiness_service=checker,
+    )
     with TestClient(app) as client:
         assert client.get("/ready").status_code == 200
 

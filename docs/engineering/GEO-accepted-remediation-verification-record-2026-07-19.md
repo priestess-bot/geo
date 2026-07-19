@@ -14,6 +14,8 @@
 
 本记录只证明本地受控环境与生产等价拓扑验证完成。它不证明客户生产已部署、不证明第三方真实发布已发生，也不把 deterministic/synthetic/inline 结果解释为真实外部 GEO 效果或因果提升。
 
+旧版功能、历史数据和在途任务的专项结论见 [GEO 旧版功能兼容性复查报告](GEO-legacy-feature-parity-2026-07-19.md)。仓库内同步升级结论为 PASS；仓库外旧 `/v1` 客户端仍需迁移新增的 Campaign 和治理合同，不能滚动混跑。
+
 代码保护点：
 
 - 整改前提交：`267d970`，标签 `geo-pre-remediation-20260719`。
@@ -32,7 +34,7 @@
 | F-012 | 5 | Campaign 成为全链路真根；跨 Campaign read/mutation fail closed | PostgreSQL、API、Admin Chromium |
 | F-013 | 5 | approved Fact 可通过 UI 提升 Evidence，保留 Source→Run→Document→Chunk→Fact 血缘 | PostgreSQL、API、Admin Chromium、0013/0022-0024 迁移 |
 | F-014 | 5 | Opportunity 显式绑定 approved Prompt Release；历史 ID/version/hash 不变 | PostgreSQL、API、九渠道就绪度、Admin Chromium |
-| F-015 | 4 | 必需测试缺环境、零收集、skip 或失败时非零退出；隔离跨 run 数据 | CI 合同、60 项必需 integration 摘要 |
+| F-015 | 4 | 必需测试缺环境、零收集、skip 或失败时非零退出；隔离跨 run 数据 | CI 合同、70 项必需 integration 摘要 |
 | F-016 | 3 | acceptance 仅允许隔离数据库身份和 marker；报告标记 `inline_isolated` | 串行/并行 acceptance、报告验证器 |
 | F-018 | 8 | 真实 readiness、heartbeat、队列卡滞、Compose health 和 bounded Secret preflight | 34 项静态合同、6 项一次性 Docker runtime |
 | F-019 | 8 | Project Native RAG、治理图谱、QuestionSet、Protocol 绑定及不可发布内部仿真 | 选型 Gate、PostgreSQL/MinIO、100 项定向单测、Admin Chromium |
@@ -45,27 +47,28 @@
 
 | 门禁 | 结果 |
 |---|---|
-| `make test-migrated` | 512 passed，63 deselected |
-| `make quality` | Ruff 通过；Mypy 220 个源文件通过；6 个 Web workspace 类型检查通过；架构 13 passed |
-| `make test-integration-required` | fresh PostgreSQL/MinIO，60 collected / 60 passed / 0 skipped |
-| `make test-browser-chromium` | Admin 10/10、Customer 4/4；0 skipped、0 flaky |
+| `make test-migrated` | 542 passed，73 deselected |
+| `make quality` | Ruff 通过；Mypy 224 个源文件通过；6 个 Web workspace 类型检查通过；架构 13 passed |
+| `make test-integration-required` | fresh PostgreSQL/MinIO，70 collected / 70 passed / 0 skipped |
+| `make test-browser-chromium` | Admin 12/12、Customer 4/4；0 skipped、0 flaky |
 | `make web-build` | Admin 与 Customer 两个 Next.js production build 通过 |
 | `make openapi-contracts` | 2 个稳定 surface 验证通过；6 个快照测试通过 |
 | `make test-infra-contracts` | 34 collected / 34 passed / 0 skipped |
 | `make test-infra-runtime` | fresh Docker/PostgreSQL；6 collected / 6 passed / 0 skipped；故障状态可恢复 |
 | `make f019-benchmark` | Dataset 有效；Project Native 选择清单及报告 hash 有效 |
 | traceability validator | 70 条 acceptance clause、68 个稳定测试 ID 全部有效 |
-| `geo-acceptance-inline` | run `review-fixed-20260719`；`execution_mode=inline_isolated`；报告验证通过 |
+| `geo-acceptance-inline` | run `legacy-parity-final-20260719`；`execution_mode=inline_isolated`；报告验证通过 |
 
-验收报告保存在本地忽略目录 `artifacts/geo-acceptance/review-fixed-20260719.json`，其 SHA-256 为 `753332c8742f88f1cdfcf69e64249b104400916112e0f62a89dd5287cf1d87ae`。仓库只保存该脱敏索引，不提交数据库凭据或大体积运行产物。
+验收报告保存在本地忽略目录 `artifacts/geo-acceptance/legacy-parity-final-20260719.json`，其 SHA-256 为 `b96a3de4532ecec82cb60423a969a6a610feed7cd2c924ea9ef3a5bc125a8a5c`。仓库只保存该脱敏索引，不提交数据库凭据或大体积运行产物。
 
 ## 4. 数据迁移
 
-- Alembic 单 head：`0025_monitoring_source_guard`。
-- 全新 PostgreSQL 已从 `0001` 顺序升级到 `0025`。
+- Alembic 单 head：`0026_legacy_simulation`。
+- 全新 PostgreSQL 已从 `0001` 顺序升级到 `0026`；另验证 populated `0010→0026` 和 `0026→0025→0026`。
 - 单独验证 populated `UP→DOWN→UP`、目标唯一键冲突、Unicode 非精确哈希 fail closed、下游 lineage/JSON 引用保护。
 - 0022 只修复可严格证明为旧 Python lowercase 行为生成的 ASCII 历史哈希；无法证明的历史值不被伪造为有效数据。
 - 0023 允许已提升 Fact 仅做单向生命周期退役；0024 将 active Chunk 纳入 QuestionSet 当前性；0025 阻止新 Monitoring Protocol 绑定失效 QuestionSet。三者均保留历史记录，不把退役内容继续投影为当前输入。
+- 0026 只允许精确 `legacy-v1` Prompt Simulation generation/artifact 血缘完成在途工作；parentless 根 Artifact、历史 replay 链和任意 null-Campaign 负例均已验证。
 - App、Worker、Admin 使用独立数据库身份；最终 integration 和 acceptance 无残留测试项目。
 
 ## 5. F-019 选型

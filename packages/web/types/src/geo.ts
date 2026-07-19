@@ -139,8 +139,8 @@ export interface PromptBundleCreate {
 export interface PromptBundleView {
   artifact_status: string; brief_version_id: string; bundle_hash: string; evidence_pack_attempt_id: string;
   id: string; project_id: string; campaign_id: string; opportunity_id: string; destination_id: string;
-  prompt_release_binding_id: string; storage_key: string; storage_uri: string | null;
-  prompt_release_binding_version: number;
+  prompt_release_binding_id: string | null; storage_key: string; storage_uri: string | null;
+  prompt_release_binding_version: number | null;
   template_release_id: string; skill_version_id: string; release_version: number; release_hash: string;
 }
 export interface PromptBundleDetail extends PromptBundleView { manifest: JsonObject; }
@@ -160,9 +160,9 @@ export interface PromptSimulationCreate {
   question_set_item_id?: string | null;
 }
 export interface PromptSimulationView {
-  id: string; project_id: string; campaign_id: string; opportunity_id: string; destination_id: string;
+  id: string; project_id: string; campaign_id: string | null; opportunity_id: string | null; destination_id: string;
   destination_policy_version_id: string | null; template_release_id: string;
-  prompt_release_binding_id: string; prompt_release_binding_version: number;
+  prompt_release_binding_id: string | null; prompt_release_binding_version: number | null;
   skill_version_id: string; release_version: number; release_hash: string;
   primary_brand_entity_id: string; product_entity_id: string; requested_by: string;
   authenticity_mode: PromptSimulationAuthenticityMode;
@@ -186,7 +186,7 @@ export interface JobStatus {
   error_code?: string | null; result_details?: JsonObject | null; result_ref?: string | null;
 }
 export interface PlacementJobView {
-  id: string; kind: string; project_id: string; campaign_id: string; status: JobState;
+  id: string; kind: string; project_id: string; campaign_id: string | null; status: JobState;
 }
 export interface PlacementJobEventView {
   id: string; job_id: string; project_id: string; event_type: string; details: JsonObject;
@@ -348,7 +348,8 @@ export interface MonitoringProtocolCreate {
   minimum_valid_repeats: number;
   window_days: number; source_strata: ObservationSourceStratumCreate[];
 }
-export interface MonitoringProtocolView extends MonitoringProtocolCreate {
+export interface MonitoringProtocolView extends Omit<MonitoringProtocolCreate, "minimum_valid_repeats"> {
+  minimum_valid_repeats: number | null;
   id: string; project_id: string; status: "draft" | "approved" | "frozen"; protocol_hash: string | null;
   created_at: string; approved_at: string | null; frozen_at: string | null;
   source_strata_hash: string | null; statistics_method_version: string | null;

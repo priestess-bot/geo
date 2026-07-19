@@ -26,6 +26,9 @@ from tests.integration.placement_worker_support import (
     PermanentVerifier,
     RetryableVerifier,
 )
+from tests.integration.publication_verification_terminal_scenarios import (
+    exercise_verification_terminal_reconciliation,
+)
 
 
 def assert_legacy_publication_contract_rejected(
@@ -107,10 +110,13 @@ def assert_legacy_publication_contract_rejected(
         )
 
     with psycopg.connect(admin_url) as admin:
-        assert admin.execute(
-            "SELECT count(*) FROM publication_requests WHERE project_id = %s",
-            (project_id,),
-        ).fetchone()[0] == before
+        assert (
+            admin.execute(
+                "SELECT count(*) FROM publication_requests WHERE project_id = %s",
+                (project_id,),
+            ).fetchone()[0]
+            == before
+        )
         admin.execute("SET LOCAL session_replication_role = 'replica'")
         admin.execute(
             "DELETE FROM placement_package_versions WHERE id = %s AND project_id = %s",
@@ -124,6 +130,7 @@ def exercise_invalid_submission_verification(
     store: PostgresDurableJobStore,
     repository: PlacementWorkerRepository,
     *,
+    admin_url: str,
     project_id: UUID,
     campaign_id: UUID,
     version_id: UUID,
@@ -220,7 +227,9 @@ def exercise_invalid_submission_verification(
     dispatcher = _verification_dispatcher(
         store, repository, PermanentVerifier(), worker_id="integration-invalid-url"
     )
-    assert dispatcher.process(job_id=verification_job.id, project_id=project_id)["status"] == "failed"
+    assert (
+        dispatcher.process(job_id=verification_job.id, project_id=project_id)["status"] == "failed"
+    )
 
     failed_submission, failed_job = _new_verification(
         application,
@@ -272,9 +281,10 @@ def exercise_invalid_submission_verification(
     retryable_dispatcher = _verification_dispatcher(
         store, repository, RetryableVerifier(), worker_id="integration-retryable"
     )
-    assert retryable_dispatcher.process(
-        job_id=retryable_job.id, project_id=project_id
-    )["status"] == "retry_wait"
+    assert (
+        retryable_dispatcher.process(job_id=retryable_job.id, project_id=project_id)["status"]
+        == "retry_wait"
+    )
     with pytest.raises(PlacementConflict, match="already active"):
         application.request_verification(
             project_id=project_id,
@@ -309,11 +319,14 @@ def exercise_invalid_submission_verification(
     finally:
         connection.close()
     assert model_calls_after == model_calls_before
-    assert application.list_verification_attempts(
-        project_id=project_id,
-        campaign_id=campaign_id,
-        submission_id=legacy_submission,
-    ) == ()
+    assert (
+        application.list_verification_attempts(
+            project_id=project_id,
+            campaign_id=campaign_id,
+            submission_id=legacy_submission,
+        )
+        == ()
+    )
     assert application.get_submission(
         project_id=project_id,
         campaign_id=campaign_id,
@@ -325,18 +338,37 @@ def exercise_invalid_submission_verification(
             campaign_id=uuid4(),
             submission_id=failed_submission,
         )
-    outcomes = application.list_verification_attempts(
-        project_id=project_id,
-        campaign_id=campaign_id,
-        submission_id=submission.id,
-    ) + application.list_verification_attempts(
-        project_id=project_id,
-        campaign_id=campaign_id,
-        submission_id=retryable_submission,
-    ) + attempts
+    outcomes = (
+        application.list_verification_attempts(
+            project_id=project_id,
+            campaign_id=campaign_id,
+            submission_id=submission.id,
+        )
+        + application.list_verification_attempts(
+            project_id=project_id,
+            campaign_id=campaign_id,
+            submission_id=retryable_submission,
+        )
+        + attempts
+    )
     assert {attempt.outcome for attempt in outcomes} == {
-        "passed", "failed", "retryable_error", "permanent_error"
+        "passed",
+        "failed",
+        "retryable_error",
+        "permanent_error",
     }
+    exercise_verification_terminal_reconciliation(
+        application,
+        store,
+        repository,
+        admin_url=admin_url,
+        project_id=project_id,
+        campaign_id=campaign_id,
+        version_id=version_id,
+        destination_id=destination_id,
+        owner_id=owner_id,
+        suffix=suffix,
+    )
     return verification_job
 
 

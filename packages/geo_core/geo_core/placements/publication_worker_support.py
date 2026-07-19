@@ -47,6 +47,7 @@ def open_measurement_window(
             connection.execute(
                 """SELECT spec.submission_id, spec.campaign_id, spec.opportunity_id,
                           submission.destination_id, spec.protocol_id, spec.measurement_window,
+                          submission.status AS submission_status, submission.verified_at,
                           due_offset_days, scheduled_for, market_profile_id,
                           locale, device, sample_size, expected_sample_count,
                           protocol_snapshot, protocol_hash
@@ -56,12 +57,40 @@ def open_measurement_window(
                     AND submission.project_id = spec.project_id
                     AND submission.campaign_id = spec.campaign_id
                     AND submission.opportunity_id = spec.opportunity_id
-                   WHERE spec.job_id = %s AND spec.project_id = %s""",
+                   WHERE spec.job_id = %s AND spec.project_id = %s
+                   FOR UPDATE OF submission""",
                 (lease.job_id, lease.project_id),
             )
         )
         if spec is None:
             raise RuntimeError("measurement job specification does not exist")
+        if spec["submission_status"] not in {"verified", "blocked", "cancelled"}:
+            transient_details: dict[str, object] = {
+                "status": "retry_wait",
+                "reason": "submission_not_currently_verified",
+                "submission_id": str(spec["submission_id"]),
+            }
+            store.defer_in_transaction(
+                connection,
+                lease,
+                reason_code="submission_not_currently_verified",
+                details=transient_details,
+                retry_delay=timedelta(hours=6),
+            )
+            return transient_details
+        if spec["submission_status"] != "verified" or spec["verified_at"] is None:
+            skipped_details: dict[str, object] = {
+                "status": "skipped",
+                "reason": "submission_not_verified",
+                "submission_id": str(spec["submission_id"]),
+            }
+            store.complete_in_transaction(
+                connection,
+                lease,
+                result_ref=f"measurement-skipped:{spec['submission_id']}",
+                details=skipped_details,
+            )
+            return skipped_details
         task = row(
             connection.execute(
                 """INSERT INTO measurement_collection_tasks
@@ -166,6 +195,15 @@ def schedule_measurements(
                 f"geo-measurement:{submission_id}:{protocol['id']}:{window}",
             )
             scheduled_for = verified_at + timedelta(days=offset)
+            if row(
+                connection.execute(
+                    """SELECT job_id FROM measurement_job_specs
+                       WHERE project_id = %s AND submission_id = %s
+                         AND protocol_id = %s AND measurement_window = %s""",
+                    (lease.project_id, submission_id, protocol["id"], window),
+                )
+            ) is not None:
+                continue
             connection.execute(
                 """INSERT INTO durable_jobs
                      (id, project_id, campaign_id, kind, input_hash,

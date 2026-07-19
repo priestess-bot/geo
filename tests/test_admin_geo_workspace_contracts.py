@@ -185,6 +185,27 @@ def test_monitoring_statistics_ui_uses_frozen_protocol_denominators_and_full_v2_
     assert all(word not in metric.casefold() for word in ("improved", "declined", "stable"))
 
 
+def test_legacy_query_suggestions_without_clusters_are_visible_but_not_approvable() -> None:
+    workspace = (FEATURE_ROOT / "CampaignWorkspace.tsx").read_text(encoding="utf-8")
+    web_types = (ROOT / "packages/web/types/src/geo.ts").read_text(encoding="utf-8")
+
+    assert "query_cluster_key: string | null" in web_types
+    assert 'name="query_cluster_key" required' in workspace
+    assert 'item.status === "suggested" && item.query_cluster_key' in workspace
+    assert 'data-testid={item.query_cluster_key ? undefined : "legacy-query-suggestion"}' in workspace
+    assert "迁移历史 · 缺少问题簇 · 只读" in workspace
+    assert "请在上方提交包含问题簇的新建议" in workspace
+
+
+def test_legacy_prompt_bundles_are_visible_but_not_executable() -> None:
+    generation = (FEATURE_ROOT / "GenerationPackagePanel.tsx").read_text(encoding="utf-8")
+
+    assert 'data-testid="legacy-prompt-bundle"' in generation
+    assert "迁移历史生成输入只读，不能启动新版生成任务" in generation
+    assert "返回准备证据并重建" in generation
+    assert "isLegacyBundle ? <Empty>" in generation
+
+
 def test_admin_prompt_catalog_edits_the_actual_executable_release() -> None:
     prompt_panel = (FEATURE_ROOT / "BriefPromptPanel.tsx").read_text(encoding="utf-8")
     actions = (FEATURE_ROOT / "placement-actions.ts").read_text(encoding="utf-8")
@@ -242,6 +263,37 @@ def test_prompt_simulation_is_an_internal_test_only_surface() -> None:
     assert "/geo/prompt-simulations" in download
     assert "x-geo-test-only" in download
     assert "prompt-simulations" not in customer_source
+
+
+def test_admin_preserves_migrated_prompt_simulation_read_and_download_paths() -> None:
+    data = (FEATURE_ROOT / "data.ts").read_text(encoding="utf-8")
+    panel = (FEATURE_ROOT / "PromptSimulationPanel.tsx").read_text(encoding="utf-8")
+    shell = (FEATURE_ROOT / "GeoShell.tsx").read_text(encoding="utf-8")
+    placement = (FEATURE_ROOT / "PlacementWorkspace.tsx").read_text(encoding="utf-8")
+    client = (ROOT / "packages/web/api-client/src/geo.ts").read_text(encoding="utf-8")
+    download = (GEO_ROOT.parent / "simulation-download/[simulation_id]/route.ts").read_text(
+        encoding="utf-8"
+    )
+
+    assert "listPromptSimulations(projectId: string, campaignId?: string)" in client
+    assert "getPromptSimulation(projectId: string, simulationId: string)" in client
+    assert "legacySimulationsPromise = client.listPromptSimulations(projectId)" in data
+    assert "Promise.all([\n    campaignResourcesPromise,\n    legacySimulationsPromise" in data
+    assert "mergeSimulationResources(currentSimulations, legacySimulations)" in data
+    assert "if (!byId.has(item.id))" in data
+    assert "selectedSimulation?.campaign_id" in data
+    assert "client.getPromptSimulation(projectId, id)" in data
+    assert "迁移历史（只读）" in panel
+    assert 'data-testid="legacy-simulation-readonly"' in panel
+    assert "不能作为新建、审核、导出或发布输入" in panel
+    assert "item.campaign_id ? item.generation_job_id : undefined" in panel
+    assert "simulationDownloadHref(projectId, simulation)" in panel
+    assert "hasLegacySimulations" in shell
+    assert "hasLegacySimulations" in placement
+    assert 'searchParams.get("campaign_id")' in download
+    assert 'url.searchParams.set("campaign_id", campaignId)' in download
+    assert "url.search =" not in download
+    assert "for (const [key" not in download
 
 
 def test_project_page_loads_geo_workspace_without_serial_catalog_waterfall() -> None:

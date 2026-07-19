@@ -6,7 +6,10 @@ from typing import Any, Mapping, cast
 from uuid import UUID
 
 from geo_core.object_store import RetrievedObject
-from geo_core.placements.campaign_context import require_campaign_resource
+from geo_core.placements.campaign_context import (
+    require_campaign_resource,
+    require_job_control_scope,
+)
 from geo_core.placements.default_prompts import (
     default_prompt_definitions,
     default_output_schema,
@@ -321,15 +324,14 @@ class PlacementOperationsApplicationMixin:
             return result
 
     def cancel_job(
-        self, *, project_id: UUID, campaign_id: UUID, job_id: UUID, actor_id: UUID
+        self, *, project_id: UUID, campaign_id: UUID | None, job_id: UUID, actor_id: UUID
     ) -> JobReference:
         with self._uow_factory(project_id) as uow:
-            require_campaign_resource(
+            require_job_control_scope(
                 uow.placements,
-                scope=CampaignScope(project_id, campaign_id),
-                kind=CampaignResourceKind.JOB,
-                resource_id=job_id,
-                lock=True,
+                project_id=project_id,
+                campaign_id=campaign_id,
+                job_id=job_id,
             )
             result = uow.placements.cancel_job(
                 project_id=project_id, job_id=job_id, actor_id=actor_id
@@ -341,18 +343,17 @@ class PlacementOperationsApplicationMixin:
         self,
         *,
         project_id: UUID,
-        campaign_id: UUID,
+        campaign_id: UUID | None,
         job_id: UUID,
         actor_id: UUID,
         idempotency_key: str,
     ) -> JobReference:
         with self._uow_factory(project_id) as uow:
-            require_campaign_resource(
+            require_job_control_scope(
                 uow.placements,
-                scope=CampaignScope(project_id, campaign_id),
-                kind=CampaignResourceKind.JOB,
-                resource_id=job_id,
-                lock=True,
+                project_id=project_id,
+                campaign_id=campaign_id,
+                job_id=job_id,
             )
             result = uow.placements.retry_job_now(
                 project_id=project_id,
@@ -367,19 +368,36 @@ class PlacementOperationsApplicationMixin:
         self,
         *,
         project_id: UUID,
-        campaign_id: UUID,
+        campaign_id: UUID | None,
         source_job_id: UUID,
         actor_id: UUID,
         idempotency_key: str,
     ) -> JobReference:
         with self._uow_factory(project_id) as uow:
-            require_campaign_resource(
-                uow.placements,
-                scope=CampaignScope(project_id, campaign_id),
-                kind=CampaignResourceKind.JOB,
-                resource_id=source_job_id,
-                lock=True,
-            )
+            if campaign_id is None:
+                existing = uow.placements.get_legacy_project_replay_result(
+                    project_id=project_id,
+                    source_job_id=source_job_id,
+                    idempotency_key=idempotency_key,
+                )
+                if existing is not None:
+                    return existing
+                if not uow.placements.is_legacy_project_replay_source(
+                    project_id=project_id, source_job_id=source_job_id
+                ):
+                    require_job_control_scope(
+                        uow.placements,
+                        project_id=project_id,
+                        campaign_id=None,
+                        job_id=source_job_id,
+                    )
+            else:
+                require_job_control_scope(
+                    uow.placements,
+                    project_id=project_id,
+                    campaign_id=campaign_id,
+                    job_id=source_job_id,
+                )
             result = uow.placements.replay_job(
                 project_id=project_id,
                 source_job_id=source_job_id,
@@ -390,13 +408,28 @@ class PlacementOperationsApplicationMixin:
             return result
 
     def list_job_events(
-        self, *, project_id: UUID, campaign_id: UUID, job_id: UUID
+        self, *, project_id: UUID, campaign_id: UUID | None, job_id: UUID
     ) -> tuple[Mapping[str, object], ...]:
         with self._uow_factory(project_id) as uow:
-            require_campaign_resource(
+            require_job_control_scope(
                 uow.placements,
-                scope=CampaignScope(project_id, campaign_id),
-                kind=CampaignResourceKind.JOB,
-                resource_id=job_id,
+                project_id=project_id,
+                campaign_id=campaign_id,
+                job_id=job_id,
             )
             return uow.placements.list_job_events(project_id=project_id, job_id=job_id)
+
+    def get_job_reference(
+        self, *, project_id: UUID, campaign_id: UUID | None, job_id: UUID
+    ) -> JobReference:
+        with self._uow_factory(project_id) as uow:
+            require_job_control_scope(
+                uow.placements,
+                project_id=project_id,
+                campaign_id=campaign_id,
+                job_id=job_id,
+            )
+            result = uow.placements.get_job_reference(project_id=project_id, job_id=job_id)
+            if result is None:
+                raise PlacementRuleViolation("job does not exist")
+            return result

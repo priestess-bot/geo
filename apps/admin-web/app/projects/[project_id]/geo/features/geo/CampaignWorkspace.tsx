@@ -91,7 +91,22 @@ export function CampaignWorkspace({ projectId, data, catalog }: {
       <div className={styles.columns}>
         <section className={styles.unframed}><h3>查询建议</h3><ActionForm action={createSuggestion} submitLabel="提交建议" disabled={!selectedProtocol}>
           <HiddenProject projectId={projectId} /><input type="hidden" name="campaign_id" value={selection.campaignId || ""} /><input type="hidden" name="protocol_id" value={selectedProtocol?.id || ""} /><label>建议问法<textarea name="query_text" required /></label><label>问题簇<input name="query_cluster_key" required placeholder="例如：product-comparison" /></label><label>建议依据<textarea name="rationale" required /></label><label>类型<select name="query_kind" defaultValue="recommendation"><option value="recommendation">商品推荐</option><option value="comparison">产品比较</option><option value="research">购买调研</option><option value="support">使用支持</option></select></label></ActionForm>
-          <ResourceBlock resource={data.suggestions}>{(items) => items.map((item) => <div className={styles.row} key={item.id}><span className={styles.rowHeader}><strong>{item.query_text}</strong><Status value={item.status} /></span>{item.status === "suggested" ? <ActionForm action={approveSuggestion} submitLabel="批准建议"><HiddenProject projectId={projectId} /><input type="hidden" name="campaign_id" value={selection.campaignId || ""} /><input type="hidden" name="protocol_id" value={item.protocol_id} /><input type="hidden" name="suggestion_id" value={item.id} /></ActionForm> : null}</div>)}</ResourceBlock></section>
+          <ResourceBlock resource={data.suggestions}>{(items) => items.map((item) => <div
+            className={styles.row} data-testid={item.query_cluster_key ? undefined : "legacy-query-suggestion"}
+            key={item.id}>
+            <span className={styles.rowHeader}><strong>{item.query_text}</strong><Status value={item.status} /></span>
+            <span className={styles.meta}>{item.query_cluster_key
+              ? `问题簇：${item.query_cluster_key}` : "迁移历史 · 缺少问题簇 · 只读"}</span>
+            {item.status === "suggested" && item.query_cluster_key ? <ActionForm
+              action={approveSuggestion} submitLabel="批准建议">
+              <HiddenProject projectId={projectId} />
+              <input type="hidden" name="campaign_id" value={selection.campaignId || ""} />
+              <input type="hidden" name="protocol_id" value={item.protocol_id} />
+              <input type="hidden" name="suggestion_id" value={item.id} />
+            </ActionForm> : item.status === "suggested" ? <div className={styles.metricWarning}>
+              旧记录没有冻结问题簇，不能批准。请在上方提交包含问题簇的新建议。
+            </div> : null}
+          </div>)}</ResourceBlock></section>
         <section className={styles.unframed}><h3>指标与报告</h3><ActionForm action={computeMetrics} submitLabel="计算指标" disabled={!selectedProtocol || sourceStrata.length === 0 || queryClusters.length === 0}><HiddenProject projectId={projectId} /><input type="hidden" name="campaign_id" value={selection.campaignId || ""} /><input type="hidden" name="protocol_id" value={selectedProtocol?.id || ""} /><label>来源分层<select name="source_stratum_hash" required defaultValue=""><option value="" disabled>选择冻结来源分层</option>{sourceStrata.map((item) => <option key={item.hash} value={item.hash}>{item.label}</option>)}</select></label><label>问题簇<select name="query_cluster_key" required defaultValue=""><option value="" disabled>选择冻结问题簇</option>{queryClusters.map((item) => <option key={item} value={item}>{item}</option>)}</select></label><label>测量窗口<select name="measurement_window" defaultValue={selection.measurementWindow}><option value="baseline">基线</option><option value="t28">T+28</option><option value="t56">T+56</option><option value="t84">T+84</option><option value="ad_hoc">临时测量</option></select></label></ActionForm>
           <ResourceBlock resource={data.metrics}>{(items) => items.length ? <div className={styles.metricList}>{items.map((metric) => <MonitoringMetricSnapshot metric={metric} key={metric.id} />)}</div> : <Empty>尚无指标快照。</Empty>}</ResourceBlock>
           <ActionForm action={createReport} submitLabel="生成报告" disabled={data.metrics.data.length === 0}><HiddenProject projectId={projectId} /><input type="hidden" name="campaign_id" value={selection.campaignId || ""} /><label>指标快照<select name="metric_snapshot_id" required defaultValue=""><option value="" disabled>选择快照</option>{data.metrics.data.map((item) => <option key={item.id} value={item.id}>{item.measurement_window} · {(item.source_stratum_hash || "unknown").slice(0, 8)} · {item.computed_at}</option>)}</select></label><label>报告标题<input name="title" required /></label></ActionForm>

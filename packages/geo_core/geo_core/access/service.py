@@ -37,6 +37,16 @@ from geo_core.access.models import (
 from geo_core.access.ports import AccessUnitOfWork, AccessUnitOfWorkFactory
 
 
+AUTH_TOKEN_SECRET_MINIMUM_BYTES = 32
+
+
+def auth_token_secret_is_valid(value: str | bytes | None) -> bool:
+    """Validate signing material without returning or formatting the secret."""
+
+    encoded = value.encode("utf-8") if isinstance(value, str) else value or b""
+    return len(encoded) >= AUTH_TOKEN_SECRET_MINIMUM_BYTES
+
+
 class AccessApplicationService:
     """Coordinate short transactions without depending on HTTP or worker code."""
 
@@ -502,7 +512,7 @@ class AccessApplicationService:
         return RedeemedSession(principal, session_token, csrf_token, session.expires_at, True)
 
     def _require_secret(self) -> None:
-        if len(self._token_secret) < 32:
+        if not auth_token_secret_is_valid(self._token_secret):
             raise AccessConfigurationUnavailable(
                 "GEO_AUTH_TOKEN_SECRET must contain at least 32 characters."
             )

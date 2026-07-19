@@ -89,14 +89,17 @@ export class GeoAdminApiClient {
   getPromptBundle(projectId: string, campaignId: string, bundleId: string) { return this.request<PromptBundleDetail>(`/v1/projects/${projectId}/geo/prompt-bundles/${bundleId}`, { query: campaignQuery(campaignId) }); }
 
   createGenerationJob(projectId: string, campaignId: string, bundleId: string, body: GenerationCreate, guards: RuntimeRequestGuards) { return this.request<JobAccepted, GenerationCreate>(`/v1/projects/${projectId}/geo/prompt-bundles/${bundleId}/generation-jobs`, { method: "POST", body, query: campaignQuery(campaignId), ...guards }); }
-  listPromptSimulations(projectId: string, campaignId: string) { return this.request<PromptSimulationView[]>(`/v1/projects/${projectId}/geo/prompt-simulations`, { query: campaignQuery(campaignId) }); }
-  getPromptSimulation(projectId: string, campaignId: string, simulationId: string) { return this.request<PromptSimulationView>(`/v1/projects/${projectId}/geo/prompt-simulations/${simulationId}`, { query: campaignQuery(campaignId) }); }
+  listPromptSimulations(projectId: string, campaignId?: string) { return this.request<PromptSimulationView[]>(`/v1/projects/${projectId}/geo/prompt-simulations`, campaignId === undefined ? {} : { query: campaignQuery(campaignId) }); }
+  getPromptSimulation(projectId: string, simulationId: string): Promise<RuntimeHttpResult<PromptSimulationView>>;
+  getPromptSimulation(projectId: string, campaignId: string, simulationId: string): Promise<RuntimeHttpResult<PromptSimulationView>>;
+  getPromptSimulation(projectId: string, campaignOrSimulationId: string, simulationId?: string) { const requestedSimulationId = simulationId ?? campaignOrSimulationId; return this.request<PromptSimulationView>(`/v1/projects/${projectId}/geo/prompt-simulations/${requestedSimulationId}`, simulationId === undefined ? {} : { query: campaignQuery(campaignOrSimulationId) }); }
   createPromptSimulation(projectId: string, campaignId: string, body: PromptSimulationCreate, guards: RuntimeRequestGuards) { return this.request<PromptSimulationCreated, PromptSimulationCreate>(`/v1/projects/${projectId}/geo/prompt-simulations`, { method: "POST", body, query: campaignQuery(campaignId), ...guards }); }
   getJob(jobId: string, campaignId: string) { return this.request<JobStatus>(`/v1/jobs/${jobId}`, { query: campaignQuery(campaignId) }); }
-  listJobEvents(projectId: string, campaignId: string, jobId: string) { return this.request<PlacementJobEventView[]>(`/v1/projects/${projectId}/geo/jobs/${jobId}/events`, { query: campaignQuery(campaignId) }); }
-  cancelJob(projectId: string, campaignId: string, jobId: string, guards: RuntimeRequestGuards) { return this.request<PlacementJobView>(`/v1/projects/${projectId}/geo/jobs/${jobId}/cancel`, { method: "POST", query: campaignQuery(campaignId), ...guards }); }
-  retryJob(projectId: string, campaignId: string, jobId: string, guards: RuntimeRequestGuards) { return this.request<PlacementJobView>(`/v1/projects/${projectId}/geo/jobs/${jobId}/retry-now`, { method: "POST", query: campaignQuery(campaignId), ...guards }); }
-  replayJob(projectId: string, campaignId: string, jobId: string, guards: RuntimeRequestGuards) { return this.request<PlacementJobView>(`/v1/projects/${projectId}/geo/jobs/${jobId}/replays`, { method: "POST", query: campaignQuery(campaignId), ...guards }); }
+  getPlacementJob(projectId: string, jobId: string, campaignId?: string | null) { return this.request<PlacementJobView>(`/v1/projects/${projectId}/geo/jobs/${jobId}`, { query: jobCampaignQuery(campaignId) }); }
+  listJobEvents(projectId: string, campaignId: string | null, jobId: string) { return this.request<PlacementJobEventView[]>(`/v1/projects/${projectId}/geo/jobs/${jobId}/events`, { query: jobCampaignQuery(campaignId) }); }
+  cancelJob(projectId: string, campaignId: string | null, jobId: string, guards: RuntimeRequestGuards) { return this.request<PlacementJobView>(`/v1/projects/${projectId}/geo/jobs/${jobId}/cancel`, { method: "POST", query: jobCampaignQuery(campaignId), ...guards }); }
+  retryJob(projectId: string, campaignId: string | null, jobId: string, guards: RuntimeRequestGuards) { return this.request<PlacementJobView>(`/v1/projects/${projectId}/geo/jobs/${jobId}/retry-now`, { method: "POST", query: jobCampaignQuery(campaignId), ...guards }); }
+  replayJob(projectId: string, campaignId: string | null, jobId: string, guards: RuntimeRequestGuards) { return this.request<PlacementJobView>(`/v1/projects/${projectId}/geo/jobs/${jobId}/replays`, { method: "POST", query: jobCampaignQuery(campaignId), ...guards }); }
 
   listPackageVersions(projectId: string, campaignId: string, opportunityId: string) { return this.request<PackageVersionView[]>(`/v1/projects/${projectId}/geo/opportunities/${opportunityId}/package-versions`, { query: campaignQuery(campaignId) }); }
   getPackageVersion(projectId: string, campaignId: string, versionId: string) { return this.request<PackageVersionView>(`/v1/projects/${projectId}/geo/package-versions/${versionId}`, { query: campaignQuery(campaignId) }); }
@@ -145,3 +148,4 @@ export class GeoAdminApiClient {
 }
 
 function campaignQuery(campaignId: string) { return { campaign_id: campaignId }; }
+function jobCampaignQuery(campaignId?: string | null) { return campaignId ? campaignQuery(campaignId) : {}; }

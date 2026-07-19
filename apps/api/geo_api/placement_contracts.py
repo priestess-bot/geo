@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from geo_api.contracts import JobState
 
@@ -176,9 +176,7 @@ class EvidenceKnowledgeLineageView(PlacementContract):
     promoted_at: datetime
     idempotency_key: str
     promotion_request_hash: str
-    lineage_contract_version: Literal[
-        "legacy-relational-v1", "knowledge-fact-evidence-v1"
-    ]
+    lineage_contract_version: Literal["legacy-relational-v1", "knowledge-fact-evidence-v1"]
     source_content_hash: str
     document_cleaned_text_hash: str
     chunk_text_hash: str
@@ -213,7 +211,7 @@ class AsyncResourceCreated(PlacementContract):
 class PlacementJobView(PlacementContract):
     id: UUID
     project_id: UUID
-    campaign_id: UUID
+    campaign_id: UUID | None
     kind: str
     status: JobState
 
@@ -303,8 +301,15 @@ class OpportunityPromptReleaseBindingView(PlacementContract):
 
 class CampaignChannelReadinessView(PlacementContract):
     publication_channel: Literal[
-        "owned_site", "productreview", "youtube", "reddit", "amazon",
-        "ozbargain", "tiktok", "instagram", "quora",
+        "owned_site",
+        "productreview",
+        "youtube",
+        "reddit",
+        "amazon",
+        "ozbargain",
+        "tiktok",
+        "instagram",
+        "quora",
     ]
     ready: bool
     reasons: list[str]
@@ -349,11 +354,21 @@ class PromptBundleView(PlacementContract):
     storage_key: str
     artifact_status: str
     storage_uri: str | None
-    prompt_release_binding_id: UUID
-    prompt_release_binding_version: int
+    prompt_release_binding_id: UUID | None
+    prompt_release_binding_version: int | None
     skill_version_id: UUID
     release_version: int
     release_hash: str
+
+    @model_validator(mode="after")
+    def binding_lineage_shape(self) -> "PromptBundleView":
+        lineage = (
+            self.prompt_release_binding_id,
+            self.prompt_release_binding_version,
+        )
+        if any(value is None for value in lineage) and not all(value is None for value in lineage):
+            raise ValueError("Prompt Bundle binding lineage must be exact or legacy")
+        return self
 
 
 class PromptBundleDetail(PromptBundleView):

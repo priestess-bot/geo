@@ -24,6 +24,10 @@ def test_revision_graph_has_exactly_one_root_and_head() -> None:
         assert revision_match is not None, path.name
         assert down_match is not None, path.name
         revision = revision_match.group(1)
+        assert len(revision) <= 32, (
+            path.name,
+            "Alembic stores revision IDs in alembic_version.version_num varchar(32)",
+        )
         assert revision not in graph
         graph[revision] = down_match.group(1)
         for sql_name in re.findall(r'_execute_file\("([^"]+\.sql)"\)', source):

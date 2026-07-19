@@ -1121,6 +1121,101 @@ ALTER TABLE measurement_collection_tasks
             protocol_id
         );
 
+CREATE FUNCTION geo_is_exact_legacy_simulation_generation_job(
+    candidate_job_id uuid, scope_project_id uuid
+) RETURNS boolean
+LANGUAGE sql STABLE AS $$
+    SELECT EXISTS (
+        SELECT 1
+        FROM durable_jobs AS job
+        JOIN prompt_simulation_job_specs AS spec
+          ON spec.job_id = job.id AND spec.project_id = job.project_id
+         AND spec.campaign_id IS NOT DISTINCT FROM job.campaign_id
+        JOIN prompt_simulations AS simulation
+          ON simulation.id = spec.simulation_id
+         AND simulation.project_id = spec.project_id
+         AND simulation.campaign_id IS NOT DISTINCT FROM spec.campaign_id
+         AND simulation.opportunity_id IS NOT DISTINCT FROM spec.opportunity_id
+        WHERE job.id = candidate_job_id AND job.project_id = scope_project_id
+          AND job.kind = 'prompt_simulation.generate' AND job.campaign_id IS NULL
+          AND job.input_hash = simulation.input_hash
+          AND spec.campaign_id IS NULL AND spec.opportunity_id IS NULL
+          AND simulation.binding_contract_version = 'legacy-v1'
+          AND simulation.campaign_id IS NULL
+          AND simulation.opportunity_id IS NULL
+          AND simulation.binding_id IS NULL
+          AND simulation.binding_version IS NULL
+    )
+$$;
+
+CREATE FUNCTION geo_is_exact_legacy_simulation_artifact_job(
+    candidate_job_id uuid, scope_project_id uuid
+) RETURNS boolean
+LANGUAGE sql STABLE AS $$
+    WITH RECURSIVE related AS (
+        SELECT job.id, ARRAY[job.id] AS path, 0 AS depth
+        FROM durable_jobs AS job
+        WHERE job.id = candidate_job_id AND job.project_id = scope_project_id
+          AND job.kind = 'artifact.finalize' AND job.campaign_id IS NULL
+          AND (
+              job.parent_job_id IS NULL
+              OR geo_is_exact_legacy_simulation_generation_job(
+                  job.parent_job_id, job.project_id
+              )
+              OR EXISTS (
+                  SELECT 1 FROM job_replay_requests AS own_replay
+                  WHERE own_replay.project_id = job.project_id
+                    AND own_replay.source_job_id = job.parent_job_id
+                    AND own_replay.replay_job_id = job.id
+              )
+          )
+        UNION ALL
+        SELECT peer.id, current.path || peer.id, current.depth + 1
+        FROM related AS current
+        JOIN job_replay_requests AS replay
+          ON replay.project_id = scope_project_id
+         AND (replay.source_job_id = current.id OR replay.replay_job_id = current.id)
+        JOIN durable_jobs AS replay_job
+          ON replay_job.id = replay.replay_job_id
+         AND replay_job.project_id = replay.project_id
+         AND replay_job.parent_job_id = replay.source_job_id
+         AND replay_job.kind = 'artifact.finalize'
+         AND replay_job.campaign_id IS NULL
+        JOIN durable_jobs AS peer
+          ON peer.id = CASE
+               WHEN replay.source_job_id = current.id THEN replay.replay_job_id
+               ELSE replay.source_job_id
+             END
+         AND peer.project_id = replay.project_id
+         AND peer.kind = 'artifact.finalize'
+         AND peer.campaign_id IS NULL
+        WHERE current.depth < 64 AND NOT peer.id = ANY(current.path)
+    )
+    SELECT EXISTS (
+        SELECT 1
+        FROM durable_jobs AS job
+        JOIN related AS owner ON true
+        JOIN artifact_finalize_outbox AS artifact
+          ON artifact.job_id = owner.id AND artifact.project_id = job.project_id
+        JOIN prompt_simulation_results AS result
+          ON result.simulation_id = artifact.resource_id
+         AND result.project_id = artifact.project_id
+        WHERE job.id = candidate_job_id AND job.project_id = scope_project_id
+          AND job.kind = 'artifact.finalize' AND job.campaign_id IS NULL
+          AND artifact.resource_kind = 'prompt_simulation'
+          AND artifact.campaign_id IS NULL
+          AND artifact.opportunity_id IS NULL
+          AND artifact.destination_id IS NULL
+          AND artifact.content_hash = result.manifest_hash
+          AND artifact.storage_key = result.storage_key
+          AND result.lineage_contract_version = 'legacy-v1'
+          AND result.campaign_id IS NULL AND result.opportunity_id IS NULL
+          AND geo_is_exact_legacy_simulation_generation_job(
+              result.generated_by_job_id, result.project_id
+          )
+    )
+$$;
+
 CREATE FUNCTION geo_assert_new_durable_job_campaign() RETURNS trigger
 LANGUAGE plpgsql AS $$
 DECLARE
@@ -1702,26 +1797,14 @@ BEGIN
     ) OR EXISTS (
         SELECT 1 FROM durable_jobs AS job
         WHERE job.kind = 'artifact.finalize'
-          AND NOT EXISTS (
-              SELECT 1 FROM artifact_finalize_outbox AS artifact
-              WHERE artifact.job_id = job.id AND artifact.project_id = job.project_id
-                AND artifact.campaign_id IS NOT DISTINCT FROM job.campaign_id
-                AND (
-                    artifact.campaign_id IS NOT NULL
-                    OR (
-                        artifact.resource_kind = 'prompt_simulation'
-                        AND artifact.opportunity_id IS NULL
-                        AND artifact.destination_id IS NULL
-                        AND EXISTS (
-                            SELECT 1 FROM prompt_simulations AS simulation
-                            WHERE simulation.id = artifact.resource_id
-                              AND simulation.project_id = artifact.project_id
-                              AND simulation.binding_contract_version = 'legacy-v1'
-                              AND simulation.campaign_id IS NULL
-                              AND simulation.opportunity_id IS NULL
-                        )
-                    )
-                )
+          AND NOT (
+              (job.campaign_id IS NULL
+                  AND geo_is_exact_legacy_simulation_artifact_job(job.id, job.project_id))
+              OR (job.campaign_id IS NOT NULL AND EXISTS (
+                  SELECT 1 FROM artifact_finalize_outbox AS artifact
+                  WHERE artifact.job_id = job.id AND artifact.project_id = job.project_id
+                    AND artifact.campaign_id = job.campaign_id
+              ))
           )
     ) THEN
         RAISE EXCEPTION 'legacy Placement jobs contain incomplete Campaign specifications'
@@ -1759,6 +1842,8 @@ REVOKE ALL ON FUNCTION geo_assert_release_state_append(),
     geo_protect_opportunity_prompt_binding(), geo_require_opportunity_initial_binding(),
     geo_assert_prompt_bundle_binding(), geo_assert_new_durable_job_campaign(),
     geo_require_durable_job_campaign_spec(), geo_assert_artifact_campaign_context(),
+    geo_is_exact_legacy_simulation_generation_job(uuid, uuid),
+    geo_is_exact_legacy_simulation_artifact_job(uuid, uuid),
     geo_reject_placement_job_spec_update(), geo_require_job_deleted_with_spec(),
     geo_protect_artifact_finalize_identity(),
     geo_reject_campaign_lineage_update(), geo_assert_new_prompt_simulation_result()
@@ -1769,6 +1854,8 @@ GRANT EXECUTE ON FUNCTION geo_assert_release_state_append(),
     geo_protect_opportunity_prompt_binding(), geo_require_opportunity_initial_binding(),
     geo_assert_prompt_bundle_binding(), geo_assert_new_durable_job_campaign(),
     geo_require_durable_job_campaign_spec(), geo_assert_artifact_campaign_context(),
+    geo_is_exact_legacy_simulation_generation_job(uuid, uuid),
+    geo_is_exact_legacy_simulation_artifact_job(uuid, uuid),
     geo_reject_placement_job_spec_update(), geo_require_job_deleted_with_spec(),
     geo_protect_artifact_finalize_identity(),
     geo_reject_campaign_lineage_update(), geo_assert_new_prompt_simulation_result()

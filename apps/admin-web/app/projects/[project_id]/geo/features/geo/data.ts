@@ -1,5 +1,5 @@
 import type { RuntimeHttpResult } from "@geo/api-client/transport";
-import type { MeasurementWindow } from "@geo/types/geo";
+import type { MeasurementWindow, PromptSimulationView } from "@geo/types/geo";
 import { geoClient } from "../../client";
 import {
   emptyResource,
@@ -123,10 +123,8 @@ export async function loadGeoWorkspace(
     ? requestedId(requested.skillId, skills, invalidate)
     : undefined;
   if (!campaignId && requested.skillId) invalidate();
-  const [protocols, metrics, reports, queries, opportunities, placementReadiness, simulations,
-    questionGenerations, questionSets] =
-    campaignId
-      ? await Promise.all([
+  const campaignResourcesPromise = campaignId
+    ? Promise.all([
           optional(campaignId, (id) => client.listProtocols(projectId, id), []),
           optional(campaignId, (id) => client.listMetrics(projectId, id), []),
           optional(campaignId, (id) => client.listReports(projectId, id), []),
@@ -137,15 +135,34 @@ export async function loadGeoWorkspace(
           optional(campaignId, (id) => client.listKnowledgeQuestionGenerations(projectId, id), []),
           optional(campaignId, (id) => client.listKnowledgeQuestionSets(projectId, id), [])
         ])
-      : [
-          emptyResource([]), emptyResource([]), emptyResource([]), emptyResource([]),
-          emptyResource([]), emptyResource(null), emptyResource([]), emptyResource([]),
-          emptyResource([])
-        ] as const;
+    : Promise.resolve([
+          emptyResource<GeoWorkspaceData["protocols"]["data"]>([]),
+          emptyResource<GeoWorkspaceData["metrics"]["data"]>([]),
+          emptyResource<GeoWorkspaceData["reports"]["data"]>([]),
+          emptyResource<GeoWorkspaceData["queries"]["data"]>([]),
+          emptyResource<GeoWorkspaceData["opportunities"]["data"]>([]),
+          emptyResource<GeoWorkspaceData["placementReadiness"]["data"]>(null),
+          emptyResource<GeoWorkspaceData["simulations"]["data"]>([]),
+          emptyResource<GeoWorkspaceData["questionGenerations"]["data"]>([]),
+          emptyResource<GeoWorkspaceData["questionSets"]["data"]>([])
+        ] as const);
+  const legacySimulationsPromise = client.listPromptSimulations(projectId)
+    .then((result) => resource(result, []));
+  const [campaignResources, legacySimulations] = await Promise.all([
+    campaignResourcesPromise,
+    legacySimulationsPromise
+  ]);
+  const [protocols, metrics, reports, queries, opportunities, placementReadiness,
+    currentSimulations, questionGenerations, questionSets] = campaignResources;
+  const simulations = mergeSimulationResources(currentSimulations, legacySimulations);
 
   selection.protocolId = requestedId(requested.protocolId, protocols, invalidate);
   selection.opportunityId = requestedId(requested.opportunityId, opportunities, invalidate);
   selection.simulationId = requestedId(requested.simulationId, simulations, invalidate);
+  const selectedSimulation = simulations.data.find((item) => item.id === selection.simulationId);
+  const selectedSimulationCampaignId = selectedSimulation
+    ? selectedSimulation.campaign_id || undefined
+    : campaignId;
   selection.questionGenerationJobId = requested.questionGenerationJobId
     ? requestedQuestionGeneration(requested.questionGenerationJobId, questionGenerations, invalidate)
     : questionGenerations.data[0]?.job_id;
@@ -212,7 +229,7 @@ export async function loadGeoWorkspace(
   ]);
   selection.attemptId = requestedId(requested.attemptId, attempts, invalidate);
   selection.bundleId = requestedId(requested.bundleId, bundles, invalidate);
-  selection.jobId = campaignId ? requested.jobId : undefined;
+  selection.jobId = campaignId && selectedSimulation?.campaign_id !== null ? requested.jobId : undefined;
   if (requested.jobId && !selection.jobId) invalidate();
 
   const [attempt, evidenceItems, bundle, job, jobEvents, packageVersion, claims, reviews,
@@ -229,7 +246,9 @@ export async function loadGeoWorkspace(
     optional(selection.versionId, (id) => client.listPublications(projectId, campaignId!, id), []),
     optional(
       selection.simulationId,
-      (id) => client.getPromptSimulation(projectId, campaignId!, id),
+      (id) => selectedSimulationCampaignId
+        ? client.getPromptSimulation(projectId, selectedSimulationCampaignId, id)
+        : client.getPromptSimulation(projectId, id),
       null
     )
   ]);
@@ -291,6 +310,19 @@ export async function loadGeoWorkspace(
   };
   if (invalidDeepLink) workspace.canonicalHref = canonicalHref(projectId, selection);
   return workspace;
+}
+
+function mergeSimulationResources(
+  current: Resource<PromptSimulationView[]>,
+  legacy: Resource<PromptSimulationView[]>
+): Resource<PromptSimulationView[]> {
+  const byId = new Map<string, PromptSimulationView>();
+  for (const item of [...current.data, ...legacy.data]) {
+    if (!byId.has(item.id)) byId.set(item.id, item);
+  }
+  const data = [...byId.values()];
+  const failure = current.failure || legacy.failure;
+  return failure ? { data, failure } : emptyResource(data);
 }
 
 function canonicalHref(projectId: string, selection: GeoSelection): string {

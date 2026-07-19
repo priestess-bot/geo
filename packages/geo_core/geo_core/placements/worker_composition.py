@@ -34,7 +34,11 @@ from geo_core.placements.domain import (
     canonical_hash,
     canonical_json_bytes,
 )
+from geo_core.placements.errors import PlacementContractMigrationRequired
 from geo_core.placements.generation_worker import parse_generated_placement, validate_output_schema
+from geo_core.placements.publication_verification_worker import (
+    PublicationVerificationContractError,
+)
 from geo_core.placements.runtime_prompts import generation_system_prompt
 from geo_core.placements.url_verifier import (
     PermanentVerificationError,
@@ -117,6 +121,15 @@ class GenerationHandler:
     def handle(self, lease: WorkerLease) -> Mapping[str, object]:
         try:
             claim = self._repository.load_generation(lease)
+        except PlacementContractMigrationRequired as exc:
+            return self._fail(
+                lease,
+                exc,
+                retry=False,
+                classification="migration_contract",
+                error_code=exc.error_code,
+                operator_action=exc.operator_action,
+            )
         except PlacementRuleViolation as exc:
             return self._fail(lease, exc, retry=False, classification="contract")
         serialized_schema = canonical_json_bytes(claim.output_schema).decode("utf-8")
@@ -202,11 +215,16 @@ class GenerationHandler:
         *,
         retry: bool,
         classification: str,
+        error_code: str | None = None,
+        operator_action: str | None = None,
     ) -> Mapping[str, object]:
+        details = {"message": str(error), "classification": classification}
+        if operator_action is not None:
+            details["operator_action"] = operator_action
         status = self._store.fail(
             lease,
-            error_code=type(error).__name__,
-            details={"message": str(error), "classification": classification},
+            error_code=error_code or type(error).__name__,
+            details=details,
             retry_delay=timedelta(seconds=30) if retry else None,
         )
         return {"status": status, "job_id": str(lease.job_id)}
@@ -226,8 +244,19 @@ class PublicationVerificationHandler:
         self._verifier = verifier
         self._lease_for = lease_for
 
+    def reconcile_terminal(self, *, job_id: UUID, project_id: UUID) -> None:
+        self._repository.reconcile_terminal_verification(job_id=job_id, project_id=project_id)
+
     def handle(self, lease: WorkerLease) -> Mapping[str, object]:
-        snapshot = self._repository.begin_verification(lease)
+        try:
+            snapshot = self._repository.begin_verification(lease)
+        except PublicationVerificationContractError as exc:
+            status = self._repository.persist_verification_error(lease, exc.snapshot, error=exc)
+            return {
+                "status": status,
+                "job_id": str(lease.job_id),
+                "error_code": exc.failure.code,
+            }
         try:
             with LeaseHeartbeat(
                 self._store,
@@ -333,4 +362,8 @@ class PlacementWorkerDispatcher:
                 details={"message": str(exc)},
                 retry_delay=timedelta(seconds=30),
             )
+            if status in {"failed", "dead_lettered"}:
+                reconcile = getattr(handler, "reconcile_terminal", None)
+                if callable(reconcile):
+                    reconcile(job_id=job_id, project_id=project_id)
             return {"status": status, "job_id": str(job_id)}

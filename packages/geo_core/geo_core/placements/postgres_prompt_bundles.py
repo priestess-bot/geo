@@ -15,6 +15,7 @@ from geo_core.placements.domain import (
     canonical_hash,
 )
 from geo_core.placements.execution_eligibility import approved_fact_evidence_is_current
+from geo_core.placements.errors import PlacementContractMigrationRequired
 from geo_core.prompts.domain import TemplateRelease, render_bundle
 
 
@@ -310,9 +311,30 @@ class PostgresPromptBundleMixin:
 
     def enqueue_generation(self, **values: Any) -> JobReference:
         scope: CampaignScope = values["scope"]
+        existing = _optional_row(
+            self._db.execute(
+                """SELECT job.id, job.project_id, job.campaign_id, job.kind, job.status,
+                          spec.prompt_bundle_id
+                   FROM durable_jobs job
+                   JOIN generation_job_specs spec
+                     ON spec.job_id = job.id AND spec.project_id = job.project_id
+                    AND spec.campaign_id = job.campaign_id
+                   WHERE job.project_id = %s AND job.campaign_id = %s
+                     AND job.kind = 'placement.generate' AND job.idempotency_key = %s
+                     AND job.replay_nonce = 0""",
+                (scope.project_id, scope.campaign_id, values["idempotency_key"]),
+            )
+        )
+        if existing is not None:
+            if existing.pop("prompt_bundle_id") != values["prompt_bundle_id"]:
+                raise PlacementConflict(
+                    "generation idempotency key was already used with different input"
+                )
+            return JobReference(**existing)
         bundle = _optional_row(
             self._db.execute(
-                """SELECT bundle.opportunity_id, bundle.evidence_pack_attempt_id
+                """SELECT bundle.opportunity_id, bundle.evidence_pack_attempt_id,
+                          bundle.binding_contract_version
                    FROM prompt_bundles AS bundle
                    JOIN artifact_finalize_outbox AS artifact
                      ON artifact.resource_id = bundle.id AND artifact.project_id = bundle.project_id
@@ -328,7 +350,16 @@ class PostgresPromptBundleMixin:
         )
         if bundle is None:
             raise PlacementConflict(
-                "generation requires a finalized Bundle and generation-ready Opportunity"
+                "generation requires a current finalized Bundle and generation-ready Opportunity"
+            )
+        if bundle["binding_contract_version"] != "opportunity-binding-v2":
+            raise PlacementContractMigrationRequired(
+                "legacy Prompt Bundles cannot create new generation jobs",
+                error_code="legacy_generation_enqueue_rebuild_required",
+                operator_action=(
+                    "Create and finalize a new Opportunity-bound Prompt Bundle, then "
+                    "enqueue a new placement.generate job; keep the legacy job history."
+                ),
             )
         _load_evidence(
             self._db,

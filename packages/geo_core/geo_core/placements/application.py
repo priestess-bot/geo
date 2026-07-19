@@ -560,7 +560,12 @@ class PlacementApplication(
             )
             if bundle is None:
                 raise PlacementRuleViolation("publication requires its frozen Prompt Bundle")
-            parse_frozen_publication_verification_contract(version.content_json, bundle)
+            legacy_bundle = (
+                "prompt_release_binding_id" in bundle
+                and bundle.get("prompt_release_binding_id") is None
+            )
+            if not legacy_bundle:
+                parse_frozen_publication_verification_contract(version.content_json, bundle)
             result = uow.placements.create_publication_request(
                 project_id=project_id,
                 version_id=version_id,

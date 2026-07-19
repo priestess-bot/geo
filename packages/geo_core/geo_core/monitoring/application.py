@@ -29,6 +29,7 @@ from geo_core.monitoring.domain import (
     ProtocolQuery,
     ProtocolStatus,
     QuerySuggestion,
+    SuggestionStatus,
     VerifiedCitationTarget,
     calculate_metric_snapshot,
     protocol_hash,
@@ -250,6 +251,27 @@ class MonitoringApplication(MonitoringReportingApplicationMixin):
             protocol = _protocol(unit_of_work.monitoring, project_id, campaign_id, protocol_id)
             if protocol.status != ProtocolStatus.DRAFT:
                 raise MonitoringRuleViolation("only draft protocol suggestions can be approved")
+            suggestion = next(
+                (
+                    item
+                    for item in unit_of_work.monitoring.list_suggestions(
+                        project_id=project_id,
+                        campaign_id=campaign_id,
+                        protocol_id=protocol_id,
+                    )
+                    if item.id == suggestion_id
+                ),
+                None,
+            )
+            if suggestion is None:
+                raise MonitoringNotFound(
+                    "The query suggestion does not exist in this monitoring protocol."
+                )
+            if suggestion.status == SuggestionStatus.SUGGESTED and not suggestion.query_cluster_key:
+                raise MonitoringRuleViolation(
+                    "legacy query suggestions without a query cluster key cannot be approved; "
+                    "create a new suggestion with an explicit cluster key"
+                )
             _, query = unit_of_work.monitoring.approve_suggestion(
                 project_id=project_id,
                 protocol=protocol,

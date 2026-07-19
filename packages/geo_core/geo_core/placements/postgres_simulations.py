@@ -223,7 +223,9 @@ class PostgresPromptSimulationMixin:
             ),
         )
         simulation = self.get_prompt_simulation(
-            project_id=values["project_id"], simulation_id=simulation_id
+            project_id=values["project_id"],
+            campaign_id=values["campaign_id"],
+            simulation_id=simulation_id,
         )
         if simulation is None:
             raise RuntimeError("prompt simulation disappeared during creation")
@@ -234,7 +236,7 @@ class PostgresPromptSimulationMixin:
         return simulation, job
 
     def list_prompt_simulations(
-        self, *, project_id: UUID, campaign_id: UUID
+        self, *, project_id: UUID, campaign_id: UUID | None = None
     ) -> tuple[PromptSimulation, ...]:
         return tuple(
             self._simulation(record, include_payload=False)
@@ -242,18 +244,28 @@ class PostgresPromptSimulationMixin:
                 self._db.execute(
                     self._select(False)
                     + " ORDER BY simulation.created_at DESC, simulation.id DESC",
-                    (project_id, campaign_id),
+                    (project_id, campaign_id, campaign_id, campaign_id),
                 )
             )
         )
 
     def get_prompt_simulation(
-        self, *, project_id: UUID, simulation_id: UUID
+        self,
+        *,
+        project_id: UUID,
+        simulation_id: UUID,
+        campaign_id: UUID | None = None,
     ) -> PromptSimulation | None:
         record = _one(
             self._db.execute(
                 self._select(True) + " AND simulation.id = %s",
-                (project_id, None, simulation_id),
+                (
+                    project_id,
+                    campaign_id,
+                    campaign_id,
+                    campaign_id,
+                    simulation_id,
+                ),
             )
         )
         return self._simulation(record, include_payload=True) if record else None
@@ -306,8 +318,21 @@ class PostgresPromptSimulationMixin:
                     AND artifact.resource_id = simulation.id
                     AND artifact.project_id = simulation.project_id
                    WHERE simulation.project_id = %s
-                     AND simulation.campaign_id =
-                         COALESCE(%s::uuid, simulation.campaign_id)"""
+                     AND simulation.campaign_id IS NOT DISTINCT FROM %s::uuid
+                     AND (
+                       (%s::uuid IS NULL
+                         AND simulation.binding_contract_version = 'legacy-v1'
+                         AND simulation.campaign_id IS NULL
+                         AND simulation.opportunity_id IS NULL
+                         AND simulation.binding_id IS NULL
+                         AND simulation.binding_version IS NULL)
+                       OR (%s::uuid IS NOT NULL
+                         AND simulation.binding_contract_version = 'opportunity-binding-v2'
+                         AND simulation.campaign_id IS NOT NULL
+                         AND simulation.opportunity_id IS NOT NULL
+                         AND simulation.binding_id IS NOT NULL
+                         AND simulation.binding_version IS NOT NULL)
+                     )"""
 
     @staticmethod
     def _simulation(record: Mapping[str, Any], *, include_payload: bool) -> PromptSimulation:

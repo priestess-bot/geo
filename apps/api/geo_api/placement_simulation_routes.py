@@ -85,9 +85,9 @@ def simulation_router() -> APIRouter:
     )
     def list_simulations(
         project_id: UUID,
-        campaign_id: UUID,
         request: Request,
         principal: PlacementViewer,
+        campaign_id: UUID | None = None,
     ) -> tuple[object, ...]:
         del principal
         return placement_services(request).list_prompt_simulations(
@@ -101,10 +101,10 @@ def simulation_router() -> APIRouter:
     )
     def get_simulation(
         project_id: UUID,
-        campaign_id: UUID,
         simulation_id: UUID,
         request: Request,
         principal: PlacementViewer,
+        campaign_id: UUID | None = None,
     ) -> object:
         del principal
         simulation = placement_services(request).get_prompt_simulation(
@@ -125,10 +125,10 @@ def simulation_router() -> APIRouter:
     )
     def download_artifact(
         project_id: UUID,
-        campaign_id: UUID,
         simulation_id: UUID,
         request: Request,
         principal: PlacementViewer,
+        campaign_id: UUID | None = None,
     ) -> Response:
         del principal
         artifact = placement_services(request).download_prompt_simulation_artifact(
