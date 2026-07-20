@@ -16,6 +16,7 @@ from geo_api.placement_simulation_contracts import (
 )
 from geo_api.problems import ApiProblem
 from geo_api.stable_routes import PROBLEM_RESPONSES
+from geo_core.placements.domain import CampaignContextMismatch
 
 
 def simulation_router() -> APIRouter:
@@ -33,15 +34,23 @@ def simulation_router() -> APIRouter:
     )
     def create_simulation(
         project_id: UUID,
+        campaign_id: UUID,
         payload: PromptSimulationCreate,
         request: Request,
         idempotency_key: IdempotencyHeader,
         principal: PlacementEditor,
     ) -> PromptSimulationCreated:
+        if payload.campaign_id != campaign_id:
+            raise CampaignContextMismatch(
+                "Prompt Simulation body Campaign does not match the requested Campaign"
+            )
         simulation, job = placement_services(request).create_prompt_simulation(
             project_id=project_id,
+            campaign_id=campaign_id,
+            opportunity_id=payload.opportunity_id,
             destination_id=payload.destination_id,
-            template_release_id=payload.template_release_id,
+            prompt_release_binding_id=payload.prompt_release_binding_id,
+            confirmed_release_hash=payload.confirmed_release_hash,
             primary_brand_entity_id=payload.primary_brand_entity_id,
             product_entity_id=payload.product_entity_id,
             authenticity_mode=payload.authenticity_mode,
@@ -54,12 +63,19 @@ def simulation_router() -> APIRouter:
             model_call_budget=payload.model_call_budget,
             requested_by=principal.identity_id,
             idempotency_key=idempotency_key,
+            simulation_purpose=payload.simulation_purpose,
+            question_set_id=payload.question_set_id,
+            confirmed_question_set_hash=payload.confirmed_question_set_hash,
+            question_set_item_id=payload.question_set_item_id,
         )
         return PromptSimulationCreated(
             simulation=PromptSimulationView.model_validate(simulation),
             job_id=job.id,
             status=JobState(job.status),
-            status_url=f"/v1/jobs/{job.id}",
+            status_url=(
+                f"/v1/projects/{project_id}/geo/jobs/{job.id}/events"
+                f"?campaign_id={campaign_id}"
+            ),
         )
 
     @router.get(
@@ -68,10 +84,15 @@ def simulation_router() -> APIRouter:
         operation_id="listPromptSimulations",
     )
     def list_simulations(
-        project_id: UUID, request: Request, principal: PlacementViewer
+        project_id: UUID,
+        request: Request,
+        principal: PlacementViewer,
+        campaign_id: UUID | None = None,
     ) -> tuple[object, ...]:
         del principal
-        return placement_services(request).list_prompt_simulations(project_id=project_id)
+        return placement_services(request).list_prompt_simulations(
+            project_id=project_id, campaign_id=campaign_id
+        )
 
     @router.get(
         "/{simulation_id}",
@@ -83,10 +104,11 @@ def simulation_router() -> APIRouter:
         simulation_id: UUID,
         request: Request,
         principal: PlacementViewer,
+        campaign_id: UUID | None = None,
     ) -> object:
         del principal
         simulation = placement_services(request).get_prompt_simulation(
-            project_id=project_id, simulation_id=simulation_id
+            project_id=project_id, campaign_id=campaign_id, simulation_id=simulation_id
         )
         if simulation is None:
             raise ApiProblem(
@@ -106,10 +128,11 @@ def simulation_router() -> APIRouter:
         simulation_id: UUID,
         request: Request,
         principal: PlacementViewer,
+        campaign_id: UUID | None = None,
     ) -> Response:
         del principal
         artifact = placement_services(request).download_prompt_simulation_artifact(
-            project_id=project_id, simulation_id=simulation_id
+            project_id=project_id, campaign_id=campaign_id, simulation_id=simulation_id
         )
         return Response(
             content=artifact.content,

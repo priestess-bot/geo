@@ -1,0 +1,309 @@
+{
+  "schema_version": "f019-corpus-v1",
+  "documents": [
+    {
+      "document_id": "aurora-product-001",
+      "project_id": "project-aurora",
+      "source_format": "html",
+      "category": "product",
+      "title": "星澜 A1 产品页",
+      "source_uri": "https://fixtures.invalid/aurora/a1",
+      "license_id": "synthetic-benchmark-v1",
+      "valid_from": "2025-01-01",
+      "conflict_group": "aurora-a1-warranty",
+      "content": "导航、促销口号与 Cookie 文案属于噪声，不作为事实。\n【事实】星澜 A1 的额定净水流量为每分钟 2.0 升。\n【事实】星澜 A1 的滤芯建议更换周期为 12 个月。\n【事实】星澜 A1 支持橱下免改柜安装。\n【实体】Brand｜星澜\n【实体】Product｜星澜 A1\n【实体】Feature｜橱下免改柜安装\n【关系】星澜 A1｜belongs_to｜星澜\n【关系】星澜 A1｜has_feature｜橱下免改柜安装",
+      "question_contexts": [
+        {"dimension_key": "aurora-01-discovery", "persona": "新装修家庭", "scenario": "选择厨房净水器", "intent": "出水速度", "funnel": "discovery", "region": "华东", "language": "zh-CN", "brand_scope": "branded", "platform": "通用问答引擎", "subject": "星澜 A1"},
+        {"dimension_key": "aurora-01-comparison", "persona": "小户型业主", "scenario": "比较橱下安装方案", "intent": "安装空间", "funnel": "comparison", "region": "全国", "language": "zh-CN", "brand_scope": "non_branded", "platform": "搜索助手", "subject": "星澜 A1"}
+      ]
+    },
+    {
+      "document_id": "aurora-product-002",
+      "project_id": "project-aurora",
+      "source_format": "pdf",
+      "category": "product",
+      "title": "星澜 A2 规格书",
+      "source_uri": "s3://benchmark/aurora/a2-spec.pdf",
+      "license_id": "synthetic-benchmark-v1",
+      "valid_from": "2026-02-01",
+      "content": "本记录是 PDF 的人工核对文本；页码和装饰表头不参与抽取。\n【事实】星澜 A2 的额定净水流量为每分钟 3.2 升。\n【事实】星澜 A2 的额定功率为 85 瓦。\n【事实】星澜 A2 提供 24 个月整机保修。\n【实体】Brand｜星澜\n【实体】Product｜星澜 A2\n【实体】Specification｜每分钟 3.2 升\n【关系】星澜 A2｜belongs_to｜星澜\n【关系】星澜 A2｜has_specification｜每分钟 3.2 升",
+      "question_contexts": [
+        {"dimension_key": "aurora-02-spec", "persona": "参数敏感型买家", "scenario": "核对大流量规格", "intent": "流量参数", "funnel": "evaluation", "region": "华南", "language": "zh-CN", "brand_scope": "branded", "platform": "搜索助手", "subject": "星澜 A2"},
+        {"dimension_key": "aurora-02-purchase", "persona": "三代同堂家庭", "scenario": "准备购买净水器", "intent": "保修期限", "funnel": "purchase", "region": "全国", "language": "zh-CN", "brand_scope": "branded", "platform": "电商问答", "subject": "星澜 A2"}
+      ]
+    },
+    {
+      "document_id": "aurora-product-003",
+      "project_id": "project-aurora",
+      "source_format": "docx",
+      "category": "product",
+      "title": "星澜 Air S 销售手册",
+      "source_uri": "s3://benchmark/aurora/air-s.docx",
+      "license_id": "synthetic-benchmark-v1",
+      "valid_from": "2026-03-15",
+      "content": "销售形容词“颠覆性”和重复页脚是噪声。\n【事实】星澜 Air S 可显示 PM2.5 实时数值。\n【事实】星澜 Air S 的适用面积为 35 至 55 平方米。\n【事实】星澜 Air S 支持甲醛趋势提醒。\n【实体】Brand｜星澜\n【实体】Product｜星澜 Air S\n【实体】Feature｜甲醛趋势提醒\n【关系】星澜 Air S｜belongs_to｜星澜\n【关系】星澜 Air S｜has_feature｜甲醛趋势提醒",
+      "question_contexts": [
+        {"dimension_key": "aurora-03-health", "persona": "有儿童的家庭", "scenario": "监测新房空气", "intent": "甲醛提醒", "funnel": "discovery", "region": "华北", "language": "zh-CN", "brand_scope": "non_branded", "platform": "通用问答引擎", "subject": "星澜 Air S"},
+        {"dimension_key": "aurora-03-size", "persona": "大客厅住户", "scenario": "匹配净化面积", "intent": "适用面积", "funnel": "evaluation", "region": "全国", "language": "zh-CN", "brand_scope": "branded", "platform": "搜索助手", "subject": "星澜 Air S"}
+      ]
+    },
+    {
+      "document_id": "aurora-competitor-004",
+      "project_id": "project-aurora",
+      "source_format": "text",
+      "category": "competitor",
+      "title": "清泉 Q5 竞品记录",
+      "source_uri": "fixture://aurora/qingquan-q5.txt",
+      "license_id": "synthetic-benchmark-v1",
+      "valid_from": "2026-01-20",
+      "content": "抓取页面含无法核验的用户昵称和广告，均作为噪声忽略。\n【事实】清泉 Q5 的标称净水流量为每分钟 2.1 升。\n【事实】清泉 Q5 的机身宽度为 142 毫米。\n【事实】清泉 Q5 不支持手机应用联网。\n【实体】Brand｜清泉\n【实体】Product｜清泉 Q5\n【实体】Competitor｜星澜 A1\n【关系】清泉 Q5｜belongs_to｜清泉\n【关系】清泉 Q5｜competes_with｜星澜 A1",
+      "question_contexts": [
+        {"dimension_key": "aurora-04-competitor", "persona": "竞品比较用户", "scenario": "比较两款净水器", "intent": "联网能力", "funnel": "comparison", "region": "华东", "language": "zh-CN", "brand_scope": "competitor", "platform": "搜索助手", "subject": "清泉 Q5"},
+        {"dimension_key": "aurora-04-space", "persona": "窄柜用户", "scenario": "核对机身尺寸", "intent": "机身宽度", "funnel": "evaluation", "region": "全国", "language": "zh-CN", "brand_scope": "competitor", "platform": "电商问答", "subject": "清泉 Q5"}
+      ]
+    },
+    {
+      "document_id": "aurora-competitor-005",
+      "project_id": "project-aurora",
+      "source_format": "html",
+      "category": "competitor",
+      "title": "净界 Pro 公开产品页",
+      "source_uri": "https://fixtures.invalid/aurora/jingjie-pro",
+      "license_id": "synthetic-benchmark-v1",
+      "valid_from": "2026-04-01",
+      "content": "价格弹窗会随地区变化，本页不把弹窗内容记为事实。\n【事实】净界 Pro 配备紫外抑菌模块。\n【事实】净界 Pro 的储水桶容量为 4 升。\n【事实】净界 Pro 的滤芯建议更换周期为 10 个月。\n【实体】Brand｜净界\n【实体】Product｜净界 Pro\n【实体】Feature｜紫外抑菌模块\n【关系】净界 Pro｜belongs_to｜净界\n【关系】净界 Pro｜has_feature｜紫外抑菌模块",
+      "question_contexts": [
+        {"dimension_key": "aurora-05-sterilize", "persona": "关注卫生的买家", "scenario": "比较抑菌功能", "intent": "紫外抑菌", "funnel": "comparison", "region": "西南", "language": "zh-CN", "brand_scope": "competitor", "platform": "通用问答引擎", "subject": "净界 Pro"},
+        {"dimension_key": "aurora-05-maintenance", "persona": "维护成本敏感用户", "scenario": "估算耗材频率", "intent": "滤芯周期", "funnel": "evaluation", "region": "全国", "language": "zh-CN", "brand_scope": "non_branded", "platform": "搜索助手", "subject": "净界 Pro"}
+      ]
+    },
+    {
+      "document_id": "aurora-market-006",
+      "project_id": "project-aurora",
+      "source_format": "pdf",
+      "category": "market",
+      "title": "华东净水市场简报",
+      "source_uri": "s3://benchmark/aurora/east-market.pdf",
+      "license_id": "synthetic-benchmark-v1",
+      "valid_from": "2026-01-01",
+      "content": "样本来自合成调研，不代表真实市场规模。\n【事实】华东样本中 62% 的受访者优先关注滤芯成本。\n【事实】华东样本中 48% 的受访者会先在问答引擎比较品牌。\n【事实】华东样本覆盖上海、杭州和南京三个城市。\n【实体】Market｜华东净水市场\n【实体】Persona｜城市家庭买家\n【实体】Channel｜通用问答引擎\n【关系】城市家庭买家｜belongs_to_market｜华东净水市场\n【关系】城市家庭买家｜uses_channel｜通用问答引擎",
+      "question_contexts": [
+        {"dimension_key": "aurora-06-market", "persona": "城市家庭买家", "scenario": "调研购买决策", "intent": "滤芯成本", "funnel": "discovery", "region": "华东", "language": "zh-CN", "brand_scope": "non_branded", "platform": "通用问答引擎", "subject": "华东净水市场"},
+        {"dimension_key": "aurora-06-channel", "persona": "品牌研究员", "scenario": "选择触达渠道", "intent": "渠道偏好", "funnel": "awareness", "region": "华东", "language": "zh-CN", "brand_scope": "non_branded", "platform": "搜索助手", "subject": "城市家庭买家"}
+      ]
+    },
+    {
+      "document_id": "aurora-product-007",
+      "project_id": "project-aurora",
+      "source_format": "docx",
+      "category": "product",
+      "title": "星澜 C1 滤芯说明",
+      "source_uri": "s3://benchmark/aurora/c1-filter.docx",
+      "license_id": "synthetic-benchmark-v1",
+      "valid_from": "2026-02-10",
+      "content": "说明书中的安全警告保留展示，但不转为产品效果事实。\n【事实】星澜 C1 是星澜 A1 的兼容滤芯。\n【事实】星澜 C1 的建议更换周期为 12 个月。\n【事实】星澜 C1 的包装内含一支复合滤芯。\n【实体】Product｜星澜 C1\n【实体】Product｜星澜 A1\n【实体】Specification｜12 个月更换周期\n【关系】星澜 C1｜compatible_with｜星澜 A1\n【关系】星澜 C1｜has_specification｜12 个月更换周期",
+      "question_contexts": [
+        {"dimension_key": "aurora-07-compatibility", "persona": "星澜 A1 用户", "scenario": "购买替换滤芯", "intent": "兼容型号", "funnel": "retention", "region": "全国", "language": "zh-CN", "brand_scope": "branded", "platform": "客服问答", "subject": "星澜 C1"},
+        {"dimension_key": "aurora-07-cycle", "persona": "耗材采购者", "scenario": "制定更换计划", "intent": "更换周期", "funnel": "retention", "region": "华中", "language": "zh-CN", "brand_scope": "branded", "platform": "搜索助手", "subject": "星澜 C1"}
+      ]
+    },
+    {
+      "document_id": "aurora-market-008",
+      "project_id": "project-aurora",
+      "source_format": "text",
+      "category": "market",
+      "title": "新一线租房人群访谈摘要",
+      "source_uri": "fixture://aurora/renter-interviews.txt",
+      "license_id": "synthetic-benchmark-v1",
+      "valid_from": "2026-03-01",
+      "content": "访谈姓名均为虚构，情绪化表述不作为可核验事实。\n【事实】租房样本最常提到的限制是不能改动橱柜。\n【事实】租房样本中 7 人偏好可搬迁设备。\n【事实】本轮租房访谈共包含 12 名参与者。\n【实体】Market｜新一线租房市场\n【实体】Persona｜租房青年\n【实体】PainPoint｜不能改动橱柜\n【关系】租房青年｜belongs_to_market｜新一线租房市场\n【关系】租房青年｜has_pain_point｜不能改动橱柜",
+      "question_contexts": [
+        {"dimension_key": "aurora-08-renter", "persona": "租房青年", "scenario": "选择可搬迁净水设备", "intent": "免改柜安装", "funnel": "discovery", "region": "新一线城市", "language": "zh-CN", "brand_scope": "non_branded", "platform": "社交问答", "subject": "租房净水方案"},
+        {"dimension_key": "aurora-08-pain", "persona": "租房青年", "scenario": "向房东说明安装方式", "intent": "橱柜改动限制", "funnel": "evaluation", "region": "成都", "language": "zh-CN", "brand_scope": "non_branded", "platform": "搜索助手", "subject": "免改柜净水器"}
+      ]
+    },
+    {
+      "document_id": "aurora-product-009",
+      "project_id": "project-aurora",
+      "source_format": "html",
+      "category": "product",
+      "title": "星澜 App 帮助中心",
+      "source_uri": "https://fixtures.invalid/aurora/app-help",
+      "license_id": "synthetic-benchmark-v1",
+      "valid_from": "2026-05-01",
+      "content": "帮助中心的推荐文章列表属于导航噪声。\n【事实】星澜 App 可显示滤芯剩余寿命。\n【事实】星澜 App 支持星澜 A1 和星澜 A2。\n【事实】星澜 App 的设备告警可通过消息中心查看。\n【实体】Product｜星澜 App\n【实体】Feature｜滤芯寿命提醒\n【实体】Product｜星澜 A2\n【关系】星澜 App｜has_feature｜滤芯寿命提醒\n【关系】星澜 App｜compatible_with｜星澜 A2",
+      "question_contexts": [
+        {"dimension_key": "aurora-09-app", "persona": "智能家居用户", "scenario": "远程查看净水器", "intent": "滤芯寿命提醒", "funnel": "retention", "region": "全国", "language": "zh-CN", "brand_scope": "branded", "platform": "客服问答", "subject": "星澜 App"},
+        {"dimension_key": "aurora-09-alert", "persona": "经常出差的用户", "scenario": "查看设备告警", "intent": "消息中心", "funnel": "support", "region": "华东", "language": "zh-CN", "brand_scope": "branded", "platform": "搜索助手", "subject": "星澜 App"}
+      ]
+    },
+    {
+      "document_id": "aurora-competitor-010",
+      "project_id": "project-aurora",
+      "source_format": "pdf",
+      "category": "competitor",
+      "title": "蓝川 L2 对比页归档",
+      "source_uri": "s3://benchmark/aurora/lanchuan-l2.pdf",
+      "license_id": "synthetic-benchmark-v1",
+      "valid_from": "2024-11-01",
+      "conflict_group": "aurora-a1-warranty",
+      "content": "该归档较旧，且“全网第一”没有证据，属于噪声。\n【事实】蓝川 L2 的额定净水流量为每分钟 2.8 升。\n【事实】蓝川 L2 的归档页声称星澜 A1 保修 24 个月。\n【事实】蓝川 L2 支持台上独立安装。\n【实体】Brand｜蓝川\n【实体】Product｜蓝川 L2\n【实体】Competitor｜星澜 A2\n【关系】蓝川 L2｜belongs_to｜蓝川\n【关系】蓝川 L2｜competes_with｜星澜 A2",
+      "question_contexts": [
+        {"dimension_key": "aurora-10-timeline", "persona": "事实核验员", "scenario": "处理冲突保修信息", "intent": "来源时效", "funnel": "evaluation", "region": "全国", "language": "zh-CN", "brand_scope": "competitor", "platform": "内部测试", "subject": "蓝川 L2 归档"},
+        {"dimension_key": "aurora-10-install", "persona": "不便打孔的用户", "scenario": "选择台上设备", "intent": "独立安装", "funnel": "comparison", "region": "华北", "language": "zh-CN", "brand_scope": "competitor", "platform": "通用问答引擎", "subject": "蓝川 L2"}
+      ]
+    },
+    {
+      "document_id": "boreal-product-001",
+      "project_id": "project-boreal",
+      "source_format": "html",
+      "category": "product",
+      "title": "北辰 Hub 产品页",
+      "source_uri": "https://fixtures.invalid/boreal/hub",
+      "license_id": "synthetic-benchmark-v1",
+      "valid_from": "2025-02-01",
+      "conflict_group": "boreal-hub-price",
+      "content": "动画标题和客户徽标是展示噪声。\n【事实】北辰 Hub 支持最多 200 名项目成员。\n【事实】北辰 Hub 专业版归档价格为每用户每月 79 元。\n【事实】北辰 Hub 支持项目级访客权限。\n【实体】Brand｜北辰\n【实体】Product｜北辰 Hub\n【实体】Feature｜项目级访客权限\n【关系】北辰 Hub｜belongs_to｜北辰\n【关系】北辰 Hub｜has_feature｜项目级访客权限",
+      "question_contexts": [
+        {"dimension_key": "boreal-01-scale", "persona": "研发负责人", "scenario": "为大型团队选协作平台", "intent": "成员上限", "funnel": "evaluation", "region": "华南", "language": "zh-CN", "brand_scope": "branded", "platform": "通用问答引擎", "subject": "北辰 Hub"},
+        {"dimension_key": "boreal-01-guest", "persona": "外包项目经理", "scenario": "邀请外部访客", "intent": "访客权限", "funnel": "comparison", "region": "全国", "language": "zh-CN", "brand_scope": "non_branded", "platform": "搜索助手", "subject": "北辰 Hub"}
+      ]
+    },
+    {
+      "document_id": "boreal-product-002",
+      "project_id": "project-boreal",
+      "source_format": "pdf",
+      "category": "product",
+      "title": "北辰 Meet 安全规格",
+      "source_uri": "s3://benchmark/boreal/meet-security.pdf",
+      "license_id": "synthetic-benchmark-v1",
+      "valid_from": "2026-01-10",
+      "content": "PDF 水印和页脚编号不属于安全能力。\n【事实】北辰 Meet 单场会议最多支持 500 人。\n【事实】北辰 Meet 支持等候室。\n【事实】北辰 Meet 可由主持人锁定会议。\n【实体】Brand｜北辰\n【实体】Product｜北辰 Meet\n【实体】Feature｜会议等候室\n【关系】北辰 Meet｜belongs_to｜北辰\n【关系】北辰 Meet｜has_feature｜会议等候室",
+      "question_contexts": [
+        {"dimension_key": "boreal-02-meeting", "persona": "培训组织者", "scenario": "举办大型线上培训", "intent": "参会人数", "funnel": "evaluation", "region": "全国", "language": "zh-CN", "brand_scope": "branded", "platform": "搜索助手", "subject": "北辰 Meet"},
+        {"dimension_key": "boreal-02-security", "persona": "信息安全经理", "scenario": "控制外部会议进入", "intent": "等候室与锁定", "funnel": "comparison", "region": "华东", "language": "zh-CN", "brand_scope": "non_branded", "platform": "企业问答", "subject": "北辰 Meet"}
+      ]
+    },
+    {
+      "document_id": "boreal-product-003",
+      "project_id": "project-boreal",
+      "source_format": "docx",
+      "category": "product",
+      "title": "北辰 AI Notes 功能说明",
+      "source_uri": "s3://benchmark/boreal/ai-notes.docx",
+      "license_id": "synthetic-benchmark-v1",
+      "valid_from": "2026-03-01",
+      "content": "示例会议内容为虚构文本，不应当成为产品事实。\n【事实】北辰 AI Notes 支持中文会议摘要。\n【事实】北辰 AI Notes 可提取待办事项。\n【事实】北辰 AI Notes 的摘要需要用户确认后共享。\n【实体】Brand｜北辰\n【实体】Product｜北辰 AI Notes\n【实体】Feature｜待办事项提取\n【关系】北辰 AI Notes｜belongs_to｜北辰\n【关系】北辰 AI Notes｜has_feature｜待办事项提取",
+      "question_contexts": [
+        {"dimension_key": "boreal-03-summary", "persona": "产品经理", "scenario": "整理中文评审会议", "intent": "会议摘要", "funnel": "discovery", "region": "大中华区", "language": "zh-CN", "brand_scope": "branded", "platform": "企业问答", "subject": "北辰 AI Notes"},
+        {"dimension_key": "boreal-03-tasks", "persona": "敏捷教练", "scenario": "追踪会后行动项", "intent": "待办提取", "funnel": "evaluation", "region": "全国", "language": "zh-CN", "brand_scope": "branded", "platform": "搜索助手", "subject": "北辰 AI Notes"}
+      ]
+    },
+    {
+      "document_id": "boreal-competitor-004",
+      "project_id": "project-boreal",
+      "source_format": "text",
+      "category": "competitor",
+      "title": "协作云 Pro 竞品卡",
+      "source_uri": "fixture://boreal/xiezuoyun-pro.txt",
+      "license_id": "synthetic-benchmark-v1",
+      "valid_from": "2026-02-20",
+      "content": "社区评论未验证，已从事实段排除。\n【事实】协作云 Pro 支持看板和甘特图。\n【事实】协作云 Pro 的公开套餐包含 100 GB 存储。\n【事实】协作云 Pro 支持企业微信登录。\n【实体】Brand｜协作云\n【实体】Product｜协作云 Pro\n【实体】Competitor｜北辰 Hub\n【关系】协作云 Pro｜belongs_to｜协作云\n【关系】协作云 Pro｜competes_with｜北辰 Hub",
+      "question_contexts": [
+        {"dimension_key": "boreal-04-competitor", "persona": "数字化采购经理", "scenario": "比较协作平台", "intent": "项目视图", "funnel": "comparison", "region": "华东", "language": "zh-CN", "brand_scope": "competitor", "platform": "通用问答引擎", "subject": "协作云 Pro"},
+        {"dimension_key": "boreal-04-login", "persona": "IT 管理员", "scenario": "接入企业身份", "intent": "企业微信登录", "funnel": "evaluation", "region": "全国", "language": "zh-CN", "brand_scope": "competitor", "platform": "企业问答", "subject": "协作云 Pro"}
+      ]
+    },
+    {
+      "document_id": "boreal-competitor-005",
+      "project_id": "project-boreal",
+      "source_format": "html",
+      "category": "competitor",
+      "title": "联会 S 会议页",
+      "source_uri": "https://fixtures.invalid/boreal/lianhui-s",
+      "license_id": "synthetic-benchmark-v1",
+      "valid_from": "2026-04-15",
+      "content": "抽奖组件和活动倒计时属于页面噪声。\n【事实】联会 S 单场会议最多支持 300 人。\n【事实】联会 S 支持会议实时字幕。\n【事实】联会 S 的录制文件默认保存 30 天。\n【实体】Brand｜联会\n【实体】Product｜联会 S\n【实体】Feature｜会议实时字幕\n【关系】联会 S｜belongs_to｜联会\n【关系】联会 S｜has_feature｜会议实时字幕",
+      "question_contexts": [
+        {"dimension_key": "boreal-05-caption", "persona": "跨地域团队负责人", "scenario": "召开远程会议", "intent": "实时字幕", "funnel": "comparison", "region": "亚太", "language": "zh-CN", "brand_scope": "competitor", "platform": "搜索助手", "subject": "联会 S"},
+        {"dimension_key": "boreal-05-recording", "persona": "合规档案管理员", "scenario": "保存会议录像", "intent": "默认保留期", "funnel": "evaluation", "region": "全国", "language": "zh-CN", "brand_scope": "competitor", "platform": "企业问答", "subject": "联会 S"}
+      ]
+    },
+    {
+      "document_id": "boreal-market-006",
+      "project_id": "project-boreal",
+      "source_format": "pdf",
+      "category": "market",
+      "title": "华南企业协作市场简报",
+      "source_uri": "s3://benchmark/boreal/south-market.pdf",
+      "license_id": "synthetic-benchmark-v1",
+      "valid_from": "2026-01-01",
+      "content": "所有比例均来自合成样本，不能外推为真实市场统计。\n【事实】华南样本中 71% 的企业关注单点登录。\n【事实】华南样本中 54% 的企业要求项目数据导出。\n【事实】华南样本覆盖深圳、广州和厦门三个城市。\n【实体】Market｜华南企业协作市场\n【实体】Persona｜企业 IT 买家\n【实体】PainPoint｜身份系统集成\n【关系】企业 IT 买家｜belongs_to_market｜华南企业协作市场\n【关系】企业 IT 买家｜has_pain_point｜身份系统集成",
+      "question_contexts": [
+        {"dimension_key": "boreal-06-sso", "persona": "企业 IT 买家", "scenario": "制定协作平台清单", "intent": "单点登录", "funnel": "discovery", "region": "华南", "language": "zh-CN", "brand_scope": "non_branded", "platform": "通用问答引擎", "subject": "华南企业协作市场"},
+        {"dimension_key": "boreal-06-export", "persona": "数据治理负责人", "scenario": "评估平台可迁移性", "intent": "项目数据导出", "funnel": "evaluation", "region": "华南", "language": "zh-CN", "brand_scope": "non_branded", "platform": "企业问答", "subject": "企业协作平台"}
+      ]
+    },
+    {
+      "document_id": "boreal-product-007",
+      "project_id": "project-boreal",
+      "source_format": "docx",
+      "category": "product",
+      "title": "北辰 Calendar 管理指南",
+      "source_uri": "s3://benchmark/boreal/calendar.docx",
+      "license_id": "synthetic-benchmark-v1",
+      "valid_from": "2026-02-15",
+      "content": "文档示例中的员工姓名和会议主题是噪声。\n【事实】北辰 Calendar 支持双向同步企业日历。\n【事实】北辰 Calendar 可显示参会人的忙闲状态。\n【事实】北辰 Calendar 支持为外部来宾发送邀请。\n【实体】Product｜北辰 Calendar\n【实体】Feature｜企业日历双向同步\n【实体】UseCase｜跨组织会议安排\n【关系】北辰 Calendar｜has_feature｜企业日历双向同步\n【关系】北辰 Calendar｜supports_use_case｜跨组织会议安排",
+      "question_contexts": [
+        {"dimension_key": "boreal-07-calendar", "persona": "行政助理", "scenario": "协调多人日程", "intent": "忙闲状态", "funnel": "evaluation", "region": "全国", "language": "zh-CN", "brand_scope": "branded", "platform": "客服问答", "subject": "北辰 Calendar"},
+        {"dimension_key": "boreal-07-external", "persona": "客户成功经理", "scenario": "安排跨组织会议", "intent": "外部邀请", "funnel": "retention", "region": "华东", "language": "zh-CN", "brand_scope": "branded", "platform": "搜索助手", "subject": "北辰 Calendar"}
+      ]
+    },
+    {
+      "document_id": "boreal-market-008",
+      "project_id": "project-boreal",
+      "source_format": "text",
+      "category": "market",
+      "title": "远程研发团队访谈",
+      "source_uri": "fixture://boreal/remote-rnd.txt",
+      "license_id": "synthetic-benchmark-v1",
+      "valid_from": "2026-03-10",
+      "content": "受访者代号和主观情绪已排除，不作为事实。\n【事实】远程研发样本最常提到的痛点是会议行动项丢失。\n【事实】远程研发样本中 9 人使用异步文档评审。\n【事实】本轮远程研发访谈共包含 14 名参与者。\n【实体】Market｜远程研发协作市场\n【实体】Persona｜远程研发团队\n【实体】PainPoint｜会议行动项丢失\n【关系】远程研发团队｜belongs_to_market｜远程研发协作市场\n【关系】远程研发团队｜has_pain_point｜会议行动项丢失",
+      "question_contexts": [
+        {"dimension_key": "boreal-08-action", "persona": "远程研发团队", "scenario": "减少会后遗漏", "intent": "行动项追踪", "funnel": "discovery", "region": "全国", "language": "zh-CN", "brand_scope": "non_branded", "platform": "社交问答", "subject": "远程协作工具"},
+        {"dimension_key": "boreal-08-async", "persona": "技术负责人", "scenario": "推行异步评审", "intent": "文档评审", "funnel": "evaluation", "region": "华北", "language": "zh-CN", "brand_scope": "non_branded", "platform": "通用问答引擎", "subject": "异步协作平台"}
+      ]
+    },
+    {
+      "document_id": "boreal-product-009",
+      "project_id": "project-boreal",
+      "source_format": "html",
+      "category": "product",
+      "title": "北辰 Mobile 帮助页",
+      "source_uri": "https://fixtures.invalid/boreal/mobile-help",
+      "license_id": "synthetic-benchmark-v1",
+      "valid_from": "2026-05-10",
+      "content": "应用商店评分和评论不进入事实候选。\n【事实】北辰 Mobile 支持离线查看最近打开的文档。\n【事实】北辰 Mobile 支持指纹解锁。\n【事实】北辰 Mobile 可接收项目提及通知。\n【实体】Product｜北辰 Mobile\n【实体】Feature｜离线文档查看\n【实体】Channel｜移动应用\n【关系】北辰 Mobile｜has_feature｜离线文档查看\n【关系】北辰 Mobile｜uses_channel｜移动应用",
+      "question_contexts": [
+        {"dimension_key": "boreal-09-mobile", "persona": "经常出差的经理", "scenario": "无网络查看项目资料", "intent": "离线文档", "funnel": "retention", "region": "全国", "language": "zh-CN", "brand_scope": "branded", "platform": "移动助手", "subject": "北辰 Mobile"},
+        {"dimension_key": "boreal-09-security", "persona": "移动办公用户", "scenario": "保护手机端资料", "intent": "指纹解锁", "funnel": "support", "region": "华南", "language": "zh-CN", "brand_scope": "branded", "platform": "客服问答", "subject": "北辰 Mobile"}
+      ]
+    },
+    {
+      "document_id": "boreal-competitor-010",
+      "project_id": "project-boreal",
+      "source_format": "pdf",
+      "category": "competitor",
+      "title": "云桥 C2 价格归档",
+      "source_uri": "s3://benchmark/boreal/yunqiao-c2.pdf",
+      "license_id": "synthetic-benchmark-v1",
+      "valid_from": "2026-06-01",
+      "conflict_group": "boreal-hub-price",
+      "content": "“永久最低价”缺少依据，作为营销噪声。\n【事实】云桥 C2 标准版价格为每用户每月 59 元。\n【事实】云桥 C2 的对比页记录北辰 Hub 专业版价格为每用户每月 69 元。\n【事实】云桥 C2 支持 50 个外部访客席位。\n【实体】Brand｜云桥\n【实体】Product｜云桥 C2\n【实体】Competitor｜北辰 Hub\n【关系】云桥 C2｜belongs_to｜云桥\n【关系】云桥 C2｜competes_with｜北辰 Hub",
+      "question_contexts": [
+        {"dimension_key": "boreal-10-price", "persona": "采购分析师", "scenario": "处理冲突价格", "intent": "价格时效", "funnel": "comparison", "region": "全国", "language": "zh-CN", "brand_scope": "competitor", "platform": "内部测试", "subject": "云桥 C2 归档"},
+        {"dimension_key": "boreal-10-guests", "persona": "生态合作经理", "scenario": "邀请合作伙伴", "intent": "外部访客席位", "funnel": "evaluation", "region": "华东", "language": "zh-CN", "brand_scope": "competitor", "platform": "企业问答", "subject": "云桥 C2"}
+      ]
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 import { actorHeaders, apiBase } from "../../../../runtime";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ project_id: string; simulation_id: string }> }
 ) {
   const { project_id: projectId, simulation_id: simulationId } = await params;
@@ -9,6 +9,8 @@ export async function GET(
     `/v1/projects/${encodeURIComponent(projectId)}/geo/prompt-simulations/${encodeURIComponent(simulationId)}/artifact`,
     apiBase()
   );
+  const campaignId = new URL(request.url).searchParams.get("campaign_id");
+  if (campaignId) url.searchParams.set("campaign_id", campaignId);
   const upstream = await fetch(url, { headers: await actorHeaders(), cache: "no-store" });
   if (!upstream.ok) {
     const detail = await upstream.text();

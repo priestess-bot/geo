@@ -53,21 +53,17 @@ def test_alembic_external_sql_checksum_ledger_fails_closed_and_tracks_down_up() 
             configuration = Config(ROOT / "alembic.ini")
             configuration.set_main_option("script_location", str(script_root))
             configuration.attributes["geo_database_url_override"] = sqlalchemy_url
+            script = ScriptDirectory.from_config(configuration)
+            expected_revisions = [
+                str(revision.revision) for revision in reversed(list(script.walk_revisions()))
+            ]
 
             command.upgrade(configuration, "head")
             with psycopg.connect(database_url) as connection:
                 revisions = connection.execute(
                     "SELECT revision FROM alembic_sql_checksum_ledger ORDER BY revision"
                 ).fetchall()
-            assert [row[0] for row in revisions] == [
-                "0001_geo_baseline",
-                "0002_engineering_governance",
-                "0003_access_invitations",
-                "0004_monitoring_observations",
-                "0005_claim_inventory_guard",
-                "0006_monitoring_lineage",
-                "0007_placement_operations",
-            ]
+            assert [row[0] for row in revisions] == expected_revisions
 
             changed = script_root / "sql/0001_geo_baseline.sql"
             original = changed.read_bytes()
@@ -81,21 +77,16 @@ def test_alembic_external_sql_checksum_ledger_fails_closed_and_tracks_down_up() 
                 revisions = connection.execute(
                     "SELECT revision FROM alembic_sql_checksum_ledger ORDER BY revision"
                 ).fetchall()
-            assert [row[0] for row in revisions] == [
-                "0001_geo_baseline",
-                "0002_engineering_governance",
-                "0003_access_invitations",
-                "0004_monitoring_observations",
-                "0005_claim_inventory_guard",
+            downgrade_revision = "0005_claim_inventory_guard"
+            assert [row[0] for row in revisions] == expected_revisions[
+                : expected_revisions.index(downgrade_revision) + 1
             ]
             command.upgrade(configuration, "head")
-            assert ScriptDirectory.from_config(configuration).get_heads() == [
-                "0007_placement_operations"
-            ]
+            assert script.get_heads() == [expected_revisions[-1]]
             with psycopg.connect(database_url) as connection:
                 assert connection.execute(
                     "SELECT count(*) FROM alembic_sql_checksum_ledger"
-                ).fetchone()[0] == 7
+                ).fetchone()[0] == len(expected_revisions)
     finally:
         with psycopg.connect(make_conninfo(**maintenance_parameters), autocommit=True) as admin:
             admin.execute(

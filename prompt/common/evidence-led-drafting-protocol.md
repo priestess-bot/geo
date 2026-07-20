@@ -35,3 +35,8 @@ content_json.body, and make rendered_text exactly `title + "\n\n" + body`. For a
 without a title, make rendered_text exactly equal to content_json.body. The claims array
 must cover every factual and experience claim in the title and body; it must not include
 claims that do not appear in the final copy.
+
+content_json must also contain top-level required_disclosures and expected_links string arrays.
+Copy every disclosure required by the frozen Destination policy into required_disclosures and
+include that wording in rendered_text. Put only links that the published page must contain in
+expected_links. Never hide either contract in nested metadata or infer it from arbitrary fields.

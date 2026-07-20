@@ -9,20 +9,20 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 from geo_core.placements.domain import (
     BriefVersion,
     Campaign,
-    Claim,
     Destination,
     EvidencePackAttempt,
     JobReference,
     MonitoringQuery,
     Opportunity,
-    PackageVersion,
     PlacementConflict,
-    WorkflowStatus,
-    canonical_hash,
 )
 from geo_core.placements.postgres_prompts import PostgresPromptRepositoryMixin
+from geo_core.placements.postgres_prompt_lifecycle import PostgresPromptLifecycleMixin
+from geo_core.placements.postgres_prompt_bundles import PostgresPromptBundleMixin
+from geo_core.placements.postgres_campaign_context import PostgresCampaignContextMixin
 from geo_core.placements.postgres_policy import PostgresDestinationPolicyMixin
 from geo_core.placements.postgres_job_control import PostgresJobControlMixin
+from geo_core.placements.postgres_job_enqueue import PostgresJobEnqueueMixin
 from geo_core.placements.postgres_package_versions import PostgresPackageVersionMixin
 from geo_core.placements.postgres_measurement_tasks import PostgresMeasurementTaskMixin
 from geo_core.placements.postgres_review_publication import PostgresReviewPublicationMixin
@@ -82,28 +82,17 @@ def _brief(value: Mapping[str, Any]) -> BriefVersion:
         goals=value["goals"],
         constraints=value["constraints"],
         content_hash=value["content_hash"],
-    )
-
-
-def _package(value: Mapping[str, Any]) -> PackageVersion:
-    return PackageVersion(
-        id=value["id"],
-        project_id=value["project_id"],
-        package_id=value["package_id"],
-        prompt_bundle_id=value["prompt_bundle_id"],
-        version_number=value["version_number"],
-        base_version_id=value.get("base_version_id"),
-        workflow_status=WorkflowStatus(value["workflow_status"]),
-        content_json=value["content_json"],
-        rendered_text=value["rendered_text"],
-        content_hash=value["content_hash"],
-        edited_by=value.get("edited_by"),
-        edit_reason=value.get("edit_reason"),
-        generated_by_job_id=value.get("generated_by_job_id"),
+        campaign_id=value.get("campaign_id"),
+        opportunity_id=value.get("opportunity_id"),
+        destination_id=value.get("destination_id"),
     )
 
 
 class PsycopgPlacementRepository(
+    PostgresCampaignContextMixin,
+    PostgresJobEnqueueMixin,
+    PostgresPromptLifecycleMixin,
+    PostgresPromptBundleMixin,
     PostgresMeasurementTaskMixin,
     PostgresPromptSimulationMixin,
     PostgresPromptRepositoryMixin,
@@ -253,6 +242,20 @@ class PsycopgPlacementRepository(
                     ),
                 )
             )
+            self._db.execute(
+                """INSERT INTO opportunity_prompt_release_bindings
+                     (project_id, campaign_id, opportunity_id, destination_id,
+                      binding_version, binding_state, changed_by, change_reason)
+                   VALUES (%s, %s, %s, %s, 1, 'unbound', %s,
+                           'Opportunity created explicitly unbound')""",
+                (
+                    values["project_id"],
+                    values["campaign_id"],
+                    record["id"],
+                    destination_id,
+                    values["actor_id"],
+                ),
+            )
             result.append(_opportunity(record))
         return tuple(result)
 
@@ -271,7 +274,7 @@ class PsycopgPlacementRepository(
         project_id, opportunity_id = values["project_id"], values["opportunity_id"]
         opportunity = _row(
             self._db.execute(
-                """SELECT status FROM placement_opportunities
+                """SELECT status, campaign_id, destination_id FROM placement_opportunities
                    WHERE id = %s AND project_id = %s FOR UPDATE""",
                 (opportunity_id, project_id),
             )
@@ -297,9 +300,16 @@ class PsycopgPlacementRepository(
             brief_id = _row(
                 self._db.execute(
                     """INSERT INTO placement_briefs
-                         (project_id, opportunity_id, primary_brand_entity_id)
-                       VALUES (%s, %s, %s) RETURNING id""",
-                    (project_id, opportunity_id, values["primary_brand_entity_id"]),
+                         (project_id, campaign_id, opportunity_id, destination_id,
+                          primary_brand_entity_id)
+                       VALUES (%s, %s, %s, %s, %s) RETURNING id""",
+                    (
+                        project_id,
+                        opportunity["campaign_id"],
+                        opportunity_id,
+                        opportunity["destination_id"],
+                        values["primary_brand_entity_id"],
+                    ),
                 )
             )["id"]
             self._db.execute(
@@ -315,16 +325,31 @@ class PsycopgPlacementRepository(
                 (brief_id,),
             )
         )["value"]
+        if values["base_version_id"] is not None:
+            base = self._db.execute(
+                """SELECT 1 FROM placement_brief_versions
+                   WHERE id = %s AND project_id = %s AND brief_id = %s""",
+                (values["base_version_id"], project_id, brief_id),
+            ).fetchone()
+            if base is None:
+                raise PlacementConflict(
+                    "base Brief version does not belong to this Opportunity lineage"
+                )
         record = _row(
             self._db.execute(
                 """INSERT INTO placement_brief_versions
-                     (project_id, brief_id, version_number, base_version_id, goals,
+                     (project_id, campaign_id, opportunity_id, destination_id,
+                      brief_id, version_number, base_version_id, goals,
                       constraints, content_hash, created_by)
-                   VALUES (%s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s)
-                   RETURNING id, project_id, brief_id, version_number, base_version_id,
-                             goals, constraints, content_hash""",
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s)
+                   RETURNING id, project_id, campaign_id, opportunity_id, destination_id,
+                             brief_id, version_number, base_version_id, goals,
+                             constraints, content_hash""",
                 (
                     project_id,
+                    opportunity["campaign_id"],
+                    opportunity_id,
+                    opportunity["destination_id"],
                     brief_id,
                     version_number,
                     values["base_version_id"],
@@ -353,7 +378,8 @@ class PsycopgPlacementRepository(
     ) -> tuple[BriefVersion, ...]:
         records = _rows(
             self._db.execute(
-                """SELECT v.id, v.project_id, v.brief_id, v.version_number,
+                """SELECT v.id, v.project_id, v.campaign_id, v.opportunity_id,
+                          v.destination_id, v.brief_id, v.version_number,
                           v.base_version_id, v.goals, v.constraints, v.content_hash
                    FROM placement_brief_versions v JOIN placement_briefs b
                      ON b.id = v.brief_id AND b.project_id = v.project_id
@@ -367,18 +393,24 @@ class PsycopgPlacementRepository(
     def create_evidence_attempt(
         self, *, project_id: UUID, brief_version_id: UUID, idempotency_key: str
     ) -> tuple[EvidencePackAttempt, JobReference]:
-        eligible = self._db.execute(
-            """SELECT bv.id FROM placement_brief_versions bv
+        eligible_cursor = self._db.execute(
+            """SELECT bv.id, bv.campaign_id, bv.opportunity_id, bv.destination_id
+               FROM placement_brief_versions bv
                JOIN placement_briefs b ON b.id = bv.brief_id AND b.project_id = bv.project_id
                JOIN placement_opportunities o
                  ON o.id = b.opportunity_id AND o.project_id = b.project_id
                WHERE bv.project_id = %s AND bv.id = %s
                  AND o.status IN ('briefing', 'in_progress') FOR UPDATE OF bv""",
             (project_id, brief_version_id),
-        ).fetchone()
+        )
+        eligible = eligible_cursor.fetchone()
         if eligible is None:
             raise PlacementConflict(
                 "evidence build requires a briefing or in-progress opportunity"
+            )
+        if not isinstance(eligible, Mapping):
+            eligible = dict(
+                zip((item.name for item in eligible_cursor.description), eligible, strict=True)
             )
         attempt_number = _row(
             self._db.execute(
@@ -394,11 +426,21 @@ class PsycopgPlacementRepository(
         inserted = _rows(
             self._db.execute(
                 """INSERT INTO evidence_pack_attempts
-                     (id, project_id, brief_version_id, attempt_number)
-                   VALUES (%s, %s, %s, %s) ON CONFLICT (id) DO NOTHING
-                   RETURNING id, project_id, brief_version_id, attempt_number,
-                             status, pack_hash, failure_reason""",
-                (attempt_id, project_id, brief_version_id, attempt_number),
+                     (id, project_id, campaign_id, opportunity_id, destination_id,
+                      brief_version_id, attempt_number)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s) ON CONFLICT (id) DO NOTHING
+                   RETURNING id, project_id, campaign_id, opportunity_id, destination_id,
+                             brief_version_id, attempt_number, status, pack_hash,
+                             failure_reason""",
+                (
+                    attempt_id,
+                    project_id,
+                    eligible["campaign_id"],
+                    eligible["opportunity_id"],
+                    eligible["destination_id"],
+                    brief_version_id,
+                    attempt_number,
+                ),
             )
         )
         attempt = (
@@ -406,8 +448,8 @@ class PsycopgPlacementRepository(
             if inserted
             else _row(
                 self._db.execute(
-                    """SELECT id, project_id, brief_version_id, attempt_number,
-                          status, pack_hash, failure_reason
+                    """SELECT id, project_id, campaign_id, opportunity_id, destination_id,
+                          brief_version_id, attempt_number, status, pack_hash, failure_reason
                    FROM evidence_pack_attempts WHERE project_id = %s AND id = %s""",
                     (project_id, attempt_id),
                 )
@@ -415,6 +457,7 @@ class PsycopgPlacementRepository(
         )
         job = self._enqueue_job(
             project_id=project_id,
+            campaign_id=eligible["campaign_id"],
             kind="evidence_pack.build",
             input_value={
                 "brief_version_id": str(brief_version_id),
@@ -424,9 +467,17 @@ class PsycopgPlacementRepository(
         )
         self._db.execute(
             """INSERT INTO evidence_pack_job_specs
-                 (job_id, project_id, brief_version_id, evidence_pack_attempt_id)
-               VALUES (%s, %s, %s, %s) ON CONFLICT (job_id) DO NOTHING""",
-            (job.id, project_id, brief_version_id, attempt["id"]),
+                 (job_id, project_id, campaign_id, opportunity_id,
+                  brief_version_id, evidence_pack_attempt_id)
+               VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT (job_id) DO NOTHING""",
+            (
+                job.id,
+                project_id,
+                eligible["campaign_id"],
+                eligible["opportunity_id"],
+                brief_version_id,
+                attempt["id"],
+            ),
         )
         return EvidencePackAttempt(**attempt), job
 
@@ -435,8 +486,8 @@ class PsycopgPlacementRepository(
     ) -> tuple[EvidencePackAttempt, ...]:
         records = _rows(
             self._db.execute(
-                """SELECT id, project_id, brief_version_id, attempt_number,
-                          status, pack_hash, failure_reason
+                """SELECT id, project_id, campaign_id, opportunity_id, destination_id,
+                          brief_version_id, attempt_number, status, pack_hash, failure_reason
                    FROM evidence_pack_attempts WHERE project_id = %s AND brief_version_id = %s
                    ORDER BY attempt_number""",
                 (project_id, brief_version_id),
@@ -449,8 +500,8 @@ class PsycopgPlacementRepository(
     ) -> EvidencePackAttempt | None:
         records = _rows(
             self._db.execute(
-                """SELECT id, project_id, brief_version_id, attempt_number,
-                          status, pack_hash, failure_reason
+                """SELECT id, project_id, campaign_id, opportunity_id, destination_id,
+                          brief_version_id, attempt_number, status, pack_hash, failure_reason
                    FROM evidence_pack_attempts WHERE project_id = %s AND id = %s""",
                 (project_id, attempt_id),
             )
@@ -467,114 +518,37 @@ class PsycopgPlacementRepository(
                               e.snapshot_hash, e.usage_rights, e.confidentiality,
                               e.public_disclosure_allowed, e.public_source_url,
                               e.public_source_title, e.citation_label,
-                              e.quotation_allowed, e.attribution_required
+                              e.quotation_allowed, e.attribution_required,
+                              CASE WHEN lineage.evidence_item_id IS NULL THEN NULL
+                                   ELSE jsonb_build_object(
+                                     'project_id', lineage.project_id,
+                                     'pipeline_run_id', lineage.pipeline_run_id,
+                                     'knowledge_source_id', lineage.knowledge_source_id,
+                                     'knowledge_document_id', lineage.knowledge_document_id,
+                                     'knowledge_chunk_id', lineage.knowledge_chunk_id,
+                                     'knowledge_fact_id', lineage.knowledge_fact_id,
+                                     'evidence_item_id', lineage.evidence_item_id,
+                                     'evidence_title', lineage.evidence_title,
+                                     'promoted_by', lineage.promoted_by,
+                                     'promoted_at', lineage.promoted_at,
+                                     'idempotency_key', lineage.idempotency_key,
+                                     'promotion_request_hash', lineage.promotion_request_hash,
+                                     'lineage_contract_version', lineage.lineage_contract_version,
+                                     'source_content_hash', lineage.source_content_hash,
+                                     'document_cleaned_text_hash', lineage.document_cleaned_text_hash,
+                                     'chunk_text_hash', lineage.chunk_text_hash,
+                                     'fact_statement_hash', lineage.fact_statement_hash,
+                                     'evidence_snapshot_hash', lineage.evidence_snapshot_hash
+                                   ) END AS knowledge_lineage
                        FROM evidence_pack_items pi JOIN evidence_items e
                          ON e.id = pi.evidence_item_id AND e.project_id = pi.project_id
+                       LEFT JOIN knowledge_fact_evidence_lineages lineage
+                         ON lineage.evidence_item_id = e.id
+                        AND lineage.project_id = e.project_id
+                        AND lineage.lineage_contract_version = 'knowledge-fact-evidence-v1'
                        WHERE pi.project_id = %s AND pi.pack_attempt_id = %s
                        ORDER BY pi.ordinal""",
                     (project_id, attempt_id),
                 )
             )
         )
-
-    def list_package_versions(
-        self, *, project_id: UUID, opportunity_id: UUID
-    ) -> tuple[PackageVersion, ...]:
-        records = _rows(
-            self._db.execute(
-                """SELECT v.id, v.project_id, v.package_id, v.prompt_bundle_id,
-                          v.version_number, v.base_version_id, v.workflow_status,
-                          v.content_json, v.rendered_text, v.content_hash, v.edited_by, v.edit_reason,
-                          v.generated_by_job_id
-                   FROM placement_package_versions v JOIN placement_packages p
-                     ON p.id = v.package_id AND p.project_id = v.project_id
-                   WHERE v.project_id = %s AND p.opportunity_id = %s ORDER BY v.version_number""",
-                (project_id, opportunity_id),
-            )
-        )
-        return tuple(_package(item) for item in records)
-
-    def get_package_version(self, *, project_id: UUID, version_id: UUID) -> PackageVersion | None:
-        records = _rows(
-            self._db.execute(
-                """SELECT id, project_id, package_id, prompt_bundle_id, version_number,
-                          base_version_id, workflow_status, content_json, rendered_text,
-                          content_hash, edited_by, edit_reason, generated_by_job_id
-                   FROM placement_package_versions WHERE project_id = %s AND id = %s""",
-                (project_id, version_id),
-            )
-        )
-        return _package(records[0]) if records else None
-
-    def list_claims(self, *, project_id: UUID, version_id: UUID) -> tuple[Claim, ...]:
-        records = _rows(
-            self._db.execute(
-                """SELECT c.id, c.project_id, c.package_version_id, c.claim_text,
-                          c.claim_kind, c.support_status,
-                          COALESCE(array_agg(ce.evidence_item_id)
-                            FILTER (WHERE ce.evidence_item_id IS NOT NULL), '{}') AS evidence_item_ids
-                   FROM placement_claims c LEFT JOIN placement_claim_evidence ce
-                     ON ce.claim_id = c.id AND ce.project_id = c.project_id
-                   WHERE c.project_id = %s AND c.package_version_id = %s
-                   GROUP BY c.id ORDER BY c.created_at""",
-                (project_id, version_id),
-            )
-        )
-        return tuple(
-            Claim(**{**item, "evidence_item_ids": tuple(item["evidence_item_ids"])})
-            for item in records
-        )
-
-    def _enqueue_job(
-        self,
-        *,
-        project_id: UUID,
-        kind: str,
-        input_value: Mapping[str, object],
-        idempotency_key: str,
-    ) -> JobReference:
-        input_hash = canonical_hash(input_value)
-        inserted = _rows(
-            self._db.execute(
-                """INSERT INTO durable_jobs
-                     (project_id, kind, input_hash, idempotency_key)
-                   VALUES (%s, %s, %s, %s)
-                   ON CONFLICT (project_id, kind, idempotency_key, replay_nonce)
-                   DO NOTHING
-                   RETURNING id, project_id, kind, status""",
-                (project_id, kind, input_hash, idempotency_key),
-            )
-        )
-        if inserted:
-            record = inserted[0]
-        else:
-            record = _row(
-                self._db.execute(
-                    """SELECT id, project_id, kind, status, input_hash
-                       FROM durable_jobs WHERE project_id = %s AND kind = %s
-                         AND idempotency_key = %s AND replay_nonce = 0""",
-                    (project_id, kind, idempotency_key),
-                )
-            )
-            if record["input_hash"] != input_hash:
-                raise PlacementConflict("idempotency key was already used with different input")
-        job = JobReference(
-            id=record["id"],
-            project_id=record["project_id"],
-            kind=record["kind"],
-            status=record["status"],
-        )
-        self._db.execute(
-            """INSERT INTO broker_outbox
-                 (project_id, job_id, topic, payload, idempotency_key)
-               VALUES (%s, %s, %s, %s::jsonb, %s)
-               ON CONFLICT (project_id, idempotency_key) DO NOTHING""",
-            (
-                project_id,
-                job.id,
-                kind,
-                json.dumps({"job_id": str(job.id)}),
-                f"wake:{kind}:{idempotency_key}",
-            ),
-        )
-        return job

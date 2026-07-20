@@ -26,6 +26,7 @@ from geo_core.access.models import (
     MembershipSafetyViolation,
 )
 from geo_core.placements.domain import (
+    CampaignContextMismatch,
     ConcurrencyConflict,
     PlacementConflict,
     PlacementNotFound,
@@ -224,6 +225,20 @@ def install_problem_handlers(app: FastAPI) -> None:
                 title="Membership Conflict",
                 detail=str(exc),
                 type_uri="urn:geo:problem:membership-conflict",
+            ),
+        )
+
+    @app.exception_handler(CampaignContextMismatch)
+    async def campaign_context_handler(
+        request: Request, exc: CampaignContextMismatch
+    ) -> JSONResponse:
+        return _response(
+            request,
+            ApiProblem(
+                status=422,
+                title="Campaign Context Mismatch",
+                detail=str(exc),
+                type_uri="/problems/campaign-context-mismatch",
             ),
         )
 

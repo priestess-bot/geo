@@ -48,10 +48,22 @@
 .dashboardGrid div { border-left: 3px solid #607f8f; display: grid; gap: 5px; padding: 8px 12px; }
 .dashboardGrid strong { font-size: 20px; }
 .reviewFields { display: grid; gap: 10px; grid-template-columns: minmax(130px, .35fr) 1fr; }
+.selectedFact { border-left: 3px solid #1f6d74; padding-left: 12px !important; }
+.factFooter, .detailActions { align-items: center; display: flex; gap: 12px; justify-content: space-between; }
+.factFooter a, .detailActions a { color: #175c70; font-size: 13px; font-weight: 700; }
+.traceGrid { border-bottom: 1px solid #dbe4ea; display: grid; gap: 14px; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 16px; padding-bottom: 16px; }
+.traceGrid div { display: grid; gap: 4px; min-width: 0; }
+.traceGrid span { color: #607685; font-size: 12px; }
+.traceGrid small, .traceGrid code { overflow-wrap: anywhere; }
+.lineage { display: grid; gap: 14px; }
+.lineage dl { display: grid; gap: 8px; margin: 0; }
+.lineage dl div { display: grid; gap: 10px; grid-template-columns: minmax(120px, .3fr) 1fr; }
+.lineage dt { color: #607685; font-size: 13px; }
+.lineage dd { margin: 0; overflow-wrap: anywhere; }
 .status { background: #e8eef2; border-radius: 4px; color: #385467; display: inline-block; font-size: 12px; font-weight: 700; padding: 4px 7px; white-space: nowrap; }
 .status.succeeded, .status.ready, .status.approved, .status.active { background: #dff1e8; color: #226247; }
 .status.failed, .status.rejected, .status.disabled { background: #f7e2dd; color: #8e3327; }
 .status.running, .status.processing { background: #e2eef8; color: #225b82; }
 .warning { color: #9a651e; }.error, .failed { color: #9b3327; }.info { color: #28617e; }
 .problems { background: #fff0ed; border-left: 3px solid #a13a2b; padding: 10px 14px; }
-@media (max-width: 900px) { .header { align-items: start; display: grid; gap: 8px; min-width: 0; }.header > p { text-align: left; }.metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }.importGrid, .processingGrid, .dashboardGrid { grid-template-columns: minmax(0, 1fr); }.reviewFields { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 900px) { .header { align-items: start; display: grid; gap: 8px; min-width: 0; }.header > p { text-align: left; }.metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }.importGrid, .processingGrid, .dashboardGrid, .traceGrid { grid-template-columns: minmax(0, 1fr); }.reviewFields { grid-template-columns: minmax(0, 1fr); } }

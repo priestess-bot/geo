@@ -19,6 +19,7 @@ from geo_core.placements.domain import (
     ExportReceipt,
     JobReference,
     MeasurementCollectionTask,
+    OpportunityPromptReleaseBinding,
     PackageVersion,
     PromptBundleView,
     PublicationRequest,
@@ -41,6 +42,7 @@ from geo_core.placements.worker_repository import PlacementWorkerRepository
 from scripts.geo_acceptance.adapters import (
     ControlledUrlVerifier,
     DeterministicGateway,
+    MemoryArtifactStore,
     model_gateway,
 )
 from scripts.geo_acceptance.contracts import (
@@ -50,6 +52,10 @@ from scripts.geo_acceptance.contracts import (
     MODEL_POLICY_HASH,
 )
 from scripts.geo_acceptance.monitoring import BaselineResult
+from scripts.geo_acceptance.placement_measurements import (
+    make_measurement_job_due as _make_measurement_job_due,
+    measurement_windows as _measurement_windows,
+)
 from scripts.geo_acceptance.setup import AcceptanceSetup, EXPERIENCE_TEXT
 
 
@@ -61,7 +67,7 @@ class PlacementResult:
     store: PostgresDurableJobStore
     brief: BriefVersion
     evidence_attempt: EvidencePackAttempt
-    prompt_bindings: tuple[Mapping[str, object], ...]
+    prompt_bindings: tuple[OpportunityPromptReleaseBinding, ...]
     prompt_simulations: tuple[PromptSimulation, ...]
     prompt_bundle: PromptBundleView
     generation_job: JobReference
@@ -74,6 +80,7 @@ class PlacementResult:
     measurement_tasks: tuple[MeasurementCollectionTask, ...]
     submitted_url: str
     scheduled_windows: tuple[int, ...]
+    terminal_artifact_replay_count: int
 
 
 def run_placement(
@@ -85,6 +92,7 @@ def run_placement(
     project_id = setup.project_id
     brief = app.create_brief_version(
         project_id=project_id,
+        campaign_id=setup.campaign.id,
         opportunity_id=setup.owned_opportunity.id,
         primary_brand_entity_id=setup.brand.id,
         goals={
@@ -106,6 +114,7 @@ def run_placement(
     )
     evidence_attempt, evidence_job = app.create_evidence_attempt(
         project_id=project_id,
+        campaign_id=setup.campaign.id,
         brief_version_id=brief.id,
         idempotency_key=f"acceptance-evidence-{setup.suffix}",
     )
@@ -121,24 +130,57 @@ def run_placement(
     if evidence_result["status"] != "ready":
         raise AssertionError(f"evidence pack did not become ready: {evidence_result}")
     evidence_items = app.list_evidence_attempt_items(
-        project_id=project_id, attempt_id=evidence_attempt.id
+        project_id=project_id,
+        campaign_id=setup.campaign.id,
+        attempt_id=evidence_attempt.id,
     )
     evidence_ids = {item["id"] for item in evidence_items}
     if not {setup.fact.id, setup.experience.id}.issubset(evidence_ids):
         raise AssertionError("the evidence pack omitted governed project evidence")
 
-    bindings = app.install_default_prompt_catalog(
+    catalog_bindings = app.install_default_prompt_catalog(
         project_id=project_id, actor_id=setup.owner.identity_id
     )
-    if {str(item["task_key"]) for item in bindings} != {
+    if {str(item["task_key"]) for item in catalog_bindings} != {
         item["channel"] for item in CHANNELS
     }:
         raise AssertionError("the editable prompt catalog must cover all selected channels")
-    artifact_dispatcher = _artifact_dispatcher(store, setup)
-    simulations: list[PromptSimulation] = []
     destination_by_channel = {
         item.publication_channel: item for item in setup.destinations
     }
+    opportunity_by_destination = {
+        item.destination_id: item
+        for item in app.list_opportunities(
+            project_id=project_id, campaign_id=setup.campaign.id
+        )
+    }
+    prompt_bindings: list[OpportunityPromptReleaseBinding] = []
+    for selection in catalog_bindings:
+        channel = str(selection["task_key"])
+        destination = destination_by_channel[channel]
+        opportunity = opportunity_by_destination[destination.id]
+        current = app.get_current_prompt_release_binding(
+            project_id=project_id,
+            campaign_id=setup.campaign.id,
+            opportunity_id=opportunity.id,
+        )
+        if current is None or current.status.value != "unbound":
+            raise AssertionError("new Opportunity did not start with an unbound Prompt Release")
+        prompt_bindings.append(
+            app.bind_opportunity_prompt_release(
+                project_id=project_id,
+                campaign_id=setup.campaign.id,
+                opportunity_id=opportunity.id,
+                release_id=cast(UUID, selection["template_release_id"]),
+                expected_binding_version=current.binding_version,
+                reason="Controlled acceptance Channel Prompt Release binding",
+                actor_id=setup.owner.identity_id,
+                idempotency_key=f"acceptance-binding-{channel}-{setup.suffix}",
+            )
+        )
+    artifact_dispatcher = _artifact_dispatcher(store, setup)
+    terminal_artifact_replay_count = 0
+    simulations: list[PromptSimulation] = []
     simulation_dispatcher = _dispatcher(
         store,
         handlers={
@@ -154,12 +196,20 @@ def run_placement(
         },
         worker_id=f"acceptance-simulation-{setup.suffix}",
     )
-    for binding in bindings:
-        channel = str(binding["task_key"])
+    for binding in prompt_bindings:
+        destination = next(
+            item for item in setup.destinations if item.id == binding.destination_id
+        )
+        channel = destination.publication_channel
+        if binding.release_hash is None:
+            raise AssertionError("bound Prompt Release has no frozen hash")
         simulation, simulation_job = app.create_prompt_simulation(
             project_id=project_id,
-            destination_id=destination_by_channel[channel].id,
-            template_release_id=cast(UUID, binding["template_release_id"]),
+            campaign_id=setup.campaign.id,
+            opportunity_id=binding.opportunity_id,
+            destination_id=binding.destination_id,
+            prompt_release_binding_id=binding.id,
+            confirmed_release_hash=binding.release_hash,
             primary_brand_entity_id=setup.brand.id,
             product_entity_id=setup.product.id,
             authenticity_mode="fake_persona",
@@ -192,8 +242,17 @@ def run_placement(
         )
         if artifact_result["status"] != "finalized":
             raise AssertionError(f"{channel} simulation artifact did not finalize")
+        _assert_terminal_artifact_replay(
+            store,
+            artifact_dispatcher,
+            setup,
+            job_id=simulation_artifact_job,
+        )
+        terminal_artifact_replay_count += 1
         finalized = app.get_prompt_simulation(
-            project_id=project_id, simulation_id=simulation.id
+            project_id=project_id,
+            campaign_id=setup.campaign.id,
+            simulation_id=simulation.id,
         )
         if (
             finalized is None
@@ -205,14 +264,24 @@ def run_placement(
         simulations.append(finalized)
     if len(simulations) != len(CHANNELS):
         raise AssertionError("every selected channel must have a prompt simulation")
-    owned_binding = next(item for item in bindings if item["task_key"] == "owned_site")
+    owned_binding = next(
+        item for item in prompt_bindings
+        if item.opportunity_id == setup.owned_opportunity.id
+    )
+    if owned_binding.release_hash is None:
+        raise AssertionError("owned-site Prompt Release binding has no frozen hash")
     bundle = app.create_prompt_bundle(
         project_id=project_id,
+        campaign_id=setup.campaign.id,
+        opportunity_id=setup.owned_opportunity.id,
         brief_version_id=brief.id,
         evidence_pack_attempt_id=evidence_attempt.id,
-        release_id=cast(UUID, owned_binding["template_release_id"]),
+        prompt_release_binding_id=owned_binding.id,
+        confirmed_release_hash=owned_binding.release_hash,
         variables={},
         model_policy_hash=MODEL_POLICY_HASH,
+        idempotency_key=f"acceptance-prompt-bundle-{setup.suffix}",
+        requested_by=setup.owner.identity_id,
     )
     bundle_job = _artifact_job_id(
         store, project_id=project_id, resource_kind="prompt_bundle", resource_id=bundle.id
@@ -220,9 +289,14 @@ def run_placement(
     bundle_result = artifact_dispatcher.process(job_id=bundle_job, project_id=project_id)
     if bundle_result["status"] != "finalized":
         raise AssertionError(f"prompt bundle artifact did not finalize: {bundle_result}")
+    _assert_terminal_artifact_replay(
+        store, artifact_dispatcher, setup, job_id=bundle_job
+    )
+    terminal_artifact_replay_count += 1
 
     generation_job = app.request_generation(
         project_id=project_id,
+        campaign_id=setup.campaign.id,
         prompt_bundle_id=bundle.id,
         configured_model=MODEL,
         model_call_budget=2,
@@ -244,18 +318,26 @@ def run_placement(
     if generation_result["status"] != "succeeded":
         raise AssertionError(f"generation did not succeed: {generation_result}")
     package = app.list_package_versions(
-        project_id=project_id, opportunity_id=setup.owned_opportunity.id
+        project_id=project_id,
+        campaign_id=setup.campaign.id,
+        opportunity_id=setup.owned_opportunity.id,
     )[-1]
-    claims = app.list_claims(project_id=project_id, version_id=package.id)
+    claims = app.list_claims(
+        project_id=project_id,
+        campaign_id=setup.campaign.id,
+        version_id=package.id,
+    )
     if not claims or any(item.support_status != "supported" for item in claims):
         raise AssertionError("generated factual claims must be fully supported")
     app.submit_for_review(
         project_id=project_id,
+        campaign_id=setup.campaign.id,
         version_id=package.id,
         submitted_by=setup.owner.identity_id,
     )
     review = app.submit_review(
         project_id=project_id,
+        campaign_id=setup.campaign.id,
         version_id=package.id,
         reviewer_id=setup.reviewer_identity_id,
         decision="approved",
@@ -265,14 +347,23 @@ def run_placement(
         notes="Controlled acceptance: subjects, evidence, disclosure and claims verified.",
     )
 
-    if app.list_publication_requests(project_id=project_id, version_id=package.id):
+    if app.list_publication_requests(
+        project_id=project_id,
+        campaign_id=setup.campaign.id,
+        version_id=package.id,
+    ):
         raise AssertionError("publication intent exists before export")
     export = app.export_package(
         project_id=project_id,
+        campaign_id=setup.campaign.id,
         version_id=package.id,
         requested_by=setup.owner.identity_id,
     )
-    if app.list_publication_requests(project_id=project_id, version_id=package.id):
+    if app.list_publication_requests(
+        project_id=project_id,
+        campaign_id=setup.campaign.id,
+        version_id=package.id,
+    ):
         raise AssertionError("export must not create publication intent")
     export_job = _artifact_job_id(
         store,
@@ -283,14 +374,22 @@ def run_placement(
     export_result = artifact_dispatcher.process(job_id=export_job, project_id=project_id)
     if export_result["status"] != "finalized":
         raise AssertionError(f"package export artifact did not finalize: {export_result}")
+    _assert_terminal_artifact_replay(
+        store, artifact_dispatcher, setup, job_id=export_job
+    )
+    terminal_artifact_replay_count += 1
     exported = app.download_export(
-        project_id=project_id, version_id=package.id, export_id=export.id
+        project_id=project_id,
+        campaign_id=setup.campaign.id,
+        version_id=package.id,
+        export_id=export.id,
     )
     if exported.content_hash != export.content_hash:
         raise AssertionError("downloaded export no longer matches its immutable receipt")
 
     publication = app.request_publication(
         project_id=project_id,
+        campaign_id=setup.campaign.id,
         version_id=package.id,
         destination_id=setup.destinations[0].id,
         requested_by=setup.owner.identity_id,
@@ -302,6 +401,7 @@ def run_placement(
     submitted_url = f"https://simulated.advinsys.example/geo-acceptance/{setup.suffix}"
     submission = app.create_submission(
         project_id=project_id,
+        campaign_id=setup.campaign.id,
         publication_request_id=publication.id,
         submitted_url=submitted_url,
         provider_submission_id=f"controlled-{setup.suffix}",
@@ -310,6 +410,7 @@ def run_placement(
     )
     verification_job = app.request_verification(
         project_id=project_id,
+        campaign_id=setup.campaign.id,
         submission_id=submission.id,
         idempotency_key=f"acceptance-verification-{setup.suffix}",
     )
@@ -328,7 +429,9 @@ def run_placement(
     if verification_result["status"] != "verified":
         raise AssertionError(f"publication URL did not verify: {verification_result}")
     verified_submission = app.get_submission(
-        project_id=project_id, submission_id=submission.id
+        project_id=project_id,
+        campaign_id=setup.campaign.id,
+        submission_id=submission.id,
     )
     if verified_submission is None or verified_submission.status != "verified":
         raise AssertionError("verified submission projection was not persisted")
@@ -350,7 +453,10 @@ def run_placement(
         if opened["status"] != "awaiting_manual_samples":
             raise AssertionError(f"T+{offset} collection task did not open: {opened}")
     tasks = app.list_measurement_collection_tasks(
-        project_id=project_id, submission_id=submission.id, status="open"
+        project_id=project_id,
+        campaign_id=setup.campaign.id,
+        submission_id=submission.id,
+        status="open",
     )
     if tuple(item.measurement_window for item in tasks) != ("t28", "t56", "t84"):
         raise AssertionError(
@@ -360,7 +466,7 @@ def run_placement(
         store,
         brief,
         evidence_attempt,
-        bindings,
+        tuple(prompt_bindings),
         tuple(simulations),
         bundle,
         generation_job,
@@ -373,6 +479,7 @@ def run_placement(
         tasks,
         submitted_url,
         scheduled_windows,
+        terminal_artifact_replay_count,
     )
 
 
@@ -428,44 +535,46 @@ def _artifact_job_id(
     return row[0]
 
 
-def _measurement_windows(
-    store: PostgresDurableJobStore, project_id: UUID, submission_id: UUID
-) -> tuple[int, ...]:
+def _assert_terminal_artifact_replay(
+    store: PostgresDurableJobStore,
+    dispatcher: PlacementWorkerDispatcher,
+    setup: AcceptanceSetup,
+    *,
+    job_id: UUID,
+) -> None:
+    before = _artifact_record(store, setup.project_id, job_id)
+    artifact_store = setup.artifact_store
+    object_count = (
+        len(artifact_store.objects) if isinstance(artifact_store, MemoryArtifactStore) else None
+    )
+    repeated = dispatcher.process(job_id=job_id, project_id=setup.project_id)
+    after = _artifact_record(store, setup.project_id, job_id)
+    if repeated["status"] != "terminal":
+        raise AssertionError("a finalized artifact job was not observed as terminal")
+    if after != before:
+        raise AssertionError("terminal artifact observation mutated its immutable record")
+    if (
+        object_count is not None
+        and isinstance(artifact_store, MemoryArtifactStore)
+        and len(artifact_store.objects) != object_count
+    ):
+        raise AssertionError("terminal artifact observation wrote another object")
+
+
+def _artifact_record(
+    store: PostgresDurableJobStore, project_id: UUID, job_id: UUID
+) -> tuple[object, ...]:
     connection = store.open_project(project_id)
     try:
         rows = connection.execute(
-            """SELECT due_offset_days FROM measurement_job_specs
-               WHERE project_id = %s AND submission_id = %s ORDER BY due_offset_days""",
-            (project_id, submission_id),
+            """SELECT status, attempt_count, final_uri, finalized_at, content_hash
+               FROM artifact_finalize_outbox
+               WHERE project_id = %s AND job_id = %s""",
+            (project_id, job_id),
         ).fetchall()
         connection.commit()
     finally:
         connection.close()
-    return tuple(int(row[0]) for row in rows)
-
-
-def _make_measurement_job_due(
-    store: PostgresDurableJobStore,
-    project_id: UUID,
-    submission_id: UUID,
-    *,
-    due_offset_days: int,
-) -> UUID:
-    connection = store.open_project(project_id)
-    try:
-        row = connection.execute(
-            """SELECT job_id FROM measurement_job_specs
-               WHERE project_id = %s AND submission_id = %s AND due_offset_days = %s""",
-            (project_id, submission_id, due_offset_days),
-        ).fetchone()
-        if row is None:
-            raise AssertionError("scheduled measurement job does not exist")
-        connection.execute(
-            """UPDATE durable_jobs SET next_run_at = clock_timestamp()
-               WHERE id = %s AND project_id = %s""",
-            (row[0], project_id),
-        )
-        connection.commit()
-        return row[0]
-    finally:
-        connection.close()
+    if len(rows) != 1 or rows[0][0] != "finalized":
+        raise AssertionError("finalized artifact record is missing or duplicated")
+    return tuple(rows[0])

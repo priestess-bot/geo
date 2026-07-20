@@ -3,10 +3,10 @@ import { geoClient } from "../../client";
 import { emptyResource, type Resource } from "./model";
 
 export async function loadMeasurementCollectionTasks(
-  projectId: string, submissionId?: string
+  projectId: string, campaignId: string, submissionId?: string
 ): Promise<Resource<MeasurementCollectionTaskView[]>> {
   const result = await (await geoClient()).listMeasurementCollectionTasks(
-    projectId, submissionId
+    projectId, campaignId, submissionId
   );
   if (result.ok) return emptyResource(result.data);
   return {

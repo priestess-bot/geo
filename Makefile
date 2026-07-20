@@ -4,15 +4,17 @@ DEV_COMPOSE := docker compose -f infra/docker-compose.yml
 PROD_ENV ?= infra/production.env
 PROD_COMPOSE := docker compose --env-file $(PROD_ENV) -f infra/compose.prod.yml
 
-.PHONY: bootstrap install lint python-typecheck web-typecheck typecheck quality test test-migrated test-integration \
+.PHONY: bootstrap install lint python-typecheck web-typecheck typecheck quality test test-migrated test-integration test-integration-required \
 	openapi-snapshots openapi-contracts \
-	web-build api-internal api-customer admin-web customer-web \
+	web-contracts web-build test-browser-chromium geo-acceptance-inline geo-staging-smoke \
+	test-infra-contracts test-infra-runtime api-internal api-customer admin-web customer-web \
 	dev-up dev-logs dev-down db-up db-down db-reset-dev db-migrate db-heads \
-	docker-config production-config production-up production-down \
+	docker-config production-preflight production-config production-up production-down \
+	test-production-network \
 	production-provision-owner \
 	api-image admin-image customer-image images \
 	backup restore-smoke backup-restore-dev-smoke deepseek-live ci \
-	advinsys-dry-run advinsys-verify operator-guide-pdf
+	advinsys-dry-run advinsys-verify f019-benchmark operator-guide-pdf
 
 bootstrap: install
 	cp -n .env.example .env 2>/dev/null || true
@@ -25,6 +27,8 @@ lint:
 	uv run ruff check apps/api/geo_api packages/geo_core/geo_core \
 		scripts/export_stable_openapi.py scripts/provision_database.py \
 		scripts/provision_dev_database.py scripts/provision_initial_owner.py \
+		scripts/production_preflight.py scripts/geo_staging_smoke.py \
+		scripts/run_infra_runtime_tests.py scripts/verify_geo_acceptance_report.py \
 		infra/db/alembic/checksums.py
 
 python-typecheck:
@@ -35,7 +39,11 @@ python-typecheck:
 		scripts/export_stable_openapi.py \
 		scripts/provision_database.py \
 		scripts/provision_dev_database.py \
-		scripts/provision_initial_owner.py
+		scripts/provision_initial_owner.py \
+		scripts/production_preflight.py \
+		scripts/geo_staging_smoke.py \
+		scripts/run_infra_runtime_tests.py \
+		scripts/verify_geo_acceptance_report.py
 
 web-typecheck:
 	corepack pnpm typecheck
@@ -58,13 +66,76 @@ openapi-contracts:
 	uv run python scripts/export_stable_openapi.py verify
 	uv run pytest -q tests/test_stable_openapi_contracts.py
 
-test-integration:
-	@test -n "$$GEO_DATABASE_URL" -o -n "$$DATABASE_URL" || (echo "GEO_DATABASE_URL or DATABASE_URL is required" >&2; exit 2)
+web-contracts:
+	corepack pnpm test:contracts
+
+test-integration: test-integration-required
+
+test-integration-required:
+	@missing=0; \
+	for name in GEO_DATABASE_URL \
+		GEO_ACCESS_TEST_ADMIN_DATABASE_URL GEO_ACCESS_TEST_DATABASE_URL \
+		GEO_ACCEPTANCE_TEST_ADMIN_DATABASE_URL GEO_ACCEPTANCE_TEST_APP_DATABASE_URL \
+		GEO_ACCEPTANCE_TEST_ISOLATION_MARKER GEO_ACCEPTANCE_TEST_WORKER_DATABASE_URL \
+		GEO_PLACEMENT_TEST_ADMIN_URL \
+		GEO_F019_TEST_MINIO_ENDPOINT \
+		GEO_TEST_DATABASE_URL; do \
+		if test -z "$${!name:-}"; then echo "$$name is required" >&2; missing=1; fi; \
+	done; \
+	test "$$missing" -eq 0
 	uv run alembic upgrade head
-	uv run pytest -q -m integration
+	uv run pytest -q --strict-markers --fail-on-skipped \
+		--ci-summary-label="PostgreSQL integration" -m integration \
+		tests/integration tests/test_engineering_governance_postgres.py
 
 web-build:
 	corepack pnpm build
+
+test-browser-chromium:
+	corepack pnpm test:browser:chromium
+
+geo-acceptance-inline:
+	@missing=0; \
+	for name in GEO_ACCEPTANCE_APP_DATABASE_URL GEO_ACCEPTANCE_WORKER_DATABASE_URL \
+		GEO_ACCEPTANCE_ADMIN_DATABASE_URL GEO_ACCEPTANCE_ISOLATION_MARKER; do \
+		if test -z "$${!name:-}"; then echo "$$name is required" >&2; missing=1; fi; \
+	done; \
+	test "$$missing" -eq 0
+	@output="$${GEO_ACCEPTANCE_OUTPUT:-artifacts/geo-acceptance/inline-result.json}"; \
+	run_id="$${GEO_ACCEPTANCE_RUN_ID:-geo-inline-$$(date -u +%Y%m%d%H%M%S)-$$$$}"; \
+	uv run python scripts/run_geo_acceptance.py \
+		--environment "$${GEO_ACCEPTANCE_ENVIRONMENT:-test}" \
+		--confirm-controlled-simulation --run-id "$$run_id" --output "$$output"; \
+	uv run python scripts/verify_geo_acceptance_report.py "$$output"
+
+test-infra-contracts:
+	uv run pytest -q --strict-markers --fail-on-skipped \
+		--ci-summary-label="Infrastructure contracts" \
+		tests/infra/test_development_compose.py \
+		tests/infra/test_production_compose.py \
+		tests/infra/test_production_preflight.py
+
+test-infra-runtime:
+	uv run python scripts/run_infra_runtime_tests.py
+
+geo-staging-smoke:
+	@test "$$GEO_RUN_STAGING_SMOKE" = "1" || \
+		(echo "Staging external smoke was not authorized; set GEO_RUN_STAGING_SMOKE=1 to opt in" >&2; exit 2)
+	@test "$$GEO_CONFIRM_STAGING_PAID_MODEL_CALL" = "1" || \
+		(echo "Paid staging model call was not authorized; set GEO_CONFIRM_STAGING_PAID_MODEL_CALL=1" >&2; exit 2)
+	@uv run python scripts/geo_staging_smoke.py \
+		--confirm-external-smoke --confirm-paid-model-call
+
+test-production-network:
+	uv run pytest -q --strict-markers --fail-on-skipped \
+		--ci-summary-label="Production network isolation" -m integration \
+		tests/infra/test_production_network_runtime.py
+
+f019-benchmark:
+	uv run python -m benchmarks.f019.cli validate
+	uv run python -m benchmarks.f019.cli run --adapter deterministic \
+		--output /tmp/f019-baseline-reference.json
+	uv run python -m benchmarks.f019.cli verify-selection
 
 api-internal:
 	uv run uvicorn geo_api.internal_app:app --app-dir apps/api --reload --port 8000
@@ -99,7 +170,10 @@ db-heads:
 docker-config:
 	$(DEV_COMPOSE) config -q
 
-production-config:
+production-preflight:
+	uv run python scripts/production_preflight.py --env-file $(PROD_ENV)
+
+production-config: production-preflight
 	$(PROD_COMPOSE) config -q
 
 production-up: production-config
@@ -133,8 +207,11 @@ backup-restore-dev-smoke:
 	scripts/backup_restore_development_smoke.sh
 
 deepseek-live:
+	@test "$$GEO_RUN_LIVE_DEEPSEEK_TEST" = "1" || \
+		(echo "Paid DeepSeek call was not requested; set GEO_RUN_LIVE_DEEPSEEK_TEST=1 to opt in" >&2; exit 2)
 	@test -n "$$GEO_DEEPSEEK_API_KEY_FILE" || (echo "GEO_DEEPSEEK_API_KEY_FILE is required" >&2; exit 2)
-	uv run pytest -q -m live tests/test_geo_deepseek_live_generation.py
+	uv run pytest -q --strict-markers --fail-on-skipped \
+		--ci-summary-label="DeepSeek live" -m live tests/test_geo_deepseek_live_generation.py
 
 advinsys-dry-run:
 	uv run python scripts/provision_advinsys_project.py --mode actual --dry-run
@@ -145,7 +222,7 @@ advinsys-verify:
 operator-guide-pdf:
 	uv run python scripts/render_geo_operator_guide.py
 
-ci: quality test-migrated openapi-contracts web-build docker-config
+ci: quality test-migrated openapi-contracts web-contracts web-build docker-config
 
 dev-up:
 	@test -f "$(CURDIR)/deepseek_api_key.txt" || (echo "deepseek_api_key.txt is required" >&2; exit 2)

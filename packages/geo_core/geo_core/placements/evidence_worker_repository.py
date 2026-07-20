@@ -6,6 +6,11 @@ from typing import Any, Mapping
 
 from geo_core.jobs.postgres import PostgresDurableJobStore, WorkerLease
 from geo_core.placements.domain import canonical_hash
+from geo_core.placements.execution_eligibility import (
+    APPROVED_FACT_LINEAGE_JOINS,
+    CURRENT_APPROVED_FACT_FILTER,
+    approved_fact_evidence_is_current,
+)
 
 
 def _dict(cursor: Any) -> dict[str, Any] | None:
@@ -70,8 +75,28 @@ class EvidenceWorkerRepositoryMixin:
                               e.snapshot_hash, e.snapshot_text, e.snapshot_uri, e.usage_rights,
                               e.public_disclosure_allowed, e.public_source_url,
                               e.public_source_title, e.citation_label,
-                              e.quotation_allowed, e.attribution_required
+                              e.quotation_allowed, e.attribution_required,
+                              lineage.pipeline_run_id,
+                              lineage.knowledge_source_id,
+                              lineage.knowledge_document_id,
+                              lineage.knowledge_chunk_id,
+                              lineage.knowledge_fact_id,
+                              lineage.evidence_title,
+                              lineage.promoted_by,
+                              lineage.promoted_at,
+                              lineage.idempotency_key,
+                              lineage.promotion_request_hash,
+                              lineage.lineage_contract_version,
+                              lineage.source_content_hash,
+                              lineage.document_cleaned_text_hash,
+                              lineage.chunk_text_hash,
+                              lineage.fact_statement_hash,
+                              lineage.evidence_snapshot_hash
                        FROM evidence_items e
+                       LEFT JOIN knowledge_fact_evidence_lineages lineage
+                         ON lineage.evidence_item_id = e.id
+                        AND lineage.project_id = e.project_id
+                       {APPROVED_FACT_LINEAGE_JOINS}
                        JOIN placement_brief_versions bv
                          ON bv.id = %s AND bv.project_id = e.project_id
                        JOIN placement_briefs b
@@ -80,6 +105,7 @@ class EvidenceWorkerRepositoryMixin:
                          AND e.usage_rights IN
                            ('owned', 'licensed', 'public_reference', 'authorised_experience')
                          AND e.confidentiality <> 'restricted'
+                         AND {CURRENT_APPROVED_FACT_FILTER}
                          AND {_SUBJECT_FILTER}
                        ORDER BY e.created_at, e.id""",
                     (spec["brief_version_id"], lease.project_id),
@@ -87,6 +113,12 @@ class EvidenceWorkerRepositoryMixin:
             )
             if not eligible:
                 return self._finish_without_evidence(connection, lease, spec)
+            if not approved_fact_evidence_is_current(
+                connection,
+                project_id=lease.project_id,
+                evidence_ids=tuple(item["id"] for item in eligible),
+            ):
+                raise RuntimeError("Evidence eligibility changed while the Pack was being frozen")
             for ordinal, item in enumerate(eligible):
                 connection.execute(
                     """INSERT INTO evidence_pack_items
@@ -130,11 +162,16 @@ class EvidenceWorkerRepositoryMixin:
         restricted = _dict(
             connection.execute(
                 f"""SELECT COUNT(*) AS count FROM evidence_items e
+                   LEFT JOIN knowledge_fact_evidence_lineages lineage
+                     ON lineage.evidence_item_id = e.id
+                    AND lineage.project_id = e.project_id
+                   {APPROVED_FACT_LINEAGE_JOINS}
                    JOIN placement_brief_versions bv
                      ON bv.id = %s AND bv.project_id = e.project_id
                    JOIN placement_briefs b ON b.id = bv.brief_id AND b.project_id = bv.project_id
                    WHERE e.project_id = %s
                      AND (e.usage_rights = 'restricted' OR e.confidentiality = 'restricted')
+                     AND {CURRENT_APPROVED_FACT_FILTER}
                      AND {_SUBJECT_FILTER}""",
                 (spec["brief_version_id"], lease.project_id),
             )

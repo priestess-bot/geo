@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Awaitable, Callable
-from contextlib import asynccontextmanager
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 import json
 import logging
@@ -23,16 +22,22 @@ from geo_api.customer_geo_routes import customer_geo_router
 from geo_api.foundation_services import (
     FoundationServices,
     UnavailableFoundationServices,
-    services_from_environment,
+    resolve_services_from_environment,
 )
 from geo_api.member_routes import member_router
 from geo_api.member_runtime import build_membership_application
 from geo_api.problems import install_problem_handlers
 from geo_api.monitoring_routes import monitoring_router
 from geo_api.monitoring_runtime import build_monitoring_application
+from geo_api.project_export_routes import (
+    admin_project_export_router,
+    customer_project_export_router,
+)
+from geo_api.project_export_runtime import build_project_export_application
 from geo_api.placement_campaign_routes import campaign_router
 from geo_api.job_control_routes import job_control_router
 from geo_api.knowledge_routes import knowledge_router
+from geo_api.knowledge_question_routes import knowledge_question_router
 from geo_api.knowledge_runtime import build_knowledge_application
 from geo_api.placement_generation_routes import generation_router
 from geo_api.placement_publication_routes import publication_router
@@ -44,6 +49,11 @@ from geo_api.stable_routes import (
     health_router,
     jobs_router,
     projects_router,
+)
+from geo_api.runtime_readiness import (
+    AccessConfiguredReadiness,
+    ReadinessService,
+    readiness_checker_from_environment,
 )
 
 
@@ -90,30 +100,32 @@ def create_api_app(
     monitoring_application: object | None = None,
     membership_application: object | None = None,
     knowledge_application: object | None = None,
+    readiness_service: ReadinessService | None = None,
+    project_export_application: object | None = None,
 ) -> FastAPI:
     """Build one API surface without importing the legacy application module."""
 
     resolved_settings = settings or ApiSettings.from_environment()
     service_name = f"geo-{surface}-api"
-    resolved_services = services or services_from_environment(surface=surface)
-    service_ready = not isinstance(resolved_services, UnavailableFoundationServices)
-
-    @asynccontextmanager
-    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        app.state.ready = service_ready
-        try:
-            yield
-        finally:
-            app.state.ready = False
+    if services is None:
+        foundation_resolution = resolve_services_from_environment(surface=surface)
+        resolved_services = foundation_resolution.services
+        access_configured = foundation_resolution.access_configured
+    else:
+        resolved_services = services
+        access_configured = not isinstance(services, UnavailableFoundationServices)
+    dependency_readiness = readiness_service or readiness_checker_from_environment(surface=surface)
+    resolved_readiness = AccessConfiguredReadiness(
+        dependency_readiness,
+        access_configured=access_configured,
+    )
 
     app = FastAPI(
         title=f"GEO {surface.title()} API",
         version="1.0.0",
-        lifespan=lifespan,
         docs_url="/docs" if surface == "internal" else None,
         redoc_url=None,
     )
-    app.state.ready = False
     app.state.surface = surface
     app.state.services = resolved_services
     app.state.customer_session_cookie_name = resolved_settings.customer_session_cookie_name
@@ -132,10 +144,19 @@ def create_api_app(
         else None
     )
     app.state.knowledge_application = knowledge_application or build_knowledge_application()
+    app.state.project_export_application = (
+        project_export_application or build_project_export_application(surface=surface)
+    )
     install_problem_handlers(app)
     _install_request_metadata_middleware(app, surface=surface)
 
-    app.include_router(health_router(service_name=service_name, surface=surface))
+    app.include_router(
+        health_router(
+            service_name=service_name,
+            surface=surface,
+            readiness_service=resolved_readiness,
+        )
+    )
     app.include_router(auth_router())
     app.include_router(invitation_auth_router(include_redeem=surface == "customer"))
     app.include_router(projects_router(surface=surface))
@@ -151,8 +172,10 @@ def create_api_app(
         app.include_router(publication_router())
         app.include_router(job_control_router())
         app.include_router(knowledge_router())
+        app.include_router(knowledge_question_router())
         app.include_router(engineering_router())
         app.include_router(github_integration_router())
+        app.include_router(admin_project_export_router())
         if (
             resolved_settings.dev_tools_enabled
             and resolved_settings.deployment_environment != "production"
@@ -161,6 +184,7 @@ def create_api_app(
             app.include_router(catalog_bootstrap_router())
     else:
         app.include_router(customer_geo_router())
+        app.include_router(customer_project_export_router())
     return app
 
 

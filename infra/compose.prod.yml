@@ -8,17 +8,23 @@ x-service-security: &service-security
   cap_drop:
     - ALL
 
-x-api-environment: &api-environment
+x-api-common-environment: &api-common-environment
   GEO_DEPLOYMENT_ENVIRONMENT: production
+  GEO_RELEASE_VERSION: ${GEO_RELEASE_VERSION:?set GEO_RELEASE_VERSION}
   GEO_DEV_TOOLS_ENABLED: "0"
   GEO_DB_POOL_ENABLED: "1"
   GEO_DB_POOL_MAX_SIZE: "10"
+  GEO_DATABASE_URL_FILE: /run/secrets/database_url
+  GEO_READINESS_DEPENDENCY_TIMEOUT_SECONDS: ${GEO_READINESS_DEPENDENCY_TIMEOUT_SECONDS:-2}
+  GEO_READINESS_TOTAL_TIMEOUT_SECONDS: ${GEO_READINESS_TOTAL_TIMEOUT_SECONDS:-5}
+
+x-internal-api-environment: &internal-api-environment
+  <<: *api-common-environment
   GEO_AUTH_MODE: oidc
   GEO_OIDC_DISCOVERY_URL: ${GEO_OIDC_DISCOVERY_URL:?set GEO_OIDC_DISCOVERY_URL}
   GEO_JWT_ISSUER: ${GEO_JWT_ISSUER:?set GEO_JWT_ISSUER}
   GEO_JWT_AUDIENCE: ${GEO_JWT_AUDIENCE:?set GEO_JWT_AUDIENCE}
   GEO_AUTH_TOKEN_SECRET_FILE: /run/secrets/auth_token_secret
-  GEO_DATABASE_URL_FILE: /run/secrets/database_url
   OBJECT_STORE_ENDPOINT: http://minio:9000
   OBJECT_STORE_BUCKET: geo-artifacts
   OBJECT_STORE_REGION: ${GEO_OBJECT_STORE_REGION:-us-east-1}
@@ -29,18 +35,39 @@ x-api-environment: &api-environment
   GEO_TASK_QUEUE_REQUIRED: "1"
   GEO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
   OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
-  OTEL_SERVICE_NAME: geo-api
+  OTEL_SERVICE_NAME: geo-internal-api
 
-x-api-secrets: &api-secrets
+x-customer-api-environment: &customer-api-environment
+  <<: *api-common-environment
+  GEO_AUTH_MODE: session
+  GEO_AUTH_TOKEN_SECRET_FILE: /run/secrets/auth_token_secret
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+  OTEL_SERVICE_NAME: geo-customer-api
+
+x-internal-api-secrets: &internal-api-secrets
   - database_url
   - object_store_access_key
   - object_store_secret_key
   - auth_token_secret
 
-x-api-dependencies: &api-dependencies
+x-customer-api-secrets: &customer-api-secrets
+  - database_url
+  - auth_token_secret
+
+x-internal-dependencies: &internal-dependencies
   migrate:
     condition: service_completed_successfully
   minio-bootstrap:
+    condition: service_completed_successfully
+  valkey:
+    condition: service_healthy
+
+x-customer-dependencies: &customer-dependencies
+  migrate:
+    condition: service_completed_successfully
+
+x-relay-dependencies: &relay-dependencies
+  migrate:
     condition: service_completed_successfully
   valkey:
     condition: service_healthy
@@ -174,15 +201,15 @@ services:
     tmpfs:
       - /tmp:size=256m,noexec,nosuid
     environment:
-      <<: *api-environment
-      OTEL_SERVICE_NAME: geo-internal-api
-    secrets: *api-secrets
+      <<: *internal-api-environment
+    secrets: *internal-api-secrets
     command: ["uvicorn", "geo_api.internal_app:app", "--host", "0.0.0.0", "--port", "8000"]
     networks:
       - backend
-    depends_on: *api-dependencies
+      - egress
+    depends_on: *internal-dependencies
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3).read()"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/ready', timeout=5).read()"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -194,16 +221,14 @@ services:
     tmpfs:
       - /tmp:size=256m,noexec,nosuid
     environment:
-      <<: *api-environment
-      GEO_AUTH_MODE: session
-      OTEL_SERVICE_NAME: geo-customer-api
-    secrets: *api-secrets
+      <<: *customer-api-environment
+    secrets: *customer-api-secrets
     command: ["uvicorn", "geo_api.customer_app:app", "--host", "0.0.0.0", "--port", "8000"]
     networks:
       - backend
-    depends_on: *api-dependencies
+    depends_on: *customer-dependencies
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3).read()"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/ready', timeout=5).read()"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -216,8 +241,16 @@ services:
       - /tmp:size=512m,noexec,nosuid
     environment:
       GEO_DEPLOYMENT_ENVIRONMENT: production
+      GEO_RELEASE_VERSION: ${GEO_RELEASE_VERSION:?set GEO_RELEASE_VERSION}
       GEO_DATABASE_URL_FILE: /run/secrets/worker_database_url
       GEO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
+      GEO_RUNTIME_HEARTBEAT_INTERVAL_SECONDS: ${GEO_RUNTIME_HEARTBEAT_INTERVAL_SECONDS:-10}
+      GEO_RUNTIME_HEARTBEAT_STALE_SECONDS: ${GEO_RUNTIME_HEARTBEAT_STALE_SECONDS:-30}
+      GEO_RUNTIME_QUEUED_STALE_SECONDS: ${GEO_RUNTIME_QUEUED_STALE_SECONDS:-600}
+      GEO_RUNTIME_OUTBOX_STALE_SECONDS: ${GEO_RUNTIME_OUTBOX_STALE_SECONDS:-300}
+      GEO_RUNTIME_RUNNING_GRACE_SECONDS: ${GEO_RUNTIME_RUNNING_GRACE_SECONDS:-60}
+      GEO_RUNTIME_FAILURE_WINDOW_SECONDS: ${GEO_RUNTIME_FAILURE_WINDOW_SECONDS:-86400}
+      GEO_RUNTIME_EXPECTED_TASK_WORKER_INSTANCES: ${GEO_RUNTIME_EXPECTED_TASK_WORKER_INSTANCES:-2}
       GEO_DEEPSEEK_API_KEY_FILE: /run/secrets/deepseek_api_key
       OBJECT_STORE_ENDPOINT: http://minio:9000
       OBJECT_STORE_BUCKET: geo-artifacts
@@ -234,7 +267,14 @@ services:
     command: ["dramatiq", "geo_worker.tasks", "--processes", "2", "--threads", "4"]
     networks:
       - backend
-    depends_on: *api-dependencies
+      - egress
+    depends_on: *internal-dependencies
+    healthcheck:
+      test: ["CMD", "python", "-m", "geo_worker.runtime_health", "heartbeat", "--service-type", "task_worker"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   outbox-relay:
     <<: *service-security
@@ -244,15 +284,29 @@ services:
       - /tmp:size=128m,noexec,nosuid
     environment:
       GEO_DEPLOYMENT_ENVIRONMENT: production
+      GEO_RELEASE_VERSION: ${GEO_RELEASE_VERSION:?set GEO_RELEASE_VERSION}
       GEO_DATABASE_URL_FILE: /run/secrets/worker_database_url
       GEO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
+      GEO_RUNTIME_HEARTBEAT_INTERVAL_SECONDS: ${GEO_RUNTIME_HEARTBEAT_INTERVAL_SECONDS:-10}
+      GEO_RUNTIME_HEARTBEAT_STALE_SECONDS: ${GEO_RUNTIME_HEARTBEAT_STALE_SECONDS:-30}
+      GEO_RUNTIME_QUEUED_STALE_SECONDS: ${GEO_RUNTIME_QUEUED_STALE_SECONDS:-600}
+      GEO_RUNTIME_OUTBOX_STALE_SECONDS: ${GEO_RUNTIME_OUTBOX_STALE_SECONDS:-300}
+      GEO_RUNTIME_RUNNING_GRACE_SECONDS: ${GEO_RUNTIME_RUNNING_GRACE_SECONDS:-60}
+      GEO_RUNTIME_FAILURE_WINDOW_SECONDS: ${GEO_RUNTIME_FAILURE_WINDOW_SECONDS:-86400}
+      GEO_RUNTIME_EXPECTED_OUTBOX_RELAY_INSTANCES: ${GEO_RUNTIME_EXPECTED_OUTBOX_RELAY_INSTANCES:-1}
       OTEL_SERVICE_NAME: geo-outbox-relay
     secrets:
       - worker_database_url
     command: ["python", "-m", "geo_worker.relay"]
     networks:
       - backend
-    depends_on: *api-dependencies
+    depends_on: *relay-dependencies
+    healthcheck:
+      test: ["CMD", "python", "-m", "geo_worker.runtime_health", "heartbeat", "--service-type", "outbox_relay"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   admin-web:
     <<: *service-security
@@ -263,6 +317,7 @@ services:
     environment:
       API_INTERNAL_BASE_URL: http://internal-api:8000
       GEO_DEPLOYMENT_ENVIRONMENT: production
+      GEO_RELEASE_VERSION: ${GEO_RELEASE_VERSION:?set GEO_RELEASE_VERSION}
       CUSTOMER_WEB_BASE_URL: ${GEO_CUSTOMER_WEB_BASE_URL:?set GEO_CUSTOMER_WEB_BASE_URL}
       GEO_ADMIN_OIDC_LOGIN_URL: ${GEO_ADMIN_OIDC_LOGIN_URL:?set GEO_ADMIN_OIDC_LOGIN_URL}
       GEO_ADMIN_OIDC_LOGOUT_URL: ${GEO_ADMIN_OIDC_LOGOUT_URL:?set GEO_ADMIN_OIDC_LOGOUT_URL}
@@ -276,6 +331,11 @@ services:
     depends_on:
       internal-api:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
 
   customer-web:
     <<: *service-security
@@ -286,6 +346,7 @@ services:
     environment:
       API_CUSTOMER_BASE_URL: http://customer-api:8000
       GEO_DEPLOYMENT_ENVIRONMENT: production
+      GEO_RELEASE_VERSION: ${GEO_RELEASE_VERSION:?set GEO_RELEASE_VERSION}
       ADMIN_WEB_BASE_URL: ${GEO_ADMIN_WEB_BASE_URL:?set GEO_ADMIN_WEB_BASE_URL}
       PORT: "3000"
     ports:
@@ -296,6 +357,11 @@ services:
     depends_on:
       customer-api:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
 
   initial-owner-provision:
     <<: *service-security
@@ -332,17 +398,6 @@ services:
     command: ["--config=/etc/otelcol/config.yml"]
     volumes:
       - ./otel/collector.yml:/etc/otelcol/config.yml:ro
-    networks:
-      - backend
-
-  prometheus:
-    <<: *service-security
-    image: ${GEO_PROMETHEUS_IMAGE:?set a digest-pinned GEO_PROMETHEUS_IMAGE}
-    profiles: ["observability"]
-    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.path=/prometheus"]
-    volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus_data:/prometheus
     networks:
       - backend
 
@@ -390,13 +445,13 @@ services:
 networks:
   backend:
     internal: true
+  egress:
   edge:
 
 volumes:
   postgres_data:
   minio_data:
   valkey_data:
-  prometheus_data:
 
 secrets:
   postgres_installer_password:

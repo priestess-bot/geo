@@ -21,9 +21,14 @@ uv run pytest
 corepack pnpm install --frozen-lockfile
 corepack pnpm typecheck
 corepack pnpm build
+corepack pnpm test:browser:chromium
 ```
 
 Admin 路由最多读取 5 个领域资源，Customer 模块最多 2 个或一个组合投影。Customer 代码不得导入 internal types/client。
+
+F-019 基准使用 `make f019-benchmark`。该命令验证数据集、确定性 harness，以及已选报告
+的 hash 和全部运行时 Gate；不会重跑付费候选。正式选择和合格回退记录见
+`benchmarks/f019/selection.json`。
 
 ## 架构门禁
 
@@ -31,6 +36,6 @@ Admin 路由最多读取 5 个领域资源，Customer 模块最多 2 个或一�
 - Domain 不能导入 FastAPI、psycopg、httpx 或环境变量。
 - Repository 不能调用 commit、模型、HTTP 或对象存储。
 - 非归档源码不得出现旧产品名或阶段路径。
-- 新增/修改行覆盖率至少 90%；认证、RLS、任务和投放状态机分支覆盖率至少 90%。
+- 每项效果整改必须有对应行为测试；普通 PR 不设置全仓覆盖率百分比、跨浏览器或移动端硬门槛。
 
 公共类型、Port、状态转换和安全不变量需要简洁 docstring。普通赋值、显然的 UI 结构和自解释代码不添加叙述性注释。

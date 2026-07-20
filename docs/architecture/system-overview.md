@@ -39,7 +39,8 @@ flowchart LR
 - MinIO：Evidence、Prompt Bundle、模型/导出 manifest 等不可变工件；
 - Valkey/Dramatiq：只做低延迟唤醒，不能成为业务状态真源；
 - DeepSeek：仅由 Task Worker 通过只读 Secret 调用；
-- OTel/Prometheus：运行元数据观测，不采集正文、Prompt、Token 或 Cookie。
+- OTel Collector：接收受控运行元数据，不采集正文、Prompt、Token 或 Cookie；
+- Prometheus/Grafana：当前阶段未启用，待真实 `/metrics` 合同和指标平台完成后再接入。
 
 Customer API 有独立 ASGI 入口和 OpenAPI，只注册 Customer DTO 与已批准/已验证投影。内部路由在 Customer 进程中不存在，不使用 403 假装隔离。
 

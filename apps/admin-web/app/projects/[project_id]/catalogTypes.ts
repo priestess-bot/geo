@@ -16,6 +16,13 @@ export const evidenceItemTypes = [
   "source_asset",
   "consumer_experience"
 ] as const;
+export const genericEvidenceItemTypes = [
+  "chunk",
+  "citation",
+  "report_extract",
+  "source_asset",
+  "consumer_experience"
+] as const;
 export const usageRightsValues = [
   "owned",
   "licensed",
@@ -29,6 +36,7 @@ export const confidentialityValues = ["public", "internal", "confidential", "res
 export type EntityType = (typeof entityTypes)[number];
 export type SubjectRole = (typeof subjectRoles)[number];
 export type EvidenceItemType = (typeof evidenceItemTypes)[number];
+export type GenericEvidenceItemType = (typeof genericEvidenceItemTypes)[number];
 export type UsageRights = (typeof usageRightsValues)[number];
 export type Confidentiality = (typeof confidentialityValues)[number];
 
@@ -125,7 +133,7 @@ export type CreateMarketProfileRequest = Readonly<{
 }>;
 
 export type CreateEvidenceRequest = Readonly<{
-  item_type: EvidenceItemType;
+  item_type: GenericEvidenceItemType;
   source_id: string;
   subject_entity_id: string | null;
   subject_role: SubjectRole;

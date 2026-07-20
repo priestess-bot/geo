@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:geo:f019:benchmark-report:v1",
+  "title": "F-019 Benchmark Report",
+  "type": "object",
+  "required": ["schema_version", "candidate", "dataset", "status", "selection_status", "metrics", "gates", "quality_score", "raw_candidate_output"],
+  "properties": {
+    "schema_version": {"const": "f019-benchmark-report-v1"},
+    "status": {"enum": ["passed", "failed", "unavailable"]},
+    "selection_status": {"enum": ["eligible_candidate_passed", "harness_reference_only", "hard_gate_failed", "not_selectable_unavailable"]},
+    "quality_score": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+    "cost_time_policy": {"enum": ["record_only_no_hard_cap"]},
+    "candidate": {"type": "object"},
+    "dataset": {"type": "object"},
+    "metrics": {"type": ["object", "null"]},
+    "gates": {"type": ["object", "null"]},
+    "usage": {"type": ["object", "null"]},
+    "usage_evidence": {"type": ["object", "null"]},
+    "validation_evidence": {"type": ["object", "null"]},
+    "raw_candidate_output": {"type": "object"}
+  }
+}

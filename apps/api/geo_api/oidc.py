@@ -40,8 +40,10 @@ class OidcVerifierSettings:
 
     def __post_init__(self) -> None:
         _validate_remote_url(self.discovery_url, name="GEO_OIDC_DISCOVERY_URL")
-        if not self.issuer.strip() or not self.audience.strip():
-            raise OidcConfigurationError("OIDC issuer and audience are required.")
+        if not self.issuer.strip() or not self.audience.strip() or not self.tenant_claim.strip():
+            raise OidcConfigurationError(
+                "OIDC issuer, audience, and tenant claim are required."
+            )
         if self.cache_ttl_seconds <= 0 or self.timeout_seconds <= 0:
             raise OidcConfigurationError("OIDC cache TTL and timeout must be positive.")
 

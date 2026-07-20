@@ -21,6 +21,7 @@ from geo_api.placement_contracts import (
 )
 from geo_api.placement_access import PlacementEditor, PlacementPublisher, PlacementViewer
 from geo_api.placement_routes_shared import IdempotencyHeader, placement_services
+from geo_api.placement_verification_contracts import PublicationVerificationAttemptView
 from geo_api.problems import ApiProblem
 from geo_api.stable_routes import PROBLEM_RESPONSES
 
@@ -40,6 +41,7 @@ def publication_router() -> APIRouter:
     )
     def request_publication(
         project_id: UUID,
+        campaign_id: UUID,
         version_id: UUID,
         payload: PublicationCreate,
         request: Request,
@@ -48,6 +50,7 @@ def publication_router() -> APIRouter:
     ) -> object:
         return placement_services(request).request_publication(
             project_id=project_id,
+            campaign_id=campaign_id,
             version_id=version_id,
             destination_id=payload.destination_id,
             requested_by=principal.identity_id,
@@ -63,11 +66,15 @@ def publication_router() -> APIRouter:
         operation_id="listPlacementPublicationRequests",
     )
     def list_publications(
-        project_id: UUID, version_id: UUID, request: Request, principal: PlacementViewer
+        project_id: UUID,
+        campaign_id: UUID,
+        version_id: UUID,
+        request: Request,
+        principal: PlacementViewer,
     ) -> tuple[object, ...]:
         del principal
         return placement_services(request).list_publication_requests(
-            project_id=project_id, version_id=version_id
+            project_id=project_id, campaign_id=campaign_id, version_id=version_id
         )
 
     @router.post(
@@ -78,6 +85,7 @@ def publication_router() -> APIRouter:
     )
     def create_submission(
         project_id: UUID,
+        campaign_id: UUID,
         publication_request_id: UUID,
         payload: SubmissionCreate,
         request: Request,
@@ -86,6 +94,7 @@ def publication_router() -> APIRouter:
     ) -> object:
         return placement_services(request).create_submission(
             project_id=project_id,
+            campaign_id=campaign_id,
             publication_request_id=publication_request_id,
             submitted_url=payload.submitted_url,
             provider_submission_id=payload.provider_submission_id,
@@ -100,13 +109,16 @@ def publication_router() -> APIRouter:
     )
     def list_submissions(
         project_id: UUID,
+        campaign_id: UUID,
         publication_request_id: UUID,
         request: Request,
         principal: PlacementViewer,
     ) -> tuple[object, ...]:
         del principal
         return placement_services(request).list_submissions(
-            project_id=project_id, publication_request_id=publication_request_id
+            project_id=project_id,
+            campaign_id=campaign_id,
+            publication_request_id=publication_request_id,
         )
 
     @router.get(
@@ -115,15 +127,38 @@ def publication_router() -> APIRouter:
         operation_id="getPlacementSubmission",
     )
     def get_submission(
-        project_id: UUID, submission_id: UUID, request: Request, principal: PlacementViewer
+        project_id: UUID,
+        campaign_id: UUID,
+        submission_id: UUID,
+        request: Request,
+        principal: PlacementViewer,
     ) -> object:
         del principal
         submission = placement_services(request).get_submission(
-            project_id=project_id, submission_id=submission_id
+            project_id=project_id, campaign_id=campaign_id, submission_id=submission_id
         )
         if submission is None:
             raise ApiProblem(status=404, title="Not Found", detail="Submission not found.")
         return submission
+
+    @router.get(
+        "/submissions/{submission_id}/verification-attempts",
+        response_model=list[PublicationVerificationAttemptView],
+        operation_id="listPlacementSubmissionVerificationAttempts",
+    )
+    def list_verification_attempts(
+        project_id: UUID,
+        campaign_id: UUID,
+        submission_id: UUID,
+        request: Request,
+        principal: PlacementViewer,
+    ) -> tuple[object, ...]:
+        del principal
+        return placement_services(request).list_verification_attempts(
+            project_id=project_id,
+            campaign_id=campaign_id,
+            submission_id=submission_id,
+        )
 
     @router.post(
         "/submissions/{submission_id}/url",
@@ -132,6 +167,7 @@ def publication_router() -> APIRouter:
     )
     def backfill_submission_url(
         project_id: UUID,
+        campaign_id: UUID,
         submission_id: UUID,
         payload: SubmissionUrlCreate,
         request: Request,
@@ -139,6 +175,7 @@ def publication_router() -> APIRouter:
     ) -> object:
         return placement_services(request).backfill_submission_url(
             project_id=project_id,
+            campaign_id=campaign_id,
             submission_id=submission_id,
             submitted_url=payload.submitted_url,
             actor_id=principal.identity_id,
@@ -151,6 +188,7 @@ def publication_router() -> APIRouter:
     )
     def block_submission(
         project_id: UUID,
+        campaign_id: UUID,
         submission_id: UUID,
         payload: StateReasonCreate,
         request: Request,
@@ -158,6 +196,7 @@ def publication_router() -> APIRouter:
     ) -> object:
         return placement_services(request).transition_submission(
             project_id=project_id,
+            campaign_id=campaign_id,
             submission_id=submission_id,
             status="blocked",
             reason=payload.reason,
@@ -171,6 +210,7 @@ def publication_router() -> APIRouter:
     )
     def terminate_publication(
         project_id: UUID,
+        campaign_id: UUID,
         publication_request_id: UUID,
         command: Literal["block", "cancel"],
         payload: StateReasonCreate,
@@ -179,6 +219,7 @@ def publication_router() -> APIRouter:
     ) -> object:
         return placement_services(request).transition_publication(
             project_id=project_id,
+            campaign_id=campaign_id,
             publication_request_id=publication_request_id,
             status="blocked" if command == "block" else "cancelled",
             reason=payload.reason,
@@ -193,6 +234,7 @@ def publication_router() -> APIRouter:
     )
     def request_verification(
         project_id: UUID,
+        campaign_id: UUID,
         submission_id: UUID,
         request: Request,
         idempotency_key: IdempotencyHeader,
@@ -201,13 +243,17 @@ def publication_router() -> APIRouter:
         del principal
         job = placement_services(request).request_verification(
             project_id=project_id,
+            campaign_id=campaign_id,
             submission_id=submission_id,
             idempotency_key=idempotency_key,
         )
         return JobAccepted(
             job_id=job.id,
             status=JobState(job.status),
-            status_url=f"/v1/jobs/{job.id}",
+            status_url=(
+                f"/v1/projects/{project_id}/geo/jobs/{job.id}/events"
+                f"?campaign_id={campaign_id}"
+            ),
         )
 
     @router.post(
@@ -218,6 +264,7 @@ def publication_router() -> APIRouter:
     )
     def create_measurement(
         project_id: UUID,
+        campaign_id: UUID,
         submission_id: UUID,
         payload: MeasurementCreate,
         request: Request,
@@ -225,7 +272,10 @@ def publication_router() -> APIRouter:
     ) -> object:
         del principal
         return placement_services(request).record_measurement(
-            project_id=project_id, submission_id=submission_id, **payload.model_dump()
+            project_id=project_id,
+            campaign_id=campaign_id,
+            submission_id=submission_id,
+            **payload.model_dump(),
         )
 
     @router.get(
@@ -235,13 +285,14 @@ def publication_router() -> APIRouter:
     )
     def list_measurements(
         project_id: UUID,
+        campaign_id: UUID,
         submission_id: UUID,
         request: Request,
         principal: PlacementViewer,
     ) -> tuple[object, ...]:
         del principal
         return placement_services(request).list_measurements(
-            project_id=project_id, submission_id=submission_id
+            project_id=project_id, campaign_id=campaign_id, submission_id=submission_id
         )
 
     @router.get(
@@ -251,6 +302,7 @@ def publication_router() -> APIRouter:
     )
     def list_measurement_tasks(
         project_id: UUID,
+        campaign_id: UUID,
         request: Request,
         principal: PlacementViewer,
         submission_id: UUID | None = None,
@@ -260,7 +312,10 @@ def publication_router() -> APIRouter:
     ) -> tuple[object, ...]:
         del principal
         return placement_services(request).list_measurement_collection_tasks(
-            project_id=project_id, submission_id=submission_id, status=task_status
+            project_id=project_id,
+            campaign_id=campaign_id,
+            submission_id=submission_id,
+            status=task_status,
         )
 
     @router.post(
@@ -270,12 +325,16 @@ def publication_router() -> APIRouter:
     )
     def complete_measurement_task(
         project_id: UUID,
+        campaign_id: UUID,
         task_id: UUID,
         request: Request,
         principal: PlacementEditor,
     ) -> object:
         return placement_services(request).complete_measurement_collection_task(
-            project_id=project_id, task_id=task_id, actor_id=principal.identity_id
+            project_id=project_id,
+            campaign_id=campaign_id,
+            task_id=task_id,
+            actor_id=principal.identity_id,
         )
 
     @router.post(
@@ -285,6 +344,7 @@ def publication_router() -> APIRouter:
     )
     def cancel_measurement_task(
         project_id: UUID,
+        campaign_id: UUID,
         task_id: UUID,
         payload: StateReasonCreate,
         request: Request,
@@ -292,6 +352,7 @@ def publication_router() -> APIRouter:
     ) -> object:
         return placement_services(request).cancel_measurement_collection_task(
             project_id=project_id,
+            campaign_id=campaign_id,
             task_id=task_id,
             actor_id=principal.identity_id,
             reason=payload.reason,

@@ -1,11 +1,9 @@
+import { redirect } from "next/navigation";
+
 import { InvitationLoginForm } from "./_auth/InvitationLoginForm";
-import { SummaryView } from "./_components/GeoViews";
-import { PortalAccessState, PortalChrome } from "./_components/PortalChrome";
 import {
   adminWebBaseUrl,
-  loadCustomerGeoReadModel,
-  loadSessionPortal,
-  resourceProblems
+  loadSessionPortal
 } from "./runtime";
 
 // The invite token remains in form memory and is never read from URL state.
@@ -18,6 +16,7 @@ export default async function CustomerHome({
   const params = (await searchParams) || {};
   const invitationId = first(params.invitation_id);
   const requestedProjectId = first(params.project_id);
+  const requestedCampaignId = first(params.campaign_id);
   const session = await loadSessionPortal(requestedProjectId);
 
   if (!session.authenticated) {
@@ -47,26 +46,10 @@ export default async function CustomerHome({
     );
   }
 
-  if (!session.selectedProject) {
-    return (
-      <PortalAccessState
-        detail={session.problem?.detail || "当前会话没有客户门户可见的项目。"}
-        requestId={session.problem?.request_id}
-        title={session.problem ? "项目加载失败" : "暂无授权项目"}
-      />
-    );
-  }
-
-  const model = await loadCustomerGeoReadModel(session.selectedProject.project_id);
-  return (
-    <PortalChrome
-      active="summary"
-      problems={resourceProblems(model)}
-      session={session}
-    >
-      <SummaryView model={model} />
-    </PortalChrome>
-  );
+  const query = new URLSearchParams();
+  if (requestedProjectId) query.set("project_id", requestedProjectId);
+  if (requestedCampaignId) query.set("campaign_id", requestedCampaignId);
+  redirect(`/portal/summary${query.size ? `?${query.toString()}` : ""}`);
 }
 
 function first(value: string | string[] | undefined): string | undefined {

@@ -12,48 +12,41 @@ MONITORING = (ALEMBIC / "sql" / "0004_monitoring_observations.sql").read_text(en
 
 def test_revision_graph_has_exactly_one_root_and_head() -> None:
     revisions = sorted((ALEMBIC / "versions").glob("*.py"))
-    assert [path.name for path in revisions] == [
-        "0001_geo_baseline.py",
-        "0002_engineering_governance.py",
-        "0003_access_invitations.py",
-        "0004_monitoring_observations.py",
-        "0005_claim_inventory_guard.py",
-        "0006_monitoring_lineage.py",
-        "0007_placement_operations.py",
-        "0008_prompt_simulations.py",
-        "0009_knowledge_pipeline.py",
-        "0010_campaign_destination_opportunities.py",
-    ]
-    root = revisions[0].read_text(encoding="utf-8")
-    engineering = revisions[1].read_text(encoding="utf-8")
-    invitations = revisions[2].read_text(encoding="utf-8")
-    monitoring = revisions[3].read_text(encoding="utf-8")
-    claim_inventory = revisions[4].read_text(encoding="utf-8")
-    monitoring_lineage = revisions[5].read_text(encoding="utf-8")
-    placement_operations = revisions[6].read_text(encoding="utf-8")
-    prompt_simulations = revisions[7].read_text(encoding="utf-8")
-    knowledge_pipeline = revisions[8].read_text(encoding="utf-8")
-    head = revisions[9].read_text(encoding="utf-8")
-    assert 'revision = "0001_geo_baseline"' in root
-    assert "down_revision = None" in root
-    assert 'revision = "0002_engineering_governance"' in engineering
-    assert 'down_revision = "0001_geo_baseline"' in engineering
-    assert 'revision = "0003_access_invitations"' in invitations
-    assert 'down_revision = "0002_engineering_governance"' in invitations
-    assert 'revision = "0004_monitoring_observations"' in monitoring
-    assert 'down_revision = "0003_access_invitations"' in monitoring
-    assert 'revision = "0005_claim_inventory_guard"' in claim_inventory
-    assert 'down_revision = "0004_monitoring_observations"' in claim_inventory
-    assert 'revision = "0006_monitoring_lineage"' in monitoring_lineage
-    assert 'down_revision = "0005_claim_inventory_guard"' in monitoring_lineage
-    assert 'revision = "0007_placement_operations"' in placement_operations
-    assert 'down_revision = "0006_monitoring_lineage"' in placement_operations
-    assert 'revision = "0008_prompt_simulations"' in prompt_simulations
-    assert 'down_revision = "0007_placement_operations"' in prompt_simulations
-    assert 'revision = "0009_knowledge_pipeline"' in knowledge_pipeline
-    assert 'down_revision = "0008_prompt_simulations"' in knowledge_pipeline
-    assert 'revision = "0010_campaign_destinations"' in head
-    assert 'down_revision = "0009_knowledge_pipeline"' in head
+    assert [int(path.name[:4]) for path in revisions] == list(range(1, len(revisions) + 1))
+
+    graph: dict[str, str | None] = {}
+    for path in revisions:
+        source = path.read_text(encoding="utf-8")
+        revision_match = re.search(r'^revision = "([^"]+)"$', source, re.MULTILINE)
+        down_match = re.search(
+            r'^down_revision = (?:"([^"]+)"|None)$', source, re.MULTILINE
+        )
+        assert revision_match is not None, path.name
+        assert down_match is not None, path.name
+        revision = revision_match.group(1)
+        assert len(revision) <= 32, (
+            path.name,
+            "Alembic stores revision IDs in alembic_version.version_num varchar(32)",
+        )
+        assert revision not in graph
+        graph[revision] = down_match.group(1)
+        for sql_name in re.findall(r'_execute_file\("([^"]+\.sql)"\)', source):
+            assert (ALEMBIC / "sql" / sql_name).is_file(), (path.name, sql_name)
+
+    roots = [revision for revision, parent in graph.items() if parent is None]
+    referenced = {parent for parent in graph.values() if parent is not None}
+    heads = set(graph) - referenced
+    assert roots == ["0001_geo_baseline"]
+    assert len(heads) == 1
+    assert referenced <= set(graph)
+
+    visited: set[str] = set()
+    current: str | None = heads.pop()
+    while current is not None:
+        assert current not in visited
+        visited.add(current)
+        current = graph[current]
+    assert visited == set(graph)
 
 
 def test_claim_inventory_guard_fails_closed_on_empty_inventory() -> None:

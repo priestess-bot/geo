@@ -30,6 +30,7 @@ export default async function ProjectDetailPage({
     activeTab === "knowledge" ? loadKnowledgeWorkspace(projectId, query) : Promise.resolve(null)
   ]);
   if (catalog.project.problem?.status === 401) redirect("/login");
+  if (geoData?.canonicalHref) redirect(geoData.canonicalHref);
   return <WorkbenchShell
     activeTab={activeTab}
     catalog={catalog}

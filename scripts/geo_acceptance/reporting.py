@@ -12,7 +12,9 @@ from typing import Mapping
 from geo_core.monitoring.domain import MonitoringReport
 from geo_core.placements.domain import Measurement, MeasurementCollectionTask
 
-from scripts.geo_acceptance.contracts import AcceptanceConfig, CHANNELS
+from scripts.geo_acceptance.adapters import adapter_manifest
+from scripts.geo_acceptance.contracts import AcceptanceConfig, CHANNELS, EXECUTION_MODE
+from scripts.geo_acceptance.isolation import IsolationEvidence
 from scripts.geo_acceptance.monitoring import (
     BaselineResult,
     FOLLOW_UP_WINDOWS,
@@ -50,6 +52,7 @@ def run_reporting(
             raise AssertionError(f"{window.value} collection task is missing")
         placement_measurements.append(setup.placement.record_measurement(
             project_id=setup.project_id,
+            campaign_id=setup.campaign.id,
             submission_id=placement.submission.id,
             monitoring_query_id=baseline.query.monitoring_query_id,
             measured_at=datetime.now(UTC),
@@ -71,28 +74,36 @@ def run_reporting(
         follow_ups.append(follow_up)
         completed_tasks.append(setup.placement.complete_measurement_collection_task(
             project_id=setup.project_id,
+            campaign_id=setup.campaign.id,
             task_id=task.id,
             actor_id=setup.owner.identity_id,
         ))
         report = baseline.application.generate_report(
             setup.owner,
             project_id=setup.project_id,
+            campaign_id=setup.campaign.id,
             metric_snapshot_id=follow_up.metric.id,
             title=f"Controlled GEO {window.value.upper()} acceptance report {setup.suffix}",
         )
         reports.append(baseline.application.approve_report(
-            setup.owner, project_id=setup.project_id, report_id=report.id
+            setup.owner,
+            project_id=setup.project_id,
+            campaign_id=setup.campaign.id,
+            report_id=report.id,
         ))
-    customer_metrics = baseline.application.list_metrics(
-        setup.customer, project_id=setup.project_id
+    customer_approved = baseline.application.list_customer_approved_report_snapshots(
+        setup.customer,
+        project_id=setup.project_id,
+        campaign_id=setup.campaign.id,
     )
-    customer_urls = baseline.application.list_verified_urls(
-        setup.customer, project_id=setup.project_id
+    customer_metrics = tuple(item.snapshot for item in customer_approved)
+    customer_reports = tuple(item.report for item in customer_approved)
+    customer_urls = baseline.application.list_customer_approved_verified_urls(
+        setup.customer,
+        project_id=setup.project_id,
+        campaign_id=setup.campaign.id,
     )
-    customer_reports = baseline.application.list_reports(
-        setup.customer, project_id=setup.project_id, approved_only=True
-    )
-    if len(customer_metrics) != 4 or len(customer_urls) != 1 or len(customer_reports) != 3:
+    if len(customer_metrics) != 3 or len(customer_urls) != 1 or len(customer_reports) != 3:
         raise AssertionError("customer-safe metrics, verified URL and report are incomplete")
     if any(item.status != "approved" for item in customer_reports):
         raise AssertionError("customer projection exposed an unapproved report")
@@ -113,6 +124,8 @@ def build_result(
     baseline: BaselineResult,
     placement: PlacementResult,
     reporting: ReportingResult,
+    *,
+    isolation_evidence: IsolationEvidence,
 ) -> dict[str, object]:
     opportunities = setup.placement.list_opportunities(
         project_id=setup.project_id, campaign_id=setup.campaign.id
@@ -123,7 +136,10 @@ def build_result(
     result: dict[str, object] = {
         "run_id": config.run_id,
         "environment": config.environment,
+        "execution_mode": EXECUTION_MODE,
         "mode": "live_deepseek" if config.live_deepseek else "deterministic",
+        "adapters": list(adapter_manifest(config)),
+        "environment_fingerprint": isolation_evidence.as_report(),
         "target_manifest": (
             {
                 "path": str(config.target_manifest),
@@ -142,6 +158,7 @@ def build_result(
             "product_entity_id": setup.product.id,
             "market_profile_id": setup.market.id,
             "evidence_item_ids": [setup.fact.id, setup.experience.id],
+            "knowledge_fact_id": setup.knowledge_fact_id,
         },
         "campaign": {
             "campaign_id": setup.campaign.id,
@@ -227,6 +244,9 @@ def build_result(
                 placement.review.submitted_for_review_by != placement.review.reviewer_id
             ),
             "customer_projection_approved_only": True,
+            "isolated_scope_verified": True,
+            "terminal_artifact_replay_count": placement.terminal_artifact_replay_count,
+            "duplicate_artifacts_created_by_terminal_replay": 0,
             "follow_up_windows_completed": [
                 task.measurement_window
                 for task in reporting.measurement_tasks
@@ -239,6 +259,7 @@ def build_result(
             "monitoring_data_mode": "controlled_acceptance",
             "controlled_simulation": True,
             "causal_claim": False,
+            "production_worker_relay_topology_validated": False,
         },
     }
     _assert_result(result)
@@ -269,3 +290,14 @@ def _assert_result(result: Mapping[str, object]) -> None:
         raise AssertionError("export and publication intent are no longer separated")
     if assertions.get("follow_up_windows_completed") != ["t28", "t56", "t84"]:
         raise AssertionError("T+28, T+56 and T+84 follow-up tasks are not complete")
+    if assertions.get("terminal_artifact_replay_count") != len(CHANNELS) + 2:
+        raise AssertionError("not every finalized acceptance artifact passed terminal replay")
+    if assertions.get("duplicate_artifacts_created_by_terminal_replay") != 0:
+        raise AssertionError("a terminal result replay created another artifact")
+    if result.get("execution_mode") != EXECUTION_MODE:
+        raise AssertionError("acceptance execution mode is not frozen to inline_isolated")
+    boundaries = result.get("boundaries")
+    if not isinstance(boundaries, Mapping):
+        raise AssertionError("acceptance boundaries are not structured")
+    if boundaries.get("production_worker_relay_topology_validated") is not False:
+        raise AssertionError("inline acceptance cannot validate production Worker/Relay topology")

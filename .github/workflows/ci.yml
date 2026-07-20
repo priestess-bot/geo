@@ -12,6 +12,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.12"
@@ -46,10 +49,23 @@ jobs:
       GEO_DATABASE_URL: postgresql://geo_installer:geo_ci_only@localhost:5432/geo
       GEO_ACCESS_TEST_ADMIN_DATABASE_URL: postgresql://geo_installer:geo_ci_only@localhost:5432/geo
       GEO_ACCESS_TEST_DATABASE_URL: postgresql://geo_app_dev:geo_app_ci_only@localhost:5432/geo
+      GEO_ACCEPTANCE_TEST_ADMIN_DATABASE_URL: postgresql://geo_installer:geo_ci_only@localhost:5432/geo
+      GEO_ACCEPTANCE_TEST_APP_DATABASE_URL: postgresql://geo_app_dev:geo_app_ci_only@localhost:5432/geo
+      GEO_ACCEPTANCE_TEST_ISOLATION_MARKER: github-actions-postgres-integration
+      GEO_ACCEPTANCE_TEST_WORKER_DATABASE_URL: postgresql://geo_worker_dev:geo_worker_ci_only@localhost:5432/geo
       GEO_PLACEMENT_TEST_ADMIN_URL: postgresql://geo_installer:geo_ci_only@localhost:5432/geo
+      GEO_F019_TEST_MINIO_ENDPOINT: http://localhost:9000
       GEO_TEST_DATABASE_URL: postgresql://geo_installer:geo_ci_only@localhost:5432/geo
+      GEO_ACCEPTANCE_APP_DATABASE_URL: postgresql://geo_app_dev:geo_app_ci_only@localhost:5432/geo
+      GEO_ACCEPTANCE_WORKER_DATABASE_URL: postgresql://geo_worker_dev:geo_worker_ci_only@localhost:5432/geo
+      GEO_ACCEPTANCE_ADMIN_DATABASE_URL: postgresql://geo_installer:geo_ci_only@localhost:5432/geo
+      GEO_ACCEPTANCE_ISOLATION_MARKER: github-actions-postgres-integration
+      GEO_ACCEPTANCE_ENVIRONMENT: test
+      GEO_ACCEPTANCE_OUTPUT: artifacts/geo-acceptance/inline-result.json
       GEO_DEV_APP_PASSWORD: geo_app_ci_only
       GEO_DEV_WORKER_PASSWORD: geo_worker_ci_only
+      MINIO_ROOT_USER: geo_dev
+      MINIO_ROOT_PASSWORD: geo_dev_secret
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -57,16 +73,44 @@ jobs:
           python-version: "3.12"
           enable-cache: true
       - run: uv sync --frozen
+      - name: Start isolated F019 object store fixture
+        run: |
+          docker run --detach --name geo-ci-minio --publish 127.0.0.1:9000:9000 \
+            --env MINIO_ROOT_USER --env MINIO_ROOT_PASSWORD \
+            minio/minio:RELEASE.2025-01-20T14-49-07Z server /data --address :9000
+          for attempt in $(seq 1 60); do
+            curl --fail --silent http://127.0.0.1:9000/minio/health/ready >/dev/null && exit 0
+            sleep 1
+          done
+          echo "isolated MinIO did not become ready" >&2
+          exit 1
       - name: Fresh database baseline
         run: uv run alembic upgrade head
       - name: One Alembic head
         run: test "$(uv run alembic heads | wc -l)" -eq 1
       - name: Provision non-BYPASSRLS test login
         run: uv run python scripts/provision_dev_database.py
+      - name: Mark the disposable database for isolated inline acceptance
+        run: >-
+          uv run python -c 'import os, psycopg; from psycopg import sql;
+          connection = psycopg.connect(os.environ["GEO_DATABASE_URL"], autocommit=True);
+          connection.execute(sql.SQL("ALTER DATABASE {} SET geo.acceptance_isolation_marker = {}")
+          .format(sql.Identifier(connection.info.dbname),
+          sql.Literal(os.environ["GEO_ACCEPTANCE_TEST_ISOLATION_MARKER"])));
+          connection.close()'
       - name: Baseline and Durable Job tests
         run: uv run pytest -q tests/test_geo_alembic_baseline.py tests/test_geo_job_lifecycle.py
       - name: Complete PostgreSQL integration suite
-        run: uv run pytest -q tests/integration tests/test_engineering_governance_postgres.py
+        run: make test-integration-required
+      - name: Isolated inline GEO acceptance
+        run: make geo-acceptance-inline
+      - name: Preserve truthful inline acceptance report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: geo-inline-acceptance
+          path: artifacts/geo-acceptance/inline-result.json
+          if-no-files-found: warn
 
   frontend:
     runs-on: ubuntu-latest
@@ -84,9 +128,14 @@ jobs:
           path: ~/.pnpm-store
           key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test:contracts
+      - name: TypeScript and Auth BFF behavior contracts
+        run: make web-contracts
       - run: pnpm typecheck
       - run: pnpm build
+      - name: Install Chromium for required browser smoke
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Required Admin core browser smoke
+        run: make test-browser-chromium
 
   deployment-contracts:
     runs-on: ubuntu-latest
@@ -96,8 +145,10 @@ jobs:
         with:
           python-version: "3.12"
       - run: uv sync --frozen
-      - name: Production Compose contract tests
-        run: uv run pytest -q tests/infra/test_production_compose.py
+      - name: Production and development infrastructure contracts
+        run: make test-infra-contracts
+      - name: Production backend and egress network isolation
+        run: make test-production-network
       - name: API image builds
         run: docker build -f apps/api/Dockerfile -t geo-api:ci .
       - name: Admin image builds

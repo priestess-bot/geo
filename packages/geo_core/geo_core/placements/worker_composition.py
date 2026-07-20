@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from typing import Mapping, Protocol
 from uuid import UUID
 
@@ -34,7 +34,11 @@ from geo_core.placements.domain import (
     canonical_hash,
     canonical_json_bytes,
 )
+from geo_core.placements.errors import PlacementContractMigrationRequired
 from geo_core.placements.generation_worker import parse_generated_placement, validate_output_schema
+from geo_core.placements.publication_verification_worker import (
+    PublicationVerificationContractError,
+)
 from geo_core.placements.runtime_prompts import generation_system_prompt
 from geo_core.placements.url_verifier import (
     PermanentVerificationError,
@@ -115,7 +119,19 @@ class GenerationHandler:
         self._lease_for = lease_for
 
     def handle(self, lease: WorkerLease) -> Mapping[str, object]:
-        claim = self._repository.load_generation(lease)
+        try:
+            claim = self._repository.load_generation(lease)
+        except PlacementContractMigrationRequired as exc:
+            return self._fail(
+                lease,
+                exc,
+                retry=False,
+                classification="migration_contract",
+                error_code=exc.error_code,
+                operator_action=exc.operator_action,
+            )
+        except PlacementRuleViolation as exc:
+            return self._fail(lease, exc, retry=False, classification="contract")
         serialized_schema = canonical_json_bytes(claim.output_schema).decode("utf-8")
         request = ModelGatewayRequest(
             messages=(
@@ -161,6 +177,8 @@ class GenerationHandler:
                     budget=ModelCallBudget(1),
                 )
                 heartbeat.raise_if_stopped()
+        except (JobCancellationRequested, LostJobLease):
+            raise
         except Exception as exc:
             classification = _model_error_classification(exc)
             self._repository.record_model_call_failure(
@@ -197,11 +215,16 @@ class GenerationHandler:
         *,
         retry: bool,
         classification: str,
+        error_code: str | None = None,
+        operator_action: str | None = None,
     ) -> Mapping[str, object]:
+        details = {"message": str(error), "classification": classification}
+        if operator_action is not None:
+            details["operator_action"] = operator_action
         status = self._store.fail(
             lease,
-            error_code=type(error).__name__,
-            details={"message": str(error), "classification": classification},
+            error_code=error_code or type(error).__name__,
+            details=details,
             retry_delay=timedelta(seconds=30) if retry else None,
         )
         return {"status": status, "job_id": str(lease.job_id)}
@@ -221,8 +244,19 @@ class PublicationVerificationHandler:
         self._verifier = verifier
         self._lease_for = lease_for
 
+    def reconcile_terminal(self, *, job_id: UUID, project_id: UUID) -> None:
+        self._repository.reconcile_terminal_verification(job_id=job_id, project_id=project_id)
+
     def handle(self, lease: WorkerLease) -> Mapping[str, object]:
-        snapshot = self._repository.begin_verification(lease)
+        try:
+            snapshot = self._repository.begin_verification(lease)
+        except PublicationVerificationContractError as exc:
+            status = self._repository.persist_verification_error(lease, exc.snapshot, error=exc)
+            return {
+                "status": status,
+                "job_id": str(lease.job_id),
+                "error_code": exc.failure.code,
+            }
         try:
             with LeaseHeartbeat(
                 self._store,
@@ -238,54 +272,14 @@ class PublicationVerificationHandler:
                     allowed_hosts=snapshot.allowed_hosts,
                 )
                 heartbeat.raise_if_stopped()
-        except RetryableVerificationError as exc:
-            status = self._store.fail(
-                lease,
-                error_code=type(exc).__name__,
-                details={"message": str(exc)},
-                retry_delay=timedelta(seconds=30),
-            )
-            self._repository.mark_verification_retry(
-                lease, snapshot, terminal=status in {"failed", "dead_lettered"}
-            )
+        except (RetryableVerificationError, PermanentVerificationError) as exc:
+            status = self._repository.persist_verification_error(lease, snapshot, error=exc)
             return {"status": status, "job_id": str(lease.job_id)}
-        except PermanentVerificationError as exc:
-            checked_at = datetime.now(UTC).isoformat()
-            result = {
-                "status_code": 0,
-                "final_url": snapshot.submitted_url,
-                "checked_at": checked_at,
-                "metadata_hash": canonical_hash(
-                    {"url": snapshot.submitted_url, "error": str(exc), "checked_at": checked_at}
-                ),
-                "accessibility": False,
-                "content_match": False,
-                "disclosure_match": False,
-                "link_match": False,
-                "error": str(exc),
-            }
-            self._repository.fail_verification_permanently(
-                lease,
-                snapshot,
-                error_code=type(exc).__name__,
-                result=result,
-            )
-            return {"status": "failed", "job_id": str(lease.job_id)}
-        result = {
-            "status_code": verification.status_code,
-            "final_url": verification.final_url,
-            "checked_at": verification.checked_at.isoformat(),
-            "metadata_hash": verification.metadata_hash,
-            "accessibility": verification.accessibility,
-            "content_match": verification.content_match,
-            "disclosure_match": verification.disclosure_match,
-            "link_match": verification.link_match,
-        }
-        self._repository.finalize_verification(
-            lease, snapshot, success=verification.success, result=result
+        verified = self._repository.persist_completed_verification(
+            lease, snapshot, result=verification
         )
         return {
-            "status": "verified" if verification.success else "verification_failed",
+            "status": "verified" if verified else "verification_failed",
             "job_id": str(lease.job_id),
         }
 
@@ -334,6 +328,12 @@ class PlacementWorkerDispatcher:
             lease_for=self._lease_for,
         )
         if claim.lease is None:
+            handler = self._handlers.get(claim.kind or "")
+            reconcile = getattr(handler, "reconcile_terminal", None)
+            if claim.disposition in {"cancelled", "dead_lettered", "terminal"} and callable(
+                reconcile
+            ):
+                reconcile(job_id=job_id, project_id=project_id)
             return {"status": claim.disposition, "job_id": str(job_id)}
         lease = claim.lease
         handler = self._handlers.get(lease.kind)
@@ -349,6 +349,9 @@ class PlacementWorkerDispatcher:
             return handler.handle(lease)
         except JobCancellationRequested:
             self._store.cancel(lease)
+            reconcile = getattr(handler, "reconcile_terminal", None)
+            if callable(reconcile):
+                reconcile(job_id=job_id, project_id=project_id)
             return {"status": "cancelled", "job_id": str(job_id)}
         except LostJobLease:
             return {"status": "fenced", "job_id": str(job_id)}
@@ -359,4 +362,8 @@ class PlacementWorkerDispatcher:
                 details={"message": str(exc)},
                 retry_delay=timedelta(seconds=30),
             )
+            if status in {"failed", "dead_lettered"}:
+                reconcile = getattr(handler, "reconcile_terminal", None)
+                if callable(reconcile):
+                    reconcile(job_id=job_id, project_id=project_id)
             return {"status": status, "job_id": str(job_id)}

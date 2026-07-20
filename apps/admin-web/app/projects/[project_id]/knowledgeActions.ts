@@ -8,6 +8,7 @@ import { runtimeRequest, type RuntimeResult } from "../../runtime";
 import type { KnowledgeActionState } from "./knowledgeTypes";
 
 type Created = { pipeline_run?: { id?: string }; pipeline_run_id?: string };
+const MAX_KNOWLEDGE_FILE_BYTES = 5 * 1024 * 1024;
 
 export async function importKnowledgeSource(
   _previous: KnowledgeActionState,
@@ -28,7 +29,7 @@ export async function importKnowledgeSource(
   if (sourceKind === "file") {
     const file = form.get("file");
     if (!(file instanceof File) || file.size === 0) return error("请选择要导入的文件。", 422);
-    if (file.size > 5 * 1024 * 1024) return error("文件不能超过 5 MB。", 422);
+    if (file.size > MAX_KNOWLEDGE_FILE_BYTES) return error("文件不能超过 5 MB。", 422);
     body.filename = file.name;
     body.media_type = file.type || "text/plain";
     body.content_base64 = Buffer.from(await file.arrayBuffer()).toString("base64");
@@ -84,6 +85,52 @@ export async function reviewKnowledgeFact(
   if (!response.ok) return failure(response, "事实审核失败。");
   revalidatePath(`/projects/${projectId}`);
   return { kind: "success", message: "事实候选审核状态已更新。" };
+}
+
+export async function promoteKnowledgeFactEvidence(
+  _previous: KnowledgeActionState,
+  form: FormData
+): Promise<KnowledgeActionState> {
+  const projectId = field(form, "project_id");
+  const factId = field(form, "fact_id");
+  const [subjectRole, subjectEntityId = ""] = field(form, "subject_assignment").split(":", 2);
+  const allowedRoles = new Set(["primary_brand", "competitor", "market", "product", "neutral"]);
+  if (!projectId || !factId || !allowedRoles.has(subjectRole)) {
+    return error("项目、Fact 与主体信息不能为空。", 422);
+  }
+  if ((subjectRole === "neutral") !== !subjectEntityId) {
+    return error("中立证据不能绑定实体，其他主体角色必须绑定实体。", 422);
+  }
+  const response = await runtimeRequest<{ outcome: "created" | "existing" }>(
+    path(projectId, `/fact-candidates/${encodeURIComponent(factId)}/evidence`),
+    {
+      method: "POST",
+      idempotencyKey: `knowledge-fact-evidence:${projectId}:${factId}`,
+      body: {
+        title: field(form, "title"),
+        subject_entity_id: subjectEntityId || null,
+        subject_role: subjectRole,
+        usage_rights: field(form, "usage_rights"),
+        confidentiality: field(form, "confidentiality"),
+        public_citation: {
+          disclosure_allowed: form.get("disclosure_allowed") === "on",
+          source_url: field(form, "source_url") || null,
+          source_title: field(form, "source_title") || null,
+          label: field(form, "citation_label") || null,
+          quotation_allowed: form.get("quotation_allowed") === "on",
+          attribution_required: form.get("attribution_required") === "on"
+        }
+      }
+    }
+  );
+  if (!response.ok) return failure(response, "Fact 提升为 Evidence 失败。");
+  revalidatePath(`/projects/${projectId}`);
+  return {
+    kind: "success",
+    message: response.data?.outcome === "existing"
+      ? "该 Fact 已有正式 Evidence，已返回同一条追溯链。"
+      : "Fact 已提升为正式 Evidence。"
+  };
 }
 
 export async function reviewKnowledgeFinding(

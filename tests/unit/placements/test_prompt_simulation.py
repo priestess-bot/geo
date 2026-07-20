@@ -7,7 +7,13 @@ from uuid import uuid4
 import pytest
 
 from geo_core.placements.application import PlacementApplication
-from geo_core.placements.domain import JobReference, PlacementRuleViolation
+from geo_core.placements.domain import (
+    CampaignResourceContext,
+    CampaignResourceKind,
+    CampaignScope,
+    JobReference,
+    PlacementRuleViolation,
+)
 from geo_core.placements.simulation import PromptSimulation
 
 
@@ -27,10 +33,14 @@ class _UnitOfWork(AbstractContextManager[Any]):
 
 
 def _values() -> dict[str, Any]:
+    campaign_id, opportunity_id = uuid4(), uuid4()
     return {
         "project_id": uuid4(),
+        "campaign_id": campaign_id,
+        "opportunity_id": opportunity_id,
         "destination_id": uuid4(),
-        "template_release_id": uuid4(),
+        "prompt_release_binding_id": uuid4(),
+        "confirmed_release_hash": "b" * 64,
         "primary_brand_entity_id": uuid4(),
         "product_entity_id": uuid4(),
         "authenticity_mode": "synthetic_testimonial",
@@ -101,9 +111,30 @@ def test_simulation_domain_cannot_be_marked_publishable() -> None:
 def test_simulation_create_commits_repository_result() -> None:
     simulation = SimpleNamespace(input_hash="a" * 64)
     project_id = uuid4()
-    job = JobReference(uuid4(), project_id, "prompt_simulation.generate", "queued")
+    values = _values()
+    values.update(project_id=project_id, model_call_budget=1)
+    job = JobReference(
+        uuid4(), project_id, "prompt_simulation.generate", "queued", values["campaign_id"]
+    )
 
     class Repository:
+        def resolve_campaign_resource(
+            self,
+            *,
+            scope: CampaignScope,
+            kind: CampaignResourceKind,
+            resource_id: object,
+            lock: bool = False,
+        ) -> CampaignResourceContext:
+            del lock
+            return CampaignResourceContext(
+                scope=scope,
+                kind=kind,
+                resource_id=resource_id,
+                opportunity_id=values["opportunity_id"],
+                destination_id=values["destination_id"],
+            )
+
         def create_prompt_simulation(self, **values: object):
             assert values["model_call_budget"] == 1
             assert values["authenticity_mode"] == "synthetic_testimonial"
@@ -111,8 +142,6 @@ def test_simulation_create_commits_repository_result() -> None:
 
     uow = _UnitOfWork(Repository())
     application = PlacementApplication(lambda scoped_project_id: uow)
-    values = _values()
-    values.update(project_id=project_id, model_call_budget=1)
 
     result = application.create_prompt_simulation(
         evidence_item_ids=(uuid4(),), **values

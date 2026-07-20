@@ -19,12 +19,32 @@ def job_control_router() -> APIRouter:
         responses=PROBLEM_RESPONSES,
     )
 
+    @router.get("/{job_id}", response_model=PlacementJobView)
+    def get_job(
+        project_id: UUID,
+        job_id: UUID,
+        request: Request,
+        principal: PlacementViewer,
+        campaign_id: UUID | None = None,
+    ) -> object:
+        del principal
+        return placement_services(request).get_job_reference(
+            project_id=project_id, campaign_id=campaign_id, job_id=job_id
+        )
+
     @router.post("/{job_id}/cancel", response_model=PlacementJobView)
     def cancel_job(
-        project_id: UUID, job_id: UUID, request: Request, principal: PlacementEditor
+        project_id: UUID,
+        job_id: UUID,
+        request: Request,
+        principal: PlacementEditor,
+        campaign_id: UUID | None = None,
     ) -> object:
         return placement_services(request).cancel_job(
-            project_id=project_id, job_id=job_id, actor_id=principal.identity_id
+            project_id=project_id,
+            campaign_id=campaign_id,
+            job_id=job_id,
+            actor_id=principal.identity_id,
         )
 
     @router.post("/{job_id}/retry-now", response_model=PlacementJobView)
@@ -34,9 +54,11 @@ def job_control_router() -> APIRouter:
         request: Request,
         idempotency_key: IdempotencyHeader,
         principal: PlacementEditor,
+        campaign_id: UUID | None = None,
     ) -> object:
         return placement_services(request).retry_job_now(
             project_id=project_id,
+            campaign_id=campaign_id,
             job_id=job_id,
             actor_id=principal.identity_id,
             idempotency_key=idempotency_key,
@@ -49,9 +71,11 @@ def job_control_router() -> APIRouter:
         request: Request,
         idempotency_key: IdempotencyHeader,
         principal: PlacementOwnerAdmin,
+        campaign_id: UUID | None = None,
     ) -> object:
         return placement_services(request).replay_job(
             project_id=project_id,
+            campaign_id=campaign_id,
             source_job_id=job_id,
             actor_id=principal.identity_id,
             idempotency_key=idempotency_key,
@@ -59,9 +83,15 @@ def job_control_router() -> APIRouter:
 
     @router.get("/{job_id}/events", response_model=list[PlacementJobEventView])
     def list_job_events(
-        project_id: UUID, job_id: UUID, request: Request, principal: PlacementViewer
+        project_id: UUID,
+        job_id: UUID,
+        request: Request,
+        principal: PlacementViewer,
+        campaign_id: UUID | None = None,
     ) -> tuple[object, ...]:
         del principal
-        return placement_services(request).list_job_events(project_id=project_id, job_id=job_id)
+        return placement_services(request).list_job_events(
+            project_id=project_id, campaign_id=campaign_id, job_id=job_id
+        )
 
     return router

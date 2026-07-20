@@ -13,8 +13,14 @@ from pydantic import BaseModel, Field, model_validator
 
 from geo_api.catalog_routes import _principal
 from geo_api.foundation_services import FoundationServiceUnavailable
+from geo_api.knowledge_contracts import (
+    FactEvidencePromotionResponse,
+    FactEvidenceProposalResponse,
+    PromoteFactEvidenceRequest,
+)
 from geo_api.problems import ApiProblem
 from geo_api.stable_routes import PROBLEM_RESPONSES
+from geo_core.catalog.domain import Confidentiality, PublicCitation, SubjectRole, UsageRights
 from geo_core.knowledge import KnowledgeApplication
 from geo_core.knowledge.domain import (
     KnowledgeConflict,
@@ -204,6 +210,61 @@ def knowledge_router() -> APIRouter:
         return _call(
             lambda: _application(request).list_facts(
                 _principal(request, authorization), project_id=project_id
+            )
+        )
+
+    @router.get(
+        "/fact-candidates/{fact_id}/evidence-proposal",
+        response_model=FactEvidenceProposalResponse,
+        operation_id="getKnowledgeFactEvidenceProposal",
+    )
+    def evidence_proposal(
+        project_id: UUID,
+        fact_id: UUID,
+        request: Request,
+        authorization: AuthorizationHeader = None,
+    ) -> Any:
+        return _call(
+            lambda: _application(request).evidence_proposal(
+                _principal(request, authorization),
+                project_id=project_id,
+                fact_id=fact_id,
+            )
+        )
+
+    @router.post(
+        "/fact-candidates/{fact_id}/evidence",
+        response_model=FactEvidencePromotionResponse,
+        operation_id="promoteKnowledgeFactEvidence",
+    )
+    def promote_evidence(
+        project_id: UUID,
+        fact_id: UUID,
+        payload: PromoteFactEvidenceRequest,
+        request: Request,
+        idempotency_key: IdempotencyHeader,
+        authorization: AuthorizationHeader = None,
+    ) -> Any:
+        citation = payload.public_citation
+        return _call(
+            lambda: _application(request).promote_fact_to_evidence(
+                _principal(request, authorization),
+                project_id=project_id,
+                fact_id=fact_id,
+                idempotency_key=idempotency_key,
+                title=payload.title,
+                subject_entity_id=payload.subject_entity_id,
+                subject_role=SubjectRole(payload.subject_role),
+                usage_rights=UsageRights(payload.usage_rights),
+                confidentiality=Confidentiality(payload.confidentiality),
+                public_citation=PublicCitation(
+                    disclosure_allowed=citation.disclosure_allowed,
+                    source_url=citation.source_url,
+                    source_title=citation.source_title,
+                    label=citation.label,
+                    quotation_allowed=citation.quotation_allowed,
+                    attribution_required=citation.attribution_required,
+                ),
             )
         )
 

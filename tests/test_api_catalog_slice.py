@@ -202,7 +202,7 @@ def test_evidence_api_returns_fail_closed_eligibility_and_validates_hash() -> No
         ).json()
         text = "Observed product specification"
         payload = {
-            "item_type": "approved_fact",
+            "item_type": "citation",
             "source_id": str(uuid4()),
             "subject_entity_id": entity["id"],
             "subject_role": "product",
@@ -224,6 +224,33 @@ def test_evidence_api_returns_fail_closed_eligibility_and_validates_hash() -> No
     assert created.json()["eligible_for_generation"] is False
     assert created.json()["eligible_for_publication"] is False
     assert invalid.status_code == 422
+
+
+def test_generic_evidence_api_rejects_approved_fact_creation() -> None:
+    app, principal, _ = _app("analyst")
+    project_id = principal.project_ids[0]
+    text = "Approved facts require Knowledge lineage"
+    with TestClient(app) as client:
+        response = client.post(
+            f"/v1/projects/{project_id}/evidence-items",
+            json={
+                "item_type": "approved_fact",
+                "source_id": str(uuid4()),
+                "subject_entity_id": None,
+                "subject_role": "neutral",
+                "locator": {},
+                "snapshot": {
+                    "kind": "text",
+                    "text": text,
+                    "sha256": hashlib.sha256(text.encode()).hexdigest(),
+                },
+                "source_revision": {"kind": "content_hash", "value": "v1"},
+                "usage_rights": "owned",
+                "confidentiality": "internal",
+            },
+        )
+
+    assert response.status_code == 422
 
 
 def test_market_profile_create_and_list_are_project_scoped() -> None:

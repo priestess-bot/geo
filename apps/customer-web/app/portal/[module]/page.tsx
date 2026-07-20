@@ -9,9 +9,11 @@ import {
 import {
   PortalAccessState,
   PortalChrome,
+  PortalSelectionState,
   type PortalModule
 } from "../../_components/PortalChrome";
 import {
+  loadCampaignPortal,
   loadCustomerGeoReadModel,
   loadSessionPortal,
   resourceProblems
@@ -42,21 +44,62 @@ export default async function PortalModulePage({
     );
   }
   if (!session.selectedProject) {
+    if (session.selectionStatus === "empty" || session.selectionStatus === "error") {
+      return (
+        <PortalAccessState
+          detail={session.problem?.detail || "当前会话没有客户门户可见的项目。"}
+          requestId={session.problem?.request_id}
+          title={session.problem ? "项目加载失败" : "暂无授权项目"}
+        />
+      );
+    }
     return (
-      <PortalAccessState
-        detail={session.problem?.detail || "当前会话没有客户门户可见的项目。"}
-        requestId={session.problem?.request_id}
-        title={session.problem ? "项目加载失败" : "暂无授权项目"}
-      />
+      <PortalChrome
+        active={rawModule}
+        campaignPortal={null}
+        problems={[]}
+        session={session}
+      >
+        <PortalSelectionState
+          detail={session.selectionStatus === "unauthorized"
+            ? "请求的项目不在当前客户会话授权范围内。"
+            : "请从授权项目中选择一个项目。"}
+          title={session.selectionStatus === "unauthorized" ? "无权访问所选项目" : "未选择项目"}
+        />
+      </PortalChrome>
+    );
+  }
+
+  const campaignPortal = await loadCampaignPortal(
+    session.selectedProject.project_id,
+    campaignId
+  );
+  if (!campaignPortal.selectedCampaign) {
+    const problem = campaignPortal.problem ? [campaignPortal.problem] : [];
+    const state = campaignSelectionState(campaignPortal.selectionStatus);
+    return (
+      <PortalChrome
+        active={rawModule}
+        campaignPortal={campaignPortal}
+        problems={problem}
+        session={session}
+      >
+        <PortalSelectionState detail={state.detail} title={state.title} />
+      </PortalChrome>
     );
   }
 
   const model = await loadCustomerGeoReadModel(
     session.selectedProject.project_id,
-    campaignId
+    campaignPortal.selectedCampaign.id
   );
   return (
-    <PortalChrome active={rawModule} problems={resourceProblems(model)} session={session}>
+    <PortalChrome
+      active={rawModule}
+      campaignPortal={campaignPortal}
+      problems={resourceProblems(model)}
+      session={session}
+    >
       {view(rawModule, model)}
     </PortalChrome>
   );
@@ -67,11 +110,25 @@ function view(
   model: Awaited<ReturnType<typeof loadCustomerGeoReadModel>>
 ) {
   if (module === "summary") return <SummaryView model={model} />;
-  if (module === "metrics") return <MetricsView state={model.metrics} />;
-  if (module === "placements") {
-    return <PlacementsView urls={model.verifiedUrls} windows={model.windows} />;
+  if (module === "metrics") return <MetricsView model={model} />;
+  if (module === "placements") return <PlacementsView model={model} />;
+  return <ReportsView model={model} />;
+}
+
+function campaignSelectionState(status: string): Readonly<{ detail: string; title: string }> {
+  if (status === "unauthorized") {
+    return {
+      detail: "请求的 Campaign 不在当前项目的客户可见范围内。",
+      title: "无权访问所选 Campaign"
+    };
   }
-  return <ReportsView state={model.reports} />;
+  if (status === "empty") {
+    return { detail: "当前项目尚未建立 Campaign。", title: "暂无 Campaign" };
+  }
+  if (status === "error") {
+    return { detail: "Campaign 列表暂时无法读取。", title: "Campaign 加载失败" };
+  }
+  return { detail: "请从当前项目中选择一个 Campaign。", title: "未选择 Campaign" };
 }
 
 function isPortalModule(value: string): value is PortalModule {

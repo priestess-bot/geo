@@ -39,47 +39,70 @@ def content_fragments(rendered_text: str) -> tuple[str, ...]:
     return (normalized[:160],) if normalized else ()
 
 
-def string_values(value: object, *, key_hint: str) -> tuple[str, ...]:
-    found: list[str] = []
-    if isinstance(value, Mapping):
-        for key, child in value.items():
-            if key_hint in str(key).casefold() and isinstance(child, str) and child.strip():
-                found.append(child.strip())
-            else:
-                found.extend(string_values(child, key_hint=key_hint))
-    elif isinstance(value, list):
-        for child in value:
-            found.extend(string_values(child, key_hint=key_hint))
-    return tuple(dict.fromkeys(found))
-
-
 def open_measurement_window(
     store: PostgresDurableJobStore, lease: WorkerLease
 ) -> Mapping[str, object]:
     with store.fenced_transaction(lease) as connection:
         spec = row(
             connection.execute(
-                """SELECT submission_id, protocol_id, measurement_window,
+                """SELECT spec.submission_id, spec.campaign_id, spec.opportunity_id,
+                          submission.destination_id, spec.protocol_id, spec.measurement_window,
+                          submission.status AS submission_status, submission.verified_at,
                           due_offset_days, scheduled_for, market_profile_id,
                           locale, device, sample_size, expected_sample_count,
                           protocol_snapshot, protocol_hash
-                   FROM measurement_job_specs
-                   WHERE job_id = %s AND project_id = %s""",
+                   FROM measurement_job_specs spec
+                   JOIN publication_submissions submission
+                     ON submission.id = spec.submission_id
+                    AND submission.project_id = spec.project_id
+                    AND submission.campaign_id = spec.campaign_id
+                    AND submission.opportunity_id = spec.opportunity_id
+                   WHERE spec.job_id = %s AND spec.project_id = %s
+                   FOR UPDATE OF submission""",
                 (lease.job_id, lease.project_id),
             )
         )
         if spec is None:
             raise RuntimeError("measurement job specification does not exist")
+        if spec["submission_status"] not in {"verified", "blocked", "cancelled"}:
+            transient_details: dict[str, object] = {
+                "status": "retry_wait",
+                "reason": "submission_not_currently_verified",
+                "submission_id": str(spec["submission_id"]),
+            }
+            store.defer_in_transaction(
+                connection,
+                lease,
+                reason_code="submission_not_currently_verified",
+                details=transient_details,
+                retry_delay=timedelta(hours=6),
+            )
+            return transient_details
+        if spec["submission_status"] != "verified" or spec["verified_at"] is None:
+            skipped_details: dict[str, object] = {
+                "status": "skipped",
+                "reason": "submission_not_verified",
+                "submission_id": str(spec["submission_id"]),
+            }
+            store.complete_in_transaction(
+                connection,
+                lease,
+                result_ref=f"measurement-skipped:{spec['submission_id']}",
+                details=skipped_details,
+            )
+            return skipped_details
         task = row(
             connection.execute(
                 """INSERT INTO measurement_collection_tasks
-                     (project_id, job_id, submission_id, protocol_id,
+                     (project_id, campaign_id, opportunity_id, destination_id,
+                      job_id, submission_id, protocol_id,
                       measurement_window, expected_sample_count, scheduled_for)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                    ON CONFLICT (job_id) DO UPDATE SET job_id = EXCLUDED.job_id
                    RETURNING id""",
                 (
-                    lease.project_id, lease.job_id, spec["submission_id"],
+                    lease.project_id, spec["campaign_id"], spec["opportunity_id"],
+                    spec["destination_id"], lease.job_id, spec["submission_id"],
                     spec["protocol_id"], spec["measurement_window"],
                     spec["expected_sample_count"], spec["scheduled_for"],
                 ),
@@ -122,7 +145,8 @@ def schedule_measurements(
 ) -> int:
     protocols = rows(
         connection.execute(
-            """SELECT protocol.id, protocol.market_profile_id, protocol.locale,
+            """SELECT protocol.id, s.campaign_id, s.opportunity_id, s.destination_id,
+                      protocol.market_profile_id, protocol.locale,
                       protocol.device, protocol.sample_size, protocol.protocol_hash
                FROM publication_submissions s
                JOIN publication_requests r
@@ -171,24 +195,37 @@ def schedule_measurements(
                 f"geo-measurement:{submission_id}:{protocol['id']}:{window}",
             )
             scheduled_for = verified_at + timedelta(days=offset)
+            if row(
+                connection.execute(
+                    """SELECT job_id FROM measurement_job_specs
+                       WHERE project_id = %s AND submission_id = %s
+                         AND protocol_id = %s AND measurement_window = %s""",
+                    (lease.project_id, submission_id, protocol["id"], window),
+                )
+            ) is not None:
+                continue
             connection.execute(
                 """INSERT INTO durable_jobs
-                     (id, project_id, kind, input_hash, idempotency_key, next_run_at)
-                   VALUES (%s, %s, 'placement.measure', %s, %s, %s)
+                     (id, project_id, campaign_id, kind, input_hash,
+                      idempotency_key, next_run_at)
+                   VALUES (%s, %s, %s, 'placement.measure', %s, %s, %s)
                    ON CONFLICT (id) DO NOTHING""",
-                (job_id, lease.project_id,
+                (job_id, lease.project_id, protocol["campaign_id"],
                  canonical_hash({"submission_id": str(submission_id),
                                  "protocol_id": str(protocol["id"]), "window": window}),
                  f"measurement:{submission_id}:{protocol['id']}:{window}", scheduled_for),
             )
             connection.execute(
                 """INSERT INTO measurement_job_specs
-                     (job_id, project_id, submission_id, protocol_id, measurement_window,
+                     (job_id, project_id, campaign_id, opportunity_id,
+                      submission_id, protocol_id, measurement_window,
                       due_offset_days, scheduled_for, market_profile_id, locale, device,
                       sample_size, expected_sample_count, protocol_snapshot, protocol_hash)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                           %s, %s, %s, %s::jsonb, %s)
                    ON CONFLICT (job_id) DO NOTHING""",
-                (job_id, lease.project_id, submission_id, protocol["id"], window, offset,
+                (job_id, lease.project_id, protocol["campaign_id"],
+                 protocol["opportunity_id"], submission_id, protocol["id"], window, offset,
                  scheduled_for, protocol["market_profile_id"], protocol["locale"],
                  protocol["device"], protocol["sample_size"], expected,
                  json.dumps(snapshot), protocol["protocol_hash"]),
@@ -206,7 +243,8 @@ def schedule_measurements(
                    VALUES (%s, %s, 'placement.measure', %s::jsonb, %s, %s)
                    ON CONFLICT (project_id, idempotency_key) DO NOTHING""",
                 (lease.project_id, job_id,
-                 json.dumps({"job_id": str(job_id), "project_id": str(lease.project_id)}),
+                 json.dumps({"job_id": str(job_id), "project_id": str(lease.project_id),
+                             "campaign_id": str(protocol["campaign_id"])}),
                  f"wake:placement.measure:{submission_id}:{protocol['id']}:{window}",
                  scheduled_for),
             )

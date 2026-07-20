@@ -5,6 +5,7 @@ from geo_api.app_factory import create_api_app
 
 
 ROOT = Path(__file__).resolve().parents[1]
+ADMIN_ROOT = ROOT / "apps/admin-web"
 WORKSPACE = ROOT / "apps/admin-web/app/projects/[project_id]"
 
 
@@ -18,11 +19,21 @@ def test_knowledge_api_is_project_scoped_and_internal_only() -> None:
         "/v1/projects/{project_id}/knowledge/pipeline-runs/{run_id}/stages",
         "/v1/projects/{project_id}/knowledge/chunks",
         "/v1/projects/{project_id}/knowledge/fact-candidates/{fact_id}",
+        "/v1/projects/{project_id}/knowledge/fact-candidates/{fact_id}/evidence-proposal",
+        "/v1/projects/{project_id}/knowledge/fact-candidates/{fact_id}/evidence",
         "/v1/projects/{project_id}/knowledge/quality-findings/{finding_id}",
         "/v1/projects/{project_id}/knowledge/dashboard",
     }
     assert expected <= set(internal)
     assert expected.isdisjoint(customer)
+
+    promotion = internal[
+        "/v1/projects/{project_id}/knowledge/fact-candidates/{fact_id}/evidence"
+    ]["post"]
+    idempotency = next(
+        item for item in promotion["parameters"] if item["name"] == "Idempotency-Key"
+    )
+    assert idempotency["required"] is True
 
 
 def test_knowledge_workspace_keeps_all_enterprise_preprocessing_views() -> None:
@@ -39,7 +50,45 @@ def test_knowledge_workspace_keeps_all_enterprise_preprocessing_views() -> None:
         assert label in source
     assert ".pdf,.docx" in source
     assert "reviewKnowledgeFinding" in source
+    assert "FactEvidencePromotionForm" in source
+    assert "promotion_request_hash" in source
     assert "EvidencePanel" not in source
+
+
+def test_fact_promotion_action_never_submits_service_derived_lineage() -> None:
+    action = (WORKSPACE / "knowledgeActions.ts").read_text(encoding="utf-8")
+    promotion = action[action.index("promoteKnowledgeFactEvidence") :]
+    body = promotion[promotion.index("body:") : promotion.index("if (!response.ok)")]
+    for derived in (
+        "pipeline_run_id",
+        "knowledge_source_id",
+        "knowledge_document_id",
+        "knowledge_chunk_id",
+        "snapshot_hash",
+        "source_revision",
+        "locator",
+    ):
+        assert derived not in body
+    assert "public_domain" not in promotion
+    assert "idempotencyKey" in promotion
+
+
+def test_knowledge_upload_preserves_the_five_mebibyte_file_boundary() -> None:
+    config = (ADMIN_ROOT / "next.config.mjs").read_text(encoding="utf-8")
+    action = (WORKSPACE / "knowledgeActions.ts").read_text(encoding="utf-8")
+
+    experimental = config.index("experimental:")
+    server_actions = config.index("serverActions:", experimental)
+    assert config.index('bodySizeLimit: "6mb"', server_actions) > server_actions
+
+    limit = re.search(
+        r"const MAX_KNOWLEDGE_FILE_BYTES = (\d+) \* (\d+) \* (\d+);",
+        action,
+    )
+    assert limit is not None
+    assert tuple(map(int, limit.groups())) == (5, 1024, 1024)
+    assert "file.size > MAX_KNOWLEDGE_FILE_BYTES" in action
+    assert "file.size >= MAX_KNOWLEDGE_FILE_BYTES" not in action
 
 
 def test_knowledge_slice_is_modular_and_does_not_reintroduce_legacy_names() -> None:

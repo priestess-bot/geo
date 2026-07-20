@@ -5,6 +5,11 @@ import { entityName, marketName } from "./display";
 import type { GeoWorkspaceData } from "./model";
 import type { CatalogLoadResult } from "../../../catalogTypes";
 import styles from "./GeoWorkspace.module.css";
+import { ProtocolSourceStratumFields } from "./ObservationSourceFields";
+import { MonitoringMetricSnapshot } from "./MonitoringMetricSnapshot";
+import { sourceStratumHash, sourceStratumLabel } from "./monitoring-statistics";
+import { ProtocolSamplingFields } from "./ProtocolSamplingFields";
+import { QuestionSetWorkspace } from "./QuestionSetWorkspace";
 
 export function CampaignWorkspace({ projectId, data, catalog }: {
   projectId: string; data: GeoWorkspaceData; catalog: CatalogLoadResult;
@@ -14,6 +19,13 @@ export function CampaignWorkspace({ projectId, data, catalog }: {
   const selectedProtocol = data.protocols.data.find((item) => item.id === selection.protocolId);
   const products = catalog.entities.data.filter((item) => item.entity_type === "product");
   const market = catalog.markets.data.find((item) => item.id === selectedCampaign?.market_profile_id);
+  const sourceStrata = (selectedProtocol?.source_strata || []).map((stratum) => ({
+    hash: sourceStratumHash(stratum),
+    label: sourceStratumLabel(stratum)
+  }));
+  const queryClusters = Array.from(new Set(data.protocolQueries.data
+    .map((item) => item.query_cluster_key)
+    .filter((item): item is string => Boolean(item))));
   return <section className={styles.workspace}>
     <header className={styles.pageHeading}>
       <div><h2>Campaign 总览</h2><p>围绕一个产品维护消费者问题、固定监测口径并查看阶段性结果。</p></div>
@@ -33,7 +45,14 @@ export function CampaignWorkspace({ projectId, data, catalog }: {
     <section className={styles.panel}>
       <h3>产品 Campaign</h3>
       <table className={styles.table}><thead><tr><th>Campaign</th><th>产品</th><th>市场</th><th>状态</th></tr></thead><tbody>
-        {data.campaigns.data.map((item) => <tr key={item.id}><td><strong>{item.name}</strong><TechnicalInfo><code>{item.id}</code></TechnicalInfo></td>
+        {data.campaigns.data.map((item) => <tr key={item.id}><td><a href={geoHref(projectId, selection, {
+          campaign_id: item.id, protocol_id: undefined, destination_id: undefined,
+          opportunity_id: undefined, brief_version_id: undefined, attempt_id: undefined,
+          skill_id: undefined, bundle_id: undefined, job_id: undefined, version_id: undefined,
+          publication_id: undefined, submission_id: undefined, simulation_id: undefined,
+          question_generation_job_id: undefined,
+          placement_stage: "brief", measurement_window: "baseline"
+        })}><strong>{item.name}</strong></a><TechnicalInfo><code>{item.id}</code></TechnicalInfo></td>
           <td>{entityName(catalog.entities.data, item.primary_product_entity_id)}</td><td>{marketName(catalog.markets.data, item.market_profile_id)}</td><td><Status value={item.status} /></td></tr>)}
       </tbody></table>
     </section>
@@ -53,29 +72,45 @@ export function CampaignWorkspace({ projectId, data, catalog }: {
       <section className={styles.panel}>
         <div className={styles.sectionHeader}><div><p>固定测量口径</p><h2>监测方案</h2></div>{selectedProtocol ? <Status value={selectedProtocol.status} /> : null}</div>
         <ResourceBlock resource={data.protocols}>{(protocols) => protocols.length ? <div className={styles.list}>{protocols.map((protocol) => <a href={geoHref(projectId, selection, { protocol_id: protocol.id })} className={protocol.id === selection.protocolId ? styles.selectedRow : styles.row} key={protocol.id}>
-          <span className={styles.rowHeader}><strong>{protocol.name}</strong><Status value={protocol.status} /></span><span className={styles.meta}>{platformLabel(protocol.platform)} · {protocol.locale} · {deviceLabel(protocol.device)} · {protocol.sample_size} 个样本</span></a>)}</div> : <Empty>建立监测方案后，才能录入基线并在后续窗口使用相同口径复测。</Empty>}</ResourceBlock>
+          <span className={styles.rowHeader}><strong>{protocol.name}</strong><Status value={protocol.status} /></span><span className={styles.meta}>{platformLabel(protocol.platform)} · {protocol.locale} · {deviceLabel(protocol.device)} · 每个问题 {protocol.sample_size} 次 · 有效门槛 {protocol.minimum_valid_repeats ?? "legacy"}</span></a>)}</div> : <Empty>建立监测方案后，才能录入基线并在后续窗口使用相同口径复测。</Empty>}</ResourceBlock>
         <CommandPanel label="新建监测方案"><ActionForm action={createProtocol} submitLabel="保存方案" disabled={!selectedCampaign}>
           <HiddenProject projectId={projectId} /><input type="hidden" name="campaign_id" value={selectedCampaign?.id || ""} /><input type="hidden" name="market_profile_id" value={selectedCampaign?.market_profile_id || ""} />
           <label>方案名称<input name="name" required placeholder="例如：ChatGPT AU 基线" /></label>
-          <div className={styles.inline}><label>AI 搜索平台<select name="platform" defaultValue="chatgpt_search"><option value="chatgpt_search">ChatGPT Search</option><option value="google_ai_overviews">Google AI Overviews</option><option value="google_search">Google Search</option><option value="perplexity">Perplexity</option><option value="gemini">Gemini</option><option value="other">其他</option></select></label>
-            <label>设备<select name="device" defaultValue="desktop"><option value="desktop">桌面端</option><option value="mobile">移动端</option><option value="tablet">平板</option></select></label></div>
-          <div className={styles.inline}><label>语言<input name="locale" defaultValue={market?.locale || "en-AU"} required /></label><label>每次样本数<input name="sample_size" type="number" min="1" max="1000" defaultValue="3" required /></label></div>
+          <ProtocolSourceStratumFields locale={market?.locale || "en-AU"} />
+          <ProtocolSamplingFields />
           <label>测量窗口（天）<input name="window_days" type="number" min="1" max="365" defaultValue="28" required /></label>
         </ActionForm></CommandPanel>
-        {selectedProtocol ? <div className={styles.toolbar}>{selectedProtocol.status === "draft" ? <ActionForm action={changeProtocol} submitLabel="批准方案"><HiddenProject projectId={projectId} /><input type="hidden" name="protocol_id" value={selectedProtocol.id} /><input type="hidden" name="command" value="approve" /></ActionForm> : null}
-          {selectedProtocol.status === "approved" ? <ActionForm action={changeProtocol} submitLabel="冻结测量口径"><HiddenProject projectId={projectId} /><input type="hidden" name="protocol_id" value={selectedProtocol.id} /><input type="hidden" name="command" value="freeze" /></ActionForm> : null}</div> : null}
+        {selectedProtocol ? <div className={styles.toolbar}>{selectedProtocol.status === "draft" ? <ActionForm action={changeProtocol} submitLabel="批准方案"><HiddenProject projectId={projectId} /><input type="hidden" name="campaign_id" value={selection.campaignId || ""} /><input type="hidden" name="protocol_id" value={selectedProtocol.id} /><input type="hidden" name="command" value="approve" /></ActionForm> : null}
+          {selectedProtocol.status === "approved" ? <ActionForm action={changeProtocol} submitLabel="冻结测量口径"><HiddenProject projectId={projectId} /><input type="hidden" name="campaign_id" value={selection.campaignId || ""} /><input type="hidden" name="protocol_id" value={selectedProtocol.id} /><input type="hidden" name="command" value="freeze" /></ActionForm> : null}</div> : null}
       </section>
     </div>
+
+    {selectedCampaign ? <QuestionSetWorkspace data={data} projectId={projectId} /> : null}
 
     <CommandPanel label="高级运营：查询建议、指标与客户报告">
       <div className={styles.columns}>
         <section className={styles.unframed}><h3>查询建议</h3><ActionForm action={createSuggestion} submitLabel="提交建议" disabled={!selectedProtocol}>
-          <HiddenProject projectId={projectId} /><input type="hidden" name="protocol_id" value={selectedProtocol?.id || ""} /><label>建议问法<textarea name="query_text" required /></label><label>建议依据<textarea name="rationale" required /></label><label>类型<select name="query_kind" defaultValue="recommendation"><option value="recommendation">商品推荐</option><option value="comparison">产品比较</option><option value="research">购买调研</option><option value="support">使用支持</option></select></label></ActionForm>
-          <ResourceBlock resource={data.suggestions}>{(items) => items.map((item) => <div className={styles.row} key={item.id}><span className={styles.rowHeader}><strong>{item.query_text}</strong><Status value={item.status} /></span>{item.status === "suggested" ? <ActionForm action={approveSuggestion} submitLabel="批准建议"><HiddenProject projectId={projectId} /><input type="hidden" name="protocol_id" value={item.protocol_id} /><input type="hidden" name="suggestion_id" value={item.id} /></ActionForm> : null}</div>)}</ResourceBlock></section>
-        <section className={styles.unframed}><h3>指标与报告</h3><ActionForm action={computeMetrics} submitLabel="计算指标" disabled={!selectedProtocol}><HiddenProject projectId={projectId} /><input type="hidden" name="protocol_id" value={selectedProtocol?.id || ""} /><label>测量窗口<select name="measurement_window" defaultValue={selection.measurementWindow}><option value="baseline">基线</option><option value="t28">T+28</option><option value="t56">T+56</option><option value="t84">T+84</option><option value="ad_hoc">临时测量</option></select></label></ActionForm>
-          <ResourceBlock resource={data.metrics}>{(items) => items.length ? <div className={styles.list}>{items.map((metric) => <div className={styles.row} key={metric.id}><span className={styles.rowHeader}><strong>{metric.measurement_window} · 推荐率 {(metric.recommendation_share * 100).toFixed(1)}%</strong><Status value={metric.status} /></span><span className={styles.meta}>有效样本 {metric.eligible_sample_count}/{metric.expected_sample_count} · 引用率 {(metric.placement_citation_share * 100).toFixed(1)}%</span></div>)}</div> : <Empty>尚无指标快照。</Empty>}</ResourceBlock>
-          <ActionForm action={createReport} submitLabel="生成报告" disabled={data.metrics.data.length === 0}><HiddenProject projectId={projectId} /><label>指标快照<select name="metric_snapshot_id" required defaultValue=""><option value="" disabled>选择快照</option>{data.metrics.data.map((item) => <option key={item.id} value={item.id}>{item.measurement_window} · {item.computed_at}</option>)}</select></label><label>报告标题<input name="title" required /></label></ActionForm>
-          <ResourceBlock resource={data.reports}>{(items) => items.map((report) => <div className={styles.row} key={report.id}><span className={styles.rowHeader}><strong>{report.title}</strong><Status value={report.status} /></span>{report.status === "draft" ? <ActionForm action={approveReport} submitLabel="批准报告"><HiddenProject projectId={projectId} /><input type="hidden" name="report_id" value={report.id} /></ActionForm> : null}</div>)}</ResourceBlock></section>
+          <HiddenProject projectId={projectId} /><input type="hidden" name="campaign_id" value={selection.campaignId || ""} /><input type="hidden" name="protocol_id" value={selectedProtocol?.id || ""} /><label>建议问法<textarea name="query_text" required /></label><label>问题簇<input name="query_cluster_key" required placeholder="例如：product-comparison" /></label><label>建议依据<textarea name="rationale" required /></label><label>类型<select name="query_kind" defaultValue="recommendation"><option value="recommendation">商品推荐</option><option value="comparison">产品比较</option><option value="research">购买调研</option><option value="support">使用支持</option></select></label></ActionForm>
+          <ResourceBlock resource={data.suggestions}>{(items) => items.map((item) => <div
+            className={styles.row} data-testid={item.query_cluster_key ? undefined : "legacy-query-suggestion"}
+            key={item.id}>
+            <span className={styles.rowHeader}><strong>{item.query_text}</strong><Status value={item.status} /></span>
+            <span className={styles.meta}>{item.query_cluster_key
+              ? `问题簇：${item.query_cluster_key}` : "迁移历史 · 缺少问题簇 · 只读"}</span>
+            {item.status === "suggested" && item.query_cluster_key ? <ActionForm
+              action={approveSuggestion} submitLabel="批准建议">
+              <HiddenProject projectId={projectId} />
+              <input type="hidden" name="campaign_id" value={selection.campaignId || ""} />
+              <input type="hidden" name="protocol_id" value={item.protocol_id} />
+              <input type="hidden" name="suggestion_id" value={item.id} />
+            </ActionForm> : item.status === "suggested" ? <div className={styles.metricWarning}>
+              旧记录没有冻结问题簇，不能批准。请在上方提交包含问题簇的新建议。
+            </div> : null}
+          </div>)}</ResourceBlock></section>
+        <section className={styles.unframed}><h3>指标与报告</h3><ActionForm action={computeMetrics} submitLabel="计算指标" disabled={!selectedProtocol || sourceStrata.length === 0 || queryClusters.length === 0}><HiddenProject projectId={projectId} /><input type="hidden" name="campaign_id" value={selection.campaignId || ""} /><input type="hidden" name="protocol_id" value={selectedProtocol?.id || ""} /><label>来源分层<select name="source_stratum_hash" required defaultValue=""><option value="" disabled>选择冻结来源分层</option>{sourceStrata.map((item) => <option key={item.hash} value={item.hash}>{item.label}</option>)}</select></label><label>问题簇<select name="query_cluster_key" required defaultValue=""><option value="" disabled>选择冻结问题簇</option>{queryClusters.map((item) => <option key={item} value={item}>{item}</option>)}</select></label><label>测量窗口<select name="measurement_window" defaultValue={selection.measurementWindow}><option value="baseline">基线</option><option value="t28">T+28</option><option value="t56">T+56</option><option value="t84">T+84</option><option value="ad_hoc">临时测量</option></select></label></ActionForm>
+          <ResourceBlock resource={data.metrics}>{(items) => items.length ? <div className={styles.metricList}>{items.map((metric) => <MonitoringMetricSnapshot metric={metric} key={metric.id} />)}</div> : <Empty>尚无指标快照。</Empty>}</ResourceBlock>
+          <ActionForm action={createReport} submitLabel="生成报告" disabled={data.metrics.data.length === 0}><HiddenProject projectId={projectId} /><input type="hidden" name="campaign_id" value={selection.campaignId || ""} /><label>指标快照<select name="metric_snapshot_id" required defaultValue=""><option value="" disabled>选择快照</option>{data.metrics.data.map((item) => <option key={item.id} value={item.id}>{item.measurement_window} · {(item.source_stratum_hash || "unknown").slice(0, 8)} · {item.computed_at}</option>)}</select></label><label>报告标题<input name="title" required /></label></ActionForm>
+          <ResourceBlock resource={data.reports}>{(items) => items.map((report) => <div className={styles.row} key={report.id}><span className={styles.rowHeader}><strong>{report.title}</strong><Status value={report.status} /></span>{report.status === "draft" ? <ActionForm action={approveReport} submitLabel="批准报告"><HiddenProject projectId={projectId} /><input type="hidden" name="campaign_id" value={selection.campaignId || ""} /><input type="hidden" name="report_id" value={report.id} /></ActionForm> : null}</div>)}</ResourceBlock></section>
       </div>
     </CommandPanel>
   </section>;

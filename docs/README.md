@@ -44,6 +44,10 @@
 - [代码质量与测试](development/code-quality.md)
 - [Worktree 与合并规范](development/worktree-workflow.md)
 - [GEO ACCEPTED 整改统一实施计划](engineering/GEO-accepted-remediation-implementation-plan-2026-07-19.md)
+- [GEO ACCEPTED 整改验证记录](engineering/GEO-accepted-remediation-verification-record-2026-07-19.md)
+- [GEO 旧版功能兼容性复查报告](engineering/GEO-legacy-feature-parity-2026-07-19.md)
+- [GEO 整改门禁与外部 staging 边界](operations/remediation-gates.md)
+- [F-019 RAG 选型 Gate 记录](engineering/F019-rag-selection-gate-2026-07-19.md)
 - [真实渠道用户文案研究](engineering/channel-user-copy-research-2026-07-16.md)
 - [Admin GEO 工作区可用性整改与功能保留基线](engineering/admin-geo-workspace-usability-remediation.md)
 - [架构整改方案](engineering/%E9%A1%B9%E7%9B%AE%E6%9E%B6%E6%9E%84%E4%B8%8E%E4%BB%A3%E7%A0%81%E6%B2%BB%E7%90%86%E6%95%B4%E6%94%B9%E6%96%B9%E6%A1%88-2026-07-15.md)
@@ -57,6 +61,6 @@
 
 - `GEO-文案生成系统设计方案v1_0.md`、`GEO-文案生成系统最终设计方案v2_0.md`：仅保留为历史设计输入，已由 v3 合同和 ADR 取代。
 - `operations/images/`：当前版本的脱敏浏览器截图；必须在全流程手册中登记 commit、运行 ID 和视口。
-- `operations/evidence/`：当前版本的小型验收索引。大体积运行产物必须进入受控 artifact store。
+- `artifacts/`：本地或 CI 运行产物目录，不纳入 Git；受版本控制的验证记录只保存脱敏摘要、run ID 和 SHA-256，大体积证据进入受控 artifact store。
 
 新的文档不得把旧产品名、阶段代号、fixture 路由、旧 `/runtime` API、同步模型调用或过时模型别名写成当前架构。历史过程材料不再保存在产品仓库中。

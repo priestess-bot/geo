@@ -9,7 +9,10 @@
     "./bff": "./src/bff.ts",
     "./portal-url": "./src/portal-url.ts"
   },
-  "scripts": { "typecheck": "tsc --noEmit" },
+  "scripts": {
+    "test:contracts": "node --test --experimental-strip-types --import ../../../tests/register_typescript_resolver.mjs ../../../tests/auth_bff_contract.test.mjs",
+    "typecheck": "tsc --noEmit"
+  },
   "dependencies": {
     "@geo/api-client": "workspace:*",
     "@geo/types": "workspace:*"

@@ -78,6 +78,7 @@ def test_default_prompt_catalog_converges_without_overwriting_user_selection(
         ]
         assert original.output_schema == default_output_schema()
         assert original.compiler_version == "geo-prompt-compiler-v1"
+        assert original.status.value == "approved"
         same_content = application.publish_skill_version(
             project_id=ids["project"],
             skill_id=owned_skill.id,
@@ -102,6 +103,7 @@ def test_default_prompt_catalog_converges_without_overwriting_user_selection(
             user_template=owned_definition.source,
         )
         assert custom_system.release_hash != original.release_hash
+        assert custom_system.status.value == "draft"
         custom_schema = application.publish_skill_version(
             project_id=ids["project"],
             skill_id=owned_skill.id,
@@ -121,6 +123,15 @@ def test_default_prompt_catalog_converges_without_overwriting_user_selection(
                     (original.id,),
                 )
             admin.rollback()
+        custom_system = application.transition_prompt_release(
+            project_id=ids["project"],
+            release_id=custom_system.id,
+            command="approve",
+            expected_state_version=custom_system.state_version,
+            reason="Approve project-specific Prompt Release",
+            actor_id=ids["owner"],
+            idempotency_key=f"approve-custom-system:{custom_system.id}",
+        )
         application.select_prompt_release(
             project_id=ids["project"],
             task_key="owned_site",
@@ -151,6 +162,49 @@ def test_default_prompt_catalog_converges_without_overwriting_user_selection(
             "Integration prompt catalog revision." in item.source_text
             for item in refreshed_releases
         )
+
+        reddit_binding = next(
+            item for item in after_customization if item["task_key"] == "reddit"
+        )
+        reddit_skill = next(
+            item
+            for item in application.list_prompt_skills(project_id=ids["project"])
+            if item.skill_key
+            == next(
+                definition.skill_key
+                for definition in DEFAULT_PROMPT_DEFINITIONS
+                if definition.task_key == "reddit"
+            )
+        )
+        reddit_release = next(
+            item
+            for item in application.list_prompt_releases(
+                project_id=ids["project"], skill_id=reddit_skill.id
+            )
+            if item.id == reddit_binding["template_release_id"]
+        )
+        application.transition_prompt_release(
+            project_id=ids["project"],
+            release_id=reddit_release.id,
+            command="revoke",
+            expected_state_version=reddit_release.state_version,
+            reason="Exercise revoked default reinstall",
+            actor_id=ids["owner"],
+            idempotency_key=f"revoke-default:{reddit_release.id}",
+        )
+        after_revoke = application.install_default_prompt_catalog(
+            project_id=ids["project"], actor_id=ids["owner"]
+        )
+        replacement = next(item for item in after_revoke if item["task_key"] == "reddit")
+        assert replacement["template_release_id"] != reddit_release.id
+        replacement_view = next(
+            item
+            for item in application.list_prompt_releases(
+                project_id=ids["project"], skill_id=reddit_skill.id
+            )
+            if item.id == replacement["template_release_id"]
+        )
+        assert replacement_view.status.value == "approved"
 
         with psycopg.connect(ADMIN_URL) as admin:
             counts = admin.execute(

@@ -17,6 +17,7 @@ from geo_core.catalog.domain import (
     EntityType,
     EvidenceDraft,
     EvidenceItem,
+    EvidenceItemType,
     MarketProfile,
     ProductEntity,
     Project,
@@ -167,6 +168,10 @@ class CatalogApplication:
         self, principal: AccessPrincipal, *, project_id: UUID, draft: EvidenceDraft
     ) -> EvidenceItem:
         require_project_role(principal, project_id, allowed=CONTRIBUTOR_ROLES)
+        if draft.item_type == EvidenceItemType.APPROVED_FACT:
+            raise CatalogRuleViolation(
+                "approved_fact Evidence must be promoted from an approved Knowledge Fact"
+            )
         with self._unit_of_work_factory(principal) as unit_of_work:
             if draft.subject_role != SubjectRole.NEUTRAL:
                 subject_id = draft.subject_entity_id

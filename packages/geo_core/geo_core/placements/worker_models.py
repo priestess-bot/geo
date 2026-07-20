@@ -1,7 +1,7 @@
 """Small immutable records shared by placement worker adapters."""
 
 from dataclasses import dataclass
-from typing import Mapping
+from typing import Literal, Mapping
 from uuid import UUID
 
 from geo_core.placements.simulation import PromptSimulationAuthenticityMode
@@ -16,6 +16,8 @@ class VerificationSnapshot:
     required_disclosures: tuple[str, ...]
     expected_links: tuple[str, ...]
     allowed_hosts: tuple[str, ...]
+    campaign_id: UUID
+    opportunity_id: UUID
 
 
 @dataclass(frozen=True)
@@ -39,6 +41,15 @@ class PromptSimulationClaim:
     evidence_item_ids: tuple[UUID, ...]
     public_citation_item_ids: tuple[UUID, ...]
     output_schema: Mapping[str, object]
+    binding_contract_version: Literal["legacy-v1", "opportunity-binding-v2"] = (
+        "opportunity-binding-v2"
+    )
+    campaign_id: UUID | None = None
+    opportunity_id: UUID | None = None
+    destination_id: UUID | None = None
+    simulation_purpose: str = "content_preview"
+    question_binding: Mapping[str, object] | None = None
+    question_candidate_id: UUID | None = None
 
     @property
     def prompt_input_hash(self) -> str:

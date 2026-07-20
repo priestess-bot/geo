@@ -8,7 +8,7 @@ import { isCatalogProject, type CatalogProject } from "../projectTypes";
 import {
   confidentialityValues,
   entityTypes,
-  evidenceItemTypes,
+  genericEvidenceItemTypes,
   isCatalogEntity,
   isEvidenceItem,
   isMarketProfile,
@@ -22,7 +22,7 @@ import {
   type CreateMarketProfileRequest,
   type EntityType,
   type EvidenceItem,
-  type EvidenceItemType,
+  type GenericEvidenceItemType,
   type MarketProfile,
   type SubjectRole,
   type UpdateProjectRequest,
@@ -129,7 +129,7 @@ function evidencePayload(formData: FormData):
   const usageRights = required(formData, "usage_rights");
   const confidentiality = required(formData, "confidentiality");
   const locator = jsonObject(formData, "locator", "证据定位信息");
-  if (!projectId || !UUID_PATTERN.test(sourceId) || !includes(evidenceItemTypes, itemType)) {
+  if (!projectId || !UUID_PATTERN.test(sourceId) || !includes(genericEvidenceItemTypes, itemType)) {
     return { ok: false, error: "项目、证据类型和有效的 Source UUID 均为必填项。" };
   }
   if (!includes(subjectRoles, subjectRole)) return { ok: false, error: "事实主体角色无效。" };
@@ -159,7 +159,7 @@ function evidencePayload(formData: FormData):
     ok: true,
     projectId,
     value: {
-      item_type: itemType as EvidenceItemType,
+      item_type: itemType as GenericEvidenceItemType,
       source_id: sourceId,
       subject_entity_id: subjectEntityId,
       subject_role: subjectRole as SubjectRole,

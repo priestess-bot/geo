@@ -23,15 +23,37 @@ class MonitoringLineageMixin:
     _many: Any
 
     def list_protocol_queries(
-        self, *, project_id: UUID, protocol_id: UUID
+        self, *, project_id: UUID, campaign_id: UUID, protocol_id: UUID
     ) -> tuple[ProtocolQuery, ...]:
         rows = self._many(
-            """SELECT * FROM monitoring_protocol_queries
-               WHERE project_id = %s AND protocol_id = %s ORDER BY ordinal""",
-            (project_id, protocol_id),
+            """SELECT query.* FROM monitoring_protocol_queries query
+               JOIN monitoring_protocols protocol
+                 ON protocol.id = query.protocol_id AND protocol.project_id = query.project_id
+               WHERE query.project_id = %s AND protocol.campaign_id = %s
+                 AND query.protocol_id = %s ORDER BY query.ordinal""",
+            (project_id, campaign_id, protocol_id),
             "list frozen protocol queries",
         )
         return tuple(protocol_query_from_row(row) for row in rows)
+
+    def get_protocol_query(
+        self,
+        *,
+        project_id: UUID,
+        campaign_id: UUID,
+        protocol_id: UUID,
+        query_id: UUID,
+    ) -> ProtocolQuery | None:
+        row = self._optional(
+            """SELECT query.* FROM monitoring_protocol_queries query
+               JOIN monitoring_protocols protocol
+                 ON protocol.id = query.protocol_id AND protocol.project_id = query.project_id
+               WHERE query.project_id = %s AND protocol.campaign_id = %s
+                 AND query.protocol_id = %s AND query.monitoring_query_id = %s""",
+            (project_id, campaign_id, protocol_id, query_id),
+            "read the campaign-scoped protocol query",
+        )
+        return protocol_query_from_row(row) if row else None
 
     def list_verified_citation_targets(
         self, *, project_id: UUID, campaign_id: UUID

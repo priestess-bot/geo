@@ -13,6 +13,8 @@ COPY --from=uv /uv /uvx /bin/
 COPY pyproject.toml uv.lock alembic.ini ./
 COPY packages/geo_core ./packages/geo_core
 COPY apps/api ./apps/api
+COPY benchmarks/f019/selection.json ./benchmarks/f019/selection.json
+COPY benchmarks/f019/reports/2026-07-19/project-native.json ./benchmarks/f019/reports/2026-07-19/project-native.json
 COPY prompt ./prompt
 COPY infra/db/alembic ./infra/db/alembic
 COPY scripts/provision_dev_database.py scripts/provision_initial_owner.py ./scripts/

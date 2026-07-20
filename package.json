@@ -5,7 +5,15 @@
   "packageManager": "pnpm@9.15.4",
   "scripts": {
     "build": "corepack pnpm --filter geo-production-admin-web --filter geo-production-customer-web build",
-    "test:contracts": "corepack pnpm --filter @geo/api-client test:contracts",
+    "test:browser": "playwright test",
+    "test:browser:chromium": "node scripts/run-required-browser-tests.mjs",
+    "test:browser:collect": "playwright test --list --project=chromium-desktop",
+    "test:browser:customer": "playwright test --config=playwright.customer.config.ts",
+    "test:auth-bff": "corepack pnpm --filter @geo/auth test:contracts",
+    "test:contracts": "corepack pnpm --filter @geo/api-client test:contracts && corepack pnpm run test:auth-bff",
     "typecheck": "corepack pnpm --filter './apps/**' --filter './packages/web/**' typecheck"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.60.0"
   }
 }

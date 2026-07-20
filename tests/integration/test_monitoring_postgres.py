@@ -1,31 +1,58 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from dataclasses import replace
+from datetime import UTC, date, datetime
 import os
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import psycopg
 import pytest
 
+from tests.integration.monitoring_customer_projection_support import (
+    assert_exact_customer_url_projection,
+)
+from tests.integration.monitoring_postgres_support import (
+    cleanup as _cleanup,
+    draft as _draft,
+    isolated_minio_store as _isolated_minio_store,
+    seed as _seed,
+    seed_campaign_destinations as _seed_campaign_destinations,
+    source as _source,
+    synthetic_source as _synthetic_source,
+)
+
 from geo_core.access.models import AccessPrincipal, MembershipRecord
 from geo_core.monitoring.application import MonitoringApplication
+from geo_core.monitoring.artifact_evidence import S3RawArtifactVerifier
 from geo_core.monitoring.domain import (
     Device,
     MeasurementWindow,
     MonitoringConflict,
     MonitoringNotFound,
+    MonitoringPersistenceUnavailable,
     MonitoringRuleViolation,
     CitationDraft,
-    ObservationDraft,
     Platform,
-    ResultStatus,
     VerificationStatus,
+    calculate_metric_snapshot,
 )
 from geo_core.monitoring.postgres import PsycopgMonitoringUnitOfWorkFactory
+from geo_core.monitoring.official_reports import (
+    OfficialReportImportDraft,
+    OfficialReportRowDraft,
+)
+from geo_core.monitoring.source_contract import (
+    CaptureMethod,
+    ObservationPlatform,
+    ObservationSurface,
+    RawEvidence,
+    RawEvidenceKind,
+)
 
 
 APP_URL = os.getenv("GEO_ACCESS_TEST_DATABASE_URL", "").strip()
 ADMIN_URL = os.getenv("GEO_ACCESS_TEST_ADMIN_DATABASE_URL", "").strip()
+MINIO_IMAGE = "minio/minio:RELEASE.2025-01-20T14-49-07Z"
 
 pytestmark = [
     pytest.mark.integration,
@@ -37,9 +64,7 @@ pytestmark = [
 
 
 def test_monitoring_rls_idempotency_immutability_and_frozen_metrics() -> None:
-    tenant_id, identity_id, project_id, foreign_project_id = (
-        uuid4(), uuid4(), uuid4(), uuid4()
-    )
+    tenant_id, identity_id, project_id, foreign_project_id = (uuid4(), uuid4(), uuid4(), uuid4())
     market_id, foreign_market_id = uuid4(), uuid4()
     campaign_id, other_campaign_id, product_id = uuid4(), uuid4(), uuid4()
     marker = uuid4().hex[:10]
@@ -64,6 +89,9 @@ def test_monitoring_rls_idempotency_immutability_and_frozen_metrics() -> None:
     )
     factory = PsycopgMonitoringUnitOfWorkFactory(APP_URL)
     service = MonitoringApplication(factory)
+    manual_source = _source(CaptureMethod.MANUAL_UI)
+    provider_source = _source(CaptureMethod.PROVIDER_API)
+    proxy_source = _source(CaptureMethod.PROXY_GROUNDED_API)
     try:
         with psycopg.connect(APP_URL) as connection:
             bypass, superuser = connection.execute(
@@ -92,35 +120,69 @@ def test_monitoring_rls_idempotency_immutability_and_frozen_metrics() -> None:
             locale="en-AU",
             device=Device.DESKTOP,
             sample_size=3,
+            minimum_valid_repeats=3,
             window_days=28,
+            source_strata=(
+                manual_source.stratum_key(),
+                provider_source.stratum_key(),
+                proxy_source.stratum_key(),
+            ),
         )
         suggestion = service.suggest_query(
             principal,
             project_id=project_id,
+            campaign_id=campaign_id,
             protocol_id=protocol.id,
             query_text=f"best robot vacuum {marker}",
             query_kind="recommendation",
             rationale="captures commercial recommendation intent",
+            query_cluster_key="robot-vacuum-recommendation",
         )
         query = service.approve_suggestion(
             principal,
             project_id=project_id,
+            campaign_id=campaign_id,
             protocol_id=protocol.id,
             suggestion_id=suggestion.id,
         )
+        empty_suggestion = service.suggest_query(
+            principal,
+            project_id=project_id,
+            campaign_id=campaign_id,
+            protocol_id=protocol.id,
+            query_text=f"robot vacuum comparison {marker}",
+            query_kind="comparison",
+            rationale="proves a zero-member frozen metric manifest",
+            query_cluster_key="robot-vacuum-empty",
+        )
+        empty_query = service.approve_suggestion(
+            principal,
+            project_id=project_id,
+            campaign_id=campaign_id,
+            protocol_id=protocol.id,
+            suggestion_id=empty_suggestion.id,
+        )
         with psycopg.connect(ADMIN_URL) as admin:
-            assert admin.execute(
-                """SELECT count(*) FROM campaign_monitoring_queries
+            assert (
+                admin.execute(
+                    """SELECT count(*) FROM campaign_monitoring_queries
                    WHERE project_id = %s AND campaign_id = %s AND monitoring_query_id = %s""",
-                (project_id, campaign_id, query.monitoring_query_id),
-            ).fetchone()[0] == 1
+                    (project_id, campaign_id, query.monitoring_query_id),
+                ).fetchone()[0]
+                == 1
+            )
         service.approve_protocol(
-            principal, project_id=project_id, protocol_id=protocol.id
+            principal, project_id=project_id, campaign_id=campaign_id, protocol_id=protocol.id
         )
         frozen = service.freeze_protocol(
-            principal, project_id=project_id, protocol_id=protocol.id
+            principal, project_id=project_id, campaign_id=campaign_id, protocol_id=protocol.id
         )
-        verified_url, verified_submission_id, verified_destination_id = _seed_campaign_destinations(
+        (
+            verified_url,
+            verified_submission_id,
+            verified_destination_id,
+            unapproved_url,
+        ) = _seed_campaign_destinations(
             project_id=project_id,
             campaign_id=campaign_id,
             identity_id=identity_id,
@@ -128,23 +190,53 @@ def test_monitoring_rls_idempotency_immutability_and_frozen_metrics() -> None:
         )
 
         protocol_queries = service.list_protocol_queries(
-            principal, project_id=project_id, protocol_id=frozen.id
+            principal, project_id=project_id, campaign_id=campaign_id, protocol_id=frozen.id
         )
         citation_targets = service.list_citation_targets(
-            principal, project_id=project_id, protocol_id=frozen.id
+            principal, project_id=project_id, campaign_id=campaign_id, protocol_id=frozen.id
         )
         assert [item.monitoring_query_id for item in protocol_queries] == [
-            query.monitoring_query_id
+            query.monitoring_query_id,
+            empty_query.monitoring_query_id,
         ]
-        assert [item.submission_id for item in citation_targets] == [
-            verified_submission_id
-        ]
+        assert verified_submission_id in {item.submission_id for item in citation_targets}
+
+        empty_metric = service.compute_metrics(
+            principal,
+            project_id=project_id,
+            campaign_id=campaign_id,
+            protocol_id=frozen.id,
+            window=MeasurementWindow.T28,
+            source_stratum_hash=manual_source.stratum_key().canonical_hash(),
+            query_cluster_key="robot-vacuum-empty",
+        )
+        assert empty_metric.status == "insufficient_evidence"
+        assert empty_metric.sampled_sample_count == 0
+        assert empty_metric.observation_membership_count == 0
+        assert empty_metric.observation_membership_hash == (
+            "e3b0c44298fc1c149afbf4c8996fb924" "27ae41e4649b934ca495991b7852b855"
+        )
+        with factory(principal) as unit_of_work:
+            assert (
+                unit_of_work.monitoring.list_metric_observation_memberships(
+                    project_id=project_id,
+                    campaign_id=campaign_id,
+                    snapshot_ids=(empty_metric.id,),
+                )
+                == ()
+            )
+            assert unit_of_work.monitoring.list_metric_snapshot_observations(
+                project_id=project_id,
+                campaign_id=campaign_id,
+                snapshot_ids=(empty_metric.id,),
+            ) == {empty_metric.id: ()}
 
         included = _draft(
             query.monitoring_query_id,
             1,
             eligible=True,
             verified=True,
+            source=manual_source,
             citation=CitationDraft(
                 url=verified_url,
                 title="Verified placement",
@@ -153,11 +245,38 @@ def test_monitoring_rls_idempotency_immutability_and_frozen_metrics() -> None:
                 submission_id=verified_submission_id,
             ),
         )
-        unverified = _draft(query.monitoring_query_id, 2, eligible=True, verified=False)
-        ineligible = _draft(query.monitoring_query_id, 3, eligible=False, verified=True)
+        unverified = _draft(
+            query.monitoring_query_id,
+            2,
+            eligible=True,
+            verified=False,
+            source=manual_source,
+        )
+        ineligible = _draft(
+            query.monitoring_query_id,
+            3,
+            eligible=False,
+            verified=True,
+            source=manual_source,
+        )
+        provider = _draft(
+            query.monitoring_query_id,
+            1,
+            eligible=True,
+            verified=False,
+            source=provider_source,
+        )
+        proxy = _draft(
+            query.monitoring_query_id,
+            1,
+            eligible=True,
+            verified=False,
+            source=proxy_source,
+        )
         first = service.import_observation(
             principal,
             project_id=project_id,
+            campaign_id=campaign_id,
             protocol_id=frozen.id,
             draft=included,
             idempotency_key=f"{marker}-1",
@@ -169,12 +288,14 @@ def test_monitoring_rls_idempotency_immutability_and_frozen_metrics() -> None:
             service.import_observation(
                 principal,
                 project_id=project_id,
+                campaign_id=campaign_id,
                 protocol_id=frozen.id,
                 draft=_draft(
                     query.monitoring_query_id,
                     1,
                     eligible=True,
                     verified=True,
+                    source=manual_source,
                     citation=CitationDraft(
                         url=f"{verified_url}/forged",
                         title=None,
@@ -188,72 +309,378 @@ def test_monitoring_rls_idempotency_immutability_and_frozen_metrics() -> None:
         replay = service.import_observation(
             principal,
             project_id=project_id,
+            campaign_id=campaign_id,
             protocol_id=frozen.id,
             draft=included,
             idempotency_key=f"{marker}-1",
         )
-        service.import_observation(
+        second = service.import_observation(
             principal,
             project_id=project_id,
+            campaign_id=campaign_id,
             protocol_id=frozen.id,
             draft=unverified,
             idempotency_key=f"{marker}-2",
         )
+        initial_metric = service.compute_metrics(
+            principal,
+            project_id=project_id,
+            campaign_id=campaign_id,
+            protocol_id=frozen.id,
+            window=MeasurementWindow.T28,
+            source_stratum_hash=manual_source.stratum_key().canonical_hash(),
+            query_cluster_key="robot-vacuum-recommendation",
+        )
+        assert initial_metric.status == "insufficient_evidence"
+        assert initial_metric.sampled_sample_count == 2
+        assert initial_metric.missing_sample_count == 1
+        assert initial_metric.observation_membership_count == 2
+        assert initial_metric.observation_membership_hash is not None
+        initial_replay = service.compute_metrics(
+            principal,
+            project_id=project_id,
+            campaign_id=campaign_id,
+            protocol_id=frozen.id,
+            window=MeasurementWindow.T28,
+            source_stratum_hash=manual_source.stratum_key().canonical_hash(),
+            query_cluster_key="robot-vacuum-recommendation",
+        )
+        assert initial_replay.id == initial_metric.id
+        assert initial_replay.result_hash == initial_metric.result_hash
         service.import_observation(
             principal,
             project_id=project_id,
+            campaign_id=campaign_id,
             protocol_id=frozen.id,
             draft=ineligible,
             idempotency_key=f"{marker}-3",
         )
+        service.import_observation(
+            principal,
+            project_id=project_id,
+            campaign_id=campaign_id,
+            protocol_id=frozen.id,
+            draft=provider,
+            idempotency_key=f"{marker}-provider-1",
+        )
+        service.import_observation(
+            principal,
+            project_id=project_id,
+            campaign_id=campaign_id,
+            protocol_id=frozen.id,
+            draft=proxy,
+            idempotency_key=f"{marker}-proxy-1",
+        )
+        synthetic_source = _synthetic_source(project_id)
+        synthetic_draft = _draft(
+            query.monitoring_query_id,
+            2,
+            eligible=False,
+            verified=False,
+            source=synthetic_source,
+        )
+        with pytest.raises(MonitoringRuleViolation, match="public observation command"):
+            service.import_observation(
+                principal,
+                project_id=project_id,
+                campaign_id=campaign_id,
+                protocol_id=frozen.id,
+                draft=synthetic_draft,
+                idempotency_key=f"{marker}-synthetic-public",
+            )
+        with factory(principal) as unit_of_work:
+            worker_only_draft = replace(synthetic_draft, query_cluster_key=query.query_cluster_key)
+            with pytest.raises(MonitoringPersistenceUnavailable):
+                unit_of_work.monitoring.import_observation(
+                    project_id=project_id,
+                    campaign_id=campaign_id,
+                    protocol_id=frozen.id,
+                    draft=worker_only_draft,
+                    actor_id=identity_id,
+                    idempotency_key=f"{marker}-synthetic-app-role",
+                    payload_hash=worker_only_draft.payload_hash(),
+                )
         assert replay.id == first.id and replay.replayed
         with pytest.raises(MonitoringConflict):
             service.import_observation(
                 principal,
                 project_id=project_id,
+                campaign_id=campaign_id,
                 protocol_id=frozen.id,
-                draft=_draft(query.monitoring_query_id, 1, eligible=True, verified=False),
+                draft=_draft(
+                    query.monitoring_query_id,
+                    1,
+                    eligible=True,
+                    verified=False,
+                    source=manual_source,
+                ),
                 idempotency_key=f"{marker}-1",
             )
 
         metric = service.compute_metrics(
             principal,
             project_id=project_id,
+            campaign_id=campaign_id,
             protocol_id=frozen.id,
             window=MeasurementWindow.T28,
+            source_stratum_hash=manual_source.stratum_key().canonical_hash(),
+            query_cluster_key="robot-vacuum-recommendation",
         )
         assert metric.expected_sample_count == 3
+        assert metric.sampled_sample_count == 3
         assert metric.eligible_sample_count == 2
-        assert metric.status == "confounded"
+        assert metric.invalid_sample_count == 1
+        assert metric.missing_sample_count == 0
+        assert metric.status == "insufficient_evidence"
+        assert metric.query_cluster_key == "robot-vacuum-recommendation"
+        assert metric.query_count == 1
+        assert metric.sufficient_query_count == 0
+        assert metric.query_results[0].monitoring_query_id == query.monitoring_query_id
+        assert not metric.query_results[0].meets_threshold
+        assert metric.result_hash is not None
         assert metric.recommendation_share == 1
         assert metric.placement_citation_share == pytest.approx(0.5)
         assert metric.qualified_destination_coverage == pytest.approx(0.5)
         assert metric.verified_placement_coverage == 1
-        assert "incomplete_or_ineligible_sample_set" in metric.confounded_reasons
+        assert metric.confounded_reasons == ()
+        assert dict(metric.invalid_reason_counts) == {"manual_exclusion": 1}
+        assert metric.observation_membership_count == 3
+        assert metric.observation_membership_hash != initial_metric.observation_membership_hash
+
+        with factory(principal) as unit_of_work:
+            frozen_members = unit_of_work.monitoring.list_metric_observation_memberships(
+                project_id=project_id,
+                campaign_id=campaign_id,
+                snapshot_ids=(initial_metric.id,),
+            )
+            frozen_inputs = unit_of_work.monitoring.list_metric_snapshot_observations(
+                project_id=project_id,
+                campaign_id=campaign_id,
+                snapshot_ids=(initial_metric.id,),
+            )[initial_metric.id]
+            destination_state = unit_of_work.monitoring.campaign_destination_state(
+                project_id=project_id, campaign_id=campaign_id
+            )
+        recomputed = calculate_metric_snapshot(
+            snapshot_id=uuid4(),
+            protocol=frozen,
+            queries=protocol_queries,
+            query_cluster_key="robot-vacuum-recommendation",
+            window=MeasurementWindow.T28,
+            source_stratum=manual_source.stratum_key(),
+            observations=frozen_inputs,
+            destination_state=destination_state,
+            computed_at=datetime.now(UTC),
+        )
+        assert [item.observation_id for item in frozen_members] == [first.id, second.id]
+        assert [item.id for item in frozen_inputs] == [first.id, second.id]
+        assert recomputed.input_hash == initial_metric.input_hash
+        assert recomputed.result_hash == initial_metric.result_hash
+        assert recomputed.missing_sample_count == 1
+
+        provider_metric = service.compute_metrics(
+            principal,
+            project_id=project_id,
+            campaign_id=campaign_id,
+            protocol_id=frozen.id,
+            window=MeasurementWindow.T28,
+            source_stratum_hash=provider_source.stratum_key().canonical_hash(),
+            query_cluster_key="robot-vacuum-recommendation",
+        )
+        proxy_metric = service.compute_metrics(
+            principal,
+            project_id=project_id,
+            campaign_id=campaign_id,
+            protocol_id=frozen.id,
+            window=MeasurementWindow.T28,
+            source_stratum_hash=proxy_source.stratum_key().canonical_hash(),
+            query_cluster_key="robot-vacuum-recommendation",
+        )
+        assert provider_metric.eligible_sample_count == 1
+        assert proxy_metric.eligible_sample_count == 1
+        assert provider_metric.status == proxy_metric.status == "insufficient_evidence"
+        assert provider_metric.missing_sample_count == proxy_metric.missing_sample_count == 2
+        assert (
+            len(
+                {
+                    metric.source_stratum_hash,
+                    provider_metric.source_stratum_hash,
+                    proxy_metric.source_stratum_hash,
+                }
+            )
+            == 3
+        )
 
         report = service.generate_report(
             principal,
             project_id=project_id,
+            campaign_id=campaign_id,
             metric_snapshot_id=metric.id,
             title="Observational baseline",
         )
         approved = service.approve_report(
-            principal, project_id=project_id, report_id=report.id
+            principal, project_id=project_id, campaign_id=campaign_id, report_id=report.id
         )
         assert approved.status == "approved"
         assert "non-causal" in approved.methodology_statement
-        urls = service.list_verified_urls(principal, project_id=project_id)
-        assert len(urls) == 1
-        assert urls[0].url == verified_url
-        assert urls[0].campaign_id == campaign_id
-        assert urls[0].observation_count == 1
+        assert "No directional conclusion" in approved.body
+        for index, stratum_metric in enumerate((provider_metric, proxy_metric), start=1):
+            stratum_report = service.generate_report(
+                principal,
+                project_id=project_id,
+                campaign_id=campaign_id,
+                metric_snapshot_id=stratum_metric.id,
+                title=f"Observational stratum {index}",
+            )
+            service.approve_report(
+                principal,
+                project_id=project_id,
+                campaign_id=campaign_id,
+                report_id=stratum_report.id,
+            )
+        newest_manual_report = service.generate_report(
+            principal,
+            project_id=project_id,
+            campaign_id=campaign_id,
+            metric_snapshot_id=metric.id,
+            title="Observational baseline latest",
+        )
+        newest_manual = service.approve_report(
+            principal,
+            project_id=project_id,
+            campaign_id=campaign_id,
+            report_id=newest_manual_report.id,
+        )
+        urls = service.list_verified_urls(principal, project_id=project_id, campaign_id=campaign_id)
+        assert {item.url for item in urls} == {verified_url, unapproved_url}
+        approved_projections = service.list_customer_approved_report_snapshots(
+            principal, project_id=project_id, campaign_id=campaign_id
+        )
+        assert len(approved_projections) == 3
+        assert {item.snapshot.id for item in approved_projections} == {
+            metric.id,
+            provider_metric.id,
+            proxy_metric.id,
+        }
+        manual_projection = next(
+            item for item in approved_projections if item.snapshot.id == metric.id
+        )
+        assert manual_projection.report.id == newest_manual.id
+        assert manual_projection.report.id != approved.id
+        assert approved_projections[0].report.id == newest_manual.id
+        customer_campaign = service.get_customer_campaign(
+            principal, project_id=project_id, campaign_id=campaign_id
+        )
+        assert customer_campaign.approved_report_count == 4
+        assert_exact_customer_url_projection(
+            admin_url=ADMIN_URL,
+            service=service,
+            principal=principal,
+            project_id=project_id,
+            campaign_id=campaign_id,
+            other_campaign_id=other_campaign_id,
+            marker=marker,
+            verified_url=verified_url,
+            verified_submission_id=verified_submission_id,
+            verified_destination_id=verified_destination_id,
+            member_observation=first,
+            approved_snapshot=metric,
+            latest_report=newest_manual,
+        )
+
+        with _isolated_minio_store() as store:
+            stored = store.put_object(
+                key=f"observation-artifacts/{project_id}/official-{marker}.csv",
+                content=b"query,clicks\nrobot vacuum,7\n",
+                content_type="text/csv",
+            )
+            artifact_service = MonitoringApplication(
+                factory, artifact_verifier=S3RawArtifactVerifier(store)
+            )
+            verified_artifact = artifact_service.verify_raw_evidence(
+                project_id=project_id,
+                capture_method=CaptureMethod.OFFICIAL_REPORT_IMPORT,
+                evidence=RawEvidence(
+                    RawEvidenceKind.ARTIFACT,
+                    artifact_uri=stored.uri,
+                    artifact_hash=stored.content_hash,
+                ),
+            )
+            assert verified_artifact.artifact_verified
+            with pytest.raises(MonitoringRuleViolation, match="verification failed"):
+                artifact_service.verify_raw_evidence(
+                    project_id=project_id,
+                    capture_method=CaptureMethod.OFFICIAL_REPORT_IMPORT,
+                    evidence=RawEvidence(
+                        RawEvidenceKind.ARTIFACT,
+                        artifact_uri=stored.uri,
+                        artifact_hash="0" * 64,
+                    ),
+                )
+            official_draft = OfficialReportImportDraft(
+                campaign_id=campaign_id,
+                platform=ObservationPlatform.GOOGLE,
+                surface=ObservationSurface.GOOGLE_GENERATIVE_AI_PERFORMANCE_REPORT,
+                platform_detail=None,
+                surface_detail=None,
+                artifact=verified_artifact,
+                parser_name="google-ai-performance-csv",
+                parser_version="1.0.0",
+                report_period_start=date(2026, 6, 1),
+                report_period_end=date(2026, 6, 30),
+                account_ref=f"account-{marker}",
+            )
+            official_rows = (
+                OfficialReportRowDraft(0, {"query": "robot vacuum", "clicks": 7}),
+                OfficialReportRowDraft(
+                    1,
+                    {"query": "unknown"},
+                    eligible=False,
+                    ineligible_reasons=("unsupported_row",),
+                ),
+            )
+            official = artifact_service.import_official_report(
+                principal,
+                project_id=project_id,
+                campaign_id=campaign_id,
+                draft=official_draft,
+                rows=official_rows,
+                idempotency_key=f"official-{marker}",
+            )
+            official_replay = artifact_service.import_official_report(
+                principal,
+                project_id=project_id,
+                campaign_id=campaign_id,
+                draft=official_draft,
+                rows=official_rows,
+                idempotency_key=f"official-{marker}",
+            )
+            with pytest.raises(MonitoringConflict):
+                artifact_service.import_official_report(
+                    principal,
+                    project_id=project_id,
+                    campaign_id=campaign_id,
+                    draft=official_draft,
+                    rows=(OfficialReportRowDraft(0, {"query": "changed"}),),
+                    idempotency_key=f"official-{marker}",
+                )
+        assert official_replay.id == official.id and official_replay.replayed
+        assert [row.draft.row_index for row in official.rows] == [0, 1]
+        assert service.list_official_reports(
+            principal, project_id=project_id, campaign_id=campaign_id
+        ) == (official,)
 
         with factory(principal) as unit_of_work:
-            assert unit_of_work.monitoring.list_protocols(
-                project_id=foreign_project_id
-            ) == ()
+            assert (
+                unit_of_work.monitoring.list_protocols(
+                    project_id=foreign_project_id, campaign_id=campaign_id
+                )
+                == ()
+            )
         with pytest.raises(MonitoringNotFound):
-            service.list_protocols(principal, project_id=foreign_project_id)
+            service.list_protocols(
+                principal, project_id=foreign_project_id, campaign_id=campaign_id
+            )
 
         with psycopg.connect(ADMIN_URL) as admin:
             with pytest.raises(psycopg.Error):
@@ -266,9 +693,43 @@ def test_monitoring_rls_idempotency_immutability_and_frozen_metrics() -> None:
                     FROM publication_submissions WHERE id = %s
                     """,
                     (
-                        project_id, first.id, f"{verified_url}/forged",
-                        verified_destination_id, verified_submission_id,
+                        project_id,
+                        first.id,
+                        f"{verified_url}/forged",
+                        verified_destination_id,
+                        verified_submission_id,
                     ),
+                )
+            admin.rollback()
+            with pytest.raises(psycopg.Error):
+                admin.execute(
+                    """
+                    INSERT INTO monitoring_official_report_imports
+                      (project_id, campaign_id, capture_method, platform, surface,
+                       artifact_uri, artifact_hash, parser_name, parser_version,
+                       report_period_start, report_period_end, account_ref, row_count,
+                       idempotency_key, payload_hash, imported_by)
+                    VALUES (%s, %s, 'manual_ui', 'google',
+                            'google_generative_ai_performance_report', %s, %s,
+                            'forged', '1', DATE '2026-06-01', DATE '2026-06-30',
+                            'forged', 1, %s, %s, %s)
+                    """,
+                    (
+                        project_id,
+                        campaign_id,
+                        f"s3://geo-artifacts/observation-artifacts/{project_id}/forged.csv",
+                        "f" * 64,
+                        f"forged-official-{marker}",
+                        "e" * 64,
+                        identity_id,
+                    ),
+                )
+            admin.rollback()
+            with pytest.raises(psycopg.Error):
+                admin.execute(
+                    "UPDATE monitoring_official_report_rows SET eligible = false "
+                    "WHERE import_id = %s",
+                    (official.id,),
                 )
             admin.rollback()
             with pytest.raises(psycopg.Error):
@@ -283,9 +744,13 @@ def test_monitoring_rls_idempotency_immutability_and_frozen_metrics() -> None:
                             'unknown', 'test', 'test', clock_timestamp(), %s, %s, %s)
                     """,
                     (
-                        project_id, frozen.id, other_campaign_id,
-                        query.monitoring_query_id, identity_id,
-                        f"wrong-campaign-{marker}", "e" * 64,
+                        project_id,
+                        frozen.id,
+                        other_campaign_id,
+                        query.monitoring_query_id,
+                        identity_id,
+                        f"wrong-campaign-{marker}",
+                        "e" * 64,
                     ),
                 )
             admin.rollback()
@@ -313,210 +778,3 @@ def test_monitoring_rls_idempotency_immutability_and_frozen_metrics() -> None:
                 )
     finally:
         _cleanup(tenant_id, identity_id)
-
-
-def _draft(
-    query_id: UUID,
-    sample_index: int,
-    *,
-    eligible: bool,
-    verified: bool,
-    citation: CitationDraft | None = None,
-) -> ObservationDraft:
-    return ObservationDraft(
-        monitoring_query_id=query_id,
-        measurement_window=MeasurementWindow.T28,
-        sample_index=sample_index,
-        result_status=ResultStatus.SUCCEEDED,
-        eligible=eligible,
-        ineligible_reasons=() if eligible else ("manual_exclusion",),
-        url_verification_status=(
-            VerificationStatus.PASSED if verified else VerificationStatus.FAILED
-        ),
-        recommendation_present=True,
-        primary_product_mentioned=True,
-        competitor_mentioned=False,
-        raw_answer="internal raw answer",
-        raw_result={"rank": 1},
-        citations=(citation,) if citation else (),
-        artifact_uri=None,
-        artifact_hash=None,
-        configured_model="deepseek-chat",
-        provider_reported_model="deepseek-chat",
-        ui_surface="web-search",
-        ui_metadata={"locale": "en-AU"},
-        confounding_factors=(),
-        observed_at=datetime.now(UTC),
-    )
-
-
-def _seed(**values: object) -> None:
-    with psycopg.connect(ADMIN_URL) as connection:
-        connection.execute(
-            "INSERT INTO tenants (id, name) VALUES (%s, %s)",
-            (values["tenant_id"], f"Monitoring {values['marker']}"),
-        )
-        connection.execute(
-            "INSERT INTO identities (id, issuer, subject) VALUES (%s, 'test', %s)",
-            (values["identity_id"], f"monitor-{values['marker']}"),
-        )
-        for project_id, name in (
-            (values["project_id"], "Owned"),
-            (values["foreign_project_id"], "Foreign"),
-        ):
-            connection.execute(
-                "INSERT INTO projects (id, tenant_id, name) VALUES (%s, %s, %s)",
-                (project_id, values["tenant_id"], f"{name} {values['marker']}"),
-            )
-        connection.execute(
-            """INSERT INTO project_memberships (tenant_id, project_id, identity_id, role)
-               VALUES (%s, %s, %s, 'owner')""",
-            (values["tenant_id"], values["project_id"], values["identity_id"]),
-        )
-        for market_id, project_id, code in (
-            (values["market_id"], values["project_id"], "AU"),
-            (values["foreign_market_id"], values["foreign_project_id"], "NZ"),
-        ):
-            connection.execute(
-                """INSERT INTO market_profiles
-                     (id, project_id, market_code, locale, timezone)
-                   VALUES (%s, %s, %s, 'en-AU', 'Australia/Sydney')""",
-                (market_id, project_id, code),
-            )
-        connection.execute(
-            """INSERT INTO product_entities
-                 (id, project_id, entity_type, canonical_name)
-               VALUES (%s, %s, 'product', %s)""",
-            (values["product_id"], values["project_id"], f"Product {values['marker']}"),
-        )
-        for campaign_id, name in (
-            (values["campaign_id"], "Campaign"),
-            (values["other_campaign_id"], "Other campaign"),
-        ):
-            connection.execute(
-                """INSERT INTO geo_campaigns
-                     (id, project_id, market_profile_id, primary_product_entity_id,
-                      name, created_by)
-                   VALUES (%s, %s, %s, %s, %s, %s)""",
-                (
-                    campaign_id, values["project_id"], values["market_id"],
-                    values["product_id"], f"{name} {values['marker']}",
-                    values["identity_id"],
-                ),
-            )
-
-
-def _seed_campaign_destinations(
-    *, project_id: UUID, campaign_id: UUID, identity_id: UUID, marker: str
-) -> tuple[str, UUID, UUID]:
-    qualified_destination, selected_destination = uuid4(), uuid4()
-    qualified_opportunity, selected_opportunity = uuid4(), uuid4()
-    package_id, package_version_id = uuid4(), uuid4()
-    request_id, submission_id = uuid4(), uuid4()
-    url = f"https://example.com/{marker}/verified"
-    with psycopg.connect(ADMIN_URL) as connection:
-        for destination_id, key, policy in (
-            (qualified_destination, f"qualified-{marker}", "approved"),
-            (selected_destination, f"selected-{marker}", "unreviewed"),
-        ):
-            connection.execute(
-                """INSERT INTO publication_destinations
-                     (id, project_id, publication_channel, destination_key, policy_status,
-                      canonical_url, canonical_host, allowed_hosts)
-                   VALUES (%s, %s, 'owned_site', %s, %s,
-                           'https://example.com/', 'example.com', ARRAY['example.com'])""",
-                (destination_id, project_id, key, policy),
-            )
-        for opportunity_id, destination_id, status in (
-            (qualified_opportunity, qualified_destination, "qualified"),
-            (selected_opportunity, selected_destination, "identified"),
-        ):
-            connection.execute(
-                """INSERT INTO placement_opportunities
-                     (id, project_id, campaign_id, destination_id,
-                      opportunity_ref, rationale, status)
-                   VALUES (%s, %s, %s, %s, %s, 'test fixture', %s)""",
-                (
-                    opportunity_id, project_id, campaign_id, destination_id,
-                    f"test:{opportunity_id}", status,
-                ),
-            )
-        connection.execute(
-            """INSERT INTO placement_packages (id, project_id, opportunity_id)
-               VALUES (%s, %s, %s)""",
-            (package_id, project_id, qualified_opportunity),
-        )
-        connection.execute("SET LOCAL session_replication_role = 'replica'")
-        connection.execute(
-            """INSERT INTO placement_package_versions
-                 (id, project_id, package_id, prompt_bundle_id, version_number,
-                  workflow_status, content_json, rendered_text, content_hash,
-                  edited_by, edit_reason)
-               VALUES (%s, %s, %s, %s, 1, 'approved', '{}'::jsonb,
-                       'upstream verified fixture', %s, %s, 'monitoring integration fixture')""",
-            (package_version_id, project_id, package_id, uuid4(), "d" * 64, identity_id),
-        )
-        connection.execute("SET LOCAL session_replication_role = 'origin'")
-        connection.execute(
-            """INSERT INTO publication_requests
-                 (id, project_id, package_version_id, destination_id,
-                  idempotency_key, requested_by, status)
-               VALUES (%s, %s, %s, %s, %s, %s, 'published')""",
-            (
-                request_id, project_id, package_version_id, qualified_destination,
-                f"request-{marker}", identity_id,
-            ),
-        )
-        connection.execute(
-            """INSERT INTO publication_submissions
-                 (id, project_id, publication_request_id, submitted_url,
-                  idempotency_key, payload_hash, submitted_by,
-                  status, submitted_at, verified_at)
-               VALUES (%s, %s, %s, %s, %s, %s, %s,
-                       'verified', clock_timestamp(), clock_timestamp())""",
-            (
-                submission_id,
-                project_id,
-                request_id,
-                url,
-                f"monitoring-submission-{marker}",
-                "e" * 64,
-                identity_id,
-            ),
-        )
-    return url, submission_id, qualified_destination
-
-
-def _cleanup(tenant_id: UUID, identity_id: UUID) -> None:
-    with psycopg.connect(ADMIN_URL) as connection:
-        connection.execute("SET LOCAL session_replication_role = 'replica'")
-        for table in (
-            "monitoring_reports",
-            "monitoring_metric_snapshots",
-            "monitoring_observation_citations",
-            "monitoring_observations",
-            "monitoring_protocol_queries",
-            "monitoring_query_suggestions",
-            "monitoring_protocols",
-            "publication_submissions",
-            "publication_requests",
-            "placement_package_versions",
-            "placement_packages",
-            "placement_opportunities",
-            "publication_destinations",
-            "campaign_monitoring_queries",
-            "monitoring_queries",
-            "geo_campaigns",
-            "product_entities",
-            "market_profiles",
-            "project_memberships",
-        ):
-            connection.execute(
-                f"""DELETE FROM {table}
-                    WHERE project_id IN (SELECT id FROM projects WHERE tenant_id = %s)""",
-                (tenant_id,),
-            )
-        connection.execute("DELETE FROM projects WHERE tenant_id = %s", (tenant_id,))
-        connection.execute("DELETE FROM tenants WHERE id = %s", (tenant_id,))
-        connection.execute("SET LOCAL session_replication_role = 'origin'")
-        connection.execute("DELETE FROM identities WHERE id = %s", (identity_id,))

@@ -35,6 +35,7 @@ export function WorkbenchShell({
   const project = catalog.project.data;
   if (!project) return <ProjectFailure problem={catalog.project.problem} />;
   const canManageProject = members.currentRole === "owner" || members.currentRole === "admin";
+  const canManageKnowledge = canManageProject || members.currentRole === "analyst";
 
   return (
     <main className="shell">
@@ -85,7 +86,12 @@ export function WorkbenchShell({
         ) : null}
         {activeTab === "prompts" ? <PromptPanel projectId={project.id} /> : null}
         {activeTab === "knowledge" ? (
-          knowledgeData ? <KnowledgeWorkspace data={knowledgeData} projectId={project.id} /> : <EmptyState text="正在准备知识库工作区。" />
+          knowledgeData ? <KnowledgeWorkspace
+            canPromote={canManageKnowledge}
+            data={knowledgeData}
+            entities={catalog.entities.data}
+            projectId={project.id}
+          /> : <EmptyState text="正在准备知识库工作区。" />
         ) : null}
         {activeTab === "operations" ? <OperationsPanel projectId={project.id} /> : null}
         {activeTab === "geo" ? (

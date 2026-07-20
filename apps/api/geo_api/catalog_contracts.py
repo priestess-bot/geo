@@ -106,7 +106,6 @@ class PublicCitationRequest(CatalogContract):
 
 class CreateEvidenceRequest(CatalogContract):
     item_type: Literal[
-        "approved_fact",
         "chunk",
         "citation",
         "report_extract",

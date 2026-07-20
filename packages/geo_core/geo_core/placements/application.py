@@ -11,13 +11,18 @@ from geo_core.placements.application_operations import PlacementOperationsApplic
 from geo_core.placements.application_publication_operations import (
     PlacementPublicationOperationsMixin,
 )
+from geo_core.placements.application_prompt_operations import PlacementPromptOperationsMixin
 from geo_core.placements.application_simulations import PlacementSimulationApplicationMixin
 from geo_core.placements.claim_inventory import validate_edited_claims
+from geo_core.placements.campaign_context import require_campaign_resource
 from geo_core.placements.default_prompts import DEFAULT_SYSTEM_TEMPLATE
 from geo_core.placements.domain import (
     AuthenticityRisk,
     BriefVersion,
     Campaign,
+    CampaignContextMismatch,
+    CampaignResourceKind,
+    CampaignScope,
     Claim,
     ConcurrencyConflict,
     ConsumerExperience,
@@ -25,16 +30,15 @@ from geo_core.placements.domain import (
     EvidencePackAttempt,
     ExportReceipt,
     JobReference,
-    MonitoringQuery,
     Opportunity,
     PackageVersion,
     PlacementRuleViolation,
-    PromptBundleView,
     PromptReleaseView,
     PromptSkill,
     PublicationRequest,
     Review,
     ReviewSubmission,
+    WorkflowStatus,
     assert_approval_allowed,
     canonical_hash,
     edit_package_version,
@@ -42,12 +46,17 @@ from geo_core.placements.domain import (
 )
 from geo_core.placements.ports import GeneratedClaim, UnitOfWorkFactory
 from geo_core.placements.prompt_release import compile_executable_release
+from geo_core.placements.publication_contract import (
+    parse_frozen_publication_verification_contract,
+    parse_publication_verification_contract,
+)
 
 
 class PlacementApplication(
     PlacementSimulationApplicationMixin,
     PlacementOperationsApplicationMixin,
     PlacementPublicationOperationsMixin,
+    PlacementPromptOperationsMixin,
 ):
     """Coordinates domain rules and one short Unit of Work per command/query."""
 
@@ -87,6 +96,7 @@ class PlacementApplication(
                 campaign_id=campaign.id,
                 destination_ids=destination_ids,
                 rationale=rationale,
+                actor_id=actor_id,
             )
             if {item.destination_id for item in opportunities} != set(destination_ids):
                 raise PlacementRuleViolation(
@@ -102,36 +112,6 @@ class PlacementApplication(
     def get_campaign(self, *, project_id: UUID, campaign_id: UUID) -> Campaign | None:
         with self._uow_factory(project_id) as uow:
             return uow.placements.get_campaign(project_id=project_id, campaign_id=campaign_id)
-
-    def create_monitoring_query(
-        self,
-        *,
-        project_id: UUID,
-        campaign_id: UUID,
-        market_profile_id: UUID,
-        query_text: str,
-        query_kind: str,
-        locale: str,
-    ) -> MonitoringQuery:
-        with self._uow_factory(project_id) as uow:
-            result = uow.placements.create_monitoring_query(
-                campaign_id=campaign_id,
-                project_id=project_id,
-                market_profile_id=market_profile_id,
-                query_text=query_text,
-                query_kind=query_kind,
-                locale=locale,
-            )
-            uow.commit()
-            return result
-
-    def list_monitoring_queries(
-        self, *, project_id: UUID, campaign_id: UUID
-    ) -> tuple[MonitoringQuery, ...]:
-        with self._uow_factory(project_id) as uow:
-            return uow.placements.list_monitoring_queries(
-                project_id=project_id, campaign_id=campaign_id
-            )
 
     def create_destination(
         self,
@@ -176,6 +156,7 @@ class PlacementApplication(
         self,
         *,
         project_id: UUID,
+        campaign_id: UUID,
         opportunity_id: UUID,
         primary_brand_entity_id: UUID,
         goals: Mapping[str, object],
@@ -197,6 +178,13 @@ class PlacementApplication(
                 "disclosure": consumer_experience.disclosure,
             }
         with self._uow_factory(project_id) as uow:
+            require_campaign_resource(
+                uow.placements,
+                scope=CampaignScope(project_id, campaign_id),
+                kind=CampaignResourceKind.OPPORTUNITY,
+                resource_id=opportunity_id,
+                lock=True,
+            )
             result = uow.placements.create_brief_version(
                 project_id=project_id,
                 opportunity_id=opportunity_id,
@@ -213,17 +201,35 @@ class PlacementApplication(
             return result
 
     def list_brief_versions(
-        self, *, project_id: UUID, opportunity_id: UUID
+        self, *, project_id: UUID, campaign_id: UUID, opportunity_id: UUID
     ) -> tuple[BriefVersion, ...]:
         with self._uow_factory(project_id) as uow:
+            require_campaign_resource(
+                uow.placements,
+                scope=CampaignScope(project_id, campaign_id),
+                kind=CampaignResourceKind.OPPORTUNITY,
+                resource_id=opportunity_id,
+            )
             return uow.placements.list_brief_versions(
                 project_id=project_id, opportunity_id=opportunity_id
             )
 
     def create_evidence_attempt(
-        self, *, project_id: UUID, brief_version_id: UUID, idempotency_key: str
+        self,
+        *,
+        project_id: UUID,
+        campaign_id: UUID,
+        brief_version_id: UUID,
+        idempotency_key: str,
     ) -> tuple[EvidencePackAttempt, JobReference]:
         with self._uow_factory(project_id) as uow:
+            require_campaign_resource(
+                uow.placements,
+                scope=CampaignScope(project_id, campaign_id),
+                kind=CampaignResourceKind.BRIEF_VERSION,
+                resource_id=brief_version_id,
+                lock=True,
+            )
             result = uow.placements.create_evidence_attempt(
                 project_id=project_id,
                 brief_version_id=brief_version_id,
@@ -233,23 +239,41 @@ class PlacementApplication(
             return result
 
     def list_evidence_attempts(
-        self, *, project_id: UUID, brief_version_id: UUID
+        self, *, project_id: UUID, campaign_id: UUID, brief_version_id: UUID
     ) -> tuple[EvidencePackAttempt, ...]:
         with self._uow_factory(project_id) as uow:
+            require_campaign_resource(
+                uow.placements,
+                scope=CampaignScope(project_id, campaign_id),
+                kind=CampaignResourceKind.BRIEF_VERSION,
+                resource_id=brief_version_id,
+            )
             return uow.placements.list_evidence_attempts(
                 project_id=project_id, brief_version_id=brief_version_id
             )
 
     def get_evidence_attempt(
-        self, *, project_id: UUID, attempt_id: UUID
+        self, *, project_id: UUID, campaign_id: UUID, attempt_id: UUID
     ) -> EvidencePackAttempt | None:
         with self._uow_factory(project_id) as uow:
+            require_campaign_resource(
+                uow.placements,
+                scope=CampaignScope(project_id, campaign_id),
+                kind=CampaignResourceKind.EVIDENCE_ATTEMPT,
+                resource_id=attempt_id,
+            )
             return uow.placements.get_evidence_attempt(project_id=project_id, attempt_id=attempt_id)
 
     def list_evidence_attempt_items(
-        self, *, project_id: UUID, attempt_id: UUID
+        self, *, project_id: UUID, campaign_id: UUID, attempt_id: UUID
     ) -> tuple[Mapping[str, object], ...]:
         with self._uow_factory(project_id) as uow:
+            require_campaign_resource(
+                uow.placements,
+                scope=CampaignScope(project_id, campaign_id),
+                kind=CampaignResourceKind.EVIDENCE_ATTEMPT,
+                resource_id=attempt_id,
+            )
             return uow.placements.list_evidence_attempt_items(
                 project_id=project_id, attempt_id=attempt_id
             )
@@ -291,6 +315,7 @@ class PlacementApplication(
                 system_template=normalized_system,
                 output_schema=output_schema,
                 client_variable_names=client_variable_names,
+                actor_id=actor_id,
             )
             uow.commit()
             return result
@@ -305,81 +330,37 @@ class PlacementApplication(
         with self._uow_factory(project_id) as uow:
             return uow.placements.list_prompt_releases(project_id=project_id, skill_id=skill_id)
 
-    def list_prompt_bundles(
-        self, *, project_id: UUID, brief_version_id: UUID
-    ) -> tuple[PromptBundleView, ...]:
-        with self._uow_factory(project_id) as uow:
-            return uow.placements.list_prompt_bundles(
-                project_id=project_id, brief_version_id=brief_version_id
-            )
-
-    def create_prompt_bundle(
-        self,
-        *,
-        project_id: UUID,
-        brief_version_id: UUID,
-        evidence_pack_attempt_id: UUID,
-        release_id: UUID,
-        variables: Mapping[str, object],
-        model_policy_hash: str,
-    ) -> PromptBundleView:
-        with self._uow_factory(project_id) as uow:
-            if (
-                uow.placements.get_template_release(project_id=project_id, release_id=release_id)
-                is None
-            ):
-                raise PlacementRuleViolation("template release does not exist")
-            result = uow.placements.create_prompt_bundle(
-                project_id=project_id,
-                brief_version_id=brief_version_id,
-                evidence_pack_attempt_id=evidence_pack_attempt_id,
-                release_id=release_id,
-                variables=variables,
-                model_policy_hash=model_policy_hash,
-            )
-            uow.commit()
-            return result
-
-    def request_generation(
-        self,
-        *,
-        project_id: UUID,
-        prompt_bundle_id: UUID,
-        configured_model: str,
-        model_call_budget: int,
-        idempotency_key: str,
-        requested_by: UUID,
-    ) -> JobReference:
-        if not 1 <= model_call_budget <= 5:
-            raise PlacementRuleViolation("model call budget must be between 1 and 5")
-        with self._uow_factory(project_id) as uow:
-            job = uow.placements.enqueue_generation(
-                project_id=project_id,
-                prompt_bundle_id=prompt_bundle_id,
-                configured_model=configured_model,
-                model_call_budget=model_call_budget,
-                idempotency_key=idempotency_key,
-                requested_by=requested_by,
-            )
-            uow.commit()
-            return job
-
     def list_package_versions(
-        self, *, project_id: UUID, opportunity_id: UUID
+        self, *, project_id: UUID, campaign_id: UUID, opportunity_id: UUID
     ) -> tuple[PackageVersion, ...]:
         with self._uow_factory(project_id) as uow:
+            require_campaign_resource(
+                uow.placements,
+                scope=CampaignScope(project_id, campaign_id),
+                kind=CampaignResourceKind.OPPORTUNITY,
+                resource_id=opportunity_id,
+            )
             return uow.placements.list_package_versions(
                 project_id=project_id, opportunity_id=opportunity_id
             )
 
-    def get_package_version(self, *, project_id: UUID, version_id: UUID) -> PackageVersion | None:
+    def get_package_version(
+        self, *, project_id: UUID, campaign_id: UUID, version_id: UUID
+    ) -> PackageVersion | None:
         with self._uow_factory(project_id) as uow:
+            require_campaign_resource(
+                uow.placements,
+                scope=CampaignScope(project_id, campaign_id),
+                kind=CampaignResourceKind.PACKAGE_VERSION,
+                resource_id=version_id,
+            )
             return uow.placements.get_package_version(project_id=project_id, version_id=version_id)
 
     def edit_package_version(
         self,
         *,
         project_id: UUID,
+        campaign_id: UUID,
         package_id: UUID,
         base_version_id: UUID,
         base_content_hash: str,
@@ -390,7 +371,27 @@ class PlacementApplication(
         claims: tuple[GeneratedClaim, ...],
     ) -> PackageVersion:
         validate_edited_claims(claims)
+        parse_publication_verification_contract(content_json, disclosure_required=False)
+        scope = CampaignScope(project_id, campaign_id)
         with self._uow_factory(project_id) as uow:
+            package_context = require_campaign_resource(
+                uow.placements,
+                scope=scope,
+                kind=CampaignResourceKind.PACKAGE,
+                resource_id=package_id,
+                lock=True,
+            )
+            base_context = require_campaign_resource(
+                uow.placements,
+                scope=scope,
+                kind=CampaignResourceKind.PACKAGE_VERSION,
+                resource_id=base_version_id,
+                lock=True,
+            )
+            if package_context.opportunity_id != base_context.opportunity_id:
+                raise CampaignContextMismatch(
+                    "base version does not belong to the requested Package lineage"
+                )
             base = uow.placements.get_package_version(
                 project_id=project_id, version_id=base_version_id
             )
@@ -415,14 +416,29 @@ class PlacementApplication(
             uow.commit()
             return result
 
-    def list_claims(self, *, project_id: UUID, version_id: UUID) -> tuple[Claim, ...]:
+    def list_claims(
+        self, *, project_id: UUID, campaign_id: UUID, version_id: UUID
+    ) -> tuple[Claim, ...]:
         with self._uow_factory(project_id) as uow:
+            require_campaign_resource(
+                uow.placements,
+                scope=CampaignScope(project_id, campaign_id),
+                kind=CampaignResourceKind.PACKAGE_VERSION,
+                resource_id=version_id,
+            )
             return uow.placements.list_claims(project_id=project_id, version_id=version_id)
 
     def submit_for_review(
-        self, *, project_id: UUID, version_id: UUID, submitted_by: UUID
+        self, *, project_id: UUID, campaign_id: UUID, version_id: UUID, submitted_by: UUID
     ) -> ReviewSubmission:
         with self._uow_factory(project_id) as uow:
+            require_campaign_resource(
+                uow.placements,
+                scope=CampaignScope(project_id, campaign_id),
+                kind=CampaignResourceKind.PACKAGE_VERSION,
+                resource_id=version_id,
+                lock=True,
+            )
             if not uow.placements.list_claims(project_id=project_id, version_id=version_id):
                 raise PlacementRuleViolation(
                     "package version requires a non-empty claim inventory before review"
@@ -437,6 +453,7 @@ class PlacementApplication(
         self,
         *,
         project_id: UUID,
+        campaign_id: UUID,
         version_id: UUID,
         reviewer_id: UUID,
         decision: str,
@@ -446,6 +463,13 @@ class PlacementApplication(
         notes: str | None,
     ) -> Review:
         with self._uow_factory(project_id) as uow:
+            require_campaign_resource(
+                uow.placements,
+                scope=CampaignScope(project_id, campaign_id),
+                kind=CampaignResourceKind.PACKAGE_VERSION,
+                resource_id=version_id,
+                lock=True,
+            )
             submission = uow.placements.get_review_submission(
                 project_id=project_id, version_id=version_id
             )
@@ -469,14 +493,29 @@ class PlacementApplication(
             uow.commit()
             return result
 
-    def list_reviews(self, *, project_id: UUID, version_id: UUID) -> tuple[Review, ...]:
+    def list_reviews(
+        self, *, project_id: UUID, campaign_id: UUID, version_id: UUID
+    ) -> tuple[Review, ...]:
         with self._uow_factory(project_id) as uow:
+            require_campaign_resource(
+                uow.placements,
+                scope=CampaignScope(project_id, campaign_id),
+                kind=CampaignResourceKind.PACKAGE_VERSION,
+                resource_id=version_id,
+            )
             return uow.placements.list_reviews(project_id=project_id, version_id=version_id)
 
     def export_package(
-        self, *, project_id: UUID, version_id: UUID, requested_by: UUID
+        self, *, project_id: UUID, campaign_id: UUID, version_id: UUID, requested_by: UUID
     ) -> ExportReceipt:
         with self._uow_factory(project_id) as uow:
+            require_campaign_resource(
+                uow.placements,
+                scope=CampaignScope(project_id, campaign_id),
+                kind=CampaignResourceKind.PACKAGE_VERSION,
+                resource_id=version_id,
+                lock=True,
+            )
             result = uow.placements.export_package(
                 project_id=project_id,
                 version_id=version_id,
@@ -490,6 +529,7 @@ class PlacementApplication(
         self,
         *,
         project_id: UUID,
+        campaign_id: UUID,
         version_id: UUID,
         destination_id: UUID,
         requested_by: UUID,
@@ -499,6 +539,33 @@ class PlacementApplication(
         policy_basis: str | None,
     ) -> PublicationRequest:
         with self._uow_factory(project_id) as uow:
+            context = require_campaign_resource(
+                uow.placements,
+                scope=CampaignScope(project_id, campaign_id),
+                kind=CampaignResourceKind.PACKAGE_VERSION,
+                resource_id=version_id,
+                lock=True,
+            )
+            if context.destination_id != destination_id:
+                raise CampaignContextMismatch(
+                    "publication Destination does not match the Package Opportunity"
+                )
+            version = uow.placements.get_package_version(
+                project_id=project_id, version_id=version_id
+            )
+            if version is None or version.workflow_status is not WorkflowStatus.APPROVED:
+                raise PlacementRuleViolation("publication requires an approved Package Version")
+            bundle = uow.placements.get_prompt_bundle(
+                project_id=project_id, bundle_id=version.prompt_bundle_id
+            )
+            if bundle is None:
+                raise PlacementRuleViolation("publication requires its frozen Prompt Bundle")
+            legacy_bundle = (
+                "prompt_release_binding_id" in bundle
+                and bundle.get("prompt_release_binding_id") is None
+            )
+            if not legacy_bundle:
+                parse_frozen_publication_verification_contract(version.content_json, bundle)
             result = uow.placements.create_publication_request(
                 project_id=project_id,
                 version_id=version_id,
@@ -511,13 +578,5 @@ class PlacementApplication(
             )
             uow.commit()
             return result
-
-    def list_publication_requests(
-        self, *, project_id: UUID, version_id: UUID
-    ) -> tuple[PublicationRequest, ...]:
-        with self._uow_factory(project_id) as uow:
-            return uow.placements.list_publication_requests(
-                project_id=project_id, version_id=version_id
-            )
 
 __all__ = ["ConcurrencyConflict", "PlacementApplication"]

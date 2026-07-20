@@ -133,7 +133,7 @@ class FakeFactory:
 def _draft(*, subject_id: UUID, rights: UsageRights = UsageRights.OWNED) -> EvidenceDraft:
     text = "Verified product fact"
     return EvidenceDraft(
-        item_type=EvidenceItemType.APPROVED_FACT,
+        item_type=EvidenceItemType.CITATION,
         source_id=uuid4(),
         subject_entity_id=subject_id,
         subject_role=SubjectRole.PRODUCT,
@@ -188,6 +188,38 @@ def test_analyst_can_create_typed_subject_evidence_but_cannot_admin_project() ->
         service.update_project(
             actor, project_id=project_id, name="Forbidden", status=None
         )
+
+
+def test_generic_catalog_application_rejects_approved_fact() -> None:
+    actor = principal("analyst")
+    project_id = actor.project_ids[0]
+    factory = FakeFactory()
+    service = CatalogApplication(factory)  # type: ignore[arg-type]
+    entity = service.create_entity(
+        actor,
+        project_id=project_id,
+        entity_type=EntityType.PRODUCT,
+        canonical_name="Product One",
+        canonical_url=None,
+        attributes={},
+    )
+    draft = _draft(subject_id=entity.id)
+    approved_fact = EvidenceDraft(
+        item_type=EvidenceItemType.APPROVED_FACT,
+        source_id=draft.source_id,
+        subject_entity_id=draft.subject_entity_id,
+        subject_role=draft.subject_role,
+        locator=draft.locator,
+        snapshot=draft.snapshot,
+        source_revision_kind=draft.source_revision_kind,
+        source_revision_value=draft.source_revision_value,
+        usage_rights=draft.usage_rights,
+        confidentiality=draft.confidentiality,
+        public_citation=draft.public_citation,
+    )
+
+    with pytest.raises(CatalogRuleViolation, match="promoted from an approved Knowledge Fact"):
+        service.create_evidence(actor, project_id=project_id, draft=approved_fact)
 
 
 @pytest.mark.parametrize("role", ["viewer", "customer"])

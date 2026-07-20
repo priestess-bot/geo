@@ -5,7 +5,13 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Mapping, Protocol
 
-from geo_core.jobs.postgres import LeaseHeartbeat, PostgresDurableJobStore, WorkerLease
+from geo_core.jobs.postgres import (
+    JobCancellationRequested,
+    LeaseHeartbeat,
+    LostJobLease,
+    PostgresDurableJobStore,
+    WorkerLease,
+)
 from geo_core.model_gateway import (
     ModelCallBudget,
     ModelGateway,
@@ -90,7 +96,10 @@ class PromptSimulationHandler:
         self._lease_for = lease_for
 
     def handle(self, lease: WorkerLease) -> Mapping[str, object]:
-        claim = self._repository.load_prompt_simulation(lease)
+        try:
+            claim = self._repository.load_prompt_simulation(lease)
+        except PlacementRuleViolation as exc:
+            return self._fail(lease, exc, retry=False, classification="contract")
         request = build_prompt_simulation_request(claim)
         request_hash = canonical_hash(
             {
@@ -122,6 +131,8 @@ class PromptSimulationHandler:
                     budget=ModelCallBudget(1),
                 )
                 heartbeat.raise_if_stopped()
+        except (JobCancellationRequested, LostJobLease):
+            raise
         except Exception as exc:
             classification = _model_error_classification(exc)
             self._repository.record_model_call_failure(

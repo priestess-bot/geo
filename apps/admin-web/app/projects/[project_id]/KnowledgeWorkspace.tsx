@@ -1,3 +1,5 @@
+import type { CatalogEntity } from "./catalogTypes";
+import { FactEvidencePromotionForm } from "./FactEvidencePromotionForm";
 import { KnowledgeActionForm } from "./KnowledgeActionForm";
 import {
   disableKnowledgeChunk,
@@ -22,10 +24,14 @@ const views = [
 ] as const;
 
 export function KnowledgeWorkspace({
+  canPromote,
   data,
+  entities,
   projectId
 }: {
+  canPromote: boolean;
   data: KnowledgeWorkspaceData;
+  entities: CatalogEntity[];
   projectId: string;
 }) {
   return (
@@ -44,7 +50,7 @@ export function KnowledgeWorkspace({
       {data.activeView === "search" ? <SearchView data={data} projectId={projectId} /> : null}
       {data.activeView === "dashboard" ? <DashboardView data={data} /> : null}
       {data.activeView === "quality" ? <QualityView data={data} projectId={projectId} /> : null}
-      {data.activeView === "trace" ? <TraceView facts={data.facts.data} projectId={projectId} /> : null}
+      {data.activeView === "trace" ? <TraceView canPromote={canPromote} data={data} entities={entities} projectId={projectId} /> : null}
       <Problems data={data} />
     </div>
   );
@@ -119,14 +125,63 @@ function QualityView({ data, projectId }: { data: KnowledgeWorkspaceData; projec
   return <section className={styles.section}><div className={styles.sectionHeading}><div><p>Quality gates</p><h3>质检发现</h3></div><span>{data.findings.data.length} 条</span></div><div className={styles.findingList}>{data.findings.data.map((item) => <article key={item.id}><header><strong>{item.finding_code}</strong><span className={styles[item.severity] || ""}>{item.severity}</span></header><p>{item.message}</p><small>{item.source_title} · {item.status}</small>{item.status === "open" ? <KnowledgeActionForm action={reviewKnowledgeFinding} className={styles.inlineForm} submitLabel="确认处置"><input name="project_id" type="hidden" value={projectId} /><input name="finding_id" type="hidden" value={item.id} /><label>处置<select name="decision"><option value="resolved">问题已解决</option><option value="accepted">接受风险</option></select></label></KnowledgeActionForm> : null}</article>)}</div>{!data.findings.data.length ? <p>当前没有开放的质量问题。</p> : null}</section>;
 }
 
-function TraceView({ facts, projectId }: { facts: KnowledgeFact[]; projectId: string }) {
-  return <section className={styles.section}><div className={styles.sectionHeading}><div><p>Evidence lineage</p><h3>事实候选与证据追踪</h3></div><span>{facts.length} 条</span></div><div className={styles.factList}>{facts.map((fact) => <article key={fact.id}><header><span><strong>{fact.source_title}</strong><small>Chunk {fact.chunk_id.slice(0, 8)} · {fact.statement_hash.slice(0, 10)}</small></span><Status value={fact.status} /></header><p>{fact.statement}</p>{fact.status === "pending_review" ? <KnowledgeActionForm action={reviewKnowledgeFact} submitLabel="保存审核"><input name="project_id" type="hidden" value={projectId} /><input name="fact_id" type="hidden" value={fact.id} /><div className={styles.reviewFields}><label>结论<select name="decision"><option value="approved">批准</option><option value="rejected">拒绝</option></select></label><label>审核说明<input name="notes" placeholder="说明事实主体、时效或使用限制" /></label></div></KnowledgeActionForm> : <small>{fact.review_notes || "已完成审核"}</small>}</article>)}</div>{!facts.length ? <p>Pipeline 生成事实候选后将在此人工审核。</p> : null}</section>;
+function TraceView({
+  canPromote,
+  data,
+  entities,
+  projectId
+}: {
+  canPromote: boolean;
+  data: KnowledgeWorkspaceData;
+  entities: CatalogEntity[];
+  projectId: string;
+}) {
+  const facts = data.facts.data;
+  const proposal = data.evidenceProposal.data;
+  return <div className={styles.stack}>
+    <section className={styles.section}><div className={styles.sectionHeading}><div><p>Evidence lineage</p><h3>事实候选与证据追踪</h3></div><span>{facts.length} 条</span></div><div className={styles.factList}>{facts.map((fact) => <article className={fact.id === data.selectedFactId ? styles.selectedFact : ""} key={fact.id}><header><span><strong>{fact.source_title}</strong><small>Chunk {fact.chunk_id.slice(0, 8)} · {fact.statement_hash.slice(0, 10)}</small></span><Status value={fact.status} /></header><p>{fact.statement}</p>{fact.status === "pending_review" ? <KnowledgeActionForm action={reviewKnowledgeFact} submitLabel="保存审核"><input name="project_id" type="hidden" value={projectId} /><input name="fact_id" type="hidden" value={fact.id} /><div className={styles.reviewFields}><label>结论<select name="decision"><option value="approved">批准</option><option value="rejected">拒绝</option></select></label><label>审核说明<input name="notes" placeholder="说明事实主体、时效或使用限制" /></label></div></KnowledgeActionForm> : <div className={styles.factFooter}><small>{fact.review_notes || "已完成审核"}</small>{fact.status === "approved" ? <a href={factHref(projectId, fact.id)}>Evidence 与追溯链</a> : null}</div>}</article>)}</div>{!facts.length ? <p>Pipeline 生成事实候选后将在此人工审核。</p> : null}</section>
+    {proposal ? <FactEvidenceDetail canPromote={canPromote} entities={entities} projectId={projectId} proposal={proposal} /> : null}
+  </div>;
+}
+
+function FactEvidenceDetail({
+  canPromote,
+  entities,
+  projectId,
+  proposal
+}: {
+  canPromote: boolean;
+  entities: CatalogEntity[];
+  projectId: string;
+  proposal: NonNullable<KnowledgeWorkspaceData["evidenceProposal"]["data"]>;
+}) {
+  const existing = proposal.existing;
+  return <section className={styles.section}>
+    <div className={styles.sectionHeading}><div><p>Governed Evidence</p><h3>{existing ? existing.evidence.title : "正式 Evidence 提升"}</h3></div><Status value={existing ? "ready" : proposal.promotable ? "approved" : "blocked"} /></div>
+    <div className={styles.traceGrid}>
+      <div><span>Source</span><strong>{proposal.source.title}</strong><small>{proposal.source.id}</small><code>{shortHash(proposal.source.content_hash)}</code></div>
+      <div><span>Document</span><strong>{proposal.document.parser_version}</strong><small>{proposal.document.id}</small><code>{shortHash(proposal.document.cleaned_text_hash)}</code></div>
+      <div><span>Chunk {proposal.chunk.chunk_index}</span><strong>{proposal.chunk.status}</strong><small>{proposal.chunk.id}</small><code>{shortHash(proposal.chunk.text_hash)}</code></div>
+      <div><span>Approved Fact</span><strong>{proposal.fact.status}</strong><small>{proposal.fact.id}</small><code>{shortHash(proposal.fact.statement_hash)}</code></div>
+    </div>
+    {existing ? <div className={styles.lineage}>
+      <dl><div><dt>Evidence ID</dt><dd>{existing.evidence.id}</dd></div><div><dt>契约</dt><dd>{existing.lineage.lineage_contract_version}</dd></div><div><dt>Idempotency-Key</dt><dd>{existing.lineage.idempotency_key}</dd></div><div><dt>Request SHA-256</dt><dd>{existing.lineage.promotion_request_hash}</dd></div><div><dt>Evidence SHA-256</dt><dd>{existing.lineage.evidence_snapshot_hash}</dd></div><div><dt>提升时间</dt><dd>{formatDate(existing.lineage.promoted_at)}</dd></div></dl>
+      <div className={styles.detailActions}><a href={`/projects/${encodeURIComponent(projectId)}?tab=geo&geo_section=placement&placement_stage=brief`}>进入 Evidence Pack</a></div>
+    </div> : <>
+      {proposal.blockers.length ? <p className={styles.error}>{proposal.blockers.map(blockerLabel).join(" · ")}</p> : null}
+      {proposal.promotable && canPromote ? <FactEvidencePromotionForm entities={entities} projectId={projectId} proposal={proposal} /> : null}
+      {proposal.promotable && !canPromote ? <p>当前角色仅可查看追溯链。</p> : null}
+    </>}
+  </section>;
 }
 
 function DashboardItem({ label, note, value }: { label: string; note: string; value: string }) { return <div><span>{label}</span><strong>{value}</strong><small>{note}</small></div>; }
 function Status({ value }: { value: string }) { return <span className={`${styles.status} ${styles[value] || ""}`}>{statusLabel(value)}</span>; }
-function Problems({ data }: { data: KnowledgeWorkspaceData }) { const problems = [data.sources.problem, data.runs.problem, data.stages.problem, data.chunks.problem, data.facts.problem, data.findings.problem, data.dashboard.problem].filter(Boolean) as KnowledgeProblem[]; return problems.length ? <section className={styles.problems}>{problems.map((item, index) => <p key={`${item.detail}-${index}`}>{item.status || "错误"} · {item.detail}{item.correlationId ? ` · ${item.correlationId}` : ""}</p>)}</section> : null; }
+function Problems({ data }: { data: KnowledgeWorkspaceData }) { const problems = [data.sources.problem, data.runs.problem, data.stages.problem, data.chunks.problem, data.facts.problem, data.findings.problem, data.dashboard.problem, data.evidenceProposal.problem].filter(Boolean) as KnowledgeProblem[]; return problems.length ? <section className={styles.problems}>{problems.map((item, index) => <p key={`${item.detail}-${index}`}>{item.status || "错误"} · {item.detail}{item.correlationId ? ` · ${item.correlationId}` : ""}</p>)}</section> : null; }
 function href(projectId: string, view: string) { return `/projects/${encodeURIComponent(projectId)}?tab=knowledge&knowledge_tab=${view}`; }
+function factHref(projectId: string, factId: string) { return `${href(projectId, "trace")}&knowledge_fact_id=${encodeURIComponent(factId)}`; }
+function shortHash(value: string | null) { return value ? value.slice(0, 16) : "missing"; }
+function blockerLabel(value: string) { return ({ fact_not_approved: "Fact 尚未批准", fact_review_metadata_missing: "缺少审核记录", source_not_ready: "来源尚未就绪", source_content_hash_missing: "来源缺少内容哈希", pipeline_run_not_succeeded: "处理任务尚未成功", source_content_hash_mismatch: "来源内容哈希不匹配", document_cleaned_text_hash_mismatch: "Document 哈希不匹配", chunk_disabled: "Chunk 已禁用", chunk_integrity_mismatch: "Chunk 完整性校验失败", fact_statement_hash_mismatch: "Fact 哈希不匹配" } as Record<string, string>)[value] || value; }
 function formatBytes(value: number | null) { if (!value) return "—"; return value > 1024 * 1024 ? `${(value / 1024 / 1024).toFixed(1)} MB` : `${Math.ceil(value / 1024)} KB`; }
 function formatDate(value: string) { return value ? value.slice(0, 16).replace("T", " ") : "—"; }
 function stageLabel(value: string) { return ({ ingest: "接收来源", parse: "解析正文", clean: "清洗去重", chunk: "语义分块", fact_extract: "事实候选", quality: "质量检查" } as Record<string, string>)[value] || value; }

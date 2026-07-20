@@ -16,6 +16,11 @@ dependencies = [
   "geo-core",
 ]
 
+[project.optional-dependencies]
+f019-rag = [
+    "llama-index-core==0.14.23",
+]
+
 [tool.uv.sources]
 geo-core = { workspace = true }
 

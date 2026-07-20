@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from geo_core.access.models import AccessPrincipal, MembershipRecord
 from geo_core.placements.domain import (
     Campaign,
+    CampaignContextMismatch,
     Opportunity,
     PlacementConflict,
     PlacementNotFound,
@@ -19,7 +20,6 @@ def test_placement_routes_are_stable_and_internal_only() -> None:
     internal = create_api_app(surface="internal").openapi()["paths"]
     customer = create_api_app(surface="customer").openapi()["paths"]
     expected = {
-        "/v1/projects/{project_id}/geo/campaigns",
         "/v1/projects/{project_id}/geo/campaigns/{campaign_id}/monitoring-queries",
         "/v1/projects/{project_id}/geo/destinations",
         "/v1/projects/{project_id}/geo/campaigns/{campaign_id}/opportunities",
@@ -38,6 +38,7 @@ def test_placement_routes_are_stable_and_internal_only() -> None:
         "/v1/projects/{project_id}/geo/package-versions/{version_id}/publication-requests",
         "/v1/projects/{project_id}/geo/publication-requests/{publication_request_id}/submissions",
         "/v1/projects/{project_id}/geo/submissions/{submission_id}/verification-jobs",
+        "/v1/projects/{project_id}/geo/submissions/{submission_id}/verification-attempts",
         "/v1/projects/{project_id}/geo/submissions/{submission_id}/measurements",
         "/v1/projects/{project_id}/geo/measurement-collection-tasks",
         "/v1/projects/{project_id}/geo/measurement-collection-tasks/{task_id}/complete",
@@ -45,7 +46,13 @@ def test_placement_routes_are_stable_and_internal_only() -> None:
     }
     assert expected <= set(internal)
     assert expected.isdisjoint(customer)
+    shared_campaign_list = "/v1/projects/{project_id}/geo/campaigns"
+    assert "get" in internal[shared_campaign_list]
+    assert set(customer[shared_campaign_list]) >= {"get"}
+    assert "post" not in customer[shared_campaign_list]
     assert {
+        shared_campaign_list,
+        "/v1/projects/{project_id}/geo/campaigns/{campaign_id}/read-model",
         "/v1/projects/{project_id}/geo/summary",
         "/v1/projects/{project_id}/geo/verified-urls",
         "/v1/projects/{project_id}/geo/metrics",
@@ -70,6 +77,65 @@ def test_generation_and_publication_require_idempotency_header() -> None:
         parameters = document["paths"][path]["post"]["parameters"]
         header = next(item for item in parameters if item["name"] == "Idempotency-Key")
         assert header["required"] is True
+
+
+def test_prompt_simulation_reads_preserve_legacy_access_without_weakening_create() -> None:
+    document = create_api_app(surface="internal").openapi()
+    paths = document["paths"]
+    collection = paths["/v1/projects/{project_id}/geo/prompt-simulations"]
+    detail = paths[
+        "/v1/projects/{project_id}/geo/prompt-simulations/{simulation_id}"
+    ]
+    artifact = paths[
+        "/v1/projects/{project_id}/geo/prompt-simulations/{simulation_id}/artifact"
+    ]
+
+    create_campaign = next(
+        item for item in collection["post"]["parameters"] if item["name"] == "campaign_id"
+    )
+    assert create_campaign["required"] is True
+    for operation in (collection["get"], detail["get"], artifact["get"]):
+        campaign = next(
+            item for item in operation["parameters"] if item["name"] == "campaign_id"
+        )
+        assert campaign["required"] is False
+
+    view = document["components"]["schemas"]["PromptSimulationView"]
+    legacy_nullable = {
+        "campaign_id",
+        "opportunity_id",
+        "prompt_release_binding_id",
+        "prompt_release_binding_version",
+    }
+    assert legacy_nullable <= set(view["required"])
+    for field in legacy_nullable:
+        variants = view["properties"][field]["anyOf"]
+        assert {variant.get("type") for variant in variants} >= {"null"}
+
+
+def test_publication_verification_attempt_contract_is_versioned_and_body_free() -> None:
+    document = create_api_app(surface="internal").openapi()
+    path = document["paths"][
+        "/v1/projects/{project_id}/geo/submissions/{submission_id}/verification-attempts"
+    ]
+    assert path["get"]["operationId"] == "listPlacementSubmissionVerificationAttempts"
+    schema = document["components"]["schemas"]["PublicationVerificationAttemptView"]
+    required = set(schema["required"])
+    assert {
+        "campaign_id",
+        "opportunity_id",
+        "submission_id",
+        "job_id",
+        "attempt_number",
+        "verifier_version",
+        "outcome",
+        "checks",
+        "failures",
+        "result_hash",
+    } <= required
+    serialized = str(schema).casefold()
+    assert "exception" not in serialized
+    assert "html_body" not in serialized
 
 
 def test_prompt_release_contract_exposes_the_complete_executable_snapshot() -> None:
@@ -132,13 +198,20 @@ def test_placement_state_and_missing_resource_use_public_problem_contracts() -> 
     def missing() -> None:
         raise PlacementNotFound("missing package")
 
+    @app.get("/_test/campaign-mismatch")
+    def campaign_mismatch() -> None:
+        raise CampaignContextMismatch("explicit resources cross Campaigns")
+
     with TestClient(app) as client:
         conflict_response = client.get("/_test/placement-conflict")
         missing_response = client.get("/_test/placement-missing")
+        mismatch_response = client.get("/_test/campaign-mismatch")
     assert conflict_response.status_code == 409
     assert conflict_response.json()["type"] == "urn:geo:problem:placement-state-conflict"
     assert missing_response.status_code == 404
     assert missing_response.json()["type"] == "urn:geo:problem:placement-not-found"
+    assert mismatch_response.status_code == 422
+    assert mismatch_response.json()["type"] == "/problems/campaign-context-mismatch"
 
 
 def test_placement_slice_has_no_legacy_dependency_and_respects_file_budget() -> None:
@@ -212,6 +285,9 @@ class _PlacementServices:
             status="awaiting_url",
             idempotency_key=values["idempotency_key"],
             submitted_by=values["submitted_by"],
+            campaign_id=values["campaign_id"],
+            opportunity_id=uuid4(),
+            destination_id=uuid4(),
         )
 
 
@@ -298,13 +374,16 @@ def test_command_identity_is_derived_from_principal_and_actor_fields_are_forbidd
 
 
 def test_submission_requires_idempotency_and_uses_authenticated_actor() -> None:
-    project_id = uuid4()
+    project_id, campaign_id = uuid4(), uuid4()
     principal = _principal(project_id, "admin")
     placement = _PlacementServices()
     app = create_api_app(
         surface="internal", services=_AccessServices(principal), placement_services=placement
     )
-    path = f"/v1/projects/{project_id}/geo/publication-requests/{uuid4()}/submissions"
+    path = (
+        f"/v1/projects/{project_id}/geo/publication-requests/{uuid4()}/submissions"
+        f"?campaign_id={campaign_id}"
+    )
     with TestClient(app) as client:
         missing = client.post(path, json={})
         created = client.post(

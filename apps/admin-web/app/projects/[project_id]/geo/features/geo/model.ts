@@ -1,8 +1,12 @@
 import type {
-  BriefVersionView, CampaignView, ClaimView, DestinationPolicyView, DestinationView, EvidenceAttemptView,
+  BriefVersionView, CampaignPlacementReadinessView, CampaignView, ClaimView, DestinationPolicyView,
+  DestinationView, EvidenceAttemptView,
   EvidenceItemView, ExportView, JobStatus, MeasurementView, MeasurementWindow, MetricView,
+  KnowledgeQuestionCandidateView, KnowledgeQuestionFactView, KnowledgeQuestionGenerationView,
+  KnowledgeQuestionSetView,
   MonitoringObservationView, MonitoringProtocolView, MonitoringQueryView, MonitoringReportView,
-  OpportunityView, PackageVersionView, PlacementJobEventView, PromptBundleDetail, PromptBundleView,
+  OpportunityPromptReleaseBindingView, OpportunityView, PackageVersionView, PlacementJobEventView,
+  PromptBundleDetail, PromptBundleView,
   PromptReleaseView, PromptSimulationView, PromptSkillView, PromptTaskBindingView, ProtocolQueryView, PublicationView,
   QuerySuggestionView, ReviewView, SubmissionView, VerifiedCitationTargetView
 } from "@geo/types/geo";
@@ -16,17 +20,26 @@ export type GeoSelection = {
   skillId?: string; bundleId?: string; jobId?: string; versionId?: string;
   publicationId?: string; submissionId?: string;
   simulationId?: string;
+  questionGenerationJobId?: string;
 };
 export type GeoWorkspaceData = {
   selection: GeoSelection;
+  canonicalHref?: string;
   campaigns: Resource<CampaignView[]>; destinations: Resource<DestinationView[]>;
   protocols: Resource<MonitoringProtocolView[]>; metrics: Resource<MetricView[]>;
   reports: Resource<MonitoringReportView[]>; skills: Resource<PromptSkillView[]>;
   simulations: Resource<PromptSimulationView[]>;
+  questionFacts: Resource<KnowledgeQuestionFactView[]>;
+  questionGenerations: Resource<KnowledgeQuestionGenerationView[]>;
+  questionCandidates: Resource<KnowledgeQuestionCandidateView[]>;
+  questionSets: Resource<KnowledgeQuestionSetView[]>;
   bindings: Resource<PromptTaskBindingView[]>; queries: Resource<MonitoringQueryView[]>;
   protocolQueries: Resource<ProtocolQueryView[]>;
   citationTargets: Resource<VerifiedCitationTargetView[]>;
   opportunities: Resource<OpportunityView[]>; policyReviews: Resource<DestinationPolicyView[]>;
+  placementReadiness: Resource<CampaignPlacementReadinessView | null>;
+  promptBinding: Resource<OpportunityPromptReleaseBindingView | null>;
+  promptBindingHistory: Resource<OpportunityPromptReleaseBindingView[]>;
   observations: Resource<MonitoringObservationView[]>; suggestions: Resource<QuerySuggestionView[]>;
   briefs: Resource<BriefVersionView[]>; attempts: Resource<EvidenceAttemptView[]>;
   attempt: Resource<EvidenceAttemptView | null>; evidenceItems: Resource<EvidenceItemView[]>;

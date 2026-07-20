@@ -38,6 +38,7 @@ class WorkerLease:
 class ClaimResult:
     disposition: Literal["claimed", "busy", "terminal", "cancelled", "dead_lettered", "missing"]
     lease: WorkerLease | None = None
+    kind: str | None = None
 
 
 def _one(cursor: Any) -> dict[str, Any] | None:
@@ -85,11 +86,11 @@ class PostgresDurableJobStore:
                 raise ValueError("job kind does not match the selected handler")
             if row["status"] in {"succeeded", "failed", "dead_lettered", "cancelled"}:
                 connection.rollback()
-                return ClaimResult("terminal")
+                return ClaimResult("terminal", kind=row["kind"])
             if row["cancel_requested_at"] is not None:
                 self._set_terminal(connection, row, worker_id=worker_id, status="cancelled")
                 connection.commit()
-                return ClaimResult("cancelled")
+                return ClaimResult("cancelled", kind=row["kind"])
             now = datetime.now(UTC)
             due = row["status"] in {"queued", "retry_wait"} and row["next_run_at"] <= now
             expired = (
@@ -99,7 +100,7 @@ class PostgresDurableJobStore:
             )
             if not (due or expired):
                 connection.rollback()
-                return ClaimResult("busy")
+                return ClaimResult("busy", kind=row["kind"])
             if row["attempt_count"] >= row["max_attempts"]:
                 self._set_terminal(
                     connection,
@@ -109,7 +110,7 @@ class PostgresDurableJobStore:
                     error_code="attempt_budget_exhausted",
                 )
                 connection.commit()
-                return ClaimResult("dead_lettered")
+                return ClaimResult("dead_lettered", kind=row["kind"])
             token = uuid4()
             claimed = _one(
                 connection.execute(
@@ -142,7 +143,7 @@ class PostgresDurableJobStore:
                 {"attempt_count": lease.attempt_count},
             )
             connection.commit()
-            return ClaimResult("claimed", lease)
+            return ClaimResult("claimed", lease, claimed["kind"])
         except BaseException:
             connection.rollback()
             raise
@@ -311,6 +312,92 @@ class PostgresDurableJobStore:
         if changed != 1:
             raise LostJobLease("job lease was fenced during failure handling")
         self._event(connection, lease, "job_failed", details)
+
+    def fail_with_retry_in_transaction(
+        self,
+        connection: Any,
+        lease: WorkerLease,
+        *,
+        error_code: str,
+        details: Mapping[str, object],
+        retry_delay: timedelta,
+    ) -> str:
+        retry = lease.attempt_count < lease.max_attempts
+        status = "retry_wait" if retry else "dead_lettered"
+        next_run_at = datetime.now(UTC) + retry_delay
+        changed = connection.execute(
+            """UPDATE durable_jobs SET status = %s, error_code = %s,
+                 error_detail = %s::jsonb, next_run_at = %s,
+                 lease_owner = NULL, lease_token = NULL, lease_expires_at = NULL,
+                 heartbeat_at = NULL, updated_at = clock_timestamp(),
+                 completed_at = CASE WHEN %s = 'dead_lettered'
+                                     THEN clock_timestamp() ELSE NULL END
+               WHERE id = %s AND project_id = %s AND lease_token = %s
+                 AND fencing_generation = %s""",
+            (
+                status,
+                error_code,
+                json.dumps(dict(details)),
+                next_run_at,
+                status,
+                lease.job_id,
+                lease.project_id,
+                lease.lease_token,
+                lease.fencing_generation,
+            ),
+        ).rowcount
+        if changed != 1:
+            raise LostJobLease("job lease was fenced during retry handling")
+        self._event(connection, lease, f"job_{status}", details)
+        return status
+
+    def defer_in_transaction(
+        self,
+        connection: Any,
+        lease: WorkerLease,
+        *,
+        reason_code: str,
+        details: Mapping[str, object],
+        retry_delay: timedelta,
+    ) -> None:
+        next_run_at = datetime.now(UTC) + retry_delay
+        changed = connection.execute(
+            """UPDATE durable_jobs SET status = 'retry_wait',
+                 attempt_count = GREATEST(attempt_count - 1, 0),
+                 error_code = %s, error_detail = %s::jsonb, next_run_at = %s,
+                 lease_owner = NULL, lease_token = NULL, lease_expires_at = NULL,
+                 heartbeat_at = NULL, updated_at = clock_timestamp(), completed_at = NULL
+               WHERE id = %s AND project_id = %s AND lease_token = %s
+                 AND fencing_generation = %s""",
+            (
+                reason_code,
+                json.dumps(dict(details)),
+                next_run_at,
+                lease.job_id,
+                lease.project_id,
+                lease.lease_token,
+                lease.fencing_generation,
+            ),
+        ).rowcount
+        if changed != 1:
+            raise LostJobLease("job lease was fenced during deferral")
+        connection.execute(
+            """INSERT INTO broker_outbox
+                 (project_id, job_id, topic, payload, idempotency_key, available_at)
+               VALUES (%s, %s, %s, %s::jsonb, %s, %s)
+               ON CONFLICT (project_id, idempotency_key) DO NOTHING""",
+            (
+                lease.project_id,
+                lease.job_id,
+                lease.kind,
+                json.dumps(
+                    {"job_id": str(lease.job_id), "project_id": str(lease.project_id)}
+                ),
+                f"defer:{lease.job_id}:{lease.fencing_generation}",
+                next_run_at,
+            ),
+        )
+        self._event(connection, lease, "job_deferred", details)
 
     def cancel(self, lease: WorkerLease) -> None:
         connection = self.open_project(lease.project_id)

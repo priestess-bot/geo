@@ -10,7 +10,6 @@ from uuid import UUID, uuid4
 from geo_core.placements.domain import (
     JobReference,
     PlacementRuleViolation,
-    PromptBundleView,
     PromptReleaseView,
     PromptSkill,
     canonical_hash,
@@ -20,7 +19,6 @@ from geo_core.prompts.domain import (
     SkillVersion,
     TemplateRelease,
     compile_template,
-    render_bundle,
 )
 
 
@@ -51,10 +49,19 @@ class PostgresPromptRepositoryMixin:
         self,
         *,
         project_id: UUID,
+        campaign_id: UUID,
         kind: str,
         input_value: Mapping[str, object],
         idempotency_key: str,
     ) -> JobReference:
+        raise NotImplementedError
+
+    def get_prompt_release_view(
+        self, *, project_id: UUID, release_id: UUID
+    ) -> PromptReleaseView | None:
+        raise NotImplementedError
+
+    def transition_prompt_release_state(self, **values: Any) -> PromptReleaseView:
         raise NotImplementedError
 
     def create_prompt_skill(self, *, project_id: UUID, skill_key: str) -> PromptSkill:
@@ -150,8 +157,27 @@ class PostgresPromptRepositoryMixin:
                 ),
             )
         )
-        record["source_text"] = source_text
-        return PromptReleaseView(**record)
+        self._db.execute(
+            """INSERT INTO generation_template_release_states
+                 (project_id, template_release_id, skill_version_id, release_number,
+                  release_hash, state_version, status, changed_by, change_reason)
+               VALUES (%s, %s, %s, %s, %s, 1, 'draft', %s,
+                       'Prompt Release created as draft')""",
+            (
+                values["project_id"],
+                record["id"],
+                record["skill_version_id"],
+                record["release_number"],
+                record["release_hash"],
+                values["actor_id"],
+            ),
+        )
+        view = self.get_prompt_release_view(
+            project_id=values["project_id"], release_id=record["id"]
+        )
+        if view is None:
+            raise RuntimeError("created Prompt Release could not be projected")
+        return view
 
     def install_default_prompt_catalog(
         self,
@@ -166,10 +192,14 @@ class PostgresPromptRepositoryMixin:
         for definition in definitions:
             current = _many(
                 self._db.execute(
-                    """SELECT project_id, task_key, template_release_id,
-                              selected_by, selected_at
-                       FROM content_task_prompt_releases
-                       WHERE project_id = %s AND task_key = %s""",
+                    """SELECT binding.project_id, binding.task_key,
+                              binding.template_release_id, binding.selected_by,
+                              binding.selected_at, state.status AS release_status
+                       FROM content_task_prompt_releases AS binding
+                       LEFT JOIN current_generation_template_release_states AS state
+                         ON state.template_release_id = binding.template_release_id
+                        AND state.project_id = binding.project_id
+                       WHERE binding.project_id = %s AND binding.task_key = %s""",
                     (project_id, definition.task_key),
                 )
             )
@@ -191,9 +221,13 @@ class PostgresPromptRepositoryMixin:
                     """SELECT r.id FROM generation_template_releases r
                        JOIN prompt_skill_versions v
                          ON v.id = r.skill_version_id AND v.project_id = r.project_id
+                       JOIN current_generation_template_release_states state
+                         ON state.template_release_id = r.id
+                        AND state.project_id = r.project_id
                        WHERE r.project_id = %s AND v.skill_id = %s
                          AND v.source_hash = %s AND r.output_schema = %s::jsonb
                          AND r.system_template = %s AND r.user_template = %s
+                         AND state.status IN ('draft', 'approved')
                        ORDER BY r.release_number LIMIT 1""",
                     (
                         project_id,
@@ -223,9 +257,36 @@ class PostgresPromptRepositoryMixin:
                     system_template=definition.system_template,
                     output_schema=output_schema,
                     client_variable_names=(),
+                    actor_id=actor_id,
                 ).id
-            if current:
-                bindings.append(current[0])
+            release_view = self.get_prompt_release_view(
+                project_id=project_id, release_id=release_id
+            )
+            if release_view is None:
+                raise RuntimeError("default Prompt Release disappeared")
+            if release_view.status.value == "draft":
+                self.transition_prompt_release_state(
+                    project_id=project_id,
+                    release_id=release_id,
+                    expected_state_version=release_view.state_version,
+                    target_status="approved",
+                    reason="Default Prompt catalog installation",
+                    actor_id=actor_id,
+                    idempotency_key=f"default-release-approve:{release_id}",
+                )
+            if current and current[0]["release_status"] == "approved":
+                bindings.append(
+                    {
+                        key: current[0][key]
+                        for key in (
+                            "project_id",
+                            "task_key",
+                            "template_release_id",
+                            "selected_by",
+                            "selected_at",
+                        )
+                    }
+                )
             else:
                 bindings.append(
                     self.select_prompt_release(
@@ -256,193 +317,6 @@ class PostgresPromptRepositoryMixin:
             release_hash=row["release_hash"],
         )
 
-    def create_prompt_bundle(self, **values: Any) -> PromptBundleView:
-        release = self.get_template_release(
-            project_id=values["project_id"], release_id=values["release_id"]
-        )
-        if release is None:
-            raise RuntimeError("template release disappeared")
-        release_record = _one(
-            self._db.execute(
-                """SELECT system_template, variable_schema, release_hash, compiler_version
-                   FROM generation_template_releases
-                   WHERE id = %s AND project_id = %s""",
-                (values["release_id"], values["project_id"]),
-            )
-        )
-        client_variables = dict(values["variables"])
-        allowed = set(release_record["variable_schema"].get("client_allowed", ()))
-        if not set(client_variables).issubset(allowed):
-            raise PlacementRuleViolation("prompt bundle contains non-allowlisted client variables")
-        required_client = allowed.intersection(release.required_variables)
-        if not required_client.issubset(client_variables):
-            raise PlacementRuleViolation("prompt bundle is missing required client variables")
-        pack = _one(
-            self._db.execute(
-                """SELECT p.pack_hash, bv.goals, bv.constraints, b.primary_brand_entity_id,
-                          o.id AS opportunity_id, d.id AS destination_id,
-                          d.publication_channel, d.destination_key, d.operation_mode,
-                          d.policy_status, d.canonical_url, pv.id AS policy_version_id,
-                          pv.version_number AS policy_version_number, pv.rules AS policy_rules,
-                          pv.identity_requirements, pv.disclosure_requirements,
-                          pv.allowed_hosts
-                   FROM evidence_pack_attempts p
-                   JOIN placement_brief_versions bv
-                     ON bv.id = p.brief_version_id AND bv.project_id = p.project_id
-                   JOIN placement_briefs b
-                     ON b.id = bv.brief_id AND b.project_id = bv.project_id
-                   JOIN placement_opportunities o
-                     ON o.id = b.opportunity_id AND o.project_id = b.project_id
-                   JOIN publication_destinations d
-                     ON d.id = o.destination_id AND d.project_id = o.project_id
-                   JOIN LATERAL (
-                     SELECT * FROM destination_policy_versions value
-                     WHERE value.destination_id = d.id AND value.project_id = d.project_id
-                     ORDER BY value.version_number DESC LIMIT 1
-                   ) pv ON true
-                   WHERE p.id = %s AND p.project_id = %s AND p.status = 'ready'
-                     AND bv.id = %s AND o.status IN ('briefing', 'in_progress')""",
-                (
-                    values["evidence_pack_attempt_id"],
-                    values["project_id"],
-                    values["brief_version_id"],
-                ),
-            )
-        )
-        evidence = _many(
-            self._db.execute(
-                """SELECT e.id, e.item_type, e.subject_entity_id, e.subject_role,
-                          e.snapshot_text, e.snapshot_uri, e.snapshot_hash, e.usage_rights,
-                          e.confidentiality, e.public_disclosure_allowed,
-                          e.public_source_url, e.public_source_title, e.citation_label,
-                          e.quotation_allowed, e.attribution_required
-                   FROM evidence_pack_items pi JOIN evidence_items e
-                     ON e.id = pi.evidence_item_id AND e.project_id = pi.project_id
-                   WHERE pi.pack_attempt_id = %s AND pi.project_id = %s
-                   ORDER BY pi.ordinal""",
-                (values["evidence_pack_attempt_id"], values["project_id"]),
-            )
-        )
-        if not evidence:
-            raise PlacementRuleViolation("ready evidence pack must contain frozen items")
-        selected_release = self._db.execute(
-            """SELECT template_release_id FROM content_task_prompt_releases
-               WHERE project_id = %s AND task_key = %s""",
-            (values["project_id"], pack["publication_channel"]),
-        ).fetchone()
-        if selected_release is None or selected_release[0] != values["release_id"]:
-            raise PlacementRuleViolation(
-                "prompt release is not selected for the destination task key"
-            )
-        brief_snapshot = {
-            "goals": pack["goals"],
-            "constraints": pack["constraints"],
-            "primary_brand_entity_id": str(pack["primary_brand_entity_id"]),
-        }
-        policy_snapshot = {
-            "opportunity_id": str(pack["opportunity_id"]),
-            "destination_id": str(pack["destination_id"]),
-            "channel": pack["publication_channel"],
-            "destination_key": pack["destination_key"],
-            "operation_mode": pack["operation_mode"],
-            "policy_status": pack["policy_status"],
-            "canonical_url": pack["canonical_url"],
-            "policy_version_id": str(pack["policy_version_id"]),
-            "policy_version_number": pack["policy_version_number"],
-            "rules": pack["policy_rules"],
-            "identity_requirements": pack["identity_requirements"],
-            "disclosure_requirements": pack["disclosure_requirements"],
-            "allowed_hosts": pack["allowed_hosts"],
-        }
-        authoritative_variables = {
-            "brief": json.dumps(brief_snapshot, ensure_ascii=False, sort_keys=True),
-            "evidence": json.dumps(evidence, ensure_ascii=False, sort_keys=True, default=str),
-            "destination_policy": json.dumps(policy_snapshot, ensure_ascii=False, sort_keys=True),
-        }
-        rendered_variables = {**client_variables, **authoritative_variables}
-        bundle_id = uuid4()
-        bundle = render_bundle(
-            bundle_id=bundle_id,
-            project_id=values["project_id"],
-            brief_version_id=values["brief_version_id"],
-            evidence_pack_id=values["evidence_pack_attempt_id"],
-            template=release,
-            variables=rendered_variables,
-            evidence_pack_hash=pack["pack_hash"],
-            model_policy_hash=values["model_policy_hash"],
-        )
-        snapshot = {
-            "schema": "geo-prompt-bundle-v2",
-            "project_id": str(values["project_id"]),
-            "brief_version_id": str(values["brief_version_id"]),
-            "evidence_pack_attempt_id": str(values["evidence_pack_attempt_id"]),
-            "template_release_id": str(values["release_id"]),
-            "template_release_hash": release_record["release_hash"],
-            "compiler_version": release_record["compiler_version"],
-            "system_prompt": release_record["system_template"],
-            "client_variables": client_variables,
-            "authoritative": {
-                "brief": brief_snapshot,
-                "destination_policy": policy_snapshot,
-                "evidence_items": evidence,
-            },
-            "rendered_prompt": bundle.rendered_prompt,
-            "evidence_pack_hash": bundle.evidence_pack_hash,
-            "model_policy_hash": bundle.model_policy_hash,
-        }
-        artifact_hash = canonical_hash(snapshot)
-        storage_key = (
-            f"content-prompts/{values['project_id']}/{values['brief_version_id']}/"
-            f"{bundle_id}/prompt-bundle-{artifact_hash}.json"
-        )
-        self._db.execute(
-            """INSERT INTO prompt_bundles
-                 (id, project_id, brief_version_id, evidence_pack_attempt_id,
-                  template_release_id, input_snapshot, storage_key, bundle_hash)
-               VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s, %s)""",
-            (
-                bundle_id,
-                values["project_id"],
-                values["brief_version_id"],
-                values["evidence_pack_attempt_id"],
-                values["release_id"],
-                json.dumps(snapshot, default=str),
-                storage_key,
-                artifact_hash,
-            ),
-        )
-        artifact_job = self._enqueue_job(
-            project_id=values["project_id"],
-            kind="artifact.finalize",
-            input_value={"resource_kind": "prompt_bundle", "resource_id": str(bundle_id)},
-            idempotency_key=f"artifact:prompt-bundle:{bundle_id}",
-        )
-        self._db.execute(
-            """INSERT INTO artifact_finalize_outbox
-                 (project_id, job_id, resource_kind, resource_id, pending_uri,
-                  storage_key, content_hash)
-               VALUES (%s, %s, 'prompt_bundle', %s, %s, %s, %s)""",
-            (
-                values["project_id"],
-                artifact_job.id,
-                bundle_id,
-                f"postgres://prompt_bundles/{bundle_id}/input_snapshot",
-                storage_key,
-                artifact_hash,
-            ),
-        )
-        return PromptBundleView(
-            bundle_id,
-            values["project_id"],
-            values["brief_version_id"],
-            values["evidence_pack_attempt_id"],
-            values["release_id"],
-            artifact_hash,
-            storage_key,
-            "pending",
-            None,
-        )
-
     def list_prompt_skills(self, *, project_id: UUID) -> tuple[PromptSkill, ...]:
         return tuple(
             PromptSkill(**row)
@@ -460,54 +334,20 @@ class PostgresPromptRepositoryMixin:
     ) -> tuple[PromptReleaseView, ...]:
         rows = _many(
             self._db.execute(
-                """SELECT r.id, r.project_id, r.skill_version_id,
-                          r.release_number, r.release_hash, v.source_text,
-                          r.system_template, r.user_template, r.variable_schema,
-                          r.output_schema, r.compiler_version
+                """SELECT r.id
                    FROM generation_template_releases r JOIN prompt_skill_versions v
                      ON v.id = r.skill_version_id AND v.project_id = r.project_id
                    WHERE r.project_id = %s AND v.skill_id = %s ORDER BY r.release_number""",
                 (project_id, skill_id),
             )
         )
-        return tuple(PromptReleaseView(**row) for row in rows)
-
-    def list_prompt_bundles(
-        self, *, project_id: UUID, brief_version_id: UUID
-    ) -> tuple[PromptBundleView, ...]:
-        rows = _many(
-            self._db.execute(
-                """SELECT b.id, b.project_id, b.brief_version_id,
-                          b.evidence_pack_attempt_id, b.template_release_id, b.bundle_hash,
-                          b.storage_key, a.status AS artifact_status,
-                          a.final_uri AS storage_uri
-                   FROM prompt_bundles b JOIN artifact_finalize_outbox a
-                     ON a.resource_id = b.id AND a.project_id = b.project_id
-                    AND a.resource_kind = 'prompt_bundle'
-                   WHERE b.project_id = %s AND b.brief_version_id = %s
-                   ORDER BY b.created_at""",
-                (project_id, brief_version_id),
-            )
-        )
-        return tuple(PromptBundleView(**row) for row in rows)
-
-    def get_prompt_bundle(
-        self, *, project_id: UUID, bundle_id: UUID
-    ) -> Mapping[str, object] | None:
-        records = _many(
-            self._db.execute(
-                """SELECT b.id, b.project_id, b.brief_version_id,
-                          b.evidence_pack_attempt_id, b.template_release_id, b.bundle_hash,
-                          b.storage_key, a.status AS artifact_status,
-                          a.final_uri AS storage_uri, b.input_snapshot AS manifest
-                   FROM prompt_bundles b JOIN artifact_finalize_outbox a
-                     ON a.resource_id = b.id AND a.project_id = b.project_id
-                    AND a.resource_kind = 'prompt_bundle'
-                   WHERE b.project_id = %s AND b.id = %s""",
-                (project_id, bundle_id),
-            )
-        )
-        return records[0] if records else None
+        releases: list[PromptReleaseView] = []
+        for row in rows:
+            release = self.get_prompt_release_view(project_id=project_id, release_id=row["id"])
+            if release is None:
+                raise RuntimeError("Prompt Release list contains an unprojectable row")
+            releases.append(release)
+        return tuple(releases)
 
     def select_prompt_release(
         self,
@@ -517,6 +357,9 @@ class PostgresPromptRepositoryMixin:
         release_id: UUID,
         selected_by: UUID,
     ) -> Mapping[str, object]:
+        release = self.get_prompt_release_view(project_id=project_id, release_id=release_id)
+        if release is None or release.status.value != "approved":
+            raise PlacementRuleViolation("only an approved Prompt Release can be selected")
         return _one(
             self._db.execute(
                 """INSERT INTO content_task_prompt_releases
@@ -546,47 +389,3 @@ class PostgresPromptRepositoryMixin:
                 )
             )
         )
-
-    def enqueue_generation(self, **values: Any) -> JobReference:
-        finalized = self._db.execute(
-            """SELECT 1 FROM artifact_finalize_outbox
-               WHERE project_id = %s AND resource_kind = 'prompt_bundle'
-                 AND resource_id = %s AND status = 'finalized'""",
-            (values["project_id"], values["prompt_bundle_id"]),
-        ).fetchone()
-        if finalized is None:
-            raise PlacementRuleViolation("prompt bundle artifact is not finalized")
-        eligible = self._db.execute(
-            """SELECT 1 FROM prompt_bundles pb
-               JOIN placement_brief_versions bv
-                 ON bv.id = pb.brief_version_id AND bv.project_id = pb.project_id
-               JOIN placement_briefs b ON b.id = bv.brief_id AND b.project_id = bv.project_id
-               JOIN placement_opportunities o
-                 ON o.id = b.opportunity_id AND o.project_id = b.project_id
-               WHERE pb.id = %s AND pb.project_id = %s
-                 AND o.status IN ('briefing', 'in_progress')""",
-            (values["prompt_bundle_id"], values["project_id"]),
-        ).fetchone()
-        if eligible is None:
-            raise PlacementRuleViolation("generation requires a qualified opportunity")
-        job = self._enqueue_job(
-            project_id=values["project_id"],
-            kind="placement.generate",
-            input_value={"prompt_bundle_id": str(values["prompt_bundle_id"])},
-            idempotency_key=values["idempotency_key"],
-        )
-        self._db.execute(
-            """INSERT INTO generation_job_specs
-                 (job_id, project_id, prompt_bundle_id, configured_model, model_call_budget,
-                  requested_by)
-               VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT (job_id) DO NOTHING""",
-            (
-                job.id,
-                values["project_id"],
-                values["prompt_bundle_id"],
-                values["configured_model"],
-                values["model_call_budget"],
-                values["requested_by"],
-            ),
-        )
-        return job

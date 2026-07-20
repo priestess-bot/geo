@@ -3,13 +3,24 @@ from decimal import Decimal
 import hashlib
 from uuid import UUID, uuid4
 
+import psycopg
 from psycopg import sql
 from psycopg.conninfo import conninfo_to_dict, make_conninfo
+from psycopg.types.json import Jsonb
 
+from geo_core.jobs.outbox import PostgresOutboxStore
 from geo_core.model_gateway import ModelGatewayRequest, ModelGatewayResult
 from geo_core.model_gateway.contracts import RetryableModelGatewayError
 from geo_core.object_store import ObjectStoreError, RetrievedObject, StoredObject
-from geo_core.placements.url_verifier import PermanentVerificationError, UrlVerificationResult
+from geo_core.placements.url_verifier import (
+    PermanentVerificationError,
+    RetryableVerificationError,
+    UrlVerificationResult,
+    VerificationCheck,
+    VerificationCheckName,
+    VerificationFailure,
+    VerificationFailureDisposition,
+)
 
 
 class FakeGateway:
@@ -28,6 +39,12 @@ class FakeGateway:
                 "content_json": {
                     "disclosure": "Posted on behalf of the brand.",
                     "cta_url": "https://brand.example/product",
+                    "required_disclosures": ["Posted on behalf of the brand."],
+                    "expected_links": ["https://brand.example/product"],
+                    "metadata": {
+                        "disclosure": "Nested decoy must not be inferred.",
+                        "url": "https://decoy.example/",
+                    },
                 },
                 "rendered_text": "扫地机器人评测记录了两居室中的日常清洁体验。",
                 "claims": [
@@ -56,10 +73,60 @@ class FakeGateway:
 class FakeVerifier:
     def verify(self, url: str, **expected):
         assert expected["expected_text_fragments"]
-        assert expected["required_disclosures"]
-        assert expected["expected_links"]
+        assert expected["required_disclosures"] == ("Posted on behalf of the brand.",)
+        assert expected["expected_links"] == ("https://brand.example/product",)
         return UrlVerificationResult(
-            True, 200, url, datetime.now(UTC), "d" * 64, True, True, True, True
+            True,
+            200,
+            url,
+            datetime.now(UTC),
+            "d" * 64,
+            True,
+            True,
+            True,
+            True,
+            checks=_verification_checks(),
+            body_hash="e" * 64,
+            visible_text_hash="f" * 64,
+            content_rule_hash="a" * 64,
+            verification_rule_hash="b" * 64,
+        )
+
+
+class ContentFailureVerifier:
+    def verify(self, url: str, **expected):
+        del expected
+        failure = VerificationFailure(
+            "required_disclosure_missing",
+            VerificationFailureDisposition.PERMANENT,
+            VerificationCheckName.REQUIRED_DISCLOSURES,
+        )
+        return UrlVerificationResult(
+            False,
+            200,
+            url,
+            datetime.now(UTC),
+            "1" * 64,
+            True,
+            True,
+            False,
+            True,
+            checks=_verification_checks(failure=failure),
+            failures=(failure,),
+            body_hash="2" * 64,
+            visible_text_hash="3" * 64,
+            content_rule_hash="4" * 64,
+            verification_rule_hash="5" * 64,
+        )
+
+
+class RetryableVerifier:
+    def verify(self, url: str, **expected):
+        del url, expected
+        raise RetryableVerificationError(
+            "fixture upstream timeout",
+            code="network_unavailable",
+            check=VerificationCheckName.PUBLIC_URL,
         )
 
 
@@ -80,6 +147,19 @@ class PermanentVerifier:
     def verify(self, url: str, **expected):
         del url, expected
         raise PermanentVerificationError("verification URL must use HTTPS")
+
+
+def _verification_checks(
+    *, failure: VerificationFailure | None = None
+) -> tuple[VerificationCheck, ...]:
+    return tuple(
+        VerificationCheck(
+            name,
+            failure is None or name is not failure.check,
+            failure.code if failure is not None and name is failure.check else None,
+        )
+        for name in VerificationCheckName
+    )
 
 
 class MemoryArtifactStore:
@@ -115,6 +195,40 @@ class MemoryArtifactStore:
             digest,
             "integration-etag",
         )
+
+
+def assert_run_scoped_outbox_delivery(
+    *,
+    admin_url: str,
+    worker_url: str,
+    run_id: str,
+    expected_messages: set[tuple[UUID, UUID]],
+) -> None:
+    worker_id = f"integration-relay-{run_id}"
+    with psycopg.connect(admin_url, autocommit=True) as claim_lock:
+        claim_lock.execute("SELECT pg_advisory_lock(1501520250719)")
+        try:
+            with psycopg.connect(admin_url) as admin:
+                owned_rows = admin.execute(
+                    """UPDATE broker_outbox
+                       SET available_at = '-infinity'::timestamptz
+                       WHERE job_id = ANY(%s) AND published_at IS NULL
+                       RETURNING project_id, job_id""",
+                    ([job_id for _, job_id in expected_messages],),
+                ).fetchall()
+                assert set(owned_rows) == expected_messages
+                admin.commit()
+            outbox = PostgresOutboxStore(lambda: psycopg.connect(worker_url))
+            messages = outbox.claim(
+                worker_id=worker_id,
+                batch_size=len(expected_messages),
+                lease_seconds=30,
+            )
+            assert {(item.project_id, item.job_id) for item in messages} == expected_messages
+            for message in messages:
+                assert outbox.acknowledge(message, worker_id=worker_id)
+        finally:
+            claim_lock.execute("SELECT pg_advisory_unlock(1501520250719)")
 
 
 def login_url(base: str, *, user: str, password: str) -> str:
@@ -170,32 +284,60 @@ def seed_frozen_protocol(
     actor_id: UUID,
 ) -> UUID:
     protocol_id, suggestion_id = uuid4(), uuid4()
+    source_stratum = {
+        "capture_method": "manual_ui",
+        "platform": "openai",
+        "platform_detail": None,
+        "surface": "chatgpt_search",
+        "surface_kind": "consumer_ui",
+        "surface_detail": None,
+        "engine": "chatgpt",
+        "configured_model": {"state": "disclosed", "value": "integration-model"},
+        "reported_model": {"state": "not_disclosed", "value": None},
+        "locale": "en-AU",
+        "region": "AU",
+        "language": "en",
+        "device": "desktop",
+        "client_kind": "browser",
+        "search_enabled": True,
+        "search_mode": "live_web",
+    }
+    cluster_key = "robot-vacuum-recommendation"
     connection.execute(
         """INSERT INTO monitoring_protocols
              (id, project_id, campaign_id, market_profile_id, name, platform,
-              locale, device, sample_size, window_days, created_by)
+              locale, device, sample_size, window_days, created_by,
+              source_strata_snapshot, source_strata_hash,
+              minimum_valid_repeats, statistics_method_version)
            VALUES (%s, %s, %s, %s, %s, 'chatgpt_search', 'en-AU', 'desktop',
-                   1, 84, %s)""",
+                   3, 84, %s, %s, geo_source_strata_v3_inventory_hash(%s),
+                   3, 'geo-observation-statistics-v2')""",
         (
             protocol_id, project_id, campaign_id, market_profile_id,
             f"Frozen placement protocol {protocol_id}", actor_id,
+            Jsonb([source_stratum]), Jsonb([source_stratum]),
         ),
     )
     connection.execute(
         """INSERT INTO monitoring_query_suggestions
              (id, project_id, protocol_id, query_text, query_kind, rationale,
-              status, suggested_by, decided_by, decided_at)
+              status, suggested_by, decided_by, decided_at, query_cluster_key)
            VALUES (%s, %s, %s, 'best robot vacuum', 'recommendation',
-                   'placement integration', 'approved', %s, %s, clock_timestamp())""",
-        (suggestion_id, project_id, protocol_id, actor_id, actor_id),
+                   'placement integration', 'approved', %s, %s,
+                   clock_timestamp(), %s)""",
+        (suggestion_id, project_id, protocol_id, actor_id, actor_id, cluster_key),
     )
     connection.execute(
         """INSERT INTO monitoring_protocol_queries
              (project_id, protocol_id, monitoring_query_id, suggestion_id, ordinal,
-              query_text_snapshot, query_kind_snapshot, locale_snapshot, approved_by)
+              query_text_snapshot, query_kind_snapshot, locale_snapshot, approved_by,
+              query_cluster_key)
            VALUES (%s, %s, %s, %s, 1, 'best robot vacuum',
-                   'recommendation', 'en-AU', %s)""",
-        (project_id, protocol_id, monitoring_query_id, suggestion_id, actor_id),
+                   'recommendation', 'en-AU', %s, %s)""",
+        (
+            project_id, protocol_id, monitoring_query_id, suggestion_id,
+            actor_id, cluster_key,
+        ),
     )
     connection.execute(
         """UPDATE monitoring_protocols
@@ -227,8 +369,13 @@ def cleanup_projects(
     ]
     connection.execute("SET LOCAL session_replication_role = replica")
     project_tables = connection.execute(
-        """SELECT table_name FROM information_schema.columns
-           WHERE table_schema = 'public' AND column_name = 'project_id'"""
+        """SELECT DISTINCT columns.table_name
+           FROM information_schema.columns AS columns
+           JOIN information_schema.tables AS tables
+             ON tables.table_schema = columns.table_schema
+            AND tables.table_name = columns.table_name
+           WHERE columns.table_schema = 'public' AND columns.column_name = 'project_id'
+             AND tables.table_type = 'BASE TABLE'"""
     ).fetchall()
     for (table,) in project_tables:
         connection.execute(

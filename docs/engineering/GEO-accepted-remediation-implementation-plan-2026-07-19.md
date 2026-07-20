@@ -1,11 +1,12 @@
 # GEO ACCEPTED 整改统一实施计划
 
 > 计划日期：2026-07-19
-> 计划状态：`PLANNED`，尚未开始代码实施
+> 计划状态：`IMPLEMENTED_LOCAL_VERIFIED`；外部 staging smoke 为 `PENDING_AUTHORIZATION`，客户生产部署为 `NOT_EXECUTED`
 > 决策来源：`docs/audits/GEO-effect-first-remediation-decisions-2026-07-18.md`
 > 需求与审计来源：`GEO_REQUIREMENTS.md`、`docs/audits/GEO-project-full-audit-2026-07-18.md`
 > 范围：仅包含当前状态精确为 `ACCEPTED` 的 14 项整改
 > 核心约束：效果优先、控制开发量、每项整改随附行为测试，不扩张为完整成熟 GEO 平台
+> 实施证据：`docs/engineering/GEO-accepted-remediation-verification-record-2026-07-19.md`
 
 ## 1. 计划结论
 
@@ -22,6 +23,14 @@
 - 当前工作树包含大量既有未提交修改。正式实施每一批前必须先核对已有实现与本计划验收标准，复用已经满足合同的部分，不回退、不覆盖、不重复实现用户现有工作。
 
 本计划明确不包含状态为 `ACCEPTED_RISK`、`DEFERRED`、`MANUAL_WORKAROUND`、`OUT_OF_SCOPE` 或 `NEXT_PHASE_REQUIRED` 的完整平台能力。
+
+### 1.1 Git 与运行环境保护
+
+- 当前原型已经以提交 `267d970` 保存于 `main`，并创建本地保护标签 `geo-pre-remediation-20260719`。
+- 全部整改只在本地分支 `feat/geo-accepted-remediation-20260719` 和 sibling worktree `/home/ymm/ym/gz/20260608-geo-accepted-remediation` 中实施；不向 `origin` 推送。
+- 原工作树 `/home/ymm/ym/gz/20260608-geo` 保持在 `main`，现有 `geo-development` 和 `geo-advinsys-staging` 运行栈不用于整改迁移或测试。
+- 整改栈使用 Compose project `geo-accepted-remediation`、独立数据卷以及端口 PostgreSQL `55434`、Valkey `26379`、MinIO `29000/29001`、API `28000/28001`、Web `23000/23001`。
+- 每批在整改栈独立验收并创建本地批次标签；批次 5 全部通过前不更新 `main`。最终优先 `--ff-only` 合并；若 `main` 存在必要热修复，先同步热修复并重跑全部门禁。
 
 ## 2. 总体依赖顺序
 
@@ -122,6 +131,14 @@ F-011 + F-009 + F-021 + F-023 --------+-> F-027 JSON/CSV 导出
 - surface 至少包含 `chatgpt_search`、`google_search`、`google_ai_overviews`、`google_ai_mode`、`gemini`、`perplexity_answer`、`bing_copilot`、`claude_ai`、`other`；`other` 必须附说明。
 - `synthetic` 只能由服务端受控任务创建。provider/proxy 结果不能标记为消费者 UI 结果。
 - 每种 capture method 的必填字段矩阵由 Domain 单点校验，前端隐藏字段不能替代后端约束。
+- `official_report_import` 使用独立的 Report Import/Row typed projection，不能伪装成单次
+  回答型 Observation；它在页面和导出中保留同一 capture method 标签，但永不进入其他
+  回答型来源的逐问题分母。
+- 消费者 UI 未披露模型时保存显式 `not_disclosed`，不适用时保存 `not_applicable`；不得
+  用 configured model 或猜测值填充 reported model。
+- 回答型样本使用同一不可变 `SourceStratumKey`：capture method、platform、surface、
+  engine、configured/reported model 状态和值、locale、region、language、device/client、
+  search enabled/mode。样本槽和分母都使用该 key 的 canonical hash。
 
 ### 4.6 最小统计方法
 
@@ -129,15 +146,19 @@ F-011 + F-009 + F-021 + F-023 --------+-> F-027 JSON/CSV 导出
 - 稳定结论所需有效重复数不得低于 3，且不得低于该 Protocol 预期重复数的 80%，向上取整。
 - 任一纳入结论的问题未达到门槛时，该分层只能输出 `insufficient_evidence`。
 - 二元占比显示 95% Wilson interval；同时显示每题结果范围、最差问题结果、有效/无效数量及无效原因。
-- engine、configured model、reported model、capture method、locale、region、query cluster 任一不同都形成独立分层和分母。
+- Protocol 必须冻结计划采集的 SourceStratum inventory；即使某个计划分层零采样，也必须
+  进入完成度和 `insufficient_evidence` 计算，不能只从已有 Observation 反推分层。
+- F-021 直接复用 F-009 的完整 `SourceStratumKey`，再组合冻结的 query cluster；任一维度
+  不同都形成独立分层和分母，不得另造缩水键。
 - 初始统计方法版本为 `geo-observation-statistics-v2`；规范化输入排序、算法和版本共同生成 SHA-256 input/result hash。
 - 方法、门槛或 Protocol 改变时创建新版本，不覆盖旧快照；所有结果继续标明非因果边界。
 
 ### 4.7 Customer latest
 
 - Customer 只消费 approved report 及其关联的 immutable Metric Snapshot。
-- 同一 Campaign/Protocol/Measurement Window 的 latest 全序为：`approved_at DESC`、`computed_at DESC`、`report_id DESC`。
+- latest 分区键为 Campaign/Protocol/Measurement Window/完整 `SourceStratumKey` hash/query cluster；不同来源或问题簇保持独立分母，绝不合并。同一分区全序为：`approved_at DESC`、`computed_at DESC`、`report_id DESC`。
 - 后端直接返回显式 latest 投影；前端不得用数组 `[0]` 猜测。
+- Customer verified URL 只能来自 latest approved Snapshot 冻结的 `verified_destination_ids`；无 approved report 或 legacy Snapshot 缺少冻结目的地集合时返回空。
 - Customer 四个模块固定为 `summary`、`metrics`、`placements`、`reports`，统一使用同一 `campaign_id`。
 - 无 Campaign、Campaign 无数据、Campaign 无权限分别返回可区分状态，禁止回退到其他 Campaign。
 
@@ -148,7 +169,9 @@ F-011 + F-009 + F-021 + F-023 --------+-> F-027 JSON/CSV 导出
 - LlamaIndex 与当前项目内基线使用同一语料、模型策略和 gold set；GraphRAG 只允许隔离对比，不直接接入生产。
 - 进入生产实现的最低门槛：实体 precision `>= 0.85`、关系 precision `>= 0.80`、正式候选事实来源可追踪率 `= 100%`、无事实支持问题比例 `<= 5%`、语义重复问题比例 `<= 10%`、有证据支撑的计划维度覆盖率 `>= 90%`。
 - 项目间数据泄漏、候选绕过人工批准、`test_only` 产物变为可发布，三类测试必须零失败。
-- 索引和问题生成的最大成本、最长墙钟时间在 benchmark manifest 中先填写预算再运行；预算未冻结时选型 Gate 不得通过。
+- benchmark manifest 必须记录每个候选的输入/输出 token、模型调用数、估算成本和墙钟时间，但这些指标不设置固定或相对基线硬上限，也不单独淘汰质量更好的方案。
+- 继续保留单 Job 调用预算、网络/任务超时和人工中止能力，防止循环或失控；这些是运行保护，不是选型成本门槛。
+- 候选先通过本节全部质量硬门槛，再按实体、关系、问题支持度、覆盖度和去重结果的综合质量选择；质量差距小于 2 个百分点时才以成本和耗时作为次级条件，仍相同时优先 LlamaIndex。
 - 框架版本固定；框架类型不得进入 Domain、稳定 API 或业务主数据。
 
 ### 4.9 Runtime truth 默认阈值
@@ -214,7 +237,7 @@ F-011 + F-009 + F-021 + F-023 --------+-> F-027 JSON/CSV 导出
 - Worker/Relay 停止后在阈值内 stale；队列、lease、Outbox 和 dead-letter fixture 能被准确分类。
 - Compose 显示真实 unhealthy；坏 secret/digest/config 被 preflight 阻断且不泄密。
 - 仓库不再启用不存在的 `/metrics` target。
-- F-019 benchmark 数据集和预算 manifest 已冻结，PoC 尚不能被描述为正式功能完成。
+- F-019 benchmark 数据集、质量评分规则和成本/耗时记录格式已冻结；PoC 尚不能被描述为正式功能完成。
 
 ### 批次 2：共享领域合同
 
@@ -287,10 +310,10 @@ F-011 + F-009 + F-021 + F-023 --------+-> F-027 JSON/CSV 导出
 
 1. 从受支持旧 schema 执行 upgrade，核对历史数据回填和 Alembic 单 head。
 2. 执行快速质量、单元、架构、OpenAPI、Web build 和全部必需 PostgreSQL integration。
-3. 执行四条 Chromium 桌面核心流程。
+3. 执行 Admin 9 条、Customer 4 条 Chromium 桌面必需流程。
 4. 执行 `inline_isolated` acceptance，并在报告中明确它不证明真实 Worker/Relay 拓扑。
 5. 在生产等价 Compose 执行 egress、readiness、heartbeat、队列卡滞、preflight 和数据服务网络负向测试。
-6. 在显式授权的 staging 执行真实 OIDC/JWKS、Knowledge URL、一次真实模型调用和公开发布 URL 验证。
+6. 在显式授权的 staging 执行真实 OIDC/JWKS、Knowledge URL、一次真实模型调用和公开发布 URL 验证。该步骤的命令和拒绝/脱敏合同已实现并测试；截至 2026-07-19 未获外部及付费调用授权，未执行真实 staging 请求。
 
 最终退出条件：
 
@@ -307,10 +330,10 @@ F-011 + F-009 + F-021 + F-023 --------+-> F-027 JSON/CSV 导出
 
 验收标准：
 
-- [ ] `F015-AC1` 必需 integration 缺环境、零收集、意外 skip 或失败时 Job 非零退出。
-- [ ] `F015-AC2` migration ledger、model log、Outbox 三类当前已知污染问题修正。
-- [ ] `F015-AC3` 同库连续或并行 run 不读取或消费其他 run 数据。
-- [ ] `F015-AC4` 普通 PR 不付费；显式 live target 至少收集目标测试。
+- [x] `F015-AC1` 必需 integration 缺环境、零收集、意外 skip 或失败时 Job 非零退出。
+- [x] `F015-AC2` migration ledger、model log、Outbox 三类当前已知污染问题修正。
+- [x] `F015-AC3` 同库连续或并行 run 不读取或消费其他 run 数据。
+- [x] `F015-AC4` 普通 PR 不付费；显式 live target 至少收集目标测试。
 
 测试清单：
 
@@ -324,9 +347,9 @@ F-011 + F-009 + F-021 + F-023 --------+-> F-027 JSON/CSV 导出
 
 验收标准：
 
-- [ ] `F016-AC1` 无法证明与共享 Worker/Relay 隔离时，在创建数据前拒绝运行。
-- [ ] `F016-AC2` 重复/并行运行无重复工件、错误 claim 或跨 run Outbox。
-- [ ] `F016-AC3` 报告明确记录 `inline_isolated` 和受控 adapter，不能被解释为生产拓扑验收。
+- [x] `F016-AC1` 无法证明与共享 Worker/Relay 隔离时，在创建数据前拒绝运行。
+- [x] `F016-AC2` 重复/并行运行无重复工件、错误 claim 或跨 run Outbox。
+- [x] `F016-AC3` 报告明确记录 `inline_isolated` 和受控 adapter，不能被解释为生产拓扑验收。
 
 测试清单：
 
@@ -339,10 +362,10 @@ F-011 + F-009 + F-021 + F-023 --------+-> F-027 JSON/CSV 导出
 
 验收标准：
 
-- [ ] `F025-AC1` 所有 ACCEPTED 验收条款均映射到自动化行为测试。
-- [ ] `F025-AC2` 权限、幂等、失败和跨 Campaign 场景不以源码字符串断言作为唯一证据。
-- [ ] `F025-AC3` CI 明确报告执行/跳过，必需环境缺失不能假绿。
-- [ ] `F025-AC4` 不建立覆盖率百分比、跨浏览器、移动端或无关补测门槛。
+- [x] `F025-AC1` 所有 ACCEPTED 验收条款均映射到自动化行为测试。
+- [x] `F025-AC2` 权限、幂等、失败和跨 Campaign 场景不以源码字符串断言作为唯一证据。
+- [x] `F025-AC3` CI 明确报告执行/跳过，必需环境缺失不能假绿。
+- [x] `F025-AC4` 不建立覆盖率百分比、跨浏览器、移动端或无关补测门槛。
 
 测试清单：
 
@@ -357,10 +380,10 @@ F-011 + F-009 + F-021 + F-023 --------+-> F-027 JSON/CSV 导出
 
 验收标准：
 
-- [ ] `F001-AC1` Internal API 可完成 OIDC/JWKS 和允许的 Knowledge URL 请求。
-- [ ] `F001-AC2` Task Worker 可完成模型调用和发布 URL 验证。
-- [ ] `F001-AC3` Postgres、Valkey、MinIO 不接 egress、无新增宿主入站。
-- [ ] `F001-AC4` 未接 egress 的后端服务仍不能直接外连。
+- [x] `F001-AC1` Internal API 可完成 OIDC/JWKS 和允许的 Knowledge URL 请求。
+- [x] `F001-AC2` Task Worker 可完成模型调用和发布 URL 验证。
+- [x] `F001-AC3` Postgres、Valkey、MinIO 不接 egress、无新增宿主入站。
+- [x] `F001-AC4` 未接 egress 的后端服务仍不能直接外连。
 
 测试清单：
 
@@ -373,14 +396,14 @@ F-011 + F-009 + F-021 + F-023 --------+-> F-027 JSON/CSV 导出
 
 验收标准：
 
-- [ ] `F018-AC1` PostgreSQL 故障使相关 `/ready` 失败，而 `/health` 仍表达进程存活。
-- [ ] `F018-AC2` Internal API 因 Valkey/MinIO 故障失败；Customer API 不因无关依赖下线。
-- [ ] `F018-AC3` Worker/Relay 停止后按阈值 stale。
-- [ ] `F018-AC4` queued/retry/running/finalizing/lease/Outbox/dead-letter 异常被分类并非零退出。
-- [ ] `F018-AC5` Compose health 与探针一致。
-- [ ] `F018-AC6` 空 secret、占位/非 digest 镜像及缺配置被 preflight 阻断。
-- [ ] `F018-AC7` 不再启用虚假 Prometheus target。
-- [ ] `F018-AC8` 探针、日志和错误不泄露敏感正文或凭据。
+- [x] `F018-AC1` PostgreSQL 故障使相关 `/ready` 失败，而 `/health` 仍表达进程存活。
+- [x] `F018-AC2` Internal API 因 Valkey/MinIO 故障失败；Customer API 不因无关依赖下线。
+- [x] `F018-AC3` Worker/Relay 停止后按阈值 stale。
+- [x] `F018-AC4` queued/retry/running/finalizing/lease/Outbox/dead-letter 异常被分类并非零退出。
+- [x] `F018-AC5` Compose health 与探针一致。
+- [x] `F018-AC6` 空 secret、占位/非 digest 镜像及缺配置被 preflight 阻断。
+- [x] `F018-AC7` 不再启用虚假 Prometheus target。
+- [x] `F018-AC8` 探针、日志和错误不泄露敏感正文或凭据。
 
 测试清单：
 
@@ -395,11 +418,11 @@ F-011 + F-009 + F-021 + F-023 --------+-> F-027 JSON/CSV 导出
 
 验收标准：
 
-- [ ] `F012-AC1` 使用至少 2 Campaign x 每 Campaign 2 Destination fixture。
-- [ ] `F012-AC2` 切换 Campaign 清除全部旧下游参数和状态。
-- [ ] `F012-AC3` 跨 Campaign read/mutation 被后端拒绝且零写入。
-- [ ] `F012-AC4` 页面、URL、payload 和数据库写入始终属于当前 Campaign。
-- [ ] `F012-AC5` 返回、刷新、深链不恢复旧 Campaign 下游上下文。
+- [x] `F012-AC1` 使用至少 2 Campaign x 每 Campaign 2 Destination fixture。
+- [x] `F012-AC2` 切换 Campaign 清除全部旧下游参数和状态。
+- [x] `F012-AC3` 跨 Campaign read/mutation 被后端拒绝且零写入。
+- [x] `F012-AC4` 页面、URL、payload 和数据库写入始终属于当前 Campaign。
+- [x] `F012-AC5` 返回、刷新、深链不恢复旧 Campaign 下游上下文。
 
 测试清单：
 
@@ -412,11 +435,11 @@ F-011 + F-009 + F-021 + F-023 --------+-> F-027 JSON/CSV 导出
 
 验收标准：
 
-- [ ] `F014-AC1` 九个渠道可分别绑定 Release，生成记录的 ID/version/hash 一致。
-- [ ] `F014-AC2` unbound、非 approved、撤销或跨 Campaign Release 不能生成正式 Bundle。
-- [ ] `F014-AC3` 新 Release 不改变历史绑定或 Bundle。
-- [ ] `F014-AC4` 重复渠道、blocked Destination、缺 Prompt/Evidence 不计入就绪度。
-- [ ] `F014-AC5` 生成前操作者可见并确认实际 Release。
+- [x] `F014-AC1` 九个渠道可分别绑定 Release，生成记录的 ID/version/hash 一致。
+- [x] `F014-AC2` unbound、非 approved、撤销或跨 Campaign Release 不能生成正式 Bundle。
+- [x] `F014-AC3` 新 Release 不改变历史绑定或 Bundle。
+- [x] `F014-AC4` 重复渠道、blocked Destination、缺 Prompt/Evidence 不计入就绪度。
+- [x] `F014-AC5` 生成前操作者可见并确认实际 Release。
 
 测试清单：
 
@@ -429,11 +452,11 @@ F-011 + F-009 + F-021 + F-023 --------+-> F-027 JSON/CSV 导出
 
 验收标准：
 
-- [ ] `F013-AC1` approved Fact 可完全通过 UI 创建或复用 Evidence。
-- [ ] `F013-AC2` 未批准、缺元数据或无权限成员不能创建。
-- [ ] `F013-AC3` Evidence 可进入现有 Evidence Pack。
-- [ ] `F013-AC4` 可追踪到 source/document/chunk/fact。
-- [ ] `F013-AC5` 前端、API、Domain、数据库和脚本统一 `public_reference`。
+- [x] `F013-AC1` approved Fact 可完全通过 UI 创建或复用 Evidence。
+- [x] `F013-AC2` 未批准、缺元数据或无权限成员不能创建。
+- [x] `F013-AC3` Evidence 可进入现有 Evidence Pack。
+- [x] `F013-AC4` 可追踪到 source/document/chunk/fact。
+- [x] `F013-AC5` 前端、API、Domain、数据库和脚本统一 `public_reference`。
 
 测试清单：
 
@@ -446,11 +469,11 @@ F-011 + F-009 + F-021 + F-023 --------+-> F-027 JSON/CSV 导出
 
 验收标准：
 
-- [ ] `F009-AC1` 五类 capture method 各有 fixture，页面和导出显示来源标签。
-- [ ] `F009-AC2` 缺原始回答/工件、来源或关键参数时后端拒绝 eligible。
-- [ ] `F009-AC3` synthetic/provider/manual 等来源不进入彼此 KPI 分母。
-- [ ] `F009-AC4` Bing/Copilot 和 Claude 不再错误落入 `other`。
-- [ ] `F009-AC5` 历史未知来源迁移为 `unknown/ineligible`。
+- [x] `F009-AC1` 五类 capture method 各有 fixture，页面和导出显示来源标签。
+- [x] `F009-AC2` 缺原始回答/工件、来源或关键参数时后端拒绝 eligible。
+- [x] `F009-AC3` synthetic/provider/manual 等来源不进入彼此 KPI 分母。
+- [x] `F009-AC4` Bing/Copilot 和 Claude 不再错误落入 `other`。
+- [x] `F009-AC5` 历史未知来源迁移为 `unknown/ineligible`。
 
 测试清单：
 
@@ -464,11 +487,11 @@ F-011 + F-009 + F-021 + F-023 --------+-> F-027 JSON/CSV 导出
 
 验收标准：
 
-- [ ] `F011-AC1` 空披露列表可通过，不再因缺字段进入 `retry_wait`。
-- [ ] `F011-AC2` 缺必要披露时明确失败。
-- [ ] `F011-AC3` 错误/非公开 URL、正文不符、缺链接均失败。
-- [ ] `F011-AC4` 正确人工页面成功并保存版本化验证证据。
-- [ ] `F011-AC5` 重试不触发模型生成。
+- [x] `F011-AC1` 空披露列表可通过，不再因缺字段进入 `retry_wait`。
+- [x] `F011-AC2` 缺必要披露时明确失败。
+- [x] `F011-AC3` 错误/非公开 URL、正文不符、缺链接均失败。
+- [x] `F011-AC4` 正确人工页面成功并保存版本化验证证据。
+- [x] `F011-AC5` 重试不触发模型生成。
 
 测试清单：
 
@@ -482,11 +505,11 @@ F-011 + F-009 + F-021 + F-023 --------+-> F-027 JSON/CSV 导出
 
 验收标准：
 
-- [ ] `F021-AC1` 单样本或低于冻结门槛只能输出 `insufficient_evidence`。
-- [ ] `F021-AC2` engine/model/capture/locale/region/query cluster 不跨层合并。
-- [ ] `F021-AC3` 显示完成度、无效原因、区间/波动、最差结果和 confounders。
-- [ ] `F021-AC4` 同一冻结输入和 method version 得到相同结果/hash。
-- [ ] `F021-AC5` Protocol、门槛或方法变更创建新版本，历史报告不变。
+- [x] `F021-AC1` 单样本或低于冻结门槛只能输出 `insufficient_evidence`。
+- [x] `F021-AC2` engine/model/capture/locale/region/query cluster 不跨层合并。
+- [x] `F021-AC3` 显示完成度、无效原因、区间/波动、最差结果和 confounders。
+- [x] `F021-AC4` 同一冻结输入和 method version 得到相同结果/hash。
+- [x] `F021-AC5` Protocol、门槛或方法变更创建新版本，历史报告不变。
 
 测试清单：
 
@@ -500,14 +523,14 @@ F-011 + F-009 + F-021 + F-023 --------+-> F-027 JSON/CSV 导出
 
 验收标准：
 
-- [ ] `F019-AC1` 同一 corpus/gold set 的选型报告满足第 4.8 节阈值和预算。
-- [ ] `F019-AC2` Knowledge/Catalog/Evidence/PostgreSQL 是唯一业务真源，框架类型不泄漏。
-- [ ] `F019-AC3` 候选事实、实体、关系、问题必须保留来源并经人工批准。
-- [ ] `F019-AC4` 重复导入、增量更新和删除行为幂等可复核。
-- [ ] `F019-AC5` 两个 Project 零数据泄漏。
-- [ ] `F019-AC6` 问题支持去重、覆盖、批准、冻结版本和 Protocol 绑定。
-- [ ] `F019-AC7` 仿真始终 `test_only=true`、`publication_eligible=false`，不进入真实 KPI。
-- [ ] `F019-AC8` 复用现有 Worker、gateway、模型日志、MinIO 和 pgvector，不出现平行基础设施。
+- [x] `F019-AC1` 同一 corpus/gold set 的选型报告满足第 4.8 节阈值和预算。
+- [x] `F019-AC2` Knowledge/Catalog/Evidence/PostgreSQL 是唯一业务真源，框架类型不泄漏。
+- [x] `F019-AC3` 候选事实、实体、关系、问题必须保留来源并经人工批准。
+- [x] `F019-AC4` 重复导入、增量更新和删除行为幂等可复核。
+- [x] `F019-AC5` 两个 Project 零数据泄漏。
+- [x] `F019-AC6` 问题支持去重、覆盖、批准、冻结版本和 Protocol 绑定。
+- [x] `F019-AC7` 仿真始终 `test_only=true`、`publication_eligible=false`，不进入真实 KPI。
+- [x] `F019-AC8` 复用现有 Worker、gateway、模型日志、MinIO 和 pgvector，不出现平行基础设施。
 
 测试清单：
 
@@ -523,10 +546,10 @@ F-011 + F-009 + F-021 + F-023 --------+-> F-027 JSON/CSV 导出
 
 验收标准：
 
-- [ ] `F023-AC1` 乱序插入至少 2 Campaign、多 Protocol/window/version。
-- [ ] `F023-AC2` Customer 四模块显示选定 Campaign 的 latest approved 版本。
-- [ ] `F023-AC3` 切换、刷新、返回和深链不丢失或串用 Campaign。
-- [ ] `F023-AC4` 无权限/跨项目 Campaign 被 API 拒绝且不回退。
+- [x] `F023-AC1` 乱序插入至少 2 Campaign、多 Protocol/window/version。
+- [x] `F023-AC2` Customer 四模块显示选定 Campaign 的 latest approved 版本。
+- [x] `F023-AC3` 切换、刷新、返回和深链不丢失或串用 Campaign。
+- [x] `F023-AC4` 无权限/跨项目 Campaign 被 API 拒绝且不回退。
 
 测试清单：
 
@@ -539,11 +562,11 @@ F-011 + F-009 + F-021 + F-023 --------+-> F-027 JSON/CSV 导出
 
 验收标准：
 
-- [ ] `F027-AC1` Admin 下载 Project/指定 Campaign 的 JSON 和 CSV 包。
-- [ ] `F027-AC2` Customer 只导出有权查看的已批准只读数据。
-- [ ] `F027-AC3` manifest 记录数和 hash 与文件一致。
-- [ ] `F027-AC4` 导出数据可复算 recommendation share、mention share、verified citation rate。
-- [ ] `F027-AC5` 多 Project、多 Campaign 零越界或串数据。
+- [x] `F027-AC1` Admin 下载 Project/指定 Campaign 的 JSON 和 CSV 包。
+- [x] `F027-AC2` Customer 只导出有权查看的已批准只读数据。
+- [x] `F027-AC3` manifest 记录数和 hash 与文件一致。
+- [x] `F027-AC4` 导出数据可复算 recommendation share、mention share、verified citation rate。
+- [x] `F027-AC5` 多 Project、多 Campaign 零越界或串数据。
 
 测试清单：
 
@@ -607,7 +630,7 @@ make deepseek-live               # 显式授权，至少收集并执行目标测
 make geo-staging-smoke           # OIDC/JWKS、Knowledge URL、model、publication URL
 ```
 
-这些名称是计划目标，当前不存在的命令由对应批次实现。staging/live 证据与普通 CI、inline acceptance 分开保存。
+这些命令均已实现。`test-infra-runtime`、本地受控 fixture 和 `inline_isolated` 已执行；`deepseek-live` 与 `geo-staging-smoke` 仍要求显式外部/付费授权，本轮未执行。staging/live 证据必须继续与普通 CI、inline acceptance 分开保存。
 
 ### 7.3 每批统一门禁
 
@@ -654,4 +677,4 @@ make geo-staging-smoke           # OIDC/JWKS、Knowledge URL、model、publicati
 5. 相关迁移可从受支持旧版本升级，历史未知数据不被伪造为有效数据。
 6. 运行证据区分 deterministic、synthetic、manual UI、provider API、真实 staging 和生产等价拓扑。
 
-整个计划只能在 14 个 `ACCEPTED` 项全部完成、F-025 追踪矩阵闭合并通过批次 5 后标记完成。
+14 个 `ACCEPTED` 项的代码、70 条本地验收标准和 F-025 追踪矩阵已经闭合。真实外部 staging smoke 和客户生产部署是独立的发布证据；执行前不得把当前状态提升为外部环境或生产验证完成。

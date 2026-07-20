@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from geo_api.contracts import JobState
 
@@ -139,6 +139,9 @@ class BriefVersionCreate(PlacementContract):
 class BriefVersionView(PlacementContract):
     id: UUID
     project_id: UUID
+    campaign_id: UUID
+    opportunity_id: UUID
+    destination_id: UUID
     brief_id: UUID
     version_number: int
     base_version_id: UUID | None
@@ -150,11 +153,35 @@ class BriefVersionView(PlacementContract):
 class EvidenceAttemptView(PlacementContract):
     id: UUID
     project_id: UUID
+    campaign_id: UUID
+    opportunity_id: UUID
+    destination_id: UUID
     brief_version_id: UUID
     attempt_number: int
     status: str
     pack_hash: str | None
     failure_reason: str | None
+
+
+class EvidenceKnowledgeLineageView(PlacementContract):
+    project_id: UUID
+    pipeline_run_id: UUID
+    knowledge_source_id: UUID
+    knowledge_document_id: UUID
+    knowledge_chunk_id: UUID
+    knowledge_fact_id: UUID
+    evidence_item_id: UUID
+    evidence_title: str
+    promoted_by: UUID
+    promoted_at: datetime
+    idempotency_key: str
+    promotion_request_hash: str
+    lineage_contract_version: Literal["legacy-relational-v1", "knowledge-fact-evidence-v1"]
+    source_content_hash: str
+    document_cleaned_text_hash: str
+    chunk_text_hash: str
+    fact_statement_hash: str
+    evidence_snapshot_hash: str
 
 
 class EvidenceItemView(PlacementContract):
@@ -171,6 +198,7 @@ class EvidenceItemView(PlacementContract):
     citation_label: str | None
     quotation_allowed: bool
     attribution_required: bool
+    knowledge_lineage: EvidenceKnowledgeLineageView | None = None
 
 
 class AsyncResourceCreated(PlacementContract):
@@ -183,6 +211,7 @@ class AsyncResourceCreated(PlacementContract):
 class PlacementJobView(PlacementContract):
     id: UUID
     project_id: UUID
+    campaign_id: UUID | None
     kind: str
     status: JobState
 
@@ -229,11 +258,85 @@ class PromptReleaseView(PlacementContract):
     variable_schema: dict[str, object]
     output_schema: dict[str, object]
     compiler_version: str
+    skill_key: str
+    skill_version: int
+    status: Literal["draft", "approved", "revoked"]
+    state_version: int
+    approved_by: UUID | None
+    approved_at: datetime | None
+    revoked_by: UUID | None
+    revoked_at: datetime | None
+    state_reason: str | None
+
+
+class PromptReleaseTransition(PlacementContract):
+    expected_state_version: int = Field(ge=1)
+    reason: str | None = Field(default=None, max_length=2000)
+
+
+class OpportunityPromptReleaseBindingCreate(PlacementContract):
+    template_release_id: UUID
+    expected_binding_version: int = Field(ge=1)
+    reason: str | None = Field(default=None, max_length=2000)
+
+
+class OpportunityPromptReleaseBindingView(PlacementContract):
+    id: UUID
+    project_id: UUID
+    campaign_id: UUID
+    opportunity_id: UUID
+    destination_id: UUID
+    binding_version: int
+    previous_binding_id: UUID | None
+    status: Literal["unbound", "bound"]
+    changed_by: UUID | None
+    changed_at: datetime
+    reason: str | None
+    template_release_id: UUID | None
+    skill_key: str | None
+    skill_version_id: UUID | None
+    release_version: int | None
+    release_hash: str | None
+
+
+class CampaignChannelReadinessView(PlacementContract):
+    publication_channel: Literal[
+        "owned_site",
+        "productreview",
+        "youtube",
+        "reddit",
+        "amazon",
+        "ozbargain",
+        "tiktok",
+        "instagram",
+        "quora",
+    ]
+    ready: bool
+    reasons: list[str]
+    opportunity_id: UUID | None
+    destination_id: UUID | None
+    prompt_binding_id: UUID | None
+    template_release_id: UUID | None
+    release_version: int | None
+    release_hash: str | None
+    brief_version_id: UUID | None
+    evidence_pack_attempt_id: UUID | None
+
+
+class CampaignPlacementReadinessView(PlacementContract):
+    project_id: UUID
+    campaign_id: UUID
+    ready_count: int
+    is_ready: bool
+    channels: list[CampaignChannelReadinessView]
 
 
 class PromptBundleCreate(PlacementContract):
+    campaign_id: UUID
+    opportunity_id: UUID
     evidence_pack_attempt_id: UUID
-    template_release_id: UUID
+    prompt_release_binding_id: UUID
+    confirmed_release_hash: str = Field(pattern="^[0-9a-f]{64}$")
     variables: dict[str, object]
     model_policy_hash: str = Field(pattern="^[0-9a-f]{64}$")
 
@@ -241,6 +344,9 @@ class PromptBundleCreate(PlacementContract):
 class PromptBundleView(PlacementContract):
     id: UUID
     project_id: UUID
+    campaign_id: UUID
+    opportunity_id: UUID
+    destination_id: UUID
     brief_version_id: UUID
     evidence_pack_attempt_id: UUID
     template_release_id: UUID
@@ -248,6 +354,21 @@ class PromptBundleView(PlacementContract):
     storage_key: str
     artifact_status: str
     storage_uri: str | None
+    prompt_release_binding_id: UUID | None
+    prompt_release_binding_version: int | None
+    skill_version_id: UUID
+    release_version: int
+    release_hash: str
+
+    @model_validator(mode="after")
+    def binding_lineage_shape(self) -> "PromptBundleView":
+        lineage = (
+            self.prompt_release_binding_id,
+            self.prompt_release_binding_version,
+        )
+        if any(value is None for value in lineage) and not all(value is None for value in lineage):
+            raise ValueError("Prompt Bundle binding lineage must be exact or legacy")
+        return self
 
 
 class PromptBundleDetail(PromptBundleView):
@@ -273,6 +394,9 @@ class GenerationCreate(PlacementContract):
 class PackageVersionView(PlacementContract):
     id: UUID
     project_id: UUID
+    campaign_id: UUID
+    opportunity_id: UUID
+    destination_id: UUID
     package_id: UUID
     prompt_bundle_id: UUID
     version_number: int
@@ -340,6 +464,9 @@ class ReviewSubmissionView(PlacementContract):
 class ExportView(PlacementContract):
     id: UUID
     project_id: UUID
+    campaign_id: UUID
+    opportunity_id: UUID
+    destination_id: UUID
     package_version_id: UUID
     content_hash: str
     exported_at: datetime
@@ -362,6 +489,8 @@ class PublicationCreate(PlacementContract):
 class PublicationView(PlacementContract):
     id: UUID
     project_id: UUID
+    campaign_id: UUID
+    opportunity_id: UUID
     package_version_id: UUID
     destination_id: UUID
     publication_channel: str
@@ -389,6 +518,9 @@ class StateReasonCreate(PlacementContract):
 class SubmissionView(SubmissionCreate):
     id: UUID
     project_id: UUID
+    campaign_id: UUID
+    opportunity_id: UUID
+    destination_id: UUID
     publication_request_id: UUID
     status: str
     idempotency_key: str
@@ -410,12 +542,18 @@ class MeasurementCreate(PlacementContract):
 class MeasurementView(MeasurementCreate):
     id: UUID
     project_id: UUID
+    campaign_id: UUID
+    opportunity_id: UUID
+    destination_id: UUID
     submission_id: UUID
 
 
 class MeasurementCollectionTaskView(PlacementContract):
     id: UUID
     project_id: UUID
+    campaign_id: UUID
+    opportunity_id: UUID
+    destination_id: UUID
     job_id: UUID
     submission_id: UUID
     protocol_id: UUID

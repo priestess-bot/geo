@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 import hashlib
-from typing import cast
+from typing import Mapping, cast
 from uuid import UUID, uuid4
 
 import psycopg
@@ -29,14 +30,24 @@ from geo_core.catalog.domain import (
     UsageRights,
 )
 from geo_core.catalog.postgres import PsycopgCatalogUnitOfWorkFactory
+from geo_core.jobs.postgres import PostgresDurableJobStore
+from geo_core.knowledge import KnowledgeApplication
+from geo_core.knowledge.domain import SourceInput
+from geo_core.knowledge.worker import KnowledgeProcessHandler
 from geo_core.object_store_config import build_object_store
 from geo_core.placements.application import PlacementApplication
 from geo_core.placements.domain import Campaign, Destination, Opportunity
 from geo_core.placements.ports import UnitOfWorkFactory
 from geo_core.placements.postgres_uow import placement_uow_factory
+from geo_core.placements.worker_composition import PlacementWorkerDispatcher
 
 from scripts.geo_acceptance.adapters import ArtifactStore, MemoryArtifactStore
-from scripts.geo_acceptance.contracts import AcceptanceConfig, CHANNELS, PRODUCT_URL
+from scripts.geo_acceptance.contracts import (
+    AcceptanceConfig,
+    CHANNELS,
+    PRODUCT_URL,
+    run_scope_suffix,
+)
 
 
 EXPERIENCE_TEXT = (
@@ -56,6 +67,7 @@ class AcceptanceSetup:
     product: ProductEntity
     market: MarketProfile
     fact: EvidenceItem
+    knowledge_fact_id: UUID
     experience: EvidenceItem
     placement: PlacementApplication
     artifact_store: ArtifactStore
@@ -72,7 +84,7 @@ class AcceptanceSetup:
 
 def setup_acceptance(config: AcceptanceConfig) -> AcceptanceSetup:
     app_url = config.app_database_url.strip()
-    suffix = hashlib.sha256(config.run_id.encode()).hexdigest()[:10]
+    suffix = run_scope_suffix(config.run_id)
     catalog = CatalogApplication(
         PsycopgCatalogUnitOfWorkFactory(app_url), development_bootstrap_allowed=True
     )
@@ -149,20 +161,13 @@ def setup_acceptance(config: AcceptanceConfig) -> AcceptanceSetup:
         timezone="Australia/Sydney",
         rules={"language": "English", "currency": "AUD"},
     )
-    fact = catalog.create_evidence(
-        owner,
+    fact, knowledge_fact_id = _create_governed_fact_evidence(
+        config=config,
+        catalog=catalog,
+        owner=owner,
         project_id=project_id,
-        draft=_evidence_draft(
-            item_type=EvidenceItemType.APPROVED_FACT,
-            subject_entity_id=product.id,
-            text=(
-                "The official ADVINSYS product page identifies TerraMow V600 as a "
-                "Triple-Cam AI Vision Robot Mower in the robotic lawn mower category."
-            ),
-            source_url=PRODUCT_URL,
-            source_title="ADVINSYS TerraMow V600 product page",
-            usage_rights=UsageRights.OWNED,
-        ),
+        product=product,
+        suffix=suffix,
     )
     experience = catalog.create_evidence(
         owner,
@@ -241,12 +246,14 @@ def setup_acceptance(config: AcceptanceConfig) -> AcceptanceSetup:
     )
     placement.transition_opportunity(
         project_id=project_id,
+        campaign_id=campaign.id,
         opportunity_id=owned_opportunity.id,
         command="reopen",
         reason="official site policy and access were reviewed",
     )
     owned_opportunity = placement.transition_opportunity(
         project_id=project_id,
+        campaign_id=campaign.id,
         opportunity_id=owned_opportunity.id,
         command="qualify",
         reason="owned destination has evidence, policy and account authority",
@@ -261,6 +268,7 @@ def setup_acceptance(config: AcceptanceConfig) -> AcceptanceSetup:
         product,
         market,
         fact,
+        knowledge_fact_id,
         experience,
         placement,
         artifact_store,
@@ -270,6 +278,107 @@ def setup_acceptance(config: AcceptanceConfig) -> AcceptanceSetup:
         browser_invitation.invitation.id,
         browser_invitation.invite_token,
     )
+
+
+def _create_governed_fact_evidence(
+    *,
+    config: AcceptanceConfig,
+    catalog: CatalogApplication,
+    owner: AccessPrincipal,
+    project_id: UUID,
+    product: ProductEntity,
+    suffix: str,
+) -> tuple[EvidenceItem, UUID]:
+    knowledge = KnowledgeApplication(config.app_database_url.strip())
+    source_text = (
+        "The official ADVINSYS product page identifies TerraMow V600 as a Triple-Cam AI "
+        "Vision Robot Mower in the robotic lawn mower category. "
+        "The governed acceptance source is retained so every generated claim can be traced "
+        "through its document, chunk, reviewed fact, and formal Evidence record."
+    )
+    created = knowledge.create_source(
+        owner,
+        project_id=project_id,
+        source=SourceInput(
+            source_kind="text",
+            title="ADVINSYS TerraMow V600 governed acceptance source",
+            source_url=PRODUCT_URL,
+            filename="advinsys-terramow-v600-acceptance.txt",
+            media_type="text/plain",
+            raw_content=source_text.encode("utf-8"),
+        ),
+        idempotency_key=f"acceptance-knowledge-source-{suffix}",
+    )
+    job = cast(Mapping[str, object], created["job"])
+    job_id = cast(UUID, job["id"])
+    store = PostgresDurableJobStore(
+        lambda: psycopg.connect(config.worker_database_url.strip())
+    )
+    result = PlacementWorkerDispatcher(
+        store=store,
+        handlers={
+            "knowledge.process": KnowledgeProcessHandler(
+                store, lease_for=timedelta(seconds=30)
+            )
+        },
+        worker_id=f"acceptance-knowledge-{suffix}",
+        lease_for=timedelta(seconds=30),
+    ).process(job_id=job_id, project_id=project_id)
+    if result["status"] != "succeeded":
+        raise AssertionError(f"Knowledge processing did not succeed: {result}")
+    facts = knowledge.list_facts(owner, project_id=project_id)
+    fact = next(
+        (
+            item
+            for item in facts
+            if "Triple-Cam AI Vision Robot Mower" in str(item["statement"])
+        ),
+        None,
+    )
+    if fact is None:
+        raise AssertionError("Knowledge processing did not extract the governed product fact")
+    fact_id = cast(UUID, fact["id"])
+    knowledge.review_fact(
+        owner,
+        project_id=project_id,
+        fact_id=fact_id,
+        decision="approved",
+        notes="Controlled acceptance review of the official product statement.",
+    )
+    promotion = knowledge.promote_fact_to_evidence(
+        owner,
+        project_id=project_id,
+        fact_id=fact_id,
+        idempotency_key=f"acceptance-fact-evidence-{fact_id}",
+        title="ADVINSYS TerraMow V600 governed product fact",
+        subject_entity_id=product.id,
+        subject_role=SubjectRole.PRODUCT,
+        usage_rights=UsageRights.PUBLIC_REFERENCE,
+        confidentiality=Confidentiality.PUBLIC,
+        public_citation=PublicCitation(
+            disclosure_allowed=True,
+            source_url=PRODUCT_URL,
+            source_title="ADVINSYS TerraMow V600 product page",
+            label="ADVINSYS TerraMow V600 product page",
+            quotation_allowed=False,
+            attribution_required=True,
+        ),
+    )
+    promoted = cast(Mapping[str, object], promotion["evidence"])
+    evidence_id = cast(UUID, promoted["id"])
+    evidence = next(
+        (
+            item
+            for item in catalog.list_evidence(
+                owner, project_id=project_id, limit=200, offset=0
+            )
+            if item.id == evidence_id
+        ),
+        None,
+    )
+    if evidence is None:
+        raise AssertionError("promoted Knowledge Fact Evidence is not visible to Catalog")
+    return evidence, fact_id
 
 
 def _evidence_draft(

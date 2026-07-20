@@ -1,0 +1,38 @@
+{
+  "candidate": {
+    "adapter_kind": "graphrag",
+    "available": false,
+    "candidate_id": "microsoft-graphrag-isolated-poc",
+    "eligible_for_selection": false,
+    "framework_version": null,
+    "unavailable_reason": "dependency_not_installed"
+  },
+  "dataset": {
+    "dataset_version": "2026.07.19.1",
+    "manifest_sha256": "ffaf4fb0bdc60098c1593f3b43ab0462b4e381dcdff2ca467540e4604bfa2c0f",
+    "project_ids": [
+      "project-aurora",
+      "project-boreal"
+    ],
+    "schema_version": "f019-benchmark-manifest-v1"
+  },
+  "gates": null,
+  "metrics": null,
+  "quality_score": null,
+  "raw_candidate_output": {
+    "adapter_kind": "graphrag",
+    "available": false,
+    "base": null,
+    "candidate_id": "microsoft-graphrag-isolated-poc",
+    "delta": null,
+    "eligible_for_selection": false,
+    "framework_version": null,
+    "schema_version": "f019-candidate-output-v1",
+    "unavailable_reason": "dependency_not_installed",
+    "usage": null
+  },
+  "schema_version": "f019-benchmark-report-v1",
+  "selection_status": "not_selectable_unavailable",
+  "status": "unavailable",
+  "usage": null
+}

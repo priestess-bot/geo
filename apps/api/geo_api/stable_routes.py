@@ -20,6 +20,7 @@ from geo_api.contracts import (
 )
 from geo_api.foundation_services import AuthenticationInput, FoundationServices
 from geo_api.problems import ApiProblem
+from geo_api.runtime_readiness import ReadinessService
 
 
 Surface = Literal["internal", "customer"]
@@ -44,7 +45,9 @@ PROBLEM_RESPONSES: dict[int | str, dict[str, Any]] = {
 }
 
 
-def health_router(*, service_name: str, surface: Surface) -> APIRouter:
+def health_router(
+    *, service_name: str, surface: Surface, readiness_service: ReadinessService
+) -> APIRouter:
     router = APIRouter(tags=["service"])
 
     @router.get("/health", response_model=HealthStatus, operation_id="getHealth")
@@ -57,13 +60,16 @@ def health_router(*, service_name: str, surface: Surface) -> APIRouter:
         responses={503: PROBLEM_RESPONSES[503]},
         operation_id="getReadiness",
     )
-    def readiness(request: Request) -> HealthStatus:
-        if not request.app.state.ready:
+    async def readiness() -> HealthStatus:
+        result = await readiness_service.check()
+        if not result.ready:
+            codes = ",".join(failure.code for failure in result.failures)
             raise ApiProblem(
                 status=503,
                 title="Service Unavailable",
-                detail="The API application has not completed startup.",
+                detail=f"Required readiness dependencies are unavailable. Codes: {codes}.",
                 type_uri="urn:geo:problem:not-ready",
+                headers={"Retry-After": "5", "X-GEO-Readiness-Codes": codes},
             )
         return HealthStatus(status="ready", service=service_name, surface=surface)
 

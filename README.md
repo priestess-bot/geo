@@ -110,7 +110,7 @@ infra/
   db/alembic/         唯一数据库基线、版本与 checksum
   docker-compose.yml  完整开发栈
   compose.prod.yml    独立生产栈
-  backup/ minio/ otel/ prometheus/
+  backup/ minio/ otel/  备份、对象存储与遥测传输配置
 contracts/openapi/    稳定 API 快照及 manifest
 scripts/              provisioning、OpenAPI、备份与恢复入口
 tests/                architecture、unit、integration、infra、web、live
@@ -147,6 +147,8 @@ docs/                 当前架构、ADR、操作手册、工程治理和两份�
 ## 文档与质量门禁
 
 - [文档索引](docs/README.md)
+- [本轮 14 项 ACCEPTED 整改验证记录](docs/engineering/GEO-accepted-remediation-verification-record-2026-07-19.md)
+- [整改门禁与外部 staging 边界](docs/operations/remediation-gates.md)
 - [当前系统架构](docs/architecture/system-overview.md)
 - [GEO v3 运行与验收合同](docs/GEO-v3-%E5%85%A8%E6%B5%81%E7%A8%8B%E8%BF%90%E8%A1%8C%E6%89%8B%E5%86%8C.md)
 - [ADVINSYS GEO 独立全流程操作手册](docs/operations/geo-ui-operator-guide.md)（[PDF](docs/operations/ADVINSYS-GEO-%E5%85%A8%E6%B5%81%E7%A8%8B%E9%83%A8%E7%BD%B2%E8%BF%90%E7%BB%B4%E6%89%8B%E5%86%8C.pdf)）

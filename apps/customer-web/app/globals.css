@@ -204,6 +204,17 @@ h3 {
   gap: 22px;
   padding-top: 24px;
 }
+.selectionState {
+  border-bottom: 1px solid #d5dde3;
+  border-top: 1px solid #d5dde3;
+  display: grid;
+  gap: 8px;
+  padding: 24px 2px;
+}
+.selectionState > p:not(.eyebrow) {
+  color: #596f7d;
+  line-height: 1.55;
+}
 .pageHeading,
 .sectionHeader {
   align-items: flex-start;
@@ -359,6 +370,10 @@ code {
   line-height: 1.65;
   white-space: pre-wrap;
 }
+.snapshotLineage {
+  color: #607482;
+  font-size: 12px;
+}
 .inlineEmpty,
 .inlineProblem {
   border-top: 1px solid #dce3e8;
@@ -390,6 +405,9 @@ code {
   flex-wrap: wrap;
   gap: 8px;
 }
+.projectExportControl { align-items: flex-end; display: flex; flex-direction: column; gap: 4px; }
+.projectExportControl button { min-height: 38px; white-space: nowrap; }
+.projectExportControl span { color: #a72e2e; font-size: 12px; max-width: 260px; }
 .authShell {
   align-items: center;
   display: grid;

@@ -11,6 +11,7 @@ import pytest
 
 from geo_api.oidc import (
     OidcAuthenticationError,
+    OidcConfigurationError,
     OidcTokenVerifier,
     OidcVerifierSettings,
 )
@@ -57,6 +58,16 @@ def _verifier() -> tuple[OidcTokenVerifier, rsa.RSAPrivateKey, str]:
         jwks_provider=lambda: jwks,
     )
     return verifier, private_key, tenant_id
+
+
+def test_oidc_settings_require_a_nonempty_tenant_claim() -> None:
+    with pytest.raises(OidcConfigurationError):
+        OidcVerifierSettings(
+            discovery_url="https://issuer.example/.well-known/openid-configuration",
+            issuer="https://issuer.example",
+            audience="geo-admin",
+            tenant_claim="",
+        )
 
 
 def test_valid_rs256_token_returns_external_identity() -> None:

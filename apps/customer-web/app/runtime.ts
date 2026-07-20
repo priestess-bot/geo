@@ -5,22 +5,33 @@ import { GEO_SESSION_COOKIE } from "@geo/auth";
 import { resolveCounterpartPortalUrl } from "@geo/auth/portal-url";
 import type { AuthIdentity } from "@geo/types/auth";
 import type {
-  CustomerApprovedReport,
-  CustomerGeoMetric,
-  CustomerGeoSummary,
-  CustomerMeasurementWindow,
+  CustomerCampaign,
+  CustomerCampaignReadModel,
   CustomerProblemDetails,
   CustomerProjectPage,
-  CustomerProjectSummary,
-  CustomerVerifiedUrl
+  CustomerProjectSummary
 } from "@geo/types/customer";
+
+export type SelectionStatus =
+  | "selected"
+  | "unselected"
+  | "unauthorized"
+  | "empty"
+  | "error";
 
 export type SessionPortalResponse = Readonly<{
   authenticated: boolean;
   projects: CustomerProjectSummary[];
   selectedProject: CustomerProjectSummary | null;
   roles: string[];
-  selectionStatus: "selected" | "fallback" | "empty";
+  selectionStatus: SelectionStatus;
+  problem?: CustomerProblemDetails;
+}>;
+
+export type CampaignPortalResponse = Readonly<{
+  campaigns: CustomerCampaign[];
+  selectedCampaign: CustomerCampaign | null;
+  selectionStatus: SelectionStatus;
   problem?: CustomerProblemDetails;
 }>;
 
@@ -28,13 +39,7 @@ export type ResourceState<T> =
   | Readonly<{ status: "ready"; data: T }>
   | Readonly<{ status: "error"; problem: CustomerProblemDetails }>;
 
-export type CustomerGeoReadModel = Readonly<{
-  summary: ResourceState<CustomerGeoSummary>;
-  metrics: ResourceState<CustomerGeoMetric[]>;
-  windows: ResourceState<CustomerMeasurementWindow[]>;
-  verifiedUrls: ResourceState<CustomerVerifiedUrl[]>;
-  reports: ResourceState<CustomerApprovedReport[]>;
-}>;
+export type CustomerGeoReadModel = ResourceState<CustomerCampaignReadModel>;
 
 const PROJECT_PAGE_SIZE = 100;
 const MAX_AUTHORIZED_PROJECTS = 5000;
@@ -58,9 +63,10 @@ export function adminWebBaseUrl(): string {
 
 export async function loadSessionPortal(projectId?: string): Promise<SessionPortalResponse> {
   const client = await customerClient();
-  const identityPromise = client.currentIdentity();
-  const projectsPromise = loadAllCustomerProjects(client);
-  const [identity, projects] = await Promise.all([identityPromise, projectsPromise]);
+  const [identity, projects] = await Promise.all([
+    client.currentIdentity(),
+    loadAllCustomerProjects(client)
+  ]);
 
   if (!identity.ok) {
     return {
@@ -78,52 +84,62 @@ export async function loadSessionPortal(projectId?: string): Promise<SessionPort
       projects: [],
       selectedProject: null,
       roles: identity.data.roles,
-      selectionStatus: "empty",
+      selectionStatus: "error",
       problem: projects.problem
     };
   }
-
   return selectedSession(identity.data, projects.data, projectId);
+}
+
+export async function loadCampaignPortal(
+  projectId: string,
+  campaignId?: string
+): Promise<CampaignPortalResponse> {
+  const result = await (await customerClient()).listGeoCampaigns(projectId);
+  if (!result.ok) {
+    return {
+      campaigns: [],
+      selectedCampaign: null,
+      selectionStatus: "error",
+      problem: result.problem
+    };
+  }
+  if (!result.data.length) {
+    return { campaigns: [], selectedCampaign: null, selectionStatus: "empty" };
+  }
+  if (!campaignId) {
+    return {
+      campaigns: result.data,
+      selectedCampaign: null,
+      selectionStatus: "unselected"
+    };
+  }
+  const selected = result.data.find((campaign) => campaign.id === campaignId) || null;
+  return {
+    campaigns: result.data,
+    selectedCampaign: selected,
+    selectionStatus: selected ? "selected" : "unauthorized"
+  };
 }
 
 export async function loadCustomerGeoReadModel(
   projectId: string,
-  campaignId?: string
+  campaignId: string
 ): Promise<CustomerGeoReadModel> {
-  const client = await customerClient();
-  const [summary, metrics, windows, verifiedUrls, reports] = await Promise.all([
-    client.getGeoSummary(projectId, campaignId),
-    client.listGeoMetrics(projectId, campaignId),
-    client.listMeasurementWindows(projectId, campaignId),
-    client.listVerifiedUrls(projectId, campaignId),
-    client.listApprovedReports(projectId, campaignId)
-  ]);
-  return {
-    summary: resource(summary),
-    metrics: resource(metrics),
-    windows: resource(windows),
-    verifiedUrls: resource(verifiedUrls),
-    reports: resource(reports)
-  };
+  return resource(
+    await (await customerClient()).getGeoCampaignReadModel(projectId, campaignId)
+  );
 }
 
 export function resourceProblems(model: CustomerGeoReadModel): CustomerProblemDetails[] {
-  const states: ResourceState<unknown>[] = [
-    model.summary,
-    model.metrics,
-    model.windows,
-    model.verifiedUrls,
-    model.reports
-  ];
-  return states.flatMap((state) => state.status === "error" ? [state.problem] : []);
+  return model.status === "error" ? [model.problem] : [];
 }
 
 async function customerClient(): Promise<CustomerApiClient> {
   const cookieStore = await cookies();
   const sessionToken = cookieStore.get(GEO_SESSION_COOKIE)?.value || "";
-  const cookieHeader = `${GEO_SESSION_COOKIE}=${encodeURIComponent(sessionToken)}`;
   const headers = sessionToken
-    ? { Cookie: cookieHeader }
+    ? { Cookie: `${GEO_SESSION_COOKIE}=${encodeURIComponent(sessionToken)}` }
     : undefined;
   return new CustomerApiClient(apiBase(), { headers, cache: "no-store" });
 }
@@ -148,7 +164,6 @@ async function loadAllCustomerProjects(
     }
     offset = projects.length;
   }
-
   return { ok: true, data: projects, status: 200, response: {} };
 }
 
@@ -179,18 +194,31 @@ function selectedSession(
   projects: CustomerProjectSummary[],
   projectId?: string
 ): SessionPortalResponse {
-  const requested = projectId
-    ? projects.find((project) => project.project_id === projectId)
-    : undefined;
-  const selectedProject = requested || projects[0] || null;
+  if (!projects.length) {
+    return {
+      authenticated: true,
+      projects,
+      selectedProject: null,
+      roles: identity.roles,
+      selectionStatus: "empty"
+    };
+  }
+  if (!projectId) {
+    return {
+      authenticated: true,
+      projects,
+      selectedProject: null,
+      roles: identity.roles,
+      selectionStatus: "unselected"
+    };
+  }
+  const selectedProject = projects.find((project) => project.project_id === projectId) || null;
   return {
     authenticated: true,
     projects,
     selectedProject,
     roles: identity.roles,
-    selectionStatus: selectedProject
-      ? projectId && !requested ? "fallback" : "selected"
-      : "empty"
+    selectionStatus: selectedProject ? "selected" : "unauthorized"
   };
 }
 

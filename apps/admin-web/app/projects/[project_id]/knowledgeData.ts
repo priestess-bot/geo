@@ -1,6 +1,6 @@
 import { runtimeRequest, type RuntimeResult } from "../../runtime";
 import type {
-  KnowledgeChunk, KnowledgeDashboard, KnowledgeFact, KnowledgeFinding, KnowledgeProblem,
+  FactEvidenceProposal, KnowledgeChunk, KnowledgeDashboard, KnowledgeFact, KnowledgeFinding, KnowledgeProblem,
   KnowledgeResource, KnowledgeRun, KnowledgeSource, KnowledgeStage, KnowledgeWorkspaceData
 } from "./knowledgeTypes";
 
@@ -13,6 +13,7 @@ export async function loadKnowledgeWorkspace(
   const base = `/v1/projects/${encodeURIComponent(projectId)}/knowledge`;
   const activeView = value(queryParams, "knowledge_tab") || "import";
   const query = value(queryParams, "knowledge_query") || "";
+  const selectedFactId = value(queryParams, "knowledge_fact_id") || "";
   const [sourcesResult, runsResult, chunksResult, factsResult, findingsResult, dashboardResult] = await Promise.all([
     runtimeRequest<KnowledgeSource[]>(`${base}/sources`),
     runtimeRequest<KnowledgeRun[]>(`${base}/pipeline-runs`),
@@ -26,16 +27,25 @@ export async function loadKnowledgeWorkspace(
   const stagesResult = selectedRunId
     ? await runtimeRequest<KnowledgeStage[]>(`${base}/pipeline-runs/${encodeURIComponent(selectedRunId)}/stages`)
     : null;
+  const proposalResult = activeView === "trace" && selectedFactId
+    ? await runtimeRequest<FactEvidenceProposal>(
+      `${base}/fact-candidates/${encodeURIComponent(selectedFactId)}/evidence-proposal`
+    )
+    : null;
   return {
     activeView,
     query,
+    selectedFactId,
     sources: listResource(sourcesResult, "知识来源"),
     runs,
     stages: stagesResult ? listResource(stagesResult, "处理阶段") : { data: [] },
     chunks: listResource(chunksResult, "Chunk"),
     facts: listResource(factsResult, "事实候选"),
     findings: listResource(findingsResult, "质量发现"),
-    dashboard: objectResource(dashboardResult, emptyDashboard(), "知识看板")
+    dashboard: objectResource(dashboardResult, emptyDashboard(), "知识看板"),
+    evidenceProposal: proposalResult
+      ? objectResource(proposalResult, null, "Evidence 提升建议")
+      : { data: null }
   };
 }
 

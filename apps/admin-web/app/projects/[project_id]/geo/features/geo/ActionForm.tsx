@@ -17,7 +17,11 @@ export function ActionForm({ action, children, submitLabel, pendingLabel = "处�
     {title ? <h3>{title}</h3> : null}
     <input type="hidden" name="idempotency_key" value={idempotencyKey} />
     {children}
-    <button className={danger ? "button danger" : "button"} type="submit" disabled={disabled || pending}>
+    <button
+      className={danger ? "button danger" : "button"}
+      type="submit"
+      disabled={disabled || pending || !idempotencyKey}
+    >
       {pending ? pendingLabel : submitLabel}
     </button>
     {state.ok ? <p className={styles.success} role="status">{state.ok}{state.nextHref ? <> · <Link href={state.nextHref}>打开结果</Link></> : null}</p> : null}

@@ -10,6 +10,11 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 from uuid import uuid4
 
+import pytest
+
+
+pytestmark = pytest.mark.live
+
 
 def _required(name: str) -> str:
     value = os.environ.get(name, "").strip()
