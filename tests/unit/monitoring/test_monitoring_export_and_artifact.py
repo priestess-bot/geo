@@ -79,6 +79,17 @@ def test_f009_export_01_csv_has_stable_columns_labels_and_rfc4180_escaping() -> 
     )
 
 
+@pytest.mark.parametrize("prefix", ("=", "+", "-", "@", "  ="))
+def test_observation_csv_neutralizes_spreadsheet_formulas(prefix: str) -> None:
+    observation = _observation(source=_source(f"{prefix}DANGEROUS()"))
+
+    [row] = csv.DictReader(
+        io.StringIO(render_observation_csv((observation,)).decode("utf-8"), newline="")
+    )
+
+    assert row["raw_answer"] == "'" + f"{prefix}DANGEROUS()".strip()
+
+
 def test_f009_export_01_legacy_unknown_is_visibly_ineligible() -> None:
     source = ObservationSource.legacy_unknown(
         raw_evidence=RawEvidence(RawEvidenceKind.LEGACY_UNKNOWN, answer="Legacy answer"),

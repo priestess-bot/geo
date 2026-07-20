@@ -37,6 +37,10 @@ export function ProjectExportButtons({
         `/projects/${encodeURIComponent(projectId)}/project-export?job_id=${encodeURIComponent(jobId)}`,
         { cache: "no-store" }
       );
+      if (response.status === 202) {
+        await new Promise((resolve) => window.setTimeout(resolve, 1000));
+        continue;
+      }
       if (response.ok) {
         const blob = await response.blob();
         const url = URL.createObjectURL(blob);
@@ -48,13 +52,10 @@ export function ProjectExportButtons({
         setState("idle");
         return;
       }
-      if (response.status !== 409) {
-        const payload = await response.json().catch(() => ({}));
-        setState("failed");
-        setDetail(typeof payload.detail === "string" ? payload.detail : "导出下载失败");
-        return;
-      }
-      await new Promise((resolve) => window.setTimeout(resolve, 1000));
+      const payload = await response.json().catch(() => ({}));
+      setState("failed");
+      setDetail(typeof payload.detail === "string" ? payload.detail : "导出下载失败");
+      return;
     }
     setState("failed");
     setDetail("导出任务仍在处理中，请稍后重试");

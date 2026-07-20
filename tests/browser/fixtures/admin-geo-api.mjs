@@ -72,6 +72,8 @@ let questionCandidateNotes = null;
 let questionSetStatus = null;
 let questionSimulation = null;
 let questionProtocol;
+let projectExportJobStatus = "succeeded";
+let projectExportErrorCode = null;
 
 function packageVersion() {
   return {
@@ -879,6 +881,8 @@ const server = createServer(async (request, response) => {
       questionSetStatus = null;
       questionSimulation = null;
       questionProtocol = draftQuestionProtocol();
+      projectExportJobStatus = "succeeded";
+      projectExportErrorCode = null;
       return send(response, { reset: true });
     }
     return send(response, requests);
@@ -915,8 +919,23 @@ const server = createServer(async (request, response) => {
     verificationShouldPass = payload?.approved_content === true;
     return send(response, { approved_content: verificationShouldPass });
   }
+  if (path === "/__project_export_status" && request.method === "POST") {
+    projectExportJobStatus = payload?.status || "succeeded";
+    projectExportErrorCode = payload?.error_code || null;
+    return send(response, { status: projectExportJobStatus, error_code: projectExportErrorCode });
+  }
 
   const base = `/v1/projects/${PROJECT_ID}`;
+  if (path === `/v1/jobs/${PROJECT_EXPORT_JOB_ID}`) return send(response, {
+    id: PROJECT_EXPORT_JOB_ID,
+    kind: "project.export",
+    status: projectExportJobStatus,
+    created_at: NOW,
+    updated_at: NOW,
+    result_ref: projectExportJobStatus === "succeeded" ? "project-export.zip" : null,
+    error_code: projectExportErrorCode,
+    result_details: null
+  });
   if (path === "/v1/projects") {
     return send(response, { items: [{ id: PROJECT_ID, key: "geo-browser", name: "GEO Browser Fixture", role: "owner" }], total: 1, limit: 100, offset: 0 });
   }
@@ -936,18 +955,23 @@ const server = createServer(async (request, response) => {
       project_id: PROJECT_ID,
       campaign_id: payload.campaign_id,
       audience: "admin",
-      status: "succeeded",
+      status: projectExportJobStatus,
       content_hash: "f".repeat(64),
       manifest_hash: "e".repeat(64),
       byte_count: 26,
       file_count: 20,
       created_at: NOW,
-      finalized_at: NOW,
-      error_code: null,
-      download_url: `${base}/project-exports/${PROJECT_EXPORT_JOB_ID}/download`
+      finalized_at: projectExportJobStatus === "succeeded" ? NOW : null,
+      error_code: projectExportErrorCode,
+      download_url: projectExportJobStatus === "succeeded"
+        ? `${base}/project-exports/${PROJECT_EXPORT_JOB_ID}/download`
+        : null
     }, 202);
   }
   if (path === `${base}/project-exports/${PROJECT_EXPORT_JOB_ID}/download`) {
+    if (projectExportJobStatus !== "succeeded") {
+      return send(response, { detail: "project export artifact is not ready" }, 409);
+    }
     return sendZip(response);
   }
 

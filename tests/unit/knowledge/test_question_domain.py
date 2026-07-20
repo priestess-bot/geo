@@ -14,6 +14,8 @@ from geo_core.knowledge.question_domain import (
     freeze_dimensions,
     normalize_question_text,
     parse_question_candidates,
+    question_generation_batch_count,
+    question_generation_minimum_call_budget,
     question_set_content_hash,
     question_set_measurements,
     semantic_embedding,
@@ -69,6 +71,27 @@ def test_dimensions_freeze_ordered_multi_turn_parent_contract() -> None:
                 ),
             )
         )
+
+
+def test_question_generation_batch_count_preserves_turn_boundaries() -> None:
+    dimensions = freeze_dimensions(
+        (
+            _dimension(dimension_key="turn-1"),
+            _dimension(
+                dimension_key="turn-2",
+                turn_index=2,
+                parent_dimension_key="turn-1",
+            ),
+            _dimension(
+                dimension_key="turn-3",
+                turn_index=3,
+                parent_dimension_key="turn-2",
+            ),
+        )
+    )
+
+    assert question_generation_batch_count(dimensions) == 3
+    assert question_generation_minimum_call_budget(dimensions, 3) == 9
 
 
 def test_semantic_hash_embedding_is_deterministic_normalized_and_1024_dimensions() -> None:

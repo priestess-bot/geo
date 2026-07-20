@@ -9,6 +9,7 @@ import io
 import json
 from typing import Iterable
 
+from geo_core.csv_security import neutralize_spreadsheet_formula
 from geo_core.monitoring.domain import MonitoringObservation
 from geo_core.monitoring.source_contract import CaptureMethod
 
@@ -167,7 +168,13 @@ def render_observation_csv(observations: Iterable[MonitoringObservation]) -> byt
         extrasaction="raise",
     )
     writer.writeheader()
-    writer.writerows(asdict(row) for row in rows)
+    writer.writerows(
+        {
+            key: neutralize_spreadsheet_formula(value) if isinstance(value, str) else value
+            for key, value in asdict(row).items()
+        }
+        for row in rows
+    )
     return buffer.getvalue().encode("utf-8")
 
 

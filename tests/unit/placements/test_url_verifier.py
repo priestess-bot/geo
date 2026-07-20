@@ -5,6 +5,7 @@ from typing import cast
 
 import pytest
 
+from geo_core.placements import url_verification_http
 from geo_core.placements.url_verifier import (
     FetchedResponse,
     PermanentVerificationError,
@@ -331,6 +332,76 @@ def test_redirect_to_private_network_is_rejected_before_second_request() -> None
     assert fetcher.pinned_ips == [PUBLIC_IP]
 
 
+@pytest.mark.parametrize(
+    "address",
+    (
+        "64:ff9b::a9fe:a9fe",
+        "::ffff:169.254.169.254",
+        "::a9fe:a9fe",
+        "2002:a9fe:a9fe::",
+        "2001:0000:4136:e378:8000:63bf:3fff:fdd2",
+    ),
+)
+def test_embedded_non_public_ipv4_addresses_are_rejected(address: str) -> None:
+    with pytest.raises(PermanentVerificationError, match="non-public"):
+        PublicUrlVerifier(
+            resolver=lambda hostname, port: (address,),
+            fetcher=FakeFetcher(),
+        ).verify(
+            "https://public.example/post",
+            expected_text_fragments=("expected",),
+            required_disclosures=(),
+            expected_links=(),
+            allowed_hosts=("public.example",),
+        )
+
+
+def test_public_nat64_address_remains_usable() -> None:
+    address = "64:ff9b::808:808"
+    fetcher = FakeFetcher(_response(b"<html><body>expected</body></html>"))
+
+    result = PublicUrlVerifier(
+        resolver=lambda hostname, port: (address,),
+        fetcher=fetcher,
+    ).verify(
+        "https://public.example/post",
+        expected_text_fragments=("expected",),
+        required_disclosures=(),
+        expected_links=(),
+        allowed_hosts=("public.example",),
+    )
+
+    assert result.success is True
+    assert fetcher.pinned_ips == [address]
+
+
+def test_network_failure_falls_back_to_the_next_validated_address() -> None:
+    second = "93.184.216.35"
+
+    class FallbackFetcher(FakeFetcher):
+        def fetch(self, url, *, pinned_ip, timeout_seconds, maximum_bytes):
+            self.pinned_ips.append(pinned_ip)
+            self.urls.append(url)
+            if pinned_ip == PUBLIC_IP:
+                raise OSError("IPv6 route unavailable")
+            return _response(b"<html><body>expected</body></html>")
+
+    fetcher = FallbackFetcher()
+    result = PublicUrlVerifier(
+        resolver=lambda hostname, port: (PUBLIC_IP, second),
+        fetcher=fetcher,
+    ).verify(
+        "https://public.example/post",
+        expected_text_fragments=("expected",),
+        required_disclosures=(),
+        expected_links=(),
+        allowed_hosts=("public.example",),
+    )
+
+    assert result.success is True
+    assert fetcher.pinned_ips == [PUBLIC_IP, second]
+
+
 def test_redirect_to_a_different_public_host_is_rejected() -> None:
     fetcher = FakeFetcher(_response(b"", status=302, location="https://different.example/post"))
     with pytest.raises(PermanentVerificationError, match="not allowed"):
@@ -399,3 +470,75 @@ def test_dns_rebinding_peer_mismatch_is_rejected(monkeypatch) -> None:
     connection._ssl_context = cast(ssl.SSLContext, Context())
     with pytest.raises(PermanentVerificationError, match="pinned"):
         connection.connect()
+
+
+def test_pinned_peer_rejects_public_looking_nat64_metadata_address(monkeypatch) -> None:
+    pinned_ip = "64:ff9b::a9fe:a9fe"
+
+    class RawSocket:
+        def close(self) -> None:
+            pass
+
+    class SecuredSocket:
+        def getpeername(self):
+            return (pinned_ip, 443)
+
+    class Context:
+        def wrap_socket(self, raw, *, server_hostname):
+            del raw, server_hostname
+            return SecuredSocket()
+
+    monkeypatch.setattr(socket, "create_connection", lambda *args, **kwargs: RawSocket())
+    connection = _PinnedHTTPSConnection("public.example", pinned_ip, timeout=1)
+    connection._ssl_context = cast(ssl.SSLContext, Context())
+    with pytest.raises(PermanentVerificationError, match="pinned public"):
+        connection.connect()
+
+
+def test_pinned_fetcher_encodes_idn_hostname_and_unicode_request_target(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class Response:
+        status = 200
+
+        def read(self, maximum_bytes: int) -> bytes:
+            del maximum_bytes
+            return b"<html></html>"
+
+        def getheaders(self):
+            return (("Content-Type", "text/html"),)
+
+    class Connection:
+        def __init__(self, hostname: str, pinned_ip: str, *, timeout: float) -> None:
+            captured.update(hostname=hostname, pinned_ip=pinned_ip, timeout=timeout)
+
+        def request(self, method: str, target: str, *, headers: dict[str, str]) -> None:
+            captured.update(method=method, target=target, headers=headers)
+
+        def getresponse(self) -> Response:
+            return Response()
+
+        def close(self) -> None:
+            captured["closed"] = True
+
+    monkeypatch.setattr(url_verification_http, "_PinnedHTTPSConnection", Connection)
+
+    response = url_verification_http.PinnedHttpsFetcher().fetch(
+        "https://b\N{LATIN SMALL LETTER U WITH DIAERESIS}cher.example/caf\N{LATIN SMALL LETTER E WITH ACUTE}/\N{CJK UNIFIED IDEOGRAPH-8DEF}\N{CJK UNIFIED IDEOGRAPH-5F84}?q=na\N{LATIN SMALL LETTER I WITH DIAERESIS}ve \N{CJK UNIFIED IDEOGRAPH-4F60}\N{CJK UNIFIED IDEOGRAPH-597D}",
+        pinned_ip=PUBLIC_IP,
+        timeout_seconds=3,
+        maximum_bytes=1000,
+    )
+
+    assert response.status_code == 200
+    assert captured["hostname"] == "xn--bcher-kva.example"
+    assert captured["target"] == (
+        "/caf%C3%A9/%E8%B7%AF%E5%BE%84?q=na%C3%AFve%20%E4%BD%A0%E5%A5%BD"
+    )
+    assert captured["headers"] == {
+        "Host": "xn--bcher-kva.example",
+        "User-Agent": "GEO-Verification/2.0",
+        "Accept": "text/html",
+        "Accept-Encoding": "identity",
+    }
+    assert captured["closed"] is True

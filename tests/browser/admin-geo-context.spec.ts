@@ -259,6 +259,20 @@ test("F027: Admin downloads Campaign-scoped reproducible project export ZIP", as
   expect(exportRequest?.body).toEqual({ campaign_id: CAMPAIGN_A_ID });
 });
 
+test("F027: Admin export reports terminal failure without waiting for the polling timeout", async ({ page, request }) => {
+  expect((await request.post(`${FIXTURE_API}/__project_export_status`, {
+    data: { status: "dead_lettered", error_code: "artifact_upload_failed" }
+  })).ok()).toBe(true);
+  await page.goto(`/projects/${PROJECT_ID}?tab=geo&geo_section=campaigns&campaign_id=${CAMPAIGN_A_ID}`);
+
+  await page.getByRole("button", { name: "导出当前 Campaign" }).click();
+
+  const exportAlert = page.locator('span[role="alert"]');
+  await expect(exportAlert).toContainText("dead_lettered");
+  await expect(exportAlert).toContainText("artifact_upload_failed");
+  await expect(page.getByRole("button", { name: "导出当前 Campaign" })).toBeEnabled();
+});
+
 test("F012: Campaign switch clears every descendant context and invalid deep links do not select the first child", async ({ page }) => {
   const runtimeErrors = collectRuntimeErrors(page);
   await page.goto(`/projects/${PROJECT_ID}?tab=geo&geo_section=placement&campaign_id=${CAMPAIGN_A_ID}&protocol_id=${PROTOCOL_A_ID}&destination_id=00000000-0000-4000-8000-000000000021&opportunity_id=${OPPORTUNITY_A_ID}&placement_stage=generation&measurement_window=t56`);

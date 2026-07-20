@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 from fastapi.testclient import TestClient
 
 from geo_api.app_factory import create_api_app
+from geo_api import project_export_runtime
 from geo_core.access.models import AccessForbidden, AccessPrincipal, MembershipRecord
 from geo_core.object_store import RetrievedObject
 from geo_core.project_exports.application import ProjectExportApplication
@@ -162,6 +163,43 @@ def test_f027_api_customer_download_is_read_only_and_campaign_scoped() -> None:
         f'attachment; filename="geo-project-export-{campaign_id}.zip"'
     )
     assert forbidden_write.status_code == 404
+
+
+def test_customer_runtime_does_not_require_object_storage(monkeypatch) -> None:
+    project_id, campaign_id = uuid4(), uuid4()
+    tenant_id, identity_id = uuid4(), uuid4()
+    principal = AccessPrincipal(
+        identity_id,
+        "subject",
+        tenant_id,
+        (MembershipRecord(project_id, tenant_id, "customer"),),
+        "session",
+    )
+    monkeypatch.setenv("GEO_DATABASE_URL", "postgresql://customer-runtime.test/geo")
+    monkeypatch.delenv("GEO_DATABASE_URL_FILE", raising=False)
+    monkeypatch.delenv("OBJECT_STORE_ENDPOINT", raising=False)
+    monkeypatch.setattr(
+        project_export_runtime,
+        "build_object_store",
+        lambda: (_ for _ in ()).throw(AssertionError("customer export must not build storage")),
+    )
+    monkeypatch.setattr(
+        project_export_runtime,
+        "PostgresProjectExportSource",
+        lambda connection_factory: MemorySource(),
+    )
+
+    customer = project_export_runtime.build_project_export_application(surface="customer")
+    internal = project_export_runtime.build_project_export_application(surface="internal")
+
+    assert isinstance(customer, ProjectExportApplication)
+    archive = customer.download_customer_latest_approved(
+        principal,
+        project_id=project_id,
+        campaign_id=campaign_id,
+    )
+    assert archive.content.startswith(b"PK")
+    assert internal is None
 
 
 def _app(surface: str, role: str, project_id: UUID):

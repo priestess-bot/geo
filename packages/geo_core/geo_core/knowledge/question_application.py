@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
 from typing import Any, Mapping, Sequence
 from uuid import NAMESPACE_URL, UUID, uuid5
 
@@ -20,6 +19,7 @@ from geo_core.knowledge.question_domain import (
     QuestionContractError,
     QuestionDimensionDraft,
     freeze_dimensions,
+    question_generation_minimum_call_budget,
 )
 from geo_core.knowledge.rag_domain import KnowledgeRagEnqueuePolicy
 
@@ -62,7 +62,9 @@ class KnowledgeQuestionApplicationMixin:
             or not 1 <= model_call_budget <= 1000
         ):
             raise KnowledgeValidationError("question model and call budget are invalid")
-        minimum_calls = math.ceil(len(frozen_dimensions) / 10) * policy.maximum_attempts
+        minimum_calls = question_generation_minimum_call_budget(
+            frozen_dimensions, policy.maximum_attempts
+        )
         if model_call_budget < minimum_calls:
             raise KnowledgeValidationError(
                 "question model call budget cannot cover every planned durable attempt"

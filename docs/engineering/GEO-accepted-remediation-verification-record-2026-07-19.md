@@ -47,10 +47,10 @@
 
 | 门禁 | 结果 |
 |---|---|
-| `make test-migrated` | 542 passed，73 deselected |
-| `make quality` | Ruff 通过；Mypy 224 个源文件通过；6 个 Web workspace 类型检查通过；架构 13 passed |
+| `make test-migrated` | 565 passed，73 deselected |
+| `make quality` | Ruff 通过；Mypy 225 个源文件通过；6 个 Web workspace 类型检查通过；架构 13 passed |
 | `make test-integration-required` | fresh PostgreSQL/MinIO，70 collected / 70 passed / 0 skipped |
-| `make test-browser-chromium` | Admin 12/12、Customer 4/4；0 skipped、0 flaky |
+| `make test-browser-chromium` | Admin 13/13、Customer 4/4；0 skipped、0 flaky |
 | `make web-build` | Admin 与 Customer 两个 Next.js production build 通过 |
 | `make openapi-contracts` | 2 个稳定 surface 验证通过；6 个快照测试通过 |
 | `make test-infra-contracts` | 34 collected / 34 passed / 0 skipped |
@@ -60,6 +60,10 @@
 | `geo-acceptance-inline` | run `legacy-parity-final-20260719`；`execution_mode=inline_isolated`；报告验证通过 |
 
 验收报告保存在本地忽略目录 `artifacts/geo-acceptance/legacy-parity-final-20260719.json`，其 SHA-256 为 `b96a3de4532ecec82cb60423a969a6a610feed7cd2c924ea9ef3a5bc125a8a5c`。仓库只保存该脱敏索引，不提交数据库凭据或大体积运行产物。
+
+2026-07-20 复核补丁进一步关闭了 Customer 无对象存储导出、嵌入私网 IPv4 的 IPv6
+SSRF、多地址回退、IDN/Unicode URL、导出取消终态、问题生成预算、CSV 公式注入和导出
+终态轮询共 8 项问题。上述最新门禁结果均在该补丁后重新执行。
 
 ## 4. 数据迁移
 

@@ -34,8 +34,8 @@ Client、API、Worker 和 Relay 已同步迁移；仓库外调用方必须在维
 | Customer API paths / operations | 12 / 12 | 15 / 15 | 0 / 0 |
 | Admin + Customer `page`/`route` | 17 | 20 | 0 |
 | `scripts/` 文件（排除依赖目录） | 26 | 36 | 0 |
-| 测试源文件 | 60 | 163 | 0 |
-| Python test functions | 236 | 548 | 3 个旧名称由更强 v2 测试替代 |
+| 测试源文件 | 60 | 165 | 0 |
+| Python test functions | 236 | 558 | 3 个旧名称由更强 v2 测试替代 |
 
 仅删除了两份会制造错误可观测性预期的 Prometheus/Grafana 假配置。当前阶段没有对应真实
 采集服务；删除行为符合 F-018 已接受决策，生产运行改由 readiness、heartbeat、队列卡滞
@@ -81,15 +81,15 @@ verified 状态。
 
 | 门禁 | 最终结果 |
 |---|---|
-| `make test-migrated` | 542 passed / 73 deselected |
+| `make test-migrated` | 565 passed / 73 deselected |
 | 基线已有测试文件集 | 57 files；321 passed / 17 deselected |
-| `make quality` | Ruff；mypy 224 files；6 Web workspaces；Architecture 13 passed |
+| `make quality` | Ruff；mypy 225 files；6 Web workspaces；Architecture 13 passed |
 | `make test-integration-required` | fresh PostgreSQL/MinIO；70 passed / 0 skipped |
 | Legacy populated upgrade 子矩阵 | 10 passed，包含 `0010 -> 0026` 与 7 类 Job |
 | `make openapi-contracts` | 2 surfaces verified；6 passed |
 | `make web-contracts` | API Client type contract + Auth BFF 4/4 |
 | `make web-build` | Admin/Customer production builds passed |
-| `make test-browser-chromium` | Admin 12/12；Customer 4/4；0 skipped / 0 flaky |
+| `make test-browser-chromium` | Admin 13/13；Customer 4/4；0 skipped / 0 flaky |
 | `make test-infra-contracts` | 34/34 |
 | `make test-infra-runtime` | isolated Docker 6/6 |
 | `make test-production-network` | 1/1 |
@@ -123,6 +123,11 @@ Inline acceptance 报告 SHA-256：
 - 真实外部渠道发布、客户生产 OIDC/TLS/Secret 和付费模型调用未在本轮执行。
 
 ## 8. 合并门禁
+
+2026-07-20 的后续独立复核提出 8 项问题，现已全部修复并增加对应回归：Customer API
+即时导出不再依赖对象存储；URL 验证拒绝嵌入非公开 IPv4 的 IPv6 地址、支持已验证地址
+回退和国际化 URL；导出取消保持 cancelled 语义；问题预算按 turn 批次计算；两个 CSV
+出口统一中和公式前缀；Admin 在导出失败、死信或取消时立即停止轮询并显示终态。
 
 候选分支已达到请求用户确认的条件，但尚未合并。用户确认时应同时接受：
 

@@ -145,7 +145,7 @@ def create_api_app(
     )
     app.state.knowledge_application = knowledge_application or build_knowledge_application()
     app.state.project_export_application = (
-        project_export_application or build_project_export_application()
+        project_export_application or build_project_export_application(surface=surface)
     )
     install_problem_handlers(app)
     _install_request_metadata_middleware(app, surface=surface)

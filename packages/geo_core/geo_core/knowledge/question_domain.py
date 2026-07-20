@@ -15,6 +15,7 @@ from uuid import UUID
 DIMENSION_SCHEMA_VERSION = "geo-question-dimensions-v1"
 EMBEDDING_MODEL_KEY = "geo-question-semantic-hash-v1"
 EMBEDDING_DIMENSIONS = 1024
+QUESTION_GENERATION_BATCH_SIZE = 10
 QUESTION_ARTIFACT_SCHEMA = "knowledge-question-candidate-artifact-v1"
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _TERMINAL_PUNCTUATION = re.compile(r"[?？!！。．.]+$")
@@ -37,6 +38,25 @@ QUERY_KINDS = frozenset({"recommendation", "comparison", "research", "support"})
 
 class QuestionContractError(RuntimeError):
     pass
+
+
+def question_generation_batch_count(
+    dimensions: Sequence["FrozenQuestionDimension"],
+) -> int:
+    """Match the Worker's per-turn batching when validating its call budget."""
+    return sum(
+        math.ceil(
+            sum(dimension.turn_index == turn for dimension in dimensions)
+            / QUESTION_GENERATION_BATCH_SIZE
+        )
+        for turn in range(1, 4)
+    )
+
+
+def question_generation_minimum_call_budget(
+    dimensions: Sequence["FrozenQuestionDimension"], maximum_attempts: int
+) -> int:
+    return question_generation_batch_count(dimensions) * maximum_attempts
 
 
 @dataclass(frozen=True)

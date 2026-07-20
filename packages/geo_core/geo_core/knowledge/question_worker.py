@@ -17,6 +17,7 @@ from geo_core.jobs.postgres import (
 )
 from geo_core.knowledge.question_domain import (
     FrozenQuestionDimension,
+    QUESTION_GENERATION_BATCH_SIZE,
     QuestionCandidateDraft,
     QuestionContractError,
     QuestionGenerationClaim,
@@ -42,7 +43,6 @@ from geo_core.object_store import ObjectStoreError
 from geo_core.rag import RagSelection
 
 
-_BATCH_SIZE = 10
 _SYSTEM_PROMPT = """Generate grounded GEO test questions for the supplied frozen dimensions.
 Return exactly one JSON object with a questions array. Each question must contain only:
 candidate_id, dimension_key, variant_index, text, semantic_fingerprint, supported_fact_ids,
@@ -294,8 +294,8 @@ def _batches_by_turn(
     for turn in range(1, 4):
         values = [item for item in claim.dimensions if item.turn_index == turn]
         batches.extend(
-            tuple(values[index : index + _BATCH_SIZE])
-            for index in range(0, len(values), _BATCH_SIZE)
+            tuple(values[index : index + QUESTION_GENERATION_BATCH_SIZE])
+            for index in range(0, len(values), QUESTION_GENERATION_BATCH_SIZE)
         )
     return tuple(batches)
 

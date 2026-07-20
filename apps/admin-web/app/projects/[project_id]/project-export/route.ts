@@ -31,6 +31,35 @@ export async function GET(
   const { project_id: projectId } = await params;
   const jobId = new URL(request.url).searchParams.get("job_id") || "";
   if (!jobId) return Response.json({ detail: "job_id is required" }, { status: 422 });
+  const statusUpstream = await fetch(
+    new URL(`/v1/jobs/${encodeURIComponent(jobId)}`, apiBase()),
+    { headers: await actorHeaders(), cache: "no-store" }
+  );
+  if (!statusUpstream.ok) return proxyJson(statusUpstream);
+  const job = await statusUpstream.json().catch(() => ({}));
+  const jobStatus = typeof job.status === "string" ? job.status : "unknown";
+  if (["queued", "retry_wait", "running", "finalizing"].includes(jobStatus)) {
+    return Response.json(
+      { status: jobStatus },
+      { status: 202, headers: { "Retry-After": "1" } }
+    );
+  }
+  if (["failed", "dead_lettered", "cancelled"].includes(jobStatus)) {
+    const errorCode = typeof job.error_code === "string" && job.error_code
+      ? job.error_code
+      : "unknown_error";
+    return Response.json(
+      {
+        status: jobStatus,
+        error_code: errorCode,
+        detail: `导出任务已终止（${jobStatus}）：${errorCode}`
+      },
+      { status: 409 }
+    );
+  }
+  if (jobStatus !== "succeeded") {
+    return Response.json({ detail: "导出任务返回未知状态" }, { status: 502 });
+  }
   const upstream = await fetch(
     new URL(
       `/v1/projects/${encodeURIComponent(projectId)}/project-exports/${encodeURIComponent(jobId)}/download`,

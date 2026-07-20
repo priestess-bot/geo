@@ -33,6 +33,9 @@ from geo_core.placements.url_verification_http import (
     HttpsFetcher,
     PinnedHttpsFetcher,
     _PinnedHTTPSConnection,
+    fetch_from_addresses,
+    is_public_network_address,
+    resolve_addresses,
 )
 
 __all__ = (
@@ -94,7 +97,7 @@ class PublicUrlVerifier:
         self._timeout_seconds = timeout_seconds
         self._maximum_bytes = maximum_bytes
         self._maximum_redirects = maximum_redirects
-        self._resolver = resolver or _resolve_addresses
+        self._resolver = resolver or resolve_addresses
         self._fetcher = fetcher or PinnedHttpsFetcher()
         self._clock = clock or _utc_now
 
@@ -139,9 +142,10 @@ class PublicUrlVerifier:
                     current_url,
                     allowed_hosts=normalized_hosts,
                 )
-                response = self._fetcher.fetch(
+                response = fetch_from_addresses(
+                    self._fetcher,
                     current_url,
-                    pinned_ip=addresses[0],
+                    addresses=addresses,
                     timeout_seconds=self._timeout_seconds,
                     maximum_bytes=self._maximum_bytes,
                 )
@@ -284,7 +288,7 @@ class PublicUrlVerifier:
                     code="dns_address_invalid",
                     check=VerificationCheckName.PUBLIC_URL,
                 ) from exc
-            if not parsed_address.is_global:
+            if not is_public_network_address(parsed_address):
                 raise PermanentVerificationError(
                     "verification URL resolves to a non-public network",
                     code="dns_address_not_public",
@@ -416,11 +420,6 @@ def _check(
     failure_code: str,
 ) -> VerificationCheck:
     return VerificationCheck(name, passed, None if passed else failure_code)
-
-
-def _resolve_addresses(hostname: str, port: int) -> tuple[str, ...]:
-    records = socket.getaddrinfo(hostname, port, type=socket.SOCK_STREAM)
-    return tuple(str(record[4][0]) for record in records)
 
 
 def _utc_now() -> datetime:

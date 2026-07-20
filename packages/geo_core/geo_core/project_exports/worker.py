@@ -5,7 +5,13 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Mapping, Protocol
 
-from geo_core.jobs.postgres import LeaseHeartbeat, PostgresDurableJobStore, WorkerLease
+from geo_core.jobs.postgres import (
+    JobCancellationRequested,
+    LeaseHeartbeat,
+    LostJobLease,
+    PostgresDurableJobStore,
+    WorkerLease,
+)
 from geo_core.object_store import ObjectStoreError
 from geo_core.project_exports.archive import archive_project_export
 from geo_core.project_exports.bundle import build_project_export
@@ -107,6 +113,8 @@ class ProjectExportHandler:
                 file_count=archive.file_count,
             )
             return {"status": "succeeded", "job_id": str(lease.job_id), **details}
+        except (JobCancellationRequested, LostJobLease):
+            raise
         except Exception as error:
             retryable = isinstance(error, ObjectStoreError)
             status = self._store.fail(

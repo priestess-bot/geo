@@ -47,8 +47,8 @@ class ArtifactReader(Protocol):
 class ProjectExportApplication:
     def __init__(
         self,
-        repository: ProjectExportRepository,
-        artifact_reader: ArtifactReader,
+        repository: ProjectExportRepository | None = None,
+        artifact_reader: ArtifactReader | None = None,
         *,
         source: ProjectExportSource | None = None,
         now: Callable[[], datetime] | None = None,
@@ -68,7 +68,7 @@ class ProjectExportApplication:
     ) -> ProjectExportArtifact:
         _authorize(principal, project_id, {"owner", "admin", "analyst", "viewer"})
         _idempotency_key(idempotency_key)
-        return self._repository.enqueue(
+        return self._required_repository().enqueue(
             scope=ProjectExportScope(project_id, campaign_id),
             audience=ExportAudience.ADMIN,
             requested_by=principal.identity_id,
@@ -85,7 +85,7 @@ class ProjectExportApplication:
     ) -> ProjectExportArtifact:
         _authorize(principal, project_id, {"customer"})
         _idempotency_key(idempotency_key)
-        return self._repository.enqueue(
+        return self._required_repository().enqueue(
             scope=ProjectExportScope(project_id, campaign_id),
             audience=ExportAudience.CUSTOMER,
             requested_by=principal.identity_id,
@@ -100,7 +100,7 @@ class ProjectExportApplication:
         audience: ExportAudience,
     ) -> tuple[ProjectExportArtifact, ...]:
         _authorize_audience(principal, project_id, audience)
-        return self._repository.list(project_id=project_id, audience=audience)
+        return self._required_repository().list(project_id=project_id, audience=audience)
 
     def get(
         self,
@@ -111,7 +111,9 @@ class ProjectExportApplication:
         audience: ExportAudience,
     ) -> ProjectExportArtifact:
         _authorize_audience(principal, project_id, audience)
-        result = self._repository.get(project_id=project_id, job_id=job_id, audience=audience)
+        result = self._required_repository().get(
+            project_id=project_id, job_id=job_id, audience=audience
+        )
         if result is None:
             raise ProjectExportRuleViolation("project export does not exist")
         return result
@@ -136,6 +138,8 @@ class ProjectExportApplication:
             or artifact.content_hash is None
         ):
             raise ProjectExportRuleViolation("project export artifact is not ready")
+        if self._artifact_reader is None:
+            raise ProjectExportRuleViolation("project export artifact reader is not configured")
         return self._artifact_reader.get_object(
             key=artifact.storage_key, expected_hash=artifact.content_hash
         )
@@ -157,6 +161,11 @@ class ProjectExportApplication:
         bundle = build_project_export(export_input, generated_at=self._now())
         verify_project_export(bundle.as_mapping())
         return archive_project_export(bundle)
+
+    def _required_repository(self) -> ProjectExportRepository:
+        if self._repository is None:
+            raise ProjectExportRuleViolation("project export repository is not configured")
+        return self._repository
 
 
 def _authorize_audience(

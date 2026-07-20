@@ -9,6 +9,7 @@ import io
 from typing import Mapping, Sequence
 from uuid import UUID
 
+from geo_core.csv_security import neutralize_spreadsheet_formula
 from geo_core.project_exports.constants import PROJECT_EXPORT_SCHEMA_VERSION
 from geo_core.project_exports.contracts import (
     AnyMetricSnapshotExportRecord,
@@ -216,6 +217,8 @@ def _csv_scalar(value: object) -> str | int:
         return format(value, ".6f")
     if isinstance(value, UUID):
         return str(value)
-    if isinstance(value, (str, int)):
+    if isinstance(value, str):
+        return neutralize_spreadsheet_formula(value)
+    if isinstance(value, int):
         return value
     raise ProjectExportRuleViolation(f"CSV does not support scalar type {type(value).__name__}")
