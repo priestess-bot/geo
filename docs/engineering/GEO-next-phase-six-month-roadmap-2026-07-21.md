@@ -1,14 +1,17 @@
 # GEO 后续六个月实施路线图
 
 > 计划日期：2026-07-21
-> 修订日期：2026-07-22（第 3 次修订）
+> 修订日期：2026-07-22（第 5 次修订）
 > 计划状态：`PLANNED`
 > 计划周期：启动后连续六个月，以月度退出门槛而非自然月末作为批次完成标准
 > 决策来源：[README 下一阶段发展目标](../../README.md#下一阶段发展目标)、[GEO 效果优先整改决策记录](../audits/GEO-effect-first-remediation-decisions-2026-07-18.md#6-c-组效果测量判断和优化)
 > 当前能力来源：[F-019 RAG 核心集成合同](F019-core-integration-contract-2026-07-19.md)、[F-019 QuestionSet/Protocol/Simulation 合同](F019-question-set-protocol-simulation-contract-2026-07-19.md)
+> 专项实施计划：[外部数据与跨引擎采样实施计划](GEO-external-data-cross-engine-sampling-implementation-plan-2026-07-22.md)
 > 范围变更：按 2026-07-22 用户决定，将 Google AI Overviews/AI Mode、Bing Copilot 及其他获准消费者 AI 界面自动采样纳入本阶段重点；本路线图中的新边界取代本文件初版的排除项，既有审计决策保留为历史依据
 > 第 2 次修订变更：引入授权双轨完成定义和第 2 月授权决策点（第 2.4 节）；一方事件入口升级为归因主来源，GA4 降级为聚合对账（第 6.3 节）；风格采集渠道纳入与消费者 surface 对称的授权门槛并增加人工样本导入路径（第 5.2 节）；出口验证改为 Session 级语义并新增吞吐预算合同（第 7.1/7.2.2 节）；`reference_translation` 移出首批交付；供应商存储/保留条款纳入 adapter release 合同（第 4.2 节）
 > 第 3 次修订变更：闭合在线迁移追尾、Secret/备份恢复、真实归因、统计不确定结论、逐 Surface Release 保真度、粘性代理证明、登录工件治理、人力容量、建议失效传播和性能负载门禁
+> 第 4 次修订变更：增加执行基线、阶段状态、DoR/DoD、RACI、稳定验收 ID 和逐月 checklist；将“外部数据与跨引擎采样”的工作分解、适配器发布与逐源验收移入独立专项文件，主路线图只保留全局合同、阶段依赖和统一发布 Gate
+> 第 5 次修订变更：按工作包类型限定 DoR/DoD 并增加可审计 `not_applicable`；将实际出口验证从 Task/分母身份移到 Attempt/Observation lineage；冻结授权先于 live enqueue；增加外部投影独立数据批准生命周期；补齐单项 evidence manifest 溯源字段
 
 ## 1. 执行结论
 
@@ -17,7 +20,7 @@
 | 板块 | 六个月完成定义 |
 |---|---|
 | 内部合成测评实验室 | 九个标准渠道均具备澳洲英文风格样本、版本化 Style Profile、知识冲突检查、修订闭环和三臂离线 GEO 实验；全部结果保持 `test_only=true`、`publication_eligible=false` |
-| 外部数据与跨引擎采样 | Connector Core、GSC、GA4、Google/Bing 官方报告、五类 Provider API adapter，以及通过已验证澳洲出口采集 Google AI Overviews/AI Mode、Bing Copilot 等真实消费者界面的 Browser Capture Connector 在 live staging 运行；未取得授权依据的 surface 按第 2.4 节 B 轨（fixture + 人工采样）完成并记录降级决定，不阻塞阶段验收；来源类型、原始工件和分母不可混淆 |
+| 外部数据与跨引擎采样 | Connector Core、GSC、GA4、Google/Bing 官方报告、五类外部 API adapter（Microsoft Grounding 使用 `proxy_grounded_api`，其余按实际能力使用 `provider_api`），以及通过已验证澳洲出口采集 Google AI Overviews/AI Mode、Bing Copilot 等真实消费者界面的 Browser Capture Connector 在 live staging 运行；未取得授权依据的 surface 按第 2.4 节 B 轨（fixture + 人工采样）完成并记录降级决定，不阻塞阶段验收；来源类型、原始工件和分母不可混淆 |
 | 统计实验与告警 | 重复采样、完成度门槛、区间、胜/等效/负/不确定、跨问题负收益、漂移、阈值/基线告警及完整处置记录可重复计算 |
 | 本地业务归因 | 一方事件入口（Session/Touch 主来源）、UTM、无 PII trace token、Session、Touch、Lead、Conversion、Deal、Revenue 与 Campaign、QuestionSet、内容/Package Version、verified URL 串联，并生成版本化归因快照；GA4 作为聚合对账口径 |
 | 可解释建议闭环 | 建议可以回溯到真实观测、统计、归因、Fact、规则和 Prompt Release；人工批准后只创建实验、问题、内容或采样草稿 |
@@ -35,6 +38,99 @@
   -> 系统为什么建议修改、实验、不修改或继续采样？
   -> 人工批准后创建了哪个草稿，后续真实结果如何回填？
 ```
+
+### 1.1 文档职责和执行方式
+
+本文件是六个月计划的总控基线，负责范围、跨工作流依赖、共享合同、月度退出门槛和最终发布决定。“外部数据与跨引擎采样”专项文件负责 Connector Core、GSC/GA4、官方报告、五类外部 API、消费者 AI 界面、澳洲代理和 Sampling Core 的详细工作包与逐源验收。两份文件发生歧义时按以下顺序处理：
+
+1. 安全、权限、真实性、分母和 Customer 可见性采用两份文件中更严格的条款。
+2. 外部板块的任务状态和证据以专项文件的 `EXT-*` ID 为准；本文件不复制其完成状态。
+3. 月度批次只有在本文件对应 `GATE-M*` 与专项文件对应 `EXT-GATE-M*` 同时通过时，才可整体 `ACCEPTED`。
+4. 任何范围、门槛或样本量变更必须先形成批准的基线变更记录，并同时更新受影响的主计划和专项计划；实现 PR 不能隐式改变计划。
+
+Checklist 统一使用以下语义：
+
+- `[ ]`：尚未由证据证明完成，包括“代码已写但未验收”的状态。
+- `[x]`：owner 和 verifier 已在 evidence manifest 中签字，且所有必需证据 URI/hash 可读取并通过校验。
+- 阻塞、豁免和部分完成不使用非标准 Markdown 符号冒充完成，而是在月度状态表记录 `BLOCKED_EXTERNAL`、`IN_PROGRESS` 或批准的 change record。
+- 每个清单项的稳定 ID 不因代码文件或测试名称变化而改变；测试节点、迁移号、PR 和 run ID 作为该 ID 的证据映射。
+
+### 1.2 阶段状态和验收判定
+
+| 状态 | 含义 | 是否允许依赖方据此验收 |
+|---|---|---:|
+| `NOT_STARTED` | 未满足进入条件或尚未排期 | 否 |
+| `IN_PROGRESS` | 已启动，但至少一个必需清单项未完成 | 否 |
+| `BLOCKED_EXTERNAL` | 真实账号、授权、预算或外部服务阻塞；已保存阻塞证据 | 否；授权双轨按第 2.4 节形成 B 轨结论后可解除 |
+| `READY_FOR_REVIEW` | owner 声明完成，证据包待独立 verifier 复核 | 否 |
+| `ACCEPTED` | 全部必需项、退出门槛、证据和签字通过 | 是 |
+| `REJECTED` | verifier 发现门槛失败或证据不可复核 | 否，修复后重新提交 |
+
+单项完成至少记录：`check_id`、`work_package_type`、capability flags、逐条 DoR/DoD applicability、owner、verifier、Git commit、migration/OpenAPI/adapter release（适用时）、test/live run ID、artifact URI + SHA-256、Project/Campaign/environment/脱敏 account/connection scope、开始/结束时间、结果和偏差。没有可读取的证据，或者证据来自错误 Project/Campaign、错误环境、错误版本或 mock 替代 live，均保持未勾选。
+
+### 1.3 Definition of Ready 和 Definition of Done
+
+每个 checklist ID 先且只能选择一个主要 `work_package_type`：
+
+| 类型 | 适用对象 | 典型 ID |
+|---|---|---|
+| `governance_control` | 人力、预算、资源、授权决定、计划与政策冻结 | `M0-GOV-*`、`M0-BUD-*`、`M0-RES-*`、`M0-AUTH-*` |
+| `contract_migration` | 领域/API/schema、迁移、兼容 writer 和数据合同 | `M1-BASE-*`、`EXT-M1-01..05` |
+| `runtime_feature` | 内部运行功能、UI、Worker、统计、归因、告警和安全控制 | `M*-SYN/STAT/ATTR/REC/SECRET/WEB/OPS-*` |
+| `external_integration` | Connector、Provider、Browser、代理、真实账号和 live 数据路径 | `M*-EXT-*`、`EXT-M2/M3/M4-*` |
+| `verification_release` | Gate、AC、证据汇总、性能/恢复验收和最终发布决定 | `*-AC-*`、`*-FINAL-*`、`M*-EVD-*` |
+
+现有稳定 ID 按以下优先级确定主要类型，首次匹配即停止；若任务实际内容需要覆盖默认类型，必须在开工前记录 change record 和独立批准：
+
+1. `DOR-*`/`DOD-*` 是模板条款，不是工作包，不递归实例化自身。
+2. `*-AC-*`、`*-FINAL-*`、`REPO-GATE-*`、`PERF-AC-*`、`*-EVD-*`、`*-QA-*` 为 `verification_release`。
+3. `*-GOV-*`、`*-RES-*`、`*-AUTH-*`、`*-BUD-*`、`*-PLAN-*`、`EXT-M0-*`、`M0-SEC-*`、`M0-ARCH-*`、`M1-PERF-*` 为 `governance_control`。
+4. `*-MIG-*`、`*-BASE-*`、`EXT-M1-01..05` 为 `contract_migration`。
+5. 其余 `*-EXT-*` 与 `EXT-*` 实施 ID 为 `external_integration`。
+6. 其余实施 ID 为 `runtime_feature`。
+
+同时冻结布尔 capability flags：`changes_database`、`changes_api`、`has_customer_surface`、`handles_sensitive_data`、`has_runtime_operation`、`calls_external_service`、`requires_live_evidence`。类型决定默认适用性，flags 决定条件项是否转为必需；不能通过选择类型规避实际工作内容。
+
+工作包进入实现前，对 applicability=`required` 的条款满足 Definition of Ready（DoR）：
+
+- [ ] `DOR-01` 业务 owner、engineering owner、independent verifier 和升级路径已具名。
+- [ ] `DOR-02` 该工作包实际拥有的输入/输出 schema、状态机、权限、幂等键、失败分类和 Customer 边界已冻结。
+- [ ] `DOR-03` 该工作包的上游依赖已有版本/hash；调用外部服务时已有授权轨道、secret reference、预算和配额。
+- [ ] `DOR-04` `changes_database=true` 时 Alembic owner 已给出线性迁移和 expand/contract 方案；`changes_api=true` 时已有 OpenAPI 兼容方案。
+- [ ] `DOR-05` 该工作包适用的自动化、live、人工明审、故障、签字决策和回滚证据已写入验收映射；不要求无关证据类型。
+- [ ] `DOR-06` `handles_sensitive_data=true` 或改变数据落盘/保留时，分类、保留、删除、备份和恢复要求已完成 threat/data review。
+
+工作包只有 applicability=`required` 的 DoD 全部通过，且所有 `not_applicable` 决定有效，才可勾选：
+
+- [ ] `DOD-01` 该工作包实际涉及的 Domain/Application/Repository/API/Worker/Admin 层使用同一冻结合同，没有平行状态机或旁路写入。
+- [ ] `DOD-02` 该工作包适用的正向、权限、幂等、重试、取消、lease/fencing、跨 Project、错误分类和泄漏负测通过。
+- [ ] `DOD-03` `changes_database=true` 时，前向迁移、兼容 writer、回填/追尾/对账和 rollback/forward-fix 证据通过。
+- [ ] `DOD-04` `changes_api=true`、`has_customer_surface=true` 或改变导出时，OpenAPI、Web client、Admin/Customer 投影和导出边界通过；Customer 只见批准的真实结果。
+- [ ] `DOD-05` `has_runtime_operation=true` 时，适用的指标、日志、readiness、heartbeat、告警、runbook 和人工操作路径可用。
+- [ ] `DOD-06` `requires_live_evidence=true` 时，真实账号/live canary 与适用人工复核完成；fixture 只承担确定性回归和故障覆盖。
+- [ ] `DOD-07` evidence manifest 完整、hash 可重算、owner/verifier 已签字，且没有未批准的 P1/P2 偏差。
+
+适用性矩阵中的 `R` 为默认 required，`C` 由 capability flags 和实际范围在开工前解析，`N` 为默认 not applicable：
+
+| 条款 | governance | contract/migration | runtime feature | external integration | verification/release |
+|---|---:|---:|---:|---:|---:|
+| `DOR-01` | R | R | R | R | R |
+| `DOR-02` | C | R | R | R | C |
+| `DOR-03` | C | C | R | R | R |
+| `DOR-04` | N | C | C | C | N |
+| `DOR-05` | R | R | R | R | R |
+| `DOR-06` | C | C | C | R | C |
+| `DOD-01` | N | R | R | R | N |
+| `DOD-02` | C | R | R | R | R |
+| `DOD-03` | N | C | C | C | N |
+| `DOD-04` | N | C | C | C | C |
+| `DOD-05` | C | C | R | R | C |
+| `DOD-06` | N | N | C | C | C |
+| `DOD-07` | R | R | R | R | R |
+
+每个 `C` 必须在实现开始前解析为 `required` 或 `not_applicable`。每条 `not_applicable` 都保存 `clause_id`、具体理由、类型/flag 依据、decided_by、independent verifier、decided_at 和 evidence reference；owner 不能自批，不能使用“无关”作为唯一理由。范围或 capability flag 变化会使原 applicability 失效并重新评审。Gate/AC 类型只验证其引用工作包的证据，不递归要求 Gate 自身实现迁移、OpenAPI、lease 或 live 调用。只有全部 required 条款通过且所有 N/A 记录有效，check ID 才能完成。
+
+DoR/DoD 是每个工作包重复使用的模板，不在计划阶段预先勾选。实施时在月度 evidence manifest 中为每个 ID 建立类型、flags、适用性和证据实例。
 
 ## 2. 范围和不可变边界
 
@@ -68,7 +164,9 @@
 
 | 数据类型 | `capture_method` | 可进入真实 GEO 指标 | Customer 可见条件 | 说明 |
 |---|---|---:|---|---|
-| Google/Bing 官方聚合报告 | `official_report_import` | 是，使用独立 typed projection | 报告获批且满足门槛 | 不伪造成单次回答 |
+| GSC Connector projection | connector typed projection | 是，使用独立搜索效果口径 | 绑定 immutable snapshot 的 External Data Report 已批准且未 stale/revoked | 不进入回答型 Observation 分母 |
+| GA4 Connector projection | connector typed projection | 是，使用独立聚合对账口径 | 绑定 immutable snapshot 的 External Data Report 已批准且未 stale/revoked | 不作为 Session/Touch 真源 |
+| Google/Bing 官方聚合报告 | `official_report_import` | 是，使用独立 typed projection | 绑定 immutable snapshot 的 External Data Report 已批准且未 stale/revoked | 不伪造成单次回答 |
 | 消费者 AI 人工采样 | `manual_ui` | 是，独立分母 | 样本合格且报告获批 | 保存采集人、时间和原始证据 |
 | 消费者 AI 浏览器自动采样 | `automated_ui` | 是，独立分母 | 授权、地域、保真度和样本门槛均通过，且报告获批 | 必须保存页面证据、浏览器画像和澳洲出口证明 |
 | 官方 Provider API | `provider_api` | 是，独立分母 | 样本合格且报告获批 | 不代表对应消费者 UI |
@@ -84,7 +182,8 @@
 - 每个 surface/渠道维护 `authorization_state`：`not_assessed`、`assessed_no_basis`、`approved`、`expired`、`revoked`。`approved` 必须有依据链接/文件、批准人、允许用途、频率和到期日；代理、登录账号或技术可行性都不构成授权。
 - **A 轨（有授权依据）**：允许自动采集，按冻结频率、并发和配额运行，按 live 证据验收。
 - **B 轨（无授权依据）**：只允许 parser fixture、经授权 PoC 和人工采集/导入（`manual_ui` 或人工样本导入）；对应 surface/渠道标记 `deferred_pending_authorization`，其本阶段完成证据为 fixture 全量回归 + 人工采样对照。
-- **授权决策点**：第 2 月退出评审时，对每个自动采集 surface/渠道逐项记录授权结论（`approved` / `assessed_no_basis` / 申请中且有明确期限）。`assessed_no_basis` 即正式降级到 B 轨并重基线化后续月份的相关门槛；不允许无结论的悬置状态跨月存在。决策记录进入当月 evidence manifest；后续取得授权可随时升轨并补做 A 轨验收。
+- **授权决策点与执行顺序**：任何真实自动采集 enqueue 前，目标 surface/渠道必须已经有有效 `approved` 记录；`not_assessed`、申请中、`assessed_no_basis`、过期或撤销均不能创建 live 自动任务。第 2 月先对每个首批 surface/渠道逐项形成 `approved` 或 `assessed_no_basis`，再按对应轨道执行；申请中在技术上按 B 轨限制，月末仍未获批准则正式记录 `assessed_no_basis`，不允许第三种悬置轨道跨月。决策记录进入当月 evidence manifest；后续取得授权可创建新授权版本、升轨并补做 A 轨验收。
+- live admission 在创建 Job/outbox 的同一事务中校验 authorization ID/version/hash、surface/release、用途、允许频率和到期时间并冻结引用；校验失败时零 Job、零 outbox。Worker claim 后和目标页面导航前再次检查未 revoked/expired；失效时停止且不得发起页面请求。
 - 阶段 `ACCEPTED` 不以任何第三方授权的取得为前提；前提是每个 surface/渠道要么完成 A 轨证据，要么有记录在案的降级决定和完整 B 轨证据。以 B 轨证据冒充 A 轨完成属于验收造假。
 
 ## 3. 总体架构和依赖
@@ -130,7 +229,7 @@ Approved real projections only -> Customer API -> Customer Portal
 |---|---|---|
 | A. 合成与知识 | Style Collection、Profile、Review、Revision、Corpus、Offline Experiment | Prompt Program、Secret Store、Fact/QuestionSet、Model Gateway |
 | B. 连接器与归因 | Connector Core、GSC/GA4、官方报告、澳洲 Egress/Browser Capture Connector、事件入口、归因账本 | Secret Store、Durable Job、Content/URL 维度 |
-| C. 观测与统计 | Sampling、消费者 UI surface adapter、五类 Provider adapter、语义指标、统计、漂移、告警 | Prompt Program、Model Gateway、QuestionSet、Connector raw artifacts |
+| C. 观测与统计 | Sampling、消费者 UI surface adapter、五类外部 API adapter、语义指标、统计、漂移、告警 | Prompt Program、Model Gateway、QuestionSet、Connector raw artifacts |
 | D. Prompt 与建议 | Prompt 生命周期、judge/arbiter、Recommendation、草稿闭环 | A/B/C 的真实 lineage 与版本化输出 |
 
 四条工作流允许按月并行，但以下内容必须单线合入：
@@ -143,7 +242,7 @@ Approved real projections only -> Customer API -> Customer Portal
 ### 3.3 启动前提
 
 - 达到第 3.4 节最低人力配置并完成具名分配；只指定 owner 但没有足额并行 FTE 不启动六个月时钟。
-- 准备可产生验收证据的 GSC、GA4、五类 Provider API、至少一个登录采集账号，以及至少一个可路由浏览器流量的澳洲代理出口。
+- 准备可产生验收证据的 GSC、GA4、五类外部 API、至少一个登录采集账号，以及至少一个可路由浏览器流量的澳洲代理出口。
 - “可用澳洲 IP”在实现合同中必须是可连接的 HTTP CONNECT/HTTPS/SOCKS5 `host:port`（可附 username/password）或受控网络网关；只有 IP 字符串但没有代理/隧道服务不能作为浏览器出口。
 - Google 明确将未经许可的自动查询/结果抓取列为违规流量；Bing 内容的商业下载、复制或产品化也需要明确授权；Amazon、Instagram、TikTok、Reddit 等风格采集渠道的条款同样限制自动抓取。因此任何自动采集启用前必须按第 2.4 节完成授权评审并记录 `authorization_state`；没有明确允许依据时进入 B 轨（parser fixture、人工交互采样、人工样本导入或经授权 PoC），不以代理绕过该门槛。
 - 设定月度模型/API 预算和供应商并发上限；预算不足只能缩小 QuestionSet，不得减少统计门槛后仍声称完成。同一规则适用于吞吐：Suite 冻结前必须完成第 7.1 节吞吐预算测算。
@@ -172,6 +271,48 @@ Approved real projections only -> Customer API -> Customer Portal
 1. 短缺不超过 20% 且不连续超过一个月时，先移除三个首批消费者 surface 之外的扩展、managed-account 可选 cohort、非关键 UI polish 和其他明确 optional 项；Secret、备份、迁移、统计正确性、三个首批 surface 合同和真实归因旅程不得降级。
 2. 工程投入低于 `7.6 FTE`、Product/运营低于 `1.0 FTE`，或任一 A/B/C/D 工作流低于表中最低值连续两个 sprint 时，暂停六个月时钟并创建范围/日期变更记录；不得通过把工作串行化但保留原截止日来宣称排期仍成立。
 3. 降范围影响五个板块任一完成定义时，阶段状态保持 `IN_PROGRESS`，只能延长日期或由新的批准决策修改完成定义，不能在 evidence manifest 中豁免。
+
+### 3.5 RACI 和签字责任
+
+| 事项 | Accountable（最终负责） | Responsible（实施） | Consulted（必需会签） | Independent verifier |
+|---|---|---|---|---|
+| 共享 schema、Alembic 和兼容迁移 | Migration owner | 指定 backend/data engineer | 各受影响工作流 owner | QA + 未编写该迁移的 backend |
+| Prompt/Model Gateway/Secret | D 工作流 owner | backend/ML + DevOps/Security | A/C owner、运营 | QA/Security |
+| 合成实验室和 Profile 发布 | A 工作流 owner | backend/ML + data/evaluation | Product/运营、Knowledge owner | QA + 运营明审人 |
+| 外部数据与跨引擎采样 | B/C 联合 owner，以专项文件为准 | backend/data/browser | Security、Product/运营、统计 owner | QA + Security/运营（按证据类型） |
+| 指标、统计和告警 | C 工作流 owner | statistics/data/backend | B、D owner | 独立 statistics reviewer + QA |
+| 归因账本和真实旅程 | B 工作流 owner | backend/data | Product/运营、Privacy/Security | QA + 业务数据 owner |
+| 建议与下游草稿 | D 工作流 owner | backend/ML + frontend | A/B/C owner | QA + Product/运营 |
+| Customer 投影和最终发布 | Product owner | frontend/backend/DevOps | A/B/C/D owner、Security | QA release owner |
+
+同一人可以兼任多个 Responsible 角色，但不能验证自己编写的迁移、统计实现、安全控制或 live 采集证据。Product/运营签字确认业务语义、授权轨道和人工明审，不替代工程测试；QA/Security 签字也不替代业务 owner 对真实账号和真实归因旅程的确认。
+
+### 3.6 实现落点和仓库边界
+
+下表冻结模块所有权，不冻结每个文件的最终名称。新目录在首个合同 PR 中创建；若实施时改变目录，必须保持依赖方向并在 architecture test 中更新边界。
+
+| 能力 | 计划代码落点 | 复用现有能力 | 禁止事项 |
+|---|---|---|---|
+| Prompt Program / Model Gateway | `packages/geo_core/geo_core/prompts/`、`model_gateway/` | Prompt Release、`model_call_logs` | Provider SDK 类型进入 Domain |
+| Secret Store | `packages/geo_core/geo_core/secrets/` + Internal API/Admin | Docker Secret、审计、项目权限 | Job/日志/工件保存明文 secret |
+| 合成实验室 | `packages/geo_core/geo_core/synthetic_lab/` | Knowledge/Fact、QuestionSet、Placements simulation | synthetic 写入真实 Observation |
+| 外部 Connector | `packages/geo_core/geo_core/connectors/` | Durable Job、MinIO、`monitoring.official_reports` | PyAirbyte state 成为业务真源 |
+| Sampling/Provider | `packages/geo_core/geo_core/sampling/` | `monitoring.source_contract`、Model Gateway | API 结果冒名消费者 UI |
+| Browser Capture | `packages/geo_core/geo_core/browser_capture/` + 独立 Worker composition | Durable Job、Secret、MinIO | 第二套队列、直连旁路、stealth/CAPTCHA 绕过 |
+| 指标/统计/告警 | 扩展 `packages/geo_core/geo_core/monitoring/` | SourceStratum、statistics、Customer projection | 不同 capture method 混分母 |
+| Attribution | `packages/geo_core/geo_core/attribution/` | Project/Campaign、verified URL、Outbox | GA4 聚合伪造成 Session/Touch |
+| Recommendation | `packages/geo_core/geo_core/recommendations/` | Prompt Program、Monitoring、Knowledge | 批准后自动执行或发布 |
+| API/Worker | `apps/api/geo_api/`、`apps/api/geo_worker/` | Internal/Customer app、Relay、readiness | 在 route/task 内复制领域规则 |
+| Admin/Customer Web | `apps/admin-web/`、`apps/customer-web/`、`packages/web/` | 稳定 OpenAPI client、现有 Portal shell | 前端自行推断 latest/eligible |
+| Infra/Test | `infra/`、`scripts/`、`tests/`、`contracts/openapi/` | Compose、备份恢复、Chromium、acceptance | 另建不可追踪的部署/测试入口 |
+
+### 3.7 执行节奏和变更控制
+
+- 每周：工作流 owner 更新稳定 ID 的状态、剩余依赖、预算消耗、live 配额和新增风险；只链接证据，不在会议记录中替代 evidence manifest。
+- 每个 sprint：先合并线性 migration/共享合同，再合并 Domain、Application/Repository、API/Worker、Admin/Customer 和验收证据；跨层未闭合的功能保持 feature flag 关闭。
+- 每月第 3 周：执行 release candidate、数据对账、性能趋势和故障演练，给退出评审保留至少一周修复时间。
+- 月度退出评审：owner 提交 `READY_FOR_REVIEW`，verifier 按 `GATE-M*` 与 `EXT-GATE-M*` 逐项复核。任一必需项失败则整月不进入 `ACCEPTED`。
+- 变更控制：记录提出人、原因、影响的 check/gate ID、成本/日期变化、风险、回滚方案和批准人；被替换条款保留历史，不原地抹除失败证据。
 
 ## 4. 共享基础合同
 
@@ -342,6 +483,8 @@ generate
 
 ## 6. 工作流 B：连接器和本地归因
 
+> 本节保留跨模块不可变合同。Connector Core、GSC/GA4、官方报告的任务分解、当前代码差距、逐源测试和完成状态统一维护在[外部数据与跨引擎采样专项实施计划](GEO-external-data-cross-engine-sampling-implementation-plan-2026-07-22.md)；本节 6.3/6.4 的本地归因仍由主计划负责。
+
 ### 6.1 Connector Core
 
 Connector Core 的领域模型固定为：
@@ -379,6 +522,10 @@ PyAirbyte 嵌入现有 Worker，不新增常驻 Airbyte 控制面。connector pa
 - 撤权、secret rotation、quota 和 `Retry-After` 有独立可操作错误；重授权后从最后已提交 checkpoint 继续。
 - freshness 不能用“Job 成功”代替；必须比较来源 watermark、期望频率和最新有效 projection。
 
+#### 6.2.1 外部投影批准边界
+
+GSC、GA4 和 official-report 的 raw/projection 默认只对 Admin 可见。Adapter Release 的批准只授权代码运行，不批准任何数据。Customer 展示必须先创建不可变 External Data Snapshot，再由独立 External Data Report 执行 `draft -> in_review -> approved -> stale|superseded|revoked`；只有 `approved` report 进入 Customer latest。snapshot 冻结 Project、显式 Campaign、Connection/Scope、源 Run/Import、period/freshness、schema/parser/adapter、row count、dataset/payload hash、字段白名单和 lineage。同步/导入/刷新只创建新 internal projection 和 draft，不自动批准或修改历史 approved report。完整对象、命令、幂等、latest 和验收合同以外部专项计划第 5.4 节为准。
+
 ### 6.3 归因账本
 
 归因模块保存最小业务对象，不承担完整 CRM 职责：
@@ -401,6 +548,8 @@ PyAirbyte 嵌入现有 Worker，不新增常驻 Airbyte 控制面。connector pa
 
 ## 7. 工作流 C：跨引擎采样、统计和告警
 
+> 本节保留 SourceStratum、消费者 surface、代理真实性和统计的全局合同。Sampling Core、Provider/Grounded API、Browser Capture、Egress 与 Surface Release 的实施 checklist 和状态以[专项实施计划](GEO-external-data-cross-engine-sampling-implementation-plan-2026-07-22.md)为准；指标、统计与告警仍由本文件 7.3-7.5 节负责。
+
 ### 7.1 Sampling Core
 
 Sampling Suite/Run/Task 的执行单位固定为：
@@ -408,10 +557,13 @@ Sampling Suite/Run/Task 的执行单位固定为：
 ```text
 platform + surface + configured/reported model + capture_method
 + question_version + repetition + locale + region + language + search_mode
-+ browser_profile_version + egress_verification_id (UI capture only)
++ browser_profile_version + egress_policy_version + egress_cohort_key
++ account_cohort (UI capture only)
 ```
 
 每个 Task 可独立租赁、重试、取消和终止；成功必须有原始回答/工件和完整运行参数。Suite 冻结 QuestionSet、目标平台、重复次数、有效完成度门槛、统计方法和预算。Run 只聚合 Task，不把失败 Task 静默从预期分母中删除。
+
+UI Task 创建前冻结稳定的 `egress_policy_version` 和 `egress_cohort_key`。cohort 至少包含预期国家/地区、允许的 network type，以及单一 Egress Endpoint 或版本化 approved endpoint pool；这些稳定字段参与 planned Task、幂等键和 SourceStratum 分母。`egress_verification_id`、实际 endpoint、sticky lease、pre/post IP/ASN 和连接日志只有 Attempt 执行后才产生，只保存到 Attempt 和其胜出 Observation lineage，永不参与 Task identity、幂等键或基础分母 hash。重试创建新 Attempt 和新 Egress Verification，但仍占同一 repetition/planned slot。实际出口偏离冻结 cohort 时该 Attempt ineligible；若 Protocol 要做 endpoint-specific 分层，必须在 Suite 冻结时把 endpoint ID 显式纳入 cohort，不能事后按 verification ID 拆分。
 
 自动 adapter 包括：
 
@@ -419,7 +571,7 @@ platform + surface + configured/reported model + capture_method
 2. Gemini Grounding。
 3. Perplexity API。
 4. Microsoft Bing Grounding。
-5. Kimi API/Search 模式。
+5. Kimi API；是否具备供应商原生 Search 必须由 Adapter Release 按当时官方能力和真实响应证明。没有原生 Search 时冻结为 `search_mode=disabled`，不得用自建检索冒充 Kimi Search。
 
 Provider adapter 名称描述实际 API，不使用 ChatGPT UI、Google AIO/AI Mode、Perplexity consumer UI、Bing Copilot UI 或 Kimi consumer UI 标签。消费者界面由第 7.2 节的 Browser Capture Connector 以 `automated_ui` 独立采样；尚未获得启用依据或尚无稳定 surface adapter 时继续使用 `manual_ui`。
 
@@ -445,9 +597,9 @@ Browser Capture Connector 是本阶段真实观测的重点交付，与 Provider
 | Egress Verification | 证明同一 Capture Attempt 使用澳洲出口 | sticky lease/session ID、pre/post observed public IP、country/region/city、ASN、network type、可信代理连接日志（若有）、verification sources、artifact hash |
 | Browser Profile Version | 复现消费者环境 | browser/build、device/viewport、`en-AU`、timezone、geolocation、region、SafeSearch、account/personalization mode |
 | Browser Session | 一次隔离上下文 | profile、egress lease、storage-state reference、started/closed time、session hash |
-| UI Capture Attempt | 单个 query/repetition 的执行与终态 | Task、surface release、session、timings、result class、failure class |
+| UI Capture Attempt | 单个 query/repetition 的执行与终态 | Task、surface release、session、egress verification、timings、result class、failure class |
 | Page Artifact Bundle | 页面原始证据 | screenshot、DOM snapshot、HAR、final URL、console/network summary 及逐文件 hash |
-| Parsed UI Observation | 从同一页面提取的回答与引用 | answer text、citation URL/order、surface state、evidence locators、parser version |
+| Parsed UI Observation | 从同一页面提取的回答与引用 | winning Attempt/egress verification lineage、answer text、citation URL/order、surface state、evidence locators、parser version |
 
 #### 7.2.2 澳洲代理和网络隔离
 
@@ -591,161 +743,220 @@ Recommendation 生命周期为 `draft -> in_review -> approved -> stale|expired`
 
 创建草稿使用 idempotency key，并保存 `recommendation_id`、Recommendation version、approval ID 和全部 lineage。Recommendation 转为 `stale/expired` 时，在同一事务中将所有尚未执行的关联草稿标记 `blocked_source_stale|blocked_source_expired`，并取消其未投递 outbox/未开始 Job。任何关联草稿从 draft 进入排期、生成、执行或审核流转前，都必须锁定并重新校验源 Recommendation 仍为同一 approved version；否则返回 `409 recommendation_source_stale`。该动作不启动实验、不触发采样、不生成正式内容、不创建 Publication Request，也不发布。后续仍沿用各领域现有审核和执行动作，但不能绕过此执行前检查。
 
-## 9. 六个月批次计划
+## 9. 分阶段实施计划和 checklist
 
-月份是交付批次，不是可以绕过退出门槛的截止日。某条工作流未过门槛时可以继续修复，其他无直接依赖的工作流仍可推进；依赖该合同的功能不得以临时数据完成名义验收。
+月份是有依赖关系的交付批次，不是可以绕过退出门槛的日历截止日。每个阶段先满足进入条件，再执行工作包，最后通过阶段 Gate；未通过的阶段继续修复，依赖它的工作包不得用临时 fixture 或手工数据库写入冒充完成。
 
-### 9.1 总表
+M0 是六个月时钟启动前的准备 Gate，不计入六个月交付周期。只有 `GATE-M0` 和 `EXT-GATE-M0` 通过后才进入 M1 并开始计时；资源准备长期未完成不能消耗月份后再降低 M6 门槛。
 
-| 月份 | 主题 | 退出门槛 |
-|---|---|---|
-| 第 1 月 | 共享基础、代理和浏览器采集骨架 | Prompt Program、多模型 Gateway、Secret Store、Connector Core、Egress/Browser Capture、风格采集及基准合同可运行 |
-| 第 2 月 | 澳洲消费者 UI、首批真实数据和五平台测评 | 按授权轨道完成 Google AI Overviews/AI Mode、Bing Copilot 采集 Beta 与授权决策点、前五平台 Profile、GSC/GA4 真实同步和 Sampling Core 通过验收 |
-| 第 3 月 | 消费者 UI 稳定化、九平台闭环和五类 Provider | 浏览器 adapter 保真度/漂移闭环、后四平台、修订循环、Corpus/三臂仿真、五类 Provider adapter 完成 |
-| 第 4 月 | 判断、告警和归因入口 | 完整语义指标、统计比较、漂移、告警中心及归因事件入口完成 |
-| 第 5 月 | 业务闭环和 Customer 投影 | 归因快照、Customer 已批准真实投影、建议和四类草稿闭环完成 |
-| 第 6 月 | 生产等价验收 | 全链 live staging、兼容迁移、性能/故障/浏览器/备份恢复验收完成 |
+### 9.1 阶段总表和关键路径
 
-### 9.2 第 1 月：共享基础
+| 阶段 | 主题 | 必须先通过 | 关键输出 | 阶段 Gate |
+|---|---|---|---|---|
+| M0 | 启动与基线冻结 | 无 | 人力、资源、授权、预算、迁移和证据基线 | `GATE-M0` |
+| M1 | 共享基础与采集骨架 | `GATE-M0` | Prompt、Gateway、Secret、合成/外部领域骨架、性能基线 | `GATE-M1` + `EXT-GATE-M1` |
+| M2 | 首批真实数据与五平台测评 | M1 shared contracts | 五平台 Profile、生成 Beta、GSC/GA4、消费者 UI Beta | `GATE-M2` + `EXT-GATE-M2` |
+| M3 | 九平台闭环与多引擎发布 | M2 Profile/Sampling | 修订、Corpus、三臂实验、五类外部 API、三首批 surface release | `GATE-M3` + `EXT-GATE-M3` |
+| M4 | 统计、告警与归因入口 | M3 frozen observations | 完整指标、统计比较、漂移/告警、一方事件入口 | `GATE-M4` + `EXT-GATE-M4` |
+| M5 | 业务闭环与 Customer 投影 | M4 metrics/events | 归因快照、批准投影、建议与草稿阻断闭环 | `GATE-M5` + `EXT-GATE-M5` |
+| M6 | 生产等价验收 | M1-M5 accepted | live staging、迁移、性能、故障、备份恢复和发布证据 | `GATE-M6` + `EXT-GATE-M6` |
 
-**交付**
+关键路径为 `Secret/备份 -> Connector/Browser live -> frozen Observation -> Metric Snapshot -> Attribution/Recommendation -> Customer approved projection -> full-chain staging`。非关键 UI polish 可以按第 3.4 节降范围，关键路径中的真实性、安全、统计和恢复门禁不可降级。
 
-- 冻结共享枚举（含 `automated_ui`）、artifact manifest、Prompt Program、Model Gateway、Secret Reference、Connector Core、Egress Endpoint、Browser Profile/Session、Style Collection 和 Sampling 合同。
-- 在现有 Prompt Release 上实现八种 `program_kind`（`reference_translation` 仅保留枚举，移出首批）的创建、测试、diff、批准、冻结和绑定骨架。
-- Model Gateway 完成 DeepSeek 兼容迁移及 OpenAI/Kimi/Gemini/Perplexity/Microsoft adapter contract tests；至少三个真实供应商完成最小结构化输出 smoke。
-- Secret Store 完成加密、审计、轮换、redaction、Docker Secret preflight、历史 keyring/escrow、逐 key-version decrypt canary 和负向权限测试；备份 `0700/0600`、认证加密、密钥隔离和签名/checksum 门禁在首次真实数据接入前启用。
-- Connector Definition/Connection/Scope/Checkpoint/Sync Run/Raw Artifact/Schema/Freshness/Error 骨架落地。
-- 独立 `browser-capture-worker`、`egress.verify`/`browser.capture` Job、澳洲 HTTP CONNECT/HTTPS/SOCKS5 代理配置和 direct-egress deny 骨架落地。
-- Google AI Overviews、Google AI Mode、Bing Copilot 的 Surface Definition/Release、页面工件 bundle、解析状态和授权 gate 合同冻结；用本地 fixture 完成 parser PoC。
-- Style Source/Collection Run/Sample/Profile（含人工样本导入路径）和 Review Suite/Case 的 schema、API、Admin 基础界面落地。
-- 九平台采集授权/可行性矩阵（按第 2.4 节记录 `authorization_state`、允许行为和人工/自动路径归属）、登录/公开模式、匿名规则和 360 Case 回归合同的 schema 冻结；Case 内容在对应平台 Profile Version 发布时逐平台冻结，第 1 月不要求内容完整。
+### 9.2 M0：启动与基线冻结
 
-**退出门槛**
+**实施 checklist**
 
-1. 同一 Prompt 固定输入可以比较两个 Release，批准后内容/hash 不可变，Job 可冻结并复现绑定。
-2. 真实模型返回错误 JSON、错误 enum、主体错配时应用侧拒绝，不因供应商宣称 structured output 而放行。
-3. 数据库、Job、日志、MinIO、API/浏览器均检索不到测试 secret 明文；轮换后旧 reference 被拒绝。
-4. Connector Core 能以 fixture 完成增量、限流、schema 变化、取消和 lease 丢失状态机。
-5. 至少一个公开 Style Source 和一个正常登录 Style Source 可生成不可变匿名样本工件；验证码/封禁路径明确停止。
-6. 用户提供的测试代理可以通过 Secret Reference 建立连接；浏览器内 observed IP、两个地域验证源和预期 AU 一致，任何直连泄漏使测试失败。
-7. Google/Bing fixture 能区分 AI surface、普通结果、`surface_not_present`、CAPTCHA/登录墙和 parser drift，且阻断不会触发代理自动轮换。
-8. 在空环境中恢复加密测试备份和独立历史 keyring，逐版本 canary、代表性 secret 解密及 connection test 通过；备份文件权限、明文扫描和错误密钥 fail-closed 测试通过后，才允许第 2 月接入真实凭据/数据。
+- [ ] `M0-GOV-01` 冻结 9.5 engineering FTE + 1.0 Product/运营的具名分配、替补和 on-call；owner：Product/Engineering lead；证据：签字容量表。
+- [ ] `M0-GOV-02` 指定唯一 Alembic owner、OpenAPI owner、release owner 和各工作流 verifier；证据：RACI 与 CODEOWNERS/评审规则映射。
+- [ ] `M0-GOV-03` 在每项工作开始前为 M0 checklist ID 冻结 work package type、capability flags 及全部 DoR/DoD applicability；M1-M6 逐阶段沿用同一规则。
+- [ ] `M0-RES-01` 建立真实资源清单：GSC、GA4、五类外部 API、三个消费者 surface、登录采集账号、澳洲代理、一方事件测试站点；只记录 reference/owner/状态，不记录 secret。
+- [ ] `M0-AUTH-01` 为九个风格渠道和三个首批消费者 surface 建立 authorization record，记录待评审依据、用途、频率、到期日和 A/B 轨决策日期。
+- [ ] `M0-BUD-01` 冻结六个月模型/API/代理/存储预算、供应商配额、成本告警和预算耗尽的缩范围顺序。
+- [ ] `M0-SEC-01` 完成 F-003/F-017 重新评估计划、数据分类、keyring/escrow 保管人、备份加密密钥隔离和真实数据准入清单。
+- [ ] `M0-ARCH-01` 对现有 migration head、SourceStratum v3、official report、Durable Job、Model Gateway、MinIO、Compose 和 Admin/Customer 基线做 inventory，并为新增模块形成 ADR/合同差异表。
+- [ ] `M0-EVD-01` 冻结 evidence manifest schema、逐 check 的 type/flags/applicability/时间/commit/migration/OpenAPI/scope/run/artifact 映射、N/A 独立签字规则、保存 bucket 和 hash 校验命令。
+- [ ] `M0-PLAN-01` 专项文件的 `EXT-M0-*` 和 `EXT-GATE-M0` 全部完成。
 
-### 9.3 第 2 月：五平台、GSC/GA4 和 Sampling Core
+**退出 Gate `GATE-M0`**
 
-首批平台为 `owned_site`、`productreview`、`reddit`、`ozbargain` 和 `quora`；优先完成公开或低登录复杂度渠道，使 Profile/Review 合同先稳定。
+- [ ] `M0-AC-01` 所有关键角色达到最低 FTE，任一人的总分配不超过 1.0，且未来两个 sprint 可实际投入。
+- [ ] `M0-AC-02` 每项真实外部资源都有 owner、预计可用日期、secret reference 计划和不可用时的明确轨道/阻塞处理。
+- [ ] `M0-AC-03` 未通过 Secret/备份门禁前，环境技术上只能接收无敏感 fixture，不能靠流程提醒绕过。
+- [ ] `M0-AC-04` Alembic 仍为单一 head；首批 expand/compatible-writer 顺序和 writer inventory 已获各工作流 owner 会签。
+- [ ] `M0-AC-05` evidence manifest 能以一个治理项和一个技术项的基线 smoke run 证明 type/flags、required/N/A、scope、记录数、hash、commit、环境指纹和双人签字可复核。
+- [ ] `M0-AC-06` `EXT-GATE-M0` 已通过，主计划与专项计划不存在未解释的范围或门槛冲突。
+- [ ] `M0-AC-07` M0 所有 `C` 均已解析，所有 N/A 有独立 verifier；治理/预算/Gate 项不会被要求提供不适用的 migration/OpenAPI/lease/live 证据。
 
-**交付**
+### 9.3 M1：共享基础与采集骨架
 
-- 五个平台各完成不少于 200 条合格样本（自动或人工导入路径，按授权矩阵执行）、Profile Version、人工明审和冻结发布。
-- `autonomous_scenario`、`guided_scenario`、每 Case 四候选和基础 claim/style judge 可运行。
-- 固定版本 PyAirbyte 嵌入 Worker；GSC 和 GA4 完成真实只读授权、首次同步、增量同步、回刷和 freshness。
-- Google/Bing 官方报告导入完成原文件、schema version、typed projection 和重复检测骨架。
-- Sampling Suite/Run/Task、manual UI、`automated_ui` 和 raw answer/citation/page artifact 完成；分母按完整维度隔离。
-- 对已取得授权依据（A 轨）的 surface，使用经验证的澳洲 residential/ISP 或 mobile 出口完成 Browser Capture Beta；保存冻结浏览器画像、地域证明、截图、DOM、HAR、答案和引用顺序。对尚无依据的 surface 完成 fixture 全链路 Beta 加 `manual_ui` 基线采样，为月末授权决策点准备证据。
-- Admin 完成 Egress Endpoint 新建/测试/停用、Browser Profile、Surface Run 进度、阻断原因和原始页面证据查看。
+**进入条件**：`GATE-M0=ACCEPTED`；migration、security、Prompt、external 三类首批合同均已完成 DoR。
 
-**退出门槛**
+**实施 checklist**
 
-1. 五个平台的样本数、去重、匿名、AU English 和人工审批均可由查询及 manifest 复核。
-2. 真实 GSC/GA4 各完成首次 + 增量 sync；checkpoint 只在 raw/projection 同时成功后推进。
-3. 回刷、限流、撤权和 schema fixture 不破坏既有 projection，也不伪造 freshness。
-4. Sampling Task 可独立重试/取消；少于门槛或低于 80% 完成度只输出 `insufficient_evidence`。
-5. manual UI、automated UI、provider fixture 和 synthetic 不可进入彼此分母。
-6. 按第 2.4 节完成授权决策点：每个 surface 要么为 A 轨并有至少一个澳洲真实成功页面，要么有记录在案的 `assessed_no_basis` 结论、降级决定和 B 轨证据（fixture 全链路 + `manual_ui` 基线）；不允许无结论悬置。
-7. 运营人员对同一 Page Artifact Bundle 的答案和引用逐项复核通过，阻断/普通 SERP 不会被记为 AI surface 成功或有效缺失。
+- [ ] `M1-BASE-01` 冻结共享枚举、artifact/evidence manifest、版本/hash、错误语义、Customer 过滤和 RLS/RBAC 合同；owner：Migration + API owner。
+- [ ] `M1-PROMPT-01` 在现有 Prompt Release 上实现八种首批 `program_kind` 的 create/test/diff/approve/freeze/bind；`reference_translation` 仅保留枚举。
+- [ ] `M1-MODEL-01` 将 DeepSeek 迁入统一 Gateway，并完成 OpenAI/Kimi/Gemini/Perplexity/Microsoft adapter contract；至少三个真实供应商做结构化输出 smoke。
+- [ ] `M1-SECRET-01` 实现 envelope encryption、project scope、审计、轮换/撤销、redaction、Docker Secret fail-closed、历史 keyring 和逐版本 canary。
+- [ ] `M1-SECRET-02` 完成认证加密备份、`0700/0600`、签名/checksum、错误 key 负测及空环境 keyring + 数据恢复演练，作为真实凭据准入 Gate。
+- [ ] `M1-SYN-01` 落地 Style Source/Collection Run/Sample/Profile、Review Suite/Case 的 Domain、迁移、repository、Internal API 和 Admin 最小界面。
+- [ ] `M1-SYN-02` 实现人工样本导入、公开/正常登录采集、落盘前分类/脱敏/加密/TTL 和去重骨架；冻结九平台 360 Case 的 schema。真实自动采集只有在渠道已有有效 `approved` 时执行，否则只跑 fixture/人工导入。
+- [ ] `M1-EXT-01` 完成专项文件全部 `EXT-M1-*`，包括 Connector/Sampling/Browser/Egress 骨架和三个 surface parser fixture PoC。
+- [ ] `M1-QA-01` 为共享合同建立 architecture/unit/PostgreSQL/MinIO/Valkey/OpenAPI/Chromium 测试入口，并证明必需测试零收集/意外 skip 会失败。
+- [ ] `M1-PERF-01` 冻结第 10.7 节 `performance-profile-v1`、负载生成器合同、生产等价拓扑和资源上限。
 
-### 9.4 第 3 月：九平台、修订、Corpus 和 Provider
+**退出 Gate `GATE-M1`**
 
-后四个平台为 `amazon`、`youtube`、`tiktok` 和 `instagram`；登录与动态页面适配必须遵守第 5.2 节访问边界，无自动化授权依据或自动化不可行的渠道以人工导入路径完成样本门槛。
+- [ ] `M1-AC-01` 同一固定输入可比较两个 Prompt Release；approved Release、compiled prompt、binding 和 hash 不可原地变更，历史 Job 可复现。
+- [ ] `M1-AC-02` 至少三个真实模型 smoke 成功；错误 JSON/enum、schema、主体和 Fact 引用被应用侧拒绝，provider fallback 不会静默发生。
+- [ ] `M1-AC-03` 测试 secret 在数据库可见字段、Job/outbox、日志、exception、MinIO、API 和浏览器中零明文命中；撤销旧 reference 后调用 fail closed。
+- [ ] `M1-AC-04` 空环境恢复全部在用 key-version canary、代表性 secret 和不泄密 connection test；错误/缺失 key 必然失败。
+- [ ] `M1-AC-05` 一个公开 Style Source 和一个正常登录 Style Source 通过已批准自动路径或合规人工导入产生匿名派生样本；Cookie/token/PII 不落普通 bucket，未批准自动访问、验证码/封禁路径停止。
+- [ ] `M1-AC-06` `EXT-GATE-M1` 通过；Connector 状态机、代理强制出口、surface fixture 分类和阻断检测均有专项证据。
+- [ ] `M1-AC-07` `performance-profile-v1` 已写入版本化 manifest，包含 Project/Task/record/artifact/RPS/Worker/队列/API 目标，不能在 M6 失败后原地放宽。
+- [ ] `M1-AC-08` 当月 evidence manifest 覆盖全部已勾选 ID，owner/verifier 可从干净环境重算 hash。
 
-**交付**
+### 9.4 M2：首批真实数据与五平台测评
 
-- 后四个平台达到样本/Profile 发布门槛，形成九平台完整 Suite。
-- conflict check、最多两轮 revision、一次 regenerate batch、warning 直出和 Fact 失效路径完成。
-- Corpus Version 及无语料/当前批准/新候选三臂配对离线实验完成。
-- OpenAI、Gemini Grounding、Perplexity、Microsoft Bing Grounding、Kimi 五类真实 Provider adapter 完成。
-- 每类 adapter 保存实际 provider/surface/model、原始回答、引用、search mode、用量和错误分类。
-- 每个 A 轨 Surface Release 分别完成第 7.2.5 节至少 20 个澳洲 live capture、阻断 fixture、匿名/managed account 独立 cohort 和重复采样调度；每个 B 轨 Surface Release 分别完成至少 30 个 fixture、至少 10 个 `manual_ui` 页面对照和重复采样调度；selector/parser drift 告警对两轨统一生效。其他获准消费者 surface 按价值增加独立 adapter release，但不得稀释首批 release 的独立门槛。
+首批平台为 `owned_site`、`productreview`、`reddit`、`ozbargain` 和 `quora`。自动采集或人工导入必须服从同一授权、匿名、去重和明审合同。
 
-**退出门槛**
+**进入条件**：M1 shared schema、Secret Store、备份恢复和 `EXT-GATE-M1` 已接受；真实凭据准入清单已签字。
 
-1. 九平台固定回归 Case 全量运行；发布门槛满足第 10.1 节。
-2. 两轮修订后仍失败会且只会创建一个新生成 batch；任务取消和 lease 丢失不会提交陈旧结果。
-3. `derived_or_unknown` 可直接形成 warning；明确 Fact conflict 或 subject mix 必须修订。
-4. Warning 进入总体实验仍显示数量、占比和独立分层。
-5. 三臂每题 10 次的冻结实验可重复计算；synthetic 结果无法通过 Customer API 获取。
-6. 五类 Provider 使用真实凭据完成 live canary，且任何结果都没有消费者 UI 冒名标签。
-7. Browser Capture 按所在轨道达到第 7.2.5 节分类、文本和引用门槛；Session 内换 IP、直接出口、CAPTCHA、限流和 DOM 漂移路径均 fail closed，跨 Session 的 residential/mobile IP 漂移不误判为失败。
+**实施 checklist**
 
-### 9.5 第 4 月：指标、统计、漂移、告警和归因入口
+- [ ] `M2-AUTH-01` 在任何真实自动采集 enqueue 前完成第 2.4 节授权决策点；九风格渠道和三个消费者 surface 均进入明确 A/B 轨，申请中按 B 轨限制且没有悬置状态跨月。
+- [ ] `M2-SYN-01` 五个平台各导入/采集至少 200 条去重、匿名、AU English、人工明审通过样本，并冻结 corpus manifest。
+- [ ] `M2-SYN-02` 为五个平台构建、评审、批准和冻结 Style Profile Version；Profile 可回溯到样本、Prompt Release 和 reviewer。
+- [ ] `M2-SYN-03` 实现 `autonomous_scenario`、`guided_scenario`、每 Case 四候选、claim extraction、基础 conflict/style judge 和候选 lineage。
+- [ ] `M2-SYN-04` 冻结五平台各 40 Case 的固定回归内容，模式各半、竞品场景每平台不少于 30%。
+- [ ] `M2-EXT-01` 完成专项文件全部 `EXT-M2-*`：真实 GSC/GA4 首次+增量、官方报告导入骨架、Sampling Core、消费者 UI Beta 和 Admin 控制面；非 UI Connector 可与授权评审并行，但消费者 UI live 子项必须在 `M2-AUTH-01` 后执行。
+- [ ] `M2-QA-01` 执行五平台回归、跨 Project/RLS、重复导入、取消/lease、原始工件治理和 Customer 不可见负测。
 
-**交付**
+**退出 Gate `GATE-M2`**
 
-- 第 7.3 节完整语义指标、evidence locator、规则优先和 metric judge/arbiter 完成。
-- Wilson/Newcombe、确定性配对 bootstrap、Holm 校正、`win/equivalent/loss/inconclusive/insufficient_evidence`、负收益和最差问题完成。
-- provider/model/source/locale/region/query cluster 漂移及阈值/基线告警完成。
-- Admin inbox、本地 SMTP、签名内网 Webhook 及确认/抑制/解决/处置记录完成。
-- 本地 attribution event schema、Snowplow-compatible receiver（Session/Touch 主来源）、UTM/trace 生成、Session/Touch/Conversion 去重入口及 GA4 聚合对账口径完成。
+- [ ] `M2-AC-01` 五平台各自的样本数、去重率、匿名扫描、AU English 判定和人工审批可由 manifest 与查询逐条对账。
+- [ ] `M2-AC-02` 五个 Profile Release 均不可变且通过人工明审；未批准 Profile 无法绑定正式 Review Run。
+- [ ] `M2-AC-03` 两种 scenario mode 各自生成四候选；运营输入不能覆盖 Fact/Catalog 主体或成为事实来源。
+- [ ] `M2-AC-04` `EXT-GATE-M2` 通过：真实 GSC/GA4、Sampling 分母、消费者 UI 所在轨道和授权决策均有专项证据。
+- [ ] `M2-AC-07` 缺失/申请中/B 轨/过期/撤销授权的 automated UI enqueue 产生零 Job/零 outbox；已排队或运行任务在 claim/导航前发现失效即停止。
+- [ ] `M2-AC-05` `manual_ui`、`automated_ui`、Provider fixture、official report 和 synthetic 在 API、统计输入、UI 与导出中无法互相冒名或混分母。
+- [ ] `M2-AC-06` Customer API 对所有 M2 合成、中间评审、raw external 和未批准结果返回空或授权错误，不泄漏内部存在性。
 
-**退出门槛**
+### 9.5 M3：九平台闭环与多引擎发布
 
-1. 同一冻结输入和 method version 在不同进程重算得到相同 hash、区间和结论。
-2. 多重比较 family、alpha、seed 和 practical threshold 可从报告还原。
-3. `delta`、power、precision 和最小有效配对数在运行前冻结；区间跨越方向/等效边界时只能输出 `inconclusive`，不得显示为“平”或方向性结论。
-4. 平均提升存在但至少一个问题显著退化时，负收益和最差问题仍可见并触发对应规则。
-5. 构造 reported model 或来源构成漂移时，与业务指标变化分开展示。
-6. 告警重复评估不重复建单；通知失败可重试，状态/处置历史不丢失。
-7. 重复事件幂等；无 PII trace、禁概率跨设备和零点击隔离均有负向测试。
+后四个平台为 `amazon`、`youtube`、`tiktok` 和 `instagram`；授权或技术条件不支持自动采集时，以合规人工导入完成样本门槛，不降低样本质量。
 
-### 9.6 第 5 月：归因快照、Customer 投影和建议闭环
+**进入条件**：五平台 Profile/Suite 已冻结；Sampling/Observation source contract 可稳定消费；M2 授权双轨已决策。
 
-**交付**
+**实施 checklist**
 
-- Lead/Stage/Deal/Revenue 的 Admin 录入与幂等文件导入（冻结模板 schema、文件 hash、去重键）、Attribution Policy Version 和快照完成。
-- 30 天 last-click、90 天 assisted、direct/first/last/assisted 和零点击独立结果完成。
-- Customer API/Portal 只读展示已批准、满足门槛的真实观测、统计和归因摘要。
-- Recommendation evidence graph、六种建议类型、stale/expired 和人工批准完成。
-- Experiment Plan、QuestionSet、Content Brief、Sampling Plan 四类下游草稿创建完成。
+- [ ] `M3-SYN-01` 后四平台各完成 200 合格样本、Profile 发布和 40 固定 Case，形成九平台 360 Case Suite。
+- [ ] `M3-SYN-02` 完成 conflict/subject check、最多两轮 revision、一次 regenerate batch、warning 直出、任务取消、lease 丢失和 Fact 失效状态机。
+- [ ] `M3-SYN-03` 完成 Corpus Version 与三臂配对 Offline Experiment；每题每臂 10 次，冻结 QuestionSet/模型/Prompt/Corpus/method/hash。
+- [ ] `M3-SYN-04` 实现 passed/warning 合并与独立分层、Admin 明确 synthetic/test-only 标签及 Customer 全路径拒绝。
+- [ ] `M3-EXT-01` 完成专项文件全部 `EXT-M3-*`：五类外部 API release、三个首批 Surface Release 的 A/B 轨保真度和重复采样调度。
+- [ ] `M3-QA-01` 执行九平台固定集、跨模型 judge/arbiter、修订/regenerate 精确次数、工件/hash、并发取消和 stale writer 负测。
 
-**退出门槛**
+**退出 Gate `GATE-M3`**
 
-1. 从 Revenue 可回溯到 Deal/Conversion/Session/Touch、verified URL、UTM/trace、Campaign、QuestionSet 和内容/Package Version。
-2. 30/90 天窗口边界、direct、first、last、assisted、跨设备拒绝和零点击均有确定性 fixture。
-3. Customer 无法读取 synthetic、未批准/不足证据结果、内部建议、原始回答或 connector/model secret。
-4. Recommendation 的每项事实和指标均有有效 lineage；Fact/数据/版本失效后，已批准建议持久化转为 `stale/expired`，关联草稿同步进入 blocked 状态。
-5. 批准建议只创建一个幂等草稿，不自动排队、生成、执行或发布；草稿任何后续流转都重新校验源 Recommendation version，stale/expired 时以 `409 recommendation_source_stale` 阻断。
+- [ ] `M3-AC-01` 九平台均满足第 10.1 节发布门槛；任何单平台不能由全局平均掩盖失败。
+- [ ] `M3-AC-02` 两轮修订后只允许一个 regenerate batch；取消、lease/fencing 丢失或 Fact retired 不提交陈旧 Candidate/Corpus。
+- [ ] `M3-AC-03` `derived_or_unknown` 可形成 warning；明确 conflict/subject mix 必须修订，subject mix 总数为 0 才可发布。
+- [ ] `M3-AC-04` 三臂实验对相同冻结输入可重算同一 hash；warning 占比/分层始终可见；synthetic 无 Customer 读取路径。
+- [ ] `M3-AC-05` `EXT-GATE-M3` 通过；五类外部 API live canary 与三个 Surface Release 逐 release 保真证据齐全，不借用其他 surface/release 样本。
+- [ ] `M3-AC-06` 至少三家不同模型供应商参与 generation/judge/arbiter 验收，单一供应商不能同时充当唯一生成者和唯一裁判。
 
-### 9.7 第 6 月：live staging 和发布准备
+### 9.6 M4：统计、告警与归因入口
 
-**交付**
+**进入条件**：M3 产生冻结 Observation/Corpus；metric schema、统计 Protocol 和 attribution event schema 完成 DoR。
 
-- 以真实 GSC、GA4、一方事件入口、五类 Provider、至少三家生成/评审模型、一个登录采集账号，以及一个经验证的澳洲 residential/ISP 或 mobile 代理出口执行全链 live staging；A 轨 surface 走真实自动采样，B 轨 surface 走 fixture + `manual_ui` 链路。
-- 完成至少一条经业务授权且参与者同意的一方真实归因旅程：真实 landing click 携带冻结 UTM/trace，形成真实 Session/Touch/Conversion、Lead、Deal 和 booked Revenue，并回溯到 Campaign、QuestionSet、verified URL 与内容/Package Version。fixture、GA4 聚合行、人工补造事件或彼此无强 lineage 的真实记录均不能替代。
-- 完成旧 Prompt/Protocol/Observation/Metric 数据兼容迁移、unknown/ineligible 保持、回滚/forward-fix 演练。
-- 完成容量、并发、配额、慢供应商、取消、lease、outbox、MinIO/DB/Valkey 故障和恢复测试。
-- Admin/Customer Chromium 全链测试及关键桌面 viewport 视觉/交互验收。
-- PostgreSQL + MinIO 认证加密一致备份、checksum/签名、独立历史 keyring 空环境恢复、逐 key-version canary/代表性 secret 解密、业务行/关系/工件 hash 和 Customer 投影复核。
-- 固化 runbook、告警处置、secret/provider 轮换、connector 撤权、schema change 和恢复证据模板。
+**实施 checklist**
 
-**退出门槛**
+- [ ] `M4-METRIC-01` 实现第 7.3 节完整指标、规则优先、metric judge/arbiter、逐回答 span/citation/Fact evidence locator 和 invalid 判定。
+- [ ] `M4-STAT-01` 实现 Wilson/Newcombe、确定性 paired bootstrap、Holm、多重 family、冻结 `delta/power/precision/min pairs` 和五类结论。
+- [ ] `M4-STAT-02` 实现跨问题负收益、最差问题/簇，以及 provider/model/source/locale/region/query cluster 漂移的独立报告。
+- [ ] `M4-ALERT-01` 实现 threshold/baseline/negative/completion/freshness/model/source/connector 告警、去重、确认/抑制/解决和处置历史。
+- [ ] `M4-ALERT-02` 实现 Admin inbox、本地 SMTP 和签名内网 Webhook outbox；通知失败不回滚业务告警且重试不重复建单。
+- [ ] `M4-ATTR-01` 实现版本化一方事件 schema/receiver、consent 状态、UTM/opaque trace、Session/Touch/Conversion 幂等入口和零点击 exposure 隔离。
+- [ ] `M4-ATTR-02` 实现 GA4 聚合对账视图，技术上禁止 GA4 report row 创建 Session/Touch。
+- [ ] `M4-EXT-01` 完成专项文件全部 `EXT-M4-*`：adapter drift/freshness/错误进入告警，冻结 Observation 能稳定交付统计层。
 
-1. 第 10 节全部验收项有 live run ID、版本/hash、工件、测试结果和人工签字；mock 结果不能替代 live 证据。
-2. 外部 API 或 Browser Capture 的超时、限流、撤权、阻断、地域变化、DOM drift、部分完成和 schema 变化不产生假成功、串分母或数据覆盖。
-3. 旧数据迁移后保持原有 Customer 可见性和历史 hash；未知来源不升级为真实。
-4. 第 10.7 节冻结负载下满足 API、队列、Job、工件和错误率门槛；不得用更小负载替代后宣称通过。
-5. 从备份恢复后的关键业务计数、复合关系、MinIO manifest/hash、批准 Customer 投影、全部在用 key-version canary 和代表性 Connector/Provider/Egress secret 解密均一致可用。
-6. 真实归因旅程从 Revenue 到 UTM/trace 与 GEO 内容版本逐跳可复核，且无 PII 导出、概率拼接或 GA4 聚合记录冒充事件。
-7. 每个自动采集 surface/渠道的授权结论、轨道归属和对应轨道证据在六个月 evidence manifest 中完整可查。
+**退出 Gate `GATE-M4`**
+
+- [ ] `M4-AC-01` 相同输入/method 在不同进程和重试中得到相同 input/result hash、区间、校正和结论。
+- [ ] `M4-AC-02` `delta`、power、precision、min pairs、alpha、family 和 seed 均在运行前冻结并可从报告还原。
+- [ ] `M4-AC-03` 区间跨任一方向/等效边界时只能为 `inconclusive`；样本/完成度不足只能为 `insufficient_evidence`，UI 不显示含混“平”。
+- [ ] `M4-AC-04` 平均提升不能隐藏局部退化；负收益和最差问题可触发独立规则，model/source drift 与效果变化分开显示。
+- [ ] `M4-AC-05` 告警重复计算、并发确认、抑制到期和通知重试保持一个业务告警及完整处置历史。
+- [ ] `M4-AC-06` 重复/迟到一方事件幂等；PII trace、概率跨设备、GA4 聚合造 Session 和零点击造转化均被拒绝。
+- [ ] `M4-AC-07` `EXT-GATE-M4` 通过，connector/surface/provider failure、freshness 和 drift 均能以非敏感证据进入告警。
+
+### 9.7 M5：业务闭环与 Customer 投影
+
+**进入条件**：M4 Metric Snapshot、Alert 和一方事件入口已接受；Customer 字段白名单和 attribution policy 完成 DoR。
+
+**实施 checklist**
+
+- [ ] `M5-ATTR-01` 实现 Lead/Stage/Deal/Revenue Admin 录入和幂等文件导入，冻结模板 schema、文件 hash、source event ID 与行级错误报告。
+- [ ] `M5-ATTR-02` 实现不可变 Attribution Policy Version、30 天 last-click、90 天 assisted、direct/first/last/assisted 和 snapshot cutoff/迟到事件处理。
+- [ ] `M5-ATTR-03` 实现 Revenue -> Deal/Conversion/Lead/Session/Touch -> UTM/trace -> Campaign/QuestionSet/verified URL/Package Version 强 lineage 与 unassigned 路径。
+- [ ] `M5-CUST-01` 实现回答型 approved Monitoring Report 与非回答型 approved External Data Report 的独立 Customer latest 投影、来源/分母/区间/warning/非因果标签和字段白名单；无数据批准或不足证据时返回明确空状态。
+- [ ] `M5-REC-01` 实现 Recommendation evidence graph、六种类型、Prompt/Fact/Metric/Attribution lineage、人工 review/approve/reject。
+- [ ] `M5-REC-02` 实现 `approved -> stale|expired`、输入版本再校验，以及所有关联草稿的事务内 blocked propagation。
+- [ ] `M5-DRAFT-01` 实现 Experiment Plan、QuestionSet、Content Brief、Sampling Plan 幂等草稿；批准不 enqueue、不生成、不执行、不发布。
+- [ ] `M5-EXT-01` 完成专项文件全部 `EXT-M5-*`：外部来源批准投影、运营控制面和 runbook 达到稳定状态。
+
+**退出 Gate `GATE-M5`**
+
+- [ ] `M5-AC-01` fixture Revenue 可逐跳回溯到 GEO 内容版本；任一强关联缺失时明确 `unassigned`，不使用 IP/UA/时间邻近填补。
+- [ ] `M5-AC-02` 30/90 天窗口边界、direct/first/last/assisted、重复/迟到、跨设备拒绝和零点击隔离都有确定性 golden fixture。
+- [ ] `M5-AC-03` Customer 无法读取 synthetic、未批准/不足证据、内部建议、raw answer/page、secret、内部 actor 或 debug 字段。
+- [ ] `M5-AC-07` GSC/GA4/official-report 的 sync/import/Adapter Release approval 都不能直接提升 Customer 可见性；只有绑定 exact immutable snapshot 的 approved External Data Report 可见，stale/superseded/revoked 立即退出 latest。
+- [ ] `M5-AC-04` Recommendation 任一 Fact/Observation/Metric/Attribution/Prompt 版本失效后持久化为 `stale|expired`，关联草稿同步 blocked。
+- [ ] `M5-AC-05` 批准重试只创建一个草稿；API、Worker 和 repository 直接调用都无法绕过源 Recommendation version recheck。
+- [ ] `M5-AC-06` `EXT-GATE-M5` 通过，外部运行状态、授权到期、freshness 和 adapter release 可由 Admin 处置且 Customer 只见批准结果。
+
+### 9.8 M6：生产等价验收与发布准备
+
+M6 只允许修复、迁移、验证和运维固化，不新增未基线化的 Provider、surface、指标或建议类型。新需求进入后续版本，避免最终验收期间改变分母或风险面。
+
+**进入条件**：M1-M5 所有主 Gate 和专项 Gate 已接受；release candidate、migration plan、rollback window 和 live evidence calendar 已冻结。
+
+**实施 checklist**
+
+- [ ] `M6-LIVE-01` 使用真实 GSC、GA4、一方事件、五类外部 API、至少三家生成/评审模型、一个正常登录采集账号和一个验证过的澳洲 residential/ISP/mobile 出口执行全链 staging。
+- [ ] `M6-LIVE-02` 对 A 轨 surface 执行真实 automated UI，对 B 轨执行 fixture + `manual_ui`；逐 release 保留自身证据，不汇总借样本。
+- [ ] `M6-ATTR-01` 完成一条经授权/同意的真实 UTM/trace -> Session/Touch -> Conversion/Lead/Deal/booked Revenue 旅程并回溯 GEO 版本。
+- [ ] `M6-MIG-01` 完成旧 Prompt/Protocol/Observation/Metric 的 expand、compatible writer、initial backfill、增量追尾、dual-read 对账、cutover、rollback window 和 contract 演练。
+- [ ] `M6-MIG-02` 证明 unknown/ineligible 与历史 hash/Customer 可见性不被提升或改写；forward-fix 和回滚均不删除真实数据。
+- [ ] `M6-PERF-01` 在第 10.7 节完整 `performance-profile-v1` 下执行容量测试并达到 API/队列/Job/工件/正确性门槛。
+- [ ] `M6-FAIL-01` 演练慢/限流/撤权供应商、取消、lease/fencing、Worker/Relay、PostgreSQL、MinIO、Valkey、网络和 outbox 故障恢复。
+- [ ] `M6-WEB-01` 完成 Admin/Customer Chromium 全链、权限负测、关键桌面 viewport、长文本/错误/空/加载状态验收。
+- [ ] `M6-RESTORE-01` 在空环境恢复认证加密 PostgreSQL/MinIO、独立历史 keyring、逐 key canary、代表性 secret、业务关系/hash 和批准 Customer 投影。
+- [ ] `M6-OPS-01` 固化部署/回滚、告警、secret/provider/代理轮换、connector 撤权、schema drift、raw TTL、备份恢复和 incident runbook。
+- [ ] `M6-EXT-01` 完成专项文件全部 `EXT-M6-*` 和 `EXT-FINAL-*`。
+- [ ] `M6-EVD-01` 汇总 M0-M6 evidence manifest，验证所有 URI/hash、签字、change record、未完成项和已知风险。
+
+**退出 Gate `GATE-M6`**
+
+- [ ] `M6-AC-01` 第 10 节和专项计划全部必需 AC 均映射到可读取的自动化/live/人工/恢复证据；mock 不替代 live。
+- [ ] `M6-AC-02` 外部超时、限流、撤权、阻断、地域变化、DOM/schema drift 和部分完成不会产生假成功、串分母、覆盖 checkpoint 或 freshness 假象。
+- [ ] `M6-AC-03` 在线迁移切换前连续两轮逐 Project/Campaign 零差异且 lag=0；rollback window 内新旧 writer/read path 可逆。
+- [ ] `M6-AC-04` 完整 `performance-profile-v1` 达标；任何缩小 Project/Task/record/artifact/RPS 的运行仅标记诊断。
+- [ ] `M6-AC-05` 空环境恢复后关键计数/关系、MinIO manifest/hash、approved projection、全部在用 key-version canary 和代表性 secret 均一致可用。
+- [ ] `M6-AC-06` 真实归因旅程逐跳可复核，无 PII 导出、概率拼接、人工补造或 GA4 聚合冒充事件。
+- [ ] `M6-AC-07` 每个自动采集 surface/渠道均有有效授权结论、轨道、到期日和对应轨道证据；过期/revoked 会自动停用。
+- [ ] `M6-AC-08` `EXT-GATE-M6` 和专项 `EXT-FINAL-*` 全部通过。
+- [ ] `M6-AC-09` release owner、Product、QA、Security、Migration owner 与四工作流 owner 完成最终签字；无未批准 P1/P2 风险。
 
 ## 10. 验收与质量门禁
 
 ### 10.1 合成实验室固定验收集
 
-- 九个平台各至少 40 个固定回归 Case，共至少 360 个。
-- 每个平台 `autonomous_scenario` 和 `guided_scenario` 各占一半。
-- 每个平台竞品场景不少于 30%，避免总体比例掩盖单平台空缺。
-- Case 冻结 Persona、UseCase、Question、Fact/Profile version、主体、预期风险和人工 rubric。
+- [ ] `LAB-SET-AC-01` 九个平台各至少 40 个固定回归 Case，共至少 360 个。
+- [ ] `LAB-SET-AC-02` 每个平台 `autonomous_scenario` 和 `guided_scenario` 各占一半。
+- [ ] `LAB-SET-AC-03` 每个平台竞品场景不少于 30%，避免总体比例掩盖单平台空缺。
+- [ ] `LAB-SET-AC-04` Case 冻结 Persona、UseCase、Question、Fact/Profile version、主体、预期风险和人工 rubric。
 
 Prompt/Profile Release 同时满足以下条件才能发布：
 
@@ -759,66 +970,67 @@ Prompt/Profile Release 同时满足以下条件才能发布：
 
 自动门槛之外，必须覆盖两轮修订、一次重新生成、Warning 直接输出、任务取消、租约丢失和 Fact 失效。人工明审保存 reviewer、rubric version、时间和结论，不只保存自由文本备注。
 
+- [ ] `LAB-REL-AC-01` 九个平台分别达到 `passed>=95%`，不能用跨平台总平均替代。
+- [ ] `LAB-REL-AC-02` 商品/竞品主体串用为 0，source reproduction/防复刻违规为 0。
+- [ ] `LAB-REL-AC-03` 每个平台风格均值 `>=4.2/5`，至少一名运营 reviewer 按冻结 rubric 签字。
+- [ ] `LAB-FLOW-AC-01` 两轮修订、一个 regenerate batch、Warning 直出、取消、lease/fencing 和 Fact 失效均有行为证据。
+- [ ] `LAB-CUST-AC-01` 所有 synthetic/Review/Candidate/Corpus/Offline Experiment 均保持 test-only，Customer/API/export 全路径不可见。
+
 ### 10.2 真实外部验收
 
-完成证据必须包括：
+外部板块的逐项状态以[专项实施计划](GEO-external-data-cross-engine-sampling-implementation-plan-2026-07-22.md)为准；总计划只检查以下跨板块完成事实：
 
-- 一个真实 GSC property 和一个真实 GA4 property 的首次/增量/回刷结果。
-- Google/Bing 官方报告的真实文件导入（若账号在验收期无数据，仍需真实导出文件和可解释空结果，不能用 mock 宣称数据投影完成）。
-- OpenAI、Gemini Grounding、Perplexity、Microsoft Bing Grounding、Kimi 五类 Provider live run。
-- 消费者 surface 按第 2.4 节轨道及第 7.2.5 节逐 Surface Release 验收。A 轨每个 release 独立满足 20 个 live capture 的构成和阻断 fixture；B 轨每个 release 独立满足 30 个 fixture 与 10 个 `manual_ui` 页面对照。分类/文本/引用比例不得跨 release 汇总。阶段完成不要求任何特定 surface 处于 A 轨，但每个 release 必须有自身轨道证据。
-- 至少三家不同供应商模型参与 generation/judge/arbiter 角色，验证跨模型合同而非单模型自评。
-- 至少一个正常登录的风格采集账号；不得用绕过验证码或访问控制获得的结果验收。
+- [ ] `REAL-EXT-AC-01` 专项 `EXT-FINAL-01` 至 `EXT-FINAL-08` 全部通过。
+- [ ] `REAL-EXT-AC-02` 一个真实 GSC property、一个真实 GA4 property、两类真实官方报告和五类 API 的证据均来自正确环境/release。
+- [ ] `REAL-EXT-AC-03` AIO、AI Mode、Bing Copilot 各自按 A/B 轨逐 Surface Release 验收，分类/文本/引用比例不跨 release 汇总。
+- [ ] `REAL-EXT-AC-04` GSC、GA4 和 official-report projection 均通过独立 External Data Report 数据批准生命周期；Adapter Release approval、sync/import success 或 raw projection 不能替代。
+- [ ] `REAL-MODEL-AC-01` 至少三家不同供应商模型参与 generation/judge/arbiter，验证跨模型合同而非单模型自评。
+- [ ] `REAL-STYLE-AC-01` 至少一个正常登录的风格采集账号通过落盘前治理；没有绕过验证码或访问控制。
 
 mock/fixture 用于 PR 和故障覆盖，但不能替代上述 live 完成证据。真实验收记录 secret reference ID，不记录 secret 内容。
 
 ### 10.3 连接器、代理和 Secret 验收
 
-- PyAirbyte 增量游标、相同 checkpoint 重试、历史回刷、限流/`Retry-After`、schema 兼容/破坏变化、撤权和恢复。
-- Secret 创建、测试、轮换、并发中的 reference version、撤销、主密钥错误、日志/工件/Job 泄漏扫描。
-- 历史 keyring/escrow 与数据备份分离；空环境按全部在用 master key version 执行 decrypt canary、代表性 Connector/Provider/Egress secret 解密和不泄密 connection test，缺任一历史 key 或使用错误 key 时 fail closed。
-- Raw Artifact 与 projection 的 record count/hash/lineage 一致；未知 schema 只阻断 projection，不丢原始证据。
-- 失败/取消/lease 丢失不推进 checkpoint，不提交 freshness 假象。
-- Egress Endpoint 覆盖 HTTP CONNECT/HTTPS/SOCKS5、认证失败、超时、sticky lease 创建/到期、Attempt 前后出口变化（fail closed）与跨 Session 漂移（新 lease 验证后继续）、两个地域源不一致（`geo_unverified`）、AU datacenter 与 residential/mobile 分类和显式停用。
-- 在同一 BrowserContext/sticky lease 内完成每个 Attempt 的前后 observed IP/region 验证，或保存可信代理侧目标 hostname/出口连接日志；证明页面请求、WebSocket 和 DNS 未绕过代理。无 sticky 能力且无可信连接日志、前后不一致或 browser-capture-worker direct egress 均必须使结果 ineligible。
-- 代理或 Browser Account secret 不进入 screenshot、DOM、HAR、console、exception、Job、日志或 Customer 投影。
-- CAPTCHA、登录墙、consent 未完成、限流、封禁、geo mismatch 和 parser drift 均停止/隔离对应任务，不自动轮换代理继续采集。
+- [ ] `CORE-SECRET-AC-01` Secret 创建、test、轮换、并发 reference version、撤销、错误主密钥和全介质泄漏扫描通过。
+- [ ] `CORE-SECRET-AC-02` 历史 keyring 与数据备份分离；全部在用 key version 的 canary、代表性 Connector/Provider/Egress secret 和 connection test 在空环境通过。
+- [ ] `CORE-RAW-AC-01` Raw Artifact 与 projection 的 record count/hash/lineage 一致；未知 schema 只阻断 projection，不删除 raw。
+- [ ] `CORE-JOB-AC-01` 外部 Job 失败、取消、lease/fencing 丢失不提交领域终态、checkpoint 或 freshness 假象。
+- [ ] `CORE-EXT-AC-01` Connector、Egress、Surface、Sampling 的详细 `EXT-CONN/EXT-EGR/EXT-UI/EXT-SAMP/EXT-SEC-FINAL-*` 全部通过。
 
 ### 10.4 采样和统计验收
 
-- API 每题默认 10 次、automated UI 默认 5 次且至少 3 次、manual UI 每题至少 3 次，完成度和有效性使用冻结预期分母。
-- 低于样本门槛或 80% 有效完成度只产生 `insufficient_evidence`。
-- Suite 冻结的吞吐预算与实际耗时一致可查；超出授权频率或日配额的执行路径有负向测试。
-- capture method、engine/model、locale/region、language/search mode 任一不同均不得静默混分母。
-- automated UI 的 Egress Verification、Browser Profile、account/personalization cohort 或 Surface Release 不同，不得静默合并；需要汇总时必须展示构成。
-- Browser Capture 满足 surface 分类准确率 `>=95%`、普通结果误标为 AI 回答为 0、可见答案完整率 `>=99%`、引用 URL/顺序一致率 `100%`。
-- Warning 合并后仍显示比例和独立 passed/warning 结果。
-- Wilson/Newcombe、paired bootstrap、Holm、`win/equivalent/loss/inconclusive/insufficient_evidence`、负收益、最差问题和漂移使用 golden fixture 与重复计算测试；至少覆盖区间跨 `-delta/+delta`、区间完全落入等效区、方向性胜负、完成度不足和 observed variance 导致 precision 未达标。
-- 修改 Protocol、阈值、统计方法、Prompt 或 metric judge 后产生新版本，历史结果不变。
+- [ ] `STAT-SAMPLE-AC-01` API=10、automated UI 默认 5/最低 3、manual UI 最低 3，完成度使用冻结 planned denominator。
+- [ ] `STAT-SAMPLE-AC-02` 低于样本门槛或 80% 有效完成度只产生 `insufficient_evidence`；超授权频率/配额被 admission 阻断。
+- [ ] `STAT-STRATUM-AC-01` capture/model/locale/region/language/search/profile/egress policy/cohort/release/account cohort 任一预冻结维度不同不得静默混分母。
+- [ ] `STAT-EGRESS-AC-01` UI 分母只使用预先冻结的 egress policy/cohort；每次 Attempt 的 verification ID 只作 Observation lineage，重试不会拆出新分母或新增 planned slot。
+- [ ] `STAT-UI-AC-01` 每个 Surface Release 自身达到分类 `>=95%`、普通结果误标 0、答案 `>=99%`、引用 `100%`。
+- [ ] `STAT-WARN-AC-01` Warning 合并后仍显示数量、比例和 passed/warning 独立结果。
+- [ ] `STAT-METHOD-AC-01` Wilson/Newcombe、paired bootstrap、Holm、五类结论、负收益、最差问题和漂移通过 golden/recompute 测试。
+- [ ] `STAT-METHOD-AC-02` 覆盖区间跨 `-delta/+delta`、完整等效区、胜/负、完成度不足和 variance 导致 precision 不足；不存在含混“平”。
+- [ ] `STAT-VERSION-AC-01` Protocol/阈值/method/Prompt/judge 变化创建新版本，历史结果/hash 不变。
 
 ### 10.5 归因和建议验收
 
-- 验证 30/90 天窗口边界、direct/first/last/assisted、重复事件、迟到事件和 snapshot cutoff。
-- 验证跨设备拼接被拒绝，零点击 exposure 不进入 Conversion/Revenue 分母。
-- Revenue 到 GEO 内容版本的 lineage 可复核；缺任一强关联时明确 unassigned，不做概率填补。
-- 至少一条经业务授权和参与者同意的真实 live 旅程覆盖 UTM/trace -> landing -> Session/Touch -> Conversion -> Lead -> Deal -> booked Revenue -> Campaign/QuestionSet/verified URL/Package Version；fixture、GA4 聚合或人工补造链不得计为完成证据。
-- 六种 Recommendation 均有 fixture；`no_change` 和 `insufficient_evidence` 是正常终态。
-- 建议输入 stale、Fact retired、统计版本替换、批准并发和重复草稿创建均有行为测试；`approved -> stale|expired` 必须同步阻断已创建草稿，草稿排期/生成/执行前的 version recheck 不得被 API、Worker 或直接 repository 调用绕过。
+- [ ] `ATTR-METHOD-AC-01` 30/90 天窗口、direct/first/last/assisted、重复/迟到和 snapshot cutoff 通过 golden fixture。
+- [ ] `ATTR-IDENTITY-AC-01` 跨设备概率拼接被拒绝，zero-click exposure 不进入 Session/Conversion/Revenue。
+- [ ] `ATTR-LINEAGE-AC-01` Revenue 到 GEO 内容版本逐跳可复核；缺强关联时为 `unassigned`，不概率填补。
+- [ ] `ATTR-LIVE-AC-01` 至少一条经授权/同意的真实旅程覆盖 UTM/trace -> Session/Touch -> Conversion/Lead/Deal/booked Revenue -> GEO 版本；fixture、GA4 聚合或人工补造不计入。
+- [ ] `REC-TYPE-AC-01` 六种 Recommendation 均有 fixture；`no_change` 和 `insufficient_evidence` 是正常终态。
+- [ ] `REC-STALE-AC-01` stale/Fact retired/method replacement/并发批准/重复草稿均有行为测试，关联草稿同步 blocked。
+- [ ] `REC-BYPASS-AC-01` API、Worker 和 repository 直接调用都不能绕过 Recommendation version recheck；批准不自动执行/发布。
 
 ### 10.6 全仓门禁
 
 每个批次执行与风险相称的门禁；第 6 月至少覆盖：
 
-- 质量/静态检查和全部单元测试。
-- PostgreSQL、MinIO、Valkey、Durable Worker/Relay 集成测试。
-- 隔离 Browser Capture Worker、代理出口强制、Chromium/adapter drift 和页面工件一致性集成测试。
-- Alembic 从当前 head 前向迁移、在线写入追尾/切换对账、兼容数据迁移和单一 head 检查。
-- OpenAPI 生成、稳定快照和 Admin/Customer client contract。
-- Admin Web 与 Customer Web 生产构建。
-- Chromium 关键工作流、权限负测和 Customer 数据泄漏测试。
-- 生产网络、readiness、heartbeat、队列卡滞、secret preflight 和外部 egress 测试。
-- PostgreSQL/MinIO 认证加密备份、`0700/0600` 权限、备份密钥隔离、历史 Secret keyring 空环境恢复、逐版本解密 canary 和业务一致性校验。
-- 登录/受限 raw artifact 的落盘前 secret/PII 检测、独立加密、RBAC/RLS、30/90 天 TTL、双人 hold 和 Customer/导出负向测试。
+- [ ] `REPO-GATE-01` `make quality` 和全部单元/architecture 测试通过，无意外 skip/零收集。
+- [ ] `REPO-GATE-02` PostgreSQL、MinIO、Valkey、Durable Worker/Relay 与隔离 Browser Worker 集成通过。
+- [ ] `REPO-GATE-03` Alembic 前向、兼容 writer、追尾/对账、rollback/forward-fix 和单一 head 通过。
+- [ ] `REPO-GATE-04` OpenAPI 生成/稳定快照、Web client contract、Admin/Customer 生产构建通过。
+- [ ] `REPO-GATE-05` Chromium 关键工作流、权限负测、Customer 数据泄漏、长文本/错误/空状态通过。
+- [ ] `REPO-GATE-06` 生产网络、代理强制、readiness、heartbeat、队列卡滞、secret preflight 和外部 egress 通过。
+- [ ] `REPO-GATE-07` 认证加密备份、`0700/0600`、密钥隔离、历史 keyring 空环境恢复、逐 key canary 和业务一致性通过。
+- [ ] `REPO-GATE-08` 受限 raw 的落盘前 secret/PII、独立加密、RBAC/RLS、TTL、双人 hold 和 Customer/export 负测通过。
 
 ### 10.7 性能验收冻结负载
 
@@ -837,6 +1049,11 @@ mock/fixture 用于 PR 和故障覆盖，但不能替代上述 live 完成证据
 | 正确性 | 0 跨 Project/Campaign 读取、0 重复终态、0 丢失/重复 checkpoint、0 hash 不一致；lease 丢失和 Worker 重启后结果一致 |
 
 任何缩小 Project、Task、record、artifact 或请求率的运行只能作为诊断，不能通过本门禁。evidence manifest 必须保存负载生成器/recording 版本、拓扑、开始/结束时间、所有目标值和实测 p50/p95/p99/max、错误/队列年龄、资源水位及原始报告 URI/hash；门槛变更创建 `performance-profile-v2` 和批准记录，不能在失败后原地放宽 v1。
+
+- [ ] `PERF-AC-01` M1 前冻结的 `performance-profile-v1` 与本表逐项一致，负载生成器/recording、拓扑和资源配额均有版本/hash。
+- [ ] `PERF-AC-02` M6 使用完整负载执行，所有延迟、队列、同步、容量和正确性门槛通过；缩量诊断 run 未被计为验收。
+- [ ] `PERF-AC-03` evidence manifest 保存目标与实测 p50/p95/p99/max、错误/队列年龄、资源水位和原始报告 URI/hash。
+- [ ] `PERF-AC-04` 若创建 v2，存在事前批准的业务/容量依据和影响分析；没有在 v1 失败后原地放宽。
 
 ## 11. 发布、兼容和证据
 
@@ -858,9 +1075,10 @@ mock/fixture 用于 PR 和故障覆盖，但不能替代上述 live 完成证据
 每月退出评审保存一个不可变 evidence manifest，至少包含：
 
 - Git commit、migration head、OpenAPI manifest 和 Web build IDs。
+- 每个 check ID 自身的 work package type/flags、逐条 DoR/DoD applicability、开始/结束时间、Git commits、migration revisions、OpenAPI contracts 和 `not_applicable` 独立批准；顶层汇总字段不能替代单项映射。
 - Prompt/Profile/adapter/schema/method release IDs 与 hashes。
 - 测试命令、收集数、通过/失败/skip 数和关键报告 URI/hash。
-- live run IDs、脱敏账号/connection IDs、原始工件 manifest 和人工审核记录。
+- 每个 check ID 自身的 Project/Campaign/environment fingerprint、live run IDs、脱敏 account/connection refs、原始工件 manifest 和人工审核记录；不适用的 scope 必须按第 1.3 节留痕。
 - 迁移 writer 清单、双写/outbox lag 或停写窗口、initial/final watermark、逐 Project/Campaign 对账和 rollback-window 证据。
 - 备份权限/加密报告、数据备份与历史 keyring 的独立恢复记录、逐 key-version canary、代表性 secret connection test 和明文扫描结果。
 - `performance-profile` 版本、冻结负载/拓扑、实测延迟/队列年龄/资源水位及原始报告 URI/hash。
@@ -875,13 +1093,15 @@ mock/fixture 用于 PR 和故障覆盖，但不能替代上述 live 完成证据
 |---|---|---|
 | 四工作流争用共享 schema | 多 Alembic head、枚举反复冲突 | 单迁移 owner；共享合同先行；月度 contract freeze |
 | Provider API 被误解为消费者 UI | API 结果使用 ChatGPT/AIO/Copilot UI 名称 | `provider_api`/`automated_ui` 强类型分离；页面证据和 UI/导出负测 |
-| 消费者 UI 自动采样缺少平台允许依据 | 无 authorization record、条款过期或用途超范围 | surface fail closed；第 2 月授权决策点强制出结论并降级 B 轨；B 轨证据是一等完成路径；代理不能替代授权 |
+| 消费者 UI 自动采样缺少平台允许依据 | 无 authorization record、条款过期或用途超范围 | 先决策后采集；enqueue 同事务 admission，失败零 Job/outbox；claim/导航前复验；第 2 月强制 A/B 结论；代理不能替代授权 |
 | 澳洲代理不具备消费者代表性 | 出口为数据中心、地域源冲突或页面显示非 AU | 每 Attempt 同一 sticky lease 前后双源验证或可信连接日志；network type 分级；只有 residential/mobile 可标记代表性 |
+| Attempt 出口证据拆碎统计分母 | 每个 verification ID 形成 n=1 分层 | Task/SourceStratum 只冻结 egress policy/cohort；verification 仅作 Attempt/Observation lineage；endpoint composition 单独展示 |
 | 浏览器采集违反访问边界 | CAPTCHA、封禁、限流或异常重试上升 | 立即停止 Endpoint/Surface Run；不绕过、不自动换代理；保留阻断证据 |
 | DOM/实验分流导致误判 | 答案为空、普通 snippet 被识别为 AIO、引用丢失 | screenshot/DOM/HAR 三证据、parser health、人工保真集和 adapter drift 告警 |
 | 模型 judge 偏差或自评 | 不同模型分数分歧大、无 evidence locator | 规则优先、三供应商交叉验收、arbiter 和人工固定集 |
 | API 成本/配额不足 | completion < 80%、持续 quota 告警 | 预冻结预算/并发；缩小 Suite 范围并新建 Protocol，不降低门槛 |
 | Connector schema/API 漂移 | projection 失败但 Job 表面成功 | raw-first、schema fingerprint、fail-closed projection 和 freshness |
+| Adapter 批准被误作数据批准 | sync/import 后 Customer 直接出现 GSC/GA4/official 数据 | External Data Snapshot/Report/Approval 独立状态机；只有 approved report 投影可见，raw/draft/stale/revoked 均拒绝 |
 | 在线迁移遗漏增量写入 | backfill 后新旧计数/hash 持续分叉 | 全 writer 清单；事务双写/outbox 或停写锁 + 单调 watermark 最终追尾；零差异才切换 |
 | Attribution 被当作因果 | 报告出现“导致收入”措辞 | 页面/导出固定非因果声明；并列 direct/first/last/assisted/zero-click |
 | GA4 聚合数据被误用为会话级归因 | Session/Touch 记录源头指向 GA4 报表 | 一方事件入口为唯一 Session/Touch 真源；GA4 只做聚合对账；无 consent/未上线站点只显示 exposure/官方口径 |
@@ -921,4 +1141,48 @@ mock/fixture 用于 PR 和故障覆盖，但不能替代上述 live 完成证据
 - [Google machine-generated traffic 政策](https://developers.google.com/search/docs/essentials/spam-policies#machine-generated-traffic)
 - [Bing 如何使用位置](https://support.microsoft.com/en-us/bing/how-bing-uses-your-location)
 - [Microsoft Services Agreement - Bing and MSN](https://www.microsoft.com/en-us/servicesagreement)
-- [Grounding with Bing Search 使用与展示要求](https://learn.microsoft.com/en-us/azure/ai-foundry/agents/how-to/tools/bing-grounding)
+- [Microsoft Foundry Grounding with Bing Search](https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/tools/bing-tools)
+
+## 15. 六个月最终发布 checklist
+
+本节是最终 Go/No-Go 索引，不替代前述细项。release owner 只能在被引用的原始 check ID 已有证据和签字后勾选，不能只凭本节的汇总勾选反向宣称完成。
+
+### 15.1 阶段和范围
+
+- [ ] `PLAN-FINAL-01` `GATE-M0` 至 `GATE-M6` 全部 `ACCEPTED`，每月 evidence manifest 的 URI/hash 可读取。
+- [ ] `PLAN-FINAL-02` `EXT-GATE-M0` 至 `EXT-GATE-M6` 与专项 `EXT-FINAL-01..08` 全部 `ACCEPTED`。
+- [ ] `PLAN-FINAL-03` 五个业务板块均达到第 1 节完成定义；所有降范围均有批准 change record，未修改真实性/安全/统计门槛。
+- [ ] `PLAN-FINAL-04` 人力、预算、授权、账号和 live 资源的最终状态记录完整，无用 mock 掩盖的 `BLOCKED_EXTERNAL`。
+
+### 15.2 产品和数据正确性
+
+- [ ] `PLAN-FINAL-05` `LAB-*` 全部通过：九平台、360 Case、发布门槛、修订/Warning/Fact/lease 路径和 synthetic 隔离完成。
+- [ ] `PLAN-FINAL-06` `REAL-*`、`CORE-*` 与专项逐源 AC 全部通过：GSC/GA4、官方报告、五类 API、三个消费者 surface 和澳洲出口证据完成。
+- [ ] `PLAN-FINAL-07` `STAT-*` 全部通过：冻结分母、区间/校正、`inconclusive`、负收益、漂移、版本/hash 和 Warning 分层正确。
+- [ ] `PLAN-FINAL-08` `ATTR-*` 全部通过：30/90 天、direct/first/last/assisted、零点击/跨设备边界和真实 Revenue 旅程完成。
+- [ ] `PLAN-FINAL-09` `REC-*` 全部通过：证据图、六种类型、人工批准、stale/expired 传播和下游草稿执行前阻断完成。
+- [ ] `PLAN-FINAL-10` Customer 只见 latest approved Monitoring Report 或 External Data Report；synthetic、raw、未批准/stale/revoked/不足证据、secret、内部建议和 actor/debug 字段全不可见。
+
+### 15.3 工程、迁移和恢复
+
+- [ ] `PLAN-FINAL-11` `REPO-GATE-01..08` 全部通过，实际执行数/skip/失败数进入 evidence manifest。
+- [ ] `PLAN-FINAL-12` 所有 Alembic 迁移保持单一 head；writer inventory、双写/outbox 或停写锁、initial/final watermark、两轮零差异和 rollback window 证据完整。
+- [ ] `PLAN-FINAL-13` `PERF-AC-01..04` 全部通过，完整 `performance-profile-v1` 达标。
+- [ ] `PLAN-FINAL-14` PostgreSQL/MinIO 认证加密备份、权限、签名/checksum、密钥隔离和空环境恢复通过。
+- [ ] `PLAN-FINAL-15` 全部在用 Secret master key version 的 canary、代表性 Connector/Provider/Egress secret 和 connection test 恢复可用；错误/缺失 key fail closed。
+- [ ] `PLAN-FINAL-16` Raw Artifact 的分类、落盘前清理、独立加密、RBAC/RLS、TTL/tombstone、双人 hold 和 Customer/export 负测完成。
+
+### 15.4 运营和签字
+
+- [ ] `PLAN-FINAL-17` 部署/回滚、告警、secret/provider/代理轮换、connector 撤权、schema/DOM drift、归因补录和备份恢复 runbook 已由非作者演练。
+- [ ] `PLAN-FINAL-18` 所有 authorization record 有当前状态、依据、用途、频率、到期和轨道；expired/revoked 技术上停止新任务。
+- [ ] `PLAN-FINAL-19` 最终 evidence manifest 记录 Git/migration/OpenAPI/Web build、全部 release/hash、live/test/perf/restore run、人工审核、偏差和成本。
+- [ ] `PLAN-FINAL-20` Product、A/B/C/D owner、Migration、QA、Security、DevOps 和 release owner 全部签字，无未批准 P1/P2 风险。
+
+最终决定只允许：
+
+| 决定 | 条件 | 后续动作 |
+|---|---|---|
+| `GO` | `PLAN-FINAL-01..20` 全部勾选 | 按 feature flag/canary 计划发布，保留 rollback window |
+| `NO_GO` | 任一必需项未勾选或证据失效 | 保持现有生产路径，记录失败 ID、owner、修复日期并重新验收 |
+| `SCOPE_CHANGE_REQUIRED` | 外部条件或容量使完成定义不可达 | 先批准新的范围/日期/风险决策，再更新两份计划；不得以豁免直接 GO |
