@@ -144,17 +144,27 @@ def persist_comparison_family(
     )
     status = family_status(family.results)
     payload = family.canonical_value()
+    result_rows = tuple(
+        _comparison_result_row(
+            result,
+            source=next(
+                item for item in comparisons if item.protocol.comparison_id == result.comparison_id
+            ),
+        )
+        for result in family.results
+    )
     with store.fenced_transaction(lease) as connection:
         connection.execute(
-            """INSERT INTO workflow_c_comparison_families(
-                   family_hash, project_id, protocol_hash, power_plan_hash,
-                   bootstrap_method, bootstrap_iterations, correction_method,
-                   simultaneous_interval_method, status, payload, computed_at
-               ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
-               ON CONFLICT (project_id, family_hash) DO NOTHING""",
+            """SELECT geo_persist_workflow_c_comparison_family(
+                   %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                   %s::jsonb, %s, %s::jsonb
+               )""",
             (
-                family.family_hash,
                 lease.project_id,
+                lease.job_id,
+                lease.lease_token,
+                lease.fencing_generation,
+                family.family_hash,
                 protocol_hash,
                 next(iter(power_plans)),
                 protocols[0].bootstrap_method,
@@ -164,6 +174,7 @@ def persist_comparison_family(
                 status,
                 json_value(payload),
                 computed_at,
+                json_value(result_rows),
             ),
         )
         row = mapping_row(
@@ -186,25 +197,6 @@ def persist_comparison_family(
         for result in family.results:
             source = source_by_comparison_id[result.comparison_id]
             result_payload = result.canonical_value()
-            connection.execute(
-                """INSERT INTO workflow_c_comparison_results(
-                       project_id, family_hash, comparison_id, stratum_hash,
-                       sampling_source_stratum_hash, conclusion, adjusted_p_value,
-                       interval_json, payload
-                   ) VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb)
-                   ON CONFLICT (project_id, family_hash, comparison_id) DO NOTHING""",
-                (
-                    lease.project_id,
-                    family.family_hash,
-                    result.comparison_id,
-                    result.stratum_hash,
-                    source.sampling_source_stratum_hash,
-                    result.conclusion.value,
-                    result.adjusted_p_value,
-                    json_value(result.adjusted_interval.canonical_value()),
-                    json_value(result_payload),
-                ),
-            )
             existing = mapping_row(
                 connection.execute(
                     """SELECT stratum_hash, sampling_source_stratum_hash, conclusion,
@@ -240,14 +232,15 @@ def persist_drift_report(
     payload = report.canonical_value()
     with store.fenced_transaction(lease) as connection:
         connection.execute(
-            """INSERT INTO workflow_c_drift_reports(
-                   report_hash, project_id, source_snapshot_hash, target_snapshot_hash,
-                   status, payload, computed_at
-               ) VALUES (%s, %s, %s, %s, 'complete', %s::jsonb, %s)
-               ON CONFLICT (project_id, report_hash) DO NOTHING""",
+            """SELECT geo_persist_workflow_c_drift_report(
+                   %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s
+               )""",
             (
-                report.report_hash,
                 lease.project_id,
+                lease.job_id,
+                lease.lease_token,
+                lease.fencing_generation,
+                report.report_hash,
                 source_snapshot_hash,
                 target_snapshot_hash,
                 json_value(payload),
@@ -284,6 +277,18 @@ def family_status(results: Sequence[Any]) -> str:
         if all(item.conclusion.value == "insufficient_evidence" for item in results)
         else "complete"
     )
+
+
+def _comparison_result_row(result: Any, *, source: ComparisonInput) -> dict[str, object]:
+    return {
+        "comparison_id": result.comparison_id,
+        "stratum_hash": result.stratum_hash,
+        "sampling_source_stratum_hash": source.sampling_source_stratum_hash,
+        "conclusion": result.conclusion.value,
+        "adjusted_p_value": str(result.adjusted_p_value),
+        "interval_json": result.adjusted_interval.canonical_value(),
+        "payload": result.canonical_value(),
+    }
 
 
 def same_comparison_result(

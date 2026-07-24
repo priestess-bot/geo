@@ -105,6 +105,13 @@ SEMANTIC_SNAPSHOT_PERSISTENCE_MIGRATION = (
 )
 SEMANTIC_SNAPSHOT_PERSISTENCE_UP = ROOT / "infra/db/alembic/sql/0069_metric_snapshot_rpc.sql"
 SEMANTIC_SNAPSHOT_PERSISTENCE_DOWN = ROOT / "infra/db/alembic/sql/0069_metric_snapshot_rpc.down.sql"
+ANALYSIS_PROJECTION_PERSISTENCE_MIGRATION = (
+    ROOT / "infra/db/alembic/versions/0070_analysis_projection_rpc.py"
+)
+ANALYSIS_PROJECTION_PERSISTENCE_UP = ROOT / "infra/db/alembic/sql/0070_analysis_projection_rpc.sql"
+ANALYSIS_PROJECTION_PERSISTENCE_DOWN = (
+    ROOT / "infra/db/alembic/sql/0070_analysis_projection_rpc.down.sql"
+)
 
 
 def test_workflow_c_revision_is_linear_and_has_reversible_sql_files() -> None:
@@ -123,6 +130,7 @@ def test_analytical_projection_hashes_are_project_scoped_at_the_database_boundar
     persistence = (
         ROOT / "packages/geo_core/geo_core/workflow_c_analysis_persistence.py"
     ).read_text(encoding="utf-8")
+    projection_rpc = ANALYSIS_PROJECTION_PERSISTENCE_UP.read_text(encoding="utf-8")
 
     assert 'revision = "0059_analysis_project_scope"' in migration
     assert 'down_revision = "0058_wfc_spec_sensitive"' in migration
@@ -143,7 +151,7 @@ def test_analytical_projection_hashes_are_project_scoped_at_the_database_boundar
         "WHERE project_id = %s AND family_hash = %s",
         "WHERE project_id = %s AND report_hash = %s",
     ):
-        assert contract in persistence
+        assert contract in persistence or contract in projection_rpc
     assert "geo_persist_workflow_c_semantic_metric_snapshot" in persistence
     assert "Project-scoped analytical hash identities exist" in down
 
@@ -707,3 +715,35 @@ def test_semantic_metric_snapshots_use_a_fenced_worker_write_rpc() -> None:
     assert "INSERT INTO workflow_c_semantic_metric_snapshots" not in persistence
     assert "INSERT INTO workflow_c_semantic_metric_results" not in persistence
     assert "DROP FUNCTION geo_persist_workflow_c_semantic_metric_snapshot" in down
+
+
+def test_comparison_and_drift_projections_use_fenced_worker_write_rpcs() -> None:
+    migration = ANALYSIS_PROJECTION_PERSISTENCE_MIGRATION.read_text(encoding="utf-8")
+    source = ANALYSIS_PROJECTION_PERSISTENCE_UP.read_text(encoding="utf-8")
+    down = ANALYSIS_PROJECTION_PERSISTENCE_DOWN.read_text(encoding="utf-8")
+    persistence = (
+        ROOT / "packages/geo_core/geo_core/workflow_c_analysis_persistence.py"
+    ).read_text(encoding="utf-8")
+
+    assert 'revision = "0070_analysis_projection_rpc"' in migration
+    assert 'down_revision = "0069_metric_snapshot_rpc"' in migration
+    for function_name, kind in (
+        ("geo_persist_workflow_c_comparison_family", "workflow_c.analysis.comparison"),
+        ("geo_persist_workflow_c_drift_report", "workflow_c.analysis.drift"),
+    ):
+        assert f"CREATE FUNCTION {function_name}" in source
+        assert "SECURITY DEFINER" in source and "SET row_security = off" in source
+        assert f"parent_job.kind <> '{kind}'" in source
+        assert "parent_job.fencing_generation <> p_fencing_generation" in source
+        assert "parent_job.input_hash <> parent_spec.spec_hash" in source
+        assert f"GRANT EXECUTE ON FUNCTION {function_name}" in source
+        assert f"DROP FUNCTION {function_name}" in down
+    assert "geo_workflow_c_python_canonical_text(p_family_payload)" in source
+    assert "geo_workflow_c_python_canonical_text(p_report_payload)" in source
+    assert 'ORDER BY item.key COLLATE "C"' in source
+    assert "REVOKE INSERT, UPDATE, DELETE ON workflow_c_comparison_families" in source
+    assert "SELECT geo_persist_workflow_c_comparison_family(" in persistence
+    assert "SELECT geo_persist_workflow_c_drift_report(" in persistence
+    assert "INSERT INTO workflow_c_comparison_families" not in persistence
+    assert "INSERT INTO workflow_c_comparison_results" not in persistence
+    assert "INSERT INTO workflow_c_drift_reports" not in persistence
