@@ -29,6 +29,7 @@ from geo_core.semantic_metrics import (
     PlannedMetricSlot,
     SemanticStratum,
     SubjectInventory,
+    plan_metric_judge_batches,
 )
 from geo_core.workflow_c_metric_parent_admission import (
     MetricArbiterEvaluatorAdmission,
@@ -147,6 +148,55 @@ def test_metric_parent_first_pass_admits_judges_and_defers_atomically() -> None:
                         AND topic = 'workflow_c.analysis.semantic_metrics'""",
                 (project["project"], parent["job_id"]),
             ).fetchone() == (1,)
+            reader_lease_token = uuid4()
+            admin.execute(
+                """UPDATE durable_jobs
+                      SET status = 'running', lease_owner = 'metric-parent-reader',
+                          lease_token = %s, lease_expires_at = clock_timestamp() + interval '60 seconds',
+                          heartbeat_at = clock_timestamp(), fencing_generation = 2,
+                          attempt_count = 1, error_code = NULL, error_detail = NULL,
+                          completed_at = NULL, updated_at = clock_timestamp()
+                    WHERE project_id = %s AND id = %s""",
+                (reader_lease_token, project["project"], parent["job_id"]),
+            )
+            admin.commit()
+
+        reader_lease = WorkerLease(
+            job_id=UUID(str(parent["job_id"])),
+            project_id=project["project"],
+            kind="workflow_c.analysis.semantic_metrics",
+            worker_id="metric-parent-reader",
+            lease_token=reader_lease_token,
+            fencing_generation=2,
+            attempt_count=1,
+            max_attempts=3,
+        )
+        plans = tuple(
+            batch
+            for observation in input_set.observations
+            for batch in plan_metric_judge_batches(
+                input_set=input_set, suite=suite, observation=observation
+            )
+        )
+        with store.fenced_transaction(reader_lease) as connection:
+            batches = operation._progress.batches_in_transaction(
+                connection,
+                lease=reader_lease,
+                parent_input_hash=str(parent["input_hash"]),
+                expected=plans,
+                input_set_hash=input_set.input_set_hash,
+                metric_suite_hash=suite.suite_hash,
+            )
+            assert len(batches) == 1
+            assert (
+                operation._progress.judge_resolution_in_transaction(
+                    connection,
+                    lease=reader_lease,
+                    parent_input_hash=str(parent["input_hash"]),
+                    batch_id=batches[0].batch_id,
+                )
+                is None
+            )
     finally:
         if created_database:
             with psycopg.connect(ADMIN_URL, autocommit=True) as server:

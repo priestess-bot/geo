@@ -1,9 +1,9 @@
-# GEO 后续六个月实施路线图
+# GEO 加速实施路线图（原六个月基线）
 
 > 计划日期：2026-07-21
-> 修订日期：2026-07-23（第 58 次修订）
+> 修订日期：2026-07-24（第 60 次修订）
 > 计划状态：`PLANNED`
-> 计划周期：启动后连续六个月，以月度退出门槛而非自然月末作为批次完成标准
+> 计划周期：`T+0` 至 `T+5` 连续交付日；`M0`--`M6` 保留为稳定 Gate 标签，不再表示自然月或人类团队月度排期
 > 决策来源：[README 下一阶段发展目标](../../README.md#下一阶段发展目标)、[GEO 效果优先整改决策记录](../audits/GEO-effect-first-remediation-decisions-2026-07-18.md#6-c-组效果测量判断和优化)
 > 当前能力来源：[F-019 RAG 核心集成合同](F019-core-integration-contract-2026-07-19.md)、[F-019 QuestionSet/Protocol/Simulation 合同](F019-question-set-protocol-simulation-contract-2026-07-19.md)
 > 专项实施计划：[外部数据与跨引擎采样实施计划](GEO-external-data-cross-engine-sampling-implementation-plan-2026-07-22.md)
@@ -65,12 +65,14 @@
 > 第 56 次修订变更：分歧 Arbiter 的 encrypted-task preparation contract 已补齐。它只接受 `arbiter_required=true` 的精确 Judge candidate resolution，使用同一 batch/input evidence 构造 Arbiter program input，并将 candidate IDs、evaluator IDs、canonical output/hash 和允许 evidence/citation 集只写入加密 task；公开 immutable spec 仍只有 parent/batch/role/task hash 引用。Ruff、mypy 及 12 项定向 Metric 单元回归通过。此项是后续 `0067` 原子 Arbiter admission 的必要输入，但尚不创建 Job/child/outbox，也不唤醒或完成 parent。
 > 第 57 次修订变更：Arbiter preparation 在入口显式要求所有 Judge candidate ID 为 UUID，与 Durable child/terminal RPC 的数据库身份合同保持一致；自由字符串在加密或入队前 fail closed。定向 Ruff、mypy 与 8 项 Metric preparation/task-factory 回归通过。
 > 第 58 次修订变更：`0067_metric_arbiter_admission` 将 Judge 分歧后的 Arbiter 准入收敛为一个由父 `semantic_metrics` lease 持有者调用的 Worker-only SECURITY DEFINER RPC。它锁定 running batch，要求所有 Judge 已成功、每个 hash-bound output projection 存在且至少两个 output hash 分歧，之后才在同一事务创建一个 encrypted Arbiter task、Durable Job、secret-free immutable spec、child lineage、outbox 与 event，并写入 batch 的唯一 `arbiter_child_job_id`。隔离 PostgreSQL 已完成 `head -> 0066 -> head`、受限 Worker、缺 projection 拒绝、重复 admission/direct child update 拒绝；这仍未把 Judge/Arbiter admission 接入父 operation 的 defer/wake/merge/snapshot 生命周期，也不构成 live 模型证据。
+> 第 59 次修订变更：废止以传统团队 FTE 和自然月为单位的执行时钟。范围、稳定 ID、Gate、样本量、统计/安全/授权门槛及最终证据要求完全不变；全部可由 Agent 完成的实现、自动化验证和复查压缩为 `T+0`--`T+5` 的连续交付窗口。真实账号、授权、独立 verifier、人工明审和 live staging 自 `T+0` 并行启动，未就绪时仅阻断相应 evidence/Gate，绝不以 mock 降低标准或把其等待时间伪装为工程实现周期。
+> 第 60 次修订变更：`0068_metric_parent_progress` 为持有 `semantic_metrics` 父 lease 的 Worker 增加两条最小、fenced、Worker-only progress reader。父 operation 只能取得自身 batch 状态和可消费 Judge projection，读取同时重检 Project、父 Job、lease token/fence、frozen spec hash、运行态和未取消条件；不会接触 child 加密任务、原始模型输出或凭据。隔离 PostgreSQL 完成 `head -> 0067 -> head`、受限 Worker reader 与 Judge resolution 路径；静态、类型、50 项单元/迁移和 PostgreSQL 集成回归通过。该项仍不替代父 operation 的最终 snapshot persistence、真实模型调用、live evidence 或最终 manifest。
 
 ## 1. 执行结论
 
-未来六个月交付五个可以使用真实账号、真实数据和不可变证据验收的业务板块：
+在 `T+0`--`T+5` 完成可由 Agent 交付的实现、自动化验证与复查，并为五个可使用真实账号、真实数据和不可变证据验收的业务板块完成所有可控准备：
 
-| 板块 | 六个月完成定义 |
+| 板块 | 加速实施完成定义 |
 |---|---|
 | 内部合成测评实验室 | 九个标准渠道均具备澳洲英文风格样本、版本化 Style Profile、知识冲突检查、修订闭环和三臂离线 GEO 实验；全部结果保持 `test_only=true`、`publication_eligible=false` |
 | 外部数据与跨引擎采样 | Connector Core、GSC、GA4、Google/Bing 官方报告、五类外部 API adapter（Microsoft Grounding 使用 `proxy_grounded_api`，其余按实际能力使用 `provider_api`），以及通过已验证澳洲出口采集 Google AI Overviews/AI Mode、Bing Copilot 等真实消费者界面的 Browser Capture Connector 在 live staging 运行；未取得授权依据的 surface 按第 2.4 节 B 轨（fixture + 人工采样）完成并记录降级决定，不阻塞阶段验收；来源类型、原始工件和分母不可混淆 |
@@ -82,7 +84,7 @@
 
 阶段验收不依赖任何第三方平台授权的实际取得；依赖的是每个自动采集 surface/渠道都有明确的授权结论，以及对应轨道（第 2.4 节）的完成证据。
 
-六个月结束时，系统应能回答以下闭环问题，并提供可复核证据：
+在最终 Gate 的真实外部证据到齐后，系统应能回答以下闭环问题，并提供可复核证据：
 
 ```text
 哪些真实数据或外部回答发生了变化？
@@ -94,18 +96,18 @@
 
 ### 1.1 文档职责和执行方式
 
-本文件是六个月计划的总控基线，负责范围、跨工作流依赖、共享合同、月度退出门槛和最终发布决定。“外部数据与跨引擎采样”专项文件负责 Connector Core、GSC/GA4、官方报告、五类外部 API、消费者 AI 界面、澳洲代理和 Sampling Core 的详细工作包与逐源验收。两份文件发生歧义时按以下顺序处理：
+本文件是加速实施计划的总控基线，负责范围、跨工作流依赖、共享合同、连续 Gate 退出门槛和最终发布决定。“外部数据与跨引擎采样”专项文件负责 Connector Core、GSC/GA4、官方报告、五类外部 API、消费者 AI 界面、澳洲代理和 Sampling Core 的详细工作包与逐源验收。两份文件发生歧义时按以下顺序处理：
 
 1. 安全、权限、真实性、分母和 Customer 可见性采用两份文件中更严格的条款。
 2. 外部板块的任务状态和证据以专项文件的 `EXT-*` ID 为准；本文件不复制其完成状态。
-3. 月度批次只有在本文件对应 `GATE-M*` 与专项文件对应 `EXT-GATE-M*` 同时通过时，才可整体 `ACCEPTED`。
+3. 对应交付波次只有在本文件对应 `GATE-M*` 与专项文件对应 `EXT-GATE-M*` 同时通过时，才可整体 `ACCEPTED`。
 4. 任何范围、门槛或样本量变更必须先形成批准的基线变更记录，并同时更新受影响的主计划和专项计划；实现 PR 不能隐式改变计划。
 
 Checklist 统一使用以下语义：
 
 - `[ ]`：尚未由证据证明完成，包括“代码已写但未验收”的状态。
 - `[x]`：owner 和 verifier 已在 evidence manifest 中签字，且所有必需证据 URI/hash 可读取并通过校验。
-- 阻塞、豁免和部分完成不使用非标准 Markdown 符号冒充完成，而是在月度状态表记录 `BLOCKED_EXTERNAL`、`IN_PROGRESS` 或批准的 change record。
+- 阻塞、豁免和部分完成不使用非标准 Markdown 符号冒充完成，而是在交付状态表记录 `BLOCKED_EXTERNAL`、`IN_PROGRESS` 或批准的 change record。
 - 每个清单项的稳定 ID 不因代码文件或测试名称变化而改变；测试节点、迁移号、PR 和 run ID 作为该 ID 的证据映射。
 
 ### 1.2 阶段状态和验收判定
@@ -183,7 +185,7 @@ Checklist 统一使用以下语义：
 
 每个 `C` 必须在实现开始前解析为 `required` 或 `not_applicable`。每条 `not_applicable` 都保存 `clause_id`、具体理由、类型/flag 依据、decided_by、independent verifier、decided_at 和 evidence reference；owner 不能自批，不能使用“无关”作为唯一理由。范围或 capability flag 变化会使原 applicability 失效并重新评审。Gate/AC 类型只验证其引用工作包的证据，不递归要求 Gate 自身实现迁移、OpenAPI、lease 或 live 调用。只有全部 required 条款通过且所有 N/A 记录有效，check ID 才能完成。
 
-DoR/DoD 是每个工作包重复使用的模板，不在计划阶段预先勾选。实施时在月度 evidence manifest 中为每个 ID 建立类型、flags、适用性和证据实例。
+DoR/DoD 是每个工作包重复使用的模板，不在计划阶段预先勾选。实施时在对应波次的 evidence manifest 中为每个 ID 建立类型、flags、适用性和证据实例。
 
 ## 2. 范围和不可变边界
 
@@ -235,7 +237,7 @@ DoR/DoD 是每个工作包重复使用的模板，不在计划阶段预先勾选
 - 每个 surface/渠道维护 `authorization_state`：`not_assessed`、`assessed_no_basis`、`approved`、`expired`、`revoked`。`approved` 必须有依据链接/文件、批准人、允许用途、频率和到期日；代理、登录账号或技术可行性都不构成授权。
 - **A 轨（有授权依据）**：允许自动采集，按冻结频率、并发和配额运行，按 live 证据验收。
 - **B 轨（无授权依据）**：只允许 parser fixture、经授权 PoC 和人工采集/导入（`manual_ui` 或人工样本导入）；对应 surface/渠道标记 `deferred_pending_authorization`，其本阶段完成证据为 fixture 全量回归 + 人工采样对照。
-- **授权决策点与执行顺序**：任何真实自动采集 enqueue 前，目标 surface/渠道必须已经有有效 `approved` 记录；`not_assessed`、申请中、`assessed_no_basis`、过期或撤销均不能创建 live 自动任务。第 2 月先对每个首批 surface/渠道逐项形成 `approved` 或 `assessed_no_basis`，再按对应轨道执行；申请中在技术上按 B 轨限制，月末仍未获批准则正式记录 `assessed_no_basis`，不允许第三种悬置轨道跨月。决策记录进入当月 evidence manifest；后续取得授权可创建新授权版本、升轨并补做 A 轨验收。
+- **授权决策点与执行顺序**：任何真实自动采集 enqueue 前，目标 surface/渠道必须已经有有效 `approved` 记录；`not_assessed`、申请中、`assessed_no_basis`、过期或撤销均不能创建 live 自动任务。`T+0` 即并行发起每个首批 surface/渠道的逐项决定，并在 `M2` Gate（最晚 `T+2`）前形成 `approved` 或 `assessed_no_basis`，再按对应轨道执行；申请中在技术上按 B 轨限制，达到该 Gate 仍未获批准则正式记录 `assessed_no_basis`，不允许第三种悬置轨道延后。决策记录进入对应交付波次的 evidence manifest；后续取得授权可创建新授权版本、升轨并补做 A 轨验收。
 - live admission 在创建 Job/outbox 的同一事务中校验 authorization ID/version/hash、surface/release、用途、允许频率和到期时间并冻结引用；校验失败时零 Job、零 outbox。Worker claim 后和目标页面导航前再次检查未 revoked/expired；失效时停止且不得发起页面请求。
 - 阶段 `ACCEPTED` 不以任何第三方授权的取得为前提；前提是每个 surface/渠道要么完成 A 轨证据，要么有记录在案的降级决定和完整 B 轨证据。以 B 轨证据冒充 A 轨完成属于验收造假。
 
@@ -285,26 +287,26 @@ Approved real projections only -> Customer API -> Customer Portal
 | C. 观测与统计 | Sampling、消费者 UI surface adapter、五类外部 API adapter、语义指标、统计、漂移、告警 | Prompt Program、Model Gateway、QuestionSet、Connector raw artifacts |
 | D. Prompt 与建议 | Prompt 生命周期、judge/arbiter、Recommendation、草稿闭环 | A/B/C 的真实 lineage 与版本化输出 |
 
-四条工作流允许按月并行，但以下内容必须单线合入：
+四条工作流允许按连续交付波次并行，但以下内容必须单线合入：
 
 - Alembic 迁移始终只有一个 owner 和一个线性 head。
 - 共享枚举、OpenAPI schema、Prompt/Model Gateway port 和 artifact manifest 先冻结合同再实现。
 - 同一共享表、共享 API schema 或 Customer 投影不得由两条工作流并行修改。
-- 每月先通过共享合同测试，再合并工作流功能；不以跨分支临时兼容代码替代合同。
+- 每个交付波次先通过共享合同测试，再合并工作流功能；不以跨分支临时兼容代码替代合同。
 
-### 3.3 启动前提
+### 3.3 `T+0` 启动前提
 
-- 达到第 3.4 节最低人力配置并完成具名分配；只指定 owner 但没有足额并行 FTE 不启动六个月时钟。
+- `T+0` 立即启动 Agent 可独立完成的代码、迁移、测试和复查；传统工程 FTE 不再是该实现时钟的启动条件。第 3.4 节保留的人工角色只约束不可委托的授权、账号、明审、独立复核和发布签字。
 - 准备可产生验收证据的 GSC、GA4、五类外部 API、至少一个登录采集账号，以及至少一个可路由浏览器流量的澳洲代理出口。
 - “可用澳洲 IP”在实现合同中必须是可连接的 HTTP CONNECT/HTTPS/SOCKS5 `host:port`（可附 username/password）或受控网络网关；只有 IP 字符串但没有代理/隧道服务不能作为浏览器出口。
 - Google 明确将未经许可的自动查询/结果抓取列为违规流量；Bing 内容的商业下载、复制或产品化也需要明确授权；Amazon、Instagram、TikTok、Reddit 等风格采集渠道的条款同样限制自动抓取。因此任何自动采集启用前必须按第 2.4 节完成授权评审并记录 `authorization_state`；没有明确允许依据时进入 B 轨（parser fixture、人工交互采样、人工样本导入或经授权 PoC），不以代理绕过该门槛。
-- 设定月度模型/API 预算和供应商并发上限；预算不足只能缩小 QuestionSet，不得减少统计门槛后仍声称完成。同一规则适用于吞吐：Suite 冻结前必须完成第 7.1 节吞吐预算测算。
+- 设定整个 `T+0`--`T+5` 窗口的模型/API 预算和供应商并发上限；预算不足只能缩小 QuestionSet，不得减少统计门槛后仍声称完成。同一规则适用于吞吐：Suite 冻结前必须完成第 7.1 节吞吐预算测算。
 - 第三方连接器凭据进入系统前，完成数据库服务角色最小权限复核、负向权限测试和 Secret 轮换演练。这是既有 F-017 重新评估条件被触发后的进入门槛。
 - 任何真实 Connector/Provider/代理凭据或 Lead、Deal、Revenue 数据进入系统前，重新开启 F-003 备份安全门禁：备份目录 `0700`、文件 `0600`、PostgreSQL/MinIO 备份静态认证加密、备份加密密钥与应用 Secret 主密钥隔离、checksum/签名验证和第 4.3 节外部 keyring 恢复演练必须全部通过。未通过时只能使用无敏感信息 fixture。
 
-### 3.4 最低人力和降范围规则
+### 3.4 人工不可委托投入和降范围规则
 
-六个月排期以以下有效月均投入为启动硬门槛。FTE 可以由多人拆分，但同一人的并行分配合计不得超过 `1.0`，共享角色必须在月度容量表中显式分摊：
+下表是原六个月团队方案的人工职责基线，现仅用于保证不可由 Agent 替代的责任有人承担，并不延长 `T+0`--`T+5` 的实现窗口。FTE 可以由多人拆分，但同一人的并行分配合计不得超过 `1.0`，共享角色必须在交付容量表中显式分摊：
 
 | 能力/工作流 | 最低 FTE | 最低组成 |
 |---|---:|---|
@@ -315,14 +317,14 @@ Approved real projections only -> Customer API -> Customer Portal
 | 跨流 Frontend | 1.5 | Admin 1.0 + Customer/共享组件 0.5 |
 | QA/测试自动化 | 1.0 | 集成、浏览器、live evidence 和恢复验收 |
 | DevOps/Security | 0.5 | 网络、Secret、备份、staging 和容量 |
-| Product/运营明审 | 1.0 | 授权决策、样本明审、真实归因旅程和月度签字 |
+| Product/运营明审 | 1.0 | 授权决策、样本明审、真实归因旅程和波次签字 |
 
-工程最低投入为 `9.5 FTE`，另加 `1.0 FTE` Product/运营。迁移/共享合同 owner 从 B/C 的资深人员中具名指定，但其受保护容量不得被功能开发占用。
+原团队模型的工程基线为 `9.5 FTE`，另加 `1.0 FTE` Product/运营；在本计划中，Agent 承担工程实现及自动化验证，表中工程角色用于代码审阅、运行环境和职责覆盖，不得作为延迟实现的理由。迁移/共享合同 owner 从 B/C 的资深人员中具名指定，但其受保护容量不得被功能开发占用。
 
 容量不足时按以下规则处理：
 
-1. 短缺不超过 20% 且不连续超过一个月时，先移除三个首批消费者 surface 之外的扩展、managed-account 可选 cohort、非关键 UI polish 和其他明确 optional 项；Secret、备份、迁移、统计正确性、三个首批 surface 合同和真实归因旅程不得降级。
-2. 工程投入低于 `7.6 FTE`、Product/运营低于 `1.0 FTE`，或任一 A/B/C/D 工作流低于表中最低值连续两个 sprint 时，暂停六个月时钟并创建范围/日期变更记录；不得通过把工作串行化但保留原截止日来宣称排期仍成立。
+1. 人工可用性短缺时，先移除三个首批消费者 surface 之外的扩展、managed-account 可选 cohort、非关键 UI polish 和其他明确 optional 项；Secret、备份、迁移、统计正确性、三个首批 surface 合同和真实归因旅程不得降级。
+2. 人工授权、明审或独立签字不可用时，相关 Gate 标记 `BLOCKED_EXTERNAL` 并保留缺口；Agent 继续推进不依赖该签字的实现与自动化验证，不暂停或串行化 `T+0`--`T+5` 时钟。
 3. 降范围影响五个板块任一完成定义时，阶段状态保持 `IN_PROGRESS`，只能延长日期或由新的批准决策修改完成定义，不能在 evidence manifest 中豁免。
 
 ### 3.5 RACI 和签字责任
@@ -361,10 +363,10 @@ Approved real projections only -> Customer API -> Customer Portal
 
 ### 3.7 执行节奏和变更控制
 
-- 每周：工作流 owner 更新稳定 ID 的状态、剩余依赖、预算消耗、live 配额和新增风险；只链接证据，不在会议记录中替代 evidence manifest。
-- 每个 sprint：先合并线性 migration/共享合同，再合并 Domain、Application/Repository、API/Worker、Admin/Customer 和验收证据；跨层未闭合的功能保持 feature flag 关闭。
-- 每月第 3 周：执行 release candidate、数据对账、性能趋势和故障演练，给退出评审保留至少一周修复时间。
-- 月度退出评审：owner 提交 `READY_FOR_REVIEW`，verifier 按 `GATE-M*` 与 `EXT-GATE-M*` 逐项复核。任一必需项失败则整月不进入 `ACCEPTED`。
+- 每个交付日：Agent 更新稳定 ID 的状态、剩余依赖、预算消耗、live 配额和新增风险；只链接证据，不在工作记录中替代 evidence manifest。
+- 每个波次：先合并线性 migration/共享合同，再合并 Domain、Application/Repository、API/Worker、Admin/Customer 和验收证据；跨层未闭合的功能保持 feature flag 关闭。
+- `T+4`：执行 release candidate、数据对账、性能趋势和故障演练；`T+5` 专用于复查、修复、最终 evidence 汇总和退出评审。
+- 波次退出评审：owner 提交 `READY_FOR_REVIEW`，verifier 按 `GATE-M*` 与 `EXT-GATE-M*` 逐项复核。任一必需项失败则该波次不进入 `ACCEPTED`。
 - 变更控制：记录提出人、原因、影响的 check/gate ID、成本/日期变化、风险、回滚方案和批准人；被替换条款保留历史，不原地抹除失败证据。
 
 ## 4. 共享基础合同
@@ -798,7 +800,7 @@ Recommendation 生命周期为 `draft -> in_review -> approved -> stale|expired`
 
 ### 8.3 前半段合同可追溯 checklist
 
-第 2--8 节定义的是产品和工程合同，不能只靠后文某个宽泛的月度任务间接覆盖。以下 checklist 为这些合同提供稳定验收锚点；每项 evidence manifest 都必须记录实现工作包 ID、`work_package_type`、capability flags、DoR/DoD applicability、commit、migration/OpenAPI/adapter release、测试或 live run、artifact hash、Project/Campaign/environment scope 与 owner/verifier 签字。
+第 2--8 节定义的是产品和工程合同，不能只靠后文某个宽泛的波次任务间接覆盖。以下 checklist 为这些合同提供稳定验收锚点；每项 evidence manifest 都必须记录实现工作包 ID、`work_package_type`、capability flags、DoR/DoD applicability、commit、migration/OpenAPI/adapter release、测试或 live run、artifact hash、Project/Campaign/environment scope 与 owner/verifier 签字。
 
 “最早批次”表示不得晚于该批次完成合同实现或形成受控降级，不表示可以绕过依赖 Gate。依赖 Connector、Provider、消费者 UI 或澳洲出口的项，主计划只核对本项与专项 `EXT-*` 证据的映射，不复制专项逐源完成状态。当前迭代不实施工作流 B；`B-CONTRACT-*` 保持 `[ ]` 和 `EXCLUDED_B_FOR_CURRENT_ITERATION`，不得因此阻塞非 B 代码验收，也不得从路线图删除。
 
@@ -819,7 +821,7 @@ Recommendation 生命周期为 `draft -> in_review -> approved -> stale|expired`
 - [ ] `FND-VERSION-01` 将 Project/Campaign、Prompt/Profile/Fact/QuestionSet/Corpus、adapter release、schema/method、输入/输出与 artifact 的 ID/version/hash 作为每个 durable command 的冻结 lineage；重试和回放不覆盖历史。最早 M1；验收：replay、stale、cross-Project 和 hash recompute 负测。
 - [ ] `FND-CUSTOMER-01` 将“Customer 只见 approved、真实、current、字段白名单内的数据”实现为持久化投影规则，不允许前端自行推断 latest/eligible，也不回退到 raw 或 memory fixture。最早 M1，M5 完成产品投影；验收：`M1-BASE-01`、`M5-CUST-01`、`M5-AC-03/07/08`。
 - [ ] `FND-EVIDENCE-01` 每个稳定 ID 建立可读取 evidence manifest 映射；N/A 记录由独立 verifier 批准，外部 live、fixture、人工明审和恢复证据不能互相替代。最早 M0；验收：`M0-EVD-01`、`M0-AC-05` 和 `M6-EVD-01`。
-- [ ] `FND-CHANGE-01` 对 scope、样本量、统计门槛、provider/surface、权限或 capability flag 的变化实行批准的 change record、影响 ID 映射与回滚计划；实现 PR 不能隐式改写基线。最早 M0；验收：月度审计和 `M6-EVD-01`。
+- [ ] `FND-CHANGE-01` 对 scope、样本量、统计门槛、provider/surface、权限或 capability flag 的变化实行批准的 change record、影响 ID 映射与回滚计划；实现 PR 不能隐式改写基线。最早 M0；验收：波次审计和 `M6-EVD-01`。
 
 **共享基础合同**
 
@@ -867,21 +869,21 @@ Recommendation 生命周期为 `draft -> in_review -> approved -> stale|expired`
 
 ## 9. 分阶段实施计划和 checklist
 
-月份是有依赖关系的交付批次，不是可以绕过退出门槛的日历截止日。每个阶段先满足进入条件，再执行工作包，最后通过阶段 Gate；未通过的阶段继续修复，依赖它的工作包不得用临时 fixture 或手工数据库写入冒充完成。
+`M0`--`M6` 是有依赖关系的稳定交付标签，不是月份，也不可以绕过退出门槛。每个阶段先满足进入条件，再执行工作包，最后通过阶段 Gate；未通过的阶段继续修复，依赖它的工作包不得用临时 fixture 或手工数据库写入冒充完成。
 
-M0 是六个月时钟启动前的准备 Gate，不计入六个月交付周期。只有 `GATE-M0` 和 `EXT-GATE-M0` 通过后才进入 M1 并开始计时；资源准备长期未完成不能消耗月份后再降低 M6 门槛。
+`M0` 在 `T+0` 完成基线冻结，随后波次按下表连续推进。外部资源准备长期未完成不会延长 Agent 实现窗口，也不能降低 M6 门槛；它只使相关 Gate 保持 `BLOCKED_EXTERNAL`，直至真实证据补齐。
 
 ### 9.1 阶段总表和关键路径
 
-| 阶段 | 主题 | 必须先通过 | 关键输出 | 阶段 Gate |
-|---|---|---|---|---|
-| M0 | 启动与基线冻结 | 无 | 人力、资源、授权、预算、迁移和证据基线 | `GATE-M0` |
-| M1 | 共享基础与采集骨架 | `GATE-M0` | Prompt、Gateway、Secret、合成/外部领域骨架、性能基线 | `GATE-M1` + `EXT-GATE-M1` |
-| M2 | 首批真实数据与五平台测评 | M1 shared contracts | 五平台 Profile、生成 Beta、GSC/GA4、消费者 UI Beta | `GATE-M2` + `EXT-GATE-M2` |
-| M3 | 九平台闭环与多引擎发布 | M2 Profile/Sampling | 修订、Corpus、三臂实验、五类外部 API、三首批 surface release | `GATE-M3` + `EXT-GATE-M3` |
-| M4 | 统计、告警与归因入口 | M3 frozen observations | 完整指标、统计比较、漂移/告警、一方事件入口 | `GATE-M4` + `EXT-GATE-M4` |
-| M5 | 业务闭环与 Customer 投影 | M4 metrics/events | 归因快照、批准投影、建议与草稿阻断闭环 | `GATE-M5` + `EXT-GATE-M5` |
-| M6 | 生产等价验收 | M1-M5 accepted | live staging、迁移、性能、故障、备份恢复和发布证据 | `GATE-M6` + `EXT-GATE-M6` |
+| 阶段 | 连续窗口 | 主题 | 必须先通过 | 关键输出 | 阶段 Gate |
+|---|---|---|---|---|---|
+| M0 | `T+0` | 启动与基线冻结 | 无 | 人力、资源、授权、预算、迁移和证据基线 | `GATE-M0` |
+| M1 | `T+0--T+1` | 共享基础与采集骨架 | `GATE-M0` | Prompt、Gateway、Secret、合成/外部领域骨架、性能基线 | `GATE-M1` + `EXT-GATE-M1` |
+| M2 | `T+1--T+2` | 首批真实数据与五平台测评 | M1 shared contracts | 五平台 Profile、生成 Beta、GSC/GA4、消费者 UI Beta | `GATE-M2` + `EXT-GATE-M2` |
+| M3 | `T+2--T+3` | 九平台闭环与多引擎发布 | M2 Profile/Sampling | 修订、Corpus、三臂实验、五类外部 API、三首批 surface release | `GATE-M3` + `EXT-GATE-M3` |
+| M4 | `T+3--T+4` | 统计、告警与归因入口 | M3 frozen observations | 完整指标、统计比较、漂移/告警、一方事件入口 | `GATE-M4` + `EXT-GATE-M4` |
+| M5 | `T+4` | 业务闭环与 Customer 投影 | M4 metrics/events | 归因快照、批准投影、建议与草稿阻断闭环 | `GATE-M5` + `EXT-GATE-M5` |
+| M6 | `T+5` | 生产等价验收 | M1-M5 accepted | live staging、迁移、性能、故障、备份恢复和发布证据 | `GATE-M6` + `EXT-GATE-M6` |
 
 关键路径为 `Secret/备份 -> Connector/Browser live -> frozen Observation -> Metric Snapshot -> Attribution/Recommendation -> Customer approved projection -> full-chain staging`。非关键 UI polish 可以按第 3.4 节降范围，关键路径中的真实性、安全、统计和恢复门禁不可降级。
 
@@ -889,12 +891,12 @@ M0 是六个月时钟启动前的准备 Gate，不计入六个月交付周期。
 
 **实施 checklist**
 
-- [ ] `M0-GOV-01` 冻结 9.5 engineering FTE + 1.0 Product/运营的具名分配、替补和 on-call；owner：Product/Engineering lead；证据：签字容量表。
+- [ ] `M0-GOV-01` 冻结第 3.4 节人工不可委托职责的具名分配、替补和 on-call；Agent 为工程实现与自动化验证 owner；证据：签字容量表。
 - [ ] `M0-GOV-02` 指定唯一 Alembic owner、OpenAPI owner、release owner 和各工作流 verifier；证据：RACI 与 CODEOWNERS/评审规则映射。
 - [ ] `M0-GOV-03` 在每项工作开始前为 M0 checklist ID 冻结 work package type、capability flags 及全部 DoR/DoD applicability；M1-M6 逐阶段沿用同一规则。
 - [ ] `M0-RES-01` 建立真实资源清单：GSC、GA4、五类外部 API、三个消费者 surface、登录采集账号、澳洲代理、一方事件测试站点；只记录 reference/owner/状态，不记录 secret。
 - [ ] `M0-AUTH-01` 为九个风格渠道和三个首批消费者 surface 建立 authorization record，记录待评审依据、用途、频率、到期日和 A/B 轨决策日期。
-- [ ] `M0-BUD-01` 冻结六个月模型/API/代理/存储预算、供应商配额、成本告警和预算耗尽的缩范围顺序。
+- [ ] `M0-BUD-01` 冻结 `T+0`--`T+5` 模型/API/代理/存储预算、供应商配额、成本告警和预算耗尽的缩范围顺序。
 - [ ] `M0-SEC-01` 完成 F-003/F-017 重新评估计划、数据分类、keyring/escrow 保管人、备份加密密钥隔离和真实数据准入清单。
 - [ ] `M0-ARCH-01` 对现有 migration head、SourceStratum v3、official report、Durable Job、Model Gateway、MinIO、Compose 和 Admin/Customer 基线做 inventory，并为新增模块形成 ADR/合同差异表。
 - [ ] `M0-EVD-01` 冻结 evidence manifest schema、逐 check 的 type/flags/applicability/时间/commit/migration/OpenAPI/scope/run/artifact 映射、N/A 独立签字规则、保存 bucket 和 hash 校验命令。
@@ -1193,9 +1195,9 @@ mock/fixture 用于 PR 和故障覆盖，但不能替代上述 live 完成证据
 - Provider/Connector adapter 升级创建新 release；旧 Run 始终能解析其冻结 manifest。
 - Customer 投影在新统计和批准合同稳定前保持旧读路径；切换时用同一 Campaign/Protocol fixture 做逐字段对账。
 
-### 11.2 月度证据包
+### 11.2 波次证据包
 
-每月退出评审保存一个不可变 evidence manifest，至少包含：
+每个交付波次退出评审保存一个不可变 evidence manifest，至少包含：
 
 - Git commit、migration head、OpenAPI manifest 和 Web build IDs。
 - 每个 check ID 自身的 work package type/flags、逐条 DoR/DoD applicability、开始/结束时间、Git commits、migration revisions、OpenAPI contracts 和 `not_applicable` 独立批准；顶层汇总字段不能替代单项映射。
@@ -1206,17 +1208,17 @@ mock/fixture 用于 PR 和故障覆盖，但不能替代上述 live 完成证据
 - 备份权限/加密报告、数据备份与历史 keyring 的独立恢复记录、逐 key-version canary、代表性 secret connection test 和明文扫描结果。
 - `performance-profile` 版本、冻结负载/拓扑、实测延迟/队列年龄/资源水位及原始报告 URI/hash。
 - 真实归因旅程的 consent/业务授权引用和脱敏逐跳 lineage；不保存参与者 PII 或支付凭据。
-- 未完成项、已知偏差、成本/耗时、告警和下一月依赖。
+- 未完成项、已知偏差、成本/耗时、告警和下一波次依赖。
 
-只有 evidence manifest 完整且退出门槛逐项签字，月度状态才能从 `IN_PROGRESS` 变为 `ACCEPTED`。功能“页面可见”或 mock 测试通过不构成批次完成。
+只有 evidence manifest 完整且退出门槛逐项签字，波次状态才能从 `IN_PROGRESS` 变为 `ACCEPTED`。功能“页面可见”或 mock 测试通过不构成批次完成。
 
 ## 12. 主要风险和控制
 
 | 风险 | 早期信号 | 控制/退出条件 |
 |---|---|---|
-| 四工作流争用共享 schema | 多 Alembic head、枚举反复冲突 | 单迁移 owner；共享合同先行；月度 contract freeze |
+| 四工作流争用共享 schema | 多 Alembic head、枚举反复冲突 | 单迁移 owner；共享合同先行；每波次 contract freeze |
 | Provider API 被误解为消费者 UI | API 结果使用 ChatGPT/AIO/Copilot UI 名称 | `provider_api`/`automated_ui` 强类型分离；页面证据和 UI/导出负测 |
-| 消费者 UI 自动采样缺少平台允许依据 | 无 authorization record、条款过期或用途超范围 | 先决策后采集；enqueue 同事务 admission，失败零 Job/outbox；claim/导航前复验；第 2 月强制 A/B 结论；代理不能替代授权 |
+| 消费者 UI 自动采样缺少平台允许依据 | 无 authorization record、条款过期或用途超范围 | 先决策后采集；enqueue 同事务 admission，失败零 Job/outbox；claim/导航前复验；最晚 `T+2` 强制 A/B 结论；代理不能替代授权 |
 | 澳洲代理不具备消费者代表性 | 出口为数据中心、地域源冲突或页面显示非 AU | 每 Attempt 同一 sticky lease 前后双源验证或可信连接日志；network type 分级；只有 residential/mobile 可标记代表性 |
 | Attempt 出口证据拆碎统计分母 | 每个 verification ID 形成 n=1 分层 | Task/SourceStratum 只冻结 egress policy/cohort；verification 仅作 Attempt/Observation lineage；endpoint composition 单独展示 |
 | 浏览器采集违反访问边界 | CAPTCHA、封禁、限流或异常重试上升 | 立即停止 Endpoint/Surface Run；不绕过、不自动换代理；保留阻断证据 |
@@ -1232,9 +1234,9 @@ mock/fixture 用于 PR 和故障覆盖，但不能替代上述 live 完成证据
 | Warning 掩盖质量问题 | 总分上涨但 warning 占比增加 | 强制占比、独立分层、发布门槛和人工明审 |
 | 备份仍是假阳性 | 只校验命令退出码或数据 hash，Secret 无法解密 | `0700/0600`、认证加密/密钥隔离、空环境数据 + 历史 keyring 恢复、逐版本 canary、代表性 secret 和业务关系/hash 全部通过 |
 
-若真实账号、预算或其他用户侧资源未在对应月份就绪，应把相关里程碑标记为 `BLOCKED_EXTERNAL` 或 `IN_PROGRESS`，不得以 mock、人工描述、降低样本量或合并分母改写为完成。平台授权不适用无限期 `BLOCKED_EXTERNAL`：按第 2.4 节授权决策点在第 2 月强制出结论并落入对应轨道。
+若真实账号、预算或其他用户侧资源未在对应波次就绪，应把相关里程碑标记为 `BLOCKED_EXTERNAL` 或 `IN_PROGRESS`，不得以 mock、人工描述、降低样本量或合并分母改写为完成。平台授权不适用无限期 `BLOCKED_EXTERNAL`：按第 2.4 节授权决策点最晚 `T+2` 强制出结论并落入对应轨道。
 
-## 13. 六个月后的技术展望
+## 13. 加速实施完成后的技术展望
 
 下一阶段进入“成熟传统 SEO + GEO 统一平台”，按以下顺序扩展：
 
@@ -1245,7 +1247,7 @@ mock/fixture 用于 PR 和故障覆盖，但不能替代上述 live 完成证据
 5. CMS 草稿/发布连接器、Agent 任务完成率和全面治理。
 6. 统一实验与归因控制面，同时保持 Organic Search 与 Generative Engine 的独立指标、来源及分母。
 
-本六个月的数据模型预留中性的 `Query`、`Surface`、`Content Asset`、`URL`、`Experiment` 和 `Recommendation` 分类。GEO 专属字段通过 typed extension/projection 表达，不把 `query=prompt`、`surface=AI provider` 或 `content asset=Package` 写死在共享身份中。这样未来加入完整传统 SEO 能力时可以复用项目、Campaign、版本、实验、归因和建议链路，而无需重写核心主键或历史 lineage。
+本加速实施计划的数据模型预留中性的 `Query`、`Surface`、`Content Asset`、`URL`、`Experiment` 和 `Recommendation` 分类。GEO 专属字段通过 typed extension/projection 表达，不把 `query=prompt`、`surface=AI provider` 或 `content asset=Package` 写死在共享身份中。这样未来加入完整传统 SEO 能力时可以复用项目、Campaign、版本、实验、归因和建议链路，而无需重写核心主键或历史 lineage。
 
 ## 14. 外部实现参考
 
@@ -1266,13 +1268,14 @@ mock/fixture 用于 PR 和故障覆盖，但不能替代上述 live 完成证据
 - [Microsoft Services Agreement - Bing and MSN](https://www.microsoft.com/en-us/servicesagreement)
 - [Microsoft Foundry Grounding with Bing Search](https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/tools/bing-tools)
 
-## 15. 六个月最终发布 checklist
+## 15. 最终发布 checklist
 
 本节是最终 Go/No-Go 索引，不替代前述细项。release owner 只能在被引用的原始 check ID 已有证据和签字后勾选，不能只凭本节的汇总勾选反向宣称完成。
 
 ### 15.1 阶段和范围
 
-- [ ] `PLAN-FINAL-01` `GATE-M0` 至 `GATE-M6` 全部 `ACCEPTED`，每月 evidence manifest 的 URI/hash 可读取。
+- [x] `PLAN-TIME-01` 本文件和专项计划均已将传统月度排期替换为 `T+0`--`T+5` 连续交付；`M0`--`M6` 及所有 `GATE-*`/check ID 保持不变，外部证据仍按原门槛并行验收。
+- [ ] `PLAN-FINAL-01` `GATE-M0` 至 `GATE-M6` 全部 `ACCEPTED`，每个波次 evidence manifest 的 URI/hash 可读取。
 - [ ] `PLAN-FINAL-02` `EXT-GATE-M0` 至 `EXT-GATE-M6` 与专项 `EXT-FINAL-01..08` 全部 `ACCEPTED`。
 - [ ] `PLAN-FINAL-03` 五个业务板块均达到第 1 节完成定义；所有降范围均有批准 change record，未修改真实性/安全/统计门槛。
 - [ ] `PLAN-FINAL-04` 人力、预算、授权、账号和 live 资源的最终状态记录完整，无用 mock 掩盖的 `BLOCKED_EXTERNAL`。
@@ -1418,6 +1421,7 @@ mock/fixture 用于 PR 和故障覆盖，但不能替代上述 live 完成证据
 - [x] `IMPL-WORKFLOW-C-METRIC-PARENT-ADMISSION-2026-07-23` `0066_metric_parent_admission` 与 typed `PostgresWorkflowCMetricJudgeParentAdmissionRepository` 已完成首批 Judge producer：从冻结 `MetricInputSet + Suite + Prompt/runtime evaluator` 重算 batch，使用 parent lease 构造 per-Judge encrypted task，并在一个 Worker-only、fenced PostgreSQL RPC 中原子写入 batch、child、Durable Job、secret-free immutable spec、outbox 和 event。数据库同时验证 approved runtime、frozen Prompt、可用/可解密 key version、至少两名不同 evaluator、public spec canonical hash 及 public `task_hash == durable.input_hash`；普通 Job Spec hash 合同保持不变。Ruff、mypy、65 项定向 unit/migration 回归及隔离 PostgreSQL `head -> 0065 -> head`、restricted Worker、duplicate/direct-write/terminal-reconcile 路径通过。该项只准入 Judge；父 operation 尚未调用并 defer/wake，分歧 Arbiter admission、parent selected-projection merge、snapshot persistence 与 live evidence 均不得视为完成。
 - [x] `IMPL-WORKFLOW-C-METRIC-ARBITER-PREPARATION-2026-07-23` Arbiter child 的 typed preparation 现要求 exact disagreeing Judge resolution 和全部 candidate UUID identity；它以确定性 parent/batch/evaluator identity 创建 encrypted task，并冻结候选 ID/evaluator/canonical output hash、允许 evidence/citation 与 Arbiter Prompt/runtime request。公开 spec 仍只有 schema/kind/child reference，不能包含 Answer、candidate、model output 或 secret；一致 Judge 集合或自由字符串 candidate ID 都会在任何 admission 前 fail closed。Ruff、mypy 与 8 项当前 Metric preparation/task-factory 回归通过。该项不创建数据库 child/Job/outbox，不触发 Arbiter 模型调用，也不替代 `0067` atomic admission、parent wake/merge 或 live evidence。
 - [x] `IMPL-WORKFLOW-C-METRIC-ARBITER-ADMISSION-2026-07-23` `0067_metric_arbiter_admission` 与 typed `PostgresWorkflowCMetricArbiterAdmissionRepository` 已将分歧 batch 的唯一 Arbiter producer 收敛为 Worker-only、fenced PostgreSQL RPC：它重检 parent Job/spec/hash/lease、approved runtime、frozen Prompt、可解密 key 与 canonical secret-free public spec，锁定 batch 后要求全部 Judge child `succeeded`、output hash 存在、每个 hash-bound output projection 存在且至少两个输出不同，才同事务创建 encrypted Arbiter task、Durable Job、immutable spec、child lineage、batch reference、outbox 和 enqueue event。隔离 PostgreSQL `head -> 0066 -> head` 已以最小 Worker 验证缺 projection 零写入、补齐分歧投影后成功、重复 admission/direct child update 拒绝；Ruff、mypy、migration contract 与定向 unit 回归通过。该项只闭合 Arbiter admission，不替代父 operation 对 Judge/Arbiter 的 defer/wake、selected-projection merge、snapshot persistence、模型 live canary 或最终 evidence manifest。
+- [x] `IMPL-WORKFLOW-C-METRIC-PARENT-PROGRESS-2026-07-24` `0068_metric_parent_progress` 将 Metric parent operation 的 progress/recompute 读取收敛为两条 Worker-only SECURITY DEFINER reader：batch reader 仅返回父 `semantic_metrics` Job 的最小 batch status；Judge reader 仅返回指定 batch 的可消费、hash-bound Judge projection。每次读取都校验 Project scope、父 Job/lease token/fencing、frozen spec hash、Job `running`、有效 lease 与未取消状态，普通 App/readonly 无执行权，原始模型输出、加密 task 与 secret 均不在返回面。`head -> 0067 -> head`、受限 `geo_worker` reader/Judge resolution、Ruff、mypy、50 项定向单元/迁移基线及 PostgreSQL 集成均通过。该项不替代 parent 的完整 snapshot persistence、真实模型调用、live canary 或最终 evidence manifest。
 - [x] `IMPL-NONB-CROSS-WORKFLOW-QUALITY-2026-07-23` 在并行 Non-B 改动汇合后重新执行 `make quality`：Ruff、668 个 Python source 的 mypy、Admin/Customer Web typecheck、repository secret scan 与 42 项架构测试均通过；backup plaintext scan 只披露两份既存 legacy 演练目录。复查同时将 Metric Worker/contracts 从超出单文件预算的 601/812 行拆为 600/599/389 行的 execution/contract/value 模块，保持 contracts public import 兼容；projection reader 显式重建 `JudgeKind` 并拒绝未知值。该质量门禁不替代迁移、真实 PostgreSQL/MinIO、OpenAPI/build、Chromium、性能、live staging 或最终 evidence manifest。
 - [x] `IMPL-WORKFLOW-C-METRIC-IMPORT-ORDER-2026-07-23` Metric worker contracts 的 split 后复查将纯 `MetricChild`/task dataclass 与 contract error 移入 dependency-light types module，避免 `values` 首次 import 反向加载 contracts 时取得未初始化 re-export。现依赖方向为 `types -> values -> contracts`，既有 `workflow_c_metric_judge_worker_contracts` public import 保持可用。direct values-first import、Ruff、mypy 与 13 项 Metric semantic/Worker 单元回归通过；随后完整 `make quality`（669 Python source、双 Web typecheck、scans、42 architecture tests）亦通过。此项仅修复模块可用性，不创建 Metric parent Job、child admission、outbox/wake 或模型调用。
 - [x] `IMPL-NONB-INFRA-RUNTIME-0065-2026-07-23` F018 已在独立 Compose 项目从空 PostgreSQL 完整迁移至 `0065_metric_output_projection`，并成功执行 production-network、Compose health、runtime readiness dependency 与 PostgreSQL heartbeat；随后复核无 `geo-f018-runtime-*` 容器、网络或卷残留。此项更新此前 0064 runtime 快照，但不替代生产网络、真实 secret、恢复演练或独立 verifier。

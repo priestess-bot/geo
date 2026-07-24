@@ -1,17 +1,18 @@
-# GEO 外部数据与跨引擎采样详细实施计划
+# GEO 外部数据与跨引擎采样加速实施计划
 
 > 计划日期：2026-07-22
-> 修订日期：2026-07-22（第 2 次修订）
+> 修订日期：2026-07-24（第 3 次修订）
 > 计划状态：`PLANNED`
-> 执行周期：与[六个月总路线图](GEO-next-phase-six-month-roadmap-2026-07-21.md)的 M0-M6 同步
+> 执行周期：与[加速总路线图](GEO-next-phase-six-month-roadmap-2026-07-21.md)的 `T+0`--`T+5` 同步；`M0`--`M6` 仅为稳定 Gate 标签
 > 专项范围：Connector Core、GSC、GA4、Google/Bing 官方报告、五类 Provider/Grounded API、消费者 AI 界面、澳洲代理、Sampling Core 和外部观测交付
 > 上位合同：总路线图第 2、3、4、6.1、6.2、7.1、7.2、9、10、11 节
 > 完成原则：真实账号、真实数据、真实页面和不可变证据；fixture 只用于确定性回归和 B 轨完成证据，不冒充 A 轨 live
 > 第 2 次修订变更：Task 改用稳定 egress policy/cohort，实际出口验证下沉到 Attempt/Observation；live UI 强制先授权再 admission；增加 External Data Snapshot/Report/Approval；扩展单项 evidence manifest 与 DoR/DoD applicability
+> 第 3 次修订变更：保持专项范围、来源、样本、授权、安全和验收合同不变，废止六个月/月度排期；所有可由 Agent 完成的实现与自动化验证纳入 `T+0`--`T+5` 连续窗口。真实凭据、授权决定、人工明审、独立 verifier 和 live evidence 于 `T+0` 并行开始，未就绪只阻断对应 Gate，绝不降低或伪造验收。
 
 ## 1. 目标、边界和文档职责
 
-本专项在六个月内交付一条可真实验收的外部观测链：
+本专项在 `T+0`--`T+5` 内完成可由 Agent 交付的实现与自动化验证，并在真实依赖就绪后以原门槛验收一条外部观测链：
 
 ```text
 授权/凭据/澳洲出口
@@ -23,7 +24,7 @@
   -> Metric/Alert/Customer 的已批准真实输入
 ```
 
-六个月完成定义：
+加速实施完成定义：
 
 - GSC 和 GA4 在一个真实 property 上完成首次、增量、回刷、撤权恢复和 freshness 验收。
 - Google/Bing 官方报告以真实文件完成 immutable import、schema version、typed projection 和重复检测；没有单次回答时不伪造 Observation。
@@ -333,7 +334,7 @@ authorization gate
 
 - A 轨：只在 `approved` 有效期内允许真实自动采集；超频、越用途或到期 fail closed。
 - B 轨：允许 parser fixture、获准 PoC 和 `manual_ui`；禁止后台悄悄启动 browser capture。
-- 三个首批 surface 必须先逐一决定 A/B 轨，再执行对应轨道。申请中等同未批准，只能走 B 轨允许的 fixture/manual 路径；M2 月末仍未获批准时记录 `assessed_no_basis`，不能无限期作为第三轨。
+- 三个首批 surface 必须先逐一决定 A/B 轨，再执行对应轨道。申请中等同未批准，只能走 B 轨允许的 fixture/manual 路径；最晚在 `M2` Gate（`T+2`）仍未获批准时记录 `assessed_no_basis`，不能无限期作为第三轨。
 - live enqueue 在创建 Durable Job 与 outbox 的同一 fenced transaction 中要求有效 `approved`，并冻结 authorization ID/version/hash、surface/release、用途、频率和 expires_at。`not_assessed`、申请中、B 轨、expired 或 revoked 返回明确错误且零 Job/零 outbox。
 - Worker 在 claim 后及目标页面导航前重新校验同一授权版本仍有效；过期/撤销时取消或终止 Attempt，不能先请求页面再补记失败。授权升轨或续期创建新 version，不能原地改写已冻结任务。
 - 代理、账号、技术可行性和页面公开均不自动构成授权依据。
@@ -349,7 +350,17 @@ authorization gate
 
 ## 8. 分阶段实施 checklist
 
-M0 为六个月时钟启动前的专项准备 Gate；M1-M6 与总路线图同名阶段同步，不能把 M0 未完成事项滚入 M1 后仍宣称按期启动。
+`M0` 为 `T+0` 的专项准备 Gate；`M1`--`M6` 与总路线图同名 Gate 同步，不能把 M0 未完成事项滚入 M1 后仍宣称按期启动。它们是稳定标签而非月份，时间映射如下：
+
+| Gate 标签 | 连续窗口 | 说明 |
+|---|---|---|
+| M0 | `T+0` | 冻结来源、授权、预算、schema 和 evidence 基线 |
+| M1 | `T+0--T+1` | 合同、迁移和骨架 |
+| M2 | `T+1--T+2` | 真实 Connector、Sampling 和 Browser Beta |
+| M3 | `T+2--T+3` | 五类 API 和三个 Surface Release |
+| M4 | `T+3--T+4` | 观测交付、漂移和告警集成 |
+| M5 | `T+4` | 批准投影和运营稳定化 |
+| M6 | `T+5` | 生产等价和最终专项验收 |
 
 ### 8.1 M0：专项启动
 
@@ -538,7 +549,7 @@ M0 为六个月时钟启动前的专项准备 Gate；M1-M6 与总路线图同名
 
 ## 10. Evidence manifest 模板
 
-每月专项 manifest 至少包含：
+每个专项交付波次的 manifest 至少包含：
 
 ```json
 {
@@ -661,9 +672,10 @@ manifest 不保存 token、账号邮箱、proxy password、Cookie、参与者 PI
 
 ## 11. 最终专项发布 checklist
 
-- [ ] `EXT-FINAL-01` `EXT-GATE-M0` 至 `EXT-GATE-M6` 全部 `ACCEPTED`，无跳过月份或用后续证据倒填未发生的验收。
+- [x] `EXT-PLAN-TIME-01` 本专项与总路线图均使用 `T+0`--`T+5` 连续交付窗口；`M0`--`M6`、所有 `EXT-GATE-*`、样本量和证据门槛保持不变。
+- [ ] `EXT-FINAL-01` `EXT-GATE-M0` 至 `EXT-GATE-M6` 全部 `ACCEPTED`，无跳过波次或用后续证据倒填未发生的验收。
 - [ ] `EXT-FINAL-02` Connector、Provider、Surface、Egress、Sampling、安全/恢复的所有 `*-FINAL-*` 项均已签字。
-- [ ] `EXT-FINAL-03` 五类 API、真实 GSC/GA4、真实官方报告和三个消费者 surface 当前轨道均有六个月内有效证据。
+- [ ] `EXT-FINAL-03` 五类 API、真实 GSC/GA4、真实官方报告和三个消费者 surface 当前轨道均有最终 Gate 时有效的证据。
 - [ ] `EXT-FINAL-04` 每个 Adapter/Surface Release 的授权、条款、保留、SDK/browser/parser、fixture/live hash 和 rollback release 可查。
 - [ ] `EXT-FINAL-05` 所有来源在 Admin、Customer、API、export、Metric input 中使用同一身份和 eligibility；GSC/GA4/official-report 只经 approved External Data Report 可见，零绕过批准或跨分母污染。
 - [ ] `EXT-FINAL-06` 澳洲出口证据能逐 Attempt 证明 sticky pre/target/post 同源；没有把裸 IP、周期健康检查或供应商地区声明当成页面真实性。

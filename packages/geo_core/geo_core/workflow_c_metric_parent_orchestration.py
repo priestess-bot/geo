@@ -70,6 +70,7 @@ class PersistedMetricBatch:
     selected_candidate_id: UUID | None
     selected_output_hash: str | None
     arbiter_child_job_id: UUID | None
+    arbiter_child_status: str | None = None
 
 
 class PostgresWorkflowCMetricParentProgressRepository:
@@ -89,12 +90,12 @@ class PostgresWorkflowCMetricParentProgressRepository:
             connection.execute(
                 """SELECT id, observation_id, ordinal, planned_batch_count, plans_hash,
                               parent_input_hash, input_set_hash, metric_suite_hash, status,
-                              selected_candidate_id, selected_output_hash, arbiter_child_job_id
-                       FROM workflow_c_metric_judge_batches
-                      WHERE project_id = %s AND parent_job_id = %s
-                      ORDER BY observation_id, ordinal
-                      FOR SHARE""",
-                (lease.project_id, lease.job_id),
+                              selected_candidate_id, selected_output_hash, arbiter_child_job_id,
+                              arbiter_child_status
+                       FROM geo_read_workflow_c_metric_parent_batches(
+                           %s, %s, %s, %s, %s
+                       )""",
+                _parent_progress_params(lease, parent_input_hash),
             ).fetchall()
         )
         if not rows:
@@ -121,24 +122,15 @@ class PostgresWorkflowCMetricParentProgressRepository:
         self,
         connection: Any,
         *,
-        project_id: UUID,
+        lease: WorkerLease,
+        parent_input_hash: str,
         batch_id: UUID,
     ) -> MetricJudgeCandidateResolution | None:
-        rows = tuple(
-            connection.execute(
-                """SELECT child.candidate_id, child.evaluator_id, child.status,
-                              child.output_hash, projection.output_hash AS projection_hash,
-                              projection.output_projection
-                       FROM workflow_c_metric_model_children AS child
-                       LEFT JOIN workflow_c_metric_child_output_projections AS projection
-                         ON projection.project_id = child.project_id
-                        AND projection.child_job_id = child.child_job_id
-                      WHERE child.project_id = %s AND child.batch_id = %s
-                        AND child.role = 'metric_judge'
-                      ORDER BY child.evaluator_id, child.candidate_id
-                      FOR SHARE""",
-                (project_id, batch_id),
-            ).fetchall()
+        rows = self._judge_rows_in_transaction(
+            connection,
+            lease=lease,
+            parent_input_hash=parent_input_hash,
+            batch_id=batch_id,
         )
         if len(rows) < 2:
             raise WorkflowCMetricParentOrchestrationError("metric Judge batch has too few children")
@@ -150,38 +142,14 @@ class PostgresWorkflowCMetricParentProgressRepository:
             return None
         if statuses != {"succeeded"}:
             raise WorkflowCMetricParentOrchestrationError("metric Judge child status changed")
-        candidates: list[MetricJudgeCandidate] = []
-        for value in values:
-            output_hash = _hash(value.get("output_hash"), "metric Judge output hash")
-            if value.get("projection_hash") != output_hash:
-                raise WorkflowCMetricParentOrchestrationError(
-                    "metric Judge output projection is unavailable"
-                )
-            projection = value.get("output_projection")
-            if not isinstance(projection, Mapping):
-                raise WorkflowCMetricParentOrchestrationError(
-                    "metric Judge output projection is unavailable"
-                )
-            try:
-                candidates.append(
-                    metric_judge_candidate_from_projection(
-                        candidate_id=_uuid(value.get("candidate_id"), "metric Judge candidate ID"),
-                        evaluator_id=_text(value.get("evaluator_id"), "metric Judge evaluator ID"),
-                        output_hash=output_hash,
-                        projection=projection,
-                    )
-                )
-            except WorkflowCMetricJudgeWorkerContractError as error:
-                raise WorkflowCMetricParentOrchestrationError(
-                    "metric Judge output projection is invalid"
-                ) from error
-        return resolve_metric_judge_candidates(tuple(candidates))
+        return resolve_metric_judge_candidates(tuple(_candidate_from_row(item) for item in values))
 
     def selected_candidate_in_transaction(
         self,
         connection: Any,
         *,
-        project_id: UUID,
+        lease: WorkerLease,
+        parent_input_hash: str,
         batch: PersistedMetricBatch,
     ) -> MetricJudgeCandidate:
         if (
@@ -190,71 +158,37 @@ class PostgresWorkflowCMetricParentProgressRepository:
             or batch.selected_output_hash is None
         ):
             raise WorkflowCMetricParentOrchestrationError("metric batch is not selected")
-        row = _mapping(
-            connection.execute(
-                """SELECT child.candidate_id, child.evaluator_id, child.output_hash,
-                              projection.output_hash AS projection_hash, projection.output_projection
-                       FROM workflow_c_metric_model_children AS child
-                       JOIN workflow_c_metric_child_output_projections AS projection
-                         ON projection.project_id = child.project_id
-                        AND projection.child_job_id = child.child_job_id
-                      WHERE child.project_id = %s AND child.batch_id = %s
-                        AND child.role = 'metric_judge' AND child.status = 'succeeded'
-                        AND child.candidate_id = %s AND child.output_hash = %s""",
-                (
-                    project_id,
-                    batch.batch_id,
-                    batch.selected_candidate_id,
-                    batch.selected_output_hash,
-                ),
-            ).fetchone(),
-            "selected metric Judge child",
+        rows = self._judge_rows_in_transaction(
+            connection,
+            lease=lease,
+            parent_input_hash=parent_input_hash,
+            batch_id=batch.batch_id,
         )
-        output_hash = _hash(row.get("output_hash"), "selected metric Judge output hash")
-        if row.get("projection_hash") != output_hash:
-            raise WorkflowCMetricParentOrchestrationError(
-                "selected metric Judge projection is unavailable"
-            )
-        projection = row.get("output_projection")
-        if not isinstance(projection, Mapping):
-            raise WorkflowCMetricParentOrchestrationError(
-                "selected metric Judge projection is unavailable"
-            )
-        try:
-            return metric_judge_candidate_from_projection(
-                candidate_id=_uuid(row.get("candidate_id"), "selected metric candidate ID"),
-                evaluator_id=_text(row.get("evaluator_id"), "selected metric evaluator ID"),
-                output_hash=output_hash,
-                projection=projection,
-            )
-        except WorkflowCMetricJudgeWorkerContractError as error:
-            raise WorkflowCMetricParentOrchestrationError(
-                "selected metric Judge projection is invalid"
-            ) from error
+        selected = tuple(
+            _candidate_from_row(value)
+            for value in (_mapping(row, "selected metric Judge child") for row in rows)
+            if _text(value.get("status"), "selected metric Judge status") == "succeeded"
+            and _uuid(value.get("candidate_id"), "selected metric candidate ID")
+            == batch.selected_candidate_id
+            and _hash(value.get("output_hash"), "selected metric Judge output hash")
+            == batch.selected_output_hash
+        )
+        if len(selected) != 1:
+            raise WorkflowCMetricParentOrchestrationError("selected metric Judge child changed")
+        return selected[0]
 
     def arbiter_child_status_in_transaction(
         self,
-        connection: Any,
         *,
-        project_id: UUID,
         batch: PersistedMetricBatch,
     ) -> str | None:
         if batch.arbiter_child_job_id is None:
+            if batch.arbiter_child_status is not None:
+                raise WorkflowCMetricParentOrchestrationError("metric Arbiter lineage changed")
             return None
-        rows = tuple(
-            connection.execute(
-                """SELECT child_job_id, status FROM workflow_c_metric_model_children
-                      WHERE project_id = %s AND batch_id = %s AND role = 'arbiter'
-                      FOR SHARE""",
-                (project_id, batch.batch_id),
-            ).fetchall()
-        )
-        if len(rows) != 1:
+        status = _optional_text(batch.arbiter_child_status, "metric Arbiter status")
+        if status is None:
             raise WorkflowCMetricParentOrchestrationError("metric Arbiter lineage changed")
-        row = _mapping(rows[0], "metric Arbiter child")
-        if _uuid(row.get("child_job_id"), "metric Arbiter child ID") != batch.arbiter_child_job_id:
-            raise WorkflowCMetricParentOrchestrationError("metric Arbiter identity changed")
-        status = _text(row.get("status"), "metric Arbiter status")
         if status in {"failed", "cancelled"}:
             raise WorkflowCMetricParentOrchestrationError("metric Arbiter child is terminal")
         if status == "succeeded":
@@ -262,6 +196,25 @@ class PostgresWorkflowCMetricParentProgressRepository:
         if status not in _CHILD_PENDING:
             raise WorkflowCMetricParentOrchestrationError("metric Arbiter child status changed")
         return status
+
+    @staticmethod
+    def _judge_rows_in_transaction(
+        connection: Any,
+        *,
+        lease: WorkerLease,
+        parent_input_hash: str,
+        batch_id: UUID,
+    ) -> tuple[object, ...]:
+        return tuple(
+            connection.execute(
+                """SELECT candidate_id, evaluator_id, status, output_hash, projection_hash,
+                              output_projection
+                       FROM geo_read_workflow_c_metric_parent_judges(
+                           %s, %s, %s, %s, %s, %s
+                       )""",
+                (*_parent_progress_params(lease, parent_input_hash), batch_id),
+            ).fetchall()
+        )
 
 
 class PostgresWorkflowCMetricParentOrchestrator:
@@ -382,14 +335,15 @@ class PostgresWorkflowCMetricParentOrchestrator:
                     continue
                 if batch.status != "running":
                     raise WorkflowCMetricParentOrchestrationError("metric batch status changed")
-                arbiter_status = self._progress.arbiter_child_status_in_transaction(
-                    connection, project_id=lease.project_id, batch=batch
-                )
+                arbiter_status = self._progress.arbiter_child_status_in_transaction(batch=batch)
                 if arbiter_status is not None:
                     has_pending = True
                     continue
                 resolution = self._progress.judge_resolution_in_transaction(
-                    connection, project_id=lease.project_id, batch_id=batch.batch_id
+                    connection,
+                    lease=lease,
+                    parent_input_hash=parent_input_hash,
+                    batch_id=batch.batch_id,
                 )
                 if resolution is None:
                     has_pending = True
@@ -423,7 +377,10 @@ class PostgresWorkflowCMetricParentOrchestrator:
                 SelectedMetricJudgeBatch(
                     batch=plans_by_key[(batch.observation_id, batch.ordinal)],
                     candidate=self._progress.selected_candidate_in_transaction(
-                        connection, project_id=lease.project_id, batch=batch
+                        connection,
+                        lease=lease,
+                        parent_input_hash=parent_input_hash,
+                        batch=batch,
                     ),
                 )
                 for batch in batches
@@ -539,6 +496,12 @@ def _batch(
         or (status != "completed" and (selected_id is not None or selected_hash is not None))
     ):
         raise WorkflowCMetricParentOrchestrationError("metric parent batch lineage changed")
+    arbiter_child_id = _optional_uuid(value.get("arbiter_child_job_id"), "metric Arbiter child ID")
+    arbiter_child_status = _optional_text(
+        value.get("arbiter_child_status"), "metric Arbiter status"
+    )
+    if arbiter_child_id is None and arbiter_child_status is not None:
+        raise WorkflowCMetricParentOrchestrationError("metric Arbiter lineage changed")
     return PersistedMetricBatch(
         batch_id=batch_id,
         observation_id=observation_id,
@@ -547,9 +510,8 @@ def _batch(
         status=status,
         selected_candidate_id=selected_id,
         selected_output_hash=selected_hash,
-        arbiter_child_job_id=_optional_uuid(
-            value.get("arbiter_child_job_id"), "metric Arbiter child ID"
-        ),
+        arbiter_child_job_id=arbiter_child_id,
+        arbiter_child_status=arbiter_child_status,
     )
 
 
@@ -563,6 +525,10 @@ def _text(value: object, label: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise WorkflowCMetricParentOrchestrationError(f"{label} is invalid")
     return value
+
+
+def _optional_text(value: object, label: str) -> str | None:
+    return None if value is None else _text(value, label)
 
 
 def _hash(value: object, label: str) -> str:
@@ -591,6 +557,40 @@ def _uuid(value: object, label: str) -> UUID:
 
 def _optional_uuid(value: object, label: str) -> UUID | None:
     return None if value is None else _uuid(value, label)
+
+
+def _parent_progress_params(lease: WorkerLease, parent_input_hash: str) -> tuple[object, ...]:
+    return (
+        lease.project_id,
+        lease.job_id,
+        lease.lease_token,
+        lease.fencing_generation,
+        parent_input_hash,
+    )
+
+
+def _candidate_from_row(value: Mapping[str, object]) -> MetricJudgeCandidate:
+    output_hash = _hash(value.get("output_hash"), "metric Judge output hash")
+    if value.get("projection_hash") != output_hash:
+        raise WorkflowCMetricParentOrchestrationError(
+            "metric Judge output projection is unavailable"
+        )
+    projection = value.get("output_projection")
+    if not isinstance(projection, Mapping):
+        raise WorkflowCMetricParentOrchestrationError(
+            "metric Judge output projection is unavailable"
+        )
+    try:
+        return metric_judge_candidate_from_projection(
+            candidate_id=_uuid(value.get("candidate_id"), "metric Judge candidate ID"),
+            evaluator_id=_text(value.get("evaluator_id"), "metric Judge evaluator ID"),
+            output_hash=output_hash,
+            projection=projection,
+        )
+    except WorkflowCMetricJudgeWorkerContractError as error:
+        raise WorkflowCMetricParentOrchestrationError(
+            "metric Judge output projection is invalid"
+        ) from error
 
 
 def _positive(value: object, label: str) -> int:

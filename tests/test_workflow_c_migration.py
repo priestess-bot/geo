@@ -97,6 +97,9 @@ METRIC_ARBITER_ADMISSION_MIGRATION = (
 )
 METRIC_ARBITER_ADMISSION_UP = ROOT / "infra/db/alembic/sql/0067_metric_arbiter_admission.sql"
 METRIC_ARBITER_ADMISSION_DOWN = ROOT / "infra/db/alembic/sql/0067_metric_arbiter_admission.down.sql"
+METRIC_PARENT_PROGRESS_MIGRATION = ROOT / "infra/db/alembic/versions/0068_metric_parent_progress.py"
+METRIC_PARENT_PROGRESS_UP = ROOT / "infra/db/alembic/sql/0068_metric_parent_progress.sql"
+METRIC_PARENT_PROGRESS_DOWN = ROOT / "infra/db/alembic/sql/0068_metric_parent_progress.down.sql"
 
 
 def test_workflow_c_revision_is_linear_and_has_reversible_sql_files() -> None:
@@ -641,3 +644,25 @@ def test_workflow_c_worker_only_alert_metric_and_admin_inbox_contracts_are_symme
         "'connector_failure'",
     ):
         assert contract in down
+
+
+def test_metric_parent_progress_readers_are_fenced_worker_only_minimal_projections() -> None:
+    migration = METRIC_PARENT_PROGRESS_MIGRATION.read_text(encoding="utf-8")
+    source = METRIC_PARENT_PROGRESS_UP.read_text(encoding="utf-8")
+    down = METRIC_PARENT_PROGRESS_DOWN.read_text(encoding="utf-8")
+
+    assert 'revision = "0068_metric_parent_progress"' in migration
+    assert 'down_revision = "0067_metric_arbiter_admission"' in migration
+    for function_name in (
+        "geo_read_workflow_c_metric_parent_batches",
+        "geo_read_workflow_c_metric_parent_judges",
+    ):
+        assert f"CREATE FUNCTION {function_name}" in source
+        assert "SECURITY DEFINER" in source and "SET row_security = off" in source
+        assert f"GRANT EXECUTE ON FUNCTION {function_name}" in source
+        assert f"DROP FUNCTION {function_name}" in down
+    assert source.count("parent_job.lease_token IS DISTINCT FROM p_lease_token") == 2
+    assert source.count("parent_job.fencing_generation <> p_fencing_generation") == 2
+    assert source.count("parent_spec.spec_hash <> p_parent_input_hash") == 2
+    assert "task_ciphertext" not in source
+    assert "raw model output" in source
