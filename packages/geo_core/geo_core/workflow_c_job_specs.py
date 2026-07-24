@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 import hashlib
 import hmac
 import json
@@ -186,6 +186,11 @@ class PostgresWorkflowCJobSpecWriter:
             raise WorkflowCJobSpecError("Workflow C Job enqueue input is invalid")
         _validate_payload(payload, expected_kind=normalized_kind)
         spec_hash = _canonical_hash(payload)
+        _validate_analysis_payload(
+            payload,
+            expected_kind=normalized_kind,
+            spec_hash=spec_hash,
+        )
         connection = self._connect()
         try:
             set_project_scope(connection, project_id)
@@ -233,6 +238,7 @@ class PostgresWorkflowCJobSpecWriter:
         finally:
             connection.close()
 
+
 def _enqueued_row(row: object) -> Mapping[str, object]:
     if not isinstance(row, tuple) or len(row) != 3:
         raise WorkflowCJobSpecError("Workflow C Durable Job row shape is invalid")
@@ -262,9 +268,7 @@ def _validate_lease_binding(values: Mapping[str, object], lease: WorkerLease) ->
         raise WorkflowCJobSpecError("Workflow C Job spec differs from Durable Job input")
 
 
-def _validate_metric_child_task_binding(
-    values: Mapping[str, object], durable_hash: str
-) -> None:
+def _validate_metric_child_task_binding(values: Mapping[str, object], durable_hash: str) -> None:
     """Bind a metric child Job to its encrypted task, not its public reference.
 
     The immutable spec is deliberately a small, secret-free child reference;
@@ -299,6 +303,41 @@ def _validate_payload(payload: Mapping[str, object], *, expected_kind: str) -> N
             "Workflow C Job spec cannot contain secret or credential material"
         ) from error
     _reject_sensitive_fields(payload)
+
+
+def _validate_analysis_payload(
+    payload: Mapping[str, object],
+    *,
+    expected_kind: str,
+    spec_hash: str,
+) -> None:
+    """Reconstruct generic analytical inputs before they become durable work.
+
+    PostgreSQL verifies the shape of these two public, secret-free commands.
+    The full statistical relationships (frozen strata, pair uniqueness and
+    method bounds) deliberately remain in the shared Python contracts so the
+    producer and Worker reject precisely the same malformed inputs.
+    """
+
+    if expected_kind not in {
+        "workflow_c.analysis.comparison",
+        "workflow_c.analysis.drift",
+    }:
+        return
+    from geo_core.workflow_c_statistical_specs import comparison_inputs, drift_inputs
+
+    spec = WorkflowCJobSpec(
+        project_id=UUID(int=0),
+        job_id=UUID(int=0),
+        kind=expected_kind,
+        spec_hash=spec_hash,
+        payload=payload,
+        created_at=datetime.now(UTC),
+    )
+    if expected_kind == "workflow_c.analysis.comparison":
+        comparison_inputs(spec)
+    else:
+        drift_inputs(spec)
 
 
 def _reject_sensitive_fields(value: object) -> None:

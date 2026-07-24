@@ -112,6 +112,9 @@ ANALYSIS_PROJECTION_PERSISTENCE_UP = ROOT / "infra/db/alembic/sql/0070_analysis_
 ANALYSIS_PROJECTION_PERSISTENCE_DOWN = (
     ROOT / "infra/db/alembic/sql/0070_analysis_projection_rpc.down.sql"
 )
+ANALYSIS_JOB_ADMISSION_MIGRATION = ROOT / "infra/db/alembic/versions/0071_analysis_job_admission.py"
+ANALYSIS_JOB_ADMISSION_UP = ROOT / "infra/db/alembic/sql/0071_analysis_job_admission.sql"
+ANALYSIS_JOB_ADMISSION_DOWN = ROOT / "infra/db/alembic/sql/0071_analysis_job_admission.down.sql"
 
 
 def test_workflow_c_revision_is_linear_and_has_reversible_sql_files() -> None:
@@ -747,3 +750,26 @@ def test_comparison_and_drift_projections_use_fenced_worker_write_rpcs() -> None
     assert "INSERT INTO workflow_c_comparison_families" not in persistence
     assert "INSERT INTO workflow_c_comparison_results" not in persistence
     assert "INSERT INTO workflow_c_drift_reports" not in persistence
+
+
+def test_comparison_and_drift_jobs_have_a_strict_generic_admission_contract() -> None:
+    migration = ANALYSIS_JOB_ADMISSION_MIGRATION.read_text(encoding="utf-8")
+    source = ANALYSIS_JOB_ADMISSION_UP.read_text(encoding="utf-8")
+    down = ANALYSIS_JOB_ADMISSION_DOWN.read_text(encoding="utf-8")
+    specs = (ROOT / "packages/geo_core/geo_core/workflow_c_job_specs.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'revision = "0071_analysis_job_admission"' in migration
+    assert 'down_revision = "0070_analysis_projection_rpc"' in migration
+    assert "geo_workflow_c_analysis_job_spec_is_valid" in source
+    assert "geo_workflow_c_analysis_stratum_is_valid" in source
+    assert "workflow_c.analysis.comparison" in source
+    assert "workflow_c.analysis.drift" in source
+    assert "OR NOT geo_workflow_c_analysis_job_spec_is_valid(p_kind, p_spec_payload)" in source
+    assert "geo_workflow_c_python_canonical_text(p_spec_payload)" in source
+    assert "CREATE OR REPLACE FUNCTION geo_enqueue_workflow_c_job_spec" in source
+    assert "REVOKE ALL ON FUNCTION geo_workflow_c_analysis_job_spec_is_valid" in source
+    assert "DROP FUNCTION geo_workflow_c_analysis_job_spec_is_valid(text, jsonb)" in down
+    assert "_validate_analysis_payload" in specs
+    assert "comparison_inputs(spec)" in specs and "drift_inputs(spec)" in specs

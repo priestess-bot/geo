@@ -19,7 +19,6 @@ import pytest
 from geo_core.project_scope import set_project_scope
 from geo_core.workflow_c_job_specs import (
     PostgresWorkflowCJobSpecWriter,
-    WORKFLOW_C_JOB_KINDS,
     WorkflowCJobSpecError,
 )
 from tests.integration.placement_worker_support import cleanup_projects, login_url, seed_project
@@ -33,7 +32,7 @@ pytestmark = [
 ]
 
 
-def test_workflow_c_producer_commits_all_supported_job_specs_under_app_rls() -> None:
+def test_workflow_c_producer_commits_nonanalytical_job_specs_under_app_rls() -> None:
     suffix = uuid4().hex[:10]
     database_name = f"geo_workflow_c_specs_{suffix}"
     target_url = _database_url(ADMIN_URL, database_name)
@@ -63,13 +62,18 @@ def test_workflow_c_producer_commits_all_supported_job_specs_under_app_rls() -> 
             lambda: psycopg.connect(app_url, row_factory=dict_row)
         )
 
+        generic_kinds = (
+            "sampling.manual_import",
+            "sampling.provider_execute",
+            "workflow_c.alert.evaluate",
+            "workflow_c.alert.notify",
+            "workflow_c.alert.schedule",
+        )
         payloads = {
-            kind: _payload(kind, index=index)
-            for index, kind in enumerate(sorted(WORKFLOW_C_JOB_KINDS), start=1)
+            kind: _payload(kind, index=index) for index, kind in enumerate(generic_kinds, start=1)
         }
         idempotency_keys = {
-            kind: f"workflow-c-spec:{index}"
-            for index, kind in enumerate(sorted(WORKFLOW_C_JOB_KINDS), start=1)
+            kind: f"workflow-c-spec:{index}" for index, kind in enumerate(generic_kinds, start=1)
         }
         jobs = {
             kind: writer.enqueue(
@@ -78,7 +82,7 @@ def test_workflow_c_producer_commits_all_supported_job_specs_under_app_rls() -> 
                 payload=payloads[kind],
                 idempotency_key=idempotency_keys[kind],
             )
-            for kind in sorted(WORKFLOW_C_JOB_KINDS)
+            for kind in generic_kinds
         }
         replay = writer.enqueue(
             project_id=first["project"],
@@ -108,8 +112,8 @@ def test_workflow_c_producer_commits_all_supported_job_specs_under_app_rls() -> 
                      AND worker_id = 'workflow-c-producer'""",
                 (first["project"],),
             ).fetchone()["count"]
-        assert len(rows) == len(WORKFLOW_C_JOB_KINDS)
-        assert event_count == len(WORKFLOW_C_JOB_KINDS)
+        assert len(rows) == len(generic_kinds)
+        assert event_count == len(generic_kinds)
         for row in rows:
             assert row["input_hash"] == row["spec_hash"]
             assert row["spec_payload"]["kind"] == row["kind"]
@@ -137,7 +141,9 @@ def test_workflow_c_producer_commits_all_supported_job_specs_under_app_rls() -> 
         }
         with psycopg.connect(app_url) as app_connection:
             set_project_scope(app_connection, first["project"])
-            with pytest.raises(psycopg.errors.InvalidParameterValue, match="enqueue input is invalid"):
+            with pytest.raises(
+                psycopg.errors.InvalidParameterValue, match="enqueue input is invalid"
+            ):
                 app_connection.execute(
                     """SELECT * FROM geo_enqueue_workflow_c_job_spec(
                            %s, %s, %s, %s::jsonb, %s, %s

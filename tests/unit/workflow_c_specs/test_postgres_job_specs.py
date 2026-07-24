@@ -239,7 +239,7 @@ def test_postgres_repository_binds_metric_child_to_its_encrypted_task_hash() -> 
 def test_writer_uses_the_atomic_job_spec_producer_in_one_project_transaction() -> None:
     project_id = uuid4()
     job_id = uuid4()
-    payload = _payload(kind="workflow_c.analysis.drift")
+    payload = _payload(kind="workflow_c.alert.notify")
     connection = _WriterConnection(
         project_id=project_id,
         job_id=job_id,
@@ -248,7 +248,7 @@ def test_writer_uses_the_atomic_job_spec_producer_in_one_project_transaction() -
 
     result = PostgresWorkflowCJobSpecWriter(lambda: connection).enqueue(
         project_id=project_id,
-        kind="workflow_c.analysis.drift",
+        kind="workflow_c.alert.notify",
         payload=payload,
         idempotency_key="workflow-c-drift:fixture",
     )
@@ -263,6 +263,24 @@ def test_writer_uses_the_atomic_job_spec_producer_in_one_project_transaction() -
     assert "INSERT INTO durable_jobs" not in joined
     assert "INSERT INTO workflow_c_job_specs" not in joined
     assert "INSERT INTO broker_outbox" not in joined
+
+
+def test_writer_rejects_an_analytical_job_before_it_can_reach_postgres() -> None:
+    connection = _WriterConnection(
+        project_id=uuid4(),
+        job_id=uuid4(),
+        payload=_payload(kind="workflow_c.analysis.drift"),
+    )
+
+    with pytest.raises(WorkflowCJobSpecError, match="drift Worker input"):
+        PostgresWorkflowCJobSpecWriter(lambda: connection).enqueue(
+            project_id=connection.project_id,
+            kind="workflow_c.analysis.drift",
+            payload=connection.payload,
+            idempotency_key="workflow-c-drift:invalid",
+        )
+
+    assert connection.queries == []
 
 
 def _payload(*, kind: str = "workflow_c.alert.notify") -> dict[str, object]:

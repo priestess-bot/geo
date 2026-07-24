@@ -17,6 +17,7 @@ from psycopg.rows import dict_row
 import pytest
 
 from geo_core.jobs.postgres import PostgresDurableJobStore
+from geo_core.project_scope import set_project_scope
 from geo_core.statistical_methods import (
     ComparisonInput,
     DriftObservation,
@@ -28,7 +29,10 @@ from geo_core.workflow_c_analysis_worker import (
     PostgresWorkflowCComparisonOperation,
     PostgresWorkflowCDriftOperation,
 )
-from geo_core.workflow_c_job_specs import PostgresWorkflowCJobSpecRepository
+from geo_core.workflow_c_job_specs import (
+    PostgresWorkflowCJobSpecRepository,
+    PostgresWorkflowCJobSpecWriter,
+)
 from tests.integration.placement_worker_support import login_url, seed_project
 
 
@@ -46,6 +50,8 @@ def test_restricted_worker_persists_comparison_and_drift_only_through_fenced_rpc
     database_url = _database_url(ADMIN_URL, database_name)
     worker_login = f"geo_analysis_worker_{suffix}"
     worker_password = uuid4().hex
+    app_login = f"geo_analysis_app_{suffix}"
+    app_password = uuid4().hex
     created_database = False
     created_roles = False
     try:
@@ -55,12 +61,17 @@ def test_restricted_worker_persists_comparison_and_drift_only_through_fenced_rpc
         migration = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
         migration.attributes["geo_database_url_override"] = database_url
         command.upgrade(migration, "head")
-        command.downgrade(migration, "0069_metric_snapshot_rpc")
+        command.downgrade(migration, "0070_analysis_projection_rpc")
         command.upgrade(migration, "head")
         with psycopg.connect(database_url) as admin:
             admin.execute(
                 sql.SQL("CREATE ROLE {} LOGIN PASSWORD {} IN ROLE geo_worker").format(
                     sql.Identifier(worker_login), sql.Literal(worker_password)
+                )
+            )
+            admin.execute(
+                sql.SQL("CREATE ROLE {} LOGIN PASSWORD {} IN ROLE geo_app").format(
+                    sql.Identifier(app_login), sql.Literal(app_password)
                 )
             )
             created_roles = True
@@ -73,11 +84,41 @@ def test_restricted_worker_persists_comparison_and_drift_only_through_fenced_rpc
                 row_factory=dict_row,
             )
 
+        def app_connect():
+            return psycopg.connect(
+                login_url(database_url, user=app_login, password=app_password),
+                row_factory=dict_row,
+            )
+
         store = PostgresDurableJobStore(worker_connect)
         specs = PostgresWorkflowCJobSpecRepository(worker_connect)
+        writer = PostgresWorkflowCJobSpecWriter(app_connect)
         comparison = _comparison()
-        comparison_job_id = _seed_analysis_job(
-            database_url,
+        malformed = {
+            "schema_version": 1,
+            "kind": "workflow_c.analysis.comparison",
+            "comparison": {"inputs": []},
+        }
+        with app_connect() as app:
+            set_project_scope(app, project["project"])
+            with pytest.raises(
+                psycopg.errors.InvalidParameterValue, match="enqueue input is invalid"
+            ):
+                app.execute(
+                    """SELECT * FROM geo_enqueue_workflow_c_job_spec(
+                           %s, %s, %s, %s::jsonb, %s, %s
+                       )""",
+                    (
+                        project["project"],
+                        "workflow_c.analysis.comparison",
+                        _json_hash(malformed),
+                        json.dumps(malformed, separators=(",", ":"), sort_keys=True),
+                        "analysis-projection:malformed",
+                        3,
+                    ),
+                )
+            app.rollback()
+        comparison_job = writer.enqueue(
             project_id=project["project"],
             kind="workflow_c.analysis.comparison",
             payload={
@@ -85,6 +126,7 @@ def test_restricted_worker_persists_comparison_and_drift_only_through_fenced_rpc
                 "kind": "workflow_c.analysis.comparison",
                 "comparison": {"inputs": [_comparison_value(comparison)]},
             },
+            idempotency_key="analysis-projection:comparison",
         )
         with store.open_project(project["project"]) as worker:
             with pytest.raises(psycopg.errors.InsufficientPrivilege):
@@ -95,7 +137,7 @@ def test_restricted_worker_persists_comparison_and_drift_only_through_fenced_rpc
             worker.rollback()
 
         comparison_claim = store.claim(
-            job_id=comparison_job_id,
+            job_id=comparison_job.job_id,
             project_id=project["project"],
             expected_kind="workflow_c.analysis.comparison",
             worker_id="analysis-projection-persistence",
@@ -110,8 +152,7 @@ def test_restricted_worker_persists_comparison_and_drift_only_through_fenced_rpc
         assert comparison_result["status"] == "complete"
 
         stratum = comparison.protocol.stratum
-        drift_job_id = _seed_analysis_job(
-            database_url,
+        drift_job = writer.enqueue(
             project_id=project["project"],
             kind="workflow_c.analysis.drift",
             payload={
@@ -128,9 +169,10 @@ def test_restricted_worker_persists_comparison_and_drift_only_through_fenced_rpc
                     ],
                 },
             },
+            idempotency_key="analysis-projection:drift",
         )
         drift_claim = store.claim(
-            job_id=drift_job_id,
+            job_id=drift_job.job_id,
             project_id=project["project"],
             expected_kind="workflow_c.analysis.drift",
             worker_id="analysis-projection-persistence",
@@ -147,11 +189,11 @@ def test_restricted_worker_persists_comparison_and_drift_only_through_fenced_rpc
         with psycopg.connect(database_url) as admin:
             assert admin.execute(
                 """SELECT status FROM durable_jobs WHERE project_id = %s AND id = %s""",
-                (project["project"], comparison_job_id),
+                (project["project"], comparison_job.job_id),
             ).fetchone() == ("succeeded",)
             assert admin.execute(
                 """SELECT status FROM durable_jobs WHERE project_id = %s AND id = %s""",
-                (project["project"], drift_job_id),
+                (project["project"], drift_job.job_id),
             ).fetchone() == ("succeeded",)
             assert admin.execute(
                 """SELECT count(*) FROM workflow_c_comparison_results
@@ -176,6 +218,7 @@ def test_restricted_worker_persists_comparison_and_drift_only_through_fenced_rpc
                 server.execute(
                     sql.SQL("DROP ROLE IF EXISTS {}").format(sql.Identifier(worker_login))
                 )
+                server.execute(sql.SQL("DROP ROLE IF EXISTS {}").format(sql.Identifier(app_login)))
 
 
 def _comparison() -> ComparisonInput:
@@ -250,37 +293,6 @@ def _drift_value(value: DriftObservation) -> dict[str, object]:
         "stratum": value.stratum.canonical_value(),
         "effect": str(value.effect),
     }
-
-
-def _seed_analysis_job(
-    database_url: str,
-    *,
-    project_id: object,
-    kind: str,
-    payload: dict[str, object],
-) -> object:
-    job_id = uuid4()
-    spec_hash = _json_hash(payload)
-    with psycopg.connect(database_url) as admin:
-        admin.execute("SET session_replication_role = replica")
-        try:
-            admin.execute(
-                """INSERT INTO durable_jobs(
-                       id, project_id, kind, status, input_hash, idempotency_key,
-                       next_run_at, max_attempts
-                   ) VALUES (%s, %s, %s, 'queued', %s, %s, clock_timestamp(), 3)""",
-                (job_id, project_id, kind, spec_hash, f"analysis-projection:{job_id}"),
-            )
-            admin.execute(
-                """INSERT INTO workflow_c_job_specs(
-                       project_id, job_id, kind, spec_hash, spec_payload, created_at
-                   ) VALUES (%s, %s, %s, %s, %s::jsonb, clock_timestamp())""",
-                (project_id, job_id, kind, spec_hash, json.dumps(payload, sort_keys=True)),
-            )
-        finally:
-            admin.execute("SET session_replication_role = origin")
-        admin.commit()
-    return job_id
 
 
 def _json_hash(value: dict[str, object]) -> str:
