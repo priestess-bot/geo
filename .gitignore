@@ -29,6 +29,8 @@ tmp/
 !.env.au-p0a.example
 !.env.au-p0b-google.example
 deepseek_api_key.txt
+serpapi_key.txt
+openrouter_key.txt
 
 # Python
 __pycache__/
