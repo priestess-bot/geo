@@ -47,6 +47,9 @@ from geo_core.workflow_c_metric_parent_orchestration import (
 from geo_core.workflow_c_metric_parent_specs import MetricModelProgramAdmission
 from geo_core.workflow_c_metric_judge_worker_contracts import ModelRequestTask
 from geo_core.workflow_c_semantic_specs import SemanticMetricMetadata
+from geo_core.workflow_c_analysis_reads import PostgresWorkflowCAnalysisReadRepository
+from geo_api.workflow_c_analysis_postgres_runtime import PostgresWorkflowCAnalysisRuntime
+from geo_api.workflow_c_presenters import semantic_snapshot_response
 from tests.integration.placement_worker_support import login_url, seed_project
 from tests.integration.test_workflow_c_metric_parent_admission_postgres import _seed_parent_lineage
 
@@ -222,7 +225,8 @@ def test_metric_parent_resumes_after_agreed_judges_and_persists_snapshot() -> No
     suffix = uuid4().hex[:10]
     database_name = f"geo_metric_parent_complete_{suffix}"
     database_url = _database_url(ADMIN_URL, database_name)
-    worker_login, password = f"geo_metric_parent_complete_{suffix}", uuid4().hex
+    worker_login, worker_password = f"geo_metric_parent_complete_{suffix}", uuid4().hex
+    app_login, app_password = f"geo_metric_parent_reader_{suffix}", uuid4().hex
     created_database = False
     created_role = False
     now = datetime.now(UTC).replace(microsecond=0)
@@ -236,7 +240,12 @@ def test_metric_parent_resumes_after_agreed_judges_and_persists_snapshot() -> No
         with psycopg.connect(database_url) as admin:
             admin.execute(
                 sql.SQL("CREATE ROLE {} LOGIN PASSWORD {} IN ROLE geo_worker").format(
-                    sql.Identifier(worker_login), sql.Literal(password)
+                    sql.Identifier(worker_login), sql.Literal(worker_password)
+                )
+            )
+            admin.execute(
+                sql.SQL("CREATE ROLE {} LOGIN PASSWORD {} IN ROLE geo_app").format(
+                    sql.Identifier(app_login), sql.Literal(app_password)
                 )
             )
             created_role = True
@@ -244,10 +253,14 @@ def test_metric_parent_resumes_after_agreed_judges_and_persists_snapshot() -> No
             parent = _seed_parent_lineage(admin, project=project, now=now)
             admin.commit()
 
-        worker_url = login_url(database_url, user=worker_login, password=password)
+        worker_url = login_url(database_url, user=worker_login, password=worker_password)
+        app_url = login_url(database_url, user=app_login, password=app_password)
 
         def connect():
             return psycopg.connect(worker_url, row_factory=dict_row)
+
+        def app_connect():
+            return psycopg.connect(app_url, row_factory=dict_row)
 
         store = PostgresDurableJobStore(connect)
         with store.open_project(project["project"]) as worker:
@@ -374,6 +387,16 @@ def test_metric_parent_resumes_after_agreed_judges_and_persists_snapshot() -> No
                       WHERE project_id = %s AND snapshot_hash = %s AND metric_key = 'recommendation'""",
                 (project["project"], result["snapshot_hash"]),
             ).fetchone() == ("complete",)
+        durable_analysis = PostgresWorkflowCAnalysisRuntime(
+            reads=PostgresWorkflowCAnalysisReadRepository(connect=app_connect)
+        )
+        projection = durable_analysis.get_semantic_snapshot(
+            project_id=project["project"], snapshot_hash=str(result["snapshot_hash"])
+        )
+        response = semantic_snapshot_response(project["project"], projection)
+        assert response.snapshot_hash == result["snapshot_hash"]
+        assert response.results[0].metric_key == "recommendation"
+        assert durable_analysis.list_semantic_snapshots(project_id=uuid4()) == ()
     finally:
         if created_database:
             with psycopg.connect(ADMIN_URL, autocommit=True) as server:
@@ -387,6 +410,7 @@ def test_metric_parent_resumes_after_agreed_judges_and_persists_snapshot() -> No
                 server.execute(
                     sql.SQL("DROP ROLE IF EXISTS {}").format(sql.Identifier(worker_login))
                 )
+                server.execute(sql.SQL("DROP ROLE IF EXISTS {}").format(sql.Identifier(app_login)))
 
 
 def _input_set(observation_id: UUID) -> MetricInputSet:

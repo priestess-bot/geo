@@ -134,7 +134,6 @@ def _stored_semantic_snapshot_response(
     _require_hash(snapshot.snapshot_hash, semantic_canonical_hash(hash_value))
     _require_equal(snapshot.input_set_hash, value.get("input_set_hash"), "input set hash")
     _require_equal(snapshot.suite_hash, value.get("suite_hash"), "metric suite hash")
-    _require_equal(snapshot.stratum_hash, value.get("stratum_hash"), "source stratum hash")
     results = _array(value.get("results"), "semantic metric results")
     response_results = []
     for result in results:

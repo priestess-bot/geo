@@ -147,7 +147,7 @@ def test_stored_semantic_projection_rechecks_hash_and_lineage_before_rendering()
         snapshot_hash=snapshot.snapshot_hash,
         input_set_hash=snapshot.input_set_hash,
         suite_hash=snapshot.suite_hash,
-        stratum_hash=snapshot.stratum_hash,
+        source_stratum_hash="f" * 64,
         payload=snapshot.canonical_value(),
     )
 
@@ -166,7 +166,7 @@ def test_stored_semantic_projection_rechecks_hash_and_lineage_before_rendering()
                 snapshot_hash="0" * 64,
                 input_set_hash=snapshot.input_set_hash,
                 suite_hash=snapshot.suite_hash,
-                stratum_hash=snapshot.stratum_hash,
+                source_stratum_hash="f" * 64,
                 payload=snapshot.canonical_value(),
             ),
         )

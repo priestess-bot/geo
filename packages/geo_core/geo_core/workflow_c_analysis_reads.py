@@ -32,7 +32,7 @@ class StoredSemanticMetricSnapshot:
     snapshot_hash: str
     input_set_hash: str
     suite_hash: str
-    stratum_hash: str
+    source_stratum_hash: str
     payload: Mapping[str, object]
 
 
@@ -171,7 +171,7 @@ def _semantic_snapshot(row: Mapping[str, object]) -> StoredSemanticMetricSnapsho
         snapshot_hash=_text(row, "snapshot_hash"),
         input_set_hash=_text(row, "input_set_hash"),
         suite_hash=_text(row, "metric_suite_hash"),
-        stratum_hash=_text(row, "source_stratum_hash"),
+        source_stratum_hash=_text(row, "source_stratum_hash"),
         payload=_payload(row),
     )
 
