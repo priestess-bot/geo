@@ -1,11 +1,27 @@
-# Search Aggregation 能力现状与路线图
+# Search Aggregation 原型能力与路线图
 
-> 本文档记录 GEO Platform 当前支持的搜索引擎/AI 搜索聚合能力，以及后续可扩展方向。
-> 最后更新：2026-07-23
+> 状态：`PROTOTYPE_ONLY`。本模块是受保护的 Internal API 开发探索能力，
+> 不是 B. 连接器与归因或消费者 UI Sampling 的完成证据。
+> 最后更新：2026-07-24
 
 ---
 
-## 1. 已实现能力
+## 0. 适用边界与阻断项
+
+本原型提供 SerpAPI 和 OpenRouter 的即时查询与结构化展示，方便开发期检查第三方返回的形状。它不创建 Campaign Monitoring Observation，不保存不可变工件，不进入 Customer 投影，也不代表澳大利亚消费者实际看见的页面。
+
+下列项全部关闭前，任何 `/v1/search/*` 返回都必须保持 `prototype/debug` 定位，不得作为 B 的 Adapter Release、Sampling Attempt、eligible Observation、统计分母、告警输入或 Recommendation 证据：
+
+- [ ] `B-SEARCH-PROTOTYPE-01` 将 SerpAPI 与 OpenRouter 凭据迁入 Secret Store，仅以版本化 Secret Reference 在命令中传递；完成项目范围访问、轮换、撤销和审计。
+- [ ] `B-SEARCH-PROTOTYPE-02` 移除生产路径的 mock 成功回退。缺少凭据、授权或真实回答时必须明确失败或产生 ineligible/insufficient-evidence，不得返回伪造 Overview。
+- [ ] `B-SEARCH-PROTOTYPE-03` 删除或以受限、脱敏、审计的 artifact viewer 替代 raw 调试接口；不得向 API 返回未分类第三方原始响应。
+- [ ] `B-SEARCH-PROTOTYPE-04` 接入 Project/Campaign 角色、预算、速率限制、幂等和模型/供应商调用审计，禁止任意 Internal 身份消耗共享供应商额度。
+- [ ] `B-SEARCH-PROTOTYPE-05` 建立 Surface Release、授权 A/B 轨、Browser Profile、澳洲 proxy/gateway sticky lease、pre/target/post egress verification，以及隔离 Browser Worker。`gl`、`hl`、`location` 和 `google_domain` 只是供应商请求参数，不是澳洲出口证明。
+- [ ] `B-SEARCH-PROTOTYPE-06` 将执行接入现有 Durable Job、lease/fencing、outbox、MinIO raw-first artifact、Attempt/Observation 及 SourceStratum 合同；重试不得改变 planned denominator。
+- [ ] `B-SEARCH-PROTOTYPE-07` 实现 Google AI Mode，并以独立 Surface Release 验收 Google AI Overviews、Google AI Mode、Bing Copilot；SerpAPI/模型 API 不得冒充消费者 UI capture。
+- [ ] `B-SEARCH-PROTOTYPE-08` 以冻结的官方 Provider/Grounded API adapter 补齐 OpenAI、Gemini、Perplexity、Microsoft Grounding with Bing 和 Kimi；OpenRouter 代理回答不能替代对应官方 Adapter 的真实 canary。
+
+## 1. 已实现原型能力
 
 ### 1.1 Google AI Overview
 
@@ -88,9 +104,7 @@
 - `X-GEO-Actor-ID`：开发 actor UUID
 - `X-GEO-Tenant-ID`：开发 tenant UUID
 
-本地开发模式下，Swagger UI（`/docs`）顶部会出现 **Authorize** 按钮。填入上面两个 UUID 后，Swagger 会自动为每个请求带上对应 header，并且配置会持久保存（通过 `swagger_ui_parameters={"persistAuthorization": True}` 实现）。
-
-这个 Swagger Authorize 入口是在 `3c2d3d4`（接入 OpenRouter OpenAI Web Search）时加入的，目的是方便本地调试。在此之前，调用搜索接口需要通过 curl/Postman 等方式手动添加两个 header。
+Swagger 不会持久保存授权信息。开发调试使用 curl、Postman 或已有的 Internal API 认证流程；原型搜索接口不为开发便利改变全局 OpenAPI 安全模型。
 
 **示例 curl：**
 
@@ -231,11 +245,11 @@ Admin Web 搜索框已移除，搜索能力仅通过 FastAPI 后端接口提供�
 
 ## 5. 当前产品定位
 
-Search Aggregation 在 GEO Platform 中的定位是**监测辅助验证入口**：
+Search Aggregation 在 GEO Platform 中的定位是**开发期监测辅助验证原型**：
 
-- 帮助运营/投放人员模拟真实用户搜索环境
-- 快速查看某个关键词下，Google/Bing 是否返回 AI 回答
-- 验证我们投放/发布的内容是否被搜索引擎或 AI 引用
-- 当前不保存查询记录，不进入 Campaign Monitoring 主链
+- 帮助工程人员检查供应商返回的结构和 parser 行为
+- 快速确认某个关键词是否收到第三方 API 声称的 AI 回答
+- 不模拟、更不证明真实用户搜索环境、消费者 UI、澳洲出口或内容被引用
+- 当前不保存查询记录，不进入 Campaign Monitoring 主链，也不产生验收证据
 
-未来如需系统化追踪，可考虑把查询一键保存为 `monitoring.query`，由后台定期复测。
+后续只能按第 0 节阻断项接入 B 的受治理采样链；不能将本原型“一键保存”成 `monitoring.query` 后即视为真实追踪。

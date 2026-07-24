@@ -5,20 +5,20 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class StrictModel(BaseModel):
+class SearchAggregationStrictModel(BaseModel):
     """Base model for public API contracts that reject unknown fields."""
 
     model_config = ConfigDict(extra="forbid")
 
 
-class AiOverviewListItemContract(StrictModel):
+class AiOverviewListItemContract(SearchAggregationStrictModel):
     """A single list entry within an AI Overview block."""
 
     text: str
     inline_references: list[AiOverviewReferenceContract] = Field(default_factory=list)
 
 
-class AiOverviewBlockContract(StrictModel):
+class AiOverviewBlockContract(SearchAggregationStrictModel):
     """A single content block from a Google AI Overview."""
 
     type: str
@@ -27,7 +27,7 @@ class AiOverviewBlockContract(StrictModel):
     inline_references: list[AiOverviewReferenceContract] = Field(default_factory=list)
 
 
-class AiOverviewReferenceContract(StrictModel):
+class AiOverviewReferenceContract(SearchAggregationStrictModel):
     """A source reference cited by a Google AI Overview."""
 
     title: str | None = None
@@ -36,7 +36,7 @@ class AiOverviewReferenceContract(StrictModel):
     highlighted_text: str | None = None
 
 
-class GoogleAiOverviewRequest(StrictModel):
+class GoogleAiOverviewRequest(SearchAggregationStrictModel):
     """Request a structured Google AI Overview for a search query."""
 
     query: str = Field(min_length=1, max_length=500)
@@ -58,7 +58,7 @@ class GoogleAiOverviewRequest(StrictModel):
     )
 
 
-class GoogleAiOverviewResponse(StrictModel):
+class GoogleAiOverviewResponse(SearchAggregationStrictModel):
     """Structured Google AI Overview response."""
 
     query: str
