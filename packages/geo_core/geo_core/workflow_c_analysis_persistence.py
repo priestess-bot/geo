@@ -34,18 +34,31 @@ def persist_semantic_snapshot(
     evidence_status: str,
 ) -> None:
     payload = snapshot.canonical_value()
+    result_rows = tuple(_semantic_result_row(result) for result in snapshot.results)
     with store.fenced_transaction(lease) as connection:
         connection.execute(
-            """INSERT INTO workflow_c_semantic_metric_snapshots(
-                   snapshot_hash, project_id, run_id, input_set_hash, metric_suite_hash,
-                   source_stratum_hash, capture_method, evidence_status, warning_ratio,
-                   test_only, synthetic, payload, computed_at
-               ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
-               ON CONFLICT (project_id, snapshot_hash) DO NOTHING""",
+            """SELECT geo_persist_workflow_c_semantic_metric_snapshot(
+                   %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                   %s::jsonb, %s, %s::jsonb
+               )""",
             (
-                snapshot.snapshot_hash, lease.project_id, run_id, snapshot.input_set_hash,
-                snapshot.suite_hash, source_stratum_hash, capture_method, evidence_status,
-                warning_ratio, test_only, synthetic, json_value(payload), snapshot.computed_at,
+                lease.project_id,
+                lease.job_id,
+                lease.lease_token,
+                lease.fencing_generation,
+                snapshot.snapshot_hash,
+                run_id,
+                snapshot.input_set_hash,
+                snapshot.suite_hash,
+                source_stratum_hash,
+                capture_method,
+                evidence_status,
+                warning_ratio,
+                test_only,
+                synthetic,
+                json_value(payload),
+                snapshot.computed_at,
+                json_value(result_rows),
             ),
         )
         row = mapping_row(
@@ -59,35 +72,21 @@ def persist_semantic_snapshot(
             )
         )
         if not same_semantic_snapshot(
-            row, lease=lease, snapshot=snapshot, run_id=run_id,
-            source_stratum_hash=source_stratum_hash, capture_method=capture_method,
-            warning_ratio=warning_ratio, test_only=test_only, synthetic=synthetic,
-            evidence_status=evidence_status, payload=payload,
+            row,
+            lease=lease,
+            snapshot=snapshot,
+            run_id=run_id,
+            source_stratum_hash=source_stratum_hash,
+            capture_method=capture_method,
+            warning_ratio=warning_ratio,
+            test_only=test_only,
+            synthetic=synthetic,
+            evidence_status=evidence_status,
+            payload=payload,
         ):
             raise WorkflowCAnalysisWorkerError("semantic snapshot hash collides with other input")
         for result in snapshot.results:
             result_payload = result.canonical_value()
-            connection.execute(
-                """INSERT INTO workflow_c_semantic_metric_results(
-                       project_id, snapshot_hash, metric_key, metric_version, status, estimate,
-                       interval_json, denominator, valid_count, invalid_count,
-                       missing_count, judge_version_hash, rule_versions_hash,
-                       evidence_locators_json, payload
-                   ) VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s,
-                             %s, %s, %s::jsonb, %s::jsonb)
-                   ON CONFLICT (project_id, snapshot_hash, metric_key) DO NOTHING""",
-                (
-                    lease.project_id, snapshot.snapshot_hash, result.metric_key.value,
-                    result.metric_version,
-                    result.status.value,
-                    result.estimate if result.status is MetricStatus.COMPLETE else None,
-                    json_value(result.interval.canonical_value()), result.denominator,
-                    result.valid_input_count, result.invalid_input_count, result.missing_input_count,
-                    result.judge_version_hash, result.rule_versions_hash,
-                    json_value([item.canonical_value() for item in result.evidence_locators]),
-                    json_value(result_payload),
-                ),
-            )
             existing = mapping_row(
                 connection.execute(
                     """SELECT metric_version, status, estimate, interval_json, denominator,
@@ -101,9 +100,29 @@ def persist_semantic_snapshot(
             if not same_semantic_result(existing, result=result, payload=result_payload):
                 raise WorkflowCAnalysisWorkerError("semantic metric result hash collides")
         store.complete_in_transaction(
-            connection, lease, result_ref=f"workflow-c-semantic-metrics:{snapshot.snapshot_hash}",
+            connection,
+            lease,
+            result_ref=f"workflow-c-semantic-metrics:{snapshot.snapshot_hash}",
             details={"snapshot_hash": snapshot.snapshot_hash, "status": evidence_status},
         )
+
+
+def _semantic_result_row(result: Any) -> dict[str, object]:
+    return {
+        "metric_key": result.metric_key.value,
+        "metric_version": result.metric_version,
+        "status": result.status.value,
+        "estimate": str(result.estimate) if result.status is MetricStatus.COMPLETE else None,
+        "interval_json": result.interval.canonical_value(),
+        "denominator": result.denominator,
+        "valid_count": result.valid_input_count,
+        "invalid_count": result.invalid_input_count,
+        "missing_count": result.missing_input_count,
+        "judge_version_hash": result.judge_version_hash,
+        "rule_versions_hash": result.rule_versions_hash,
+        "evidence_locators_json": [item.canonical_value() for item in result.evidence_locators],
+        "payload": result.canonical_value(),
+    }
 
 
 def persist_comparison_family(
@@ -117,7 +136,9 @@ def persist_comparison_family(
     protocols = tuple(item.protocol for item in comparisons)
     power_plans = {item.power_plan_hash for item in protocols}
     if len(power_plans) != 1:
-        raise WorkflowCAnalysisWorkerError("a persisted comparison family needs one frozen power plan")
+        raise WorkflowCAnalysisWorkerError(
+            "a persisted comparison family needs one frozen power plan"
+        )
     protocol_hash = canonical_hash(
         [item.frozen_hash for item in sorted(protocols, key=lambda value: value.comparison_id)]
     )
@@ -132,10 +153,17 @@ def persist_comparison_family(
                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
                ON CONFLICT (project_id, family_hash) DO NOTHING""",
             (
-                family.family_hash, lease.project_id, protocol_hash, next(iter(power_plans)),
-                protocols[0].bootstrap_method, protocols[0].bootstrap_iterations,
-                family.correction_method, protocols[0].simultaneous_interval_method,
-                status, json_value(payload), computed_at,
+                family.family_hash,
+                lease.project_id,
+                protocol_hash,
+                next(iter(power_plans)),
+                protocols[0].bootstrap_method,
+                protocols[0].bootstrap_iterations,
+                family.correction_method,
+                protocols[0].simultaneous_interval_method,
+                status,
+                json_value(payload),
+                computed_at,
             ),
         )
         row = mapping_row(
@@ -147,7 +175,8 @@ def persist_comparison_family(
             )
         )
         if (
-            row is None or row.get("project_id") != lease.project_id
+            row is None
+            or row.get("project_id") != lease.project_id
             or row.get("protocol_hash") != protocol_hash
             or row.get("power_plan_hash") != next(iter(power_plans))
             or canonical_json(row.get("payload")) != canonical_json(payload)
@@ -165,9 +194,14 @@ def persist_comparison_family(
                    ) VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb)
                    ON CONFLICT (project_id, family_hash, comparison_id) DO NOTHING""",
                 (
-                    lease.project_id, family.family_hash, result.comparison_id, result.stratum_hash,
-                    source.sampling_source_stratum_hash, result.conclusion.value,
-                    result.adjusted_p_value, json_value(result.adjusted_interval.canonical_value()),
+                    lease.project_id,
+                    family.family_hash,
+                    result.comparison_id,
+                    result.stratum_hash,
+                    source.sampling_source_stratum_hash,
+                    result.conclusion.value,
+                    result.adjusted_p_value,
+                    json_value(result.adjusted_interval.canonical_value()),
                     json_value(result_payload),
                 ),
             )
@@ -180,10 +214,16 @@ def persist_comparison_family(
                     (lease.project_id, family.family_hash, result.comparison_id),
                 )
             )
-            if not same_comparison_result(existing, result=result, source=source, payload=result_payload):
-                raise WorkflowCAnalysisWorkerError("comparison result hash collides with other input")
+            if not same_comparison_result(
+                existing, result=result, source=source, payload=result_payload
+            ):
+                raise WorkflowCAnalysisWorkerError(
+                    "comparison result hash collides with other input"
+                )
         store.complete_in_transaction(
-            connection, lease, result_ref=f"workflow-c-comparison:{family.family_hash}",
+            connection,
+            lease,
+            result_ref=f"workflow-c-comparison:{family.family_hash}",
             details={"family_hash": family.family_hash, "status": status},
         )
 
@@ -205,8 +245,14 @@ def persist_drift_report(
                    status, payload, computed_at
                ) VALUES (%s, %s, %s, %s, 'complete', %s::jsonb, %s)
                ON CONFLICT (project_id, report_hash) DO NOTHING""",
-            (report.report_hash, lease.project_id, source_snapshot_hash, target_snapshot_hash,
-             json_value(payload), computed_at),
+            (
+                report.report_hash,
+                lease.project_id,
+                source_snapshot_hash,
+                target_snapshot_hash,
+                json_value(payload),
+                computed_at,
+            ),
         )
         row = mapping_row(
             connection.execute(
@@ -217,14 +263,17 @@ def persist_drift_report(
             )
         )
         if (
-            row is None or row.get("project_id") != lease.project_id
+            row is None
+            or row.get("project_id") != lease.project_id
             or row.get("source_snapshot_hash") != source_snapshot_hash
             or row.get("target_snapshot_hash") != target_snapshot_hash
             or canonical_json(row.get("payload")) != canonical_json(payload)
         ):
             raise WorkflowCAnalysisWorkerError("drift report hash collides with other input")
         store.complete_in_transaction(
-            connection, lease, result_ref=f"workflow-c-drift:{report.report_hash}",
+            connection,
+            lease,
+            result_ref=f"workflow-c-drift:{report.report_hash}",
             details={"report_hash": report.report_hash, "status": "complete"},
         )
 
@@ -238,11 +287,15 @@ def family_status(results: Sequence[Any]) -> str:
 
 
 def same_comparison_result(
-    row: Mapping[str, object] | None, *, result: Any, source: ComparisonInput,
+    row: Mapping[str, object] | None,
+    *,
+    result: Any,
+    source: ComparisonInput,
     payload: Mapping[str, object],
 ) -> bool:
     return (
-        row is not None and row.get("stratum_hash") == result.stratum_hash
+        row is not None
+        and row.get("stratum_hash") == result.stratum_hash
         and row.get("sampling_source_stratum_hash") == source.sampling_source_stratum_hash
         and row.get("conclusion") == result.conclusion.value
         and decimal_equal(row.get("adjusted_p_value"), result.adjusted_p_value)
@@ -253,18 +306,31 @@ def same_comparison_result(
 
 
 def same_semantic_snapshot(
-    row: Mapping[str, object] | None, *, lease: WorkerLease, snapshot: Any, run_id: UUID,
-    source_stratum_hash: str, capture_method: str, warning_ratio: Decimal,
-    test_only: bool, synthetic: bool, evidence_status: str, payload: Mapping[str, object],
+    row: Mapping[str, object] | None,
+    *,
+    lease: WorkerLease,
+    snapshot: Any,
+    run_id: UUID,
+    source_stratum_hash: str,
+    capture_method: str,
+    warning_ratio: Decimal,
+    test_only: bool,
+    synthetic: bool,
+    evidence_status: str,
+    payload: Mapping[str, object],
 ) -> bool:
     return (
-        row is not None and row.get("project_id") == lease.project_id and row.get("run_id") == run_id
+        row is not None
+        and row.get("project_id") == lease.project_id
+        and row.get("run_id") == run_id
         and row.get("input_set_hash") == snapshot.input_set_hash
         and row.get("metric_suite_hash") == snapshot.suite_hash
         and row.get("source_stratum_hash") == source_stratum_hash
-        and row.get("capture_method") == capture_method and row.get("evidence_status") == evidence_status
+        and row.get("capture_method") == capture_method
+        and row.get("evidence_status") == evidence_status
         and decimal_equal(row.get("warning_ratio"), warning_ratio)
-        and row.get("test_only") is test_only and row.get("synthetic") is synthetic
+        and row.get("test_only") is test_only
+        and row.get("synthetic") is synthetic
         and canonical_json(row.get("payload")) == canonical_json(payload)
     )
 
@@ -273,11 +339,15 @@ def same_semantic_result(
     row: Mapping[str, object] | None, *, result: Any, payload: Mapping[str, object]
 ) -> bool:
     return (
-        row is not None and row.get("metric_version") == result.metric_version
+        row is not None
+        and row.get("metric_version") == result.metric_version
         and row.get("status") == result.status.value
-        and ((result.status is not MetricStatus.COMPLETE and row.get("estimate") is None)
-             or decimal_equal(row.get("estimate"), result.estimate))
-        and canonical_json(row.get("interval_json")) == canonical_json(result.interval.canonical_value())
+        and (
+            (result.status is not MetricStatus.COMPLETE and row.get("estimate") is None)
+            or decimal_equal(row.get("estimate"), result.estimate)
+        )
+        and canonical_json(row.get("interval_json"))
+        == canonical_json(result.interval.canonical_value())
         and row.get("denominator") == result.denominator
         and row.get("valid_count") == result.valid_input_count
         and row.get("invalid_count") == result.invalid_input_count
@@ -291,6 +361,8 @@ def same_semantic_result(
 
 
 __all__ = [
-    "family_status", "persist_comparison_family", "persist_drift_report",
+    "family_status",
+    "persist_comparison_family",
+    "persist_drift_report",
     "persist_semantic_snapshot",
 ]

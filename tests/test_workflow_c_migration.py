@@ -100,6 +100,11 @@ METRIC_ARBITER_ADMISSION_DOWN = ROOT / "infra/db/alembic/sql/0067_metric_arbiter
 METRIC_PARENT_PROGRESS_MIGRATION = ROOT / "infra/db/alembic/versions/0068_metric_parent_progress.py"
 METRIC_PARENT_PROGRESS_UP = ROOT / "infra/db/alembic/sql/0068_metric_parent_progress.sql"
 METRIC_PARENT_PROGRESS_DOWN = ROOT / "infra/db/alembic/sql/0068_metric_parent_progress.down.sql"
+SEMANTIC_SNAPSHOT_PERSISTENCE_MIGRATION = (
+    ROOT / "infra/db/alembic/versions/0069_metric_snapshot_rpc.py"
+)
+SEMANTIC_SNAPSHOT_PERSISTENCE_UP = ROOT / "infra/db/alembic/sql/0069_metric_snapshot_rpc.sql"
+SEMANTIC_SNAPSHOT_PERSISTENCE_DOWN = ROOT / "infra/db/alembic/sql/0069_metric_snapshot_rpc.down.sql"
 
 
 def test_workflow_c_revision_is_linear_and_has_reversible_sql_files() -> None:
@@ -132,7 +137,6 @@ def test_analytical_projection_hashes_are_project_scoped_at_the_database_boundar
     ):
         assert contract in source
     for contract in (
-        "ON CONFLICT (project_id, snapshot_hash)",
         "ON CONFLICT (project_id, family_hash)",
         "ON CONFLICT (project_id, report_hash)",
         "WHERE project_id = %s AND snapshot_hash = %s",
@@ -140,6 +144,7 @@ def test_analytical_projection_hashes_are_project_scoped_at_the_database_boundar
         "WHERE project_id = %s AND report_hash = %s",
     ):
         assert contract in persistence
+    assert "geo_persist_workflow_c_semantic_metric_snapshot" in persistence
     assert "Project-scoped analytical hash identities exist" in down
 
 
@@ -666,3 +671,39 @@ def test_metric_parent_progress_readers_are_fenced_worker_only_minimal_projectio
     assert source.count("parent_spec.spec_hash <> p_parent_input_hash") == 2
     assert "task_ciphertext" not in source
     assert "raw model output" in source
+
+
+def test_semantic_metric_snapshots_use_a_fenced_worker_write_rpc() -> None:
+    migration = SEMANTIC_SNAPSHOT_PERSISTENCE_MIGRATION.read_text(encoding="utf-8")
+    source = SEMANTIC_SNAPSHOT_PERSISTENCE_UP.read_text(encoding="utf-8")
+    down = SEMANTIC_SNAPSHOT_PERSISTENCE_DOWN.read_text(encoding="utf-8")
+    persistence = (
+        ROOT / "packages/geo_core/geo_core/workflow_c_analysis_persistence.py"
+    ).read_text(encoding="utf-8")
+
+    assert 'revision = "0069_metric_snapshot_rpc"' in migration
+    assert 'down_revision = "0068_metric_parent_progress"' in migration
+    for contract in (
+        "geo_persist_workflow_c_semantic_metric_snapshot",
+        "SECURITY DEFINER",
+        "SET row_security = off",
+        "parent_job.fencing_generation <> p_fencing_generation",
+        "parent_job.input_hash <> parent_spec.spec_hash",
+        "geo_jsonb_canonical_text(p_snapshot_payload - 'computed_at')",
+        "snapshot results do not match result rows",
+        "ON CONFLICT (project_id, snapshot_hash)",
+        "ON CONFLICT (project_id, snapshot_hash, metric_key)",
+        "REVOKE INSERT, UPDATE, DELETE ON workflow_c_semantic_metric_snapshots",
+        "TO geo_worker",
+    ):
+        assert contract in source
+    assert "SELECT geo_persist_workflow_c_semantic_metric_snapshot(" in persistence
+    for lease_field in (
+        "lease.job_id",
+        "lease.lease_token",
+        "lease.fencing_generation",
+    ):
+        assert lease_field in persistence
+    assert "INSERT INTO workflow_c_semantic_metric_snapshots" not in persistence
+    assert "INSERT INTO workflow_c_semantic_metric_results" not in persistence
+    assert "DROP FUNCTION geo_persist_workflow_c_semantic_metric_snapshot" in down

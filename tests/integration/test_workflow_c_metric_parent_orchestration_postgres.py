@@ -12,22 +12,28 @@ from alembic.config import Config
 import psycopg
 from psycopg import sql
 from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
 import pytest
 
 from geo_core.jobs.postgres import PostgresDurableJobStore, WorkerLease
 from geo_core.secrets import EnvelopeCipher, MasterKeyring
 from geo_core.semantic_metrics import (
     DeterministicRuleVersions,
+    EvidenceLocator,
+    EvidenceLocatorKind,
     FrozenMetricSuite,
     JudgeKind,
     JudgeVersion,
     MetricDefinition,
+    MetricJudgeCandidate,
     MetricInputSet,
     MetricKey,
     MetricObservation,
     MetricValueKind,
     PlannedMetricSlot,
+    ParsedMetricJudgeProgramOutput,
     SemanticStratum,
+    StructuredJudgeOutput,
     SubjectInventory,
     plan_metric_judge_batches,
 )
@@ -212,6 +218,177 @@ def test_metric_parent_first_pass_admits_judges_and_defers_atomically() -> None:
                 )
 
 
+def test_metric_parent_resumes_after_agreed_judges_and_persists_snapshot() -> None:
+    suffix = uuid4().hex[:10]
+    database_name = f"geo_metric_parent_complete_{suffix}"
+    database_url = _database_url(ADMIN_URL, database_name)
+    worker_login, password = f"geo_metric_parent_complete_{suffix}", uuid4().hex
+    created_database = False
+    created_role = False
+    now = datetime.now(UTC).replace(microsecond=0)
+    try:
+        with psycopg.connect(ADMIN_URL, autocommit=True) as server:
+            server.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(database_name)))
+        created_database = True
+        migration = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+        migration.attributes["geo_database_url_override"] = database_url
+        command.upgrade(migration, "head")
+        with psycopg.connect(database_url) as admin:
+            admin.execute(
+                sql.SQL("CREATE ROLE {} LOGIN PASSWORD {} IN ROLE geo_worker").format(
+                    sql.Identifier(worker_login), sql.Literal(password)
+                )
+            )
+            created_role = True
+            project = seed_project(admin, suffix=f"metric-parent-complete-{suffix}")
+            parent = _seed_parent_lineage(admin, project=project, now=now)
+            admin.commit()
+
+        worker_url = login_url(database_url, user=worker_login, password=password)
+
+        def connect():
+            return psycopg.connect(worker_url, row_factory=dict_row)
+
+        store = PostgresDurableJobStore(connect)
+        with store.open_project(project["project"]) as worker:
+            with pytest.raises(psycopg.errors.InsufficientPrivilege):
+                worker.execute("INSERT INTO workflow_c_semantic_metric_snapshots DEFAULT VALUES")
+            worker.rollback()
+        input_set = _input_set(UUID(str(parent["observation_id"])))
+        suite = _suite(parent)
+        operation = PostgresWorkflowCMetricParentOrchestrator(
+            store=store,
+            cipher=EnvelopeCipher(MasterKeyring(keys={1: b"a" * 32}, active_version=1)),
+            lease_for=timedelta(seconds=60),
+            clock=lambda: now,
+        )
+        first_lease = WorkerLease(
+            job_id=UUID(str(parent["job_id"])),
+            project_id=project["project"],
+            kind="workflow_c.analysis.semantic_metrics",
+            worker_id="metric-parent-complete",
+            lease_token=UUID(str(parent["lease_token"])),
+            fencing_generation=1,
+            attempt_count=1,
+            max_attempts=3,
+        )
+        assert operation.execute(
+            lease=first_lease,
+            parent_input_hash=str(parent["input_hash"]),
+            metadata=_metadata(parent),
+            input_set=input_set,
+            suite=suite,
+            program=_program(parent),
+        ) == {
+            "status": "waiting_for_metric_judges",
+            "job_id": str(parent["job_id"]),
+        }
+
+        with psycopg.connect(database_url, row_factory=dict_row) as admin:
+            children = admin.execute(
+                """SELECT child.child_job_id, child.candidate_id, child.evaluator_id
+                       FROM workflow_c_metric_model_children AS child
+                      WHERE child.project_id = %s AND child.parent_job_id = %s
+                      ORDER BY child.ordinal""",
+                (project["project"], parent["job_id"]),
+            ).fetchall()
+        assert len(children) == 2
+
+        for child in children:
+            claim = store.claim(
+                job_id=child["child_job_id"],
+                project_id=project["project"],
+                expected_kind="workflow_c.metric_judge",
+                worker_id="metric-child-complete",
+                lease_for=timedelta(seconds=60),
+            )
+            assert claim.disposition == "claimed" and claim.lease is not None
+            projection, output_hash = _agreed_projection(
+                input_set=input_set,
+                candidate_id=child["candidate_id"],
+                evaluator_id=child["evaluator_id"],
+            )
+            with store.fenced_transaction(claim.lease) as connection:
+                completed = connection.execute(
+                    """SELECT * FROM geo_complete_workflow_c_metric_child(
+                           %s, %s, %s, %s, %s, 'metric_judge', %s, %s, NULL, NULL, %s::jsonb
+                       )""",
+                    (
+                        project["project"],
+                        claim.lease.job_id,
+                        claim.lease.lease_token,
+                        claim.lease.fencing_generation,
+                        parent["input_hash"],
+                        uuid4(),
+                        output_hash,
+                        Jsonb(projection),
+                    ),
+                ).fetchone()
+                assert completed is not None
+                store.complete_in_transaction(
+                    connection,
+                    claim.lease,
+                    result_ref=f"metric-child:{claim.lease.job_id}",
+                    details={"output_hash": output_hash},
+                )
+
+        with psycopg.connect(database_url) as admin:
+            admin.execute(
+                """UPDATE durable_jobs SET next_run_at = clock_timestamp()
+                      WHERE project_id = %s AND id = %s AND status = 'retry_wait'""",
+                (project["project"], parent["job_id"]),
+            )
+            admin.commit()
+        resumed = store.claim(
+            job_id=UUID(str(parent["job_id"])),
+            project_id=project["project"],
+            expected_kind="workflow_c.analysis.semantic_metrics",
+            worker_id="metric-parent-resume",
+            lease_for=timedelta(seconds=60),
+        )
+        assert resumed.disposition == "claimed" and resumed.lease is not None
+        result = operation.execute(
+            lease=resumed.lease,
+            parent_input_hash=str(parent["input_hash"]),
+            metadata=_metadata(parent),
+            input_set=input_set,
+            suite=suite,
+            program=_program(parent),
+        )
+        assert result["status"] == "complete"
+        assert isinstance(result["snapshot_hash"], str)
+
+        with psycopg.connect(database_url) as admin:
+            assert admin.execute(
+                """SELECT status FROM durable_jobs
+                      WHERE project_id = %s AND id = %s""",
+                (project["project"], parent["job_id"]),
+            ).fetchone() == ("succeeded",)
+            assert admin.execute(
+                """SELECT count(*) FROM workflow_c_semantic_metric_snapshots
+                      WHERE project_id = %s AND snapshot_hash = %s""",
+                (project["project"], result["snapshot_hash"]),
+            ).fetchone() == (1,)
+            assert admin.execute(
+                """SELECT status FROM workflow_c_semantic_metric_results
+                      WHERE project_id = %s AND snapshot_hash = %s AND metric_key = 'recommendation'""",
+                (project["project"], result["snapshot_hash"]),
+            ).fetchone() == ("complete",)
+    finally:
+        if created_database:
+            with psycopg.connect(ADMIN_URL, autocommit=True) as server:
+                server.execute(
+                    sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(
+                        sql.Identifier(database_name)
+                    )
+                )
+        if created_role:
+            with psycopg.connect(ADMIN_URL, autocommit=True) as server:
+                server.execute(
+                    sql.SQL("DROP ROLE IF EXISTS {}").format(sql.Identifier(worker_login))
+                )
+
+
 def _input_set(observation_id: UUID) -> MetricInputSet:
     return MetricInputSet(
         stratum=SemanticStratum((("capture_method", "provider_api"), ("locale", "en-AU"))),
@@ -274,6 +451,55 @@ def _program(parent: dict[str, UUID | str]) -> MetricModelProgramAdmission:
         admitted_at=datetime.now(UTC),
         judges=(_judge("judge-a", parent), _judge("judge-b", parent)),
         arbiter=_arbiter(parent),
+    )
+
+
+def _metadata(parent: dict[str, UUID | str]) -> SemanticMetricMetadata:
+    return SemanticMetricMetadata(
+        run_id=UUID(str(parent["run_id"])),
+        source_stratum_hash="d" * 64,
+        capture_method="provider_api",
+        warning_ratio=Decimal("0"),
+        test_only=False,
+        synthetic=False,
+    )
+
+
+def _agreed_projection(
+    *, input_set: MetricInputSet, candidate_id: UUID, evaluator_id: str
+) -> tuple[dict[str, object], str]:
+    observation = input_set.observations[0]
+    output = StructuredJudgeOutput(
+        kind=JudgeKind.RECOMMENDATION,
+        label="yes",
+        score=Decimal("1"),
+        reason_codes=(),
+        locators=(
+            EvidenceLocator(
+                EvidenceLocatorKind.ANSWER_SPAN,
+                str(observation.id),
+                version=observation.artifact_version,
+                content_hash=observation.payload_hash,
+                start=0,
+                end=len("Advinsys"),
+            ),
+        ),
+        schema_version="metric-judge-output-v1",
+        metric_id=MetricKey.RECOMMENDATION.value,
+    )
+    parsed = ParsedMetricJudgeProgramOutput(
+        results=(output,), overall_status="pass", output_locale="en-AU"
+    )
+    candidate = MetricJudgeCandidate.create(
+        candidate_id=str(candidate_id), evaluator_id=evaluator_id, output=parsed
+    )
+    return (
+        {
+            "results": [output.canonical_value()],
+            "overall_status": parsed.overall_status,
+            "output_locale": parsed.output_locale,
+        },
+        candidate.output_hash,
     )
 
 
