@@ -8,7 +8,7 @@ import json
 import logging
 import os
 from time import perf_counter
-from typing import cast
+from typing import Any, cast
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
@@ -42,6 +42,7 @@ from geo_api.project_export_routes import (
     customer_project_export_router,
 )
 from geo_api.project_export_runtime import build_project_export_application
+from geo_api.search_aggregation_routes import search_aggregation_router
 from geo_api.prompt_bootstrap_routes import prompt_bootstrap_router
 from geo_api.prompt_program_routes import prompt_program_router
 from geo_api.prompt_program_runtime import build_prompt_program_application
@@ -189,6 +190,7 @@ def create_api_app(
         version="1.0.0",
         docs_url="/docs" if surface == "internal" else None,
         redoc_url=None,
+        swagger_ui_parameters={"persistAuthorization": True},
     )
     app.state.surface = surface
     app.state.services = resolved_services
@@ -240,6 +242,7 @@ def create_api_app(
         app.include_router(job_control_router())
         app.include_router(knowledge_router())
         app.include_router(knowledge_question_router())
+        app.include_router(search_aggregation_router())
         app.include_router(prompt_bootstrap_router())
         app.include_router(prompt_program_router())
         app.include_router(model_gateway_runtime_router())
@@ -264,7 +267,55 @@ def create_api_app(
         app.include_router(customer_project_export_router())
         reader = workflow_c_customer_reader or build_workflow_c_customer_reader()
         app.include_router(workflow_c_customer_router(reader=reader))
+    if surface == "internal" and resolved_settings.deployment_environment == "development":
+        _configure_development_swagger_auth(app)
     return app
+
+
+def _configure_development_swagger_auth(app: FastAPI) -> None:
+    """Expose development authentication headers in Swagger UI for local testing.
+
+    Internal API development mode authenticates via ``X-GEO-Actor-ID`` and
+    ``X-GEO-Tenant-ID`` headers. This helper registers them as API key security
+    schemes in the generated OpenAPI schema so that the ``/docs`` page shows
+    input fields for both headers on every endpoint except health/readiness.
+    """
+    from fastapi.openapi.utils import get_openapi
+
+    def openapi() -> dict[str, Any]:
+        if app.openapi_schema:
+            return app.openapi_schema
+        schema = get_openapi(
+            title=app.title,
+            version=app.version,
+            routes=app.routes,
+        )
+        schema.setdefault("components", {})
+        schema["components"].setdefault("securitySchemes", {})
+        schema["components"]["securitySchemes"]["developmentActor"] = {
+            "type": "apiKey",
+            "name": "X-GEO-Actor-ID",
+            "in": "header",
+            "description": "Development actor identity UUID.",
+        }
+        schema["components"]["securitySchemes"]["developmentTenant"] = {
+            "type": "apiKey",
+            "name": "X-GEO-Tenant-ID",
+            "in": "header",
+            "description": "Development tenant UUID.",
+        }
+        for path, path_data in schema.get("paths", {}).items():
+            if path in ("/health", "/ready"):
+                continue
+            for operation in path_data.values():
+                if isinstance(operation, dict) and "security" not in operation:
+                    operation["security"] = [
+                        {"developmentActor": [], "developmentTenant": []}
+                    ]
+        app.openapi_schema = schema
+        return app.openapi_schema
+
+    app.openapi = openapi  # type: ignore[method-assign]
 
 
 def _install_request_metadata_middleware(app: FastAPI, *, surface: Surface) -> None:

@@ -86,6 +86,12 @@ services:
       dockerfile: apps/api/Dockerfile
     environment:
       <<: *api-environment
+      GEO_SERPAPI_KEY_FILE: /run/secrets/serpapi_key
+      GEO_OPENROUTER_API_KEY_FILE: /run/secrets/openrouter_key
+      GEO_OPENROUTER_MODEL: ${GEO_OPENROUTER_MODEL:-openai/gpt-5.5}
+      GEO_OPENROUTER_HTTP_REFERER: ${GEO_OPENROUTER_HTTP_REFERER:-https://geo.local}
+      GEO_OPENROUTER_APP_TITLE: ${GEO_OPENROUTER_APP_TITLE:-GEO Search Demo}
+      GEO_PERPLEXITY_MODEL: ${GEO_PERPLEXITY_MODEL:-perplexity/sonar}
     command: ["uvicorn", "geo_api.internal_app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     ports:
       - "${GEO_INTERNAL_API_HOST_PORT:-8000}:8000"
@@ -93,6 +99,8 @@ services:
       - ../apps/api:/app/apps/api
       - ../packages/geo_core:/app/packages/geo_core
       - ../prompt:/app/prompt:ro
+      - ${GEO_SERPAPI_KEY_FILE:-../serpapi_key.txt}:/run/secrets/serpapi_key:ro
+      - ${GEO_OPENROUTER_API_KEY_FILE:-../openrouter_key.txt}:/run/secrets/openrouter_key:ro
     depends_on:
       migrate:
         condition: service_completed_successfully
