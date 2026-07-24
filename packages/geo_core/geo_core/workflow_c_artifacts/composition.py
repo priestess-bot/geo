@@ -14,6 +14,7 @@ from geo_core.workflow_c_artifacts.postgres import (
     PostgresWorkflowCArtifactKeyVault,
     PostgresWorkflowCManualArtifactRepository,
     synchronize_workflow_c_artifact_master_keys,
+    verify_workflow_c_artifact_keyring_canary_rows,
     verify_workflow_c_artifact_keyring_canaries,
 )
 from geo_core.sampling.manual_artifact_storage import (
@@ -69,6 +70,60 @@ def build_workflow_c_artifact_composition(
     connection = connection_factory()
     try:
         versions = synchronize_workflow_c_artifact_master_keys(connection, cipher)
+        connection.commit()
+    except BaseException:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
+    store = build_workflow_c_artifact_object_store(values)
+    vault = PostgresWorkflowCArtifactKeyVault(
+        connect=connection_factory,
+        cipher=cipher,
+        synchronize=False,
+    )
+    return WorkflowCArtifactComposition(
+        writer=MinioWorkflowCManualArtifactWriter(
+            object_store=store,
+            encryptor=IndependentWorkflowCArtifactEncryptor(vault),
+            repository=PostgresWorkflowCManualArtifactRepository(
+                connect=connection_factory
+            ),
+            retention_days=retention_days,
+        ),
+        cipher=cipher,
+        object_store=store,
+        verified_master_key_versions=versions,
+    )
+
+
+def build_workflow_c_artifact_api_writer_composition(
+    *,
+    connection_factory: Callable[[], Any],
+    keyring_path: str | PathLike[str],
+    environment: Mapping[str, str] | None = None,
+    retention_days: int = 90,
+) -> WorkflowCArtifactComposition:
+    """Build the restricted App writer without master-key-table read rights.
+
+    The Worker registers and synchronizes canaries.  The App verifies them
+    through a read-only SECURITY DEFINER projection, then uses existing
+    project-RLS rights for DEKs and governed artifact staging.
+    """
+
+    values = os.environ if environment is None else environment
+    cipher = EnvelopeCipher(load_master_keyring_from_docker_secret(keyring_path))
+    connection = connection_factory()
+    try:
+        connection.execute("SET TRANSACTION READ ONLY")
+        rows = tuple(
+            connection.execute(
+                """SELECT master_key_version, status, algorithm,
+                          canary_nonce, canary_ciphertext, retired_at
+                     FROM geo_read_workflow_c_artifact_keyring_canaries()"""
+            ).fetchall()
+        )
+        versions = verify_workflow_c_artifact_keyring_canary_rows(cipher, rows)
         connection.commit()
     except BaseException:
         connection.rollback()
@@ -212,6 +267,7 @@ __all__ = [
     "WorkflowCArtifactMaintenanceComposition",
     "WorkflowCArtifactReaderComposition",
     "build_workflow_c_artifact_composition",
+    "build_workflow_c_artifact_api_writer_composition",
     "build_workflow_c_artifact_maintenance_composition",
     "build_workflow_c_artifact_object_store",
     "build_workflow_c_artifact_reader_composition",

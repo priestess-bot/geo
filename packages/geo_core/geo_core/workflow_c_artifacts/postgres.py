@@ -346,6 +346,19 @@ def verify_workflow_c_artifact_keyring_canaries(
                WHERE status <> 'retired' ORDER BY master_key_version"""
         ).fetchall()
     )
+    return verify_workflow_c_artifact_keyring_canary_rows(cipher, rows)
+
+
+def verify_workflow_c_artifact_keyring_canary_rows(
+    cipher: EnvelopeCipher, rows: tuple[Mapping[str, Any], ...]
+) -> tuple[int, ...]:
+    """Verify non-retired canaries supplied by a restricted database reader.
+
+    The Internal API must validate its Docker-Secret keyring before it encrypts
+    governed evidence, but must not receive direct table access to global
+    master-key metadata.  A constrained database RPC supplies these rows.
+    """
+
     versions = tuple(int(row["master_key_version"]) for row in rows)
     if versions != cipher.master_key_versions:
         raise SecretConfigurationError(
@@ -521,5 +534,6 @@ __all__ = [
     "synchronize_workflow_c_artifact_master_keys",
     "validate_workflow_c_artifact_manifest",
     "verify_workflow_c_artifact_restore",
+    "verify_workflow_c_artifact_keyring_canary_rows",
     "verify_workflow_c_artifact_keyring_canaries",
 ]

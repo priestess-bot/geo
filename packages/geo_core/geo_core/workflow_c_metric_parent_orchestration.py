@@ -24,7 +24,6 @@ from geo_core.semantic_metrics import (
     plan_metric_judge_batches,
     resolve_metric_judge_candidates,
 )
-from geo_core.workflow_c_analysis_common import WorkflowCAnalysisWorkerError
 from geo_core.workflow_c_analysis_persistence import persist_semantic_snapshot
 from geo_core.workflow_c_metric_arbiter_admission import (
     PostgresWorkflowCMetricArbiterAdmissionRepository,
@@ -40,6 +39,17 @@ from geo_core.workflow_c_metric_parent_admission import (
 )
 from geo_core.workflow_c_metric_parent_specs import MetricModelProgramAdmission
 from geo_core.workflow_c_semantic_specs import SemanticMetricMetadata
+from geo_core.workflow_c_metric_parent_validation import (
+    WorkflowCMetricParentOrchestrationError,
+    hash_value as _hash,
+    mapping as _mapping,
+    optional_hash as _optional_hash,
+    optional_text as _optional_text,
+    optional_uuid as _optional_uuid,
+    positive as _positive,
+    text as _text,
+    uuid_value as _uuid,
+)
 
 
 _HASH = re.compile(r"^[0-9a-f]{64}$")
@@ -54,10 +64,6 @@ class _ParentFailed:
 
 
 _FAILED = _ParentFailed()
-
-
-class WorkflowCMetricParentOrchestrationError(WorkflowCAnalysisWorkerError):
-    """Frozen Metric parent state cannot progress safely."""
 
 
 @dataclass(frozen=True)
@@ -515,50 +521,6 @@ def _batch(
     )
 
 
-def _mapping(value: object, label: str) -> Mapping[str, object]:
-    if not isinstance(value, Mapping):
-        raise WorkflowCMetricParentOrchestrationError(f"{label} is invalid")
-    return value
-
-
-def _text(value: object, label: str) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise WorkflowCMetricParentOrchestrationError(f"{label} is invalid")
-    return value
-
-
-def _optional_text(value: object, label: str) -> str | None:
-    return None if value is None else _text(value, label)
-
-
-def _hash(value: object, label: str) -> str:
-    parsed = _text(value, label)
-    if _HASH.fullmatch(parsed) is None:
-        raise WorkflowCMetricParentOrchestrationError(f"{label} is invalid")
-    return parsed
-
-
-def _optional_hash(value: object, label: str) -> str | None:
-    return None if value is None else _hash(value, label)
-
-
-def _uuid(value: object, label: str) -> UUID:
-    if isinstance(value, UUID) and value.int != 0:
-        return value
-    if isinstance(value, str):
-        try:
-            parsed = UUID(value)
-        except ValueError as error:
-            raise WorkflowCMetricParentOrchestrationError(f"{label} is invalid") from error
-        if parsed.int != 0:
-            return parsed
-    raise WorkflowCMetricParentOrchestrationError(f"{label} is invalid")
-
-
-def _optional_uuid(value: object, label: str) -> UUID | None:
-    return None if value is None else _uuid(value, label)
-
-
 def _parent_progress_params(lease: WorkerLease, parent_input_hash: str) -> tuple[object, ...]:
     return (
         lease.project_id,
@@ -591,12 +553,6 @@ def _candidate_from_row(value: Mapping[str, object]) -> MetricJudgeCandidate:
         raise WorkflowCMetricParentOrchestrationError(
             "metric Judge output projection is invalid"
         ) from error
-
-
-def _positive(value: object, label: str) -> int:
-    if not isinstance(value, int) or isinstance(value, bool) or value < 1:
-        raise WorkflowCMetricParentOrchestrationError(f"{label} is invalid")
-    return value
 
 
 def _aware_now(clock: Callable[[], datetime]) -> datetime:

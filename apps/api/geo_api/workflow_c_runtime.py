@@ -57,16 +57,20 @@ def build_workflow_c_api() -> WorkflowCApi | None:
     database_url = _secret("GEO_DATABASE_URL")
     if not database_url:
         return None
-    module_name = "geo_core.workflow_c.postgres"
+    # The API writer validates this mounted Docker Secret against database
+    # canaries during durable construction. Treat an absent mount as an absent
+    # runtime so application construction can expose the stable unavailable
+    # route/readiness contract instead of crashing before readiness runs.
+    if not os.getenv("GEO_WORKFLOW_C_ARTIFACT_KEYRING_FILE", "").strip():
+        return None
+    module_name = "geo_api.workflow_c_postgres"
     try:
         module = importlib.import_module(module_name)
     except ModuleNotFoundError as error:
-        # ``geo_core.workflow_c`` is an optional package during the staged
-        # rollout.  Importlib reports that missing parent, rather than the
-        # requested leaf module, so accept only these two absence cases.  A
-        # missing dependency *inside* the concrete adapter must still abort
-        # startup rather than disguising a broken durable runtime as absent.
-        if error.name not in {module_name, "geo_core.workflow_c"}:
+        # The concrete adapter is optional during a staged code rollout. A
+        # missing dependency *inside* it must still abort startup rather than
+        # disguising a broken durable runtime as an absent one.
+        if error.name != module_name:
             raise
         return None
     builder = getattr(module, "build_workflow_c_api", None)
