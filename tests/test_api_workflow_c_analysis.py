@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from datetime import datetime
 from decimal import Decimal
+import pytest
 from uuid import UUID
 
 from fastapi.testclient import TestClient
@@ -10,6 +12,8 @@ from geo_api.workflow_c_analysis_contracts import (
     ComputeDriftRequest,
     ComputeSemanticMetricsRequest,
 )
+from geo_api.workflow_c_analysis_runtime import WorkflowCAnalysisUnavailable
+from geo_api.workflow_c_presenters import semantic_snapshot_response
 from geo_core.semantic_metrics import (
     DeterministicRuleVersions,
     FrozenMetricSuite,
@@ -19,8 +23,10 @@ from geo_core.semantic_metrics import (
     PlannedMetricSlot,
     SemanticStratum,
     SubjectInventory,
+    compute_semantic_metric_snapshot,
     first_metric_suite,
 )
+from geo_core.workflow_c_analysis_reads import StoredSemanticMetricSnapshot
 from geo_core.statistical_methods import (
     ComparisonInput,
     DriftObservation,
@@ -54,9 +60,7 @@ def test_semantic_compute_accepts_only_server_resolved_immutable_selectors() -> 
 
     with TestClient(app) as client:
         response = client.post(path, json=_json(selector))
-        inventory = client.get(
-            f"/v1/projects/{PROJECT_ID}/analysis/semantic-metrics"
-        )
+        inventory = client.get(f"/v1/projects/{PROJECT_ID}/analysis/semantic-metrics")
         forged = client.post(
             path,
             json={
@@ -129,6 +133,43 @@ def test_semantic_answer_stays_in_server_artifact_resolution() -> None:
     assert response.status_code == 200, response.text
     assert answer not in response.text
     assert "answer_text" not in str(_json(selector))
+
+
+def test_stored_semantic_projection_rechecks_hash_and_lineage_before_rendering() -> None:
+    _, input_set, metric_suite = _semantic_fixture()
+    snapshot = compute_semantic_metric_snapshot(
+        input_set=input_set,
+        suite=metric_suite,
+        computed_at=datetime.fromisoformat("2026-07-24T00:00:00+00:00"),
+    )
+    stored = StoredSemanticMetricSnapshot(
+        project_id=PROJECT_ID,
+        snapshot_hash=snapshot.snapshot_hash,
+        input_set_hash=snapshot.input_set_hash,
+        suite_hash=snapshot.suite_hash,
+        stratum_hash=snapshot.stratum_hash,
+        payload=snapshot.canonical_value(),
+    )
+
+    response = semantic_snapshot_response(PROJECT_ID, stored)
+
+    assert response.snapshot_hash == snapshot.snapshot_hash
+    assert len(response.results) == len(snapshot.results)
+    assert {item.result_hash for item in response.results} == {
+        item.result_hash for item in snapshot.results
+    }
+    with pytest.raises(WorkflowCAnalysisUnavailable, match="hash is inconsistent"):
+        semantic_snapshot_response(
+            PROJECT_ID,
+            StoredSemanticMetricSnapshot(
+                project_id=PROJECT_ID,
+                snapshot_hash="0" * 64,
+                input_set_hash=snapshot.input_set_hash,
+                suite_hash=snapshot.suite_hash,
+                stratum_hash=snapshot.stratum_hash,
+                payload=snapshot.canonical_value(),
+            ),
+        )
 
 
 def test_comparison_endpoint_resolves_pairs_and_holm_protocol_server_side() -> None:

@@ -10,7 +10,10 @@ from fastapi import APIRouter, FastAPI, Header, Request
 
 from geo_api.foundation_services import AuthenticationInput, FoundationServiceUnavailable
 from geo_api.problems import ApiProblem
-from geo_api.workflow_c_analysis_runtime import WorkflowCAnalysisNotFound
+from geo_api.workflow_c_analysis_runtime import (
+    WorkflowCAnalysisNotFound,
+    WorkflowCAnalysisUnavailable,
+)
 from geo_api.workflow_c_runtime import WorkflowCApi, WorkflowCUnavailable
 from geo_core.access.models import AccessPrincipal
 from geo_core.alerts import AlertConflict, AlertNotFound, AlertRuleViolation
@@ -22,9 +25,7 @@ from geo_core.statistical_methods import StatisticalRuleViolation
 
 
 AuthorizationHeader = Annotated[str | None, Header(alias="Authorization")]
-IdempotencyHeader = Annotated[
-    str, Header(alias="Idempotency-Key", min_length=1, max_length=200)
-]
+IdempotencyHeader = Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=200)]
 READ_ROLES = frozenset({"owner", "admin", "analyst", "viewer"})
 WRITE_ROLES = frozenset({"owner", "admin", "analyst"})
 MANAGE_ROLES = frozenset({"owner", "admin"})
@@ -101,7 +102,7 @@ def workflow_c_call(operation: Callable[[], T]) -> T:
         InvalidTransition,
     ) as error:
         raise _problem(409, "Conflict", error, "conflict") from error
-    except WorkflowCUnavailable as error:
+    except (WorkflowCUnavailable, WorkflowCAnalysisUnavailable) as error:
         raise _problem(503, "Service Unavailable", error, "unavailable") from error
 
 

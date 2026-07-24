@@ -29,10 +29,13 @@ from geo_core.workflow_c_analysis_worker import (
     PostgresWorkflowCComparisonOperation,
     PostgresWorkflowCDriftOperation,
 )
+from geo_core.workflow_c_analysis_reads import PostgresWorkflowCAnalysisReadRepository
 from geo_core.workflow_c_job_specs import (
     PostgresWorkflowCJobSpecRepository,
     PostgresWorkflowCJobSpecWriter,
 )
+from geo_api.workflow_c_analysis_postgres_runtime import PostgresWorkflowCAnalysisRuntime
+from geo_api.workflow_c_presenters import comparison_family_response, drift_report_response
 from tests.integration.placement_worker_support import login_url, seed_project
 
 
@@ -185,6 +188,23 @@ def test_restricted_worker_persists_comparison_and_drift_only_through_fenced_rpc
             lease_for=timedelta(seconds=60),
         ).execute(drift_claim.lease)
         assert drift_result["status"] == "complete"
+
+        durable_analysis = PostgresWorkflowCAnalysisRuntime(
+            reads=PostgresWorkflowCAnalysisReadRepository(connect=app_connect)
+        )
+        comparison_projection = durable_analysis.get_comparison_family(
+            project_id=project["project"], family_hash=comparison_result["family_hash"]
+        )
+        comparison_response = comparison_family_response(project["project"], comparison_projection)
+        assert comparison_response.family_hash == comparison_result["family_hash"]
+        assert comparison_response.results[0].result_hash
+        drift_projection = durable_analysis.get_drift_report(
+            project_id=project["project"], report_hash=drift_result["report_hash"]
+        )
+        drift_response = drift_report_response(project["project"], drift_projection)
+        assert drift_response.report_hash == drift_result["report_hash"]
+        assert durable_analysis.list_comparison_families(project_id=uuid4()) == ()
+        assert durable_analysis.list_drift_reports(project_id=uuid4()) == ()
 
         with psycopg.connect(database_url) as admin:
             assert admin.execute(

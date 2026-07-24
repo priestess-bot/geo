@@ -28,10 +28,60 @@ from geo_core.statistical_methods import (
     analyze_comparison_family,
     compute_drift_report,
 )
+from geo_core.workflow_c_analysis_reads import (
+    StoredComparisonFamily,
+    StoredDriftReport,
+    StoredSemanticMetricSnapshot,
+)
 
 
 class WorkflowCAnalysisNotFound(RuntimeError):
     """A project-scoped selector or analysis projection does not exist."""
+
+
+class WorkflowCAnalysisUnavailable(RuntimeError):
+    """A durable analysis command has not yet been safely admitted."""
+
+
+SemanticSnapshotProjection = SemanticMetricSnapshot | StoredSemanticMetricSnapshot
+ComparisonFamilyProjection = ComparisonFamilyResult | StoredComparisonFamily
+DriftReportProjection = DriftReport | StoredDriftReport
+
+
+class WorkflowCAnalysisPort(Protocol):
+    """The full API route shape, with durable reads and explicitly gated writes."""
+
+    def compute_semantic_metrics(
+        self, *, project_id: UUID, payload: ComputeSemanticMetricsRequest
+    ) -> SemanticSnapshotProjection: ...
+
+    def analyze_comparisons(
+        self, *, project_id: UUID, payload: AnalyzeComparisonFamilyRequest
+    ) -> ComparisonFamilyProjection: ...
+
+    def compute_drift(
+        self, *, project_id: UUID, payload: ComputeDriftRequest
+    ) -> DriftReportProjection: ...
+
+    def get_semantic_snapshot(
+        self, *, project_id: UUID, snapshot_hash: str
+    ) -> SemanticSnapshotProjection: ...
+
+    def list_semantic_snapshots(
+        self, *, project_id: UUID
+    ) -> tuple[SemanticSnapshotProjection, ...]: ...
+
+    def get_comparison_family(
+        self, *, project_id: UUID, family_hash: str
+    ) -> ComparisonFamilyProjection: ...
+
+    def list_comparison_families(
+        self, *, project_id: UUID
+    ) -> tuple[ComparisonFamilyProjection, ...]: ...
+
+    def get_drift_report(self, *, project_id: UUID, report_hash: str) -> DriftReportProjection: ...
+
+    def list_drift_reports(self, *, project_id: UUID) -> tuple[DriftReportProjection, ...]: ...
 
 
 @dataclass(frozen=True)
@@ -227,9 +277,7 @@ class WorkflowCAnalysisRuntime:
             "semantic metric snapshot",
         )
 
-    def list_semantic_snapshots(
-        self, *, project_id: UUID
-    ) -> tuple[SemanticMetricSnapshot, ...]:
+    def list_semantic_snapshots(self, *, project_id: UUID) -> tuple[SemanticMetricSnapshot, ...]:
         return self._project_values(self._semantic, project_id)
 
     def get_comparison_family(
@@ -241,9 +289,7 @@ class WorkflowCAnalysisRuntime:
             "comparison family result",
         )
 
-    def list_comparison_families(
-        self, *, project_id: UUID
-    ) -> tuple[ComparisonFamilyResult, ...]:
+    def list_comparison_families(self, *, project_id: UUID) -> tuple[ComparisonFamilyResult, ...]:
         return self._project_values(self._comparisons, project_id)
 
     def get_drift_report(self, *, project_id: UUID, report_hash: str) -> DriftReport:

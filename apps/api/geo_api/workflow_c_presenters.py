@@ -30,11 +30,21 @@ from geo_api.workflow_c_analysis_contracts import (
 from geo_core.alerts import Alert, AlertCommandResult, NotificationOutboxCommand
 from geo_core.semantic_metrics import SemanticMetricSnapshot
 from geo_core.statistical_methods import ComparisonFamilyResult, DriftReport
+from geo_core.semantic_metrics.contracts import canonical_hash as semantic_canonical_hash
+from geo_core.statistical_methods.contracts import canonical_hash as statistical_canonical_hash
+from geo_core.workflow_c_analysis_reads import (
+    StoredComparisonFamily,
+    StoredDriftReport,
+    StoredSemanticMetricSnapshot,
+)
+from geo_api.workflow_c_analysis_runtime import WorkflowCAnalysisUnavailable
 
 
 def semantic_snapshot_response(
-    project_id: UUID, snapshot: SemanticMetricSnapshot
+    project_id: UUID, snapshot: SemanticMetricSnapshot | StoredSemanticMetricSnapshot
 ) -> SemanticMetricSnapshotResponse:
+    if isinstance(snapshot, StoredSemanticMetricSnapshot):
+        return _stored_semantic_snapshot_response(project_id, snapshot)
     result_values = []
     for result in snapshot.results:
         value = result.canonical_value()
@@ -54,7 +64,7 @@ def semantic_snapshot_response(
 
 
 def semantic_snapshot_page_response(
-    project_id: UUID, items: tuple[SemanticMetricSnapshot, ...]
+    project_id: UUID, items: tuple[SemanticMetricSnapshot | StoredSemanticMetricSnapshot, ...]
 ) -> SemanticMetricSnapshotPageResponse:
     return SemanticMetricSnapshotPageResponse(
         items=[semantic_snapshot_response(project_id, item) for item in items],
@@ -63,8 +73,10 @@ def semantic_snapshot_page_response(
 
 
 def comparison_family_response(
-    project_id: UUID, result: ComparisonFamilyResult
+    project_id: UUID, result: ComparisonFamilyResult | StoredComparisonFamily
 ) -> ComparisonFamilyResponse:
+    if isinstance(result, StoredComparisonFamily):
+        return _stored_comparison_family_response(project_id, result)
     items = []
     for item in result.results:
         value = item.canonical_value()
@@ -81,7 +93,7 @@ def comparison_family_response(
 
 
 def comparison_family_page_response(
-    project_id: UUID, items: tuple[ComparisonFamilyResult, ...]
+    project_id: UUID, items: tuple[ComparisonFamilyResult | StoredComparisonFamily, ...]
 ) -> ComparisonFamilyPageResponse:
     return ComparisonFamilyPageResponse(
         items=[comparison_family_response(project_id, item) for item in items],
@@ -89,7 +101,11 @@ def comparison_family_page_response(
     )
 
 
-def drift_report_response(project_id: UUID, report: DriftReport) -> DriftReportResponse:
+def drift_report_response(
+    project_id: UUID, report: DriftReport | StoredDriftReport
+) -> DriftReportResponse:
+    if isinstance(report, StoredDriftReport):
+        return _stored_drift_report_response(project_id, report)
     return DriftReportResponse.model_validate(
         {
             "project_id": project_id,
@@ -100,12 +116,107 @@ def drift_report_response(project_id: UUID, report: DriftReport) -> DriftReportR
 
 
 def drift_report_page_response(
-    project_id: UUID, items: tuple[DriftReport, ...]
+    project_id: UUID, items: tuple[DriftReport | StoredDriftReport, ...]
 ) -> DriftReportPageResponse:
     return DriftReportPageResponse(
         items=[drift_report_response(project_id, item) for item in items],
         total=len(items),
     )
+
+
+def _stored_semantic_snapshot_response(
+    project_id: UUID, snapshot: StoredSemanticMetricSnapshot
+) -> SemanticMetricSnapshotResponse:
+    _require_project(project_id, snapshot.project_id)
+    value = _object(snapshot.payload, "semantic metric snapshot payload")
+    hash_value = dict(value)
+    hash_value.pop("computed_at", None)
+    _require_hash(snapshot.snapshot_hash, semantic_canonical_hash(hash_value))
+    _require_equal(snapshot.input_set_hash, value.get("input_set_hash"), "input set hash")
+    _require_equal(snapshot.suite_hash, value.get("suite_hash"), "metric suite hash")
+    _require_equal(snapshot.stratum_hash, value.get("stratum_hash"), "source stratum hash")
+    results = _array(value.get("results"), "semantic metric results")
+    response_results = []
+    for result in results:
+        result_value = _object(result, "semantic metric result")
+        response_results.append(
+            SemanticMetricResultResponse.model_validate(
+                {**result_value, "result_hash": semantic_canonical_hash(result_value)}
+            )
+        )
+    return SemanticMetricSnapshotResponse.model_validate(
+        {
+            "project_id": project_id,
+            **value,
+            "results": response_results,
+            "snapshot_hash": snapshot.snapshot_hash,
+        }
+    )
+
+
+def _stored_comparison_family_response(
+    project_id: UUID, family: StoredComparisonFamily
+) -> ComparisonFamilyResponse:
+    _require_project(project_id, family.project_id)
+    value = _object(family.payload, "comparison family payload")
+    _require_hash(family.family_hash, statistical_canonical_hash(value))
+    results = _array(value.get("results"), "comparison results")
+    response_results = []
+    for result in results:
+        result_value = _object(result, "comparison result")
+        response_results.append(
+            ComparisonResultResponse.model_validate(
+                {**result_value, "result_hash": statistical_canonical_hash(result_value)}
+            )
+        )
+    return ComparisonFamilyResponse.model_validate(
+        {
+            "project_id": project_id,
+            "family": value.get("family"),
+            "alpha": value.get("alpha"),
+            "correction_method": value.get("correction_method"),
+            "results": response_results,
+            "family_hash": family.family_hash,
+        }
+    )
+
+
+def _stored_drift_report_response(
+    project_id: UUID, report: StoredDriftReport
+) -> DriftReportResponse:
+    _require_project(project_id, report.project_id)
+    value = _object(report.payload, "drift report payload")
+    _require_hash(report.report_hash, statistical_canonical_hash(value))
+    return DriftReportResponse.model_validate(
+        {"project_id": project_id, **value, "report_hash": report.report_hash}
+    )
+
+
+def _require_project(requested: UUID, stored: UUID) -> None:
+    if requested != stored:
+        raise WorkflowCAnalysisUnavailable("analytical projection project scope is inconsistent")
+
+
+def _require_hash(expected: str, actual: str) -> None:
+    if expected != actual:
+        raise WorkflowCAnalysisUnavailable("analytical projection hash is inconsistent")
+
+
+def _require_equal(expected: str, actual: object, label: str) -> None:
+    if expected != actual:
+        raise WorkflowCAnalysisUnavailable(f"analytical projection {label} is inconsistent")
+
+
+def _object(value: object, label: str) -> dict[str, object]:
+    if not isinstance(value, Mapping):
+        raise WorkflowCAnalysisUnavailable(f"{label} is malformed")
+    return {str(key): item for key, item in value.items()}
+
+
+def _array(value: object, label: str) -> list[object]:
+    if not isinstance(value, list):
+        raise WorkflowCAnalysisUnavailable(f"{label} is malformed")
+    return value
 
 
 def alert_response(item: Alert, *, replayed: bool = False) -> AlertResponse:

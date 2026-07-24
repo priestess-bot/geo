@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import cast
 
 from geo_api.workflow_c_alert_runtime import WorkflowCAlertRuntime
-from geo_api.workflow_c_analysis_runtime import WorkflowCAnalysisRuntime
+from geo_api.workflow_c_analysis_runtime import WorkflowCAnalysisPort, WorkflowCAnalysisRuntime
 from geo_api.workflow_c_sampling_runtime import WorkflowCSamplingRuntime
 from geo_api.workflow_c_manual_artifacts import InMemoryManualArtifactWriter
 
@@ -23,7 +23,7 @@ class WorkflowCUnavailable(RuntimeError):
 @dataclass(frozen=True)
 class WorkflowCApi:
     sampling: WorkflowCSamplingRuntime
-    analysis: WorkflowCAnalysisRuntime
+    analysis: WorkflowCAnalysisPort
     alerts: WorkflowCAlertRuntime
     persistence: str
 
