@@ -1,0 +1,146 @@
+services:
+  style-browser-worker:
+    image: ${GEO_STYLE_BROWSER_IMAGE:?set a digest-pinned GEO_STYLE_BROWSER_IMAGE}
+    restart: unless-stopped
+    init: true
+    read_only: true
+    user: "10001:10001"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 512
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    shm_size: 256m
+    tmpfs:
+      - /tmp:size=128m,mode=0700,noexec,nosuid,nodev
+      - /run/geo-style-capture:size=512m,mode=0700,noexec,nosuid,nodev
+    environment:
+      GEO_DEPLOYMENT_ENVIRONMENT: production
+      GEO_RELEASE_VERSION: ${GEO_RELEASE_VERSION:?set GEO_RELEASE_VERSION}
+      GEO_STYLE_BROWSER_IMAGE_REFERENCE: ${GEO_STYLE_BROWSER_IMAGE:?set a digest-pinned GEO_STYLE_BROWSER_IMAGE}
+      GEO_DATABASE_URL_FILE: /run/secrets/style_browser_worker_database_url
+      GEO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
+      GEO_STYLE_COLLECTION_QUEUE: style-collection
+      GEO_STYLE_COLLECTION_SERVICE_IDENTITY_ID: ${GEO_STYLE_COLLECTION_SERVICE_IDENTITY_ID:?set the provisioned Style Collection worker service identity UUID}
+      GEO_STYLE_COLLECTION_COMPOSITION_FACTORY: ${GEO_STYLE_COLLECTION_COMPOSITION_FACTORY:?set the production Style Collection composition factory}
+      GEO_STYLE_ADAPTER_REGISTRY_FILE: /etc/geo/style-adapter-registry.json
+      GEO_STYLE_ADAPTER_REGISTRY_SHA256: ${GEO_STYLE_ADAPTER_REGISTRY_SHA256:?set the reviewed Style adapter registry digest}
+      GEO_STYLE_ROBOTS_TIMEOUT_SECONDS: ${GEO_STYLE_ROBOTS_TIMEOUT_SECONDS:-10}
+      GEO_STYLE_CAPTURE_TMPFS: /run/geo-style-capture
+      GEO_STYLE_TMPFS_ENCRYPTION_REQUIRED: "1"
+      GEO_STYLE_CHROMIUM_EXECUTABLE: ${GEO_STYLE_CHROMIUM_EXECUTABLE:?set the reviewed Playwright 1.60 Chromium executable}
+      GEO_STYLE_BROWSER_WS_ENDPOINT: ws://style-browser-runtime:9222/
+      GEO_STYLE_ALLOWED_EGRESS_HOSTS: ${GEO_STYLE_ALLOWED_EGRESS_HOSTS:?set approved Style Source and robots hosts}
+      GEO_RUNTIME_HEARTBEAT_INTERVAL_SECONDS: ${GEO_RUNTIME_HEARTBEAT_INTERVAL_SECONDS:-10}
+      GEO_RUNTIME_HEARTBEAT_STALE_SECONDS: ${GEO_RUNTIME_HEARTBEAT_STALE_SECONDS:-30}
+      GEO_RUNTIME_QUEUED_STALE_SECONDS: ${GEO_RUNTIME_QUEUED_STALE_SECONDS:-600}
+      GEO_RUNTIME_OUTBOX_STALE_SECONDS: ${GEO_RUNTIME_OUTBOX_STALE_SECONDS:-300}
+      GEO_RUNTIME_RUNNING_GRACE_SECONDS: ${GEO_RUNTIME_RUNNING_GRACE_SECONDS:-60}
+      GEO_RUNTIME_FAILURE_WINDOW_SECONDS: ${GEO_RUNTIME_FAILURE_WINDOW_SECONDS:-86400}
+      GEO_RUNTIME_EXPECTED_STYLE_BROWSER_WORKER_INSTANCES: ${GEO_RUNTIME_EXPECTED_STYLE_BROWSER_WORKER_INSTANCES:-1}
+      GEO_SECRET_STORE_MASTER_KEYRING_FILE: /run/secrets/secret_store_master_keyring
+      GEO_SECRET_STORE_REQUEST_HASH_KEY_FILE: /run/secrets/secret_store_request_hash_key
+      GEO_SYNTHETIC_ARTIFACT_KEYRING_FILE: /run/secrets/synthetic_artifact_keyring
+      GEO_SYNTHETIC_STYLE_RAW_OBJECT_STORE_ENDPOINT: http://minio:9000
+      GEO_SYNTHETIC_STYLE_RAW_OBJECT_STORE_BUCKET: geo-synthetic-style-raw
+      GEO_SYNTHETIC_STYLE_RAW_OBJECT_STORE_REGION: ${GEO_OBJECT_STORE_REGION:-us-east-1}
+      GEO_SYNTHETIC_STYLE_RAW_OBJECT_STORE_AUTO_CREATE_BUCKET: "0"
+      GEO_SYNTHETIC_STYLE_RAW_OBJECT_STORE_ACCESS_KEY_FILE: /run/secrets/synthetic_style_artifact_writer_access_key
+      GEO_SYNTHETIC_STYLE_RAW_OBJECT_STORE_SECRET_KEY_FILE: /run/secrets/synthetic_style_artifact_writer_secret_key
+      GEO_SYNTHETIC_STYLE_DERIVED_OBJECT_STORE_ENDPOINT: http://minio:9000
+      GEO_SYNTHETIC_STYLE_DERIVED_OBJECT_STORE_BUCKET: geo-synthetic-style-derived
+      GEO_SYNTHETIC_STYLE_DERIVED_OBJECT_STORE_REGION: ${GEO_OBJECT_STORE_REGION:-us-east-1}
+      GEO_SYNTHETIC_STYLE_DERIVED_OBJECT_STORE_AUTO_CREATE_BUCKET: "0"
+      GEO_SYNTHETIC_STYLE_DERIVED_OBJECT_STORE_ACCESS_KEY_FILE: /run/secrets/synthetic_style_artifact_writer_access_key
+      GEO_SYNTHETIC_STYLE_DERIVED_OBJECT_STORE_SECRET_KEY_FILE: /run/secrets/synthetic_style_artifact_writer_secret_key
+      OTEL_SERVICE_NAME: geo-style-collection-worker
+    secrets:
+      - style_browser_worker_database_url
+      - synthetic_style_artifact_writer_access_key
+      - synthetic_style_artifact_writer_secret_key
+      - secret_store_master_keyring
+      - secret_store_request_hash_key
+      - synthetic_artifact_keyring
+    command: ["python", "-m", "geo_style_worker.entrypoint"]
+    volumes:
+      - ${GEO_STYLE_ADAPTER_REGISTRY_FILE:?set the host Style adapter registry file}:/etc/geo/style-adapter-registry.json:ro
+    networks:
+      - backend
+      - egress
+      - style-browser-control
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      minio-bootstrap:
+        condition: service_completed_successfully
+      valkey:
+        condition: service_healthy
+      style-browser-runtime:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-m", "geo_worker.runtime_health", "heartbeat", "--service-type", "style_browser_worker"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 2G
+          pids: 512
+
+  style-browser-runtime:
+    image: ${GEO_STYLE_BROWSER_IMAGE:?set a digest-pinned GEO_STYLE_BROWSER_IMAGE}
+    restart: unless-stopped
+    init: true
+    read_only: true
+    user: "10001:10001"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 384
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+    shm_size: 256m
+    tmpfs:
+      - /tmp:size=256m,mode=0700,nosuid,nodev
+    environment:
+      HOME: /tmp
+    command: ["playwright", "run-server", "--host", "0.0.0.0", "--port", "9222"]
+    networks:
+      - style-browser-control
+      - egress
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 9222), 5).close()"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+          pids: 384
+
+networks:
+  style-browser-control:
+    internal: true
+
+secrets:
+  style_browser_worker_database_url:
+    file: ${GEO_STYLE_BROWSER_WORKER_DATABASE_URL_FILE:?set GEO_STYLE_BROWSER_WORKER_DATABASE_URL_FILE}
+  synthetic_style_artifact_writer_access_key:
+    file: ${GEO_SYNTHETIC_STYLE_ARTIFACT_WRITER_ACCESS_KEY_FILE:?set GEO_SYNTHETIC_STYLE_ARTIFACT_WRITER_ACCESS_KEY_FILE}
+  synthetic_style_artifact_writer_secret_key:
+    file: ${GEO_SYNTHETIC_STYLE_ARTIFACT_WRITER_SECRET_KEY_FILE:?set GEO_SYNTHETIC_STYLE_ARTIFACT_WRITER_SECRET_KEY_FILE}

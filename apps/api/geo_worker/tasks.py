@@ -45,11 +45,24 @@ from geo_core.project_exports.repository import PostgresProjectExportRepository
 from geo_core.project_exports.worker import ProjectExportHandler
 from geo_core.runtime_health import PeriodicHeartbeat, RuntimeHealthRepository, RuntimeHeartbeat
 from geo_core.rag import RagSelection, load_rag_selection
+from geo_core.synthetic_lab.artifact_maintenance_contracts import (
+    SYNTHETIC_ARTIFACT_MAINTENANCE_ACTOR,
+    SYNTHETIC_ARTIFACT_MAINTENANCE_QUEUE,
+)
 from geo_worker.config import (
     runtime_heartbeat_identity,
     runtime_heartbeat_interval_seconds,
     secret_setting,
 )
+from geo_worker.recommendation_artifact_maintenance_routing import (
+    RECOMMENDATION_ARTIFACT_MAINTENANCE_ACTOR,
+    RECOMMENDATION_ARTIFACT_MAINTENANCE_QUEUE,
+)
+from geo_worker.workflow_c_maintenance_routing import (
+    WORKFLOW_C_MAINTENANCE_ACTOR,
+    WORKFLOW_C_MAINTENANCE_QUEUE,
+)
+from geo_worker.service_identity import require_model_gateway_worker_identity
 
 
 BROKER_URL = os.getenv("GEO_TASK_QUEUE_BROKER_URL", "redis://valkey:6379/0").strip()
@@ -66,6 +79,10 @@ class RuntimeHeartbeatMiddleware(Middleware):
 
     def after_process_boot(self, broker) -> None:
         del broker
+        # Compose every admitted durable-job surface before this process starts
+        # consuming. A partial registry would otherwise fail only after an
+        # outbox message has already been delivered.
+        dispatcher()
         self._heartbeat().mark_starting()
 
     def after_consumer_thread_boot(self, broker, thread) -> None:
@@ -97,6 +114,9 @@ class RuntimeHeartbeatMiddleware(Middleware):
 broker = RedisBroker(url=BROKER_URL)
 broker.add_middleware(RuntimeHeartbeatMiddleware())
 dramatiq.set_broker(broker)
+
+STYLE_COLLECTION_QUEUE = "style-collection"
+STYLE_COLLECTION_ACTOR = "process_style_collection_job"
 
 
 @lru_cache(maxsize=1)
@@ -168,9 +188,212 @@ def dispatcher() -> PlacementWorkerDispatcher:
             lease_for=lease_for,
         ),
     }
-    worker_id = os.getenv("GEO_WORKER_ID", f"durable:{socket.gethostname()}").strip()
+    handlers = build_shared_non_b_handlers(
+        base=handlers,
+        store=store,
+        lease_for=lease_for,
+    )
+    worker_id = _worker_id()
     return PlacementWorkerDispatcher(
         store=store, handlers=handlers, worker_id=worker_id, lease_for=lease_for
+    )
+
+
+@lru_cache(maxsize=1)
+def governed_model_gateway_runtime():
+    """Build the only production Model Gateway factory available to Worker jobs.
+
+    This intentionally has no legacy DeepSeek fallback: new Prompt/Synthetic/
+    Recommendation/Workflow-C calls must use a frozen runtime selection,
+    Secret Store credential resolver and encrypted Provider artifact store.
+    """
+
+    from geo_worker.model_gateway_runtime import build_governed_model_gateway_worker_runtime
+
+    database_url = secret_setting("GEO_DATABASE_URL")
+    worker_id = _worker_id()
+    return build_governed_model_gateway_worker_runtime(
+        database_url=database_url,
+        object_store=LazyArtifactObjectStore(),
+        worker_id=worker_id,
+        worker_actor_id=require_model_gateway_worker_identity(database_url=database_url),
+        secret_store_master_keyring_path=_required_file_setting(
+            "GEO_SECRET_STORE_MASTER_KEYRING_FILE"
+        ),
+        secret_store_request_hash_key_path=_required_file_setting(
+            "GEO_SECRET_STORE_REQUEST_HASH_KEY_FILE"
+        ),
+        provider_artifact_keyring_path=_required_file_setting(
+            "GEO_PROVIDER_ARTIFACT_KEYRING_FILE"
+        ),
+    )
+
+
+def build_prompt_program_worker_handlers(
+    *,
+    store: PostgresDurableJobStore,
+    lease_for: timedelta,
+):
+    """Compose Prompt test Jobs from durable PostgreSQL and the governed Gateway."""
+
+    from geo_core.prompts.test_artifacts import S3PromptTestArtifactStore
+    from geo_core.prompts.test_execution_repository import (
+        build_prompt_test_execution_repository,
+    )
+    from geo_core.prompts.test_model_executor import ModelGatewayPromptTestCaseExecutor
+    from geo_core.prompts.test_worker import build_prompt_test_worker_handlers
+
+    runtime = governed_model_gateway_runtime()
+    return build_prompt_test_worker_handlers(
+        store=store,
+        repository=build_prompt_test_execution_repository(secret_setting("GEO_DATABASE_URL")),
+        executor=ModelGatewayPromptTestCaseExecutor(
+            runtime=runtime.model_calls,
+            result_recovery=runtime.artifacts.recovery,
+        ),
+        artifacts=S3PromptTestArtifactStore(LazyArtifactObjectStore()),
+        lease_for=lease_for,
+    )
+
+
+def build_synthetic_lab_worker_handlers(
+    *,
+    store: PostgresDurableJobStore,
+    lease_for: timedelta,
+):
+    """Compose non-browser Synthetic Jobs from governed, durable dependencies."""
+
+    from geo_core.synthetic_lab.postgres_worker import (
+        build_synthetic_production_worker_handlers,
+    )
+
+    runtime = governed_model_gateway_runtime()
+    return build_synthetic_production_worker_handlers(
+        database_url=secret_setting("GEO_DATABASE_URL"),
+        store=store,
+        model_runtime=runtime.model_calls,
+        provider_result_recovery=runtime.artifacts.recovery,
+        object_store=LazyArtifactObjectStore(),
+        synthetic_artifact_keyring_path=_required_file_setting(
+            "GEO_SYNTHETIC_ARTIFACT_KEYRING_FILE"
+        ),
+        lease_for=lease_for,
+    )
+
+
+def build_shared_non_b_handlers(
+    *,
+    base: dict[str, JobHandler],
+    store: PostgresDurableJobStore,
+    lease_for: timedelta,
+) -> dict[str, JobHandler]:
+    """Register the complete shared non-B Worker surface at process startup.
+
+    A missing immutable keyring, service identity, or PostgreSQL operation is
+    intentionally fatal.  Durable Jobs must never be acknowledged by a worker
+    whose registry only represents part of the routes that admission exposes.
+    """
+
+    from geo_worker.non_b_handlers import merge_non_b_handlers
+
+    return merge_non_b_handlers(
+        base=base,
+        prompt=build_prompt_program_worker_handlers(store=store, lease_for=lease_for),
+        synthetic=build_synthetic_lab_worker_handlers(store=store, lease_for=lease_for),
+        recommendations=build_recommendation_generation_worker_handlers(
+            store=store,
+            lease_for=lease_for,
+        ),
+        workflow_c=build_workflow_c_production_worker_handlers(
+            store=store,
+            lease_for=lease_for,
+        ),
+    )
+
+
+def build_recommendation_generation_worker_handlers(
+    *,
+    store: PostgresDurableJobStore,
+    lease_for: timedelta,
+):
+    """Compose only the governed Recommendation parent/child job handlers.
+
+    Recommendation task manifests use their own restricted bucket and keyring;
+    model responses continue through the shared governed Model Gateway artifact
+    recovery path. Neither dependency can fall back to the generic store.
+    """
+
+    from geo_core.object_store_config import build_object_store_from_prefix
+    from geo_core.recommendations.artifact_composition import (
+        build_recommendation_artifact_composition,
+    )
+    from geo_core.recommendations.generation_result_recovery import (
+        GovernedRecommendationModelResultLoader,
+        ProviderArtifactRecommendationRecoveryAdapter,
+    )
+    from geo_core.recommendations.postgres.prompt_runtime import (
+        build_recommendation_prompt_resolver,
+    )
+    from geo_core.recommendations.postgres.worker_composition import (
+        build_recommendation_generation_worker_handlers as build_handlers,
+    )
+
+    database_url = secret_setting("GEO_DATABASE_URL")
+
+    def connection_factory():
+        return psycopg.connect(database_url, row_factory=dict_row)
+
+    artifacts = build_recommendation_artifact_composition(
+        connection_factory=connection_factory,
+        object_store=build_object_store_from_prefix(
+            "GEO_RECOMMENDATION_ARTIFACT_OBJECT_STORE"
+        ),
+        keyring_path=_required_file_setting("GEO_RECOMMENDATION_ARTIFACT_KEYRING_FILE"),
+    )
+    runtime = governed_model_gateway_runtime()
+    return build_handlers(
+        store=store,
+        connection_factory=connection_factory,
+        prompts=build_recommendation_prompt_resolver(
+            connection_factory=connection_factory
+        ),
+        artifacts=artifacts.artifacts,
+        model_results=GovernedRecommendationModelResultLoader(
+            ProviderArtifactRecommendationRecoveryAdapter(runtime.artifacts.recovery)
+        ),
+        model_job_admitter=runtime.model_calls,
+        model_runtime_loader=runtime.model_calls,
+        lease_for=lease_for,
+    )
+
+
+def build_workflow_c_production_worker_handlers(
+    *,
+    store: PostgresDurableJobStore,
+    lease_for: timedelta,
+):
+    """Compose all shared Workflow C operations from durable dependencies.
+
+    This intentionally delegates only to the Workflow C PostgreSQL composition
+    root.  Import/configuration errors are allowed to propagate so the generic
+    Worker cannot acknowledge a Workflow C Job without its complete operation
+    set.
+    """
+
+    from geo_worker.workflow_c_production import (
+        build_workflow_c_production_worker_handlers as build_handlers,
+    )
+
+    runtime = governed_model_gateway_runtime()
+    return build_handlers(
+        database_url=secret_setting("GEO_DATABASE_URL"),
+        store=store,
+        model_runtime=runtime.model_calls,
+        provider_result_recovery=runtime.artifacts.recovery,
+        workflow_c_artifact_keyring_path=_required_file_setting(
+            "GEO_WORKFLOW_C_ARTIFACT_KEYRING_FILE"
+        ),
+        lease_for=lease_for,
     )
 
 
@@ -182,6 +405,71 @@ def dispatcher() -> PlacementWorkerDispatcher:
 )
 def process_durable_job(job_id: str, project_id: str) -> dict[str, object]:
     return dict(dispatcher().process(job_id=UUID(job_id), project_id=UUID(project_id)))
+
+
+def send_durable_job(
+    *,
+    job_id: UUID,
+    project_id: UUID,
+    style_collection: bool,
+    workflow_c_maintenance: bool = False,
+    recommendation_artifact_maintenance: bool = False,
+    synthetic_artifact_maintenance: bool = False,
+) -> None:
+    """Route a durable Job to the one Worker allowed to consume its kind."""
+    dedicated_workers = (
+        int(style_collection)
+        + int(workflow_c_maintenance)
+        + int(recommendation_artifact_maintenance)
+        + int(synthetic_artifact_maintenance)
+    )
+    if dedicated_workers > 1:
+        raise RuntimeError("a durable Job cannot target two dedicated Workers")
+    if not style_collection:
+        if workflow_c_maintenance:
+            broker.enqueue(
+                dramatiq.Message(
+                    queue_name=WORKFLOW_C_MAINTENANCE_QUEUE,
+                    actor_name=WORKFLOW_C_MAINTENANCE_ACTOR,
+                    args=(str(job_id), str(project_id)),
+                    kwargs={},
+                    options={},
+                )
+            )
+            return
+        if recommendation_artifact_maintenance:
+            broker.enqueue(
+                dramatiq.Message(
+                    queue_name=RECOMMENDATION_ARTIFACT_MAINTENANCE_QUEUE,
+                    actor_name=RECOMMENDATION_ARTIFACT_MAINTENANCE_ACTOR,
+                    args=(str(job_id), str(project_id)),
+                    kwargs={},
+                    options={},
+                )
+            )
+            return
+        if synthetic_artifact_maintenance:
+            broker.enqueue(
+                dramatiq.Message(
+                    queue_name=SYNTHETIC_ARTIFACT_MAINTENANCE_QUEUE,
+                    actor_name=SYNTHETIC_ARTIFACT_MAINTENANCE_ACTOR,
+                    args=(str(job_id), str(project_id)),
+                    kwargs={},
+                    options={},
+                )
+            )
+            return
+        process_durable_job.send(str(job_id), str(project_id))
+        return
+    broker.enqueue(
+        dramatiq.Message(
+            queue_name=STYLE_COLLECTION_QUEUE,
+            actor_name=STYLE_COLLECTION_ACTOR,
+            args=(str(job_id), str(project_id)),
+            kwargs={},
+            options={},
+        )
+    )
 
 
 class LazyDeepSeekGateway:
@@ -204,10 +492,35 @@ class LazyDeepSeekGateway:
 
 
 class LazyArtifactObjectStore:
-    """Resolve object-store credentials only for artifact finalization jobs."""
+    """Resolve object-store credentials only when an artifact operation runs."""
 
     def put_object(self, **values):
         return build_object_store().put_object(**values)
+
+    def get_s3_uri(self, **values):
+        return build_object_store().get_s3_uri(**values)
+
+    def delete_s3_uri(self, **values):
+        return build_object_store().delete_s3_uri(**values)
+
+    def uri_for_key(self, key: str) -> str:
+        return build_object_store().uri_for_key(key)
+
+
+def _worker_id() -> str:
+    worker_id = os.getenv("GEO_WORKER_ID", f"durable:{socket.gethostname()}").strip()
+    if not worker_id:
+        raise RuntimeError("GEO_WORKER_ID cannot be empty")
+    return worker_id
+
+
+def _required_file_setting(name: str) -> str:
+    path = os.getenv(name, "").strip()
+    if not path:
+        raise RuntimeError(f"{name} is required for governed Model Gateway Worker jobs")
+    if not Path(path).is_file():
+        raise RuntimeError(f"{name} must reference a readable regular file")
+    return path
 
 
 @lru_cache(maxsize=1)

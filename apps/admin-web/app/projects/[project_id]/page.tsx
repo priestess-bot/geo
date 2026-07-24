@@ -7,6 +7,11 @@ import { loadProjectInvitations } from "./invitationData";
 import { loadProjectMembers } from "./memberData";
 import { loadGeoWorkspace } from "./geo/features/geo/data";
 import { loadKnowledgeWorkspace } from "./knowledgeData";
+import { loadPromptWorkspace } from "./features/prompt-programs/promptProgramData";
+import { loadRecommendationWorkspace } from "./features/recommendations/recommendationData";
+import { loadSecretWorkspace } from "./features/secret-store/secretStoreData";
+import { loadSyntheticLabWorkspace } from "./features/synthetic-lab/syntheticLabData";
+import { loadWorkflowCWorkspace } from "./features/workflow-c/workflowCData";
 
 type SearchParams = { [key: string]: string | string[] | undefined };
 
@@ -22,14 +27,20 @@ export default async function ProjectDetailPage({
     searchParams || Promise.resolve({})
   ]);
   const activeTab = normalizeWorkbenchTab(queryValue(query, "tab"));
-  const [catalog, invitations, members, geoData, knowledgeData] = await Promise.all([
+  const [catalog, invitations, members, geoData, knowledgeData, promptData, secretData, syntheticData, recommendationData, workflowCData] = await Promise.all([
     loadCatalog(projectId),
     loadProjectInvitations(projectId),
     loadProjectMembers(projectId),
     activeTab === "geo" ? loadGeoWorkspace(projectId, query) : Promise.resolve(null),
-    activeTab === "knowledge" ? loadKnowledgeWorkspace(projectId, query) : Promise.resolve(null)
+    activeTab === "knowledge" ? loadKnowledgeWorkspace(projectId, query) : Promise.resolve(null),
+    activeTab === "prompts" ? loadPromptWorkspace(projectId, query) : Promise.resolve(null),
+    activeTab === "secrets" ? loadSecretWorkspace(projectId, query) : Promise.resolve(null),
+    activeTab === "synthetic-lab" ? loadSyntheticLabWorkspace(projectId, query) : Promise.resolve(null),
+    activeTab === "recommendations" ? loadRecommendationWorkspace(projectId, query) : Promise.resolve(null),
+    activeTab === "measurement" ? loadWorkflowCWorkspace(projectId, query) : Promise.resolve(null)
   ]);
   if (catalog.project.problem?.status === 401) redirect("/login");
+  if (workflowCData?.alerts.problem?.status === 401) redirect("/login");
   if (geoData?.canonicalHref) redirect(geoData.canonicalHref);
   return <WorkbenchShell
     activeTab={activeTab}
@@ -38,6 +49,11 @@ export default async function ProjectDetailPage({
     invitations={invitations}
     knowledgeData={knowledgeData}
     members={members}
+    promptData={promptData}
+    recommendationData={recommendationData}
+    secretData={secretData}
+    syntheticData={syntheticData}
+    workflowCData={workflowCData}
     projectId={projectId}
   />;
 }

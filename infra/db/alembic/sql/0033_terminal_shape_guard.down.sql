@@ -1,0 +1,3 @@
+DROP TRIGGER aaa_model_gateway_terminal_shape_guard
+ON model_gateway_terminal_events;
+DROP FUNCTION geo_assert_model_gateway_terminal_shape();

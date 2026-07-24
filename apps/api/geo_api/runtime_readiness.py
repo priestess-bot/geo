@@ -16,7 +16,18 @@ from geo_core.object_store import ObjectStoreError, S3CompatibleObjectStore
 
 
 Surface = Literal["internal", "customer"]
-ReadinessDependency = Literal["postgres", "valkey", "object_store", "access"]
+ReadinessDependency = Literal[
+    "postgres",
+    "valkey",
+    "object_store",
+    "access",
+    "prompt_program_runtime",
+    "secret_store_runtime",
+    "synthetic_lab_runtime",
+    "workflow_c_runtime",
+    "recommendation_runtime",
+    "model_gateway_runtime",
+]
 EXPECTED_DEPENDENCIES: dict[Surface, tuple[ReadinessDependency, ...]] = {
     "customer": ("postgres",),
     "internal": ("postgres", "valkey", "object_store"),

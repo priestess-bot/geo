@@ -1,0 +1,366 @@
+{
+  "approval_evidence_reference": "minio://geo-governance/model-gateway/runtime-approval-v2.json",
+  "approval_evidence_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "approved_at": "2026-07-23T10:00:00+00:00",
+  "approved_by": "93000000-0000-0000-0000-000000000002",
+  "manifest_id": "91000000-0000-0000-0000-000000000001",
+  "model_releases": [
+    {
+      "adapter_release_id": "deepseek-replace-with-approved-adapter-v1",
+      "allowed_reported_models": [],
+      "configured_model": "replace-with-approved-deepseek-model",
+      "model_release_id": "deepseek-replace-with-approved-model-v1",
+      "provider": "deepseek",
+      "reported_model_policy": "record_only"
+    },
+    {
+      "adapter_release_id": "openai-replace-with-approved-adapter-v1",
+      "allowed_reported_models": [],
+      "configured_model": "replace-with-approved-openai-model",
+      "model_release_id": "openai-replace-with-approved-model-v1",
+      "provider": "openai",
+      "reported_model_policy": "record_only"
+    },
+    {
+      "adapter_release_id": "kimi-replace-with-approved-adapter-v1",
+      "allowed_reported_models": [],
+      "configured_model": "replace-with-approved-kimi-model",
+      "model_release_id": "kimi-replace-with-approved-model-v1",
+      "provider": "kimi",
+      "reported_model_policy": "record_only"
+    },
+    {
+      "adapter_release_id": "gemini-replace-with-approved-adapter-v1",
+      "allowed_reported_models": [],
+      "configured_model": "replace-with-approved-gemini-model",
+      "model_release_id": "gemini-replace-with-approved-model-v1",
+      "provider": "gemini",
+      "reported_model_policy": "record_only"
+    },
+    {
+      "adapter_release_id": "perplexity-replace-with-approved-adapter-v1",
+      "allowed_reported_models": [],
+      "configured_model": "replace-with-approved-perplexity-model",
+      "model_release_id": "perplexity-replace-with-approved-model-v1",
+      "provider": "perplexity",
+      "reported_model_policy": "record_only"
+    },
+    {
+      "adapter_release_id": "microsoft-replace-with-approved-adapter-v1",
+      "allowed_reported_models": [],
+      "configured_model": "replace-with-approved-microsoft-model",
+      "model_release_id": "microsoft-replace-with-approved-model-v1",
+      "provider": "microsoft",
+      "reported_model_policy": "record_only"
+    }
+  ],
+  "prepared_at": "2026-07-23T09:55:00+00:00",
+  "prepared_by": "93000000-0000-0000-0000-000000000001",
+  "project_id": "92000000-0000-0000-0000-000000000001",
+  "project_policy": {
+    "allowed_adapter_release_ids": [
+      "deepseek-replace-with-approved-adapter-v1",
+      "openai-replace-with-approved-adapter-v1",
+      "kimi-replace-with-approved-adapter-v1",
+      "gemini-replace-with-approved-adapter-v1",
+      "perplexity-replace-with-approved-adapter-v1",
+      "microsoft-replace-with-approved-adapter-v1"
+    ],
+    "allowed_providers": [
+      "deepseek",
+      "openai",
+      "kimi",
+      "gemini",
+      "perplexity",
+      "microsoft"
+    ],
+    "external_training_allowed": false,
+    "maximum_concurrent_calls": 8,
+    "maximum_paid_calls": 1000,
+    "policy_version_id": "95000000-0000-0000-0000-000000000001",
+    "previous_version_id": null,
+    "structured_output_required": true,
+    "version": 1
+  },
+  "provider_runtimes": [
+    {
+      "adapter_release_id": "deepseek-replace-with-approved-adapter-v1",
+      "allowed_purposes": [
+        "synthetic_lab.generation",
+        "synthetic_lab.claim_extraction",
+        "synthetic_lab.conflict_check",
+        "synthetic_lab.revision",
+        "synthetic_lab.style_judge",
+        "synthetic_lab.arbiter",
+        "monitoring.metric_judge",
+        "recommendations.recommendation",
+        "prompt_release_test"
+      ],
+      "allowed_search_modes": [
+        "disabled"
+      ],
+      "capabilities": {
+        "data_retention_days": 30,
+        "external_training_allowed": false,
+        "policy_reference": "https://evidence.example.invalid/deepseek/policy-reviewed.json",
+        "structured_output": true,
+        "supports_citations": false,
+        "supports_idempotency": false,
+        "supports_search": false,
+        "supports_seed": true,
+        "supports_structured_output_with_tools": false,
+        "supports_tools": false
+      },
+      "capability_evidence_reference": "minio://geo-governance/model-gateway/deepseek/capabilities.json",
+      "capability_evidence_sha256": "7777777777777777777777777777777777777777777777777777777777777777",
+      "data_policy": {
+        "cache": "prohibited",
+        "display": "allowed",
+        "redistribution": "prohibited",
+        "retention_days": 30,
+        "storage": "allowed",
+        "terms_reference": "https://evidence.example.invalid/deepseek/terms-reviewed.json",
+        "terms_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+      },
+      "expected_capture_method": "provider_api",
+      "interface_contract_version": "geo-model-gateway-v1",
+      "microsoft": null,
+      "provider": "deepseek",
+      "secret_reference_id": "94000000-0000-0000-0000-000000000001"
+    },
+    {
+      "adapter_release_id": "openai-replace-with-approved-adapter-v1",
+      "allowed_purposes": [
+        "synthetic_lab.generation",
+        "synthetic_lab.claim_extraction",
+        "synthetic_lab.conflict_check",
+        "synthetic_lab.revision",
+        "synthetic_lab.style_judge",
+        "synthetic_lab.arbiter",
+        "monitoring.metric_judge",
+        "recommendations.recommendation",
+        "prompt_release_test"
+      ],
+      "allowed_search_modes": [
+        "disabled",
+        "web"
+      ],
+      "capabilities": {
+        "data_retention_days": 30,
+        "external_training_allowed": false,
+        "policy_reference": "https://evidence.example.invalid/openai/policy-reviewed.json",
+        "structured_output": true,
+        "supports_citations": true,
+        "supports_idempotency": false,
+        "supports_search": true,
+        "supports_seed": false,
+        "supports_structured_output_with_tools": true,
+        "supports_tools": true
+      },
+      "capability_evidence_reference": "minio://geo-governance/model-gateway/openai/capabilities.json",
+      "capability_evidence_sha256": "8888888888888888888888888888888888888888888888888888888888888888",
+      "data_policy": {
+        "cache": "prohibited",
+        "display": "allowed",
+        "redistribution": "prohibited",
+        "retention_days": 30,
+        "storage": "allowed",
+        "terms_reference": "https://evidence.example.invalid/openai/terms-reviewed.json",
+        "terms_sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      "expected_capture_method": "provider_api",
+      "interface_contract_version": "geo-model-gateway-v1",
+      "microsoft": null,
+      "provider": "openai",
+      "secret_reference_id": "94000000-0000-0000-0000-000000000002"
+    },
+    {
+      "adapter_release_id": "kimi-replace-with-approved-adapter-v1",
+      "allowed_purposes": [
+        "synthetic_lab.generation",
+        "synthetic_lab.claim_extraction",
+        "synthetic_lab.conflict_check",
+        "synthetic_lab.revision",
+        "synthetic_lab.style_judge",
+        "synthetic_lab.arbiter",
+        "monitoring.metric_judge",
+        "recommendations.recommendation",
+        "prompt_release_test"
+      ],
+      "allowed_search_modes": [
+        "disabled"
+      ],
+      "capabilities": {
+        "data_retention_days": 30,
+        "external_training_allowed": false,
+        "policy_reference": "https://evidence.example.invalid/kimi/policy-reviewed.json",
+        "structured_output": true,
+        "supports_citations": false,
+        "supports_idempotency": false,
+        "supports_search": false,
+        "supports_seed": false,
+        "supports_structured_output_with_tools": false,
+        "supports_tools": false
+      },
+      "capability_evidence_reference": "minio://geo-governance/model-gateway/kimi/capabilities.json",
+      "capability_evidence_sha256": "9999999999999999999999999999999999999999999999999999999999999999",
+      "data_policy": {
+        "cache": "prohibited",
+        "display": "allowed",
+        "redistribution": "prohibited",
+        "retention_days": 30,
+        "storage": "allowed",
+        "terms_reference": "https://evidence.example.invalid/kimi/terms-reviewed.json",
+        "terms_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+      },
+      "expected_capture_method": "provider_api",
+      "interface_contract_version": "geo-model-gateway-v1",
+      "microsoft": null,
+      "provider": "kimi",
+      "secret_reference_id": "94000000-0000-0000-0000-000000000003"
+    },
+    {
+      "adapter_release_id": "gemini-replace-with-approved-adapter-v1",
+      "allowed_purposes": [
+        "synthetic_lab.generation",
+        "synthetic_lab.claim_extraction",
+        "synthetic_lab.conflict_check",
+        "synthetic_lab.revision",
+        "synthetic_lab.style_judge",
+        "synthetic_lab.arbiter",
+        "monitoring.metric_judge",
+        "recommendations.recommendation",
+        "prompt_release_test"
+      ],
+      "allowed_search_modes": [
+        "disabled",
+        "google_search"
+      ],
+      "capabilities": {
+        "data_retention_days": 30,
+        "external_training_allowed": false,
+        "policy_reference": "https://evidence.example.invalid/gemini/policy-reviewed.json",
+        "structured_output": true,
+        "supports_citations": true,
+        "supports_idempotency": false,
+        "supports_search": true,
+        "supports_seed": true,
+        "supports_structured_output_with_tools": true,
+        "supports_tools": true
+      },
+      "capability_evidence_reference": "minio://geo-governance/model-gateway/gemini/capabilities.json",
+      "capability_evidence_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "data_policy": {
+        "cache": "prohibited",
+        "display": "allowed",
+        "redistribution": "prohibited",
+        "retention_days": 30,
+        "storage": "allowed",
+        "terms_reference": "https://evidence.example.invalid/gemini/terms-reviewed.json",
+        "terms_sha256": "4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "expected_capture_method": "provider_api",
+      "interface_contract_version": "geo-model-gateway-v1",
+      "microsoft": null,
+      "provider": "gemini",
+      "secret_reference_id": "94000000-0000-0000-0000-000000000004"
+    },
+    {
+      "adapter_release_id": "perplexity-replace-with-approved-adapter-v1",
+      "allowed_purposes": [
+        "synthetic_lab.generation",
+        "synthetic_lab.claim_extraction",
+        "synthetic_lab.conflict_check",
+        "synthetic_lab.revision",
+        "synthetic_lab.style_judge",
+        "synthetic_lab.arbiter",
+        "monitoring.metric_judge",
+        "recommendations.recommendation",
+        "prompt_release_test"
+      ],
+      "allowed_search_modes": [
+        "web"
+      ],
+      "capabilities": {
+        "data_retention_days": 30,
+        "external_training_allowed": false,
+        "policy_reference": "https://evidence.example.invalid/perplexity/policy-reviewed.json",
+        "structured_output": true,
+        "supports_citations": true,
+        "supports_idempotency": false,
+        "supports_search": true,
+        "supports_seed": false,
+        "supports_structured_output_with_tools": false,
+        "supports_tools": true
+      },
+      "capability_evidence_reference": "minio://geo-governance/model-gateway/perplexity/capabilities.json",
+      "capability_evidence_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "data_policy": {
+        "cache": "prohibited",
+        "display": "allowed",
+        "redistribution": "prohibited",
+        "retention_days": 30,
+        "storage": "allowed",
+        "terms_reference": "https://evidence.example.invalid/perplexity/terms-reviewed.json",
+        "terms_sha256": "5555555555555555555555555555555555555555555555555555555555555555"
+      },
+      "expected_capture_method": "provider_api",
+      "interface_contract_version": "geo-model-gateway-v1",
+      "microsoft": null,
+      "provider": "perplexity",
+      "secret_reference_id": "94000000-0000-0000-0000-000000000005"
+    },
+    {
+      "adapter_release_id": "microsoft-replace-with-approved-adapter-v1",
+      "allowed_purposes": [
+        "synthetic_lab.generation",
+        "synthetic_lab.claim_extraction",
+        "synthetic_lab.conflict_check",
+        "synthetic_lab.revision",
+        "synthetic_lab.style_judge",
+        "synthetic_lab.arbiter",
+        "monitoring.metric_judge",
+        "recommendations.recommendation",
+        "prompt_release_test"
+      ],
+      "allowed_search_modes": [
+        "bing_grounding"
+      ],
+      "capabilities": {
+        "data_retention_days": 30,
+        "external_training_allowed": false,
+        "policy_reference": "https://evidence.example.invalid/microsoft/policy-reviewed.json",
+        "structured_output": true,
+        "supports_citations": true,
+        "supports_idempotency": false,
+        "supports_search": true,
+        "supports_seed": false,
+        "supports_structured_output_with_tools": true,
+        "supports_tools": true
+      },
+      "capability_evidence_reference": "minio://geo-governance/model-gateway/microsoft/capabilities.json",
+      "capability_evidence_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "data_policy": {
+        "cache": "prohibited",
+        "display": "allowed",
+        "redistribution": "prohibited",
+        "retention_days": 30,
+        "storage": "allowed",
+        "terms_reference": "https://evidence.example.invalid/microsoft/terms-reviewed.json",
+        "terms_sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+      },
+      "expected_capture_method": "proxy_grounded_api",
+      "interface_contract_version": "geo-model-gateway-v1",
+      "microsoft": {
+        "agent_name": "replace-with-approved-au-grounding-agent",
+        "agent_version": "1",
+        "endpoint": "https://replace-project.services.ai.azure.com/api/projects/geo/openai/v1/responses",
+        "language": "en",
+        "market": "en-AU"
+      },
+      "provider": "microsoft",
+      "secret_reference_id": "94000000-0000-0000-0000-000000000006"
+    }
+  ],
+  "schema_version": 2
+}

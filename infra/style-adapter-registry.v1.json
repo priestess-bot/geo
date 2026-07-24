@@ -1,0 +1,172 @@
+{
+  "adapters": [
+    {
+      "adapter_release": "public-v1",
+      "admission_state": "reviewed_fixture",
+      "allowed_resource_hosts": [],
+      "channel": "owned_site",
+      "content_selectors": [
+        "main article",
+        "main [data-review]",
+        "article"
+      ],
+      "login_flow": null,
+      "navigation_timeout_ms": 30000,
+      "settle_timeout_ms": 1500
+    },
+    {
+      "adapter_release": "public-v1",
+      "admission_state": "reviewed_fixture",
+      "allowed_resource_hosts": [
+        "www.amazon.com.au",
+        "m.media-amazon.com",
+        "images-na.ssl-images-amazon.com"
+      ],
+      "channel": "amazon",
+      "content_selectors": [
+        "[data-hook='review']",
+        "[data-hook='review-body']"
+      ],
+      "login_flow": null,
+      "navigation_timeout_ms": 30000,
+      "settle_timeout_ms": 2500
+    },
+    {
+      "adapter_release": "public-v1",
+      "admission_state": "reviewed_fixture",
+      "allowed_resource_hosts": [
+        "www.youtube.com",
+        "i.ytimg.com",
+        "yt3.ggpht.com"
+      ],
+      "channel": "youtube",
+      "content_selectors": [
+        "ytd-comment-thread-renderer #content-text"
+      ],
+      "login_flow": null,
+      "navigation_timeout_ms": 30000,
+      "settle_timeout_ms": 3000
+    },
+    {
+      "adapter_release": "public-v1",
+      "admission_state": "reviewed_fixture",
+      "allowed_resource_hosts": [
+        "www.tiktok.com",
+        "sf16-website-login.neutral.ttwstatic.com",
+        "p16-sign-va.tiktokcdn.com"
+      ],
+      "channel": "tiktok",
+      "content_selectors": [
+        "[data-e2e='comment-level-1']"
+      ],
+      "login_flow": null,
+      "navigation_timeout_ms": 30000,
+      "settle_timeout_ms": 3000
+    },
+    {
+      "adapter_release": "public-v1",
+      "admission_state": "reviewed_fixture",
+      "allowed_resource_hosts": [
+        "www.instagram.com",
+        "static.cdninstagram.com"
+      ],
+      "channel": "instagram",
+      "content_selectors": [
+        "main article ul li span"
+      ],
+      "login_flow": null,
+      "navigation_timeout_ms": 30000,
+      "settle_timeout_ms": 3000
+    },
+    {
+      "adapter_release": "public-v1",
+      "admission_state": "reviewed_fixture",
+      "allowed_resource_hosts": [
+        "www.productreview.com.au",
+        "cdn.productreview.com.au"
+      ],
+      "channel": "productreview",
+      "content_selectors": [
+        "[data-testid='review-card']",
+        "article"
+      ],
+      "login_flow": null,
+      "navigation_timeout_ms": 30000,
+      "settle_timeout_ms": 2000
+    },
+    {
+      "adapter_release": "public-v1",
+      "admission_state": "reviewed_fixture",
+      "allowed_resource_hosts": [
+        "www.reddit.com",
+        "www.redditstatic.com",
+        "styles.redditmedia.com"
+      ],
+      "channel": "reddit",
+      "content_selectors": [
+        "shreddit-comment",
+        "[data-testid='comment']"
+      ],
+      "login_flow": null,
+      "navigation_timeout_ms": 30000,
+      "settle_timeout_ms": 2500
+    },
+    {
+      "adapter_release": "authenticated-v1",
+      "admission_state": "reviewed_fixture",
+      "allowed_resource_hosts": [
+        "www.reddit.com",
+        "www.redditstatic.com",
+        "styles.redditmedia.com"
+      ],
+      "channel": "reddit",
+      "content_selectors": [
+        "shreddit-comment",
+        "[data-testid='comment']"
+      ],
+      "login_flow": {
+        "login_url": "https://www.reddit.com/login/",
+        "password_selector": "input[name='password']",
+        "submit_selector": "button[type='submit']",
+        "success_selector": "header [data-testid='user-dropdown']",
+        "username_selector": "input[name='username']"
+      },
+      "navigation_timeout_ms": 30000,
+      "settle_timeout_ms": 2500
+    },
+    {
+      "adapter_release": "public-v1",
+      "admission_state": "reviewed_fixture",
+      "allowed_resource_hosts": [
+        "www.ozbargain.com.au",
+        "files.ozbargain.com.au"
+      ],
+      "channel": "ozbargain",
+      "content_selectors": [
+        ".comment .content",
+        ".comment-content"
+      ],
+      "login_flow": null,
+      "navigation_timeout_ms": 30000,
+      "settle_timeout_ms": 1500
+    },
+    {
+      "adapter_release": "public-v1",
+      "admission_state": "reviewed_fixture",
+      "allowed_resource_hosts": [
+        "www.quora.com",
+        "qsf.cf2.quoracdn.net"
+      ],
+      "channel": "quora",
+      "content_selectors": [
+        ".q-box.qu-userSelect--text",
+        "div[role='article']"
+      ],
+      "login_flow": null,
+      "navigation_timeout_ms": 30000,
+      "settle_timeout_ms": 2500
+    }
+  ],
+  "release_id": "style-adapter-registry-v1",
+  "schema_version": 1
+}

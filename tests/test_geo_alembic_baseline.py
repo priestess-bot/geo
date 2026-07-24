@@ -28,6 +28,11 @@ def test_revision_graph_has_exactly_one_root_and_head() -> None:
             path.name,
             "Alembic stores revision IDs in alembic_version.version_num varchar(32)",
         )
+        # The checksum ledger resolves external SQL from the revision ID, not
+        # the Python migration filename. Catch a mismatched pair before an
+        # empty database reaches Alembic's post-DDL ledger synchronization.
+        assert (ALEMBIC / "sql" / f"{revision}.sql").is_file(), (path.name, revision)
+        assert (ALEMBIC / "sql" / f"{revision}.down.sql").is_file(), (path.name, revision)
         assert revision not in graph
         graph[revision] = down_match.group(1)
         for sql_name in re.findall(r'_execute_file\("([^"]+\.sql)"\)', source):

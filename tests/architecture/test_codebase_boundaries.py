@@ -57,6 +57,7 @@ def test_stable_acceptance_scripts_stay_within_module_budget() -> None:
     scripts_root = ROOT / "scripts"
     files = (
         scripts_root / "run_geo_acceptance.py",
+        scripts_root / "production_preflight.py",
         *(scripts_root / "geo_acceptance").glob("*.py"),
     )
     oversized = {
@@ -88,34 +89,61 @@ def test_new_api_foundation_does_not_import_legacy_or_executable_layers() -> Non
             if isinstance(node, ast.ImportFrom) and node.module is not None
         }
         imports.update(
-            alias.name for node in ast.walk(tree) if isinstance(node, ast.Import) for alias in node.names
+            alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Import)
+            for alias in node.names
         )
-        offenders = {item for item in imports if any(item == value or item.startswith(f"{value}.") for value in forbidden)}
+        offenders = {
+            item
+            for item in imports
+            if any(item == value or item.startswith(f"{value}.") for value in forbidden)
+        }
         assert offenders == set(), f"{name} imports forbidden layers: {sorted(offenders)}"
 
 
 def test_new_domain_contracts_do_not_depend_on_frameworks_or_infrastructure() -> None:
     domain_roots = (
         ROOT / "packages" / "geo_core" / "geo_core" / "jobs",
-        ROOT / "packages" / "geo_core" / "geo_core" / "prompts",
+        ROOT / "packages" / "geo_core" / "geo_core" / "recommendations",
+    )
+    prompt_root = ROOT / "packages" / "geo_core" / "geo_core" / "prompts"
+    prompt_contracts = tuple(
+        prompt_root / name
+        for name in (
+            "program_contracts.py",
+            "program_models.py",
+            "program_lifecycle.py",
+            "program_rendering.py",
+            "program.py",
+            "ports.py",
+            "application.py",
+            "application_access.py",
+            "application_models.py",
+            "application_release_operations.py",
+            "application_support.py",
+        )
     )
     forbidden = {"fastapi", "psycopg", "httpx", "boto3", "dramatiq"}
 
-    for root in domain_roots:
-        for path in root.glob("*.py"):
-            tree = ast.parse(path.read_text(encoding="utf-8"))
-            imports = {
-                node.module.split(".")[0]
-                for node in ast.walk(tree)
-                if isinstance(node, ast.ImportFrom) and node.module
-            }
-            imports.update(
-                alias.name.split(".")[0]
-                for node in ast.walk(tree)
-                if isinstance(node, ast.Import)
-                for alias in node.names
-            )
-            assert imports.isdisjoint(forbidden), f"{path.relative_to(ROOT)} imports infrastructure"
+    paths = (
+        *prompt_contracts,
+        *(path for root in domain_roots for path in root.glob("*.py")),
+    )
+    for path in paths:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        imports = {
+            node.module.split(".")[0]
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom) and node.module
+        }
+        imports.update(
+            alias.name.split(".")[0]
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Import)
+            for alias in node.names
+        )
+        assert imports.isdisjoint(forbidden), f"{path.relative_to(ROOT)} imports infrastructure"
 
 
 def test_active_product_identifiers_use_geo_name() -> None:
@@ -123,7 +151,9 @@ def test_active_product_identifiers_use_geo_name() -> None:
     offenders: list[str] = []
     for root in roots:
         for path in root.rglob("*"):
-            if not path.is_file() or any(part in {"node_modules", ".next", "__pycache__"} for part in path.parts):
+            if not path.is_file() or any(
+                part in {"node_modules", ".next", "__pycache__"} for part in path.parts
+            ):
                 continue
             try:
                 content = path.read_text(encoding="utf-8")

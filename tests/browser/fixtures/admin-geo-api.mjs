@@ -1,5 +1,18 @@
 import { createServer } from "node:http";
 
+import {
+  handleSyntheticLabFixture,
+  resetSyntheticLabFixture
+} from "./synthetic-lab-fixture.mjs";
+import {
+  handleRecommendationFixture,
+  resetRecommendationFixture
+} from "./recommendation-fixture.mjs";
+import {
+  handlePromptBootstrapFixture,
+  resetPromptBootstrapFixture
+} from "./prompt-bootstrap-fixture.mjs";
+
 const PORT = Number(process.env.GEO_BROWSER_FIXTURE_PORT || 3199);
 const PROJECT_ID = "00000000-0000-4000-8000-000000000001";
 const TENANT_ID = "00000000-0000-4000-8000-000000000002";
@@ -51,6 +64,15 @@ const HASH = "a".repeat(64);
 const SOURCE_STRATUM_HASH = "e748f50aa9fef8795a832a9e9b5e3734e5ce49fa0fa8534572f8efabc7cf300f";
 const SOURCE_STRATA_INVENTORY_HASH = "583e31e9a30b562582c503d872c35014db6d7b41d4c5fac5446eaf47a7e4937b";
 const PROJECT_EXPORT_JOB_ID = "00000000-0000-4000-8000-000000000401";
+const PROMPT_PROGRAM_ID = "00000000-0000-4000-8000-000000000501";
+const PROMPT_BASE_RELEASE_ID = "00000000-0000-4000-8000-000000000502";
+const PROMPT_CANDIDATE_RELEASE_ID = "00000000-0000-4000-8000-000000000503";
+const PROMPT_OWNER_ID = "00000000-0000-4000-8000-000000000504";
+const PROMPT_EVIDENCE_ID = "00000000-0000-4000-8000-000000000505";
+const PROMPT_BINDING_ID = "00000000-0000-4000-8000-000000000506";
+const PROMPT_RUNTIME_SELECTION_ID = "00000000-0000-4000-8000-000000000510";
+const SECRET_REFERENCE_ID = "00000000-0000-4000-8000-000000000601";
+const SECRET_ACTOR_B_ID = "00000000-0000-4000-8000-000000000602";
 
 const requests = [];
 const observations = [];
@@ -74,6 +96,138 @@ let questionSimulation = null;
 let questionProtocol;
 let projectExportJobStatus = "succeeded";
 let projectExportErrorCode = null;
+let promptCandidateStatus = "draft";
+let promptCandidateStateVersion = 1;
+let promptCandidateEvidenceRef = null;
+let promptNextReleaseVersion = 3;
+const additionalPromptReleases = [];
+let secretActorId = ACTOR_ID;
+let secretRole = "owner";
+let secretUnavailable = false;
+let secretReference = null;
+let secretAggregateVersion = 0;
+let secretCurrentVersion = null;
+const secretVersions = [];
+const secretAudits = [];
+
+function secretReferenceView() {
+  if (!secretReference) return null;
+  const latest = secretVersions[secretVersions.length - 1];
+  const status = secretCurrentVersion !== null
+    ? "active"
+    : secretVersions.some((item) => item.status === "pending")
+      ? "pending"
+      : secretVersions.every((item) => item.status === "revoked")
+        ? "revoked"
+        : "inactive";
+  return {
+    reference_id: secretReference.reference_id,
+    purpose: secretReference.purpose,
+    status,
+    aggregate_version: secretAggregateVersion,
+    current_version: secretCurrentVersion,
+    latest_version: latest.version,
+    master_key_version: latest.masterKeyVersion,
+    fingerprint: latest.fingerprint,
+    created_at: secretReference.createdAt,
+    updated_at: NOW
+  };
+}
+
+function secretVersionView(version, replayed = false) {
+  const item = secretVersions.find((candidate) => candidate.version === version);
+  return item ? {
+    reference_id: SECRET_REFERENCE_ID,
+    version: item.version,
+    status: item.status,
+    aggregate_version: secretAggregateVersion,
+    master_key_version: item.masterKeyVersion,
+    fingerprint: item.fingerprint,
+    created_at: item.createdAt,
+    verified_at: item.verifiedAt,
+    activated_at: item.activatedAt,
+    revoked_at: item.revokedAt,
+    replayed
+  } : null;
+}
+
+function appendSecretAudit(version, action) {
+  const item = secretVersions.find((candidate) => candidate.version === version);
+  secretAudits.push({
+    reference_id: SECRET_REFERENCE_ID,
+    version,
+    action,
+    master_key_version: item.masterKeyVersion,
+    fingerprint: item.fingerprint,
+    occurred_at: NOW
+  });
+}
+
+function promptProgram() {
+  return {
+    id: PROMPT_PROGRAM_ID,
+    project_id: PROJECT_ID,
+    program_kind: "generation",
+    purpose: "synthetic_lab.generation",
+    owner_id: PROMPT_OWNER_ID
+  };
+}
+
+function promptRelease({ id, version, status, stateVersion, evidenceRef = null }) {
+  const suffix = version % 10;
+  return {
+    id,
+    project_id: PROJECT_ID,
+    program_id: PROMPT_PROGRAM_ID,
+    program_kind: "generation",
+    purpose: "synthetic_lab.generation",
+    version,
+    owner_id: PROMPT_OWNER_ID,
+    release_hash: String(suffix || 1).repeat(64),
+    system_template_hash: "a".repeat(63) + String(suffix || 1),
+    user_template_hash: "b".repeat(63) + String(suffix || 1),
+    variable_schema_version: "variables-v1",
+    input_schema_version: "input-v1",
+    output_schema_version: "output-v1",
+    output_schema_hash: "d".repeat(63) + String(suffix || 1),
+    application_output_schema_version: "application-output-v1",
+    application_output_schema_hash: "e".repeat(63) + String(suffix || 1),
+    model_policy_version: "fixture-policy-v1",
+    model_policy_hash: "c".repeat(63) + String(suffix || 1),
+    test_set_id: "00000000-0000-4000-8000-000000000507",
+    test_set_version: 1,
+    test_set_hash: "9".repeat(64),
+    compiler_version: "geo-prompt-compiler-v2",
+    state: {
+      id: `00000000-0000-4000-8000-${String(510 + version).padStart(12, "0")}`,
+      version: stateVersion,
+      status,
+      acted_by: status === "draft" ? PROMPT_OWNER_ID : ACTOR_ID,
+      acted_at: NOW,
+      evidence_ref: evidenceRef
+    }
+  };
+}
+
+function promptReleases() {
+  return [
+    ...additionalPromptReleases,
+    promptRelease({
+      id: PROMPT_CANDIDATE_RELEASE_ID,
+      version: 2,
+      status: promptCandidateStatus,
+      stateVersion: promptCandidateStateVersion,
+      evidenceRef: promptCandidateEvidenceRef
+    }),
+    promptRelease({
+      id: PROMPT_BASE_RELEASE_ID,
+      version: 1,
+      status: "approved",
+      stateVersion: 3,
+      evidenceRef: `approval:${PROMPT_EVIDENCE_ID}:${"d".repeat(64)}`
+    })
+  ];
+}
 
 function packageVersion() {
   return {
@@ -520,6 +674,16 @@ async function body(request) {
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
 
+function loggedRequestBody(path, payload) {
+  if (!path.includes("/secrets") || !payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return payload;
+  }
+  return Object.fromEntries(Object.entries(payload).map(([key, value]) => [
+    key,
+    key === "secret_value" ? "[REDACTED]" : value
+  ]));
+}
+
 function readiness(campaignId) {
   const channels = ["owned_site", "productreview", "youtube", "reddit", "amazon", "ozbargain", "tiktok", "instagram", "quora"];
   return {
@@ -883,6 +1047,22 @@ const server = createServer(async (request, response) => {
       questionProtocol = draftQuestionProtocol();
       projectExportJobStatus = "succeeded";
       projectExportErrorCode = null;
+      promptCandidateStatus = "draft";
+      promptCandidateStateVersion = 1;
+      promptCandidateEvidenceRef = null;
+      promptNextReleaseVersion = 3;
+      additionalPromptReleases.length = 0;
+      secretActorId = ACTOR_ID;
+      secretRole = "owner";
+      secretUnavailable = false;
+      secretReference = null;
+      secretAggregateVersion = 0;
+      secretCurrentVersion = null;
+      secretVersions.length = 0;
+      secretAudits.length = 0;
+      resetSyntheticLabFixture();
+      resetRecommendationFixture();
+      resetPromptBootstrapFixture();
       return send(response, { reset: true });
     }
     return send(response, requests);
@@ -913,7 +1093,13 @@ const server = createServer(async (request, response) => {
 
   const payload = request.method === "GET" || request.method === "HEAD" ? null : await body(request);
   if (request.method !== "GET" && request.method !== "HEAD") {
-    requests.push({ method: request.method, path, query: Object.fromEntries(url.searchParams), body: payload });
+    requests.push({
+      method: request.method,
+      path,
+      query: Object.fromEntries(url.searchParams),
+      body: loggedRequestBody(path, payload),
+      idempotency_key: request.headers["idempotency-key"] || null
+    });
   }
   if (path === "/__verification_semantics" && request.method === "POST") {
     verificationShouldPass = payload?.approved_content === true;
@@ -923,6 +1109,17 @@ const server = createServer(async (request, response) => {
     projectExportJobStatus = payload?.status || "succeeded";
     projectExportErrorCode = payload?.error_code || null;
     return send(response, { status: projectExportJobStatus, error_code: projectExportErrorCode });
+  }
+  if (path === "/__secret_mode" && request.method === "POST") {
+    if (payload.actor_id === "actor-a") secretActorId = ACTOR_ID;
+    if (payload.actor_id === "actor-b") secretActorId = SECRET_ACTOR_B_ID;
+    if (payload.role) secretRole = payload.role;
+    if (typeof payload.unavailable === "boolean") secretUnavailable = payload.unavailable;
+    return send(response, {
+      actor_id: secretActorId,
+      role: secretRole,
+      unavailable: secretUnavailable
+    });
   }
 
   const base = `/v1/projects/${PROJECT_ID}`;
@@ -947,8 +1144,320 @@ const server = createServer(async (request, response) => {
   if (path === `${base}/market-profiles`) return send(response, [{ id: MARKET_ID, project_id: PROJECT_ID, market_code: "AU", locale: "en-AU", timezone: "Australia/Sydney", rules: {}, status: "active", created_at: NOW }]);
   if (path === `${base}/evidence-items`) return send(response, promotedEvidence ? [catalogEvidence()] : []);
   if (path === `${base}/invitations`) return send(response, { items: [], total: 0, limit: 100, offset: 0 });
-  if (path === `${base}/members`) return send(response, { items: [{ membership_id: "00000000-0000-4000-8000-000000000004", project_id: PROJECT_ID, identity_id: ACTOR_ID, issuer: "browser-fixture", subject: ACTOR_ID, email: "owner@example.test", display_name: "Fixture Owner", role: "owner", status: "active", created_at: NOW }], total: 1, limit: 100, offset: 0 });
-  if (path === "/v1/auth/me") return send(response, { actor_id: ACTOR_ID, tenant_id: TENANT_ID, project_ids: [PROJECT_ID], roles: ["owner"] });
+  if (path === `${base}/members`) return send(response, { items: [{ membership_id: "00000000-0000-4000-8000-000000000004", project_id: PROJECT_ID, identity_id: secretActorId, issuer: "browser-fixture", subject: secretActorId, email: "owner@example.test", display_name: "Fixture Owner", role: secretRole, status: "active", created_at: NOW }], total: 1, limit: 100, offset: 0 });
+  if (path === "/v1/auth/me") return send(response, { actor_id: secretActorId, tenant_id: TENANT_ID, project_ids: [PROJECT_ID], roles: [secretRole] });
+  if (handleSyntheticLabFixture({
+    actorId: secretActorId,
+    now: NOW,
+    path,
+    payload,
+    projectId: PROJECT_ID,
+    request,
+    response,
+    send
+  })) return;
+  if (handleRecommendationFixture({
+    actorId: secretActorId,
+    now: NOW,
+    path,
+    payload,
+    projectId: PROJECT_ID,
+    request,
+    query: Object.fromEntries(url.searchParams),
+    response,
+    send
+  })) return;
+  if (handlePromptBootstrapFixture({
+    actorId: secretActorId,
+    now: NOW,
+    path,
+    payload,
+    projectId: PROJECT_ID,
+    request,
+    response,
+    role: secretRole,
+    send
+  })) return;
+  const secretBase = `${base}/secrets`;
+  if (path.startsWith(secretBase) && secretUnavailable) {
+    return send(response, { detail: "Secret Store persistence is unavailable" }, 503);
+  }
+  if (path.startsWith(secretBase) && secretRole !== "owner" && secretRole !== "admin") {
+    return send(response, { detail: "Secret Store requires owner or admin" }, 403);
+  }
+  if (path === secretBase) {
+    if (request.method === "POST") {
+      if (secretReference) return send(response, { detail: "Secret reference already exists" }, 409);
+      if ((payload.reference_id && payload.reference_id !== SECRET_REFERENCE_ID) || !payload.purpose || !payload.secret_value) {
+        return send(response, { detail: "Secret request is invalid" }, 422);
+      }
+      secretReference = {
+        reference_id: SECRET_REFERENCE_ID,
+        purpose: payload.purpose,
+        createdAt: NOW
+      };
+      secretAggregateVersion = 1;
+      secretVersions.push({
+        version: 1,
+        status: "pending",
+        createdBy: secretActorId,
+        createdAt: NOW,
+        verifiedAt: null,
+        activatedAt: null,
+        revokedAt: null,
+        masterKeyVersion: 7,
+        fingerprint: "6".repeat(64)
+      });
+      appendSecretAudit(1, "reference_created");
+      appendSecretAudit(1, "version_staged");
+      return send(response, secretVersionView(1), 201);
+    }
+    const limit = Number(url.searchParams.get("limit") || 20);
+    const offset = Number(url.searchParams.get("offset") || 0);
+    const items = secretReference ? [secretReferenceView()].slice(offset, offset + limit) : [];
+    return send(response, { items, total: secretReference ? 1 : 0, limit, offset });
+  }
+  if (path === `${secretBase}/audit-events`) {
+    const limit = Number(url.searchParams.get("limit") || 50);
+    const offset = Number(url.searchParams.get("offset") || 0);
+    return send(response, {
+      items: secretAudits.slice(offset, offset + limit),
+      total: secretAudits.length,
+      limit,
+      offset
+    });
+  }
+  if (path === `${secretBase}/${SECRET_REFERENCE_ID}`) {
+    return send(response, secretReferenceView() || { detail: "Secret reference not found" }, secretReference ? 200 : 404);
+  }
+  if (path === `${secretBase}/${SECRET_REFERENCE_ID}/versions` && request.method === "POST") {
+    if (!secretReference) return send(response, { detail: "Secret reference not found" }, 404);
+    if (Number(payload.expected_version) !== secretAggregateVersion) {
+      return send(response, { detail: "Secret aggregate changed" }, 409);
+    }
+    if (!payload.secret_value || secretCurrentVersion === null || secretVersions.some((item) => item.status === "pending")) {
+      return send(response, { detail: "Secret rotation is not allowed" }, 409);
+    }
+    const version = secretVersions.length + 1;
+    secretAggregateVersion += 1;
+    secretVersions.push({
+      version,
+      status: "pending",
+      createdBy: secretActorId,
+      createdAt: NOW,
+      verifiedAt: null,
+      activatedAt: null,
+      revokedAt: null,
+      masterKeyVersion: 6 + version,
+      fingerprint: String(5 + version).repeat(64)
+    });
+    appendSecretAudit(version, "version_staged");
+    return send(response, secretVersionView(version), 201);
+  }
+  const secretCommand = path.match(new RegExp(`^${secretBase}/${SECRET_REFERENCE_ID}/versions/(\\d+)/(verify|activate|revoke)$`));
+  if (secretCommand && request.method === "POST") {
+    const version = Number(secretCommand[1]);
+    const command = secretCommand[2];
+    const item = secretVersions.find((candidate) => candidate.version === version);
+    if (!item) return send(response, { detail: "Secret version not found" }, 404);
+    if (Number(payload.expected_version) !== secretAggregateVersion) {
+      return send(response, { detail: "Secret aggregate changed" }, 409);
+    }
+    if (command === "verify") {
+      if (item.status !== "pending" || item.verifiedAt) {
+        return send(response, { detail: "Secret version cannot be verified" }, 409);
+      }
+      secretAggregateVersion += 1;
+      item.verifiedAt = NOW;
+      appendSecretAudit(version, "version_verified");
+      return send(response, secretVersionView(version));
+    }
+    if (command === "activate") {
+      if (item.status !== "pending" || !item.verifiedAt) {
+        return send(response, { detail: "Secret version cannot be activated" }, 409);
+      }
+      if (item.createdBy === secretActorId) {
+        return send(response, { detail: "Secret creator cannot activate the same version" }, 403);
+      }
+      const previous = secretVersions.find((candidate) => candidate.version === secretCurrentVersion);
+      if (previous) previous.status = "superseded";
+      secretAggregateVersion += 1;
+      item.status = "active";
+      item.activatedAt = NOW;
+      secretCurrentVersion = version;
+      appendSecretAudit(version, "version_activated");
+      return send(response, secretVersionView(version));
+    }
+    if (item.status === "revoked") {
+      return send(response, { detail: "Secret version is already revoked" }, 409);
+    }
+    secretAggregateVersion += 1;
+    item.status = "revoked";
+    item.revokedAt = NOW;
+    if (secretCurrentVersion === version) secretCurrentVersion = null;
+    appendSecretAudit(version, "version_revoked");
+    return send(response, secretVersionView(version));
+  }
+  if (path === `${base}/prompt-programs`) {
+    if (request.method === "POST") {
+      const program = {
+        ...promptProgram(),
+        id: "00000000-0000-4000-8000-000000000520",
+        program_kind: payload.program_kind,
+        purpose: payload.purpose,
+        owner_id: ACTOR_ID
+      };
+      const release = {
+        ...promptRelease({
+          id: "00000000-0000-4000-8000-000000000521",
+          version: 1,
+          status: "draft",
+          stateVersion: 1
+        }),
+        program_id: program.id,
+        program_kind: program.program_kind,
+        purpose: program.purpose,
+        owner_id: ACTOR_ID
+      };
+      return send(response, { program, release, replayed: false }, 201);
+    }
+    return send(response, { items: [promptProgram()], total: 1, limit: 12, offset: 0 });
+  }
+  if (path === `${base}/prompt-program-test-options` && request.method === "GET") {
+    return send(response, {
+      items: [{
+        runtime_selection_id: PROMPT_RUNTIME_SELECTION_ID,
+        runtime_selection_hash: "1".repeat(64),
+        runtime_manifest_id: "00000000-0000-4000-8000-000000000511",
+        runtime_manifest_hash: "2".repeat(64),
+        provider: "openai",
+        adapter_release_id: "openai-adapter-v1",
+        adapter_release_hash: "3".repeat(64),
+        model_release_id: "openai-model-v1",
+        model_release_hash: "4".repeat(64),
+        configured_model: "gpt-fixture",
+        capture_method: "provider_api",
+        policy_version_id: "00000000-0000-4000-8000-000000000512",
+        policy_version_hash: "5".repeat(64)
+      }],
+      total: 1
+    });
+  }
+  if (path === `${base}/prompt-programs/${PROMPT_PROGRAM_ID}`) {
+    return send(response, promptProgram());
+  }
+  if (path === `${base}/prompt-programs/${PROMPT_PROGRAM_ID}/releases`) {
+    if (request.method === "POST") {
+      const version = promptNextReleaseVersion;
+      promptNextReleaseVersion += 1;
+      const release = promptRelease({
+        id: `00000000-0000-4000-8000-${String(520 + version).padStart(12, "0")}`,
+        version,
+        status: "draft",
+        stateVersion: 1
+      });
+      additionalPromptReleases.unshift(release);
+      return send(response, { release, replayed: false }, 201);
+    }
+    const releases = promptReleases();
+    return send(response, { items: releases, total: releases.length, limit: 200, offset: 0 });
+  }
+  const promptReleaseRead = path.match(new RegExp(`^${base}/prompt-programs/${PROMPT_PROGRAM_ID}/releases/([^/]+)$`));
+  if (promptReleaseRead) {
+    const release = promptReleases().find((item) => item.id === promptReleaseRead[1]);
+    return send(response, release || { detail: "Prompt Release not found" }, release ? 200 : 404);
+  }
+  const promptCommand = path.match(new RegExp(`^${base}/prompt-programs/${PROMPT_PROGRAM_ID}/releases/([^/]+)/(tests|approve|freeze|diff)$`));
+  if (promptCommand && request.method === "POST") {
+    const releaseId = promptCommand[1];
+    const command = promptCommand[2];
+    if (releaseId !== PROMPT_CANDIDATE_RELEASE_ID) {
+      return send(response, { detail: "Fixture commands target candidate v2" }, 409);
+    }
+    if (command === "tests") {
+      if (promptCandidateStatus !== "draft") return send(response, { detail: "Release is not draft" }, 409);
+      if (payload.runtime_selection_id !== PROMPT_RUNTIME_SELECTION_ID
+          || "runtime_manifest_id" in payload
+          || "adapter_release_id" in payload
+          || "model_release_id" in payload
+          || "provider" in payload) {
+        return send(response, { detail: "Prompt test runtime selection contract changed" }, 422);
+      }
+      promptCandidateStatus = "tested";
+      promptCandidateStateVersion += 1;
+      const evidenceHash = "d".repeat(64);
+      promptCandidateEvidenceRef = `prompt-test:${PROMPT_EVIDENCE_ID}:${evidenceHash}`;
+      return send(response, {
+        job_id: "00000000-0000-4000-8000-000000000509",
+        project_id: PROJECT_ID,
+        release_id: PROMPT_CANDIDATE_RELEASE_ID,
+        release_hash: "b".repeat(64),
+        test_set_id: payload.test_set_id,
+        test_set_version: payload.test_set_version,
+        test_set_hash: payload.test_set_hash,
+        input_hash: "e".repeat(64),
+        status: "queued",
+        replayed: false
+      }, 202);
+    }
+    if (command === "approve") {
+      if (promptCandidateStatus !== "tested") return send(response, { detail: "Release is not tested" }, 409);
+      promptCandidateStatus = "approved";
+      promptCandidateStateVersion += 1;
+      return send(response, {
+        release: promptReleases().find((item) => item.id === PROMPT_CANDIDATE_RELEASE_ID),
+        admitted_test_evidence_hash: "d".repeat(64),
+        replayed: false
+      });
+    }
+    if (command === "freeze") {
+      if (promptCandidateStatus !== "approved") return send(response, { detail: "Release is not approved" }, 409);
+      promptCandidateStatus = "frozen";
+      promptCandidateStateVersion += 1;
+      return send(response, {
+        release: promptReleases().find((item) => item.id === PROMPT_CANDIDATE_RELEASE_ID),
+        admitted_test_evidence_hash: null,
+        replayed: false
+      });
+    }
+    const baseRelease = promptReleases().find((item) => item.id === payload.baseline_release_id);
+    const candidate = promptReleases().find((item) => item.id === PROMPT_CANDIDATE_RELEASE_ID);
+    if (!baseRelease || !candidate) return send(response, { detail: "Diff releases not found" }, 404);
+    return send(response, {
+      base_release_id: baseRelease.id,
+      base_release_hash: baseRelease.release_hash,
+      candidate_release_id: candidate.id,
+      candidate_release_hash: candidate.release_hash,
+      changed_fields: ["user_template"],
+      fixed_input_hash: "e".repeat(64),
+      base_system_hash: "1".repeat(64),
+      candidate_system_hash: "2".repeat(64),
+      base_user_hash: "3".repeat(64),
+      candidate_user_hash: "4".repeat(64),
+      replayed: false
+    });
+  }
+  if (path === `${base}/prompt-program-bindings` && request.method === "GET") {
+    return send(response, { items: [], total: 0, limit: 200, offset: 0 });
+  }
+  if (path === `${base}/prompt-program-bindings` && request.method === "POST") {
+    if (promptCandidateStatus !== "frozen") return send(response, { detail: "Release is not frozen" }, 409);
+    return send(response, {
+      id: PROMPT_BINDING_ID,
+      project_id: PROJECT_ID,
+      purpose: payload.purpose,
+      program_kind: "generation",
+      program_id: PROMPT_PROGRAM_ID,
+      release_id: PROMPT_CANDIDATE_RELEASE_ID,
+      release_version: 2,
+      release_hash: promptReleases().find((item) => item.id === PROMPT_CANDIDATE_RELEASE_ID).release_hash,
+      frozen_state_id: promptReleases().find((item) => item.id === PROMPT_CANDIDATE_RELEASE_ID).state.id,
+      binding_version: Number(payload.expected_version || 0) + 1,
+      bound_by: ACTOR_ID,
+      bound_at: NOW,
+      replayed: false
+    });
+  }
   if (path === `${base}/project-exports` && request.method === "POST") {
     return send(response, {
       job_id: PROJECT_EXPORT_JOB_ID,

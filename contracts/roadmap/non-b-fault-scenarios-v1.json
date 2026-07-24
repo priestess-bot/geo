@@ -1,0 +1,62 @@
+{
+  "excluded_workstreams": [
+    "B"
+  ],
+  "included_workstreams": [
+    "A",
+    "C",
+    "D"
+  ],
+  "schema_version": "geo-non-b-fault-scenarios-v1",
+  "scenarios": [
+    {
+      "id": "provider_timeout_rate_revoke",
+      "mode": "deterministic",
+      "targets": [
+        "tests/unit/model_gateway/test_secure_http_transport.py",
+        "tests/unit/model_gateway/test_gateway_router.py",
+        "tests/unit/sampling/test_provider_execution.py",
+        "tests/unit/sampling/test_contracts_and_admission.py"
+      ]
+    },
+    {
+      "id": "cancellation_lease_fencing",
+      "mode": "deterministic",
+      "targets": [
+        "tests/unit/synthetic_lab/test_execution_worker.py",
+        "tests/unit/synthetic_lab/test_child_model_calls.py",
+        "tests/unit/prompts/test_prompt_test_execution.py",
+        "tests/unit/recommendations/test_generation_worker.py"
+      ]
+    },
+    {
+      "id": "relay_and_outbox_recovery",
+      "mode": "deterministic",
+      "targets": [
+        "tests/unit/jobs/test_outbox_relay.py",
+        "tests/unit/alerts/test_application.py",
+        "tests/unit/alerts/test_evaluation.py"
+      ]
+    },
+    {
+      "id": "artifact_delete_hold_and_recovery",
+      "mode": "deterministic",
+      "targets": [
+        "tests/unit/workflow_c_artifacts/test_lifecycle.py",
+        "tests/unit/workflow_c_artifacts/test_reader_boundaries.py",
+        "tests/unit/recommendations/test_artifact_maintenance.py",
+        "tests/unit/backup/test_restore_verification.py"
+      ]
+    },
+    {
+      "id": "postgres_minio_valkey_network_runtime",
+      "mode": "isolated_runtime",
+      "targets": [
+        "tests/infra/test_production_network_runtime.py",
+        "tests/infra/test_compose_health_runtime.py",
+        "tests/integration/test_runtime_health_postgres.py",
+        "tests/integration/test_runtime_readiness_dependencies.py"
+      ]
+    }
+  ]
+}

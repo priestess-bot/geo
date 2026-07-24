@@ -8,6 +8,7 @@ import json
 import logging
 import os
 from time import perf_counter
+from typing import cast
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
@@ -26,14 +27,34 @@ from geo_api.foundation_services import (
 )
 from geo_api.member_routes import member_router
 from geo_api.member_runtime import build_membership_application
+from geo_api.model_gateway_runtime_api import build_model_gateway_runtime_api
+from geo_api.model_gateway_runtime_routes import model_gateway_runtime_router
 from geo_api.problems import install_problem_handlers
 from geo_api.monitoring_routes import monitoring_router
 from geo_api.monitoring_runtime import build_monitoring_application
+from geo_api.non_b_runtime_readiness import (
+    NonBRuntimeBindings,
+    ProductionInternalRuntimeReadiness,
+    bind_runtime,
+)
 from geo_api.project_export_routes import (
     admin_project_export_router,
     customer_project_export_router,
 )
 from geo_api.project_export_runtime import build_project_export_application
+from geo_api.prompt_bootstrap_routes import prompt_bootstrap_router
+from geo_api.prompt_program_routes import prompt_program_router
+from geo_api.prompt_program_runtime import build_prompt_program_application
+from geo_api.recommendation_routes import recommendation_router
+from geo_api.recommendation_runtime import build_recommendation_api
+from geo_api.secret_store_routes import secret_store_router
+from geo_api.secret_store_runtime import build_secret_store_application
+from geo_api.synthetic_lab_routes import synthetic_lab_router
+from geo_api.synthetic_lab_runtime import build_synthetic_lab_api
+from geo_api.workflow_c_routes import mount_workflow_c_internal
+from geo_api.workflow_c_runtime import WorkflowCApi, build_workflow_c_api
+from geo_api.workflow_c_customer_routes import workflow_c_customer_router
+from geo_api.workflow_c_customer_runtime import build_workflow_c_customer_reader
 from geo_api.placement_campaign_routes import campaign_router
 from geo_api.job_control_routes import job_control_router
 from geo_api.knowledge_routes import knowledge_router
@@ -55,6 +76,7 @@ from geo_api.runtime_readiness import (
     ReadinessService,
     readiness_checker_from_environment,
 )
+from geo_core.workflow_c_reports import WorkflowCCustomerReportReader
 
 
 REQUEST_ID_HEADER = "X-Request-ID"
@@ -102,6 +124,13 @@ def create_api_app(
     knowledge_application: object | None = None,
     readiness_service: ReadinessService | None = None,
     project_export_application: object | None = None,
+    prompt_program_application: object | None = None,
+    recommendation_api: object | None = None,
+    secret_store_application: object | None = None,
+    synthetic_lab_api: object | None = None,
+    workflow_c_api: WorkflowCApi | None = None,
+    workflow_c_customer_reader: WorkflowCCustomerReportReader | None = None,
+    model_gateway_runtime_api: object | None = None,
 ) -> FastAPI:
     """Build one API surface without importing the legacy application module."""
 
@@ -114,10 +143,45 @@ def create_api_app(
     else:
         resolved_services = services
         access_configured = not isinstance(services, UnavailableFoundationServices)
+    if surface == "internal":
+        non_b_runtimes = NonBRuntimeBindings(
+            prompt_program=bind_runtime(
+                injected=prompt_program_application,
+                durable_builder=build_prompt_program_application,
+            ),
+            secret_store=bind_runtime(
+                injected=secret_store_application,
+                durable_builder=build_secret_store_application,
+            ),
+            synthetic_lab=bind_runtime(
+                injected=synthetic_lab_api,
+                durable_builder=build_synthetic_lab_api,
+            ),
+            workflow_c=bind_runtime(
+                injected=workflow_c_api,
+                durable_builder=build_workflow_c_api,
+            ),
+            recommendation=bind_runtime(
+                injected=recommendation_api,
+                durable_builder=build_recommendation_api,
+            ),
+            model_gateway=bind_runtime(
+                injected=model_gateway_runtime_api,
+                durable_builder=build_model_gateway_runtime_api,
+            ),
+        )
+    else:
+        non_b_runtimes = NonBRuntimeBindings.absent()
     dependency_readiness = readiness_service or readiness_checker_from_environment(surface=surface)
-    resolved_readiness = AccessConfiguredReadiness(
+    access_readiness = AccessConfiguredReadiness(
         dependency_readiness,
         access_configured=access_configured,
+    )
+    resolved_readiness = ProductionInternalRuntimeReadiness(
+        access_readiness,
+        surface=surface,
+        deployment_environment=resolved_settings.deployment_environment,
+        bindings=non_b_runtimes,
     )
 
     app = FastAPI(
@@ -139,14 +203,17 @@ def create_api_app(
     )
     app.state.monitoring_application = monitoring_application or build_monitoring_application()
     app.state.membership_application = (
-        membership_application or build_membership_application()
-        if surface == "internal"
-        else None
+        membership_application or build_membership_application() if surface == "internal" else None
     )
     app.state.knowledge_application = knowledge_application or build_knowledge_application()
     app.state.project_export_application = (
         project_export_application or build_project_export_application(surface=surface)
     )
+    app.state.prompt_program_application = non_b_runtimes.prompt_program.value
+    app.state.recommendation_api = non_b_runtimes.recommendation.value
+    app.state.secret_store_application = non_b_runtimes.secret_store.value
+    app.state.synthetic_lab_api = non_b_runtimes.synthetic_lab.value
+    app.state.model_gateway_runtime_api = non_b_runtimes.model_gateway.value
     install_problem_handlers(app)
     _install_request_metadata_middleware(app, surface=surface)
 
@@ -173,6 +240,16 @@ def create_api_app(
         app.include_router(job_control_router())
         app.include_router(knowledge_router())
         app.include_router(knowledge_question_router())
+        app.include_router(prompt_bootstrap_router())
+        app.include_router(prompt_program_router())
+        app.include_router(model_gateway_runtime_router())
+        app.include_router(recommendation_router())
+        app.include_router(secret_store_router())
+        app.include_router(synthetic_lab_router())
+        mount_workflow_c_internal(
+            app,
+            api=cast(WorkflowCApi | None, non_b_runtimes.workflow_c.value),
+        )
         app.include_router(engineering_router())
         app.include_router(github_integration_router())
         app.include_router(admin_project_export_router())
@@ -185,6 +262,8 @@ def create_api_app(
     else:
         app.include_router(customer_geo_router())
         app.include_router(customer_project_export_router())
+        reader = workflow_c_customer_reader or build_workflow_c_customer_reader()
+        app.include_router(workflow_c_customer_router(reader=reader))
     return app
 
 

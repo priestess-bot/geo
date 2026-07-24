@@ -226,7 +226,8 @@ class PostgresDurableJobStore:
                  lease_expires_at = NULL, heartbeat_at = NULL, completed_at = clock_timestamp(),
                  updated_at = clock_timestamp()
                WHERE id = %s AND project_id = %s AND lease_token = %s
-                 AND fencing_generation = %s""",
+                 AND fencing_generation = %s AND status IN ('running', 'finalizing')
+                 AND lease_expires_at > clock_timestamp()""",
             (
                 result_ref,
                 json.dumps(dict(details)),
@@ -251,7 +252,13 @@ class PostgresDurableJobStore:
         connection = self.open_project(lease.project_id)
         try:
             retry = retry_delay is not None and lease.attempt_count < lease.max_attempts
-            status = "retry_wait" if retry else "dead_lettered" if retry_delay else "failed"
+            status = (
+                "retry_wait"
+                if retry
+                else "dead_lettered"
+                if retry_delay is not None
+                else "failed"
+            )
             next_run_at = datetime.now(UTC) + retry_delay if retry_delay else datetime.now(UTC)
             changed = connection.execute(
                 """UPDATE durable_jobs SET status = %s, error_code = %s,
@@ -260,8 +267,9 @@ class PostgresDurableJobStore:
                      heartbeat_at = NULL, updated_at = clock_timestamp(),
                      completed_at = CASE WHEN %s IN ('failed', 'dead_lettered')
                                          THEN clock_timestamp() ELSE NULL END
-                   WHERE id = %s AND project_id = %s AND lease_token = %s
-                     AND fencing_generation = %s""",
+               WHERE id = %s AND project_id = %s AND lease_token = %s
+                     AND fencing_generation = %s AND status IN ('running', 'finalizing')
+                     AND lease_expires_at > clock_timestamp()""",
                 (
                     status,
                     error_code,
@@ -299,7 +307,8 @@ class PostgresDurableJobStore:
                  lease_expires_at = NULL, heartbeat_at = NULL,
                  completed_at = clock_timestamp(), updated_at = clock_timestamp()
                WHERE id = %s AND project_id = %s AND lease_token = %s
-                 AND fencing_generation = %s""",
+                 AND fencing_generation = %s AND status IN ('running', 'finalizing')
+                 AND lease_expires_at > clock_timestamp()""",
             (
                 error_code,
                 json.dumps(dict(details)),
@@ -333,7 +342,8 @@ class PostgresDurableJobStore:
                  completed_at = CASE WHEN %s = 'dead_lettered'
                                      THEN clock_timestamp() ELSE NULL END
                WHERE id = %s AND project_id = %s AND lease_token = %s
-                 AND fencing_generation = %s""",
+                 AND fencing_generation = %s AND status IN ('running', 'finalizing')
+                 AND lease_expires_at > clock_timestamp()""",
             (
                 status,
                 error_code,
@@ -368,7 +378,8 @@ class PostgresDurableJobStore:
                  lease_owner = NULL, lease_token = NULL, lease_expires_at = NULL,
                  heartbeat_at = NULL, updated_at = clock_timestamp(), completed_at = NULL
                WHERE id = %s AND project_id = %s AND lease_token = %s
-                 AND fencing_generation = %s""",
+                 AND fencing_generation = %s AND status IN ('running', 'finalizing')
+                 AND lease_expires_at > clock_timestamp()""",
             (
                 reason_code,
                 json.dumps(dict(details)),
@@ -407,7 +418,8 @@ class PostgresDurableJobStore:
                      lease_token = NULL, lease_expires_at = NULL, heartbeat_at = NULL,
                      completed_at = clock_timestamp(), updated_at = clock_timestamp()
                    WHERE id = %s AND project_id = %s AND lease_token = %s
-                     AND fencing_generation = %s""",
+                     AND fencing_generation = %s AND status IN ('running', 'finalizing')
+                     AND lease_expires_at > clock_timestamp()""",
                 (lease.job_id, lease.project_id, lease.lease_token, lease.fencing_generation),
             ).rowcount
             if changed != 1:

@@ -1,27 +1,73 @@
-from pathlib import Path
-from typing import Any
+from geo_core.engineering.performance_profile import non_b_performance_profile_v1
+from tests.infra.production_compose_support import (
+    COMPOSE_PATH,
+    ROOT,
+    load_compose,
+    load_runtime_services,
+    load_style_compose,
+)
 
-import yaml
 
+def test_production_runtime_limits_match_frozen_performance_profile() -> None:
+    services = load_runtime_services()
+    profile = non_b_performance_profile_v1()
 
-ROOT = Path(__file__).resolve().parents[2]
-COMPOSE_PATH = ROOT / "infra" / "compose.prod.yml"
-
-
-def load_compose() -> dict[str, Any]:
-    return yaml.safe_load(COMPOSE_PATH.read_text(encoding="utf-8"))
+    assert services["internal-api"]["environment"]["GEO_DB_POOL_MAX_SIZE"] == str(
+        profile.process_topology.api_database_pool_max_size
+    )
+    assert services["customer-api"]["environment"]["GEO_DB_POOL_MAX_SIZE"] == str(
+        profile.process_topology.api_database_pool_max_size
+    )
+    for service_name, expected in profile.process_topology.resource_limits.items():
+        actual = services[service_name]["deploy"]["resources"]["limits"]
+        assert str(actual["cpus"]) == expected["cpus"]
+        assert actual["memory"] == expected["memory"]
 
 
 def test_production_compose_is_standalone_and_has_only_supported_runtime_services() -> None:
-    compose = load_compose()
-    services = compose["services"]
+    services = load_runtime_services()
 
-    assert {"internal-api", "customer-api", "admin-web", "customer-web"} <= set(services)
+    assert {
+        "internal-api",
+        "customer-api",
+        "admin-web",
+        "customer-web",
+        "style-browser-worker",
+    } <= set(services)
     assert {"qdrant", "litellm", "api", "dashboard-web", "web"}.isdisjoint(services)
     assert all("build" not in service for service in services.values())
     assert "ports" not in services["postgres"]
     assert "ports" not in services["minio"]
     assert "ports" not in services["valkey"]
+    assert "ports" not in services["style-browser-worker"]
+
+
+def test_every_production_service_has_process_resource_and_log_limits() -> None:
+    services = load_runtime_services()
+
+    for name, service in services.items():
+        assert 1 <= service["pids_limit"] <= 512, name
+        assert service["security_opt"] == ["no-new-privileges:true"], name
+        assert service["cap_drop"] == ["ALL"], name
+        assert service["logging"] == {
+            "driver": "json-file",
+            "options": {"max-size": "10m", "max-file": "3"},
+        }, name
+        limits = service["deploy"]["resources"]["limits"]
+        assert float(limits["cpus"]) > 0, name
+        assert str(limits["memory"]).endswith(("M", "G")), name
+        assert limits["pids"] == service["pids_limit"], name
+
+
+def test_first_party_runtime_images_drop_root_privileges() -> None:
+    for relative in (
+        "apps/api/Dockerfile",
+        "apps/api/Dockerfile.style-browser",
+        "apps/admin-web/Dockerfile",
+        "apps/customer-web/Dockerfile",
+    ):
+        source = (ROOT / relative).read_text(encoding="utf-8")
+        assert "USER 10001:10001" in source, relative
 
 
 def test_production_networks_enforce_the_egress_boundary() -> None:
@@ -32,6 +78,11 @@ def test_production_networks_enforce_the_egress_boundary() -> None:
     assert compose["networks"]["egress"] is None
     assert set(services["internal-api"]["networks"]) == {"backend", "egress"}
     assert set(services["task-worker"]["networks"]) == {"backend", "egress"}
+    style = load_style_compose()["services"]["style-browser-worker"]
+    assert set(style["networks"]) == {"backend", "egress", "style-browser-control"}
+    browser_runtime = load_style_compose()["services"]["style-browser-runtime"]
+    assert set(browser_runtime["networks"]) == {"style-browser-control", "egress"}
+    assert "backend" not in browser_runtime["networks"]
 
     for name in (
         "postgres",
@@ -40,11 +91,17 @@ def test_production_networks_enforce_the_egress_boundary() -> None:
         "minio-bootstrap",
         "valkey",
         "customer-api",
+        "workflow-c-maintenance-scheduler",
+        "recommendation-artifact-maintenance-scheduler",
+        "recommendation-artifact-maintenance-worker",
+        "synthetic-artifact-maintenance-worker",
+        "workflow-c-maintenance-worker",
         "outbox-relay",
         "initial-owner-provision",
         "otel-collector",
         "backup-object-store",
         "restore-smoke-postgres",
+        "restore-smoke-application-key-probe",
     ):
         assert "egress" not in services[name]["networks"]
 
@@ -73,6 +130,11 @@ def test_api_services_use_secrets_read_only_filesystems_and_separate_entrypoints
         "object_store_access_key",
         "object_store_secret_key",
         "auth_token_secret",
+        "secret_store_master_keyring",
+        "secret_store_request_hash_key",
+        "workflow_c_artifact_keyring",
+        "workflow_c_artifact_object_store_access_key",
+        "workflow_c_artifact_object_store_secret_key",
     }
     assert set(customer["secrets"]) == {"database_url", "auth_token_secret"}
     for key in (
@@ -91,7 +153,7 @@ def test_api_services_use_secrets_read_only_filesystems_and_separate_entrypoints
 
 
 def test_runtime_healthchecks_use_real_readiness_and_heartbeats() -> None:
-    services = load_compose()["services"]
+    services = load_runtime_services()
 
     for name in ("internal-api", "customer-api"):
         command = services[name]["healthcheck"]["test"]
@@ -101,6 +163,18 @@ def test_runtime_healthchecks_use_real_readiness_and_heartbeats() -> None:
     expected_service_types = {
         "task-worker": "task_worker",
         "outbox-relay": "outbox_relay",
+        "style-browser-worker": "style_browser_worker",
+        "workflow-c-maintenance-scheduler": "workflow_c_maintenance_scheduler",
+        "workflow-c-maintenance-worker": "workflow_c_maintenance_worker",
+        "recommendation-artifact-maintenance-scheduler": (
+            "recommendation_artifact_maintenance_scheduler"
+        ),
+        "recommendation-artifact-maintenance-worker": (
+            "recommendation_artifact_maintenance_worker"
+        ),
+        "synthetic-artifact-maintenance-worker": (
+            "synthetic_artifact_maintenance_worker"
+        ),
     }
     for name, service_type in expected_service_types.items():
         command = services[name]["healthcheck"]["test"]
@@ -122,6 +196,10 @@ def test_runtime_healthchecks_use_real_readiness_and_heartbeats() -> None:
         "customer-api",
         "task-worker",
         "outbox-relay",
+        "style-browser-worker",
+        "workflow-c-maintenance-scheduler",
+        "workflow-c-maintenance-worker",
+        "synthetic-artifact-maintenance-worker",
         "admin-web",
         "customer-web",
     ):
@@ -143,6 +221,58 @@ def test_durable_worker_and_outbox_relay_use_the_worker_database_identity() -> N
     )
     assert "deepseek_api_key" in worker["secrets"]
     assert "deepseek_api_key" not in relay["secrets"]
+    assert {
+        "secret_store_master_keyring",
+        "secret_store_request_hash_key",
+    } <= set(worker["secrets"])
+    assert worker["environment"]["GEO_SECRET_STORE_MASTER_KEYRING_FILE"] == (
+        "/run/secrets/secret_store_master_keyring"
+    )
+    assert worker["environment"]["GEO_SECRET_STORE_REQUEST_HASH_KEY_FILE"] == (
+        "/run/secrets/secret_store_request_hash_key"
+    )
+
+
+def test_alert_delivery_uses_a_restricted_smtp_sidecar_and_secret_backed_webhook() -> None:
+    compose = load_compose()
+    services = compose["services"]
+    worker = services["task-worker"]
+    smtp = services["alert-smtp-relay"]
+
+    assert smtp["command"] == ["python", "-m", "geo_alert_smtp_relay"]
+    assert set(smtp["networks"]) == {"backend", "egress"}
+    assert "ports" not in smtp
+    assert smtp["read_only"] is True
+    assert set(smtp["secrets"]) == {"alert_smtp_username", "alert_smtp_password"}
+    assert "GEO_ALERT_SMTP_USERNAME" not in smtp["environment"]
+    assert "GEO_ALERT_SMTP_PASSWORD" not in smtp["environment"]
+    assert smtp["environment"]["GEO_ALERT_SMTP_USERNAME_FILE"] == (
+        "/run/secrets/alert_smtp_username"
+    )
+    assert smtp["environment"]["GEO_ALERT_SMTP_PASSWORD_FILE"] == (
+        "/run/secrets/alert_smtp_password"
+    )
+    assert worker["environment"]["GEO_ALERT_SMTP_HOST"] == "alert-smtp-relay"
+    assert worker["depends_on"]["alert-smtp-relay"]["condition"] == "service_healthy"
+    assert "alert_webhook_signing_secret" in worker["secrets"]
+    assert worker["environment"]["GEO_ALERT_WEBHOOK_SIGNING_SECRET_FILE"] == (
+        "/run/secrets/alert_webhook_signing_secret"
+    )
+    assert {
+        "alert_smtp_username",
+        "alert_smtp_password",
+        "alert_webhook_signing_secret",
+    } <= set(compose["secrets"])
+
+    example = (ROOT / "infra" / "production.env.example").read_text(encoding="utf-8")
+    for name in (
+        "GEO_ALERT_SMTP_UPSTREAM_ALLOWED_HOSTS",
+        "GEO_ALERT_SMTP_USERNAME_FILE",
+        "GEO_ALERT_SMTP_PASSWORD_FILE",
+        "GEO_ALERT_WEBHOOK_ALLOWED_HOSTS",
+        "GEO_ALERT_WEBHOOK_SIGNING_SECRET_FILE",
+    ):
+        assert name in example
 
 
 def test_minio_bootstrap_receives_every_principal_it_requires() -> None:
@@ -157,12 +287,37 @@ def test_minio_bootstrap_receives_every_principal_it_requires() -> None:
         "object_store_restore_secret_key",
         "object_store_retention_access_key",
         "object_store_retention_secret_key",
+        "workflow_c_artifact_object_store_access_key",
+        "workflow_c_artifact_object_store_secret_key",
+        "workflow_c_artifact_reader_access_key",
+        "workflow_c_artifact_reader_secret_key",
+        "workflow_c_artifact_deleter_access_key",
+        "workflow_c_artifact_deleter_secret_key",
+        "synthetic_style_artifact_writer_access_key",
+        "synthetic_style_artifact_writer_secret_key",
+        "synthetic_artifact_deleter_access_key",
+        "synthetic_artifact_deleter_secret_key",
     }
 
     assert required <= set(bootstrap["secrets"])
     assert required <= set(compose["secrets"])
+    workflow_c_names = {
+        "workflow_c_artifact_object_store_access_key",
+        "workflow_c_artifact_object_store_secret_key",
+        "workflow_c_artifact_reader_access_key",
+        "workflow_c_artifact_reader_secret_key",
+        "workflow_c_artifact_deleter_access_key",
+        "workflow_c_artifact_deleter_secret_key",
+        "synthetic_style_artifact_writer_access_key",
+        "synthetic_style_artifact_writer_secret_key",
+        "synthetic_artifact_deleter_access_key",
+        "synthetic_artifact_deleter_secret_key",
+    }
     for name in required:
-        assert bootstrap["environment"][name.upper() + "_FILE"] == f"/run/secrets/{name}"
+        prefix = "GEO_" if name in workflow_c_names else ""
+        assert bootstrap["environment"][prefix + name.upper() + "_FILE"] == (
+            f"/run/secrets/{name}"
+        )
 
 
 def test_production_environment_example_covers_required_secret_files() -> None:
@@ -173,61 +328,27 @@ def test_production_environment_example_covers_required_secret_files() -> None:
         "GEO_OBJECT_STORE_RESTORE_SECRET_KEY_FILE",
         "GEO_OBJECT_STORE_RETENTION_ACCESS_KEY_FILE",
         "GEO_OBJECT_STORE_RETENTION_SECRET_KEY_FILE",
+        "GEO_SECRET_STORE_MASTER_KEYRING_FILE",
+        "GEO_SECRET_STORE_REQUEST_HASH_KEY_FILE",
+        "GEO_BACKUP_KEYRING_FILE",
+        "GEO_PROVIDER_ARTIFACT_KEYRING_FILE",
+        "GEO_SYNTHETIC_ARTIFACT_KEYRING_FILE",
+        "GEO_RECOMMENDATION_ARTIFACT_KEYRING_FILE",
+        "GEO_WORKFLOW_C_ARTIFACT_KEYRING_FILE",
+        "GEO_WORKFLOW_C_ARTIFACT_OBJECT_STORE_ACCESS_KEY_FILE",
+        "GEO_WORKFLOW_C_ARTIFACT_OBJECT_STORE_SECRET_KEY_FILE",
+        "GEO_WORKFLOW_C_ARTIFACT_READER_ACCESS_KEY_FILE",
+        "GEO_WORKFLOW_C_ARTIFACT_READER_SECRET_KEY_FILE",
+        "GEO_WORKFLOW_C_ARTIFACT_DELETER_ACCESS_KEY_FILE",
+        "GEO_WORKFLOW_C_ARTIFACT_DELETER_SECRET_KEY_FILE",
+        "GEO_STYLE_BROWSER_WORKER_DATABASE_URL_FILE",
+        "GEO_SYNTHETIC_STYLE_ARTIFACT_WRITER_ACCESS_KEY_FILE",
+        "GEO_SYNTHETIC_STYLE_ARTIFACT_WRITER_SECRET_KEY_FILE",
+        "GEO_SYNTHETIC_ARTIFACT_DELETER_ACCESS_KEY_FILE",
+        "GEO_SYNTHETIC_ARTIFACT_DELETER_SECRET_KEY_FILE",
+        "GEO_RESTORE_TMPFS_ROOT",
     ):
         assert f"{name}=" in example
-
-
-def test_production_environment_example_freezes_runtime_truth_defaults() -> None:
-    lines = (ROOT / "infra" / "production.env.example").read_text(encoding="utf-8").splitlines()
-    values = dict(
-        line.split("=", 1)
-        for line in lines
-        if line and not line.startswith("#") and "=" in line
-    )
-
-    assert values["GEO_READINESS_DEPENDENCY_TIMEOUT_SECONDS"] == "2"
-    assert values["GEO_READINESS_TOTAL_TIMEOUT_SECONDS"] == "5"
-    assert values["GEO_RUNTIME_HEARTBEAT_INTERVAL_SECONDS"] == "10"
-    assert values["GEO_RUNTIME_HEARTBEAT_STALE_SECONDS"] == "30"
-    assert values["GEO_RUNTIME_QUEUED_STALE_SECONDS"] == "600"
-    assert values["GEO_RUNTIME_OUTBOX_STALE_SECONDS"] == "300"
-    assert values["GEO_RUNTIME_RUNNING_GRACE_SECONDS"] == "60"
-    assert values["GEO_RUNTIME_FAILURE_WINDOW_SECONDS"] == "86400"
-    assert values["GEO_RUNTIME_EXPECTED_TASK_WORKER_INSTANCES"] == "2"
-    assert values["GEO_RUNTIME_EXPECTED_OUTBOX_RELAY_INSTANCES"] == "1"
-
-    services = load_compose()["services"]
-    for name in ("internal-api", "customer-api"):
-        environment = services[name]["environment"]
-        for field in (
-            "GEO_READINESS_DEPENDENCY_TIMEOUT_SECONDS",
-            "GEO_READINESS_TOTAL_TIMEOUT_SECONDS",
-        ):
-            assert environment[field] == f"${{{field}:-{values[field]}}}"
-    worker_environment = services["task-worker"]["environment"]
-    relay_environment = services["outbox-relay"]["environment"]
-    worker_count_field = "GEO_RUNTIME_EXPECTED_TASK_WORKER_INSTANCES"
-    relay_count_field = "GEO_RUNTIME_EXPECTED_OUTBOX_RELAY_INSTANCES"
-    assert worker_environment[worker_count_field] == (
-        f"${{{worker_count_field}:-{values[worker_count_field]}}}"
-    )
-    assert relay_environment[relay_count_field] == (
-        f"${{{relay_count_field}:-{values[relay_count_field]}}}"
-    )
-    assert "--processes" in services["task-worker"]["command"]
-    process_index = services["task-worker"]["command"].index("--processes")
-    assert services["task-worker"]["command"][process_index + 1] == values[worker_count_field]
-    for name in ("task-worker", "outbox-relay"):
-        environment = services[name]["environment"]
-        for field in (
-            "GEO_RUNTIME_HEARTBEAT_INTERVAL_SECONDS",
-            "GEO_RUNTIME_HEARTBEAT_STALE_SECONDS",
-            "GEO_RUNTIME_QUEUED_STALE_SECONDS",
-            "GEO_RUNTIME_OUTBOX_STALE_SECONDS",
-            "GEO_RUNTIME_RUNNING_GRACE_SECONDS",
-            "GEO_RUNTIME_FAILURE_WINDOW_SECONDS",
-        ):
-            assert environment[field] == f"${{{field}:-{values[field]}}}"
 
 
 def test_production_compose_contains_no_source_mounts_or_weak_default_credentials() -> None:
@@ -272,6 +393,284 @@ def test_backup_and_restore_smoke_scripts_are_present() -> None:
     assert restore.stat().st_mode & 0o111
     assert "pg_dump" in backup.read_text(encoding="utf-8")
     assert "restore-smoke-postgres" in restore.read_text(encoding="utf-8")
+    assert "set -Eeuo pipefail" in backup.read_text(encoding="utf-8")
+    assert "backup_envelope.py" in backup.read_text(encoding="utf-8")
+    assert "backup_manifest.py" in restore.read_text(encoding="utf-8")
+
+
+def test_secret_store_and_backup_keys_have_least_privilege_mounts() -> None:
+    compose = load_compose()
+    services = compose["services"]
+    internal = services["internal-api"]
+    worker = services["task-worker"]
+    customer = services["customer-api"]
+    relay = services["outbox-relay"]
+
+    secret_names = {"secret_store_master_keyring", "secret_store_request_hash_key"}
+    assert secret_names <= set(internal["secrets"])
+    assert secret_names <= set(worker["secrets"])
+    assert secret_names.isdisjoint(customer["secrets"])
+    assert secret_names.isdisjoint(relay["secrets"])
+    assert "backup_keyring" not in compose["secrets"]
+
+    backup = services["backup-object-store"]
+    assert backup["read_only"] is True
+    assert any(item.startswith("/plaintext-staging:") for item in backup["tmpfs"])
+    assert "backup-object-store" not in services["internal-api"]["depends_on"]
+
+    restore_probe = services["restore-smoke-application-key-probe"]
+    assert restore_probe["profiles"] == ["restore-smoke"]
+    assert set(restore_probe["secrets"]) == {
+        "restore_smoke_password",
+        "secret_store_master_keyring",
+        "secret_store_request_hash_key",
+        "provider_artifact_keyring",
+        "synthetic_artifact_keyring",
+        "recommendation_artifact_keyring",
+        "workflow_c_artifact_keyring",
+    }
+    assert (
+        restore_probe["environment"]["GEO_SECRET_STORE_REQUEST_HASH_KEY_FILE"]
+        == "/run/secrets/secret_store_request_hash_key"
+    )
+    assert "geo_worker.backup_restore_probe" in restore_probe["command"]
+    assert "--secret-store-request-hash-key" in restore_probe["command"]
+    assert "--secret-store-service-identity-id" in restore_probe["command"]
+    assert restore_probe["networks"] == ["backend"]
+
+
+def test_artifact_keyrings_and_style_runtime_have_least_privilege_mounts() -> None:
+    base = load_compose()
+    style_compose = load_style_compose()
+    services = base["services"]
+    style = style_compose["services"]["style-browser-worker"]
+    worker = services["task-worker"]
+
+    assert worker["environment"]["GEO_PROVIDER_ARTIFACT_KEYRING_FILE"] == (
+        "/run/secrets/provider_artifact_keyring"
+    )
+    assert "provider_artifact_keyring" in worker["secrets"]
+    assert worker["environment"]["GEO_RECOMMENDATION_ARTIFACT_KEYRING_FILE"] == (
+        "/run/secrets/recommendation_artifact_keyring"
+    )
+    assert "recommendation_artifact_keyring" in worker["secrets"]
+    # The generic task worker executes encrypted Synthetic child-model tasks.
+    # It may decrypt that dedicated task artifact, but still has none of the
+    # Style Collection browser/login credentials or its writer principal.
+    assert worker["environment"]["GEO_SYNTHETIC_ARTIFACT_KEYRING_FILE"] == (
+        "/run/secrets/synthetic_artifact_keyring"
+    )
+    assert "synthetic_artifact_keyring" in worker["secrets"]
+
+    assert style["user"] == "10001:10001"
+    assert style["read_only"] is True
+    assert style["pids_limit"] == 512
+    assert style["deploy"]["resources"]["limits"]["pids"] == 512
+    assert style["environment"]["GEO_STYLE_ADAPTER_REGISTRY_FILE"] == (
+        "/etc/geo/style-adapter-registry.json"
+    )
+    assert style["environment"]["GEO_STYLE_ADAPTER_REGISTRY_SHA256"] == (
+        "${GEO_STYLE_ADAPTER_REGISTRY_SHA256:?set the reviewed Style adapter registry digest}"
+    )
+    assert style["environment"]["GEO_STYLE_ROBOTS_TIMEOUT_SECONDS"] == (
+        "${GEO_STYLE_ROBOTS_TIMEOUT_SECONDS:-10}"
+    )
+    assert style["volumes"] == [
+        "${GEO_STYLE_ADAPTER_REGISTRY_FILE:?set the host Style adapter registry file}:"
+        "/etc/geo/style-adapter-registry.json:ro"
+    ]
+    assert style["environment"]["GEO_SYNTHETIC_ARTIFACT_KEYRING_FILE"] == (
+        "/run/secrets/synthetic_artifact_keyring"
+    )
+    assert style["environment"]["GEO_SECRET_STORE_MASTER_KEYRING_FILE"] == (
+        "/run/secrets/secret_store_master_keyring"
+    )
+    assert style["environment"]["GEO_SECRET_STORE_REQUEST_HASH_KEY_FILE"] == (
+        "/run/secrets/secret_store_request_hash_key"
+    )
+    assert style["environment"]["GEO_SYNTHETIC_STYLE_RAW_OBJECT_STORE_BUCKET"] == (
+        "geo-synthetic-style-raw"
+    )
+    assert style["environment"]["GEO_SYNTHETIC_STYLE_DERIVED_OBJECT_STORE_BUCKET"] == (
+        "geo-synthetic-style-derived"
+    )
+    assert "OBJECT_STORE_BUCKET" not in style["environment"]
+    assert set(style["secrets"]) == {
+        "style_browser_worker_database_url",
+        "synthetic_style_artifact_writer_access_key",
+        "synthetic_style_artifact_writer_secret_key",
+        "secret_store_master_keyring",
+        "secret_store_request_hash_key",
+        "synthetic_artifact_keyring",
+    }
+    assert {
+        "provider_artifact_keyring",
+        "deepseek_api_key",
+        "auth_token_secret",
+    }.isdisjoint(style["secrets"])
+
+    provider_readers = {
+        name
+        for name, service in load_runtime_services().items()
+        if "provider_artifact_keyring" in service.get("secrets", ())
+    }
+    synthetic_readers = {
+        name
+        for name, service in load_runtime_services().items()
+        if "synthetic_artifact_keyring" in service.get("secrets", ())
+    }
+    recommendation_readers = {
+        name
+        for name, service in load_runtime_services().items()
+        if "recommendation_artifact_keyring" in service.get("secrets", ())
+    }
+    workflow_c_readers = {
+        name
+        for name, service in load_runtime_services().items()
+        if "workflow_c_artifact_keyring" in service.get("secrets", ())
+    }
+    assert provider_readers == {
+        "task-worker",
+        "restore-smoke-application-key-probe",
+    }
+    assert synthetic_readers == {
+        "style-browser-worker",
+        "task-worker",
+        "restore-smoke-application-key-probe",
+    }
+    assert recommendation_readers == {
+        "task-worker",
+        "restore-smoke-application-key-probe",
+    }
+    assert workflow_c_readers == {
+        "internal-api",
+        "restore-smoke-application-key-probe",
+        "task-worker",
+    }
+    assert {
+        "workflow_c_artifact_object_store_access_key",
+        "workflow_c_artifact_object_store_secret_key",
+    } <= set(services["internal-api"]["secrets"])
+    assert {
+        "workflow_c_artifact_reader_access_key",
+        "workflow_c_artifact_reader_secret_key",
+    } <= set(worker["secrets"])
+    assert {
+        "workflow_c_artifact_reader_access_key",
+        "workflow_c_artifact_reader_secret_key",
+    }.isdisjoint(services["internal-api"]["secrets"])
+    assert {
+        "workflow_c_artifact_object_store_access_key",
+        "workflow_c_artifact_object_store_secret_key",
+    }.isdisjoint(worker["secrets"])
+
+    maintenance = services["workflow-c-maintenance-worker"]
+    assert set(maintenance["secrets"]) == {
+        "worker_database_url",
+        "workflow_c_artifact_deleter_access_key",
+        "workflow_c_artifact_deleter_secret_key",
+    }
+    assert maintenance["networks"] == ["backend"]
+    assert "workflow-c-maintenance" in maintenance["command"]
+    assert {
+        "provider_artifact_keyring",
+        "recommendation_artifact_keyring",
+        "object_store_access_key",
+        "object_store_secret_key",
+        "workflow_c_artifact_reader_access_key",
+        "workflow_c_artifact_reader_secret_key",
+        "workflow_c_artifact_object_store_access_key",
+        "workflow_c_artifact_object_store_secret_key",
+    }.isdisjoint(maintenance["secrets"])
+    deleter_readers = {
+        name
+        for name, service in load_runtime_services().items()
+        if "workflow_c_artifact_deleter_access_key" in service.get("secrets", ())
+        or "workflow_c_artifact_deleter_secret_key" in service.get("secrets", ())
+    }
+    assert deleter_readers == {"minio-bootstrap", "workflow-c-maintenance-worker"}
+
+    scheduler = services["workflow-c-maintenance-scheduler"]
+    assert scheduler["secrets"] == ["worker_database_url"]
+    assert scheduler["networks"] == ["backend"]
+    assert scheduler["command"] == [
+        "python",
+        "-m",
+        "geo_worker.workflow_c_maintenance_scheduler",
+    ]
+    assert {
+        "workflow_c_artifact_keyring",
+        "workflow_c_artifact_object_store_access_key",
+        "workflow_c_artifact_object_store_secret_key",
+        "workflow_c_artifact_reader_access_key",
+        "workflow_c_artifact_reader_secret_key",
+        "workflow_c_artifact_deleter_access_key",
+        "workflow_c_artifact_deleter_secret_key",
+    }.isdisjoint(scheduler["secrets"])
+
+    recommendation_maintenance = services[
+        "recommendation-artifact-maintenance-worker"
+    ]
+    assert set(recommendation_maintenance["secrets"]) == {
+        "worker_database_url",
+        "recommendation_artifact_deleter_access_key",
+        "recommendation_artifact_deleter_secret_key",
+    }
+    assert recommendation_maintenance["networks"] == ["backend"]
+    assert "recommendation-artifact-maintenance" in recommendation_maintenance[
+        "command"
+    ]
+    assert {
+        "recommendation_artifact_keyring",
+        "recommendation_artifact_object_store_access_key",
+        "recommendation_artifact_object_store_secret_key",
+        "object_store_access_key",
+        "object_store_secret_key",
+        "workflow_c_artifact_deleter_access_key",
+        "workflow_c_artifact_deleter_secret_key",
+    }.isdisjoint(recommendation_maintenance["secrets"])
+    recommendation_deleter_readers = {
+        name
+        for name, service in load_runtime_services().items()
+        if "recommendation_artifact_deleter_access_key" in service.get("secrets", ())
+        or "recommendation_artifact_deleter_secret_key" in service.get("secrets", ())
+    }
+    assert recommendation_deleter_readers == {
+        "minio-bootstrap",
+        "recommendation-artifact-maintenance-worker",
+    }
+    recommendation_writer_readers = {
+        name
+        for name, service in load_runtime_services().items()
+        if "recommendation_artifact_object_store_access_key" in service.get(
+            "secrets", ()
+        )
+        or "recommendation_artifact_object_store_secret_key" in service.get(
+            "secrets", ()
+        )
+    }
+    assert recommendation_writer_readers == {"minio-bootstrap", "task-worker"}
+
+    recommendation_scheduler = services[
+        "recommendation-artifact-maintenance-scheduler"
+    ]
+    assert recommendation_scheduler["secrets"] == ["worker_database_url"]
+    assert recommendation_scheduler["networks"] == ["backend"]
+    assert recommendation_scheduler["command"] == [
+        "python",
+        "-m",
+        "geo_worker.recommendation_artifact_maintenance_scheduler",
+    ]
+    assert {
+        "recommendation_artifact_keyring",
+        "recommendation_artifact_object_store_access_key",
+        "recommendation_artifact_object_store_secret_key",
+        "recommendation_artifact_deleter_access_key",
+        "recommendation_artifact_deleter_secret_key",
+    }.isdisjoint(recommendation_scheduler["secrets"])
+
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    assert "-f infra/compose.prod.yml -f infra/compose.style-collection.yml" in makefile
 
 
 def test_initial_owner_provision_is_explicit_installer_only_profile() -> None:

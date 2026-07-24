@@ -38,7 +38,11 @@ class PostgresOutboxStore:
             ).fetchall()
             return tuple(
                 OutboxMessage(
-                    id=row[0], project_id=row[1], job_id=row[2], topic=row[3], payload=row[4]
+                    id=_row_value(row, 0, "id"),
+                    project_id=_row_value(row, 1, "project_id"),
+                    job_id=_row_value(row, 2, "job_id"),
+                    topic=_row_value(row, 3, "topic"),
+                    payload=_row_value(row, 4, "payload"),
                 )
                 for row in rows
             )
@@ -66,4 +70,17 @@ class PostgresOutboxStore:
             rows = connection.execute(
                 "SELECT * FROM geo_worker_recoverable_jobs(%s)", (batch_size,)
             ).fetchall()
-            return tuple(RecoverableJob(row[0], row[1], row[2]) for row in rows)
+            return tuple(
+                RecoverableJob(
+                    job_id=_row_value(row, 0, "job_id"),
+                    project_id=_row_value(row, 1, "project_id"),
+                    kind=_row_value(row, 2, "kind"),
+                )
+                for row in rows
+            )
+
+
+def _row_value(row: object, index: int, name: str) -> Any:
+    if isinstance(row, Mapping):
+        return row[name]
+    return row[index]  # type: ignore[index]

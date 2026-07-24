@@ -26,9 +26,7 @@ SNAPSHOT_NAMES = {
 }
 MANIFEST_NAME = "manifest.json"
 MANIFEST_VERSION = 1
-HTTP_METHODS = frozenset(
-    {"get", "put", "post", "delete", "options", "head", "patch", "trace"}
-)
+HTTP_METHODS = frozenset({"get", "put", "post", "delete", "options", "head", "patch", "trace"})
 MUTATING_METHODS = frozenset({"post", "put", "patch", "delete"})
 SHARED_REQUIRED_OPERATIONS = (
     ("get", "/health"),
@@ -53,7 +51,10 @@ INTERNAL_REQUIRED_OPERATIONS = (
     ("get", "/v1/projects/{project_id}/monitoring-protocols"),
     ("post", "/v1/projects/{project_id}/monitoring-protocols/{protocol_id}/query-suggestions"),
     ("get", "/v1/projects/{project_id}/monitoring-protocols/{protocol_id}/query-suggestions"),
-    ("post", "/v1/projects/{project_id}/monitoring-protocols/{protocol_id}/query-suggestions/{suggestion_id}/approve"),
+    (
+        "post",
+        "/v1/projects/{project_id}/monitoring-protocols/{protocol_id}/query-suggestions/{suggestion_id}/approve",
+    ),
     ("post", "/v1/projects/{project_id}/monitoring-protocols/{protocol_id}/approve"),
     ("post", "/v1/projects/{project_id}/monitoring-protocols/{protocol_id}/freeze"),
     ("post", "/v1/projects/{project_id}/monitoring-protocols/{protocol_id}/observations"),
@@ -69,6 +70,143 @@ INTERNAL_REQUIRED_OPERATIONS = (
     ("post", "/v1/engineering/reconciliations"),
     ("post", "/v1/engineering/health-probes"),
     ("post", "/v1/integrations/github/events"),
+    ("post", "/v1/projects/{project_id}/recommendations"),
+    ("get", "/v1/projects/{project_id}/recommendations"),
+    ("post", "/v1/projects/{project_id}/recommendations/generation-jobs"),
+    ("get", "/v1/projects/{project_id}/recommendations/generation-jobs/{job_id}"),
+    (
+        "post",
+        "/v1/projects/{project_id}/recommendations/generation-jobs/{job_id}/cancel",
+    ),
+    ("get", "/v1/projects/{project_id}/recommendations/{recommendation_id}"),
+    ("post", "/v1/projects/{project_id}/recommendations/{recommendation_id}/submit"),
+    ("post", "/v1/projects/{project_id}/recommendations/{recommendation_id}/review"),
+    ("post", "/v1/projects/{project_id}/recommendations/{recommendation_id}/approve"),
+    ("post", "/v1/projects/{project_id}/recommendations/{recommendation_id}/reject"),
+    ("post", "/v1/projects/{project_id}/recommendations/{recommendation_id}/expire"),
+    (
+        "post",
+        "/v1/projects/{project_id}/recommendations/{recommendation_id}/reconcile-stale",
+    ),
+    (
+        "post",
+        "/v1/projects/{project_id}/recommendations/{recommendation_id}/drafts/{draft_id}/prepare-action",
+    ),
+    ("get", "/v1/projects/{project_id}/synthetic-lab/authorizations"),
+    (
+        "post",
+        "/v1/projects/{project_id}/synthetic-lab/authorizations/{authorization_id}/decision",
+    ),
+    (
+        "post",
+        "/v1/projects/{project_id}/synthetic-lab/authorizations/{authorization_id}/revoke",
+    ),
+    ("get", "/v1/projects/{project_id}/synthetic-lab/style-sources"),
+    ("post", "/v1/projects/{project_id}/synthetic-lab/style-sources"),
+    (
+        "post",
+        "/v1/projects/{project_id}/synthetic-lab/sample-import-previews",
+    ),
+    ("get", "/v1/projects/{project_id}/synthetic-lab/style-profiles"),
+    ("post", "/v1/projects/{project_id}/synthetic-lab/style-profiles"),
+    (
+        "post",
+        "/v1/projects/{project_id}/synthetic-lab/style-profiles/{profile_version_id}/freeze",
+    ),
+    ("get", "/v1/projects/{project_id}/synthetic-lab/review-suites"),
+    ("post", "/v1/projects/{project_id}/synthetic-lab/review-suites"),
+    (
+        "get",
+        "/v1/projects/{project_id}/synthetic-lab/review-suites/{suite_version_id}/cases",
+    ),
+    (
+        "post",
+        "/v1/projects/{project_id}/synthetic-lab/review-suites/{suite_version_id}/cases",
+    ),
+    (
+        "post",
+        "/v1/projects/{project_id}/synthetic-lab/review-suites/{suite_version_id}/freeze",
+    ),
+    ("post", "/v1/projects/{project_id}/synthetic-lab/jobs/generation"),
+    ("post", "/v1/projects/{project_id}/synthetic-lab/jobs/revision"),
+    ("post", "/v1/projects/{project_id}/synthetic-lab/jobs/corpus"),
+    ("post", "/v1/projects/{project_id}/synthetic-lab/jobs/offline-experiment"),
+    ("get", "/v1/projects/{project_id}/synthetic-lab/jobs/{job_id}"),
+    ("post", "/v1/projects/{project_id}/synthetic-lab/jobs/{job_id}/cancel"),
+    ("post", "/v1/projects/{project_id}/synthetic-lab/jobs/{job_id}/finalize"),
+    ("get", "/v1/projects/{project_id}/sampling/suite-input-options"),
+    ("get", "/v1/projects/{project_id}/sampling/admission-options"),
+    ("get", "/v1/projects/{project_id}/sampling/suites"),
+    ("post", "/v1/projects/{project_id}/sampling/suites"),
+    ("post", "/v1/projects/{project_id}/sampling/admission-policies"),
+    ("get", "/v1/projects/{project_id}/sampling/admission-policies"),
+    ("get", "/v1/projects/{project_id}/sampling/admission-policies/{policy_id}"),
+    (
+        "post",
+        "/v1/projects/{project_id}/sampling/admission-policies/{policy_id}/submit",
+    ),
+    (
+        "post",
+        "/v1/projects/{project_id}/sampling/admission-policies/{policy_id}/approve",
+    ),
+    (
+        "post",
+        "/v1/projects/{project_id}/sampling/admission-policies/{policy_id}/assess-no-basis",
+    ),
+    (
+        "post",
+        "/v1/projects/{project_id}/sampling/admission-policies/{policy_id}/revoke",
+    ),
+    ("get", "/v1/projects/{project_id}/sampling/suites/{suite_id}"),
+    ("post", "/v1/projects/{project_id}/sampling/suites/{suite_id}/runs"),
+    ("get", "/v1/projects/{project_id}/sampling/runs"),
+    ("get", "/v1/projects/{project_id}/sampling/runs/{run_id}"),
+    ("post", "/v1/projects/{project_id}/sampling/runs/{run_id}/cancel"),
+    ("post", "/v1/projects/{project_id}/sampling/runs/{run_id}/enqueue-ready"),
+    (
+        "post",
+        "/v1/projects/{project_id}/sampling/runs/{run_id}/tasks/{task_id}/manual-evidence",
+    ),
+    ("get", "/v1/projects/{project_id}/sampling/manual-evidence-imports"),
+    (
+        "get",
+        "/v1/projects/{project_id}/sampling/manual-evidence-imports/{import_id}",
+    ),
+    (
+        "post",
+        "/v1/projects/{project_id}/sampling/manual-evidence-imports/{import_id}/approve",
+    ),
+    (
+        "post",
+        "/v1/projects/{project_id}/sampling/manual-evidence-imports/{import_id}/reject",
+    ),
+    (
+        "post",
+        "/v1/projects/{project_id}/sampling/runs/{run_id}/tasks/{task_id}/attempts",
+    ),
+    ("post", "/v1/projects/{project_id}/sampling/attempts/{attempt_id}/cancel"),
+    (
+        "post",
+        "/v1/projects/{project_id}/analysis/semantic-metrics/compute",
+    ),
+    ("get", "/v1/projects/{project_id}/analysis/semantic-metrics"),
+    ("get", "/v1/projects/{project_id}/analysis/semantic-metrics/{snapshot_hash}"),
+    ("post", "/v1/projects/{project_id}/analysis/comparisons/analyze"),
+    ("get", "/v1/projects/{project_id}/analysis/comparisons"),
+    ("get", "/v1/projects/{project_id}/analysis/comparisons/{family_hash}"),
+    ("post", "/v1/projects/{project_id}/analysis/drift/compute"),
+    ("get", "/v1/projects/{project_id}/analysis/drift"),
+    ("get", "/v1/projects/{project_id}/analysis/drift/{report_hash}"),
+    ("get", "/v1/projects/{project_id}/alerts"),
+    ("get", "/v1/projects/{project_id}/alerts/{alert_id}"),
+    ("get", "/v1/projects/{project_id}/alerts/{alert_id}/notifications"),
+    ("post", "/v1/projects/{project_id}/alerts/{alert_id}/acknowledge"),
+    ("post", "/v1/projects/{project_id}/alerts/{alert_id}/suppress"),
+    ("post", "/v1/projects/{project_id}/alerts/{alert_id}/unsuppress"),
+    ("post", "/v1/projects/{project_id}/alerts/{alert_id}/resolve"),
+    ("get", "/v1/projects/{project_id}/prompt-bootstrap"),
+    ("post", "/v1/projects/{project_id}/prompt-bootstrap/evaluate"),
+    ("post", "/v1/projects/{project_id}/prompt-bootstrap/drafts"),
 )
 CUSTOMER_REQUIRED_OPERATIONS = (
     ("get", "/v1/projects/{project_id}/geo/summary"),
@@ -81,6 +219,12 @@ CUSTOMER_FORBIDDEN_PREFIXES = (
     "/v1/engineering",
     "/v1/dev-tools",
     "/v1/integrations/github",
+    "/v1/projects/{project_id}/recommendations",
+    "/v1/projects/{project_id}/synthetic-lab",
+    "/v1/projects/{project_id}/sampling",
+    "/v1/projects/{project_id}/analysis",
+    "/v1/projects/{project_id}/alerts",
+    "/v1/projects/{project_id}/prompt-bootstrap",
 )
 CUSTOMER_ALLOWED_WRITES = frozenset(
     {
@@ -300,7 +444,9 @@ def verify_contracts(*, output_dir: Path) -> dict[str, Any]:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Export or verify both stable GEO OpenAPI contracts")
+    parser = argparse.ArgumentParser(
+        description="Export or verify both stable GEO OpenAPI contracts"
+    )
     parser.add_argument("command", choices=("export", "verify"))
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     return parser

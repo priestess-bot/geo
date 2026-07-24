@@ -1,0 +1,468 @@
+{
+  "$defs": {
+    "Applicability": {
+      "enum": [
+        "required",
+        "not_applicable"
+      ],
+      "title": "Applicability",
+      "type": "string"
+    },
+    "CapabilityFlags": {
+      "additionalProperties": false,
+      "properties": {
+        "calls_external_service": {
+          "default": false,
+          "title": "Calls External Service",
+          "type": "boolean"
+        },
+        "changes_api": {
+          "default": false,
+          "title": "Changes Api",
+          "type": "boolean"
+        },
+        "changes_database": {
+          "default": false,
+          "title": "Changes Database",
+          "type": "boolean"
+        },
+        "handles_sensitive_data": {
+          "default": false,
+          "title": "Handles Sensitive Data",
+          "type": "boolean"
+        },
+        "has_customer_surface": {
+          "default": false,
+          "title": "Has Customer Surface",
+          "type": "boolean"
+        },
+        "has_runtime_operation": {
+          "default": false,
+          "title": "Has Runtime Operation",
+          "type": "boolean"
+        },
+        "requires_live_evidence": {
+          "default": false,
+          "title": "Requires Live Evidence",
+          "type": "boolean"
+        }
+      },
+      "title": "CapabilityFlags",
+      "type": "object"
+    },
+    "CheckStatus": {
+      "enum": [
+        "NOT_STARTED",
+        "IN_PROGRESS",
+        "BLOCKED_EXTERNAL",
+        "READY_FOR_REVIEW",
+        "ACCEPTED",
+        "REJECTED"
+      ],
+      "title": "CheckStatus",
+      "type": "string"
+    },
+    "ClauseAssessment": {
+      "additionalProperties": false,
+      "properties": {
+        "applicability": {
+          "$ref": "#/$defs/Applicability"
+        },
+        "clause_id": {
+          "title": "Clause Id",
+          "type": "string"
+        },
+        "evidence": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/EvidenceReference"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "not_applicable": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NotApplicableDecision"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "outcome": {
+          "$ref": "#/$defs/ClauseOutcome"
+        }
+      },
+      "required": [
+        "clause_id",
+        "applicability",
+        "outcome"
+      ],
+      "title": "ClauseAssessment",
+      "type": "object"
+    },
+    "ClauseOutcome": {
+      "enum": [
+        "pending",
+        "passed",
+        "failed"
+      ],
+      "title": "ClauseOutcome",
+      "type": "string"
+    },
+    "EvidenceReference": {
+      "additionalProperties": false,
+      "properties": {
+        "sha256": {
+          "title": "Sha256",
+          "type": "string"
+        },
+        "uri": {
+          "title": "Uri",
+          "type": "string"
+        }
+      },
+      "required": [
+        "uri",
+        "sha256"
+      ],
+      "title": "EvidenceReference",
+      "type": "object"
+    },
+    "EvidenceScope": {
+      "additionalProperties": false,
+      "properties": {
+        "account_reference": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Account Reference"
+        },
+        "campaign_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Campaign Id"
+        },
+        "connection_scope": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Connection Scope"
+        },
+        "environment": {
+          "title": "Environment",
+          "type": "string"
+        },
+        "project_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Project Id"
+        }
+      },
+      "required": [
+        "environment"
+      ],
+      "title": "EvidenceScope",
+      "type": "object"
+    },
+    "NotApplicableDecision": {
+      "additionalProperties": false,
+      "properties": {
+        "decided_at": {
+          "format": "date-time",
+          "title": "Decided At",
+          "type": "string"
+        },
+        "decided_by": {
+          "title": "Decided By",
+          "type": "string"
+        },
+        "evidence": {
+          "$ref": "#/$defs/EvidenceReference"
+        },
+        "independent_verifier": {
+          "title": "Independent Verifier",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "type_or_flag_basis": {
+          "title": "Type Or Flag Basis",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reason",
+        "type_or_flag_basis",
+        "decided_by",
+        "independent_verifier",
+        "decided_at",
+        "evidence"
+      ],
+      "title": "NotApplicableDecision",
+      "type": "object"
+    },
+    "WorkPackageEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter_releases": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Adapter Releases",
+          "type": "array"
+        },
+        "capabilities": {
+          "$ref": "#/$defs/CapabilityFlags"
+        },
+        "check_id": {
+          "title": "Check Id",
+          "type": "string"
+        },
+        "clauses": {
+          "items": {
+            "$ref": "#/$defs/ClauseAssessment"
+          },
+          "title": "Clauses",
+          "type": "array"
+        },
+        "deviation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Deviation"
+        },
+        "ended_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Ended At"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/EvidenceReference"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "git_commits": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Git Commits",
+          "type": "array"
+        },
+        "live_run_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Live Run Ids",
+          "type": "array"
+        },
+        "migration_revisions": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Migration Revisions",
+          "type": "array"
+        },
+        "openapi_contracts": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Openapi Contracts",
+          "type": "array"
+        },
+        "owner": {
+          "title": "Owner",
+          "type": "string"
+        },
+        "result": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Result"
+        },
+        "scope": {
+          "$ref": "#/$defs/EvidenceScope"
+        },
+        "started_at": {
+          "format": "date-time",
+          "title": "Started At",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/CheckStatus"
+        },
+        "test_run_ids": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Test Run Ids",
+          "type": "array"
+        },
+        "verifier": {
+          "title": "Verifier",
+          "type": "string"
+        },
+        "work_package_type": {
+          "$ref": "#/$defs/WorkPackageType"
+        }
+      },
+      "required": [
+        "check_id",
+        "work_package_type",
+        "capabilities",
+        "status",
+        "owner",
+        "verifier",
+        "started_at",
+        "ended_at",
+        "scope",
+        "clauses",
+        "git_commits",
+        "evidence"
+      ],
+      "title": "WorkPackageEvidence",
+      "type": "object"
+    },
+    "WorkPackageType": {
+      "enum": [
+        "governance_control",
+        "contract_migration",
+        "runtime_feature",
+        "external_integration",
+        "verification_release"
+      ],
+      "title": "WorkPackageType",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "checks": {
+      "items": {
+        "$ref": "#/$defs/WorkPackageEvidence"
+      },
+      "title": "Checks",
+      "type": "array"
+    },
+    "environment_fingerprint": {
+      "title": "Environment Fingerprint",
+      "type": "string"
+    },
+    "excluded_workstreams": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Excluded Workstreams",
+      "type": "array"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "git_commit": {
+      "title": "Git Commit",
+      "type": "string"
+    },
+    "included_workstreams": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Included Workstreams",
+      "type": "array"
+    },
+    "manifest_hash": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Manifest Hash"
+    },
+    "roadmap_id": {
+      "title": "Roadmap Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "stage": {
+      "title": "Stage",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "roadmap_id",
+    "stage",
+    "environment_fingerprint",
+    "generated_at",
+    "git_commit",
+    "included_workstreams",
+    "excluded_workstreams",
+    "checks"
+  ],
+  "title": "RoadmapEvidenceManifest",
+  "type": "object"
+}

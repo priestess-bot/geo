@@ -1,0 +1,29 @@
+ARG GEO_UV_IMAGE
+FROM ${GEO_UV_IMAGE} AS uv
+
+ARG GEO_STYLE_BROWSER_BASE_IMAGE
+FROM ${GEO_STYLE_BROWSER_BASE_IMAGE}
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH=/app/.venv/bin:$PATH \
+    PYTHONPATH=/app:/app/packages/geo_core:/app/apps/api \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
+WORKDIR /app
+
+COPY --from=uv /uv /uvx /bin/
+COPY pyproject.toml uv.lock alembic.ini ./
+COPY packages/geo_core ./packages/geo_core
+COPY apps/api ./apps/api
+
+RUN --mount=type=cache,id=geo-style-browser-uv,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --extra style-browser && \
+    python -m playwright install --with-deps chromium && \
+    addgroup --system --gid 10001 geo && \
+    adduser --system --uid 10001 --ingroup geo --home /nonexistent --no-create-home geo && \
+    chown -R geo:geo /app /ms-playwright
+
+USER 10001:10001
+
+CMD ["python", "-m", "geo_style_worker.entrypoint"]

@@ -414,6 +414,9 @@ dependencies = [
 f019-rag = [
     { name = "llama-index-core" },
 ]
+style-browser = [
+    { name = "playwright" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -436,12 +439,13 @@ requires-dist = [
     { name = "geo-core", editable = "packages/geo_core" },
     { name = "httpx", specifier = "==0.28.1" },
     { name = "llama-index-core", marker = "extra == 'f019-rag'", specifier = "==0.14.23" },
+    { name = "playwright", marker = "extra == 'style-browser'", specifier = "==1.60.0" },
     { name = "psycopg", extras = ["binary"], specifier = "==3.3.4" },
     { name = "pydantic", specifier = "==2.12.4" },
     { name = "pypdf", specifier = "==5.9.0" },
     { name = "uvicorn", extras = ["standard"], specifier = "==0.34.0" },
 ]
-provides-extras = ["f019-rag"]
+provides-extras = ["f019-rag", "style-browser"]
 
 [package.metadata.requires-dev]
 dev = [

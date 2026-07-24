@@ -1,0 +1,132 @@
+{
+  "api_targets": {
+    "duration_minutes": 30,
+    "overall_p99_ms_max": 2000,
+    "read_p95_ms_max": 500,
+    "read_rps": 20,
+    "unexpected_5xx_percent_max": "1.0",
+    "write_p95_ms_max": 800,
+    "write_rps": 5
+  },
+  "computation_targets": {
+    "metric_observation_count": 1000,
+    "metric_recompute_p95_seconds_max": 30,
+    "metric_recompute_sample_count": 10
+  },
+  "correctness_targets": {
+    "cross_project_reads_max": 0,
+    "duplicate_terminal_states_max": 0,
+    "hash_mismatches_max": 0,
+    "lost_outbox_messages_max": 0
+  },
+  "excluded_dimensions": {
+    "browser_capture_worker": "owned by excluded Workstream B",
+    "connector_sync": "owned by excluded Workstream B",
+    "consumer_ui_browser_capture": "owned by excluded Workstream B",
+    "page_artifact_bundle": "roadmap target is specific to excluded browser capture"
+  },
+  "excluded_workstreams": [
+    "B"
+  ],
+  "included_workstreams": [
+    "A",
+    "C",
+    "D"
+  ],
+  "process_topology": {
+    "api_database_pool_max_size": 10,
+    "fixed_resource_limits_required": true,
+    "outbox_relays": 1,
+    "resource_limits": {
+      "admin-web": {
+        "cpus": "1.0",
+        "memory": "1G"
+      },
+      "customer-api": {
+        "cpus": "1.0",
+        "memory": "1G"
+      },
+      "customer-web": {
+        "cpus": "1.0",
+        "memory": "1G"
+      },
+      "internal-api": {
+        "cpus": "2.0",
+        "memory": "2G"
+      },
+      "minio": {
+        "cpus": "1.5",
+        "memory": "2G"
+      },
+      "outbox-relay": {
+        "cpus": "0.5",
+        "memory": "512M"
+      },
+      "postgres": {
+        "cpus": "2.0",
+        "memory": "4G"
+      },
+      "recommendation-artifact-maintenance-scheduler": {
+        "cpus": "0.25",
+        "memory": "256M"
+      },
+      "recommendation-artifact-maintenance-worker": {
+        "cpus": "0.5",
+        "memory": "512M"
+      },
+      "style-browser-worker": {
+        "cpus": "1.5",
+        "memory": "2G"
+      },
+      "synthetic-artifact-maintenance-worker": {
+        "cpus": "0.5",
+        "memory": "512M"
+      },
+      "task-worker": {
+        "cpus": "4.0",
+        "memory": "8G"
+      },
+      "valkey": {
+        "cpus": "0.5",
+        "memory": "512M"
+      },
+      "workflow-c-maintenance-scheduler": {
+        "cpus": "0.25",
+        "memory": "256M"
+      },
+      "workflow-c-maintenance-worker": {
+        "cpus": "0.5",
+        "memory": "512M"
+      }
+    },
+    "style_browser_workers": 1,
+    "task_workers": 4
+  },
+  "profile_hash": "6cdfa3309c1f893cbdf99d509b23e15917fa31c250b5fc0fa872edc39d5cc5fa",
+  "profile_id": "performance-profile-v1-non-b",
+  "project_load": {
+    "concurrently_active": 4,
+    "total_projects": 10
+  },
+  "provider_sampling": {
+    "concurrent_runs": 4,
+    "concurrently_eligible_tasks": 400,
+    "planned_tasks_per_run": 1000
+  },
+  "queue_targets": {
+    "drain_seconds_max": 600,
+    "eligible_dispatch_p95_seconds_max": 60,
+    "outbox_publish_p95_seconds_max": 5,
+    "queue_age_seconds_max": 300
+  },
+  "replay_external_calls": true,
+  "schema_version": "geo-performance-profile-v1",
+  "synthetic_lab": {
+    "approved_samples_per_channel": 200,
+    "candidates_per_case": 4,
+    "experiment_arms": 3,
+    "fixed_cases_per_channel": 40,
+    "repeats_per_question_per_arm": 10,
+    "style_channels": 9
+  }
+}

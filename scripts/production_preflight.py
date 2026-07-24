@@ -1,94 +1,56 @@
+"""Fail-closed production configuration preflight CLI and public API."""
+
 from __future__ import annotations
 
 import argparse
-import re
-import stat
-import sys
-from dataclasses import dataclass
+import os
 from pathlib import Path
-from urllib.parse import urlsplit
+import re
+import sys
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-IMAGE_FIELDS = (
-    "GEO_POSTGRES_IMAGE",
-    "GEO_MINIO_IMAGE",
-    "GEO_MINIO_MC_IMAGE",
-    "GEO_VALKEY_IMAGE",
-    "GEO_API_IMAGE",
-    "GEO_ADMIN_WEB_IMAGE",
-    "GEO_CUSTOMER_WEB_IMAGE",
-    "GEO_OTEL_COLLECTOR_IMAGE",
+from scripts.production_preflight_contracts import (  # noqa: E402
+    APPLICATION_SECRET_GID,
+    APPLICATION_SECRET_UID,
+    CONFIG_FILE_FIELDS,
+    HTTPS_URL_FIELDS,
+    IMAGE_FIELDS,
+    INTEGER_BOUNDS,
+    PreflightIssue,
+    REQUIRED_TEXT_FIELDS,
+    SECRET_FILE_FIELDS,
+)
+from scripts.production_preflight_alerts import validate_alert_runtime  # noqa: E402
+from scripts.production_preflight_runtime import (  # noqa: E402
+    required_value,
+    validate_runtime_values,
+)
+from scripts.production_preflight_secrets import (  # noqa: E402
+    validate_key_domain_isolation,
+    validate_key_material,
+    validate_secret_file,
+)
+from scripts.production_preflight_storage import (  # noqa: E402
+    filesystem_type,
+    validate_backup_root,
+    validate_restore_tmpfs_root,
+)
+from scripts.production_preflight_style import (  # noqa: E402
+    read_style_registry_file,
+    validate_style_registry,
+    validate_style_runtime,
 )
 
-SECRET_FILE_FIELDS = (
-    "GEO_POSTGRES_INSTALLER_PASSWORD_FILE",
-    "GEO_INSTALLER_DATABASE_URL_FILE",
-    "GEO_DATABASE_URL_FILE",
-    "GEO_WORKER_DATABASE_URL_FILE",
-    "GEO_AUTH_TOKEN_SECRET_FILE",
-    "GEO_MINIO_ROOT_USER_FILE",
-    "GEO_MINIO_ROOT_PASSWORD_FILE",
-    "GEO_OBJECT_STORE_ACCESS_KEY_FILE",
-    "GEO_OBJECT_STORE_SECRET_KEY_FILE",
-    "GEO_OBJECT_STORE_BACKUP_ACCESS_KEY_FILE",
-    "GEO_OBJECT_STORE_BACKUP_SECRET_KEY_FILE",
-    "GEO_OBJECT_STORE_RESTORE_ACCESS_KEY_FILE",
-    "GEO_OBJECT_STORE_RESTORE_SECRET_KEY_FILE",
-    "GEO_OBJECT_STORE_RETENTION_ACCESS_KEY_FILE",
-    "GEO_OBJECT_STORE_RETENTION_SECRET_KEY_FILE",
-    "GEO_DEEPSEEK_API_KEY_FILE",
-    "GEO_RESTORE_SMOKE_PASSWORD_FILE",
-)
-
-HTTPS_URL_FIELDS = (
-    "GEO_OIDC_DISCOVERY_URL",
-    "GEO_JWT_ISSUER",
-    "GEO_ADMIN_OIDC_LOGIN_URL",
-    "GEO_ADMIN_OIDC_LOGOUT_URL",
-    "GEO_ADMIN_WEB_BASE_URL",
-    "GEO_CUSTOMER_WEB_BASE_URL",
-)
-
-REQUIRED_TEXT_FIELDS = (
-    "GEO_JWT_AUDIENCE",
-    "GEO_ADMIN_OIDC_ALLOWED_ORIGINS",
-    "GEO_RELEASE_VERSION",
-    "GEO_BACKUP_ROOT",
-)
-
-INTEGER_BOUNDS = {
-    "GEO_READINESS_DEPENDENCY_TIMEOUT_SECONDS": (1, 10),
-    "GEO_READINESS_TOTAL_TIMEOUT_SECONDS": (2, 30),
-    "GEO_RUNTIME_HEARTBEAT_INTERVAL_SECONDS": (1, 300),
-    "GEO_RUNTIME_HEARTBEAT_STALE_SECONDS": (1, 3_600),
-    "GEO_RUNTIME_QUEUED_STALE_SECONDS": (1, 604_800),
-    "GEO_RUNTIME_OUTBOX_STALE_SECONDS": (1, 604_800),
-    "GEO_RUNTIME_RUNNING_GRACE_SECONDS": (0, 86_400),
-    "GEO_RUNTIME_FAILURE_WINDOW_SECONDS": (1, 2_592_000),
-    "GEO_RUNTIME_EXPECTED_TASK_WORKER_INSTANCES": (1, 100),
-    "GEO_RUNTIME_EXPECTED_OUTBOX_RELAY_INSTANCES": (1, 100),
-}
 
 _ENV_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-_IMAGE_DIGEST = re.compile(r"^[^\s@]+@sha256:[0-9a-fA-F]{64}$")
-_RELEASE_VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
-_RELEASE_PLACEHOLDERS = {"development", "latest", "replace", "unknown"}
-_MAX_SECRET_BYTES = 65_536
-
-
-@dataclass(frozen=True, order=True)
-class PreflightIssue:
-    code: str
-    field: str
-
-
-def _unquote(value: str) -> str:
-    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
-        return value[1:-1]
-    return value
 
 
 def parse_env_file(path: Path) -> tuple[dict[str, str], list[PreflightIssue]]:
+    """Parse an env file without executing shell syntax."""
+
     try:
         raw = path.read_text(encoding="utf-8")
     except FileNotFoundError:
@@ -119,173 +81,53 @@ def parse_env_file(path: Path) -> tuple[dict[str, str], list[PreflightIssue]]:
     return values, issues
 
 
-def _required_value(
-    values: dict[str, str], field: str, issues: list[PreflightIssue]
-) -> str | None:
-    if field not in values:
-        issues.append(PreflightIssue("CONFIG_REQUIRED", field))
-        return None
-    value = values[field].strip()
-    if not value:
-        issues.append(PreflightIssue("CONFIG_EMPTY", field))
-        return None
-    return value
-
-
-def _valid_https_url(value: str, *, origin_only: bool = False) -> bool:
-    if any(character.isspace() for character in value):
-        return False
-    try:
-        parsed = urlsplit(value)
-        port = parsed.port
-    except ValueError:
-        return False
-    if (
-        parsed.scheme.casefold() != "https"
-        or not parsed.hostname
-        or parsed.username is not None
-        or parsed.password is not None
-        or parsed.fragment
-        or port is None and parsed.netloc.endswith(":")
-        or port == 0
-    ):
-        return False
-    if origin_only and (parsed.path not in {"", "/"} or parsed.query):
-        return False
-    return True
-
-
-def _validate_secret_file(field: str, value: str, issues: list[PreflightIssue]) -> None:
-    path = Path(value)
-    if not path.is_absolute():
-        issues.append(PreflightIssue("SECRET_PATH_NOT_ABSOLUTE", field))
-        return
-    try:
-        metadata = path.stat()
-    except FileNotFoundError:
-        issues.append(PreflightIssue("SECRET_FILE_NOT_FOUND", field))
-        return
-    except OSError:
-        issues.append(PreflightIssue("SECRET_FILE_UNREADABLE", field))
-        return
-    if not stat.S_ISREG(metadata.st_mode):
-        issues.append(PreflightIssue("SECRET_FILE_NOT_REGULAR", field))
-    try:
-        with path.open("rb") as secret_file:
-            content = secret_file.read(_MAX_SECRET_BYTES + 1)
-    except OSError:
-        issues.append(PreflightIssue("SECRET_FILE_UNREADABLE", field))
-    else:
-        if len(content) > _MAX_SECRET_BYTES:
-            issues.append(PreflightIssue("SECRET_FILE_TOO_LARGE", field))
-        elif not content.strip():
-            issues.append(PreflightIssue("SECRET_FILE_EMPTY", field))
-    mode = stat.S_IMODE(metadata.st_mode)
-    if mode & 0o077 or not mode & stat.S_IRUSR:
-        issues.append(PreflightIssue("SECRET_FILE_PERMISSIONS", field))
-
-
-def _validate_backup_root(value: str, issues: list[PreflightIssue]) -> None:
-    path = Path(value)
-    if not path.is_absolute():
-        issues.append(PreflightIssue("DIRECTORY_PATH_NOT_ABSOLUTE", "GEO_BACKUP_ROOT"))
-        return
-    try:
-        metadata = path.stat()
-    except FileNotFoundError:
-        issues.append(PreflightIssue("DIRECTORY_NOT_FOUND", "GEO_BACKUP_ROOT"))
-        return
-    except OSError:
-        issues.append(PreflightIssue("DIRECTORY_UNREADABLE", "GEO_BACKUP_ROOT"))
-        return
-    if not stat.S_ISDIR(metadata.st_mode):
-        issues.append(PreflightIssue("DIRECTORY_NOT_DIRECTORY", "GEO_BACKUP_ROOT"))
-    elif not stat.S_IMODE(metadata.st_mode) & 0o222:
-        issues.append(PreflightIssue("DIRECTORY_NOT_WRITABLE", "GEO_BACKUP_ROOT"))
-
-
 def validate_environment(values: dict[str, str]) -> list[PreflightIssue]:
+    """Validate one already parsed production environment."""
+
     issues: list[PreflightIssue] = []
+    secret_contents: dict[str, bytes] = {}
+    style_registry_content: bytes | None = None
 
-    for field in IMAGE_FIELDS:
-        value = _required_value(values, field, issues)
-        if value is not None and (
-            not _IMAGE_DIGEST.fullmatch(value) or "replace" in value.casefold()
-        ):
-            issues.append(PreflightIssue("IMAGE_NOT_DIGEST_PINNED", field))
-
+    validate_runtime_values(values, issues)
     for field in SECRET_FILE_FIELDS:
-        value = _required_value(values, field, issues)
-        if value is not None:
-            _validate_secret_file(field, value, issues)
-
-    for field in HTTPS_URL_FIELDS:
-        value = _required_value(values, field, issues)
-        if value is not None and not _valid_https_url(value):
-            issues.append(PreflightIssue("URL_NOT_HTTPS", field))
-
-    for field in REQUIRED_TEXT_FIELDS:
-        _required_value(values, field, issues)
-
-    origins = values.get("GEO_ADMIN_OIDC_ALLOWED_ORIGINS", "").strip()
-    if origins:
-        origin_values = [origin.strip() for origin in origins.split(",")]
-        if any(
-            not origin or not _valid_https_url(origin, origin_only=True)
-            for origin in origin_values
-        ):
-            issues.append(
-                PreflightIssue("ORIGIN_NOT_HTTPS", "GEO_ADMIN_OIDC_ALLOWED_ORIGINS")
-            )
-
-    release_version = values.get("GEO_RELEASE_VERSION", "").strip()
-    if release_version and (
-        not _RELEASE_VERSION.fullmatch(release_version)
-        or release_version.casefold() in _RELEASE_PLACEHOLDERS
-        or "replace" in release_version.casefold()
-    ):
-        issues.append(PreflightIssue("RELEASE_VERSION_INVALID", "GEO_RELEASE_VERSION"))
-
-    parsed_integers: dict[str, int] = {}
-    for field, (minimum, maximum) in INTEGER_BOUNDS.items():
-        value = _required_value(values, field, issues)
+        value = required_value(values, field, issues)
         if value is None:
             continue
-        try:
-            parsed = int(value)
-        except ValueError:
-            issues.append(PreflightIssue("THRESHOLD_NOT_INTEGER", field))
-            continue
-        parsed_integers[field] = parsed
-        if not minimum <= parsed <= maximum:
-            issues.append(PreflightIssue("THRESHOLD_OUT_OF_RANGE", field))
+        content = validate_secret_file(
+            field,
+            value,
+            issues,
+            application_owner=_application_secret_owner,
+            current_euid=os.geteuid(),
+        )
+        if content is not None:
+            secret_contents[field] = content
 
-    dependency_timeout = parsed_integers.get("GEO_READINESS_DEPENDENCY_TIMEOUT_SECONDS")
-    total_timeout = parsed_integers.get("GEO_READINESS_TOTAL_TIMEOUT_SECONDS")
-    if dependency_timeout is not None and total_timeout is not None:
-        if total_timeout <= dependency_timeout:
-            issues.append(
-                PreflightIssue(
-                    "READINESS_TOTAL_NOT_GREATER",
-                    "GEO_READINESS_TOTAL_TIMEOUT_SECONDS",
-                )
-            )
-
-    heartbeat_interval = parsed_integers.get("GEO_RUNTIME_HEARTBEAT_INTERVAL_SECONDS")
-    heartbeat_stale = parsed_integers.get("GEO_RUNTIME_HEARTBEAT_STALE_SECONDS")
-    if heartbeat_interval is not None and heartbeat_stale is not None:
-        if heartbeat_stale <= heartbeat_interval:
-            issues.append(
-                PreflightIssue(
-                    "HEARTBEAT_STALE_NOT_GREATER",
-                    "GEO_RUNTIME_HEARTBEAT_STALE_SECONDS",
-                )
+    for field in CONFIG_FILE_FIELDS:
+        value = required_value(values, field, issues)
+        if value is not None:
+            style_registry_content = read_style_registry_file(
+                value,
+                issues,
+                current_euid=os.geteuid(),
             )
 
     backup_root = values.get("GEO_BACKUP_ROOT", "").strip()
     if backup_root:
-        _validate_backup_root(backup_root, issues)
-
+        validate_backup_root(backup_root, issues, current_euid=os.geteuid())
+    restore_tmpfs_root = values.get("GEO_RESTORE_TMPFS_ROOT", "").strip()
+    if restore_tmpfs_root:
+        validate_restore_tmpfs_root(
+            restore_tmpfs_root,
+            issues,
+            current_euid=os.geteuid(),
+            filesystem_resolver=_filesystem_type,
+        )
+    validate_key_material(values, secret_contents, issues)
+    validate_key_domain_isolation(values, secret_contents, issues)
+    validate_style_runtime(values, issues)
+    validate_style_registry(values, style_registry_content, issues)
+    validate_alert_runtime(values, issues)
     return sorted(set(issues))
 
 
@@ -305,7 +147,6 @@ def main(argv: list[str] | None = None) -> int:
         help="Production env file to validate without evaluating shell syntax.",
     )
     args = parser.parse_args(argv)
-
     issues = run_preflight(args.env_file)
     if issues:
         for issue in issues:
@@ -313,6 +154,37 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     print("OK code=PRODUCTION_PREFLIGHT_PASSED field=CONFIG")
     return 0
+
+
+def _unquote(value: str) -> str:
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+        return value[1:-1]
+    return value
+
+
+def _application_secret_owner() -> tuple[int, int]:
+    return APPLICATION_SECRET_UID, APPLICATION_SECRET_GID
+
+
+def _filesystem_type(path: Path) -> str | None:
+    return filesystem_type(path)
+
+
+__all__ = [
+    "APPLICATION_SECRET_GID",
+    "APPLICATION_SECRET_UID",
+    "CONFIG_FILE_FIELDS",
+    "HTTPS_URL_FIELDS",
+    "IMAGE_FIELDS",
+    "INTEGER_BOUNDS",
+    "PreflightIssue",
+    "REQUIRED_TEXT_FIELDS",
+    "SECRET_FILE_FIELDS",
+    "main",
+    "parse_env_file",
+    "run_preflight",
+    "validate_environment",
+]
 
 
 if __name__ == "__main__":

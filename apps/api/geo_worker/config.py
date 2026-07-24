@@ -71,6 +71,45 @@ def runtime_expected_instances(service_type: ServiceType) -> int:
         return bounded_int_setting(
             "GEO_RUNTIME_EXPECTED_TASK_WORKER_INSTANCES", 1, minimum=1, maximum=100
         )
+    if service_type == "style_browser_worker":
+        return bounded_int_setting(
+            "GEO_RUNTIME_EXPECTED_STYLE_BROWSER_WORKER_INSTANCES", 1, minimum=1, maximum=20
+        )
+    if service_type == "synthetic_artifact_maintenance_worker":
+        return bounded_int_setting(
+            "GEO_RUNTIME_EXPECTED_SYNTHETIC_ARTIFACT_MAINTENANCE_WORKER_INSTANCES",
+            1,
+            minimum=1,
+            maximum=1,
+        )
+    if service_type == "workflow_c_maintenance_worker":
+        return bounded_int_setting(
+            "GEO_RUNTIME_EXPECTED_WORKFLOW_C_MAINTENANCE_WORKER_INSTANCES",
+            1,
+            minimum=1,
+            maximum=1,
+        )
+    if service_type == "workflow_c_maintenance_scheduler":
+        return bounded_int_setting(
+            "GEO_RUNTIME_EXPECTED_WORKFLOW_C_MAINTENANCE_SCHEDULER_INSTANCES",
+            1,
+            minimum=1,
+            maximum=1,
+        )
+    if service_type == "recommendation_artifact_maintenance_worker":
+        return bounded_int_setting(
+            "GEO_RUNTIME_EXPECTED_RECOMMENDATION_ARTIFACT_MAINTENANCE_WORKER_INSTANCES",
+            1,
+            minimum=1,
+            maximum=1,
+        )
+    if service_type == "recommendation_artifact_maintenance_scheduler":
+        return bounded_int_setting(
+            "GEO_RUNTIME_EXPECTED_RECOMMENDATION_ARTIFACT_MAINTENANCE_SCHEDULER_INSTANCES",
+            1,
+            minimum=1,
+            maximum=1,
+        )
     return bounded_int_setting(
         "GEO_RUNTIME_EXPECTED_OUTBOX_RELAY_INSTANCES", 1, minimum=1, maximum=100
     )

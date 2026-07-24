@@ -2,9 +2,18 @@ SHELL := /bin/bash
 
 DEV_COMPOSE := docker compose -f infra/docker-compose.yml
 PROD_ENV ?= infra/production.env
-PROD_COMPOSE := docker compose --env-file $(PROD_ENV) -f infra/compose.prod.yml
+PROD_COMPOSE := docker compose --env-file $(PROD_ENV) -f infra/compose.prod.yml -f infra/compose.style-collection.yml
 
 .PHONY: bootstrap install lint python-typecheck web-typecheck typecheck quality test test-migrated test-integration test-integration-required \
+	roadmap-evidence-schema roadmap-evidence-verify roadmap-performance-profile \
+	model-gateway-runtime-schema model-gateway-runtime-template \
+	model-gateway-runtime-verify model-gateway-runtime-register \
+	roadmap-performance-workload \
+	roadmap-performance-api-load \
+	roadmap-performance-api-load-verify \
+	roadmap-non-b-fault-contracts \
+	roadmap-performance-result-schema roadmap-performance-result-verify \
+	scan-backup-plaintext scan-repository-secrets \
 	openapi-snapshots openapi-contracts \
 	web-contracts web-build test-browser-chromium geo-acceptance-inline geo-staging-smoke \
 	test-infra-contracts test-infra-runtime api-internal api-customer admin-web customer-web \
@@ -24,11 +33,25 @@ install:
 	corepack pnpm install --frozen-lockfile
 
 lint:
-	uv run ruff check apps/api/geo_api packages/geo_core/geo_core \
+	uv run ruff check apps/api/geo_api apps/api/geo_worker packages/geo_core/geo_core \
 		scripts/export_stable_openapi.py scripts/provision_database.py \
+		scripts/alembic_sql_ledger.py \
+		scripts/backup_envelope.py scripts/backup_manifest.py \
+		scripts/backup_restore_gate_seed*.py \
+		scripts/scan_backup_plaintext_artifacts.py \
+		scripts/scan_repository_secrets.py \
+		scripts/verify_minio_backup.py scripts/write_backup_restore_receipt.py \
+		scripts/write_restore_acl_rls_canary.py \
 		scripts/provision_dev_database.py scripts/provision_initial_owner.py \
-		scripts/production_preflight.py scripts/geo_staging_smoke.py \
+		scripts/production_preflight*.py scripts/geo_staging_smoke.py \
 		scripts/run_infra_runtime_tests.py scripts/verify_geo_acceptance_report.py \
+		scripts/roadmap_evidence_manifest.py \
+		scripts/roadmap_performance_profile.py \
+		scripts/roadmap_performance_workload.py \
+		scripts/run_roadmap_api_load.py \
+		scripts/roadmap_performance_api_load.py \
+		scripts/run_non_b_fault_contracts.py \
+		scripts/roadmap_performance_result.py \
 		infra/db/alembic/checksums.py
 
 python-typecheck:
@@ -36,28 +59,109 @@ python-typecheck:
 		apps/api/geo_api \
 		apps/api/geo_worker \
 		packages/geo_core/geo_core \
-		scripts/export_stable_openapi.py \
+		scripts/backup_envelope.py \
+		scripts/alembic_sql_ledger.py \
+		scripts/backup_manifest.py \
+		scripts/backup_restore_gate_seed*.py \
+		scripts/scan_backup_plaintext_artifacts.py \
+		scripts/scan_repository_secrets.py \
+		scripts/verify_minio_backup.py \
+		scripts/write_backup_restore_receipt.py \
+		scripts/write_restore_acl_rls_canary.py \
 		scripts/provision_database.py \
 		scripts/provision_dev_database.py \
 		scripts/provision_initial_owner.py \
-		scripts/production_preflight.py \
+		scripts/production_preflight*.py \
 		scripts/geo_staging_smoke.py \
 		scripts/run_infra_runtime_tests.py \
-		scripts/verify_geo_acceptance_report.py
+		scripts/verify_geo_acceptance_report.py \
+		scripts/roadmap_evidence_manifest.py \
+		scripts/roadmap_performance_profile.py \
+		scripts/roadmap_performance_workload.py \
+		scripts/run_roadmap_api_load.py \
+		scripts/roadmap_performance_api_load.py \
+		scripts/run_non_b_fault_contracts.py \
+		scripts/roadmap_performance_result.py
 
 web-typecheck:
 	corepack pnpm typecheck
 
 typecheck: python-typecheck web-typecheck
 
-quality: lint typecheck
+quality: lint typecheck scan-backup-plaintext scan-repository-secrets
 	uv run pytest -q tests/architecture
 
 test:
 	uv run pytest
 
 test-migrated:
-	uv run pytest -q -m "not integration and not live and not browser"
+	uv run pytest -q --strict-markers --fail-on-skipped \
+		--ci-summary-label="Required non-live test suite" \
+		-m "not integration and not live and not browser"
+
+roadmap-evidence-schema:
+	uv run python scripts/roadmap_evidence_manifest.py export-schema \
+		contracts/roadmap/roadmap-evidence-manifest-v1.schema.json
+
+roadmap-evidence-verify:
+	@test -n "$$MANIFEST" || (echo "MANIFEST is required" >&2; exit 2)
+	uv run python scripts/roadmap_evidence_manifest.py verify "$$MANIFEST"
+
+model-gateway-runtime-schema:
+	uv run python scripts/model_gateway_runtime_manifest.py export-schema \
+		--output contracts/roadmap/model-gateway-runtime-manifest-v2.schema.json
+
+model-gateway-runtime-template:
+	uv run python scripts/model_gateway_runtime_manifest.py export-template \
+		--output contracts/roadmap/model-gateway-runtime-manifest-six-provider.template.json
+
+model-gateway-runtime-verify:
+	@test -n "$$MANIFEST" || (echo "MANIFEST is required" >&2; exit 2)
+	uv run python scripts/model_gateway_runtime_manifest.py verify \
+		--manifest "$$MANIFEST" --require-six-providers
+
+model-gateway-runtime-register:
+	@test -n "$$MANIFEST" || (echo "MANIFEST is required" >&2; exit 2)
+	uv run python scripts/model_gateway_runtime_manifest.py register \
+		--manifest "$$MANIFEST" --require-six-providers
+
+roadmap-performance-profile:
+	uv run python scripts/roadmap_performance_profile.py export \
+		benchmarks/roadmap/performance-profile-v1-non-b.json
+
+roadmap-performance-workload:
+	uv run python scripts/roadmap_performance_workload.py export \
+		benchmarks/roadmap/performance-workload-v1-non-b.json
+
+roadmap-performance-api-load:
+	@test -n "$(PERF_ARGS)" || (echo "PERF_ARGS is required" >&2; exit 2)
+	uv run python scripts/run_roadmap_api_load.py $(PERF_ARGS)
+
+roadmap-performance-api-load-verify:
+	@test -n "$(PERF_API_REPORT_ARGS)" || (echo "PERF_API_REPORT_ARGS is required" >&2; exit 2)
+	uv run python scripts/roadmap_performance_api_load.py $(PERF_API_REPORT_ARGS)
+
+roadmap-non-b-fault-contracts:
+	uv run python scripts/run_non_b_fault_contracts.py --execute
+
+roadmap-performance-result-verify:
+	@test -n "$$RESULT" || (echo "RESULT is required" >&2; exit 2)
+	uv run python scripts/roadmap_performance_result.py verify "$$RESULT"
+
+roadmap-performance-result-schema:
+	uv run python scripts/roadmap_performance_result.py export-schema \
+		contracts/roadmap/performance-result-v1.schema.json
+
+scan-backup-plaintext:
+	@if test -d artifacts; then \
+		uv run python scripts/scan_backup_plaintext_artifacts.py \
+			--allow-disclosed-legacy artifacts; \
+	else \
+		echo "OK code=BACKUP_PLAINTEXT_SCAN_PASSED artifacts_directory=absent"; \
+	fi
+
+scan-repository-secrets:
+	uv run python scripts/scan_repository_secrets.py
 
 openapi-snapshots:
 	uv run python scripts/export_stable_openapi.py export
@@ -112,6 +216,7 @@ test-infra-contracts:
 	uv run pytest -q --strict-markers --fail-on-skipped \
 		--ci-summary-label="Infrastructure contracts" \
 		tests/infra/test_development_compose.py \
+		tests/infra/test_authenticated_backup_scripts.py \
 		tests/infra/test_production_compose.py \
 		tests/infra/test_production_preflight.py
 
@@ -196,15 +301,16 @@ customer-image:
 
 images: api-image admin-image customer-image
 
-backup:
+backup: production-preflight
 	scripts/backup_geo_data.sh $(PROD_ENV)
 
-restore-smoke:
-	@test -n "$$BACKUP_FILE" || (echo "BACKUP_FILE is required" >&2; exit 2)
-	scripts/restore_geo_backup_smoke.sh $(PROD_ENV) "$$BACKUP_FILE"
+restore-smoke: production-preflight
+	@test -n "$${BACKUP_DIR:-$${BACKUP_FILE:-}}" || \
+		(echo "BACKUP_DIR (or legacy BACKUP_FILE pointing to a directory) is required" >&2; exit 2)
+	scripts/restore_geo_backup_smoke.sh $(PROD_ENV) "$${BACKUP_DIR:-$$BACKUP_FILE}"
 
 backup-restore-dev-smoke:
-	scripts/backup_restore_development_smoke.sh
+	scripts/run_authenticated_restore_gate.sh
 
 deepseek-live:
 	@test "$$GEO_RUN_LIVE_DEEPSEEK_TEST" = "1" || \

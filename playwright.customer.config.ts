@@ -12,8 +12,10 @@ const noProxy = Array.from(new Set([...configuredNoProxy, ...localNoProxy])).joi
 process.env.NO_PROXY = noProxy;
 process.env.no_proxy = noProxy;
 
-const webBaseUrl = process.env.PLAYWRIGHT_CUSTOMER_BASE_URL || "http://127.0.0.1:3101";
-const apiBaseUrl = process.env.PLAYWRIGHT_CUSTOMER_FIXTURE_API_URL
+const configuredWebBaseUrl = process.env.PLAYWRIGHT_CUSTOMER_BASE_URL?.trim();
+const customerServerPort = localPort("PLAYWRIGHT_CUSTOMER_SERVER_PORT", "3101");
+const webBaseUrl = configuredWebBaseUrl || `http://127.0.0.1:${customerServerPort}`;
+const apiBaseUrl = process.env.PLAYWRIGHT_CUSTOMER_FIXTURE_API_URL?.trim()
   || "http://127.0.0.1:3198";
 const apiPort = new URL(apiBaseUrl).port || "3198";
 
@@ -38,7 +40,7 @@ export default defineConfig({
       use: { ...devices["iPhone 13"], browserName: "chromium" }
     }
   ],
-  webServer: process.env.PLAYWRIGHT_CUSTOMER_BASE_URL
+  webServer: configuredWebBaseUrl
     ? undefined
     : [
         {
@@ -48,10 +50,19 @@ export default defineConfig({
           timeout: 30_000
         },
         {
-          command: `API_CUSTOMER_BASE_URL=${apiBaseUrl} corepack pnpm --filter geo-production-customer-web exec next dev -H 127.0.0.1 -p 3101`,
+          command: `API_CUSTOMER_BASE_URL=${apiBaseUrl} corepack pnpm --filter geo-production-customer-web exec next dev -H 127.0.0.1 -p ${customerServerPort}`,
           url: webBaseUrl,
           reuseExistingServer: false,
           timeout: 120_000
         }
       ]
 });
+
+function localPort(name: string, fallback: string): string {
+  const value = process.env[name]?.trim() || fallback;
+  const port = Number(value);
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+    throw new Error(`${name} must be a TCP port`);
+  }
+  return String(port);
+}

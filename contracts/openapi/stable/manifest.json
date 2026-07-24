@@ -6,20 +6,20 @@
       "api_version": "1.0.0",
       "document_version": "3.1.0",
       "file": "customer.openapi.json",
-      "operation_count": 15,
-      "path_count": 15,
-      "sha256": "b49d5ed9117fcea52de874233a9e2d770cf4276adc524284360a3d4364589763",
-      "size_bytes": 102013
+      "operation_count": 16,
+      "path_count": 16,
+      "sha256": "3182e744edd3226ae61504dab822ae2f29369dcd23e05892fc7e69a6e5a756c6",
+      "size_bytes": 108841
     },
     "internal": {
       "api_title": "GEO Internal API",
       "api_version": "1.0.0",
       "document_version": "3.1.0",
       "file": "internal.openapi.json",
-      "operation_count": 144,
-      "path_count": 112,
-      "sha256": "ced1a47f9a328a7132ec104929edbc597efa8f7cccb082a8dd59c9893f93f854",
-      "size_bytes": 1030286
+      "operation_count": 254,
+      "path_count": 209,
+      "sha256": "2c3167f3844a67a672c309c0540747d8d7adbe0186cbe683316c4a3e9313b141",
+      "size_bytes": 1876621
     }
   }
 }

@@ -1,0 +1,75 @@
+{
+  "schema_version": 2,
+  "manifest_id": "91000000-0000-0000-0000-000000000001",
+  "project_id": "92000000-0000-0000-0000-000000000001",
+  "prepared_by": "93000000-0000-0000-0000-000000000001",
+  "prepared_at": "2026-07-23T09:55:00+00:00",
+  "approved_by": "93000000-0000-0000-0000-000000000002",
+  "approved_at": "2026-07-23T10:00:00+00:00",
+  "approval_evidence_reference": "minio://geo-governance/model-gateway/approval/openai-v2.json",
+  "approval_evidence_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "provider_runtimes": [
+    {
+      "provider": "openai",
+      "adapter_release_id": "openai-responses-au-sampling-v1",
+      "interface_contract_version": "geo-provider-sampling-v1",
+      "expected_capture_method": "provider_api",
+      "capabilities": {
+        "external_training_allowed": false,
+        "structured_output": true,
+        "data_retention_days": 30,
+        "policy_reference": "provider-policy:openai:2026-07-23",
+        "supports_seed": false,
+        "supports_tools": true,
+        "supports_search": true,
+        "supports_citations": true,
+        "supports_idempotency": false,
+        "supports_structured_output_with_tools": true
+      },
+      "data_policy": {
+        "storage": "allowed",
+        "cache": "allowed",
+        "display": "allowed",
+        "redistribution": "prohibited",
+        "retention_days": 30,
+        "terms_reference": "https://platform.openai.com/docs/data-usage-policies",
+        "terms_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "capability_evidence_reference": "minio://geo-governance/model-gateway/openai/capabilities-v1.json",
+      "capability_evidence_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "allowed_purposes": [
+        "geo_measurement"
+      ],
+      "allowed_search_modes": [
+        "web"
+      ],
+      "secret_reference_id": "94000000-0000-0000-0000-000000000001",
+      "microsoft": null
+    }
+  ],
+  "model_releases": [
+    {
+      "provider": "openai",
+      "adapter_release_id": "openai-responses-au-sampling-v1",
+      "model_release_id": "openai-gpt-au-sampling-v1",
+      "configured_model": "gpt-5-mini",
+      "reported_model_policy": "require_present",
+      "allowed_reported_models": []
+    }
+  ],
+  "project_policy": {
+    "policy_version_id": "95000000-0000-0000-0000-000000000001",
+    "version": 1,
+    "previous_version_id": null,
+    "external_training_allowed": false,
+    "structured_output_required": true,
+    "allowed_providers": [
+      "openai"
+    ],
+    "allowed_adapter_release_ids": [
+      "openai-responses-au-sampling-v1"
+    ],
+    "maximum_paid_calls": 1000,
+    "maximum_concurrent_calls": 8
+  }
+}

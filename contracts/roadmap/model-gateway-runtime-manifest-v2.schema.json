@@ -1,0 +1,484 @@
+{
+  "$defs": {
+    "capabilities": {
+      "additionalProperties": false,
+      "properties": {
+        "data_retention_days": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "external_training_allowed": {
+          "type": "boolean"
+        },
+        "policy_reference": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "structured_output": {
+          "const": true
+        },
+        "supports_citations": {
+          "type": "boolean"
+        },
+        "supports_idempotency": {
+          "type": "boolean"
+        },
+        "supports_search": {
+          "type": "boolean"
+        },
+        "supports_seed": {
+          "type": "boolean"
+        },
+        "supports_structured_output_with_tools": {
+          "type": "boolean"
+        },
+        "supports_tools": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "external_training_allowed",
+        "structured_output",
+        "data_retention_days",
+        "policy_reference",
+        "supports_seed",
+        "supports_tools",
+        "supports_search",
+        "supports_citations",
+        "supports_idempotency",
+        "supports_structured_output_with_tools"
+      ],
+      "type": "object"
+    },
+    "data_policy": {
+      "additionalProperties": false,
+      "properties": {
+        "cache": {
+          "enum": [
+            "allowed",
+            "prohibited"
+          ]
+        },
+        "display": {
+          "enum": [
+            "allowed",
+            "prohibited"
+          ]
+        },
+        "redistribution": {
+          "enum": [
+            "allowed",
+            "prohibited"
+          ]
+        },
+        "retention_days": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "storage": {
+          "enum": [
+            "allowed",
+            "prohibited"
+          ]
+        },
+        "terms_reference": {
+          "pattern": "^(?:https|minio|s3)://[^\\s?#]+(?:#[^\\s]*)?$",
+          "type": "string"
+        },
+        "terms_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "storage",
+        "cache",
+        "display",
+        "redistribution",
+        "retention_days",
+        "terms_reference",
+        "terms_sha256"
+      ],
+      "type": "object"
+    },
+    "microsoft": {
+      "additionalProperties": false,
+      "properties": {
+        "agent_name": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "agent_version": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "endpoint": {
+          "format": "uri",
+          "pattern": "^https://",
+          "type": "string"
+        },
+        "language": {
+          "pattern": "^[a-z]{2,3}$",
+          "type": "string"
+        },
+        "market": {
+          "pattern": "^[a-z]{2,3}-[A-Z]{2}$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "endpoint",
+        "agent_name",
+        "agent_version",
+        "market",
+        "language"
+      ],
+      "type": "object"
+    },
+    "model_release": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter_release_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "allowed_reported_models": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "configured_model": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "model_release_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "provider": {
+          "enum": [
+            "deepseek",
+            "openai",
+            "kimi",
+            "gemini",
+            "perplexity",
+            "microsoft"
+          ]
+        },
+        "reported_model_policy": {
+          "enum": [
+            "record_only",
+            "require_present",
+            "exact",
+            "allowlist"
+          ]
+        }
+      },
+      "required": [
+        "provider",
+        "adapter_release_id",
+        "model_release_id",
+        "configured_model",
+        "reported_model_policy",
+        "allowed_reported_models"
+      ],
+      "type": "object"
+    },
+    "project_policy": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_adapter_release_ids": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "allowed_providers": {
+          "items": {
+            "enum": [
+              "deepseek",
+              "openai",
+              "kimi",
+              "gemini",
+              "perplexity",
+              "microsoft"
+            ]
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "external_training_allowed": {
+          "type": "boolean"
+        },
+        "maximum_concurrent_calls": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "maximum_paid_calls": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "policy_version_id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "previous_version_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "structured_output_required": {
+          "const": true
+        },
+        "version": {
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "policy_version_id",
+        "version",
+        "previous_version_id",
+        "external_training_allowed",
+        "structured_output_required",
+        "allowed_providers",
+        "allowed_adapter_release_ids",
+        "maximum_paid_calls",
+        "maximum_concurrent_calls"
+      ],
+      "type": "object"
+    },
+    "provider_runtime": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "else": {
+            "properties": {
+              "expected_capture_method": {
+                "const": "provider_api"
+              },
+              "microsoft": {
+                "type": "null"
+              }
+            }
+          },
+          "if": {
+            "properties": {
+              "provider": {
+                "const": "microsoft"
+              }
+            },
+            "required": [
+              "provider"
+            ]
+          },
+          "then": {
+            "properties": {
+              "expected_capture_method": {
+                "const": "proxy_grounded_api"
+              },
+              "microsoft": {
+                "$ref": "#/$defs/microsoft"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "adapter_release_id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "allowed_purposes": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "allowed_search_modes": {
+          "items": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "minItems": 1,
+          "type": "array",
+          "uniqueItems": true
+        },
+        "capabilities": {
+          "$ref": "#/$defs/capabilities"
+        },
+        "capability_evidence_reference": {
+          "pattern": "^(?:https|minio|s3)://[^\\s?#]+(?:#[^\\s]*)?$",
+          "type": "string"
+        },
+        "capability_evidence_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "data_policy": {
+          "$ref": "#/$defs/data_policy"
+        },
+        "expected_capture_method": {
+          "enum": [
+            "provider_api",
+            "proxy_grounded_api"
+          ]
+        },
+        "interface_contract_version": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "microsoft": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/microsoft"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "provider": {
+          "enum": [
+            "deepseek",
+            "openai",
+            "kimi",
+            "gemini",
+            "perplexity",
+            "microsoft"
+          ]
+        },
+        "secret_reference_id": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "provider",
+        "adapter_release_id",
+        "interface_contract_version",
+        "expected_capture_method",
+        "capabilities",
+        "data_policy",
+        "capability_evidence_reference",
+        "capability_evidence_sha256",
+        "allowed_purposes",
+        "allowed_search_modes",
+        "secret_reference_id",
+        "microsoft"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://geo.local/contracts/model-gateway-runtime-manifest-v2.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "approval_evidence_reference": {
+      "pattern": "^(?:https|minio|s3)://[^\\s?#]+(?:#[^\\s]*)?$",
+      "type": "string"
+    },
+    "approval_evidence_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "approved_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "approved_by": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "manifest_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "model_releases": {
+      "items": {
+        "$ref": "#/$defs/model_release"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "prepared_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "prepared_by": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "project_id": {
+      "format": "uuid",
+      "type": "string"
+    },
+    "project_policy": {
+      "$ref": "#/$defs/project_policy"
+    },
+    "provider_runtimes": {
+      "items": {
+        "$ref": "#/$defs/provider_runtime"
+      },
+      "maxItems": 6,
+      "minItems": 1,
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 2
+    }
+  },
+  "required": [
+    "schema_version",
+    "manifest_id",
+    "project_id",
+    "prepared_by",
+    "prepared_at",
+    "approved_by",
+    "approved_at",
+    "approval_evidence_reference",
+    "approval_evidence_sha256",
+    "provider_runtimes",
+    "model_releases",
+    "project_policy"
+  ],
+  "title": "GEO Model Gateway Runtime Manifest v2",
+  "type": "object"
+}

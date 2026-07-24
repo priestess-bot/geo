@@ -20,6 +20,9 @@ dependencies = [
 f019-rag = [
     "llama-index-core==0.14.23",
 ]
+style-browser = [
+    "playwright==1.60.0",
+]
 
 [tool.uv.sources]
 geo-core = { workspace = true }
@@ -62,3 +65,7 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 no_implicit_optional = true
 check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = ["llama_index.*"]
+ignore_missing_imports = true

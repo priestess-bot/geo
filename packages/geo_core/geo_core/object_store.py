@@ -90,6 +90,12 @@ class S3CompatibleObjectStore:
             raise ObjectStoreError(f"Bucket {action} failed: status={status} body={body[:200]!r}")
         self._bucket_ready = True
 
+    def uri_for_key(self, key: str) -> str:
+        normalized = key.strip().lstrip("/")
+        if not normalized:
+            raise ObjectStoreError("Object key is required")
+        return f"s3://{self.bucket}/{normalized}"
+
     def put_s3_uri(
         self,
         *,
@@ -186,6 +192,31 @@ class S3CompatibleObjectStore:
             content_type=None,
         )
         return status == 200
+
+    def delete_s3_uri(self, *, uri: str) -> bool:
+        bucket, key = parse_s3_uri(uri)
+        if bucket != self.bucket:
+            raise ObjectStoreError(
+                f"S3 URI bucket {bucket!r} does not match configured bucket {self.bucket!r}"
+            )
+        return self.delete_object(key=key)
+
+    def delete_object(self, *, key: str) -> bool:
+        """Delete an object idempotently; a missing object is already deleted."""
+
+        self.ensure_bucket()
+        status, _headers, body = self._signed_request(
+            method="DELETE",
+            bucket=self.bucket,
+            key=key,
+            body=b"",
+            content_type=None,
+        )
+        if status not in {200, 202, 204, 404}:
+            raise ObjectStoreError(
+                f"Object deletion failed: key={key} status={status} body={body[:200]!r}"
+            )
+        return True
 
     def _signed_request(
         self,

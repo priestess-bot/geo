@@ -1,0 +1,134 @@
+{
+  "api_schedule": {
+    "duration_seconds": 1800,
+    "read_rps": 20,
+    "total_read_requests": 36000,
+    "total_write_requests": 9000,
+    "write_rps": 5
+  },
+  "excluded_workstreams": [
+    "B"
+  ],
+  "external_call_mode": "frozen_recording_replay",
+  "included_workstreams": [
+    "A",
+    "C",
+    "D"
+  ],
+  "performance_profile_hash": "6cdfa3309c1f893cbdf99d509b23e15917fa31c250b5fc0fa872edc39d5cc5fa",
+  "projects": [
+    {
+      "concurrently_active": true,
+      "ordinal": 1,
+      "project_id": "6269c89f-a583-5fc7-b0f9-c63ccfa01e21"
+    },
+    {
+      "concurrently_active": true,
+      "ordinal": 2,
+      "project_id": "ad296d8b-8e8e-5b14-a65b-f9b90bcfa32b"
+    },
+    {
+      "concurrently_active": true,
+      "ordinal": 3,
+      "project_id": "0583d5f9-bf69-55ed-ac1d-52a144b89d5c"
+    },
+    {
+      "concurrently_active": true,
+      "ordinal": 4,
+      "project_id": "94c97592-1de4-546d-bff8-8c3ea6e87798"
+    },
+    {
+      "concurrently_active": false,
+      "ordinal": 5,
+      "project_id": "f35c6ac8-2993-516f-ae21-1954518f18cb"
+    },
+    {
+      "concurrently_active": false,
+      "ordinal": 6,
+      "project_id": "04898b46-eec2-5dd3-acb3-3fb9700194c4"
+    },
+    {
+      "concurrently_active": false,
+      "ordinal": 7,
+      "project_id": "b9dcc14c-1e8a-5239-8975-86fbe5951500"
+    },
+    {
+      "concurrently_active": false,
+      "ordinal": 8,
+      "project_id": "e8c332d6-eb73-52c8-a13d-b5e15e0d5443"
+    },
+    {
+      "concurrently_active": false,
+      "ordinal": 9,
+      "project_id": "feab6c38-c6b1-55d0-b680-37c2609a094e"
+    },
+    {
+      "concurrently_active": false,
+      "ordinal": 10,
+      "project_id": "b7cca36d-b476-511b-a374-884c0e8b6658"
+    }
+  ],
+  "sampling_runs": [
+    {
+      "capture_method": "provider_api",
+      "immediately_eligible_task_count": 100,
+      "planned_task_count": 1000,
+      "project_id": "6269c89f-a583-5fc7-b0f9-c63ccfa01e21",
+      "provider": "openai",
+      "replay_fixture_id": "recording:openai:performance-v1",
+      "run_id": "01236f7f-e6d1-5314-a297-d0e902652f19",
+      "surface": "web_search"
+    },
+    {
+      "capture_method": "provider_api",
+      "immediately_eligible_task_count": 100,
+      "planned_task_count": 1000,
+      "project_id": "ad296d8b-8e8e-5b14-a65b-f9b90bcfa32b",
+      "provider": "gemini",
+      "replay_fixture_id": "recording:gemini:performance-v1",
+      "run_id": "87d6dab1-61d7-5f51-9a75-6dfe0223e4c5",
+      "surface": "google_search_grounding"
+    },
+    {
+      "capture_method": "provider_api",
+      "immediately_eligible_task_count": 100,
+      "planned_task_count": 1000,
+      "project_id": "0583d5f9-bf69-55ed-ac1d-52a144b89d5c",
+      "provider": "perplexity",
+      "replay_fixture_id": "recording:perplexity:performance-v1",
+      "run_id": "7c5eb600-3b1c-52b1-8e0a-0c3e7a19ddea",
+      "surface": "sonar"
+    },
+    {
+      "capture_method": "proxy_grounded_api",
+      "immediately_eligible_task_count": 100,
+      "planned_task_count": 1000,
+      "project_id": "94c97592-1de4-546d-bff8-8c3ea6e87798",
+      "provider": "microsoft",
+      "replay_fixture_id": "recording:microsoft:performance-v1",
+      "run_id": "0cf866a4-9060-5954-8b7c-a1eb72be8753",
+      "surface": "bing_grounding"
+    }
+  ],
+  "schema_version": "geo-performance-workload-v1",
+  "synthetic": {
+    "approved_samples_per_channel": 200,
+    "candidates_per_case": 4,
+    "channels": [
+      "owned_site",
+      "amazon",
+      "youtube",
+      "tiktok",
+      "instagram",
+      "productreview",
+      "reddit",
+      "ozbargain",
+      "quora"
+    ],
+    "experiment_arms": 3,
+    "fixed_cases_per_channel": 40,
+    "repeats_per_question_per_arm": 10
+  },
+  "workload_hash": "6c32898e620eaf4fb78ecbde35cf6c3df826dd669a297f505d887fc8e46997e2",
+  "workload_id": "performance-workload-v1-non-b"
+}

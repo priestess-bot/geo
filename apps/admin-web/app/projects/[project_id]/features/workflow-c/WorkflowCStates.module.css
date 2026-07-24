@@ -1,0 +1,54 @@
+.loadingShell,
+.errorPage {
+  display: grid;
+  gap: 14px;
+  margin: 0 auto;
+  max-width: 1180px;
+  padding: 32px 20px;
+}
+
+.loadingBar {
+  animation: pulse 1.3s ease-in-out infinite;
+  background: #dbe3e6;
+  border-radius: 4px;
+  height: 44px;
+}
+
+.loadingBar:nth-child(2) { height: 76px; }
+.loadingBar:nth-child(3) { height: 320px; }
+
+.errorPage {
+  align-content: center;
+  min-height: 70vh;
+}
+
+.errorPage h1 { margin: 0; }
+.errorPage p { color: #586c75; line-height: 1.5; }
+.errorPage nav { align-items: center; display: flex; gap: 12px; }
+.errorPage a { color: #215c67; }
+
+.errorPage button {
+  background: #236d67;
+  border: 1px solid #236d67;
+  border-radius: 4px;
+  color: #ffffff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  min-height: 36px;
+  padding: 7px 14px;
+}
+
+.kicker {
+  color: #4f6a75;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+@keyframes pulse {
+  50% { opacity: 0.55; }
+}

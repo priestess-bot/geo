@@ -1,7 +1,11 @@
 export const workbenchTabs = [
   { id: "basic", label: "基础配置" },
   { id: "entry", label: "用户入口" },
-  { id: "prompts", label: "Prompt" },
+  { id: "prompts", label: "Prompt Programs" },
+  { id: "secrets", label: "Secret Store" },
+  { id: "synthetic-lab", label: "Synthetic Lab" },
+  { id: "recommendations", label: "Recommendations" },
+  { id: "measurement", label: "Measurement & Alerts" },
   { id: "knowledge", label: "知识库" },
   { id: "operations", label: "运营工作台" },
   { id: "geo", label: "GEO 投放" },

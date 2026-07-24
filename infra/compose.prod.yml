@@ -3,10 +3,22 @@ name: geo-production
 x-service-security: &service-security
   restart: unless-stopped
   init: true
+  pids_limit: 512
   security_opt:
     - no-new-privileges:true
   cap_drop:
     - ALL
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "3"
+  deploy:
+    resources:
+      limits:
+        cpus: "0.5"
+        memory: 512M
+        pids: 512
 
 x-api-common-environment: &api-common-environment
   GEO_DEPLOYMENT_ENVIRONMENT: production
@@ -25,6 +37,14 @@ x-internal-api-environment: &internal-api-environment
   GEO_JWT_ISSUER: ${GEO_JWT_ISSUER:?set GEO_JWT_ISSUER}
   GEO_JWT_AUDIENCE: ${GEO_JWT_AUDIENCE:?set GEO_JWT_AUDIENCE}
   GEO_AUTH_TOKEN_SECRET_FILE: /run/secrets/auth_token_secret
+  GEO_SECRET_STORE_MASTER_KEYRING_FILE: /run/secrets/secret_store_master_keyring
+  GEO_SECRET_STORE_REQUEST_HASH_KEY_FILE: /run/secrets/secret_store_request_hash_key
+  GEO_WORKFLOW_C_ARTIFACT_KEYRING_FILE: /run/secrets/workflow_c_artifact_keyring
+  GEO_WORKFLOW_C_ARTIFACT_OBJECT_STORE_ENDPOINT: http://minio:9000
+  GEO_WORKFLOW_C_ARTIFACT_OBJECT_STORE_BUCKET: geo-restricted-workflow-c-artifacts
+  GEO_WORKFLOW_C_ARTIFACT_OBJECT_STORE_ACCESS_KEY_FILE: /run/secrets/workflow_c_artifact_object_store_access_key
+  GEO_WORKFLOW_C_ARTIFACT_OBJECT_STORE_SECRET_KEY_FILE: /run/secrets/workflow_c_artifact_object_store_secret_key
+  GEO_WORKFLOW_C_ARTIFACT_OBJECT_STORE_REGION: ${GEO_OBJECT_STORE_REGION:-us-east-1}
   OBJECT_STORE_ENDPOINT: http://minio:9000
   OBJECT_STORE_BUCKET: geo-artifacts
   OBJECT_STORE_REGION: ${GEO_OBJECT_STORE_REGION:-us-east-1}
@@ -49,6 +69,11 @@ x-internal-api-secrets: &internal-api-secrets
   - object_store_access_key
   - object_store_secret_key
   - auth_token_secret
+  - secret_store_master_keyring
+  - secret_store_request_hash_key
+  - workflow_c_artifact_keyring
+  - workflow_c_artifact_object_store_access_key
+  - workflow_c_artifact_object_store_secret_key
 
 x-customer-api-secrets: &customer-api-secrets
   - database_url
@@ -96,6 +121,7 @@ services:
         limits:
           cpus: "2.0"
           memory: 4G
+          pids: 512
 
   migrate:
     <<: *service-security
@@ -139,6 +165,7 @@ services:
         limits:
           cpus: "1.5"
           memory: 2G
+          pids: 512
 
   minio-bootstrap:
     <<: *service-security
@@ -159,6 +186,23 @@ services:
       OBJECT_STORE_RESTORE_SECRET_KEY_FILE: /run/secrets/object_store_restore_secret_key
       OBJECT_STORE_RETENTION_ACCESS_KEY_FILE: /run/secrets/object_store_retention_access_key
       OBJECT_STORE_RETENTION_SECRET_KEY_FILE: /run/secrets/object_store_retention_secret_key
+      GEO_WORKFLOW_C_ARTIFACT_OBJECT_STORE_BUCKET: geo-restricted-workflow-c-artifacts
+      GEO_WORKFLOW_C_ARTIFACT_OBJECT_STORE_ACCESS_KEY_FILE: /run/secrets/workflow_c_artifact_object_store_access_key
+      GEO_WORKFLOW_C_ARTIFACT_OBJECT_STORE_SECRET_KEY_FILE: /run/secrets/workflow_c_artifact_object_store_secret_key
+      GEO_WORKFLOW_C_ARTIFACT_READER_ACCESS_KEY_FILE: /run/secrets/workflow_c_artifact_reader_access_key
+      GEO_WORKFLOW_C_ARTIFACT_READER_SECRET_KEY_FILE: /run/secrets/workflow_c_artifact_reader_secret_key
+      GEO_WORKFLOW_C_ARTIFACT_DELETER_ACCESS_KEY_FILE: /run/secrets/workflow_c_artifact_deleter_access_key
+      GEO_WORKFLOW_C_ARTIFACT_DELETER_SECRET_KEY_FILE: /run/secrets/workflow_c_artifact_deleter_secret_key
+      GEO_RECOMMENDATION_ARTIFACT_OBJECT_STORE_ACCESS_KEY_FILE: /run/secrets/recommendation_artifact_object_store_access_key
+      GEO_RECOMMENDATION_ARTIFACT_OBJECT_STORE_SECRET_KEY_FILE: /run/secrets/recommendation_artifact_object_store_secret_key
+      GEO_RECOMMENDATION_ARTIFACT_DELETER_ACCESS_KEY_FILE: /run/secrets/recommendation_artifact_deleter_access_key
+      GEO_RECOMMENDATION_ARTIFACT_DELETER_SECRET_KEY_FILE: /run/secrets/recommendation_artifact_deleter_secret_key
+      GEO_SYNTHETIC_STYLE_RAW_OBJECT_STORE_BUCKET: geo-synthetic-style-raw
+      GEO_SYNTHETIC_STYLE_DERIVED_OBJECT_STORE_BUCKET: geo-synthetic-style-derived
+      GEO_SYNTHETIC_STYLE_ARTIFACT_WRITER_ACCESS_KEY_FILE: /run/secrets/synthetic_style_artifact_writer_access_key
+      GEO_SYNTHETIC_STYLE_ARTIFACT_WRITER_SECRET_KEY_FILE: /run/secrets/synthetic_style_artifact_writer_secret_key
+      GEO_SYNTHETIC_ARTIFACT_DELETER_ACCESS_KEY_FILE: /run/secrets/synthetic_artifact_deleter_access_key
+      GEO_SYNTHETIC_ARTIFACT_DELETER_SECRET_KEY_FILE: /run/secrets/synthetic_artifact_deleter_secret_key
       MINIO_BOOTSTRAP_ENABLE_EPHEMERAL: "0"
       MINIO_POLICY_VERSION: geo-object-store-policy-v1
     secrets:
@@ -172,6 +216,20 @@ services:
       - object_store_restore_secret_key
       - object_store_retention_access_key
       - object_store_retention_secret_key
+      - workflow_c_artifact_object_store_access_key
+      - workflow_c_artifact_object_store_secret_key
+      - workflow_c_artifact_reader_access_key
+      - workflow_c_artifact_reader_secret_key
+      - workflow_c_artifact_deleter_access_key
+      - workflow_c_artifact_deleter_secret_key
+      - recommendation_artifact_object_store_access_key
+      - recommendation_artifact_object_store_secret_key
+      - recommendation_artifact_deleter_access_key
+      - recommendation_artifact_deleter_secret_key
+      - synthetic_style_artifact_writer_access_key
+      - synthetic_style_artifact_writer_secret_key
+      - synthetic_artifact_deleter_access_key
+      - synthetic_artifact_deleter_secret_key
     volumes:
       - ./minio:/bootstrap:ro
     networks:
@@ -193,6 +251,47 @@ services:
       interval: 10s
       timeout: 3s
       retries: 12
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+          pids: 512
+
+  alert-smtp-relay:
+    <<: *service-security
+    image: ${GEO_API_IMAGE:?set a digest-pinned GEO_API_IMAGE}
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,noexec,nosuid
+    environment:
+      GEO_ALERT_SMTP_UPSTREAM_HOST: ${GEO_ALERT_SMTP_UPSTREAM_HOST:?set GEO_ALERT_SMTP_UPSTREAM_HOST}
+      GEO_ALERT_SMTP_UPSTREAM_ALLOWED_HOSTS: ${GEO_ALERT_SMTP_UPSTREAM_ALLOWED_HOSTS:?set GEO_ALERT_SMTP_UPSTREAM_ALLOWED_HOSTS}
+      GEO_ALERT_SMTP_UPSTREAM_PORT: ${GEO_ALERT_SMTP_UPSTREAM_PORT:-587}
+      GEO_ALERT_SMTP_TLS_MODE: ${GEO_ALERT_SMTP_TLS_MODE:-starttls}
+      GEO_ALERT_SMTP_USERNAME_FILE: /run/secrets/alert_smtp_username
+      GEO_ALERT_SMTP_PASSWORD_FILE: /run/secrets/alert_smtp_password
+      GEO_ALERT_SMTP_SENDER: ${GEO_ALERT_SMTP_SENDER:?set GEO_ALERT_SMTP_SENDER}
+      GEO_ALERT_SMTP_RECIPIENTS: ${GEO_ALERT_SMTP_RECIPIENTS:?set GEO_ALERT_SMTP_RECIPIENTS}
+      GEO_ALERT_SMTP_RELAY_PORT: "8025"
+    secrets:
+      - alert_smtp_username
+      - alert_smtp_password
+    command: ["python", "-m", "geo_alert_smtp_relay"]
+    networks:
+      - backend
+      - egress
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('localhost', 8025), timeout=3).close()"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
+          pids: 512
 
   internal-api:
     <<: *service-security
@@ -213,6 +312,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
+          pids: 512
 
   customer-api:
     <<: *service-security
@@ -232,6 +337,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+          pids: 512
 
   task-worker:
     <<: *service-security
@@ -250,8 +361,32 @@ services:
       GEO_RUNTIME_OUTBOX_STALE_SECONDS: ${GEO_RUNTIME_OUTBOX_STALE_SECONDS:-300}
       GEO_RUNTIME_RUNNING_GRACE_SECONDS: ${GEO_RUNTIME_RUNNING_GRACE_SECONDS:-60}
       GEO_RUNTIME_FAILURE_WINDOW_SECONDS: ${GEO_RUNTIME_FAILURE_WINDOW_SECONDS:-86400}
-      GEO_RUNTIME_EXPECTED_TASK_WORKER_INSTANCES: ${GEO_RUNTIME_EXPECTED_TASK_WORKER_INSTANCES:-2}
+      GEO_RUNTIME_EXPECTED_TASK_WORKER_INSTANCES: ${GEO_RUNTIME_EXPECTED_TASK_WORKER_INSTANCES:-4}
+      GEO_MODEL_GATEWAY_WORKER_SERVICE_IDENTITY_ID: ${GEO_MODEL_GATEWAY_WORKER_SERVICE_IDENTITY_ID:?set GEO_MODEL_GATEWAY_WORKER_SERVICE_IDENTITY_ID}
       GEO_DEEPSEEK_API_KEY_FILE: /run/secrets/deepseek_api_key
+      GEO_SECRET_STORE_MASTER_KEYRING_FILE: /run/secrets/secret_store_master_keyring
+      GEO_SECRET_STORE_REQUEST_HASH_KEY_FILE: /run/secrets/secret_store_request_hash_key
+      GEO_PROVIDER_ARTIFACT_KEYRING_FILE: /run/secrets/provider_artifact_keyring
+      GEO_SYNTHETIC_ARTIFACT_KEYRING_FILE: /run/secrets/synthetic_artifact_keyring
+      GEO_RECOMMENDATION_ARTIFACT_KEYRING_FILE: /run/secrets/recommendation_artifact_keyring
+      GEO_RECOMMENDATION_ARTIFACT_OBJECT_STORE_ENDPOINT: http://minio:9000
+      GEO_RECOMMENDATION_ARTIFACT_OBJECT_STORE_BUCKET: geo-restricted-recommendation-artifacts
+      GEO_RECOMMENDATION_ARTIFACT_OBJECT_STORE_ACCESS_KEY_FILE: /run/secrets/recommendation_artifact_object_store_access_key
+      GEO_RECOMMENDATION_ARTIFACT_OBJECT_STORE_SECRET_KEY_FILE: /run/secrets/recommendation_artifact_object_store_secret_key
+      GEO_RECOMMENDATION_ARTIFACT_OBJECT_STORE_REGION: ${GEO_OBJECT_STORE_REGION:-us-east-1}
+      GEO_WORKFLOW_C_ARTIFACT_KEYRING_FILE: /run/secrets/workflow_c_artifact_keyring
+      GEO_WORKFLOW_C_ARTIFACT_READER_ENDPOINT: http://minio:9000
+      GEO_WORKFLOW_C_ARTIFACT_READER_BUCKET: geo-restricted-workflow-c-artifacts
+      GEO_WORKFLOW_C_ARTIFACT_READER_ACCESS_KEY_FILE: /run/secrets/workflow_c_artifact_reader_access_key
+      GEO_WORKFLOW_C_ARTIFACT_READER_SECRET_KEY_FILE: /run/secrets/workflow_c_artifact_reader_secret_key
+      GEO_WORKFLOW_C_ARTIFACT_READER_REGION: ${GEO_OBJECT_STORE_REGION:-us-east-1}
+      GEO_ALERT_SMTP_HOST: alert-smtp-relay
+      GEO_ALERT_SMTP_PORT: "8025"
+      GEO_ALERT_SMTP_SENDER: ${GEO_ALERT_SMTP_SENDER:?set GEO_ALERT_SMTP_SENDER}
+      GEO_ALERT_SMTP_RECIPIENTS: ${GEO_ALERT_SMTP_RECIPIENTS:?set GEO_ALERT_SMTP_RECIPIENTS}
+      GEO_ALERT_WEBHOOK_ENDPOINT: ${GEO_ALERT_WEBHOOK_ENDPOINT:?set GEO_ALERT_WEBHOOK_ENDPOINT}
+      GEO_ALERT_WEBHOOK_ALLOWED_HOSTS: ${GEO_ALERT_WEBHOOK_ALLOWED_HOSTS:?set GEO_ALERT_WEBHOOK_ALLOWED_HOSTS}
+      GEO_ALERT_WEBHOOK_SIGNING_SECRET_FILE: /run/secrets/alert_webhook_signing_secret
       OBJECT_STORE_ENDPOINT: http://minio:9000
       OBJECT_STORE_BUCKET: geo-artifacts
       OBJECT_STORE_REGION: ${GEO_OBJECT_STORE_REGION:-us-east-1}
@@ -264,17 +399,319 @@ services:
       - deepseek_api_key
       - object_store_access_key
       - object_store_secret_key
-    command: ["dramatiq", "geo_worker.tasks", "--processes", "2", "--threads", "4"]
+      - secret_store_master_keyring
+      - secret_store_request_hash_key
+      - provider_artifact_keyring
+      - synthetic_artifact_keyring
+      - recommendation_artifact_keyring
+      - recommendation_artifact_object_store_access_key
+      - recommendation_artifact_object_store_secret_key
+      - workflow_c_artifact_keyring
+      - workflow_c_artifact_reader_access_key
+      - workflow_c_artifact_reader_secret_key
+      - alert_webhook_signing_secret
+    command: ["dramatiq", "geo_worker.tasks", "--processes", "${GEO_RUNTIME_EXPECTED_TASK_WORKER_INSTANCES:-4}", "--threads", "4"]
     networks:
       - backend
       - egress
-    depends_on: *internal-dependencies
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      minio-bootstrap:
+        condition: service_completed_successfully
+      valkey:
+        condition: service_healthy
+      alert-smtp-relay:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-m", "geo_worker.runtime_health", "heartbeat", "--service-type", "task_worker"]
       interval: 10s
       timeout: 5s
       retries: 3
       start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 8G
+          pids: 512
+
+  workflow-c-maintenance-scheduler:
+    <<: *service-security
+    image: ${GEO_API_IMAGE:?set a digest-pinned GEO_API_IMAGE}
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid
+    environment:
+      GEO_DEPLOYMENT_ENVIRONMENT: production
+      GEO_RELEASE_VERSION: ${GEO_RELEASE_VERSION:?set GEO_RELEASE_VERSION}
+      GEO_DATABASE_URL_FILE: /run/secrets/worker_database_url
+      GEO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
+      GEO_RUNTIME_HEARTBEAT_INTERVAL_SECONDS: ${GEO_RUNTIME_HEARTBEAT_INTERVAL_SECONDS:-10}
+      GEO_RUNTIME_HEARTBEAT_STALE_SECONDS: ${GEO_RUNTIME_HEARTBEAT_STALE_SECONDS:-30}
+      GEO_RUNTIME_QUEUED_STALE_SECONDS: ${GEO_RUNTIME_QUEUED_STALE_SECONDS:-600}
+      GEO_RUNTIME_OUTBOX_STALE_SECONDS: ${GEO_RUNTIME_OUTBOX_STALE_SECONDS:-300}
+      GEO_RUNTIME_RUNNING_GRACE_SECONDS: ${GEO_RUNTIME_RUNNING_GRACE_SECONDS:-60}
+      GEO_RUNTIME_FAILURE_WINDOW_SECONDS: ${GEO_RUNTIME_FAILURE_WINDOW_SECONDS:-86400}
+      GEO_RUNTIME_EXPECTED_WORKFLOW_C_MAINTENANCE_SCHEDULER_INSTANCES: ${GEO_RUNTIME_EXPECTED_WORKFLOW_C_MAINTENANCE_SCHEDULER_INSTANCES:-1}
+      GEO_WORKFLOW_C_ARTIFACT_STAGED_GRACE_SECONDS: ${GEO_WORKFLOW_C_ARTIFACT_STAGED_GRACE_SECONDS:-900}
+      GEO_WORKFLOW_C_ARTIFACT_MAINTENANCE_SCHEDULE_SECONDS: ${GEO_WORKFLOW_C_ARTIFACT_MAINTENANCE_SCHEDULE_SECONDS:-60}
+      GEO_WORKFLOW_C_ARTIFACT_MAINTENANCE_SEED_BATCH_SIZE: ${GEO_WORKFLOW_C_ARTIFACT_MAINTENANCE_SEED_BATCH_SIZE:-100}
+      OTEL_SERVICE_NAME: geo-workflow-c-maintenance-scheduler
+    secrets:
+      - worker_database_url
+    command: ["python", "-m", "geo_worker.workflow_c_maintenance_scheduler"]
+    healthcheck:
+      test: ["CMD", "python", "-m", "geo_worker.runtime_health", "heartbeat", "--service-type", "workflow_c_maintenance_scheduler"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks:
+      - backend
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      valkey:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
+          pids: 512
+
+  workflow-c-maintenance-worker:
+    <<: *service-security
+    image: ${GEO_API_IMAGE:?set a digest-pinned GEO_API_IMAGE}
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,noexec,nosuid
+    environment:
+      GEO_DEPLOYMENT_ENVIRONMENT: production
+      GEO_RELEASE_VERSION: ${GEO_RELEASE_VERSION:?set GEO_RELEASE_VERSION}
+      GEO_DATABASE_URL_FILE: /run/secrets/worker_database_url
+      GEO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
+      GEO_RUNTIME_HEARTBEAT_INTERVAL_SECONDS: ${GEO_RUNTIME_HEARTBEAT_INTERVAL_SECONDS:-10}
+      GEO_RUNTIME_HEARTBEAT_STALE_SECONDS: ${GEO_RUNTIME_HEARTBEAT_STALE_SECONDS:-30}
+      GEO_RUNTIME_QUEUED_STALE_SECONDS: ${GEO_RUNTIME_QUEUED_STALE_SECONDS:-600}
+      GEO_RUNTIME_OUTBOX_STALE_SECONDS: ${GEO_RUNTIME_OUTBOX_STALE_SECONDS:-300}
+      GEO_RUNTIME_RUNNING_GRACE_SECONDS: ${GEO_RUNTIME_RUNNING_GRACE_SECONDS:-60}
+      GEO_RUNTIME_FAILURE_WINDOW_SECONDS: ${GEO_RUNTIME_FAILURE_WINDOW_SECONDS:-86400}
+      GEO_RUNTIME_EXPECTED_WORKFLOW_C_MAINTENANCE_WORKER_INSTANCES: ${GEO_RUNTIME_EXPECTED_WORKFLOW_C_MAINTENANCE_WORKER_INSTANCES:-1}
+      GEO_WORKFLOW_C_ARTIFACT_DELETER_ENDPOINT: http://minio:9000
+      GEO_WORKFLOW_C_ARTIFACT_DELETER_BUCKET: geo-restricted-workflow-c-artifacts
+      GEO_WORKFLOW_C_ARTIFACT_DELETER_ACCESS_KEY_FILE: /run/secrets/workflow_c_artifact_deleter_access_key
+      GEO_WORKFLOW_C_ARTIFACT_DELETER_SECRET_KEY_FILE: /run/secrets/workflow_c_artifact_deleter_secret_key
+      GEO_WORKFLOW_C_ARTIFACT_DELETER_REGION: ${GEO_OBJECT_STORE_REGION:-us-east-1}
+      GEO_WORKFLOW_C_ARTIFACT_MAINTENANCE_JOB_LEASE_SECONDS: ${GEO_WORKFLOW_C_ARTIFACT_MAINTENANCE_JOB_LEASE_SECONDS:-300}
+      GEO_WORKFLOW_C_ARTIFACT_DELETION_LEASE_SECONDS: ${GEO_WORKFLOW_C_ARTIFACT_DELETION_LEASE_SECONDS:-120}
+      GEO_WORKFLOW_C_ARTIFACT_MAX_DELETIONS_PER_JOB: ${GEO_WORKFLOW_C_ARTIFACT_MAX_DELETIONS_PER_JOB:-100}
+      OTEL_SERVICE_NAME: geo-workflow-c-maintenance-worker
+    secrets:
+      - worker_database_url
+      - workflow_c_artifact_deleter_access_key
+      - workflow_c_artifact_deleter_secret_key
+    command:
+      - dramatiq
+      - geo_worker.workflow_c_maintenance_worker
+      - --queues
+      - workflow-c-maintenance
+      - --processes
+      - "1"
+      - --threads
+      - "1"
+    healthcheck:
+      test: ["CMD", "python", "-m", "geo_worker.runtime_health", "heartbeat", "--service-type", "workflow_c_maintenance_worker"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks:
+      - backend
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      minio-bootstrap:
+        condition: service_completed_successfully
+      valkey:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+          pids: 512
+
+  recommendation-artifact-maintenance-scheduler:
+    <<: *service-security
+    image: ${GEO_API_IMAGE:?set a digest-pinned GEO_API_IMAGE}
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid
+    environment:
+      GEO_DEPLOYMENT_ENVIRONMENT: production
+      GEO_RELEASE_VERSION: ${GEO_RELEASE_VERSION:?set GEO_RELEASE_VERSION}
+      GEO_DATABASE_URL_FILE: /run/secrets/worker_database_url
+      GEO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
+      GEO_RUNTIME_HEARTBEAT_INTERVAL_SECONDS: ${GEO_RUNTIME_HEARTBEAT_INTERVAL_SECONDS:-10}
+      GEO_RUNTIME_HEARTBEAT_STALE_SECONDS: ${GEO_RUNTIME_HEARTBEAT_STALE_SECONDS:-30}
+      GEO_RUNTIME_QUEUED_STALE_SECONDS: ${GEO_RUNTIME_QUEUED_STALE_SECONDS:-600}
+      GEO_RUNTIME_OUTBOX_STALE_SECONDS: ${GEO_RUNTIME_OUTBOX_STALE_SECONDS:-300}
+      GEO_RUNTIME_RUNNING_GRACE_SECONDS: ${GEO_RUNTIME_RUNNING_GRACE_SECONDS:-60}
+      GEO_RUNTIME_FAILURE_WINDOW_SECONDS: ${GEO_RUNTIME_FAILURE_WINDOW_SECONDS:-86400}
+      GEO_RUNTIME_EXPECTED_RECOMMENDATION_ARTIFACT_MAINTENANCE_SCHEDULER_INSTANCES: ${GEO_RUNTIME_EXPECTED_RECOMMENDATION_ARTIFACT_MAINTENANCE_SCHEDULER_INSTANCES:-1}
+      GEO_RECOMMENDATION_ARTIFACT_MAINTENANCE_SCHEDULE_SECONDS: ${GEO_RECOMMENDATION_ARTIFACT_MAINTENANCE_SCHEDULE_SECONDS:-60}
+      OTEL_SERVICE_NAME: geo-recommendation-artifact-maintenance-scheduler
+    secrets:
+      - worker_database_url
+    command: ["python", "-m", "geo_worker.recommendation_artifact_maintenance_scheduler"]
+    healthcheck:
+      test: ["CMD", "python", "-m", "geo_worker.runtime_health", "heartbeat", "--service-type", "recommendation_artifact_maintenance_scheduler"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks:
+      - backend
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      valkey:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
+          pids: 512
+
+  recommendation-artifact-maintenance-worker:
+    <<: *service-security
+    image: ${GEO_API_IMAGE:?set a digest-pinned GEO_API_IMAGE}
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,noexec,nosuid
+    environment:
+      GEO_DEPLOYMENT_ENVIRONMENT: production
+      GEO_RELEASE_VERSION: ${GEO_RELEASE_VERSION:?set GEO_RELEASE_VERSION}
+      GEO_DATABASE_URL_FILE: /run/secrets/worker_database_url
+      GEO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
+      GEO_RUNTIME_HEARTBEAT_INTERVAL_SECONDS: ${GEO_RUNTIME_HEARTBEAT_INTERVAL_SECONDS:-10}
+      GEO_RUNTIME_HEARTBEAT_STALE_SECONDS: ${GEO_RUNTIME_HEARTBEAT_STALE_SECONDS:-30}
+      GEO_RUNTIME_QUEUED_STALE_SECONDS: ${GEO_RUNTIME_QUEUED_STALE_SECONDS:-600}
+      GEO_RUNTIME_OUTBOX_STALE_SECONDS: ${GEO_RUNTIME_OUTBOX_STALE_SECONDS:-300}
+      GEO_RUNTIME_RUNNING_GRACE_SECONDS: ${GEO_RUNTIME_RUNNING_GRACE_SECONDS:-60}
+      GEO_RUNTIME_FAILURE_WINDOW_SECONDS: ${GEO_RUNTIME_FAILURE_WINDOW_SECONDS:-86400}
+      GEO_RUNTIME_EXPECTED_RECOMMENDATION_ARTIFACT_MAINTENANCE_WORKER_INSTANCES: ${GEO_RUNTIME_EXPECTED_RECOMMENDATION_ARTIFACT_MAINTENANCE_WORKER_INSTANCES:-1}
+      GEO_RECOMMENDATION_ARTIFACT_DELETER_ENDPOINT: http://minio:9000
+      GEO_RECOMMENDATION_ARTIFACT_DELETER_BUCKET: geo-restricted-recommendation-artifacts
+      GEO_RECOMMENDATION_ARTIFACT_DELETER_ACCESS_KEY_FILE: /run/secrets/recommendation_artifact_deleter_access_key
+      GEO_RECOMMENDATION_ARTIFACT_DELETER_SECRET_KEY_FILE: /run/secrets/recommendation_artifact_deleter_secret_key
+      GEO_RECOMMENDATION_ARTIFACT_DELETER_REGION: ${GEO_OBJECT_STORE_REGION:-us-east-1}
+      GEO_RECOMMENDATION_ARTIFACT_MAINTENANCE_JOB_LEASE_SECONDS: ${GEO_RECOMMENDATION_ARTIFACT_MAINTENANCE_JOB_LEASE_SECONDS:-300}
+      GEO_RECOMMENDATION_ARTIFACT_DELETION_LEASE_SECONDS: ${GEO_RECOMMENDATION_ARTIFACT_DELETION_LEASE_SECONDS:-120}
+      GEO_RECOMMENDATION_ARTIFACT_MAX_DELETIONS_PER_JOB: ${GEO_RECOMMENDATION_ARTIFACT_MAX_DELETIONS_PER_JOB:-100}
+      OTEL_SERVICE_NAME: geo-recommendation-artifact-maintenance-worker
+    secrets:
+      - worker_database_url
+      - recommendation_artifact_deleter_access_key
+      - recommendation_artifact_deleter_secret_key
+    command:
+      - dramatiq
+      - geo_worker.recommendation_artifact_maintenance_worker
+      - --queues
+      - recommendation-artifact-maintenance
+      - --processes
+      - "1"
+      - --threads
+      - "1"
+    healthcheck:
+      test: ["CMD", "python", "-m", "geo_worker.runtime_health", "heartbeat", "--service-type", "recommendation_artifact_maintenance_worker"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks:
+      - backend
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      minio-bootstrap:
+        condition: service_completed_successfully
+      valkey:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+          pids: 512
+
+  synthetic-artifact-maintenance-worker:
+    <<: *service-security
+    image: ${GEO_API_IMAGE:?set a digest-pinned GEO_API_IMAGE}
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,noexec,nosuid
+    environment:
+      GEO_DEPLOYMENT_ENVIRONMENT: production
+      GEO_RELEASE_VERSION: ${GEO_RELEASE_VERSION:?set GEO_RELEASE_VERSION}
+      GEO_DATABASE_URL_FILE: /run/secrets/worker_database_url
+      GEO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
+      GEO_RUNTIME_HEARTBEAT_INTERVAL_SECONDS: ${GEO_RUNTIME_HEARTBEAT_INTERVAL_SECONDS:-10}
+      GEO_RUNTIME_HEARTBEAT_STALE_SECONDS: ${GEO_RUNTIME_HEARTBEAT_STALE_SECONDS:-30}
+      GEO_RUNTIME_QUEUED_STALE_SECONDS: ${GEO_RUNTIME_QUEUED_STALE_SECONDS:-600}
+      GEO_RUNTIME_OUTBOX_STALE_SECONDS: ${GEO_RUNTIME_OUTBOX_STALE_SECONDS:-300}
+      GEO_RUNTIME_RUNNING_GRACE_SECONDS: ${GEO_RUNTIME_RUNNING_GRACE_SECONDS:-60}
+      GEO_RUNTIME_FAILURE_WINDOW_SECONDS: ${GEO_RUNTIME_FAILURE_WINDOW_SECONDS:-86400}
+      GEO_RUNTIME_EXPECTED_SYNTHETIC_ARTIFACT_MAINTENANCE_WORKER_INSTANCES: ${GEO_RUNTIME_EXPECTED_SYNTHETIC_ARTIFACT_MAINTENANCE_WORKER_INSTANCES:-1}
+      GEO_SYNTHETIC_ARTIFACT_DELETER_RAW_OBJECT_STORE_ENDPOINT: http://minio:9000
+      GEO_SYNTHETIC_ARTIFACT_DELETER_RAW_OBJECT_STORE_BUCKET: geo-synthetic-style-raw
+      GEO_SYNTHETIC_ARTIFACT_DELETER_RAW_OBJECT_STORE_ACCESS_KEY_FILE: /run/secrets/synthetic_artifact_deleter_access_key
+      GEO_SYNTHETIC_ARTIFACT_DELETER_RAW_OBJECT_STORE_SECRET_KEY_FILE: /run/secrets/synthetic_artifact_deleter_secret_key
+      GEO_SYNTHETIC_ARTIFACT_DELETER_RAW_OBJECT_STORE_REGION: ${GEO_OBJECT_STORE_REGION:-us-east-1}
+      GEO_SYNTHETIC_ARTIFACT_DELETER_RAW_OBJECT_STORE_AUTO_CREATE_BUCKET: "0"
+      GEO_SYNTHETIC_ARTIFACT_DELETER_DERIVED_OBJECT_STORE_ENDPOINT: http://minio:9000
+      GEO_SYNTHETIC_ARTIFACT_DELETER_DERIVED_OBJECT_STORE_BUCKET: geo-synthetic-style-derived
+      GEO_SYNTHETIC_ARTIFACT_DELETER_DERIVED_OBJECT_STORE_ACCESS_KEY_FILE: /run/secrets/synthetic_artifact_deleter_access_key
+      GEO_SYNTHETIC_ARTIFACT_DELETER_DERIVED_OBJECT_STORE_SECRET_KEY_FILE: /run/secrets/synthetic_artifact_deleter_secret_key
+      GEO_SYNTHETIC_ARTIFACT_DELETER_DERIVED_OBJECT_STORE_REGION: ${GEO_OBJECT_STORE_REGION:-us-east-1}
+      GEO_SYNTHETIC_ARTIFACT_DELETER_DERIVED_OBJECT_STORE_AUTO_CREATE_BUCKET: "0"
+      GEO_SYNTHETIC_ARTIFACT_MAINTENANCE_JOB_LEASE_SECONDS: ${GEO_SYNTHETIC_ARTIFACT_MAINTENANCE_JOB_LEASE_SECONDS:-300}
+      GEO_SYNTHETIC_ARTIFACT_EXPIRY_BATCH_SIZE: ${GEO_SYNTHETIC_ARTIFACT_EXPIRY_BATCH_SIZE:-100}
+      GEO_SYNTHETIC_ARTIFACT_DELETION_LEASE_SECONDS: ${GEO_SYNTHETIC_ARTIFACT_DELETION_LEASE_SECONDS:-120}
+      GEO_SYNTHETIC_ARTIFACT_MAX_DELETIONS_PER_JOB: ${GEO_SYNTHETIC_ARTIFACT_MAX_DELETIONS_PER_JOB:-100}
+      OTEL_SERVICE_NAME: geo-synthetic-artifact-maintenance-worker
+    secrets:
+      - worker_database_url
+      - synthetic_artifact_deleter_access_key
+      - synthetic_artifact_deleter_secret_key
+    command:
+      - dramatiq
+      - geo_worker.synthetic_artifact_maintenance_worker
+      - --queues
+      - synthetic-artifact-maintenance
+      - --processes
+      - "1"
+      - --threads
+      - "1"
+    healthcheck:
+      test: ["CMD", "python", "-m", "geo_worker.runtime_health", "heartbeat", "--service-type", "synthetic_artifact_maintenance_worker"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks:
+      - backend
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      minio-bootstrap:
+        condition: service_completed_successfully
+      valkey:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+          pids: 512
 
   outbox-relay:
     <<: *service-security
@@ -294,6 +731,7 @@ services:
       GEO_RUNTIME_RUNNING_GRACE_SECONDS: ${GEO_RUNTIME_RUNNING_GRACE_SECONDS:-60}
       GEO_RUNTIME_FAILURE_WINDOW_SECONDS: ${GEO_RUNTIME_FAILURE_WINDOW_SECONDS:-86400}
       GEO_RUNTIME_EXPECTED_OUTBOX_RELAY_INSTANCES: ${GEO_RUNTIME_EXPECTED_OUTBOX_RELAY_INSTANCES:-1}
+      GEO_SYNTHETIC_ARTIFACT_MAINTENANCE_POLL_SECONDS: ${GEO_SYNTHETIC_ARTIFACT_MAINTENANCE_POLL_SECONDS:-60}
       OTEL_SERVICE_NAME: geo-outbox-relay
     secrets:
       - worker_database_url
@@ -307,6 +745,12 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+          pids: 512
 
   admin-web:
     <<: *service-security
@@ -336,6 +780,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+          pids: 512
 
   customer-web:
     <<: *service-security
@@ -362,6 +812,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+          pids: 512
 
   initial-owner-provision:
     <<: *service-security
@@ -406,10 +862,16 @@ services:
     image: ${GEO_MINIO_MC_IMAGE:?set a digest-pinned GEO_MINIO_MC_IMAGE}
     profiles: ["backup"]
     restart: "no"
+    read_only: true
     entrypoint: ["/bin/sh", "/backup/backup-object-store.sh"]
     environment:
       MINIO_ENDPOINT: http://minio:9000
       BACKUP_STAMP: ${BACKUP_STAMP:-manual}
+      OBJECT_STORE_BUCKET: geo-artifacts
+      GEO_RECOMMENDATION_ARTIFACT_OBJECT_STORE_BUCKET: geo-restricted-recommendation-artifacts
+      GEO_WORKFLOW_C_ARTIFACT_OBJECT_STORE_BUCKET: geo-restricted-workflow-c-artifacts
+      GEO_SYNTHETIC_STYLE_RAW_OBJECT_STORE_BUCKET: geo-synthetic-style-raw
+      GEO_SYNTHETIC_STYLE_DERIVED_OBJECT_STORE_BUCKET: geo-synthetic-style-derived
       OBJECT_STORE_BACKUP_ACCESS_KEY_FILE: /run/secrets/object_store_backup_access_key
       OBJECT_STORE_BACKUP_SECRET_KEY_FILE: /run/secrets/object_store_backup_secret_key
     secrets:
@@ -418,6 +880,8 @@ services:
     volumes:
       - ./backup:/backup:ro
       - ${GEO_BACKUP_ROOT:?set GEO_BACKUP_ROOT}:/backup-data
+    tmpfs:
+      - /plaintext-staging:size=${GEO_BACKUP_MINIO_STAGING_SIZE:-8g},mode=0700,noexec,nosuid
     networks:
       - backend
 
@@ -441,6 +905,97 @@ services:
       interval: 3s
       timeout: 3s
       retries: 20
+
+  restore-smoke-application-key-probe:
+    <<: *service-security
+    image: ${GEO_API_IMAGE:?set a digest-pinned GEO_API_IMAGE}
+    profiles: ["restore-smoke"]
+    restart: "no"
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,noexec,nosuid
+    environment:
+      GEO_SECRET_STORE_MASTER_KEYRING_FILE: /run/secrets/secret_store_master_keyring
+      GEO_SECRET_STORE_REQUEST_HASH_KEY_FILE: /run/secrets/secret_store_request_hash_key
+      GEO_PROVIDER_ARTIFACT_KEYRING_FILE: /run/secrets/provider_artifact_keyring
+      GEO_SYNTHETIC_ARTIFACT_KEYRING_FILE: /run/secrets/synthetic_artifact_keyring
+      GEO_RECOMMENDATION_ARTIFACT_KEYRING_FILE: /run/secrets/recommendation_artifact_keyring
+      GEO_WORKFLOW_C_ARTIFACT_KEYRING_FILE: /run/secrets/workflow_c_artifact_keyring
+      GEO_RESTORE_PROBE_SERVICE_IDENTITY_ID: ${GEO_RESTORE_PROBE_SERVICE_IDENTITY_ID:?set GEO_RESTORE_PROBE_SERVICE_IDENTITY_ID}
+      GEO_RESTORE_SECRET_REFERENCE_ID: ${GEO_RESTORE_SECRET_REFERENCE_ID:?set GEO_RESTORE_SECRET_REFERENCE_ID}
+      GEO_RESTORE_SECRET_PROJECT_ID: ${GEO_RESTORE_SECRET_PROJECT_ID:?set GEO_RESTORE_SECRET_PROJECT_ID}
+      GEO_RESTORE_SECRET_PURPOSE: ${GEO_RESTORE_SECRET_PURPOSE:?set GEO_RESTORE_SECRET_PURPOSE}
+      GEO_RESTORE_SECRET_VERSION: ${GEO_RESTORE_SECRET_VERSION:?set GEO_RESTORE_SECRET_VERSION}
+      GEO_RESTORE_SECRET_IDEMPOTENCY_KEY: ${GEO_RESTORE_SECRET_IDEMPOTENCY_KEY:?set GEO_RESTORE_SECRET_IDEMPOTENCY_KEY}
+    secrets:
+      - restore_smoke_password
+      - secret_store_master_keyring
+      - secret_store_request_hash_key
+      - provider_artifact_keyring
+      - synthetic_artifact_keyring
+      - recommendation_artifact_keyring
+      - workflow_c_artifact_keyring
+    command:
+      - python
+      - -m
+      - geo_worker.backup_restore_probe
+      - --database-password-file
+      - /run/secrets/restore_smoke_password
+      - --database-host
+      - restore-smoke-postgres
+      - --database-user
+      - geo_restore
+      - --database-name
+      - geo_restore_smoke
+      - --secret-store-keyring
+      - /run/secrets/secret_store_master_keyring
+      - --secret-store-request-hash-key
+      - /run/secrets/secret_store_request_hash_key
+      - --secret-store-service-identity-id
+      - ${GEO_RESTORE_PROBE_SERVICE_IDENTITY_ID:?set GEO_RESTORE_PROBE_SERVICE_IDENTITY_ID}
+      - --secret-store-frozen-reference-id
+      - ${GEO_RESTORE_SECRET_REFERENCE_ID:?set GEO_RESTORE_SECRET_REFERENCE_ID}
+      - --secret-store-frozen-project-id
+      - ${GEO_RESTORE_SECRET_PROJECT_ID:?set GEO_RESTORE_SECRET_PROJECT_ID}
+      - --secret-store-frozen-purpose
+      - ${GEO_RESTORE_SECRET_PURPOSE:?set GEO_RESTORE_SECRET_PURPOSE}
+      - --secret-store-frozen-version
+      - ${GEO_RESTORE_SECRET_VERSION:?set GEO_RESTORE_SECRET_VERSION}
+      - --secret-store-resolve-idempotency-key
+      - ${GEO_RESTORE_SECRET_IDEMPOTENCY_KEY:?set GEO_RESTORE_SECRET_IDEMPOTENCY_KEY}
+      - --provider-artifact-keyring
+      - /run/secrets/provider_artifact_keyring
+      - --synthetic-artifact-keyring
+      - /run/secrets/synthetic_artifact_keyring
+      - --recommendation-artifact-keyring
+      - /run/secrets/recommendation_artifact_keyring
+      - --workflow-c-artifact-keyring
+      - /run/secrets/workflow_c_artifact_keyring
+      - --object-root
+      - /restore-objects
+      - --object-bucket
+      - geo-artifacts
+      - --recommendation-object-root
+      - /restore-recommendation-objects
+      - --recommendation-object-bucket
+      - geo-restricted-recommendation-artifacts
+      - --workflow-c-object-root
+      - /restore-workflow-c-objects
+      - --workflow-c-object-bucket
+      - geo-restricted-workflow-c-artifacts
+      - --synthetic-raw-object-root
+      - /restore-synthetic-style-raw-objects
+      - --synthetic-raw-object-bucket
+      - geo-synthetic-style-raw
+      - --synthetic-derived-object-root
+      - /restore-synthetic-style-derived-objects
+      - --synthetic-derived-object-bucket
+      - geo-synthetic-style-derived
+    networks:
+      - backend
+    depends_on:
+      restore-smoke-postgres:
+        condition: service_healthy
 
 networks:
   backend:
@@ -488,3 +1043,49 @@ secrets:
     file: ${GEO_AUTH_TOKEN_SECRET_FILE:?set GEO_AUTH_TOKEN_SECRET_FILE}
   restore_smoke_password:
     file: ${GEO_RESTORE_SMOKE_PASSWORD_FILE:?set GEO_RESTORE_SMOKE_PASSWORD_FILE}
+  secret_store_master_keyring:
+    file: ${GEO_SECRET_STORE_MASTER_KEYRING_FILE:?set GEO_SECRET_STORE_MASTER_KEYRING_FILE}
+  secret_store_request_hash_key:
+    file: ${GEO_SECRET_STORE_REQUEST_HASH_KEY_FILE:?set GEO_SECRET_STORE_REQUEST_HASH_KEY_FILE}
+  provider_artifact_keyring:
+    file: ${GEO_PROVIDER_ARTIFACT_KEYRING_FILE:?set GEO_PROVIDER_ARTIFACT_KEYRING_FILE}
+  synthetic_artifact_keyring:
+    file: ${GEO_SYNTHETIC_ARTIFACT_KEYRING_FILE:?set GEO_SYNTHETIC_ARTIFACT_KEYRING_FILE}
+  recommendation_artifact_keyring:
+    file: ${GEO_RECOMMENDATION_ARTIFACT_KEYRING_FILE:?set GEO_RECOMMENDATION_ARTIFACT_KEYRING_FILE}
+  recommendation_artifact_object_store_access_key:
+    file: ${GEO_RECOMMENDATION_ARTIFACT_OBJECT_STORE_ACCESS_KEY_FILE:?set GEO_RECOMMENDATION_ARTIFACT_OBJECT_STORE_ACCESS_KEY_FILE}
+  recommendation_artifact_object_store_secret_key:
+    file: ${GEO_RECOMMENDATION_ARTIFACT_OBJECT_STORE_SECRET_KEY_FILE:?set GEO_RECOMMENDATION_ARTIFACT_OBJECT_STORE_SECRET_KEY_FILE}
+  recommendation_artifact_deleter_access_key:
+    file: ${GEO_RECOMMENDATION_ARTIFACT_DELETER_ACCESS_KEY_FILE:?set GEO_RECOMMENDATION_ARTIFACT_DELETER_ACCESS_KEY_FILE}
+  recommendation_artifact_deleter_secret_key:
+    file: ${GEO_RECOMMENDATION_ARTIFACT_DELETER_SECRET_KEY_FILE:?set GEO_RECOMMENDATION_ARTIFACT_DELETER_SECRET_KEY_FILE}
+  workflow_c_artifact_keyring:
+    file: ${GEO_WORKFLOW_C_ARTIFACT_KEYRING_FILE:?set GEO_WORKFLOW_C_ARTIFACT_KEYRING_FILE}
+  workflow_c_artifact_object_store_access_key:
+    file: ${GEO_WORKFLOW_C_ARTIFACT_OBJECT_STORE_ACCESS_KEY_FILE:?set GEO_WORKFLOW_C_ARTIFACT_OBJECT_STORE_ACCESS_KEY_FILE}
+  workflow_c_artifact_object_store_secret_key:
+    file: ${GEO_WORKFLOW_C_ARTIFACT_OBJECT_STORE_SECRET_KEY_FILE:?set GEO_WORKFLOW_C_ARTIFACT_OBJECT_STORE_SECRET_KEY_FILE}
+  workflow_c_artifact_reader_access_key:
+    file: ${GEO_WORKFLOW_C_ARTIFACT_READER_ACCESS_KEY_FILE:?set GEO_WORKFLOW_C_ARTIFACT_READER_ACCESS_KEY_FILE}
+  workflow_c_artifact_reader_secret_key:
+    file: ${GEO_WORKFLOW_C_ARTIFACT_READER_SECRET_KEY_FILE:?set GEO_WORKFLOW_C_ARTIFACT_READER_SECRET_KEY_FILE}
+  workflow_c_artifact_deleter_access_key:
+    file: ${GEO_WORKFLOW_C_ARTIFACT_DELETER_ACCESS_KEY_FILE:?set GEO_WORKFLOW_C_ARTIFACT_DELETER_ACCESS_KEY_FILE}
+  workflow_c_artifact_deleter_secret_key:
+    file: ${GEO_WORKFLOW_C_ARTIFACT_DELETER_SECRET_KEY_FILE:?set GEO_WORKFLOW_C_ARTIFACT_DELETER_SECRET_KEY_FILE}
+  synthetic_style_artifact_writer_access_key:
+    file: ${GEO_SYNTHETIC_STYLE_ARTIFACT_WRITER_ACCESS_KEY_FILE:?set GEO_SYNTHETIC_STYLE_ARTIFACT_WRITER_ACCESS_KEY_FILE}
+  synthetic_style_artifact_writer_secret_key:
+    file: ${GEO_SYNTHETIC_STYLE_ARTIFACT_WRITER_SECRET_KEY_FILE:?set GEO_SYNTHETIC_STYLE_ARTIFACT_WRITER_SECRET_KEY_FILE}
+  synthetic_artifact_deleter_access_key:
+    file: ${GEO_SYNTHETIC_ARTIFACT_DELETER_ACCESS_KEY_FILE:?set GEO_SYNTHETIC_ARTIFACT_DELETER_ACCESS_KEY_FILE}
+  synthetic_artifact_deleter_secret_key:
+    file: ${GEO_SYNTHETIC_ARTIFACT_DELETER_SECRET_KEY_FILE:?set GEO_SYNTHETIC_ARTIFACT_DELETER_SECRET_KEY_FILE}
+  alert_smtp_username:
+    file: ${GEO_ALERT_SMTP_USERNAME_FILE:?set GEO_ALERT_SMTP_USERNAME_FILE}
+  alert_smtp_password:
+    file: ${GEO_ALERT_SMTP_PASSWORD_FILE:?set GEO_ALERT_SMTP_PASSWORD_FILE}
+  alert_webhook_signing_secret:
+    file: ${GEO_ALERT_WEBHOOK_SIGNING_SECRET_FILE:?set GEO_ALERT_WEBHOOK_SIGNING_SECRET_FILE}

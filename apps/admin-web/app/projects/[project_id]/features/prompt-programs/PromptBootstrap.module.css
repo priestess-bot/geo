@@ -1,0 +1,472 @@
+.catalog,
+.kindDetail,
+.actionSection {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+}
+
+.catalog {
+  border-block: 1px solid #d8e0e8;
+  padding: 16px 0;
+}
+
+.catalogHeader,
+.sectionHeading,
+.resultHeader,
+.rubricGrid article header,
+.fixtureGrid article header {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.catalogHeader p,
+.sectionHeading p {
+  color: #5b6e7d;
+  font-size: 10px;
+  font-weight: 800;
+  margin: 0 0 4px;
+  text-transform: uppercase;
+}
+
+.catalogHeader h3,
+.sectionHeading h4 {
+  margin: 0;
+}
+
+.catalogHeader h3 {
+  font-size: 17px;
+}
+
+.sectionHeading h4 {
+  font-size: 15px;
+}
+
+.summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.summary span {
+  background: #eef3f6;
+  border: 1px solid #d4dfe6;
+  border-radius: 6px;
+  display: grid;
+  font-size: 10px;
+  gap: 2px;
+  min-width: 82px;
+  padding: 7px 9px;
+}
+
+.summary strong {
+  font-size: 14px;
+}
+
+.catalogFacts,
+.kindFacts,
+.resultHeader dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  min-width: 0;
+}
+
+.catalogFacts,
+.kindFacts {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.catalogFacts > div,
+.kindFacts > div {
+  border-bottom: 1px solid #e0e7eb;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 7px 0;
+}
+
+.catalogFacts dt,
+.kindFacts dt,
+.resultHeader dt {
+  color: #607481;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.catalogFacts dd,
+.kindFacts dd,
+.resultHeader dd {
+  margin: 0;
+  min-width: 0;
+}
+
+.catalogFacts code,
+.kindFacts code,
+.resultHeader code,
+.resultTable code,
+.catalogTable code,
+.fixtureGrid code {
+  overflow-wrap: anywhere;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.boundaryNotice {
+  background: #edf7f5;
+  border: 1px solid #b9d8d2;
+  border-radius: 6px;
+  color: #245b57;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 12px;
+}
+
+.boundaryNotice span {
+  font-size: 11px;
+}
+
+.tableWrap {
+  border: 1px solid #d8e0e8;
+  border-radius: 6px;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.mobileCatalogNavigator {
+  display: none;
+}
+
+.resultDisclosure,
+.mobileCatalogTable {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.resultDisclosure > summary,
+.mobileCatalogNavigator > summary,
+.mobileCatalogTable > summary {
+  color: #294d62;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.catalogTable,
+.resultTable,
+.evaluationTable {
+  border-collapse: collapse;
+  font-size: 11px;
+  min-width: 940px;
+  table-layout: fixed;
+  width: 100%;
+}
+
+.catalogTable th,
+.resultTable th,
+.evaluationTable th {
+  background: #edf3f7;
+  color: #526674;
+  font-size: 10px;
+  padding: 9px;
+  text-align: left;
+}
+
+.catalogTable td,
+.resultTable td,
+.evaluationTable td {
+  border-top: 1px solid #d8e0e8;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  padding: 9px;
+  vertical-align: top;
+  word-break: break-word;
+}
+
+.catalogTable td strong,
+.catalogTable td span,
+.catalogTable td small,
+.catalogTable td code,
+.resultTable td strong,
+.resultTable td span,
+.resultTable td small,
+.resultTable td code,
+.evaluationTable td strong,
+.evaluationTable td span {
+  display: block;
+  margin-top: 3px;
+  max-width: 100%;
+}
+
+.catalogTable td:first-child,
+.resultTable td:first-child {
+  width: 22%;
+}
+
+.catalogTable td:last-child,
+.catalogTable th:last-child {
+  text-align: right;
+  width: 70px;
+}
+
+.catalogTable a {
+  color: #17657a;
+  font-weight: 800;
+}
+
+.activeRow {
+  background: #edf7f5;
+  box-shadow: inset 3px 0 #16736f;
+}
+
+.kindDetail,
+.actionSection {
+  border-top: 1px solid #d8e0e8;
+  padding-top: 14px;
+}
+
+.rubricGrid,
+.fixtureGrid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  min-width: 0;
+}
+
+.rubricGrid article,
+.fixtureGrid article {
+  border: 1px solid #d8e0e8;
+  border-radius: 5px;
+  min-width: 0;
+  padding: 10px;
+}
+
+.rubricGrid p,
+.fixtureGrid p {
+  font-size: 11px;
+  margin: 8px 0;
+}
+
+.rubricGrid small,
+.fixtureGrid small,
+.sectionHeading > span {
+  color: #657783;
+  font-size: 10px;
+}
+
+.fixtureGrid header {
+  align-items: flex-start;
+  display: grid;
+}
+
+.fixtureGrid pre,
+.disclosure > pre {
+  background: #f2f5f7;
+  border-radius: 4px;
+  font-size: 10px;
+  max-height: 220px;
+  overflow: auto;
+  padding: 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.disclosure {
+  border-top: 1px solid #d8e0e8;
+  min-width: 0;
+  padding-top: 10px;
+}
+
+.disclosure > summary {
+  color: #294d62;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+  margin-bottom: 10px;
+}
+
+.disclosure ol {
+  display: grid;
+  font-size: 11px;
+  gap: 5px;
+  padding-left: 20px;
+}
+
+.actionForm,
+.evaluationForm,
+.evaluationForm label {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.evaluationForm label > span {
+  color: #526674;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.evaluationForm textarea {
+  min-height: 180px;
+  resize: vertical;
+}
+
+.resultEmpty,
+.catalogEmpty,
+.catalogProblem,
+.errorResult,
+.successResult,
+.partialResult {
+  border: 1px solid;
+  border-radius: 6px;
+  display: grid;
+  font-size: 11px;
+  gap: 8px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  padding: 11px 12px;
+}
+
+.resultEmpty,
+.catalogEmpty {
+  background: #f7fafc;
+  border-color: #d8e0e8;
+  color: #607481;
+  min-height: 64px;
+  place-content: center;
+  text-align: center;
+}
+
+.catalogProblem,
+.errorResult,
+.partialResult {
+  background: #fbf1ef;
+  border-color: #e2c6bf;
+  color: #7d3f35;
+}
+
+.successResult {
+  background: #eef7f2;
+  border-color: #bfdac9;
+  color: #285f42;
+}
+
+.resultHeader dl {
+  grid-template-columns: repeat(3, minmax(60px, 1fr));
+}
+
+.resultHeader dl > div {
+  display: grid;
+  gap: 2px;
+}
+
+.resultHeader dd {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.statusPill {
+  border: 1px solid #c8d3d9;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 3px 7px;
+  width: fit-content;
+}
+
+.status_created,
+.status_replayed,
+.status_passed {
+  background: #eff8f3;
+  border-color: #b9dfc9;
+  color: #1f5c39;
+}
+
+.status_failed {
+  background: #fbf1ef;
+  border-color: #e2c6bf;
+  color: #7d3f35;
+}
+
+@media (max-width: 900px) {
+  .rubricGrid,
+  .fixtureGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  .catalogHeader,
+  .sectionHeading,
+  .resultHeader {
+    align-items: stretch;
+    display: grid;
+  }
+
+  .summary {
+    justify-content: stretch;
+  }
+
+  .summary span {
+    flex: 1 1 80px;
+  }
+
+  .catalogFacts,
+  .kindFacts,
+  .rubricGrid,
+  .fixtureGrid,
+  .resultHeader dl {
+    grid-template-columns: 1fr;
+  }
+
+  .actionForm button,
+  .evaluationForm button {
+    width: 100%;
+  }
+
+  .desktopCatalogTable {
+    display: none;
+  }
+
+  .mobileCatalogNavigator {
+    border: 1px solid #d8e0e8;
+    border-radius: 6px;
+    display: grid;
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .mobileCatalogNavigator > form,
+  .mobileCatalogNavigator label {
+    display: grid;
+    gap: 7px;
+    min-width: 0;
+  }
+
+  .mobileCatalogNavigator label > span {
+    color: #526674;
+    font-size: 11px;
+    font-weight: 800;
+  }
+
+  .mobileCatalogNavigator select,
+  .mobileCatalogNavigator button {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .mobileCatalogTable {
+    border-top: 1px solid #d8e0e8;
+    padding-top: 10px;
+  }
+}

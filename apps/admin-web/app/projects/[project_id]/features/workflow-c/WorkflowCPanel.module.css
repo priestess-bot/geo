@@ -1,0 +1,44 @@
+.embeddedPanel {
+  background: #f4f6f7;
+  display: grid;
+  min-width: 0;
+}
+
+.panelHeader {
+  align-items: center;
+  background: #ffffff;
+  border-bottom: 1px solid #cfd8dc;
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 4px 0 16px;
+}
+
+.panelHeader h2 {
+  font-size: 20px;
+  letter-spacing: 0;
+  line-height: 1.2;
+  margin: 2px 0 8px;
+}
+
+.controlGate {
+  background: #ffffff;
+  padding: 12px clamp(16px, 4vw, 52px);
+}
+
+.embeddedPanel > .controlGate,
+.embeddedPanel > section,
+.embeddedPanel > details,
+.embeddedPanel > nav,
+.embeddedPanel > div:last-child {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+@media (max-width: 620px) {
+  .panelHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

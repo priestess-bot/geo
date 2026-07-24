@@ -60,6 +60,7 @@ def main() -> int:
     worker_url = (
         f"postgresql://geo_worker_dev:{worker_password}@127.0.0.1:{postgres_port}/geo"
     )
+    exit_code = 0
     try:
         _run(
             ["docker", "info", "--format", "{{.ServerVersion}}"],
@@ -102,17 +103,25 @@ def main() -> int:
             environment=test_environment,
             check=False,
         )
-        return result.returncode
+        exit_code = result.returncode
     except (OSError, subprocess.CalledProcessError):
         print("F018 isolated Docker runtime gate failed before test execution")
-        return 2
+        exit_code = 2
     finally:
-        _run(
+        cleanup = _run(
             [*compose, "down", "--volumes", "--remove-orphans"],
             environment=environment,
             capture=True,
             check=False,
         )
+        if cleanup.returncode != 0:
+            print("F018 isolated Docker runtime gate failed to clean disposable Docker resources")
+            if cleanup.stdout:
+                print(cleanup.stdout.strip())
+            if cleanup.stderr:
+                print(cleanup.stderr.strip())
+            exit_code = 2
+    return exit_code
 
 
 if __name__ == "__main__":

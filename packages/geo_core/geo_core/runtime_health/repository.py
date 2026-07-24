@@ -8,7 +8,16 @@ from typing import Any, Literal
 from uuid import UUID
 
 
-ServiceType = Literal["task_worker", "outbox_relay"]
+ServiceType = Literal[
+    "task_worker",
+    "outbox_relay",
+    "style_browser_worker",
+    "synthetic_artifact_maintenance_worker",
+    "workflow_c_maintenance_worker",
+    "workflow_c_maintenance_scheduler",
+    "recommendation_artifact_maintenance_worker",
+    "recommendation_artifact_maintenance_scheduler",
+]
 HeartbeatStatus = Literal["starting", "ready", "stopping", "failed"]
 
 

@@ -121,7 +121,16 @@ def main() -> int:
     heartbeat.add_argument(
         "--service-type",
         required=True,
-        choices=("task_worker", "outbox_relay"),
+        choices=(
+            "task_worker",
+            "outbox_relay",
+            "style_browser_worker",
+            "synthetic_artifact_maintenance_worker",
+            "workflow_c_maintenance_worker",
+            "workflow_c_maintenance_scheduler",
+            "recommendation_artifact_maintenance_worker",
+            "recommendation_artifact_maintenance_scheduler",
+        ),
     )
     args = parser.parse_args()
     try:

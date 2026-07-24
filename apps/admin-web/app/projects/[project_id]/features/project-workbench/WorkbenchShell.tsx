@@ -11,6 +11,16 @@ import { ProjectSettingsForm } from "../../ProjectSettingsForm";
 import { ResourceProblem } from "../../ResourceProblem";
 import { GeoShell } from "../../geo/features/geo/GeoShell";
 import type { GeoWorkspaceData } from "../../geo/features/geo/model";
+import { PromptProgramWorkspace } from "../prompt-programs/PromptProgramWorkspace";
+import type { PromptWorkspaceData } from "../prompt-programs/promptProgramTypes";
+import { RecommendationWorkspace } from "../recommendations/RecommendationWorkspace";
+import type { RecommendationWorkspaceData } from "../recommendations/recommendationTypes";
+import { SecretStoreWorkspace } from "../secret-store/SecretStoreWorkspace";
+import type { SecretWorkspaceData } from "../secret-store/secretStoreTypes";
+import { SyntheticLabWorkspace } from "../synthetic-lab/SyntheticLabWorkspace";
+import type { SyntheticWorkspaceData } from "../synthetic-lab/syntheticLabTypes";
+import { WorkflowCPanel } from "../workflow-c/WorkflowCWorkspace";
+import type { WorkflowCWorkspaceData } from "../workflow-c/workflowCTypes";
 import { workbenchHref, workbenchTabs, type WorkbenchTab } from "./tabs";
 
 type Props = Readonly<{
@@ -20,6 +30,11 @@ type Props = Readonly<{
   invitations: InvitationLoadResult;
   members: ProjectMemberLoadResult;
   knowledgeData: KnowledgeWorkspaceData | null;
+  promptData: PromptWorkspaceData | null;
+  recommendationData: RecommendationWorkspaceData | null;
+  secretData: SecretWorkspaceData | null;
+  syntheticData: SyntheticWorkspaceData | null;
+  workflowCData: WorkflowCWorkspaceData | null;
   projectId: string;
 }>;
 
@@ -30,12 +45,32 @@ export function WorkbenchShell({
   invitations,
   knowledgeData,
   members,
+  promptData,
+  recommendationData,
+  secretData,
+  syntheticData,
+  workflowCData,
   projectId
 }: Props) {
   const project = catalog.project.data;
   if (!project) return <ProjectFailure problem={catalog.project.problem} />;
   const canManageProject = members.currentRole === "owner" || members.currentRole === "admin";
   const canManageKnowledge = canManageProject || members.currentRole === "analyst";
+  const actorIdentityId = members.page.items.find(
+    (member) => member.status === "active" && member.subject === members.actorId
+  )?.identity_id || "";
+  const recommendationRuntimeUnavailable = Boolean(
+    recommendationData?.listProblem?.status === 503
+    || recommendationData?.selectedProblem?.status === 503
+  );
+  const syntheticRuntimeUnavailable = Boolean(syntheticData && [
+    syntheticData.authorizationsProblem,
+    syntheticData.sourcesProblem,
+    syntheticData.profilesProblem,
+    syntheticData.suitesProblem,
+    syntheticData.casesProblem,
+    syntheticData.jobProblem
+  ].some((problem) => problem?.status === 503));
 
   return (
     <main className="shell">
@@ -84,7 +119,42 @@ export function WorkbenchShell({
         {activeTab === "entry" ? (
           <EntryPanel invitations={invitations} members={members} projectId={project.id} />
         ) : null}
-        {activeTab === "prompts" ? <PromptPanel projectId={project.id} /> : null}
+        {activeTab === "prompts" ? (
+          promptData ? <PromptProgramWorkspace
+            actorIdentityId={actorIdentityId}
+            currentRole={members.currentRole}
+            data={promptData}
+            projectId={project.id}
+          /> : <EmptyState text="正在准备 Prompt Program 工作台。" />
+        ) : null}
+        {activeTab === "secrets" ? (
+          secretData ? <SecretStoreWorkspace
+            currentRole={members.currentRole}
+            data={secretData}
+            projectId={project.id}
+          /> : <EmptyState text="正在准备 Secret Store 工作台。" />
+        ) : null}
+        {activeTab === "synthetic-lab" ? (
+          syntheticData ? <SyntheticLabWorkspace
+            currentRole={syntheticRuntimeUnavailable ? null : members.currentRole}
+            data={syntheticData}
+            projectId={project.id}
+          /> : <EmptyState text="正在准备 Synthetic Lab 工作台。" />
+        ) : null}
+        {activeTab === "recommendations" ? (
+          recommendationData ? <RecommendationWorkspace
+            actorIdentityId={actorIdentityId}
+            currentRole={recommendationRuntimeUnavailable ? null : members.currentRole}
+            data={recommendationData}
+            projectId={project.id}
+          /> : <EmptyState text="正在准备 Recommendations 工作台。" />
+        ) : null}
+        {activeTab === "measurement" ? (
+          workflowCData ? <WorkflowCPanel
+            data={workflowCData}
+            projectId={project.id}
+          /> : <EmptyState text="正在准备 Measurement & Alerts 工作台。" />
+        ) : null}
         {activeTab === "knowledge" ? (
           knowledgeData ? <KnowledgeWorkspace
             canPromote={canManageKnowledge}
@@ -154,21 +224,6 @@ function EntryPanel({
       <InvitationManagementPanel data={invitations} projectId={projectId} />
       <MemberGovernancePanel data={members} projectId={projectId} />
     </div>
-  );
-}
-
-function PromptPanel({ projectId }: { projectId: string }) {
-  return (
-    <section className="detailPanel unframedPanel">
-      <p className="eyebrow">Prompt</p>
-      <h2>Prompt 配置与生成规则</h2>
-      <p className="muted formIntro">
-        旧 Prompt 工作台入口保留；GEO 文案生产使用可编辑 Prompt Skill、不可变 Release 和 Prompt Bundle。
-      </p>
-      <a className="button" href={`/projects/${encodeURIComponent(projectId)}?tab=geo&geo_section=placement&placement_stage=brief`}>
-        打开 GEO Prompt / Bundle
-      </a>
-    </section>
   );
 }
 

@@ -10,6 +10,10 @@ import hashlib
 from typing import Sequence
 from uuid import UUID
 
+from geo_core.monitoring.comparisons import (
+    classify_comparison as classify_comparison,
+    evaluate_comparison as evaluate_comparison,
+)
 from geo_core.monitoring.domain import (
     METRIC_METHOD_VERSION,
     OBSERVATION_MEMBERSHIP_VERSION,
@@ -30,6 +34,9 @@ from geo_core.monitoring.domain import (
 from geo_core.monitoring.source_contract import SOURCE_CONTRACT_VERSION, SourceStratumKey
 from geo_core.monitoring.statistics_models import (
     BinaryEstimate,
+    ComparisonConclusion as ComparisonConclusion,
+    ComparisonDecision as ComparisonDecision,
+    FrozenComparisonCriteria as FrozenComparisonCriteria,
     MetricSnapshot,
     QueryMetricResult,
     ReasonCounts,

@@ -461,21 +461,33 @@ docker compose -f infra/docker-compose.yml --profile workers logs \
 
 ```bash
 make backup PROD_ENV=infra/production.env
-BACKUP_FILE=/srv/geo-backups/daily/<timestamp>/postgres.sql.gz \
+BACKUP_DIR=/srv/geo-backups/daily/<timestamp> \
   make restore-smoke PROD_ENV=infra/production.env
 ```
 
-本地交付验收可对当前 development 数据执行相同类型的完整恢复烟测：
+本地交付验收使用自动创建的唯一临时数据库和 bucket，不读取或修改常驻 development 业务
+数据：
 
 ```bash
 make backup-restore-dev-smoke
 ```
 
-该命令在 dump 前扫描全部 public 复合外键，随后恢复到临时数据库并比对 Project/表数量；MinIO 全桶镜像恢复到临时 bucket，逐对象比较 SHA-256。临时恢复副本会自动删除，验收 receipt 和 manifest 保存在 `artifacts/backup-restore-smoke/`。
+该命令动态解析当前 single Alembic head，以真实领域路径写入两个版本的 Secret canary/代表
+secret、committed Provider raw/derived artifact、Synthetic independent-DEK 与 tier-key artifact，
+以及 Recommendation 与 Workflow C 的 wrapped-DEK/object lineage，再生成只含密文、签名清单和
+commit marker 的 bundle。恢复阶段比对 Project/表数量、全部 public 复合外键及四张核心关系的
+确定性 SHA-256，分别对 `geo-artifacts` 与 `geo-restricted-workflow-c-artifacts` 逐对象比较
+SHA-256，并对五份应用 keyring 执行正确 key、错误 key 和缺失 key 验证。source/restore
+database、两个 bucket、tmpfs 明文和一次性 key 全部确认删除后才成功；`bundle/` 与 `receipt.json` 保存在
+`artifacts/backup-restore-smoke-authenticated/<run-id>/`。
 
-恢复冒烟在隔离 PostgreSQL 中执行，不写生产数据库。核对 `SHA256SUMS`、catalog、业务表和工件清单。至少每月执行一次，并把时间、备份 ID、恢复耗时和结果写入运行证据。
+生产恢复冒烟在隔离且数据目录为 tmpfs 的 PostgreSQL 中执行，不写生产数据库；宿主解密区也
+必须是由 `GEO_RESTORE_TMPFS_ROOT` 指定并经实际 filesystem type 检查的专用 tmpfs。核对认证
+manifest、catalog、业务表 hash 和逐对象工件清单。至少每月执行一次，并把时间、备份 ID、
+恢复耗时和结果写入运行证据。
 
-成功标准：数据库恢复通过、MinIO 对象 hash 抽样一致、恢复环境不连生产第三方服务。
+成功标准：数据库计数、四表内容 hash 与 FK 全部一致，MinIO 每个对象 hash 一致，Secret Store
+历史 key canary 可解密，恢复副本和 tmpfs 明文删除完成，且恢复环境不连生产第三方服务。
 
 本次结果：PostgreSQL `4 -> 4` 个 Project、`74 -> 74` 张 public 表；MinIO `4 -> 4` 个对象且逐对象 SHA-256 一致。
 

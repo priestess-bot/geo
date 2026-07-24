@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Literal
 from uuid import UUID, uuid4
 
 from fastapi import FastAPI
@@ -44,6 +45,7 @@ from geo_core.monitoring.source_contract import (
     SurfaceKind,
     RawEvidence,
 )
+from geo_core.workflow_c_reports import WorkflowCCustomerApprovedReport, WorkflowCCustomerReportReader
 
 
 NOW = datetime(2026, 7, 16, tzinfo=UTC)
@@ -79,6 +81,22 @@ class PrincipalServices:
         if membership is None or membership.role not in allowed_roles:
             raise AccessForbidden("project membership is required")
         return self.principal
+
+
+class WorkflowCCustomerReaderStub:
+    persistence: Literal["durable"] = "durable"
+
+    def __init__(self, report: WorkflowCCustomerApprovedReport) -> None:
+        self.report = report
+        self.calls: list[tuple[UUID, UUID]] = []
+
+    def list_approved_reports(
+        self, *, project_id: UUID, campaign_id: UUID
+    ) -> tuple[WorkflowCCustomerApprovedReport, ...]:
+        self.calls.append((project_id, campaign_id))
+        if project_id != self.report.project_id or campaign_id != self.report.campaign_id:
+            return ()
+        return (self.report,)
 
 
 class ReadModelApplication(MonitoringApplication):
@@ -292,20 +310,27 @@ class ReadModelApplication(MonitoringApplication):
         )
 
 
-def _app(surface: str = "customer", role: str = "customer") -> tuple[FastAPI, AccessPrincipal]:
-    tenant_id, identity_id, project_id = uuid4(), uuid4(), uuid4()
+def _app(
+    surface: str = "customer",
+    role: str = "customer",
+    workflow_c_customer_reader: WorkflowCCustomerReportReader | None = None,
+    project_id: UUID | None = None,
+) -> tuple[FastAPI, AccessPrincipal]:
+    tenant_id, identity_id = uuid4(), uuid4()
+    resolved_project_id = project_id or uuid4()
     principal = AccessPrincipal(
         identity_id,
         "customer-subject",
         tenant_id,
-        (MembershipRecord(project_id, tenant_id, role),),
+        (MembershipRecord(resolved_project_id, tenant_id, role),),
         "session",
     )
     return (
         create_api_app(
             surface=surface,  # type: ignore[arg-type]
             services=PrincipalServices(principal),  # type: ignore[arg-type]
-            monitoring_application=ReadModelApplication(project_id),
+            monitoring_application=ReadModelApplication(resolved_project_id),
+            workflow_c_customer_reader=workflow_c_customer_reader,
         ),
         principal,
     )
@@ -340,11 +365,71 @@ def test_customer_openapi_has_only_read_operations_for_geo_routes() -> None:
     paths = app.openapi()["paths"]
     geo_paths = {path: item for path, item in paths.items() if "/geo/" in path}
 
-    assert len(geo_paths) == 7
+    # Legacy monitoring has seven read routes.  The eighth is the separate,
+    # independently-approved Workflow C report projection, which is likewise
+    # Customer-read-only and never exposes a raw observation.
+    assert len(geo_paths) == 8
+    assert "/v1/projects/{project_id}/geo/workflow-c-reports" in geo_paths
     assert all(
         set(item) & {"post", "put", "patch", "delete"} == set() for item in geo_paths.values()
     )
     assert not any("observation" in path for path in paths)
+
+
+def test_customer_workflow_c_reports_use_only_the_durable_approved_reader() -> None:
+    project_id, campaign_id = uuid4(), uuid4()
+    report = WorkflowCCustomerApprovedReport(
+        id=uuid4(),
+        project_id=project_id,
+        campaign_id=campaign_id,
+        semantic_snapshot_hash="a" * 64,
+        report_hash="b" * 64,
+        source_kind="provider_api",
+        approved_safe_payload={"summary": "Approved aggregate", "mention_rate": "0.5"},
+        approved_at=NOW,
+    )
+    reader = WorkflowCCustomerReaderStub(report)
+    app, principal = _app(
+        workflow_c_customer_reader=reader,
+        project_id=project_id,
+    )
+    requested_project = principal.project_ids[0]
+    foreign_campaign_id = uuid4()
+
+    with TestClient(app) as client:
+        allowed = client.get(
+            f"/v1/projects/{requested_project}/geo/workflow-c-reports",
+            params={"campaign_id": str(campaign_id)},
+        )
+        foreign = client.get(
+            f"/v1/projects/{requested_project}/geo/workflow-c-reports",
+            params={"campaign_id": str(foreign_campaign_id)},
+        )
+
+    assert allowed.status_code == foreign.status_code == 200
+    assert allowed.json() == {
+        "items": [
+            {
+                "id": str(report.id),
+                "project_id": str(project_id),
+                "campaign_id": str(campaign_id),
+                "semantic_snapshot_hash": "a" * 64,
+                "report_hash": "b" * 64,
+                "source_kind": "provider_api",
+                "approved_safe_payload": {
+                    "summary": "Approved aggregate",
+                    "mention_rate": "0.5",
+                },
+                "approved_at": "2026-07-16T00:00:00Z",
+            }
+        ],
+        "total": 1,
+    }
+    assert foreign.json() == {"items": [], "total": 0}
+    assert reader.calls == [
+        (requested_project, campaign_id),
+        (requested_project, foreign_campaign_id),
+    ]
 
 
 def test_customer_project_scope_is_enforced_before_read_model_access() -> None:

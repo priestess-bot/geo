@@ -11,6 +11,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 PRODUCTION_COMPOSE = ROOT / "infra" / "compose.prod.yml"
+STYLE_COMPOSE = ROOT / "infra" / "compose.style-collection.yml"
 BUSYBOX_IMAGE = (
     "busybox@sha256:fd8d9aa63ba2f0982b5304e1ee8d3b90a210bc1ffb5314d980eb6962f1a9715d"
 )
@@ -42,6 +43,7 @@ def _run_compose(
 
 def _runtime_fixture() -> dict[str, Any]:
     production = yaml.safe_load(PRODUCTION_COMPOSE.read_text(encoding="utf-8"))
+    style = yaml.safe_load(STYLE_COMPOSE.read_text(encoding="utf-8"))
     return {
         "name": "geo-infra-egress-contract",
         "services": {
@@ -91,10 +93,34 @@ def _runtime_fixture() -> dict[str, Any]:
                 ],
                 "networks": ["backend", "egress"],
             },
+            "backend-fixture": {
+                "image": BUSYBOX_IMAGE,
+                "pull_policy": "if_not_present",
+                "command": ["httpd", "-f", "-p", "8080"],
+                "networks": {
+                    "backend": {
+                        "aliases": ["postgres", "minio", "valkey", "internal-api"]
+                    }
+                },
+            },
+            "page-runtime-probe": {
+                "image": BUSYBOX_IMAGE,
+                "pull_policy": "if_not_present",
+                "command": [
+                    "sh",
+                    "-ec",
+                    "for host in postgres minio valkey internal-api; do "
+                    "if wget -q -T 2 -O /dev/null http://$host:8080; then exit 42; fi; "
+                    "done; test \"$(wget -q -T 5 -O - "
+                    "http://external-fixture:8080/health)\" = fixture-ok",
+                ],
+                "networks": ["style-browser-control", "egress"],
+            },
         },
         "networks": {
             "backend": production["networks"]["backend"],
             "egress": production["networks"]["egress"],
+            "style-browser-control": style["networks"]["style-browser-control"],
         },
     }
 
@@ -135,6 +161,49 @@ def test_backend_only_probe_is_blocked_while_egress_probe_reaches_fixture(
 
         assert blocked.returncode == 0, blocked.stderr
         assert allowed.returncode == 0, allowed.stderr
+    finally:
+        _run_compose(
+            project,
+            compose_file,
+            "down",
+            "--volumes",
+            "--remove-orphans",
+            check=False,
+        )
+
+
+@pytest.mark.integration
+def test_page_runtime_network_cannot_reach_backend_service_names(tmp_path: Path) -> None:
+    compose_file = tmp_path / "compose.page-network-contract.yml"
+    compose_file.write_text(yaml.safe_dump(_runtime_fixture()), encoding="utf-8")
+    project = f"geo-page-isolation-{uuid4().hex[:12]}"
+
+    subprocess.run(
+        ["docker", "info", "--format", "{{.ServerVersion}}"],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    try:
+        _run_compose(
+            project,
+            compose_file,
+            "up",
+            "--detach",
+            "--wait",
+            "external-fixture",
+            "backend-fixture",
+        )
+        isolated = _run_compose(
+            project,
+            compose_file,
+            "run",
+            "--rm",
+            "page-runtime-probe",
+            check=False,
+        )
+        assert isolated.returncode == 0, isolated.stderr
     finally:
         _run_compose(
             project,

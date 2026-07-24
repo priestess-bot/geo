@@ -19,10 +19,18 @@ from geo_api.runtime_readiness import (
     Surface,
     readiness_checker_from_environment,
 )
+from geo_api.workflow_c_runtime import WorkflowCApi
 
 
 FORBIDDEN_PATH_TERMS = ("runtime", "p0a", "p0b", "fixture", "/au/", "-au/")
 CONFIGURED_FOUNDATION_SERVICES = cast(FoundationServices, object())
+
+
+class _DurableInternalRuntime:
+    persistence = "durable"
+
+
+DURABLE_INTERNAL_RUNTIME = _DurableInternalRuntime()
 
 
 def _passing_readiness(surface: Surface) -> ReadinessChecker:
@@ -223,6 +231,11 @@ def test_internal_readiness_statically_validates_oidc_configuration_without_remo
     app = create_api_app(
         surface="internal",
         readiness_service=_passing_readiness("internal"),
+        prompt_program_application=DURABLE_INTERNAL_RUNTIME,
+        recommendation_api=DURABLE_INTERNAL_RUNTIME,
+        secret_store_application=DURABLE_INTERNAL_RUNTIME,
+        synthetic_lab_api=DURABLE_INTERNAL_RUNTIME,
+        workflow_c_api=cast(WorkflowCApi, DURABLE_INTERNAL_RUNTIME),
     )
 
     with TestClient(app) as client:

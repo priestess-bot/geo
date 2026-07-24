@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import timedelta
+import os
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -36,7 +37,15 @@ from tests.integration.test_batch2_migrations_postgres import (
 )
 
 
-pytestmark = pytest.mark.integration
+ADMIN_URL = os.getenv("GEO_ACCESS_TEST_ADMIN_DATABASE_URL", "").strip()
+
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(
+        not ADMIN_URL,
+        reason="GEO_ACCESS_TEST_ADMIN_DATABASE_URL is required",
+    ),
+]
 
 
 class _AccessServices:
@@ -57,8 +66,10 @@ def test_legacy_prompt_simulations_remain_readable_and_inflight_jobs_resume() ->
 
         command.upgrade(configuration, "head")
         expected_head = ScriptDirectory.from_config(configuration).get_current_head()
-        assert expected_head == "0026_legacy_simulation"
         with psycopg.connect(database_url) as connection:
+            assert connection.execute("SELECT version_num FROM alembic_version").fetchone() == (
+                expected_head,
+            )
             for function_name in (
                 "geo_is_exact_legacy_simulation_generation_job(uuid,uuid)",
                 "geo_is_exact_legacy_simulation_artifact_job(uuid,uuid)",

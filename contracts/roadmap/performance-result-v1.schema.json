@@ -1,0 +1,410 @@
+{
+  "$defs": {
+    "CorrectnessMeasurement": {
+      "additionalProperties": false,
+      "properties": {
+        "cross_project_reads": {
+          "title": "Cross Project Reads",
+          "type": "integer"
+        },
+        "duplicate_terminal_states": {
+          "title": "Duplicate Terminal States",
+          "type": "integer"
+        },
+        "hash_mismatches": {
+          "title": "Hash Mismatches",
+          "type": "integer"
+        },
+        "lost_outbox_messages": {
+          "title": "Lost Outbox Messages",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "cross_project_reads",
+        "duplicate_terminal_states",
+        "lost_outbox_messages",
+        "hash_mismatches"
+      ],
+      "title": "CorrectnessMeasurement",
+      "type": "object"
+    },
+    "LatencyDistribution": {
+      "additionalProperties": false,
+      "properties": {
+        "max_ms": {
+          "title": "Max Ms",
+          "type": "number"
+        },
+        "p50_ms": {
+          "title": "P50 Ms",
+          "type": "number"
+        },
+        "p95_ms": {
+          "title": "P95 Ms",
+          "type": "number"
+        },
+        "p99_ms": {
+          "title": "P99 Ms",
+          "type": "number"
+        },
+        "sample_count": {
+          "title": "Sample Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "sample_count",
+        "p50_ms",
+        "p95_ms",
+        "p99_ms",
+        "max_ms"
+      ],
+      "title": "LatencyDistribution",
+      "type": "object"
+    },
+    "ResourceWatermark": {
+      "additionalProperties": false,
+      "properties": {
+        "cpu_peak_cores": {
+          "title": "Cpu Peak Cores",
+          "type": "number"
+        },
+        "memory_peak_bytes": {
+          "title": "Memory Peak Bytes",
+          "type": "integer"
+        },
+        "service": {
+          "title": "Service",
+          "type": "string"
+        }
+      },
+      "required": [
+        "service",
+        "cpu_peak_cores",
+        "memory_peak_bytes"
+      ],
+      "title": "ResourceWatermark",
+      "type": "object"
+    },
+    "RuntimeTopologyMeasurement": {
+      "additionalProperties": false,
+      "properties": {
+        "api_database_pool_max_size": {
+          "title": "Api Database Pool Max Size",
+          "type": "integer"
+        },
+        "outbox_relays": {
+          "title": "Outbox Relays",
+          "type": "integer"
+        },
+        "resource_limits": {
+          "additionalProperties": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "title": "Resource Limits",
+          "type": "object"
+        },
+        "style_browser_workers": {
+          "title": "Style Browser Workers",
+          "type": "integer"
+        },
+        "task_workers": {
+          "title": "Task Workers",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "task_workers",
+        "style_browser_workers",
+        "outbox_relays",
+        "api_database_pool_max_size",
+        "resource_limits"
+      ],
+      "title": "RuntimeTopologyMeasurement",
+      "type": "object"
+    },
+    "SamplingRunMeasurement": {
+      "additionalProperties": false,
+      "properties": {
+        "dispatch_latency": {
+          "$ref": "#/$defs/LatencyDistribution"
+        },
+        "peak_eligible_tasks": {
+          "title": "Peak Eligible Tasks",
+          "type": "integer"
+        },
+        "planned_tasks": {
+          "title": "Planned Tasks",
+          "type": "integer"
+        },
+        "project_id": {
+          "format": "uuid",
+          "title": "Project Id",
+          "type": "string"
+        },
+        "provider": {
+          "title": "Provider",
+          "type": "string"
+        },
+        "run_id": {
+          "format": "uuid",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "terminal_tasks": {
+          "title": "Terminal Tasks",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "run_id",
+        "project_id",
+        "provider",
+        "planned_tasks",
+        "terminal_tasks",
+        "peak_eligible_tasks",
+        "dispatch_latency"
+      ],
+      "title": "SamplingRunMeasurement",
+      "type": "object"
+    },
+    "StyleChannelMeasurement": {
+      "additionalProperties": false,
+      "properties": {
+        "approved_sample_count": {
+          "title": "Approved Sample Count",
+          "type": "integer"
+        },
+        "candidate_count": {
+          "title": "Candidate Count",
+          "type": "integer"
+        },
+        "channel": {
+          "title": "Channel",
+          "type": "string"
+        },
+        "fixed_case_count": {
+          "title": "Fixed Case Count",
+          "type": "integer"
+        },
+        "offline_experiment_slot_count": {
+          "title": "Offline Experiment Slot Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "channel",
+        "approved_sample_count",
+        "fixed_case_count",
+        "candidate_count",
+        "offline_experiment_slot_count"
+      ],
+      "title": "StyleChannelMeasurement",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "api_load_duration_seconds": {
+      "title": "Api Load Duration Seconds",
+      "type": "integer"
+    },
+    "concurrently_active_projects": {
+      "title": "Concurrently Active Projects",
+      "type": "integer"
+    },
+    "correctness": {
+      "$ref": "#/$defs/CorrectnessMeasurement"
+    },
+    "diagnostic_only": {
+      "title": "Diagnostic Only",
+      "type": "boolean"
+    },
+    "dispatch_latency": {
+      "$ref": "#/$defs/LatencyDistribution"
+    },
+    "drain_seconds": {
+      "title": "Drain Seconds",
+      "type": "number"
+    },
+    "environment_fingerprint": {
+      "title": "Environment Fingerprint",
+      "type": "string"
+    },
+    "finished_at": {
+      "format": "date-time",
+      "title": "Finished At",
+      "type": "string"
+    },
+    "maximum_queue_age_seconds": {
+      "title": "Maximum Queue Age Seconds",
+      "type": "number"
+    },
+    "metric_observation_count": {
+      "title": "Metric Observation Count",
+      "type": "integer"
+    },
+    "metric_recompute_latency": {
+      "$ref": "#/$defs/LatencyDistribution"
+    },
+    "offline_experiment_slot_count": {
+      "title": "Offline Experiment Slot Count",
+      "type": "integer"
+    },
+    "outbox_publish_latency": {
+      "$ref": "#/$defs/LatencyDistribution"
+    },
+    "overall_latency": {
+      "$ref": "#/$defs/LatencyDistribution"
+    },
+    "profile_hash": {
+      "title": "Profile Hash",
+      "type": "string"
+    },
+    "profile_id": {
+      "title": "Profile Id",
+      "type": "string"
+    },
+    "project_count": {
+      "title": "Project Count",
+      "type": "integer"
+    },
+    "raw_report_sha256": {
+      "title": "Raw Report Sha256",
+      "type": "string"
+    },
+    "raw_report_uri": {
+      "title": "Raw Report Uri",
+      "type": "string"
+    },
+    "read_latency": {
+      "$ref": "#/$defs/LatencyDistribution"
+    },
+    "resource_watermarks": {
+      "items": {
+        "$ref": "#/$defs/ResourceWatermark"
+      },
+      "title": "Resource Watermarks",
+      "type": "array"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "sampling_peak_eligible_tasks": {
+      "title": "Sampling Peak Eligible Tasks",
+      "type": "integer"
+    },
+    "sampling_planned_tasks": {
+      "title": "Sampling Planned Tasks",
+      "type": "integer"
+    },
+    "sampling_runs": {
+      "items": {
+        "$ref": "#/$defs/SamplingRunMeasurement"
+      },
+      "title": "Sampling Runs",
+      "type": "array"
+    },
+    "sampling_terminal_tasks": {
+      "title": "Sampling Terminal Tasks",
+      "type": "integer"
+    },
+    "schema_version": {
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "started_at": {
+      "format": "date-time",
+      "title": "Started At",
+      "type": "string"
+    },
+    "style_approved_sample_count": {
+      "title": "Style Approved Sample Count",
+      "type": "integer"
+    },
+    "style_candidate_count": {
+      "title": "Style Candidate Count",
+      "type": "integer"
+    },
+    "style_channel_count": {
+      "title": "Style Channel Count",
+      "type": "integer"
+    },
+    "style_channels": {
+      "items": {
+        "$ref": "#/$defs/StyleChannelMeasurement"
+      },
+      "title": "Style Channels",
+      "type": "array"
+    },
+    "style_fixed_case_count": {
+      "title": "Style Fixed Case Count",
+      "type": "integer"
+    },
+    "topology": {
+      "$ref": "#/$defs/RuntimeTopologyMeasurement"
+    },
+    "unexpected_5xx_count": {
+      "title": "Unexpected 5Xx Count",
+      "type": "integer"
+    },
+    "workload_hash": {
+      "title": "Workload Hash",
+      "type": "string"
+    },
+    "workload_id": {
+      "title": "Workload Id",
+      "type": "string"
+    },
+    "write_latency": {
+      "$ref": "#/$defs/LatencyDistribution"
+    }
+  },
+  "required": [
+    "schema_version",
+    "run_id",
+    "profile_id",
+    "profile_hash",
+    "workload_id",
+    "workload_hash",
+    "environment_fingerprint",
+    "started_at",
+    "finished_at",
+    "api_load_duration_seconds",
+    "diagnostic_only",
+    "project_count",
+    "concurrently_active_projects",
+    "sampling_planned_tasks",
+    "sampling_terminal_tasks",
+    "sampling_peak_eligible_tasks",
+    "sampling_runs",
+    "style_channel_count",
+    "style_approved_sample_count",
+    "style_fixed_case_count",
+    "style_candidate_count",
+    "offline_experiment_slot_count",
+    "style_channels",
+    "read_latency",
+    "write_latency",
+    "overall_latency",
+    "unexpected_5xx_count",
+    "dispatch_latency",
+    "outbox_publish_latency",
+    "maximum_queue_age_seconds",
+    "drain_seconds",
+    "metric_observation_count",
+    "metric_recompute_latency",
+    "topology",
+    "resource_watermarks",
+    "correctness",
+    "raw_report_uri",
+    "raw_report_sha256"
+  ],
+  "title": "PerformanceRunResult",
+  "type": "object"
+}

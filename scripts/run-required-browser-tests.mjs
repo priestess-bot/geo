@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -12,6 +12,10 @@ const suites = [
   {
     label: "Customer Chromium desktop",
     args: ["--config=playwright.customer.config.ts", "--project=customer-desktop", "--workers=1"]
+  },
+  {
+    label: "Workflow C Chromium desktop",
+    args: ["--config=playwright.workflow-c.config.ts", "--project=chromium-workflow-c", "--workers=1"]
   }
 ];
 
@@ -89,11 +93,19 @@ function main() {
     return;
   }
   const temporaryDirectory = mkdtempSync(path.join(os.tmpdir(), "geo-browser-gate-"));
+  const adminNextEnvironment = path.join(
+    process.cwd(),
+    "apps",
+    "admin-web",
+    "next-env.d.ts"
+  );
+  const originalAdminNextEnvironment = readFileSync(adminNextEnvironment);
   try {
     for (const suite of suites) {
       runSuite(suite, temporaryDirectory);
     }
   } finally {
+    writeFileSync(adminNextEnvironment, originalAdminNextEnvironment, { mode: 0o644 });
     rmSync(temporaryDirectory, { recursive: true, force: true });
   }
 }

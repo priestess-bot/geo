@@ -167,6 +167,25 @@ def test_production_upgrade_forbids_mixed_application_versions() -> None:
 
 def test_admin_next_types_do_not_depend_on_the_playwright_build_directory() -> None:
     next_environment = (ROOT / "apps/admin-web/next-env.d.ts").read_text(encoding="utf-8")
+    browser_runner = (ROOT / "scripts/run-required-browser-tests.mjs").read_text(
+        encoding="utf-8"
+    )
 
     assert './.next/types/routes.d.ts' in next_environment
     assert ".next-playwright" not in next_environment
+    assert "originalAdminNextEnvironment" in browser_runner
+    assert "writeFileSync(adminNextEnvironment" in browser_runner
+
+
+def test_browser_configs_allow_isolated_local_server_ports() -> None:
+    expected = {
+        "playwright.config.ts": "PLAYWRIGHT_ADMIN_SERVER_PORT",
+        "playwright.customer.config.ts": "PLAYWRIGHT_CUSTOMER_SERVER_PORT",
+        "playwright.workflow-c.config.ts": "PLAYWRIGHT_WORKFLOW_C_SERVER_PORT",
+    }
+
+    for filename, variable in expected.items():
+        source = (ROOT / filename).read_text(encoding="utf-8")
+        assert variable in source
+        assert "must be a TCP port" in source
+        assert "-p ${" in source

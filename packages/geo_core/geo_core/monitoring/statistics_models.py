@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
+from enum import StrEnum
 from uuid import UUID
 
 from geo_core.monitoring.domain import (
@@ -21,6 +22,190 @@ from geo_core.monitoring.source_contract import SourceStratumKey
 
 
 ReasonCounts = tuple[tuple[str, int], ...]
+
+
+class ComparisonConclusion(StrEnum):
+    """Allowed terminal conclusions for a frozen metric comparison."""
+
+    WIN = "win"
+    EQUIVALENT = "equivalent"
+    LOSS = "loss"
+    INCONCLUSIVE = "inconclusive"
+    INSUFFICIENT_EVIDENCE = "insufficient_evidence"
+
+
+@dataclass(frozen=True)
+class FrozenComparisonCriteria:
+    """Decision thresholds frozen before any comparison observations are inspected."""
+
+    delta: Decimal
+    power: Decimal
+    precision: Decimal
+    min_pairs: int
+    alpha: Decimal
+    family: str
+    correction_method: str = "holm"
+    minimum_completion_ratio: Decimal = Decimal("0.80")
+
+    def __post_init__(self) -> None:
+        _require_finite_decimal(self.delta, "comparison delta")
+        _require_finite_decimal(self.power, "comparison power")
+        _require_finite_decimal(self.precision, "comparison precision")
+        _require_finite_decimal(self.alpha, "comparison alpha")
+        _require_finite_decimal(
+            self.minimum_completion_ratio, "comparison minimum completion ratio"
+        )
+        if self.delta < 0:
+            raise MonitoringRuleViolation("comparison delta must be non-negative")
+        if not Decimal(0) < self.power <= Decimal(1):
+            raise MonitoringRuleViolation("comparison power must be in (0, 1]")
+        if self.precision <= 0:
+            raise MonitoringRuleViolation("comparison precision must be positive")
+        if not isinstance(self.min_pairs, int) or isinstance(self.min_pairs, bool) or self.min_pairs < 1:
+            raise MonitoringRuleViolation("comparison min_pairs must be a positive integer")
+        if not Decimal(0) < self.alpha < Decimal(1):
+            raise MonitoringRuleViolation("comparison alpha must be in (0, 1)")
+        if not Decimal(0) < self.minimum_completion_ratio <= Decimal(1):
+            raise MonitoringRuleViolation(
+                "comparison minimum completion ratio must be in (0, 1]"
+            )
+        if not self.family.strip():
+            raise MonitoringRuleViolation("comparison family is required")
+        if not self.correction_method.strip():
+            raise MonitoringRuleViolation("comparison correction method is required")
+
+    @property
+    def target_power(self) -> Decimal:
+        return self.power
+
+    @property
+    def maximum_interval_half_width(self) -> Decimal:
+        return self.precision
+
+    @property
+    def minimum_valid_pairs(self) -> int:
+        return self.min_pairs
+
+    def canonical_value(self) -> dict[str, object]:
+        return {
+            "delta": _canonical_decimal(self.delta),
+            "power": _canonical_decimal(self.power),
+            "precision": _canonical_decimal(self.precision),
+            "min_pairs": self.min_pairs,
+            "alpha": _canonical_decimal(self.alpha),
+            "family": self.family.strip(),
+            "correction_method": self.correction_method.strip().lower(),
+            "minimum_completion_ratio": _canonical_decimal(self.minimum_completion_ratio),
+        }
+
+    def canonical_hash(self) -> str:
+        return canonical_hash(self.canonical_value())
+
+
+@dataclass(frozen=True)
+class ComparisonDecision:
+    """Auditable outcome derived from an adjusted interval and frozen criteria."""
+
+    conclusion: ComparisonConclusion
+    adjusted_ci_low: Decimal
+    adjusted_ci_high: Decimal
+    valid_pair_count: int
+    planned_pair_count: int
+    completion_ratio: Decimal
+    interval_half_width: Decimal
+    achieved_power: Decimal | None
+    sample_size_met: bool
+    completion_met: bool
+    power_met: bool
+    precision_met: bool
+    criteria: FrozenComparisonCriteria
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.conclusion, ComparisonConclusion):
+            raise MonitoringRuleViolation("comparison conclusion is invalid")
+        if not isinstance(self.criteria, FrozenComparisonCriteria):
+            raise MonitoringRuleViolation("comparison criteria are invalid")
+        for value, label in (
+            (self.adjusted_ci_low, "comparison adjusted interval lower bound"),
+            (self.adjusted_ci_high, "comparison adjusted interval upper bound"),
+            (self.completion_ratio, "comparison completion ratio"),
+            (self.interval_half_width, "comparison interval half-width"),
+        ):
+            _require_finite_decimal(value, label)
+        if self.achieved_power is not None:
+            _require_finite_decimal(self.achieved_power, "comparison achieved power")
+            if not Decimal(0) <= self.achieved_power <= Decimal(1):
+                raise MonitoringRuleViolation("comparison achieved power must be in [0, 1]")
+        if self.adjusted_ci_low > self.adjusted_ci_high:
+            raise MonitoringRuleViolation("comparison adjusted interval is reversed")
+        if (
+            not isinstance(self.valid_pair_count, int)
+            or isinstance(self.valid_pair_count, bool)
+            or not isinstance(self.planned_pair_count, int)
+            or isinstance(self.planned_pair_count, bool)
+            or not 0 <= self.valid_pair_count <= self.planned_pair_count
+            or self.planned_pair_count < 1
+        ):
+            raise MonitoringRuleViolation("comparison pair counts are inconsistent")
+        expected_completion_ratio = (
+            Decimal(self.valid_pair_count) / Decimal(self.planned_pair_count)
+        ).quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
+        expected_half_width = (self.adjusted_ci_high - self.adjusted_ci_low) / Decimal(2)
+        expected_sample_size_met = self.valid_pair_count >= self.criteria.min_pairs
+        expected_completion_met = (
+            Decimal(self.valid_pair_count)
+            >= self.criteria.minimum_completion_ratio * Decimal(self.planned_pair_count)
+        )
+        expected_power_met = (
+            self.achieved_power is not None and self.achieved_power >= self.criteria.power
+        )
+        expected_precision_met = expected_half_width <= self.criteria.precision
+        derived_values = (
+            self.completion_ratio == expected_completion_ratio,
+            self.interval_half_width == expected_half_width,
+            self.sample_size_met is expected_sample_size_met,
+            self.completion_met is expected_completion_met,
+            self.power_met is expected_power_met,
+            self.precision_met is expected_precision_met,
+        )
+        if not all(derived_values):
+            raise MonitoringRuleViolation("comparison decision fields are inconsistent")
+        expected_conclusion = _comparison_conclusion(
+            criteria=self.criteria,
+            adjusted_ci_low=self.adjusted_ci_low,
+            adjusted_ci_high=self.adjusted_ci_high,
+            sample_size_met=expected_sample_size_met,
+            completion_met=expected_completion_met,
+            power_met=expected_power_met,
+            precision_met=expected_precision_met,
+        )
+        if self.conclusion is not expected_conclusion:
+            raise MonitoringRuleViolation("comparison conclusion is inconsistent")
+
+    def canonical_value(self) -> dict[str, object]:
+        return {
+            "conclusion": self.conclusion.value,
+            "adjusted_ci_low": _canonical_decimal(self.adjusted_ci_low),
+            "adjusted_ci_high": _canonical_decimal(self.adjusted_ci_high),
+            "valid_pair_count": self.valid_pair_count,
+            "planned_pair_count": self.planned_pair_count,
+            "completion_ratio": _canonical_decimal(self.completion_ratio),
+            "interval_half_width": _canonical_decimal(self.interval_half_width),
+            "achieved_power": (
+                _canonical_decimal(self.achieved_power)
+                if self.achieved_power is not None
+                else None
+            ),
+            "sample_size_met": self.sample_size_met,
+            "completion_met": self.completion_met,
+            "power_met": self.power_met,
+            "precision_met": self.precision_met,
+            "criteria": self.criteria.canonical_value(),
+            "criteria_hash": self.criteria.canonical_hash(),
+        }
+
+    def canonical_hash(self) -> str:
+        return canonical_hash(self.canonical_value())
 
 
 @dataclass(frozen=True)
@@ -296,3 +481,40 @@ def analysis_stratum_hash(source_stratum_hash: str, query_cluster_key: str) -> s
 
 def _number(value: Decimal | None) -> float | None:
     return float(value) if value is not None else None
+
+
+def _require_finite_decimal(value: object, label: str) -> None:
+    if not isinstance(value, Decimal) or not value.is_finite():
+        raise MonitoringRuleViolation(f"{label} must be a finite Decimal")
+
+
+def _canonical_decimal(value: Decimal) -> str:
+    if value == 0:
+        return "0"
+    return format(value.normalize(), "f")
+
+
+def _comparison_conclusion(
+    *,
+    criteria: FrozenComparisonCriteria,
+    adjusted_ci_low: Decimal,
+    adjusted_ci_high: Decimal,
+    sample_size_met: bool,
+    completion_met: bool,
+    power_met: bool,
+    precision_met: bool,
+) -> ComparisonConclusion:
+    if not sample_size_met or not completion_met:
+        return ComparisonConclusion.INSUFFICIENT_EVIDENCE
+    if adjusted_ci_low > criteria.delta:
+        return ComparisonConclusion.WIN
+    if adjusted_ci_high < -criteria.delta:
+        return ComparisonConclusion.LOSS
+    if (
+        adjusted_ci_low >= -criteria.delta
+        and adjusted_ci_high <= criteria.delta
+        and power_met
+        and precision_met
+    ):
+        return ComparisonConclusion.EQUIVALENT
+    return ComparisonConclusion.INCONCLUSIVE

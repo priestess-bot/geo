@@ -80,6 +80,23 @@ def test_download_rejects_content_that_does_not_match_manifest_hash() -> None:
         )
 
 
+@pytest.mark.parametrize("delete_status", (200, 202, 204, 404))
+def test_delete_is_signed_and_idempotent(delete_status: int) -> None:
+    requester = RecordingRequester()
+    requester.responses = [(200, {}, b""), (delete_status, {}, b"")]
+
+    deleted = store(requester).delete_s3_uri(
+        uri="s3://geo-artifacts/synthetic/project/artifact.bin"
+    )
+
+    assert deleted is True
+    assert [call[0] for call in requester.calls] == ["PUT", "DELETE"]
+    assert requester.calls[1][1].endswith(
+        "/geo-artifacts/synthetic/project/artifact.bin"
+    )
+    assert "authorization" in requester.calls[1][2]
+
+
 @pytest.mark.parametrize(
     "uri",
     ("https://objects.example.test/file", "s3://geo-artifacts", "s3:///file"),
