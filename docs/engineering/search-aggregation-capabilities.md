@@ -10,6 +10,20 @@
 
 本原型提供 SerpAPI 和 OpenRouter 的即时查询与结构化展示，方便开发期检查第三方返回的形状。它不创建 Campaign Monitoring Observation，不保存不可变工件，不进入 Customer 投影，也不代表澳大利亚消费者实际看见的页面。
 
+### 0.1 最小可用原型定义
+
+在上述边界内，本模块可用于工程人员以明确的供应商响应验证 parser 的候选实现，或为后续 Surface Release 准备 fixture。它输出的是“第三方 API/模型返回的归一化结果”，而不是对 Google、Bing 或任何消费者 UI 的事实主张。
+
+下列规则是该原型的不可突破边界：
+
+- `ai_overview`、`bing_copilot` 和 OpenRouter/Perplexity 返回必须保留各自来源身份；不得把 SerpAPI、OpenRouter 或模型 API 重命名为消费者浏览器采集。
+- `gl`、`hl`、`location`、`google_domain` 仅是上游请求提示，不能记录为 AU egress、澳洲消费者结果或地域验证。
+- 普通 Google `answer_box`、featured snippet、knowledge panel 和传统 Bing SERP 不是 AI surface；在没有独立 surface detector 与页面证据前，不能作为 AIO/Copilot 成功案例或 fixture 正例。
+- mock、缺失凭据、未授权、空回答、解析失败和上游异常均不是真实成功、有效缺失或可用于验收的样本。
+- `/v1/search/*-raw` 仅是尚待治理的诊断面，不能被复制到 Customer、导出、日志、工件或推荐证据；其响应不具有留存许可或脱敏保证。
+
+本文件只冻结产品定位和阻断项，不将现有即时路由提升为 production-ready。正式化必须按下列 checklist 逐项完成并经独立验证。
+
 下列项全部关闭前，任何 `/v1/search/*` 返回都必须保持 `prototype/debug` 定位，不得作为 B 的 Adapter Release、Sampling Attempt、eligible Observation、统计分母、告警输入或 Recommendation 证据：
 
 - [ ] `B-SEARCH-PROTOTYPE-01` 将 SerpAPI 与 OpenRouter 凭据迁入 Secret Store，仅以版本化 Secret Reference 在命令中传递；完成项目范围访问、轮换、撤销和审计。
@@ -20,6 +34,7 @@
 - [ ] `B-SEARCH-PROTOTYPE-06` 将执行接入现有 Durable Job、lease/fencing、outbox、MinIO raw-first artifact、Attempt/Observation 及 SourceStratum 合同；重试不得改变 planned denominator。
 - [ ] `B-SEARCH-PROTOTYPE-07` 实现 Google AI Mode，并以独立 Surface Release 验收 Google AI Overviews、Google AI Mode、Bing Copilot；SerpAPI/模型 API 不得冒充消费者 UI capture。
 - [ ] `B-SEARCH-PROTOTYPE-08` 以冻结的官方 Provider/Grounded API adapter 补齐 OpenAI、Gemini、Perplexity、Microsoft Grounding with Bing 和 Kimi；OpenRouter 代理回答不能替代对应官方 Adapter 的真实 canary。
+- [ ] `B-SEARCH-PROTOTYPE-09` 移除将 `answer_box` 回退解释为 AI Overview 的 parser 行为；分别以 AIO、传统 SERP、有效缺失和阻断页面 fixture 验证，传统结果误标必须为 0。
 
 ## 1. 已实现原型能力
 
