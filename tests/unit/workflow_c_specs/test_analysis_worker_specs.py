@@ -68,10 +68,11 @@ def test_drift_worker_spec_keeps_snapshot_identity_outside_observation_denominat
         },
     }
 
-    source, target, restored_baseline, restored_current = drift_inputs(
+    protocol_hash, source, target, restored_baseline, restored_current = drift_inputs(
         _spec("workflow_c.analysis.drift", payload)
     )
 
+    assert protocol_hash is None
     assert (source, target) == ("1" * 64, "2" * 64)
     assert restored_baseline == (baseline,)
     assert restored_current == (current,)

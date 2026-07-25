@@ -436,7 +436,12 @@ def _questions(value: Mapping[str, object]) -> tuple[SamplingQuestion, ...]:
 
 
 def _source(value: Mapping[str, object]) -> SamplingSourceStratum:
-    source = _mapping(value.get("source_stratum"))
+    return sampling_source_stratum_from_value(value.get("source_stratum"))
+
+
+def sampling_source_stratum_from_value(value: object) -> SamplingSourceStratum:
+    """Decode one persisted Suite source with the canonical Sampling contract."""
+    source = _mapping(value)
     try:
         return SamplingSourceStratum(
             platform=_text(source, "platform"),

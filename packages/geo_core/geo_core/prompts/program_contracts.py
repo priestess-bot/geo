@@ -21,6 +21,8 @@ from geo_core.model_gateway.schema_validation import (
 
 _VARIABLE = re.compile(r"\{\{\s*([a-zA-Z][a-zA-Z0-9_]*)\s*\}\}")
 _PURPOSE = re.compile(r"[a-z][a-z0-9_.-]{2,127}")
+LEGACY_BOOTSTRAP_COMPILER_VERSION = "geo-prompt-bootstrap-compiler-v1"
+BOOTSTRAP_COMPILER_VERSION = "geo-prompt-bootstrap-compiler-v2"
 
 
 class PromptProgramRuleViolation(ValueError):
@@ -66,12 +68,14 @@ class ProgramReleaseStatus(StrEnum):
     TESTED = "tested"
     APPROVED = "approved"
     FROZEN = "frozen"
+    RETIRED = "retired"
 
 
 class ProgramReleaseCommand(StrEnum):
     RECORD_TEST = "record_test"
     APPROVE = "approve"
     FREEZE = "freeze"
+    RETIRE = "retire"
 
 
 @dataclass(frozen=True)

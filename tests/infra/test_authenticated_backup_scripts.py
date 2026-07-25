@@ -328,6 +328,8 @@ def test_authenticated_restore_gate_uses_dynamic_head_and_cleans_isolated_source
     assert "geo-synthetic-style-derived" in source
     assert "--synthetic-raw-object-store-bucket" in source
     assert "--synthetic-derived-object-store-bucket" in source
+    assert "--recommendation-object-store-bucket" in source
+    assert "--workflow-c-object-store-bucket" in source
     assert "GEO_DEVELOPMENT_SYNTHETIC_RAW_BACKUP_SOURCE_BUCKET" in source
     assert "GEO_DEVELOPMENT_SYNTHETIC_DERIVED_BACKUP_SOURCE_BUCKET" in source
     assert "if mc stat \"gate/$bucket\"" in source
@@ -341,6 +343,9 @@ def test_authenticated_restore_gate_uses_dynamic_head_and_cleans_isolated_source
     assert "all(receipt[\"negative_key_tests\"].values())" in source
     assert "verified_key_versions\"] == [1, 2]" in source
     assert "verified_master_key_versions\"] == [\"1\", \"2\"]" in source
+    assert '"artifact_lineage_count"] == 1' in source
+    assert '"recoverable_artifact_count"] == 1' in source
+    assert '"representative_artifact_verified"] is True' in source
     assert "0030_synthetic_lab" not in source
     assert "0030_synthetic_lab" not in seed
     assert "_RestoreGatePromptEvidenceVerifier" in prompt_seed

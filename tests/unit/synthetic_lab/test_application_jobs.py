@@ -10,6 +10,7 @@ import pytest
 from geo_core.jobs.lifecycle import JobStatus
 from geo_core.synthetic_lab.application_support import JobWriteOwnership
 from geo_core.synthetic_lab.domain import (
+    StyleProfileSampleManifest,
     StyleProfileStatus,
     StyleProfileVersion,
     StyleSample,
@@ -40,6 +41,7 @@ from geo_core.synthetic_lab.review_application import (
     JobEnqueueRequest,
     ReviewApplication,
 )
+from geo_core.synthetic_lab.resource_application import SyntheticResourceApplication
 from geo_core.synthetic_lab.review_cases import (
     ReviewCase,
     ReviewSuite,
@@ -168,6 +170,65 @@ def _suite(project_id: UUID):
         status=ReviewSuiteStatus.DRAFT,
     )
     return suite, (case,)
+
+
+def test_profile_creation_atomically_persists_the_original_sample_manifest() -> None:
+    project_id = uuid4()
+    operator = _principal(project_id, LabRole.OPERATOR)
+    samples = _samples(project_id)
+    approved = _profile(project_id, samples)
+    profile = replace(
+        approved,
+        status=StyleProfileStatus.DRAFT,
+        reviewed_by=None,
+        reviewed_at=None,
+    )
+    store = InMemorySyntheticLabStore()
+    app = SyntheticResourceApplication(InMemorySyntheticLabUnitOfWorkFactory(store))
+
+    created = app.create_style_profile(
+        principal=operator,
+        profile=profile,
+        sample_ids=tuple(sample.id for sample in samples),
+        expected_version=0,
+        idempotency_key="create-profile-with-manifest",
+    )
+
+    assert created.result == profile
+    manifest_record = store.get_aggregate(
+        project_id=project_id,
+        kind="style_profile_sample_manifest",
+        resource_id=profile.id,
+    )
+    assert manifest_record is not None
+    assert isinstance(manifest_record.payload, StyleProfileSampleManifest)
+    assert manifest_record.payload.sample_ids == tuple(sample.id for sample in samples)
+    assert app.create_style_profile(
+        principal=operator,
+        profile=profile,
+        sample_ids=tuple(sample.id for sample in samples),
+        expected_version=0,
+        idempotency_key="create-profile-with-manifest",
+    ).replayed
+
+    failing_store = InMemorySyntheticLabStore()
+    failing_store.fail_next_commit()
+    failing_app = SyntheticResourceApplication(
+        InMemorySyntheticLabUnitOfWorkFactory(failing_store)
+    )
+    with pytest.raises(SyntheticLabPersistenceError):
+        failing_app.create_style_profile(
+            principal=operator,
+            profile=profile,
+            sample_ids=tuple(sample.id for sample in samples),
+            expected_version=0,
+            idempotency_key="failed-profile-with-manifest",
+        )
+    assert failing_store.get_aggregate(
+        project_id=project_id,
+        kind="style_profile_sample_manifest",
+        resource_id=profile.id,
+    ) is None
 
 
 def test_profile_and_suite_freeze_require_independent_reviewer_and_cas() -> None:

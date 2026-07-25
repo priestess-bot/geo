@@ -10,6 +10,7 @@ import tempfile
 from scripts.export_stable_openapi import (
     CUSTOMER_ALLOWED_WRITES,
     CUSTOMER_FORBIDDEN_PREFIXES,
+    DEPRECATED_SYNC_ANALYSIS_SUCCESSORS,
     HTTP_METHODS,
     MANIFEST_NAME,
     MUTATING_METHODS,
@@ -89,6 +90,25 @@ def test_internal_snapshot_contains_catalog_and_evidence_contracts() -> None:
     assert {"get", "post"} <= set(paths["/v1/projects/{project_id}/entities"])
     assert {"get", "post"} <= set(paths["/v1/projects/{project_id}/market-profiles"])
     assert {"get", "post"} <= set(paths["/v1/projects/{project_id}/evidence-items"])
+
+
+def test_internal_snapshot_marks_sync_analysis_gone_and_requires_async_successors() -> None:
+    document = json.loads((CONTRACT_DIR / SNAPSHOT_NAMES["internal"]).read_text())
+    paths = document["paths"]
+
+    for legacy_path, successor_path in DEPRECATED_SYNC_ANALYSIS_SUCCESSORS.items():
+        legacy = paths[legacy_path]["post"]
+        successor = paths[successor_path]["post"]
+
+        assert legacy["deprecated"] is True
+        assert "200" not in legacy["responses"]
+        assert "410" in legacy["responses"]
+        assert set(legacy["responses"]["410"]["content"]) == {
+            "application/problem+json"
+        }
+        assert {"Deprecation", "Link"} <= set(legacy["responses"]["410"]["headers"])
+        assert successor.get("deprecated") is not True
+        assert "202" in successor["responses"]
 
 
 def test_exports_are_byte_reproducible_and_ignore_runtime_environment() -> None:

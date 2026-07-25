@@ -18,6 +18,8 @@ from geo_core.sampling.postgres_worker_contracts import (
     SamplingWorkerSource,
     WorkflowCSamplingSpecError,
 )
+from geo_core.sampling.provider_sources import gateway_provider_for_source
+from geo_core.sampling.surface_parsers import SurfaceParseSummary
 
 
 def build_provider_commit(
@@ -50,8 +52,13 @@ def build_provider_commit(
         raise WorkflowCSamplingSpecError("provider structured result has no answer")
     if canonical_json_hash(result.output) != output_hash:
         raise WorkflowCSamplingSpecError("provider output differs from terminal event")
+    expected_provider = gateway_provider_for_source(
+        platform=source_stratum.platform,
+        surface=source_stratum.surface,
+        capture_method=source_stratum.capture_method,
+    )
     if (
-        result.provider != source_stratum.platform
+        result.provider != expected_provider
         or result.capture_method is not ModelCaptureMethod(source_stratum.capture_method.value)
         or result.search_mode != source_stratum.search_mode
         or result.configured_model != source_stratum.configured_model
@@ -161,6 +168,7 @@ def build_manual_commit(
     task_key: str,
     source: SamplingWorkerSource,
     manifest_uri: str,
+    surface_parse: SurfaceParseSummary | None = None,
     observed_at: datetime,
 ) -> ManualSamplingCommit:
     _require_aware(observed_at, "manual observation time")
@@ -169,6 +177,16 @@ def build_manual_commit(
     if source.source.location_control is not LocationControl.NOT_CONTROLLED:
         raise WorkflowCSamplingSpecError("manual evidence cannot claim controlled geography")
     reference = _manifest_reference(manifest_uri)
+    ineligible = (
+        ()
+        if surface_parse is None or surface_parse.content_eligible
+        else (
+            "surface_parse:"
+            f"{surface_parse.outcome.value}:"
+            f"{surface_parse.block_reason.value if surface_parse.block_reason else 'unknown'}",
+        )
+    )
+    evidence_status = "ineligible" if ineligible else "complete"
     actual_location = {
         "location_control": LocationControl.NOT_CONTROLLED.value,
         "location_evidence_hash": source.source.location_evidence_hash,
@@ -198,7 +216,14 @@ def build_manual_commit(
             "content_hash": spec.artifact_content_hash,
             "governance_policy_hash": spec.governance_policy_hash,
         },
-        "derived_summary": "Approved restricted manual evidence was committed.",
+        "derived_summary": (
+            "Approved restricted manual evidence was committed."
+            if surface_parse is None
+            else (
+                f"Approved non-live manual {surface_parse.surface.value} evidence: "
+                f"{surface_parse.outcome.value}."
+            )
+        ),
         "evidence_locator": f"{reference}#/redacted-evidence",
         "provider_response_id": None,
         "egress_verification_id": None,
@@ -207,6 +232,9 @@ def build_manual_commit(
                 "manual_import_id": str(spec.manual_import_id),
                 "capture_session_id": str(spec.capture_session_id),
                 "artifact_manifest_id": str(spec.artifact_manifest_id),
+                "surface_parse_summary_hash": (
+                    surface_parse.summary_hash if surface_parse is not None else None
+                ),
             }
         ),
         "storage_decision": "prohibited",
@@ -216,6 +244,8 @@ def build_manual_commit(
         "usage_purpose": "sampling.manual_import",
         "usage_audience": "internal_worker",
     }
+    if surface_parse is not None:
+        evidence["surface_parse"] = surface_parse.persisted_value()
     observation_id = _observation_id(task_key, spec.attempt_id, evidence, actual_location)
     return ManualSamplingCommit(
         observation_id=observation_id,
@@ -225,12 +255,14 @@ def build_manual_commit(
             task_id=spec.task_id,
             attempt_id=spec.attempt_id,
             task_key=task_key,
-            evidence_status="complete",
-            ineligible_reasons=(),
+            evidence_status=evidence_status,
+            ineligible_reasons=ineligible,
             actual_location=actual_location,
             evidence=evidence,
             observed_at=observed_at,
         ),
+        evidence_status=evidence_status,
+        ineligible_reasons=ineligible,
         actual_location=actual_location,
         actual_location_hash=canonical_json_hash(actual_location),
         evidence=evidence,

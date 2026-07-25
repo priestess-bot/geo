@@ -13,6 +13,19 @@ const MODEL_RELEASE_ID = "00000000-0000-4000-8000-000000000707";
 const ROUTE_POLICY_ID = "00000000-0000-4000-8000-000000000708";
 const RUNTIME_MANIFEST_ID = "00000000-0000-4000-8000-000000000709";
 const RUNTIME_OPTION_ID = "00000000-0000-4000-8000-000000000710";
+const MANUAL_SUITE_ID = "00000000-0000-4000-8000-000000000750";
+const MANUAL_RUN_ID = "00000000-0000-4000-8000-000000000751";
+const MANUAL_TASK_ID = "00000000-0000-4000-8000-000000000752";
+const MANUAL_IMPORT_ID = "00000000-0000-4000-8000-000000000753";
+const AIO_PARSER_RELEASE_ID = "00000000-0000-4000-8000-000000000760";
+const IDENTITY_ID = "00000000-0000-4000-8000-000000000770";
+const METRIC_PROTOCOL_ID = "00000000-0000-4000-8000-000000000771";
+const COMPARISON_PROTOCOL_ID = "00000000-0000-4000-8000-000000000772";
+const DRIFT_PROTOCOL_ID = "00000000-0000-4000-8000-000000000773";
+const REPORT_ID = "00000000-0000-4000-8000-000000000774";
+const REPORT_MAKER_ID = "00000000-0000-4000-8000-000000000775";
+const CAMPAIGN_ID = "00000000-0000-4000-8000-000000000776";
+const MONITORING_REPORT_ID = "00000000-0000-4000-8000-000000000777";
 const ACTOR_ID = "workflow-c-owner";
 const NOW = "2026-07-23T02:30:00.000Z";
 const HASH = {
@@ -30,6 +43,9 @@ const HASH = {
 let requests = [];
 let alert;
 let notifications;
+let metricProtocols;
+let statisticalProtocols;
+let workflowCReports;
 
 function reset() {
   requests = [];
@@ -38,6 +54,9 @@ function reset() {
   notifications = ["admin_inbox", "local_smtp", "internal_webhook"].map((channel, index) => (
     notification(channel, index + 1, 1)
   ));
+  metricProtocols = [metricProtocol()];
+  statisticalProtocols = [comparisonProtocol(), driftProtocol()];
+  workflowCReports = [workflowCReport()];
 }
 
 const taskKeys = Array.from({ length: 10 }, (_, index) => `fixture-question|repeat-${index + 1}`);
@@ -196,6 +215,129 @@ const runDetail = {
   }
 };
 
+const surfaceParserReleases = [
+  parserRelease(AIO_PARSER_RELEASE_ID, "google-ai-overviews-parser-v1", "google", "google_ai_overviews", "1"),
+  parserRelease(uuid(761), "google-ai-mode-parser-v1", "google", "google_ai_mode", "2"),
+  parserRelease(uuid(762), "bing-copilot-parser-v1", "bing", "bing_copilot", "3")
+];
+
+const manualSuite = {
+  ...suite,
+  id: MANUAL_SUITE_ID,
+  suite_hash: "0".repeat(64),
+  repetitions: 1,
+  minimum_valid_repeats: 1,
+  planned_task_count: 1,
+  source_stratum: {
+    ...suite.source_stratum,
+    platform: "google",
+    surface: "ai_overviews",
+    configured_model: "consumer-ui-unreported",
+    reported_model: "consumer-ui-unreported",
+    capture_method: "manual_ui",
+    adapter_release: "manual-ui-evidence-v1",
+    search_mode: "consumer_search",
+    account_cohort: "governed-manual-fixture",
+    egress_policy_category: "not_proven",
+    location_control: "not_controlled",
+    location_evidence_hash: "0".repeat(64),
+    requested_country: null,
+    effective_country: null,
+    effective_locale: null,
+    effective_language: null,
+    stratum_hash: "f".repeat(64)
+  }
+};
+
+const manualTask = {
+  ...tasks[0],
+  id: MANUAL_TASK_ID,
+  run_id: MANUAL_RUN_ID,
+  task_key: "best-accounting-platform-au|manual-repeat-1",
+  repetition: 1,
+  capture_method: "manual_ui",
+  source_stratum_hash: manualSuite.source_stratum.stratum_hash,
+  status: "planned",
+  attempt_ids: [],
+  version: 1
+};
+
+const manualRunDetail = {
+  run: {
+    ...runDetail.run,
+    id: MANUAL_RUN_ID,
+    suite_id: MANUAL_SUITE_ID,
+    suite_hash: manualSuite.suite_hash,
+    reserved_task_count: 1,
+    planned_task_keys: [manualTask.task_key],
+    status: "planned",
+    version: 1
+  },
+  suite: manualSuite,
+  tasks: [manualTask],
+  attempts: [],
+  observations: [],
+  assessment: {
+    run_id: MANUAL_RUN_ID,
+    planned_task_count: 1,
+    valid_task_count: 0,
+    invalid_task_count: 0,
+    missing_task_count: 1,
+    valid_completion_ratio: "0",
+    sufficient_question_count: 0,
+    question_count: 1,
+    status: "insufficient_evidence",
+    denominator_hash: "9".repeat(64)
+  }
+};
+
+const manualEvidenceImport = {
+  id: MANUAL_IMPORT_ID,
+  project_id: PROJECT_ID,
+  run_id: MANUAL_RUN_ID,
+  task_id: MANUAL_TASK_ID,
+  task_key: manualTask.task_key,
+  attempt_id: uuid(754),
+  expected_task_version: 1,
+  artifact_manifest_id: uuid(755),
+  artifact_manifest_hash: "1".repeat(64),
+  artifact_content_hash: "2".repeat(64),
+  governance_policy_hash: "3".repeat(64),
+  capture_session_id: uuid(756),
+  evidence_kind: "transcript_export",
+  device: "desktop",
+  locale: "en-AU",
+  captured_at: NOW,
+  submitted_by: "workflow-c-analyst",
+  submitted_at: NOW,
+  status: "pending_review",
+  reviewed_by: null,
+  reviewed_at: null,
+  review_reason: null,
+  committed_at: null,
+  aggregate_version: 1,
+  definition_hash: "4".repeat(64),
+  surface_parse: {
+    parser_release_id: AIO_PARSER_RELEASE_ID,
+    parser_release_hash: "1".repeat(64),
+    platform: "google",
+    surface: "google_ai_overviews",
+    capture_kind: "manual_ui",
+    outcome: "captured",
+    block_reason: null,
+    content_eligible: true,
+    automated_capture: false,
+    live_capture_eligible: false,
+    answer_text_hash: "5".repeat(64),
+    answer_character_count: 137,
+    citation_count: 3,
+    citation_set_hash: "6".repeat(64),
+    locator_set_hash: "7".repeat(64),
+    parser_result_hash: "8".repeat(64),
+    summary_hash: "9".repeat(64)
+  }
+};
+
 const metricSnapshot = {
   project_id: PROJECT_ID,
   input_set_hash: "8".repeat(64),
@@ -305,6 +447,113 @@ function metric(key, estimate, numerator, denominator, locatorKind) {
     }],
     breakdown: { warning_share: "0.1", capture_method: "provider_api" },
     result_hash: key.padEnd(64, "0").slice(0, 64)
+  };
+}
+
+function parserRelease(id, key, platform, surface, hashDigit) {
+  return {
+    id,
+    release_key: key,
+    release_version: "2026-07-24.1",
+    release_hash: hashDigit.repeat(64),
+    platform,
+    surface,
+    artifact_schema_version: "consumer-surface-artifact-v1",
+    parser_engine_version: "consumer-surface-parser-v1",
+    status: "fixture_ready",
+    automated_capture_eligible: false,
+    evidence_scope: "fixture_or_manual_non_live"
+  };
+}
+
+function metricProtocol() {
+  return {
+    id: METRIC_PROTOCOL_ID,
+    project_id: PROJECT_ID,
+    series_id: METRIC_PROTOCOL_ID,
+    version: 1,
+    supersedes_protocol_id: null,
+    status: "in_review",
+    protocol_hash: "4".repeat(64),
+    definition: { schema_version: 1, metric_suite: { minimum_valid_completion: "0.8" } },
+    created_by: "workflow-c-maker",
+    submitted_by: "workflow-c-maker",
+    approved_by: null,
+    retired_by: null,
+    decision_reason: null,
+    aggregate_version: 2,
+    created_at: NOW,
+    updated_at: NOW,
+    submitted_at: NOW,
+    approved_at: null,
+    retired_at: null
+  };
+}
+
+function comparisonProtocol() {
+  return {
+    id: COMPARISON_PROTOCOL_ID,
+    project_id: PROJECT_ID,
+    series_id: COMPARISON_PROTOCOL_ID,
+    version: 1,
+    supersedes_protocol_id: null,
+    kind: "comparison_plan",
+    status: "in_review",
+    definition_hash: "5".repeat(64),
+    definition: { schema_version: 1, kind: "comparison_plan", family: "fixture-family" },
+    created_by: "workflow-c-maker",
+    submitted_by: "workflow-c-maker",
+    approved_by: null,
+    retired_by: null,
+    decision_reason: null,
+    aggregate_version: 2,
+    created_at: NOW,
+    updated_at: NOW,
+    submitted_at: NOW,
+    approved_at: null,
+    retired_at: null
+  };
+}
+
+function driftProtocol() {
+  return {
+    ...comparisonProtocol(),
+    id: DRIFT_PROTOCOL_ID,
+    series_id: DRIFT_PROTOCOL_ID,
+    kind: "drift_protocol",
+    status: "approved",
+    definition_hash: "6".repeat(64),
+    definition: { schema_version: 1, kind: "drift_protocol", minimum_question_count: 3 },
+    approved_by: "workflow-c-checker",
+    decision_reason: "fixture protocol approved",
+    aggregate_version: 3,
+    approved_at: NOW
+  };
+}
+
+function workflowCReport() {
+  return {
+    report_id: REPORT_ID,
+    project_id: PROJECT_ID,
+    version: 2,
+    status: "in_review",
+    campaign_id: CAMPAIGN_ID,
+    monitoring_report_id: MONITORING_REPORT_ID,
+    monitoring_report_hash: "7".repeat(64),
+    semantic_snapshot_hash: HASH.metric,
+    source_kind: "provider_api",
+    approved_safe_payload: {
+      headline: "Approved Australian evidence",
+      summary: "Frozen aggregate prepared for customer review.",
+      methodology: "Approved semantic metric snapshot.",
+      warnings: ["One planned sample is missing."],
+      metrics: { brand_mention: "0.75", recommendation: "0.5" }
+    },
+    approved_safe_payload_hash: "8".repeat(64),
+    version_hash: "9".repeat(64),
+    actor_id: REPORT_MAKER_ID,
+    reason: null,
+    occurred_at: NOW
   };
 }
 
@@ -426,6 +675,58 @@ function transition(command, payload, idempotencyKey) {
   return { alert, notifications: emitted, replayed: false };
 }
 
+function transitionProtocol(items, protocolId, command, payload) {
+  const index = items.findIndex((item) => item.id === protocolId);
+  const current = items[index];
+  if (!current || payload.expected_aggregate_version !== current.aggregate_version) return null;
+  const status = command === "submit" ? "in_review" : command === "approve" ? "approved" : "retired";
+  const updated = {
+    ...current,
+    status,
+    aggregate_version: current.aggregate_version + 1,
+    updated_at: NOW,
+    submitted_by: command === "submit" ? ACTOR_ID : current.submitted_by,
+    submitted_at: command === "submit" ? NOW : current.submitted_at,
+    approved_by: command === "approve" ? ACTOR_ID : current.approved_by,
+    approved_at: command === "approve" ? NOW : current.approved_at,
+    retired_by: command === "retire" ? ACTOR_ID : current.retired_by,
+    retired_at: command === "retire" ? NOW : current.retired_at,
+    decision_reason: command === "submit" ? current.decision_reason : payload.reason
+  };
+  items[index] = updated;
+  return updated;
+}
+
+function transitionReport(command, payload) {
+  const current = workflowCReports[0];
+  if (!current || payload.expected_version !== current.version) return null;
+  const status = command === "submit" ? "in_review" : command === "approve" ? "approved" : command;
+  const updated = {
+    ...current,
+    version: current.version + 1,
+    status,
+    actor_id: IDENTITY_ID,
+    reason: payload.reason || null,
+    occurred_at: NOW,
+    version_hash: String((current.version + 1) % 10).repeat(64)
+  };
+  workflowCReports[0] = updated;
+  return updated;
+}
+
+function acceptedJob(kind) {
+  const index = kind === "semantic" ? 781 : kind === "comparison" ? 782 : 783;
+  const receipt = {
+    job_id: uuid(index),
+    status: "queued",
+    status_url: `/v1/jobs/${uuid(index)}`,
+    replayed: false
+  };
+  return kind === "semantic"
+    ? { ...receipt, manifest_id: uuid(784), manifest_hash: "a".repeat(64) }
+    : { ...receipt, spec_hash: "b".repeat(64) };
+}
+
 reset();
 
 const server = http.createServer(async (request, response) => {
@@ -458,7 +759,7 @@ const server = http.createServer(async (request, response) => {
   });
   if (path === `/v1/projects/${PROJECT_ID}/members`) return send(response, {
     items: [{
-      membership_id: uuid(4), project_id: PROJECT_ID, identity_id: ACTOR_ID,
+      membership_id: uuid(4), project_id: PROJECT_ID, identity_id: IDENTITY_ID,
       issuer: "workflow-c-fixture", subject: ACTOR_ID, email: "owner@example.test",
       display_name: "Workflow C Owner", role: "owner", status: "active", created_at: NOW
     }],
@@ -467,11 +768,101 @@ const server = http.createServer(async (request, response) => {
   if (path === `${base}/sampling/admission-policies`) return send(response, { items: [], total: 0 });
   if (path === `${base}/sampling/admission-options`) return send(response, { items: [], total: 0 });
   if (path === `${base}/sampling/suite-input-options`) return send(response, { items: [], total: 0 });
-  if (path === `${base}/sampling/suites`) return send(response, { items: [suite], total: 1 });
-  if (path === `${base}/sampling/runs`) return send(response, { items: [runDetail.run], total: 1 });
-  if (path === `${base}/sampling/manual-evidence-imports`) return send(response, { items: [], total: 0 });
+  if (path === `${base}/sampling/suites`) return send(response, { items: [suite, manualSuite], total: 2 });
+  if (path === `${base}/sampling/runs`) return send(response, { items: [runDetail.run, manualRunDetail.run], total: 2 });
+  if (path === `${base}/sampling/manual-evidence-imports`) return send(response, { items: [manualEvidenceImport], total: 1 });
+  if (path === `${base}/sampling/surface-parser-releases`) return send(response, { items: surfaceParserReleases, total: surfaceParserReleases.length });
   if (path === `${base}/sampling/suites/${SUITE_ID}`) return send(response, suite);
+  if (path === `${base}/sampling/suites/${MANUAL_SUITE_ID}`) return send(response, manualSuite);
   if (path === `${base}/sampling/runs/${RUN_ID}`) return send(response, runDetail);
+  if (path === `${base}/sampling/runs/${MANUAL_RUN_ID}`) return send(response, manualRunDetail);
+  if (path === `${base}/analysis/metric-protocols` && request.method === "GET") {
+    return send(response, { items: metricProtocols, total: metricProtocols.length });
+  }
+  if (path === `${base}/analysis/statistical-protocols` && request.method === "GET") {
+    return send(response, { items: statisticalProtocols, total: statisticalProtocols.length });
+  }
+  if (path === `${base}/analysis/reports` && request.method === "GET") {
+    return send(response, { items: workflowCReports, total: workflowCReports.length });
+  }
+  if (path === `${base}/analysis/metric-protocols` && request.method === "POST") {
+    const created = {
+      ...metricProtocol(),
+      id: uuid(790 + metricProtocols.length),
+      series_id: uuid(790 + metricProtocols.length),
+      status: "draft",
+      definition: payload.definition,
+      created_by: ACTOR_ID,
+      submitted_by: null,
+      submitted_at: null,
+      aggregate_version: 1
+    };
+    metricProtocols.push(created);
+    return send(response, created, 201);
+  }
+  if (path === `${base}/analysis/statistical-protocols` && request.method === "POST") {
+    const created = {
+      ...comparisonProtocol(),
+      id: uuid(795 + statisticalProtocols.length),
+      series_id: uuid(795 + statisticalProtocols.length),
+      kind: payload.definition.kind,
+      status: "draft",
+      definition: payload.definition,
+      created_by: ACTOR_ID,
+      submitted_by: null,
+      submitted_at: null,
+      aggregate_version: 1
+    };
+    statisticalProtocols.push(created);
+    return send(response, created, 201);
+  }
+  if (path === `${base}/analysis/reports` && request.method === "POST") {
+    const created = {
+      ...workflowCReport(),
+      report_id: uuid(799 + workflowCReports.length),
+      version: 1,
+      status: "draft",
+      campaign_id: payload.campaign_id,
+      monitoring_report_id: payload.monitoring_report_id,
+      monitoring_report_hash: payload.monitoring_report_hash,
+      semantic_snapshot_hash: payload.semantic_snapshot_hash,
+      source_kind: payload.source_kind,
+      approved_safe_payload: payload.approved_safe_payload,
+      actor_id: IDENTITY_ID
+    };
+    workflowCReports.push(created);
+    return send(response, created, 201);
+  }
+  const metricProtocolMatch = path.match(new RegExp(`^${base}/analysis/metric-protocols/([^/]+)/(submit|approve|retire)$`));
+  if (metricProtocolMatch && request.method === "POST") {
+    if (payload.reason === "fixture-force-conflict") {
+      return problem(response, 409, "Metric Protocol version conflict");
+    }
+    const updated = transitionProtocol(metricProtocols, metricProtocolMatch[1], metricProtocolMatch[2], payload);
+    return updated ? send(response, updated) : problem(response, 409, "Metric Protocol version conflict");
+  }
+  const statisticalProtocolMatch = path.match(new RegExp(`^${base}/analysis/statistical-protocols/([^/]+)/(submit|approve|retire)$`));
+  if (statisticalProtocolMatch && request.method === "POST") {
+    const updated = transitionProtocol(statisticalProtocols, statisticalProtocolMatch[1], statisticalProtocolMatch[2], payload);
+    return updated ? send(response, updated) : problem(response, 409, "Statistical Protocol version conflict");
+  }
+  const reportMatch = path.match(new RegExp(`^${base}/analysis/reports/${REPORT_ID}/(submit|approve|stale|revoke)$`));
+  if (reportMatch && request.method === "POST") {
+    if (payload.reason === "fixture-force-unavailable") {
+      return problem(response, 503, "Workflow C Report service unavailable");
+    }
+    const updated = transitionReport(reportMatch[1], payload);
+    return updated ? send(response, updated) : problem(response, 409, "Workflow C Report version conflict");
+  }
+  if (path === `${base}/analysis/semantic-metrics/jobs` && request.method === "POST") {
+    return send(response, acceptedJob("semantic"), 202);
+  }
+  if (path === `${base}/analysis/comparisons/jobs` && request.method === "POST") {
+    return send(response, acceptedJob("comparison"), 202);
+  }
+  if (path === `${base}/analysis/drift/jobs` && request.method === "POST") {
+    return send(response, acceptedJob("drift"), 202);
+  }
   if (path === `${base}/analysis/semantic-metrics`) return send(response, { items: [metricSnapshot], total: 1 });
   if (path === `${base}/analysis/semantic-metrics/${HASH.metric}`) return send(response, metricSnapshot);
   if (path === `${base}/analysis/comparisons`) return send(response, { items: [comparisonFamily], total: 1 });

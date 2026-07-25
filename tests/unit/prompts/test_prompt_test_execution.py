@@ -20,6 +20,7 @@ from geo_core.prompts.bootstrap_catalog import (
     prompt_bootstrap_catalog_hash,
 )
 from geo_core.prompts.bootstrap_contracts import EvalScenario, thaw_mapping
+from geo_core.prompts.compiler_versions import BOOTSTRAP_COMPILER_VERSION
 from geo_core.prompts.memory import InMemoryPromptProgramRepository
 from geo_core.prompts.ports import PromptProgramIdempotencyConflict
 from geo_core.prompts.program import ProgramKind, create_initial_release_state
@@ -67,7 +68,7 @@ def test_admission_freezes_server_selected_route_and_replays_exact_request() -> 
         test_set_id=spec.test_set_id,
         test_set_version=1,
         test_set_hash=spec.test_set_hash,
-        compiler_version="geo-prompt-bootstrap-compiler-v1",
+        compiler_version=BOOTSTRAP_COMPILER_VERSION,
         expected_version=0,
         idempotency_key="create-recommendation",
     ).value

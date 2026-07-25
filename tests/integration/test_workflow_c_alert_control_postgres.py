@@ -226,9 +226,9 @@ def _seed_alert(connection, *, project_id: UUID, marker: str, now: datetime) -> 
     connection.execute(
         """INSERT INTO workflow_c_alert_rule_versions(
                id, project_id, rule_key, version, status, rule_hash, payload,
-               created_by, created_at, approved_by, approved_at
-           ) VALUES (%s, %s, %s, %s, 'approved', %s, %s::jsonb,
-                     'rule-maker', %s, 'rule-checker', %s)""",
+               created_by, created_at, aggregate_version
+           ) VALUES (%s, %s, %s, %s, 'draft', %s, %s::jsonb,
+                     'rule-maker', %s, 1)""",
         (
             rule.id,
             project_id,
@@ -243,7 +243,18 @@ def _seed_alert(connection, *, project_id: UUID, marker: str, now: datetime) -> 
                 }
             ),
             now - timedelta(minutes=2),
+        ),
+    )
+    connection.execute(
+        """UPDATE workflow_c_alert_rule_versions
+              SET status = 'approved', approved_by = 'rule-checker',
+                  approved_at = %s, decision_reason = %s, aggregate_version = 2
+            WHERE project_id = %s AND id = %s""",
+        (
             now - timedelta(minutes=1),
+            "fixed alert-control fixture reviewed",
+            project_id,
+            rule.id,
         ),
     )
     payload = {

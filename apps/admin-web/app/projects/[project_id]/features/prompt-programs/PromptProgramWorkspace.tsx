@@ -249,6 +249,7 @@ function ReleaseDetail({
           bind: `admin-prompt-bind-${randomUUID()}`,
           diff: `admin-prompt-diff-${randomUUID()}`,
           freeze: `admin-prompt-freeze-${randomUUID()}`,
+          retire: `admin-prompt-retire-${randomUUID()}`,
           test: `admin-prompt-test-${randomUUID()}`
         }}
         key={release.id}

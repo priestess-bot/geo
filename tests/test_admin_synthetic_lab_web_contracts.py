@@ -82,6 +82,11 @@ def test_every_synthetic_server_action_reauthorizes_membership_and_role() -> Non
         "createReviewSuiteAction",
         "createReviewCaseAction",
         "admitStyleCollectionAction",
+        "enqueueStyleProfileBuildAction",
+        "enqueueReviewCaseRunAction",
+        "enqueueCandidateCorpusAction",
+        "enqueueApprovedCorpusAction",
+        "enqueueOfflineExperimentAction",
         "cancelSyntheticJobAction",
     ]
 
@@ -96,7 +101,8 @@ def test_every_synthetic_server_action_reauthorizes_membership_and_role() -> Non
     assert 'field(formData, "actor_id")' not in actions
     assert "actor_id:" not in actions
     governance_forms = source("SyntheticLabGovernanceForms.tsx")
-    assert 'name="allowed_purposes" type="checkbox" value="style_collection"' in governance_forms
+    assert 'name="allowed_purposes"' in governance_forms
+    assert 'type="checkbox" value="style_collection"' in governance_forms
     assert 'name="allowed_purposes" />' not in governance_forms
 
 
@@ -136,6 +142,55 @@ def test_manual_sample_intake_uses_governed_file_preview_and_independent_approva
         assert forbidden_legacy not in actions
 
 
+def test_governance_defaults_and_manual_review_are_fail_closed() -> None:
+    governance = source("SyntheticLabGovernanceForms.tsx")
+    governance_actions = source("syntheticLabGovernanceActions.ts")
+    resources = source("SyntheticLabResourceForms.tsx")
+    actions = source("syntheticLabResourceActions.ts")
+    action_support = source("syntheticLabActionSupport.ts")
+    workspace = source("SyntheticLabWorkspace.tsx")
+    shell = (FEATURE.parent / "project-workbench/WorkbenchShell.tsx").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'defaultValue="approved"' not in governance
+    assert 'defaultValue="approve"' not in governance
+    assert "defaultChecked" not in governance
+    assert '<option disabled value="">请选择决定</option>' in governance
+    assert 'required={approvalSelected}' in governance
+    for field_name in (
+        "evidence_reference",
+        "allowed_purposes",
+        "max_requests_per_period",
+        "period_seconds",
+        "max_concurrency",
+        "expires_at",
+    ):
+        assert f'name="{field_name}"' in governance
+    assert 'decision === "approved"' in governance_actions
+    assert "maxRequests === null" in governance_actions
+    assert "periodSeconds === null" in governance_actions
+    assert "maxConcurrency === null" in governance_actions
+    assert "expiresAt === null" in governance_actions
+    assert 'decision === "assessed_no_basis"' in governance_actions
+    assert "无依据决定不能携带采集用途、配额或失效时间" in governance_actions
+    assert 'defaultValue="authorized_manual_capture"' not in resources
+    assert '<option disabled value="">请选择权利依据</option>' in resources
+    assert "actorIdentityId === preview.submitted_by" in resources
+    assert "disabled={!row.selectable}" in resources
+    assert "提交者不能复核自己的导入预览" in resources
+    assert "previewResponse.data.submitted_by === access.actorIdentityId" in actions
+    assert "previewResponse.data.rows.filter((row) => row.selectable)" in actions
+    assert "actorIdentityId: membership.identity_id" in action_support
+    assert "actorIdentityId={actorIdentityId}" in shell
+    assert "actorIdentityId={actorIdentityId}" in workspace
+    browser = (ROOT / "tests/browser/admin-synthetic-lab.spec.ts").read_text(
+        encoding="utf-8"
+    )
+    assert "manual_approval_rejected" in browser
+    assert "权限不足，或授权/双人批准条件未满足" in browser
+
+
 def test_ui_covers_governance_review_generation_and_warning_contracts() -> None:
     workspace = source("SyntheticLabWorkspace.tsx")
     resources = source("SyntheticLabResourceForms.tsx")
@@ -158,6 +213,10 @@ def test_ui_covers_governance_review_generation_and_warning_contracts() -> None:
     ):
         assert control in workspace
     assert "取消任务" in jobs
+    assert "构建 Profile" in jobs
+    assert "运行 Case" in jobs
+    assert "runtime_selection_id" in jobs
+    assert "model-gateway/options" in source("syntheticLabData.ts")
     assert "EnqueueSyntheticJobForm" not in jobs
     assert "enqueueSyntheticJobAction" not in jobs
     for forbidden_expert_input in (

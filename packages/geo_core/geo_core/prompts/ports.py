@@ -39,6 +39,7 @@ class PromptCommandOperation(StrEnum):
     TEST = "test"
     APPROVE = "approve"
     FREEZE = "freeze"
+    RETIRE = "retire"
     BIND = "bind"
     DIFF = "diff"
 

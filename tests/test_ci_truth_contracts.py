@@ -153,16 +153,51 @@ def test_live_marker_collects_one_test_without_requesting_a_paid_call() -> None:
     assert "Paid DeepSeek call was not requested" in refused.stderr
 
 
-def test_production_upgrade_forbids_mixed_application_versions() -> None:
+def test_production_upgrade_defaults_to_atomic_and_gates_compatible_online_cutover() -> None:
     runbook = (ROOT / "docs/operations/production-runbook.md").read_text(encoding="utf-8")
+    non_b_runbook = (ROOT / "docs/operations/non-b-roadmap-operations.md").read_text(
+        encoding="utf-8"
+    )
 
     assert "单版本原子升级" in runbook
-    assert "不支持旧 API、Web、Worker 或 Relay" in runbook
+    assert "不支持未列入 writer inventory 的旧 API、Web、Worker 或 Relay" in runbook
     assert "停止 API、Web、Worker 和 Relay" in runbook
     assert "恢复到升级前" in runbook
     assert "一致性备份" in runbook
     assert "仓库外 `/v1` 调用方" in runbook
     assert "滚动 API、Worker、Web" not in runbook
+    for requirement in (
+        "trigger 或应用双写",
+        "同一事务",
+        "单调 watermark",
+        "difference_count=0",
+        "lag=0",
+        "rollback window",
+        "旧 writer 退役",
+        "dual-read 只用于对账而不承担同步",
+    ):
+        assert requirement in non_b_runbook
+
+
+def test_non_b_operations_runbook_preserves_truth_and_manual_release_boundaries() -> None:
+    runbook = (ROOT / "docs/operations/non-b-roadmap-operations.md").read_text(
+        encoding="utf-8"
+    )
+
+    for requirement in (
+        "本地测试不能替代",
+        "禁止静默 fallback",
+        "不能进入 Task identity",
+        "insufficient_evidence",
+        "inconclusive",
+        "不做代理轮换、stealth 或绕过",
+        "DEK\ncrypto-erasure",
+        "审批只允许创建未开始",
+        "Attribution 必须明确为 `unavailable`",
+        "Owner 不能验证自己的证据",
+        "`BLOCKED_EXTERNAL`",
+    ):
+        assert requirement in runbook
 
 
 def test_admin_next_types_do_not_depend_on_the_playwright_build_directory() -> None:

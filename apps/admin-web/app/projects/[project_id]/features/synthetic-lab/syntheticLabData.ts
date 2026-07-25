@@ -10,6 +10,7 @@ import {
   isStyleSourcePage,
   isSyntheticJob,
   isSyntheticResourceInventory,
+  isSyntheticRuntimeOptions,
   type CollectionAuthorization,
   type ManualImportPreview,
   type ManualImportPreviewSummary,
@@ -22,6 +23,7 @@ import {
   type SyntheticLoadProblem,
   type SyntheticPage,
   type SyntheticResourceInventory,
+  type SyntheticRuntimeOptions,
   type SyntheticWorkspaceData
 } from "./syntheticLabTypes";
 
@@ -36,7 +38,7 @@ export async function loadSyntheticLabWorkspace(
   const selectedSuiteId = queryValue(query, "synthetic_suite_id") || null;
   const selectedJobId = queryValue(query, "synthetic_job_id") || null;
   const selectedImportPreviewId = queryValue(query, "synthetic_import_preview_id") || null;
-  const [authorizations, sources, previews, selectedPreview, inventory, loginSecrets, profiles, suites, cases, job] = await Promise.all([
+  const [authorizations, sources, previews, selectedPreview, inventory, runtimes, loginSecrets, profiles, suites, cases, job] = await Promise.all([
     runtimeRequest<SyntheticPage<CollectionAuthorization>>(`${base}/authorizations`, pageQuery()),
     runtimeRequest<SyntheticPage<StyleSource>>(`${base}/style-sources`, pageQuery()),
     runtimeRequest<SyntheticPage<ManualImportPreviewSummary>>(
@@ -48,6 +50,9 @@ export async function loadSyntheticLabWorkspace(
       )
       : Promise.resolve(null),
     runtimeRequest<SyntheticResourceInventory>(`${base}/resource-inventory`),
+    runtimeRequest<SyntheticRuntimeOptions>(
+      `/v1/projects/${encodeURIComponent(projectId)}/model-gateway/options`
+    ),
     runtimeRequest<StyleLoginSecretPage>(
       `/v1/projects/${encodeURIComponent(projectId)}/secrets`, pageQuery()
     ),
@@ -67,6 +72,7 @@ export async function loadSyntheticLabWorkspace(
   const previewsValid = previews.ok && isManualImportPreviewPage(previews.data);
   const selectedPreviewValid = selectedPreview?.ok && isManualImportPreview(selectedPreview.data);
   const inventoryValid = inventory.ok && isSyntheticResourceInventory(inventory.data);
+  const runtimesValid = runtimes.ok && isSyntheticRuntimeOptions(runtimes.data);
   const loginSecretsValid = loginSecrets.ok && isStyleLoginSecretPage(loginSecrets.data);
   const profilesValid = profiles.ok && isStyleProfilePage(profiles.data);
   const suitesValid = suites.ok && isReviewSuitePage(suites.data);
@@ -91,6 +97,10 @@ export async function loadSyntheticLabWorkspace(
     ...(!inventoryValid
       ? { inventoryProblem: loadProblem(inventory, "Synthetic 资源选项加载失败。") }
       : {}),
+    runtimeOptions: runtimesValid ? runtimes.data : emptyRuntimeOptions(),
+    ...(!runtimesValid
+      ? { runtimeOptionsProblem: loadProblem(runtimes, "已批准模型运行时目录加载失败。") }
+      : {}),
     loginSecrets: loginSecretsValid
       ? loginSecrets.data.items.filter((item) => item.status === "active"
         && item.current_version !== null
@@ -111,6 +121,10 @@ export async function loadSyntheticLabWorkspace(
   };
 }
 
+function emptyRuntimeOptions(): SyntheticRuntimeOptions {
+  return { current_manifest_id: null, items: [] };
+}
+
 function emptyInventory(): SyntheticResourceInventory {
   return {
     synthetic: true,
@@ -120,7 +134,10 @@ function emptyInventory(): SyntheticResourceInventory {
     prompt_bindings: [],
     question_sets: [],
     fact_snapshots: [],
-    profiles: []
+    profiles: [],
+    review_jobs: [],
+    candidate_corpora: [],
+    approved_corpora: []
   };
 }
 

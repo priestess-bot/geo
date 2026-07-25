@@ -163,6 +163,7 @@ class MemorySyntheticLabApi:
             **previous,
             "id": reassessment_id,
             "version_number": payload["expected_version"] + 1,
+            "state_version": 1,
             "state": "not_assessed",
             "evidence_reference_hash": None,
             "allowed_purposes": (),
@@ -209,6 +210,9 @@ class MemorySyntheticLabApi:
             "question_sets": [],
             "fact_snapshots": [],
             "profiles": [],
+            "review_jobs": [],
+            "candidate_corpora": [],
+            "approved_corpora": [],
         }
 
     def list_import_previews(self, principal: AccessPrincipal, **values: object):
@@ -309,6 +313,7 @@ class MemorySyntheticLabApi:
             "project_id": values["project_id"],
             "profile_id": profile_id,
             "version_number": payload["expected_version"] + 1,
+            "state_version": 1,
             "channel": payload["channel"],
             "locale": payload["locale"],
             "corpus_hash": _hash(f"corpus:{profile_id}"),
@@ -324,24 +329,30 @@ class MemorySyntheticLabApi:
 
     def submit_profile(self, principal: AccessPrincipal, **values: object):
         self._check(principal, values["project_id"])
+        payload = _values(values["payload"])
         item = self.profiles[values["profile_version_id"]]
-        item.update(status="in_review", replayed=False)
+        assert payload["expected_version"] == item["state_version"]
+        item.update(status="in_review", state_version=item["state_version"] + 1, replayed=False)
         return item
 
     def decide_profile(self, principal: AccessPrincipal, **values: object):
         self._check(principal, values["project_id"])
         payload = _values(values["payload"])
         item = self.profiles[values["profile_version_id"]]
+        assert payload["expected_version"] == item["state_version"]
         item.update(
             status="approved" if payload["decision"] == "approve" else "rejected",
+            state_version=item["state_version"] + 1,
             replayed=False,
         )
         return item
 
     def freeze_profile(self, principal: AccessPrincipal, **values: object):
         self._check(principal, values["project_id"])
+        payload = _values(values["payload"])
         item = self.profiles[values["profile_version_id"]]
-        item.update(status="frozen", replayed=False)
+        assert payload["expected_version"] == item["state_version"]
+        item.update(status="frozen", state_version=item["state_version"] + 1, replayed=False)
         return item
 
     def list_suites(self, principal: AccessPrincipal, **values: object):
@@ -357,6 +368,7 @@ class MemorySyntheticLabApi:
             "project_id": values["project_id"],
             "suite_id": uuid4(),
             "version_number": payload["expected_version"] + 1,
+            "state_version": 1,
             "channel": payload["channel"],
             "case_count": 0,
             "case_set_hash": _hash(f"case-set:{payload['suite_name']}"),
@@ -368,8 +380,10 @@ class MemorySyntheticLabApi:
 
     def freeze_suite(self, principal: AccessPrincipal, **values: object):
         self._check(principal, values["project_id"])
+        payload = _values(values["payload"])
         item = self.suites[values["suite_version_id"]]
-        item.update(status="frozen", replayed=False)
+        assert payload["expected_version"] == item["state_version"]
+        item.update(status="frozen", state_version=item["state_version"] + 1, replayed=False)
         return item
 
     def list_cases(self, principal: AccessPrincipal, **values: object):
@@ -389,6 +403,7 @@ class MemorySyntheticLabApi:
             "project_id": values["project_id"],
             "review_suite_version_id": values["suite_version_id"],
             "review_suite_version_number": 1,
+            "state_version": 1,
             "case_key": payload["case_key"],
             "ordinal": payload["ordinal"],
             "mode": payload["mode"],
@@ -399,6 +414,42 @@ class MemorySyntheticLabApi:
         }
         self.cases[case_id] = item
         return item
+
+    def enqueue_profile_build(self, principal: AccessPrincipal, **values: object):
+        self._check(principal, values["project_id"])
+        payload = _values(values["payload"])
+        return self._enqueue_memory_job(
+            project_id=values["project_id"],
+            kind="style_profile_build",
+            seed=f"profile-build:{payload['profile_version_id']}:{payload['runtime_selection_id']}",
+        )
+
+    def enqueue_review_case(self, principal: AccessPrincipal, **values: object):
+        self._check(principal, values["project_id"])
+        payload = _values(values["payload"])
+        return self._enqueue_memory_job(
+            project_id=values["project_id"],
+            kind="candidate_generation",
+            seed=f"review-case:{payload['suite_version_id']}:{payload['case_id']}",
+        )
+
+    def enqueue_corpus_finalize(self, principal: AccessPrincipal, **values: object):
+        self._check(principal, values["project_id"])
+        payload = _values(values["payload"])
+        return self._enqueue_memory_job(
+            project_id=values["project_id"],
+            kind="corpus_finalize",
+            seed=f"corpus:{payload['role']}:{payload['review_job_ids']}",
+        )
+
+    def enqueue_offline_experiment(self, principal: AccessPrincipal, **values: object):
+        self._check(principal, values["project_id"])
+        payload = _values(values["payload"])
+        return self._enqueue_memory_job(
+            project_id=values["project_id"],
+            kind="offline_experiment",
+            seed=f"offline:{payload['question_set_id']}:{payload['candidate_corpus_job_id']}",
+        )
 
     def enqueue_job(self, principal: AccessPrincipal, **values: object):
         self._check(principal, values["project_id"])
@@ -416,6 +467,23 @@ class MemorySyntheticLabApi:
             "replayed": False,
         }
         self.jobs[payload["job_id"]] = job
+        return job
+
+    def _enqueue_memory_job(self, *, project_id: UUID, kind: str, seed: str):
+        job_id = uuid4()
+        job = {
+            "id": job_id,
+            "project_id": project_id,
+            "kind": kind,
+            "status": "queued",
+            "version": 1,
+            "input_hash": _hash(seed),
+            "fencing_token": 0,
+            "cancel_requested": False,
+            "result_hash": None,
+            "replayed": False,
+        }
+        self.jobs[job_id] = job
         return job
 
     def admit_style_collection(self, principal: AccessPrincipal, **values: object):
@@ -517,6 +585,7 @@ def test_openapi_is_internal_only_strict_redacted_and_stable() -> None:
         f"{prefix}/review-suites/{{suite_version_id}}/cases",
         f"{prefix}/review-suites/{{suite_version_id}}/freeze",
         f"{prefix}/jobs/generation",
+        f"{prefix}/jobs/profile-build",
         f"{prefix}/jobs/style-collection",
         f"{prefix}/jobs/revision",
         f"{prefix}/jobs/corpus",
@@ -559,6 +628,7 @@ def test_openapi_is_internal_only_strict_redacted_and_stable() -> None:
         "createSyntheticReviewCase",
         "freezeSyntheticReviewSuite",
         "enqueueSyntheticGenerationJob",
+        "enqueueSyntheticStyleProfileBuildJob",
         "admitSyntheticStyleCollection",
         "enqueueSyntheticRevisionJob",
         "enqueueSyntheticCorpusJob",
@@ -599,6 +669,35 @@ def test_openapi_is_internal_only_strict_redacted_and_stable() -> None:
                         "authorization_hash",
                         "secret_version",
                     }.intersection(request_schema["properties"])
+                elif path.endswith("/jobs/profile-build"):
+                    assert set(request_schema["required"]) == {
+                        "profile_version_id",
+                        "fact_snapshot_id",
+                        "runtime_selection_id",
+                    }
+                    assert not {"job_id", "outbox_id", "resource_hash"}.intersection(
+                        request_schema["properties"]
+                    )
+                elif path.endswith("/jobs/generation"):
+                    assert set(request_schema["required"]) == {
+                        "suite_version_id", "case_id", "runtime_selection_id"
+                    }
+                    assert not {"job_id", "outbox_id", "resource_hash"}.intersection(
+                        request_schema["properties"]
+                    )
+                elif path.endswith("/jobs/corpus"):
+                    assert set(request_schema["required"]) == {"role"}
+                    assert not {"job_id", "outbox_id", "resource_hash", "runtime_inputs"}.intersection(
+                        request_schema["properties"]
+                    )
+                elif path.endswith("/jobs/offline-experiment"):
+                    assert set(request_schema["required"]) == {
+                        "question_set_id", "current_corpus_job_id",
+                        "candidate_corpus_job_id", "runtime_selection_id"
+                    }
+                    assert not {"job_id", "outbox_id", "resource_hash", "runtime_inputs"}.intersection(
+                        request_schema["properties"]
+                    )
                 else:
                     assert "expected_version" in request_schema["required"]
                 assert request_schema["additionalProperties"] is False

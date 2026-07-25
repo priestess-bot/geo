@@ -1,10 +1,18 @@
+import type {
+  MetricProtocolPage,
+  StatisticalProtocolPage,
+  WorkflowCReportPage
+} from "./workflowCControlTypes";
+
 export const workflowViews = [
   "overview",
   "admission",
   "sampling",
+  "protocols",
   "metrics",
   "comparisons",
   "drift",
+  "reports",
   "alerts"
 ] as const;
 
@@ -316,11 +324,53 @@ export type ManualEvidenceImport = Readonly<{
   committed_at: string | null;
   aggregate_version: number;
   definition_hash: string;
+  surface_parse: SurfaceParseSummary | null;
 }>;
 
 export type ManualEvidenceImportPage = Readonly<{
   items: ManualEvidenceImport[];
   total: number;
+}>;
+
+export type SurfaceParserRelease = Readonly<{
+  id: string;
+  release_key: string;
+  release_version: string;
+  release_hash: string;
+  platform: string;
+  surface: "google_ai_overviews" | "google_ai_mode" | "bing_copilot";
+  artifact_schema_version: string;
+  parser_engine_version: string;
+  status: "candidate" | "fixture_ready";
+  automated_capture_eligible: false;
+  evidence_scope: "fixture_or_manual_non_live";
+}>;
+
+export type SurfaceParserReleasePage = Readonly<{
+  items: SurfaceParserRelease[];
+  total: number;
+}>;
+
+export type SurfaceParseSummary = Readonly<{
+  parser_release_id: string;
+  parser_release_hash: string;
+  platform: string;
+  surface: SurfaceParserRelease["surface"];
+  capture_kind: "manual_ui";
+  outcome: "captured" | "surface_not_present" | "consent_required"
+    | "login_required" | "access_blocked" | "geo_mismatch"
+    | "egress_changed" | "parser_failed" | "timeout";
+  block_reason: string | null;
+  content_eligible: boolean;
+  automated_capture: false;
+  live_capture_eligible: false;
+  answer_text_hash: string | null;
+  answer_character_count: number;
+  citation_count: number;
+  citation_set_hash: string;
+  locator_set_hash: string;
+  parser_result_hash: string;
+  summary_hash: string;
 }>;
 
 export type EvidenceLocator = Readonly<{
@@ -483,6 +533,7 @@ export type AlertPage = Readonly<{ items: AlertRecord[]; total: number }>;
 
 export type WorkflowCWorkspaceData = Readonly<{
   actorId: string;
+  currentIdentityId: string | null;
   currentRole: "owner" | "admin" | "analyst" | "viewer" | null;
   activeView: WorkflowView;
   selection: Readonly<{
@@ -498,6 +549,8 @@ export type WorkflowCWorkspaceData = Readonly<{
   run: Resource<SamplingRunDetail>;
   metrics: Resource<SemanticMetricSnapshot>;
   metricSnapshots: Resource<SemanticMetricSnapshotPage>;
+  metricProtocols: Resource<MetricProtocolPage>;
+  statisticalProtocols: Resource<StatisticalProtocolPage>;
   comparisons: Resource<ComparisonFamily>;
   comparisonFamilies: Resource<ComparisonFamilyPage>;
   drift: Resource<DriftReport>;
@@ -509,6 +562,8 @@ export type WorkflowCWorkspaceData = Readonly<{
   suites: Resource<SamplingSuitePage>;
   runs: Resource<SamplingRunPage>;
   manualEvidence: Resource<ManualEvidenceImportPage>;
+  surfaceParserReleases: Resource<SurfaceParserReleasePage>;
+  workflowCReports: Resource<WorkflowCReportPage>;
   notifications: Resource<NotificationProjection[]>;
 }>;
 

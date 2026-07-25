@@ -22,7 +22,7 @@ export const promptProgramKinds = [
 ] as const;
 
 export type PromptProgramKind = (typeof promptProgramKinds)[number];
-export type PromptReleaseStatus = "draft" | "tested" | "approved" | "frozen";
+export type PromptReleaseStatus = "draft" | "tested" | "approved" | "frozen" | "retired";
 
 export type PromptProgramSummary = Readonly<{
   id: string;
@@ -424,7 +424,7 @@ function isPromptReleaseState(value: unknown): value is PromptReleaseState {
   return record(value)
     && [value.id, value.acted_by, value.acted_at].every(nonEmptyString)
     && positiveInteger(value.version)
-    && ["draft", "tested", "approved", "frozen"].includes(String(value.status))
+    && ["draft", "tested", "approved", "frozen", "retired"].includes(String(value.status))
     && (value.evidence_ref === null || nonEmptyString(value.evidence_ref));
 }
 

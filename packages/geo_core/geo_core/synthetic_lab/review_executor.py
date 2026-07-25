@@ -101,6 +101,7 @@ class ReviewCaseExecutor:
                 evaluations,
                 resolution,
                 model_calls,
+                complete.text,
             )
 
         selected = min(
@@ -141,6 +142,7 @@ class ReviewCaseExecutor:
                     evaluations,
                     resolution,
                     model_calls,
+                    current.text,
                 )
         decision = decide_next_step(
             initial_batch,
@@ -178,6 +180,7 @@ class ReviewCaseExecutor:
             evaluations,
             resolution,
             model_calls,
+            selected.text,
         )
 
     def _generate_batch(
@@ -534,7 +537,15 @@ def _resolution(
     )
 
 
-def _output(task, batches, revisions, evaluations, resolution, model_calls):
+def _output(
+    task,
+    batches,
+    revisions,
+    evaluations,
+    resolution,
+    model_calls,
+    resolved_candidate_text,
+):
     return ReviewCaseRunOutput(
         project_id=task.project_id,
         review_run_id=task.review_run_id,
@@ -544,6 +555,7 @@ def _output(task, batches, revisions, evaluations, resolution, model_calls):
         evaluations=tuple(evaluations),
         resolution=resolution,
         model_call_ids=tuple(model_calls),
+        resolved_candidate_text=resolved_candidate_text,
     )
 
 

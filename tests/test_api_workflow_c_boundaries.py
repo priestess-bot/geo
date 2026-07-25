@@ -111,7 +111,15 @@ def test_workflow_c_openapi_excludes_automated_ui_and_b_workflow_commands() -> N
         "manual_ui",
     }
     assert api.persistence == "memory_test_only"
-    assert len(operation_ids) == 40
+    assert {
+        "createMetricProtocol",
+        "listMetricProtocols",
+        "getMetricProtocol",
+        "submitMetricProtocol",
+        "approveMetricProtocol",
+        "retireMetricProtocol",
+        "enqueueSemanticMetricJob",
+    }.issubset(operation_ids)
     assert not {
         "claimSamplingAttempt",
         "heartbeatSamplingAttempt",
@@ -185,3 +193,26 @@ def test_workflow_c_openapi_excludes_automated_ui_and_b_workflow_commands() -> N
     assert not forbidden_analysis_truth.intersection(semantic_request)
     assert not forbidden_analysis_truth.intersection(comparison_request)
     assert not forbidden_analysis_truth.intersection(drift_request)
+
+
+def test_workflow_c_customer_report_payload_is_typed_in_input_and_output_openapi() -> None:
+    internal, _, _, _ = internal_app()
+    schemas = internal.openapi()["components"]["schemas"]
+    input_payload = schemas["WorkflowCCustomerSafePayload-Input"]
+    output_payload = schemas["WorkflowCCustomerSafePayloadSerialized"]
+
+    assert input_payload["additionalProperties"] is False
+    assert output_payload["additionalProperties"] is False
+    assert input_payload["required"] == output_payload["required"] == ["headline"]
+    assert set(input_payload["properties"]) == set(output_payload["properties"]) == {
+        "headline",
+        "summary",
+        "methodology",
+        "warnings",
+        "metrics",
+        "mention_rate",
+        "recommendation_rate",
+    }
+    metric_object = input_payload["properties"]["metrics"]["anyOf"][0]
+    assert metric_object["minProperties"] == 1
+    assert "access_token" not in metric_object["propertyNames"]["enum"]

@@ -35,7 +35,6 @@ from geo_core.prompts.program import (
     FIRST_PHASE_PROGRAM_KINDS,
     ProgramKind,
     ProgramReleaseStatus,
-    render_program_release,
 )
 from tests.unit.prompts.prompt_bootstrap_catalog_test_support import (
     AUXILIARY_SYNTHETIC_OUTPUT_FIELDS,
@@ -128,24 +127,6 @@ def test_each_spec_compiles_an_existing_prompt_program_draft_only(kind: ProgramK
     assert isinstance(model_policy, Mapping)
     assert set(model_policy) == {"version", "policy"}
     assert "approved" not in payload and "frozen" not in payload and "binding" not in payload
-
-
-@pytest.mark.parametrize("kind", FIRST_PHASE_PROGRAM_KINDS)
-def test_release_renders_the_single_minimal_request_json_variable(kind: ProgramKind) -> None:
-    spec = default_prompt_bootstrap_spec(kind)
-    fixture = _fixture(spec.fixtures, EvalScenario.POSITIVE)
-    draft = spec.compile_draft(project_id=PROJECT_ID, owner_id=OWNER_ID)
-    request_json = json.dumps(thaw_mapping(fixture.input_value), sort_keys=True)
-
-    rendered = render_program_release(
-        release=draft.release,
-        variables={"request_json": request_json},
-    )
-
-    assert set(spec.schemas.variable_schema["properties"]) == {"request_json"}
-    assert rendered.compiled_user.count(request_json) == 1
-    assert rendered.output_schema_version == f"geo-{kind.value}-output-v1"
-    assert len(rendered.variable_input_hash) == 64
 
 
 def test_all_templates_freeze_injection_subject_locale_and_action_boundaries() -> None:

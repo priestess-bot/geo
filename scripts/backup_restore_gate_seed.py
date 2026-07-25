@@ -11,8 +11,9 @@ import traceback
 import psycopg
 
 ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+for source_root in (ROOT, ROOT / "apps" / "api"):
+    if str(source_root) not in sys.path:
+        sys.path.insert(0, str(source_root))
 
 from geo_core.object_store import S3CompatibleObjectStore  # noqa: E402
 from geo_core.synthetic_lab.artifact_keyring import (  # noqa: E402
@@ -34,17 +35,18 @@ from scripts.backup_restore_gate_seed_provider import (  # noqa: E402
     seed_provider_artifacts,
 )
 from scripts.backup_restore_gate_seed_recommendation import (  # noqa: E402
-    seed_recommendation_artifact_key_canaries,
+    seed_recommendation_artifacts,
 )
 from scripts.backup_restore_gate_seed_secret_prompt import (  # noqa: E402
     seed_prompt,
+    seed_recommendation_prompt,
     seed_secrets,
 )
 from scripts.backup_restore_gate_seed_synthetic import (  # noqa: E402
     seed_synthetic_artifacts,
 )
 from scripts.backup_restore_gate_seed_workflow_c import (  # noqa: E402
-    seed_workflow_c_artifact_key_canaries,
+    seed_workflow_c_artifacts,
 )
 
 
@@ -53,20 +55,25 @@ def seed(
     database_url: str,
     expected_head: str,
     object_store: S3CompatibleObjectStore,
+    recommendation_object_store: S3CompatibleObjectStore,
+    workflow_c_object_store: S3CompatibleObjectStore,
     synthetic_raw_object_store: S3CompatibleObjectStore,
     synthetic_derived_object_store: S3CompatibleObjectStore,
     keyring_directory: Path,
 ) -> dict[str, object]:
-    if len(
-        {
-            object_store.bucket,
-            synthetic_raw_object_store.bucket,
-            synthetic_derived_object_store.bucket,
-        }
-    ) != 3:
-        raise RestoreGateSeedError(
-            "provider, Synthetic raw, and Synthetic derived stores must use distinct buckets"
+    if (
+        len(
+            {
+                object_store.bucket,
+                recommendation_object_store.bucket,
+                workflow_c_object_store.bucket,
+                synthetic_raw_object_store.bucket,
+                synthetic_derived_object_store.bucket,
+            }
         )
+        != 5
+    ):
+        raise RestoreGateSeedError("all restore Gate artifact stores must use distinct buckets")
     if expected_head != current_head():
         raise RestoreGateSeedError("Alembic head changed before restore Gate seeding")
     migrate(database_url)
@@ -84,6 +91,11 @@ def seed(
         owner=owner,
         reviewer=reviewer,
     )
+    recommendation_prompt, recommendation_output_schema = seed_recommendation_prompt(
+        database_url=database_url,
+        owner=owner,
+        reviewer=reviewer,
+    )
     provider = seed_provider_artifacts(
         database_url=database_url,
         object_store=object_store,
@@ -96,16 +108,18 @@ def seed(
         database_url=database_url,
         raw_object_store=synthetic_raw_object_store,
         derived_object_store=synthetic_derived_object_store,
-        keyring=load_synthetic_artifact_keyring(
-            keyring_directory / KEYRING_FILES["synthetic"]
-        ),
+        keyring=load_synthetic_artifact_keyring(keyring_directory / KEYRING_FILES["synthetic"]),
     )
-    recommendation = seed_recommendation_artifact_key_canaries(
+    recommendation = seed_recommendation_artifacts(
         database_url=database_url,
+        object_store=recommendation_object_store,
         keyring_path=keyring_directory / KEYRING_FILES["recommendation"],
+        prompt_binding=recommendation_prompt,
+        output_schema=recommendation_output_schema,
     )
-    workflow_c = seed_workflow_c_artifact_key_canaries(
+    workflow_c = seed_workflow_c_artifacts(
         database_url=database_url,
+        object_store=workflow_c_object_store,
         keyring_path=keyring_directory / KEYRING_FILES["workflow_c"],
     )
     with psycopg.connect(database_url) as connection:
@@ -159,6 +173,8 @@ def _parser() -> argparse.ArgumentParser:
     seed_parser.add_argument("--expected-head", required=True)
     seed_parser.add_argument("--object-store-endpoint", required=True)
     seed_parser.add_argument("--object-store-bucket", required=True)
+    seed_parser.add_argument("--recommendation-object-store-bucket", required=True)
+    seed_parser.add_argument("--workflow-c-object-store-bucket", required=True)
     seed_parser.add_argument("--synthetic-raw-object-store-bucket", required=True)
     seed_parser.add_argument("--synthetic-derived-object-store-bucket", required=True)
     seed_parser.add_argument("--keyring-directory", type=Path, required=True)
@@ -182,6 +198,20 @@ def main(argv: list[str] | None = None) -> int:
             object_store=S3CompatibleObjectStore(
                 endpoint=args.object_store_endpoint,
                 bucket=args.object_store_bucket,
+                access_key="geo_dev",
+                secret_key="geo_dev_secret",
+                auto_create_bucket=True,
+            ),
+            recommendation_object_store=S3CompatibleObjectStore(
+                endpoint=args.object_store_endpoint,
+                bucket=args.recommendation_object_store_bucket,
+                access_key="geo_dev",
+                secret_key="geo_dev_secret",
+                auto_create_bucket=True,
+            ),
+            workflow_c_object_store=S3CompatibleObjectStore(
+                endpoint=args.object_store_endpoint,
+                bucket=args.workflow_c_object_store_bucket,
                 access_key="geo_dev",
                 secret_key="geo_dev_secret",
                 auto_create_bucket=True,
@@ -213,8 +243,7 @@ def main(argv: list[str] | None = None) -> int:
             constraint = getattr(diagnostic, "constraint_name", None)
             frames = traceback.extract_tb(error.__traceback__)
             locations = ",".join(
-                f"{Path(frame.filename).name}:{frame.lineno}:{frame.name}"
-                for frame in frames[-8:]
+                f"{Path(frame.filename).name}:{frame.lineno}:{frame.name}" for frame in frames[-8:]
             )
             suffix = (
                 f" sqlstate={sqlstate or '-'} constraint={constraint or '-'}"

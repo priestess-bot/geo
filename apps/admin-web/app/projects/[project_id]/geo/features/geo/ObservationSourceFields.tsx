@@ -41,6 +41,7 @@ const SOURCE_OPTIONS: Record<OperatorObservationCaptureMethod, readonly Platform
     { label: "OpenAI", value: "openai", surfaces: [{ label: "OpenAI API", value: "openai_api" }] },
     { label: "Google", value: "google", surfaces: [{ label: "Google Gemini API", value: "google_gemini_api" }] },
     { label: "Perplexity", value: "perplexity", surfaces: [{ label: "Perplexity API", value: "perplexity_api" }] },
+    { label: "Kimi", value: "kimi", surfaces: [{ label: "Kimi API", value: "kimi_api" }] },
     { label: "Anthropic", value: "anthropic", surfaces: [{ label: "Anthropic API", value: "anthropic_api" }] },
     { label: "其他", value: "other", surfaces: [{ label: "其他 Provider API", value: "other" }] }
   ],
@@ -338,6 +339,7 @@ function ModelIdentityField({ defaultState, label, stateName, valueName }: {
 function protocolPlatform(surface: ObservationSurface): string {
   if (surface === "perplexity_answer" || surface === "perplexity_api") return "perplexity";
   if (surface === "openai_api" || surface === "anthropic_api") return "other";
+  if (surface === "kimi_api") return "other";
   if (surface === "google_gemini_api") return "gemini";
   if (surface === "microsoft_foundry_bing_grounding") return "bing_search";
   if (surface === "google_vertex_grounding") return "google_search";

@@ -35,6 +35,7 @@ from geo_api.workflow_c_sampling_contracts import (
     SamplingAttemptResponse,
     SamplingRunDetailResponse,
     SubmitManualEvidenceRequest,
+    SurfaceParserReleasePageResponse,
 )
 from geo_api.workflow_c_sampling_presenters import (
     admission_policy_page_response,
@@ -46,8 +47,10 @@ from geo_api.workflow_c_sampling_presenters import (
     manual_evidence_page_response,
     manual_evidence_response,
     run_detail_response,
+    surface_parser_release_page_response,
 )
 from geo_api.workflow_c_sampling_suite_routes import workflow_c_sampling_suite_router
+from geo_core.sampling import SURFACE_PARSER_RELEASES
 
 
 def workflow_c_sampling_router() -> APIRouter:
@@ -57,6 +60,19 @@ def workflow_c_sampling_router() -> APIRouter:
         responses=PROBLEM_RESPONSES,
     )
     router.include_router(workflow_c_sampling_suite_router())
+
+    @router.get(
+        "/surface-parser-releases",
+        response_model=SurfaceParserReleasePageResponse,
+        operation_id="listConsumerSurfaceParserReleases",
+    )
+    def list_surface_parser_releases(
+        project_id: UUID,
+        request: Request,
+        authorization: AuthorizationHeader = None,
+    ) -> SurfaceParserReleasePageResponse:
+        authorize_workflow_c(request, authorization, project_id, READ_ROLES)
+        return surface_parser_release_page_response(SURFACE_PARSER_RELEASES)
 
     @router.get(
         "/admission-options",

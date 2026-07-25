@@ -18,7 +18,7 @@ const COMMAND_PATTERN = /^[\x21-\x7e]{16,200}$/;
 export async function verifySyntheticActor(
   projectId: string,
   allowedRoles: readonly ManagedMemberRole[]
-): Promise<{ ok: true; actorId: string; role: ManagedMemberRole } | {
+): Promise<{ ok: true; actorIdentityId: string; role: ManagedMemberRole } | {
   ok: false;
   state: SyntheticActionState;
 }> {
@@ -59,7 +59,7 @@ export async function verifySyntheticActor(
   if (!membership || !allowedRoles.includes(membership.role)) {
     return { ok: false, state: forbidden() };
   }
-  return { ok: true, actorId: identity.data.actor_id, role: membership.role };
+  return { ok: true, actorIdentityId: membership.identity_id, role: membership.role };
 }
 
 export function field(formData: FormData, name: string): string {

@@ -219,8 +219,14 @@ IdP 后使用显式 role/reactivate 命令。所有实际变化分别记录 `mem
 
 ## 7. 升级与回退
 
-本项目当前只支持维护窗口内的单版本原子升级，不支持旧 API、Web、Worker 或 Relay
-与新数据库混跑，也不支持跨本次合同变更的滚动升级。稳定 OpenAPI 快照用于检测合同变化，
+本节是默认发布路径。A/C/D 路线图能力中已经具备 compatible writer、事务双写、watermark
+追尾和两轮零差异对账合同的 additive 迁移，可在满足专用 Gate 后使用
+[GEO 非 B 能力运维手册](non-b-roadmap-operations.md#2-部署和数据库切换)的在线切换路径；
+dual-read 本身不能替代双写或最终增量追尾。未满足该合同的迁移仍必须使用下述维护窗口。
+
+除上段通过专用 Gate 的 additive 在线切换外，本项目只支持维护窗口内的单版本原子升级，
+不支持未列入 writer inventory 的旧 API、Web、Worker 或 Relay 与新数据库混跑，也不支持
+跨不兼容合同变更的滚动升级。稳定 OpenAPI 快照用于检测合同变化，
 不等同于自动提供旧客户端后向兼容层。任何仓库外 `/v1` 调用方都必须在维护窗口前完成
 请求参数、请求体和响应类型迁移。
 

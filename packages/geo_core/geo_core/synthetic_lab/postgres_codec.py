@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import fields, is_dataclass
+from dataclasses import MISSING, fields, is_dataclass
 from datetime import datetime
 from enum import Enum
 import importlib
@@ -176,8 +176,13 @@ def _decode(value: object) -> object:
         raw_fields = value["fields"]
         if not isinstance(raw_fields, dict):
             raise SyntheticLabPersistenceError("stored Synthetic Lab fields are invalid")
-        allowed = {item.name for item in fields(data_type) if item.init}
-        if set(raw_fields) != allowed:
+        declared = {item.name: item for item in fields(data_type) if item.init}
+        required = {
+            name
+            for name, item in declared.items()
+            if item.default is MISSING and item.default_factory is MISSING
+        }
+        if not required.issubset(raw_fields) or not set(raw_fields).issubset(declared):
             raise SyntheticLabPersistenceError("stored Synthetic Lab field set changed")
         return data_type(**{key: _decode(item) for key, item in raw_fields.items()})
     if set(value) == {"$map"}:

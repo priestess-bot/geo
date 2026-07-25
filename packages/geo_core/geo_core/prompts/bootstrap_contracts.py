@@ -9,6 +9,9 @@ from typing import cast
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from geo_core.model_gateway._schema_definition import validate_output_schema_definition
+from geo_core.prompts.compiler_versions import (
+    BOOTSTRAP_COMPILER_VERSION as _BOOTSTRAP_COMPILER_VERSION,
+)
 from geo_core.prompts.program_contracts import (
     FIRST_PHASE_PROGRAM_KINDS,
     ModelPolicySnapshot,
@@ -26,8 +29,8 @@ from geo_core.prompts.program_contracts import (
 from geo_core.prompts.program_models import PromptProgram, PromptProgramRelease
 
 
-BOOTSTRAP_CATALOG_VERSION = "geo-prompt-bootstrap-v1"
-BOOTSTRAP_COMPILER_VERSION = "geo-prompt-bootstrap-compiler-v1"
+BOOTSTRAP_CATALOG_VERSION = "geo-prompt-bootstrap-v2"
+BOOTSTRAP_COMPILER_VERSION = _BOOTSTRAP_COMPILER_VERSION
 BOOTSTRAP_TEST_SET_VERSION = 1
 
 
@@ -151,6 +154,7 @@ class PromptBootstrapSpec:
     application_output_schema_version: str
     application_output_schema: Mapping[str, object]
     model_policy: ModelPolicySnapshot
+    compiler_version: str
     application_rules: tuple[str, ...]
     fixtures: tuple[PromptEvalFixture, ...]
     rubric: tuple[PromptRubricCriterion, ...]
@@ -174,6 +178,9 @@ class PromptBootstrapSpec:
         )
         spec_version = _normalize_version(self.spec_version, field_name="bootstrap spec version")
         purpose = _normalize_purpose(self.purpose)
+        compiler_version = _normalize_version(
+            self.compiler_version, field_name="bootstrap compiler version"
+        )
         system_template = self.system_template.strip()
         user_template = self.user_template.strip()
         if not system_template or not user_template:
@@ -224,6 +231,7 @@ class PromptBootstrapSpec:
         object.__setattr__(self, "spec_version", spec_version)
         object.__setattr__(self, "program_kind", kind)
         object.__setattr__(self, "purpose", purpose)
+        object.__setattr__(self, "compiler_version", compiler_version)
         object.__setattr__(self, "system_template", system_template)
         object.__setattr__(self, "user_template", user_template)
         object.__setattr__(
@@ -253,6 +261,7 @@ class PromptBootstrapSpec:
             "user_template": self.user_template,
             "schemas": self.schemas.canonical_value(),
             "model_policy": self.model_policy.canonical_value(),
+            "compiler_version": self.compiler_version,
             "application_rules": list(self.application_rules),
             "fixtures": [fixture.canonical_value() for fixture in self.fixtures],
             "rubric": [item.canonical_value() for item in self.rubric],
@@ -279,7 +288,7 @@ class PromptBootstrapSpec:
             test_set_id=self.test_set_id,
             test_set_version=BOOTSTRAP_TEST_SET_VERSION,
             test_set_hash=self.test_set_hash,
-            compiler_version=BOOTSTRAP_COMPILER_VERSION,
+            compiler_version=self.compiler_version,
         )
         return PromptBootstrapDraft(program=program, release=release)
 
@@ -317,7 +326,7 @@ class PromptBootstrapSpec:
                 "test_set_id": str(self.test_set_id),
                 "test_set_version": BOOTSTRAP_TEST_SET_VERSION,
                 "test_set_hash": self.test_set_hash,
-                "compiler_version": BOOTSTRAP_COMPILER_VERSION,
+                "compiler_version": self.compiler_version,
                 "expected_version": 0,
             },
             field_name="Admin Prompt bootstrap payload",

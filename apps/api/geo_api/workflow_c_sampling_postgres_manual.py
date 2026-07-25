@@ -13,6 +13,7 @@ from geo_api.workflow_c_sampling_contracts import (
     SubmitManualEvidenceRequest,
 )
 from geo_api.workflow_c_sampling_ids import sampling_command_id
+from geo_api.workflow_c_surface_parsing import parse_manual_surface_summary
 from geo_core.sampling import (
     CaptureMethod,
     ManualCaptureDevice,
@@ -81,6 +82,16 @@ class PostgresWorkflowCManualEvidenceControl:
         content = decode_manual_artifact(payload.content_base64.get_secret_value())
         try:
             source_content_hash = hashlib.sha256(content).hexdigest()
+            surface_parse = parse_manual_surface_summary(
+                release_id=payload.surface_parser_release_id,
+                source_platform=suite.source_stratum.platform,
+                source_surface=suite.source_stratum.surface,
+                evidence_kind=payload.evidence_kind,
+                content_type=payload.content_type,
+                content=content,
+                governance_policy_key=payload.governance_policy_option_key,
+                pre_redacted_attestation=payload.pre_redacted_attestation,
+            )
             prior = self._imports.replay_submission(
                 project_id=project_id,
                 import_id=sampling_command_id(project_id, "manual-evidence", idempotency_key),
@@ -96,6 +107,7 @@ class PostgresWorkflowCManualEvidenceControl:
                 content_type=payload.content_type,
                 governance_policy_option_key=payload.governance_policy_option_key,
                 pre_redacted_attestation=payload.pre_redacted_attestation,
+                surface_parse=surface_parse,
             )
             if prior is not None:
                 return prior
@@ -139,6 +151,7 @@ class PostgresWorkflowCManualEvidenceControl:
                 captured_at=payload.captured_at,
                 submitted_by=actor_id,
                 submitted_at=self._clock(),
+                surface_parse=surface_parse,
             )
             return self._imports.submit(
                 item,

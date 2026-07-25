@@ -172,6 +172,62 @@ export type CustomerApprovedMeasurement = Readonly<{
   snapshot_contract: "statistics_v2" | "legacy_unknown";
 }>;
 
+export type CustomerWorkflowCReportSourceKind =
+  | "provider_api"
+  | "proxy_grounded_api"
+  | "automated_ui";
+
+export type CustomerWorkflowCMetricKey =
+  | "mention"
+  | "mention_rate"
+  | "recommendation_rate"
+  | "brand_mention"
+  | "product_mention"
+  | "recommendation"
+  | "recommendation_strength"
+  | "competitor_mention"
+  | "competitor_relative_position"
+  | "sentiment"
+  | "fact_accuracy"
+  | "explicit_conflict"
+  | "subject_mixup"
+  | "key_fact_omission"
+  | "citation_entailment"
+  | "citation_position"
+  | "citation_order"
+  | "verified_url_hit"
+  | "source_domain_diversity"
+  | "source_type_diversity"
+  | "approved_corpus_absorption";
+
+export type CustomerWorkflowCMetricValue = number | string;
+
+export type CustomerWorkflowCReportPayload = Readonly<{
+  headline: string;
+  summary?: string;
+  methodology?: string;
+  metrics?: Partial<Record<CustomerWorkflowCMetricKey, CustomerWorkflowCMetricValue>>;
+  warnings?: string[];
+  mention_rate?: CustomerWorkflowCMetricValue;
+  recommendation_rate?: CustomerWorkflowCMetricValue;
+}>;
+
+export type CustomerWorkflowCReport = Readonly<{
+  id: string;
+  project_id: string;
+  campaign_id: string;
+  semantic_snapshot_hash: string;
+  report_hash: string;
+  source_kind: CustomerWorkflowCReportSourceKind;
+  approved_safe_payload: CustomerWorkflowCReportPayload;
+  approved_at: string;
+}>;
+
+export type CustomerWorkflowCReportPage = Readonly<{
+  items: CustomerWorkflowCReport[];
+  total: number;
+}>;
+
 export type CustomerCampaignReadModel = Readonly<{
   campaign: CustomerCampaign;
   summary: CustomerGeoSummary;
@@ -194,7 +250,8 @@ export type CustomerGeoResource =
   | "metrics"
   | "measurement-windows"
   | "verified-urls"
-  | "reports";
+  | "reports"
+  | "workflow-c-reports";
 
 export type CustomerApiPath =
   | "/v1/auth/me"

@@ -19,6 +19,12 @@ from geo_core.sampling.postgres_worker_contracts import (
     SamplingWorkerSource,
     parse_sampling_worker_source,
 )
+from geo_core.sampling.surface_parsers import (
+    SurfaceParseSummary,
+    release_matches_source,
+    surface_parse_summary_from_mapping,
+    surface_parser_release,
+)
 
 
 class WorkflowCSamplingWorkerError(RuntimeError):
@@ -53,6 +59,7 @@ class ManualSamplingExecutionState:
     manifest_uri: str
     evidence_kind: str
     persisted_content_type: str
+    surface_parse: SurfaceParseSummary | None = None
 
 
 class PostgresWorkflowCSamplingRepository:
@@ -103,7 +110,8 @@ class PostgresWorkflowCSamplingRepository:
                           artifact.redacted_content_hash,
                           artifact.manifest_hash AS artifact_manifest_hash,
                           artifact.governance_policy_hash AS artifact_governance_policy_hash,
-                          artifact.capture_session_id AS artifact_capture_session_id
+                          artifact.capture_session_id AS artifact_capture_session_id,
+                          parsed.summary AS surface_parse_summary
                      FROM workflow_c_sampling_manual_imports AS manual
                      JOIN workflow_c_sampling_attempts AS attempt
                        ON attempt.project_id = manual.project_id
@@ -117,6 +125,9 @@ class PostgresWorkflowCSamplingRepository:
                      JOIN workflow_c_manual_artifacts AS artifact
                        ON artifact.project_id = manual.project_id
                       AND artifact.artifact_id = manual.artifact_manifest_id
+                     LEFT JOIN workflow_c_surface_parse_results AS parsed
+                       ON parsed.project_id = manual.project_id
+                      AND parsed.manual_import_id = manual.id
                     WHERE manual.project_id = %s AND manual.id = %s
                       AND manual.run_id = %s AND manual.task_id = %s
                       AND manual.attempt_id = %s""",
@@ -139,6 +150,23 @@ class PostgresWorkflowCSamplingRepository:
         values = row_mapping(row)
         state = sampling_execution_state(values, project_id=project_id)
         assert_manual_state(state, values, spec)
+        surface_parse = surface_parse_summary_from_mapping(
+            values.get("surface_parse_summary")
+        )
+        if surface_parse is not None:
+            release = surface_parser_release(surface_parse.parser_release_id)
+            if (
+                release.release_hash != surface_parse.parser_release_hash
+                or release.surface is not surface_parse.surface
+                or not release_matches_source(
+                    release,
+                    platform=state.source.source.platform,
+                    surface=state.source.source.surface,
+                )
+            ):
+                raise WorkflowCSamplingWorkerError(
+                    "manual surface parse differs from frozen source identity"
+                )
         return ManualSamplingExecutionState(
             sampling=state,
             manual_import_id=uuid_field(values, "manual_import_id"),
@@ -150,6 +178,7 @@ class PostgresWorkflowCSamplingRepository:
             manifest_uri=text_field(values, "manifest_uri"),
             evidence_kind=text_field(values, "evidence_kind"),
             persisted_content_type=text_field(values, "persisted_content_type"),
+            surface_parse=surface_parse,
         )
 
     def commit_provider(
@@ -206,7 +235,8 @@ class PostgresWorkflowCSamplingRepository:
         row = connection.execute(
             """SELECT * FROM geo_commit_workflow_c_manual_sampling(
                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                   %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s::jsonb, %s
+                   %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb,
+                   %s, %s::jsonb, %s
                )""",
             (
                 lease.project_id,
@@ -227,8 +257,8 @@ class PostgresWorkflowCSamplingRepository:
                 state.capture_session_id,
                 commit.observation_id,
                 commit.observation_hash,
-                "complete",
-                json.dumps([], sort_keys=True),
+                commit.evidence_status,
+                json.dumps(list(commit.ineligible_reasons), sort_keys=True),
                 json.dumps(dict(commit.actual_location), sort_keys=True),
                 commit.actual_location_hash,
                 json.dumps(dict(commit.evidence), sort_keys=True),
@@ -367,8 +397,8 @@ def assert_manual_state(
         hash_field(row, "artifact_manifest_hash") == spec.artifact_manifest_hash,
         hash_field(row, "artifact_governance_policy_hash") == spec.governance_policy_hash,
         uuid_field(row, "artifact_capture_session_id") == spec.capture_session_id,
-        state.task_version == spec.task_version,
-        state.attempt_version == spec.attempt_version,
+        state.task_version >= spec.task_version,
+        state.attempt_version >= spec.attempt_version,
         row.get("run_status") == "running",
         row.get("task_status") in {"queued", "running"},
         row.get("attempt_status") in {"queued", "running"},

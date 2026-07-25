@@ -216,6 +216,19 @@ export async function freezePromptReleaseAction(
   return transitionRelease(formData, projectId, "freeze", "Release 已冻结。");
 }
 
+export async function retirePromptReleaseAction(
+  _previous: PromptActionState,
+  formData: FormData
+): Promise<PromptActionState> {
+  const projectId = field(formData, "project_id");
+  const access = await verifyPromptActor(projectId, APPROVERS);
+  if (!access.ok) return access.state;
+  if (field(formData, "confirm_retirement") !== "confirmed") {
+    return invalid("退役前必须确认该 Release 将不再用于新的运行时解析。");
+  }
+  return transitionRelease(formData, projectId, "retire", "Release 已退役。");
+}
+
 export async function bindPromptReleaseAction(
   _previous: PromptActionState,
   formData: FormData
@@ -322,7 +335,7 @@ export async function diffPromptReleaseAction(
 async function transitionRelease(
   formData: FormData,
   projectId: string,
-  command: "approve" | "freeze",
+  command: "approve" | "freeze" | "retire",
   successMessage: string
 ): Promise<PromptActionState> {
   const ids = releaseIds(formData);
@@ -370,7 +383,7 @@ function releaseCommandPath(
   projectId: string,
   programId: string,
   releaseId: string,
-  command: "tests" | "approve" | "freeze" | "diff"
+  command: "tests" | "approve" | "freeze" | "retire" | "diff"
 ): string {
   return `${promptBase(projectId)}/${encodeURIComponent(programId)}/releases/`
     + `${encodeURIComponent(releaseId)}/${command}`;

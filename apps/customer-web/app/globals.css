@@ -241,7 +241,7 @@ h3 {
   border-bottom: 1px solid #d5dde3;
   border-top: 1px solid #d5dde3;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 .metricStat {
   display: grid;
@@ -360,11 +360,30 @@ code {
 .reportItem + .reportItem {
   border-top: 1px solid #dce3e8;
 }
+.workflowReportList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.workflowReportList > li + li {
+  border-top: 1px solid #dce3e8;
+}
+.workflowCReportItem {
+  min-width: 0;
+}
 .reportItem header {
   align-items: flex-start;
   display: flex;
   gap: 16px;
   justify-content: space-between;
+}
+.workflowCReportItem header > div {
+  min-width: 0;
+}
+.workflowCReportItem h3,
+.workflowCReportItem > p,
+.reportWarnings li {
+  overflow-wrap: anywhere;
 }
 .reportItem > p:not(.methodNote) {
   line-height: 1.65;
@@ -373,6 +392,62 @@ code {
 .snapshotLineage {
   color: #607482;
   font-size: 12px;
+}
+.reportMetadata {
+  display: grid;
+  gap: 8px 20px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+.reportMetadata > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.reportMetadata dt {
+  color: #607482;
+  font-size: 11px;
+  font-weight: 700;
+}
+.reportMetadata dd {
+  color: #263943;
+  font-size: 13px;
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.reportMetadata code {
+  white-space: normal;
+  word-break: break-all;
+}
+.workflowMetricTable {
+  border: 1px solid #dce3e8;
+}
+.workflowMetricTable .dataTable {
+  min-width: 420px;
+}
+.workflowMetricTable .dataTable td:last-child {
+  font-variant-numeric: tabular-nums;
+}
+.reportWarnings {
+  border-left: 3px solid #b46b18;
+  color: #654015;
+  display: grid;
+  gap: 6px;
+  padding: 8px 12px;
+}
+.reportWarnings > strong {
+  font-size: 12px;
+}
+.reportWarnings ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 18px;
+}
+.reportWarnings li {
+  font-size: 13px;
+  line-height: 1.5;
 }
 .inlineEmpty,
 .inlineProblem {
@@ -529,7 +604,7 @@ code {
   .metricStrip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .metricStat:nth-child(3) {
+  .metricStat:nth-child(2n + 1) {
     border-left: 0;
   }
   .metricStat:nth-child(n + 3) {
@@ -583,5 +658,8 @@ code {
   .contentSection > .sectionHeader,
   .reportItem {
     padding: 15px;
+  }
+  .reportMetadata {
+    grid-template-columns: 1fr;
   }
 }

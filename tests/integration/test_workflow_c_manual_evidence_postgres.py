@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 from datetime import UTC, datetime, timedelta
+import json
 import os
 from pathlib import Path
 from uuid import uuid4
@@ -26,6 +27,8 @@ from geo_core.sampling import (
     PostgresManualEvidenceRepository,
     PostgresSamplingRunRepository,
     PostgresSamplingSuiteRepository,
+    SURFACE_PARSER_RELEASES,
+    SurfaceParseOutcome,
 )
 from geo_core.sampling.manual_artifact_governance import AUTOMATIC_POLICY_KEY
 from geo_core.sampling.manual_artifact_storage import (
@@ -77,7 +80,12 @@ def test_manual_evidence_submit_and_approval_create_one_durable_attempt() -> Non
             )
             created_login = True
             project_id = seed_project(admin, suffix=f"wfc-manual-evidence-{suffix}")["project"]
-            _seed_manual_runtime_option(admin, project_id=project_id)
+            _seed_manual_runtime_option(
+                admin,
+                project_id=project_id,
+                platform="google",
+                adapter_release="manual-google-aio-v1",
+            )
 
         app_url = login_url(database_url, user=app_login, password=app_password)
 
@@ -90,10 +98,14 @@ def test_manual_evidence_submit_and_approval_create_one_durable_attempt() -> Non
             assert synchronize_workflow_c_artifact_master_keys(admin, cipher) == (1,)
 
         with isolated_minio_store() as objects:
+            parser_release = SURFACE_PARSER_RELEASES[0]
             run_id, task_id = _create_manual_sampling_lineage(
                 app_connect=app_connect,
                 project_id=project_id,
                 now=now,
+                source_platform="google",
+                source_surface="ai_overviews",
+                adapter_release="manual-google-aio-v1",
             )
             suites = PostgresSamplingSuiteRepository(connect=app_connect)
             run = PostgresSamplingRunRepository(connect=app_connect).get_run(
@@ -128,7 +140,7 @@ def test_manual_evidence_submit_and_approval_create_one_durable_attempt() -> Non
             approved_payload = SubmitManualEvidenceRequest(
                 expected_task_version=task.version,
                 content_base64=base64.b64encode(
-                    b'{"answer":"Australian consumer result"}'
+                    json.dumps(_surface_artifact(parser_release)).encode()
                 ).decode("ascii"),
                 content_type="application/json",
                 governance_policy_option_key=AUTOMATIC_POLICY_KEY,
@@ -137,6 +149,7 @@ def test_manual_evidence_submit_and_approval_create_one_durable_attempt() -> Non
                 device="desktop",
                 locale="en-AU",
                 captured_at=now - timedelta(seconds=1),
+                surface_parser_release_id=parser_release.id,
             )
             submitted = control.submit(
                 project_id=project_id,
@@ -157,6 +170,11 @@ def test_manual_evidence_submit_and_approval_create_one_durable_attempt() -> Non
             assert submitted == replayed_submission
             assert submitted.status is ManualEvidenceStatus.PENDING_REVIEW
             assert submitted.aggregate_version == 1
+            assert submitted.surface_parse is not None
+            assert submitted.surface_parse.outcome is SurfaceParseOutcome.CAPTURED
+            assert submitted.surface_parse.parser_release_hash == parser_release.release_hash
+            assert submitted.surface_parse.automated_capture is False
+            assert submitted.surface_parse.live_capture_eligible is False
 
             with app_connect() as connection:
                 set_project_scope(connection, project_id)
@@ -175,9 +193,26 @@ def test_manual_evidence_submit_and_approval_create_one_durable_attempt() -> Non
                            current_user, 'workflow_c_sampling_manual_imports', 'INSERT'
                        ) AS allowed"""
                 ).fetchone()
+                parsed = connection.execute(
+                    """SELECT summary_hash, outcome, summary
+                       FROM workflow_c_surface_parse_results
+                       WHERE project_id = %s AND manual_import_id = %s""",
+                    (project_id, submitted.id),
+                ).fetchone()
+                can_insert_parse = connection.execute(
+                    """SELECT has_table_privilege(
+                           current_user, 'workflow_c_surface_parse_results', 'INSERT'
+                       ) AS allowed"""
+                ).fetchone()
             assert artifact == {"status": "active"}
             assert attempts == {"count": 0}
             assert can_insert == {"allowed": False}
+            assert parsed is not None
+            assert parsed["outcome"] == "captured"
+            assert parsed["summary_hash"] == submitted.surface_parse.summary_hash
+            assert "answer_text" not in parsed["summary"]
+            assert "citations" not in parsed["summary"]
+            assert can_insert_parse == {"allowed": False}
 
             approved = control.review(
                 project_id=project_id,
@@ -290,7 +325,7 @@ def test_manual_evidence_submit_and_approval_create_one_durable_attempt() -> Non
 
             with pytest.raises(
                 Exception,
-                match="cannot downgrade Manual Sampling import control after evidence exists",
+                match="cannot downgrade consumer surface parser results after evidence exists",
             ):
                 alembic_command.downgrade(migration, "0046_wfc_artifact_encryption")
     finally:
@@ -304,3 +339,31 @@ def test_manual_evidence_submit_and_approval_create_one_durable_attempt() -> Non
         if created_login:
             with psycopg.connect(ADMIN_URL, autocommit=True) as server:
                 server.execute(sql.SQL("DROP ROLE IF EXISTS {}").format(sql.Identifier(app_login)))
+
+
+def _surface_artifact(release) -> dict[str, object]:
+    return {
+        "schema_version": "consumer-surface-artifact-v1",
+        "platform": release.platform,
+        "surface": release.surface.value,
+        "final_url": "https://www.google.com/search?q=fixture",
+        "page_ready": True,
+        "surface_markers": [release.surface_marker],
+        "ordinary_result_markers": ["ordinary_results_ready"],
+        "answer_blocks": [
+            {
+                "text": "Australian consumer result",
+                "locator": "dom://answer/1",
+            }
+        ],
+        "citations": [
+            {
+                "url": "https://example.com/official",
+                "title": "Official source",
+                "position": 1,
+                "locator": "dom://citation/1",
+            }
+        ],
+        "blocking_state": None,
+        "follow_up_count": 1,
+    }

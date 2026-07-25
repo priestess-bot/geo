@@ -17,6 +17,7 @@ customer.listGeoMetrics("project-id", "campaign-id");
 customer.listMeasurementWindows("project-id", "campaign-id");
 customer.listVerifiedUrls("project-id", "campaign-id");
 customer.listApprovedReports("project-id", "campaign-id");
+customer.listWorkflowCApprovedReports("project-id", "campaign-id");
 internal.listEngineeringWorkItems();
 geoAdmin.listPromptSimulations("project-id");
 geoAdmin.listPromptSimulations("project-id", "campaign-id");

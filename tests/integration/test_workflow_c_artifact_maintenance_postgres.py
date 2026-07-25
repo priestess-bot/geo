@@ -420,7 +420,13 @@ def test_manual_artifact_reader_recovers_then_fails_closed_after_real_tombstone(
                 )
 
 
-def _seed_manual_runtime_option(connection, *, project_id: UUID) -> None:
+def _seed_manual_runtime_option(
+    connection,
+    *,
+    project_id: UUID,
+    platform: str = "consumer_ai",
+    adapter_release: str = "manual-ui-au-v1",
+) -> None:
     connection.execute(
         """INSERT INTO workflow_c_sampling_runtime_options(
                project_id, option_key, option_hash, display_name, platform,
@@ -428,21 +434,31 @@ def _seed_manual_runtime_option(connection, *, project_id: UUID) -> None:
                location_evidence_hash, authorization_reference, allowed_purposes,
                status, frozen_at
            ) VALUES (
-               %s, 'manual-au-v1', %s, 'Manual AU', 'consumer_ai', 'manual_ui',
-               'manual-ui-au-v1', 'country', %s, 'authorization:manual-au',
+               %s, 'manual-au-v1', %s, 'Manual AU', %s, 'manual_ui',
+               %s, 'not_controlled', %s, 'authorization:manual-au',
                %s::jsonb, 'approved', clock_timestamp()
            )""",
         (
             project_id,
             _hash("manual-runtime-option"),
-            _hash("manual-location:au"),
+            platform,
+            adapter_release,
+            _hash("manual-location:not-controlled"),
             Jsonb(["geo_measurement"]),
         ),
     )
 
 
 def _create_manual_sampling_lineage(
-    *, app_connect, project_id: UUID, now: datetime
+    *,
+    app_connect,
+    project_id: UUID,
+    now: datetime,
+    source_platform: str = "consumer_ai",
+    source_surface: str = "manual_consumer_ui",
+    adapter_release: str = "manual-ui-au-v1",
+    question_id: str = "manual-q-1",
+    question_set_id: UUID | None = None,
 ) -> tuple[UUID, UUID]:
     policies = PostgresWorkflowCSamplingPolicyControl(
         repository=PostgresSamplingAdmissionRepository(connect=app_connect, clock=lambda: now),
@@ -481,25 +497,25 @@ def _create_manual_sampling_lineage(
         approved=True,
     ).record
     source = SamplingSourceStratum(
-        platform="consumer_ai",
-        surface="manual_consumer_ui",
+        platform=source_platform,
+        surface=source_surface,
         configured_model="not_disclosed",
         reported_model="not_disclosed",
         capture_method=CaptureMethod.MANUAL_UI,
-        adapter_release="manual-ui-au-v1",
+        adapter_release=adapter_release,
         locale="en-AU",
-        region="AU",
+        region="not_controlled",
         language="en",
         search_mode="consumer_ui",
         account_cohort="approved_operator",
         egress_policy_category="operator_verified",
-        location_control=LocationControl.COUNTRY,
-        location_evidence_hash=_hash("manual-location:au"),
+        location_control=LocationControl.NOT_CONTROLLED,
+        location_evidence_hash=_hash("manual-location:not-controlled"),
         requested_country="AU",
         requested_region=None,
         requested_locale="en-AU",
         requested_language="en",
-        effective_country="AU",
+        effective_country=None,
         effective_region=None,
         effective_locale=None,
         effective_language=None,
@@ -510,10 +526,10 @@ def _create_manual_sampling_lineage(
         project_id=project_id,
         option_key=option_key,
         display_name="Manual artifact lineage",
-        question_set_id=uuid4(),
+        question_set_id=question_set_id or uuid4(),
         question_set_version="manual-question-set-v1",
         question_set_hash=_hash("manual-question-set"),
-        questions=(SamplingQuestion("manual-q-1", "v1", _hash("manual question")),),
+        questions=(SamplingQuestion(question_id, "v1", _hash("manual question")),),
         adapter_release_id=uuid4(),
         adapter_release_hash=_hash("manual-adapter-release"),
         model_release_id=uuid4(),

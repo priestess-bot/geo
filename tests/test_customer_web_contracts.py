@@ -15,7 +15,12 @@ def test_customer_web_uses_only_stable_read_only_geo_resources() -> None:
     client = read("packages/web/api-client/src/customer.ts")
     types = read("packages/web/types/src/customer.ts")
     views = read("apps/customer-web/app/_components/GeoViews.tsx")
+    workflow_c_views = read("apps/customer-web/app/_components/WorkflowCReports.tsx")
     chrome = read("apps/customer-web/app/_components/PortalChrome.tsx")
+    styles = read("apps/customer-web/app/globals.css")
+    workflow_c_contract = read(
+        "packages/web/api-client/src/customer-workflow-c-contract.ts"
+    )
 
     assert "invitation_id" in home
     assert "loadSessionPortal" in home
@@ -26,6 +31,7 @@ def test_customer_web_uses_only_stable_read_only_geo_resources() -> None:
         "listProjects",
         "listGeoCampaigns",
         "getGeoCampaignReadModel",
+        "listWorkflowCApprovedReports",
     ):
         assert method in runtime
         assert method in client
@@ -49,6 +55,7 @@ def test_customer_web_uses_only_stable_read_only_geo_resources() -> None:
         assert stable_path in client
     assert "/geo/campaigns" in client
     assert "/read-model" in client
+    assert '"workflow-c-reports"' in client
 
     assert "CustomerProblemDetails" in runtime
     assert "CustomerProblemDetails" in types
@@ -58,13 +65,42 @@ def test_customer_web_uses_only_stable_read_only_geo_resources() -> None:
     assert "MetricsView" in module
     assert "PlacementsView" in module
     assert "ReportsView" in module
+    assert "loadCustomerWorkflowCReports" in module
+    assert "resourceProblems(model, workflowCReports)" in module
+    assert "moduleUsesWorkflowCReports(rawModule)" in module
+    assert "Promise.all([modelPromise, workflowCReportsPromise])" in module
+    assert 'module === "summary" || module === "reports"' in module
     assert "已批准报告" in views
+    assert "已批准跨引擎报告" in workflow_c_views
+    assert "report.report_hash" in workflow_c_views
+    assert "report.semantic_snapshot_hash" not in workflow_c_views
+    assert 'aria-label="已批准 Workflow C 报告"' in workflow_c_views
+    assert "aria-labelledby={titleId}" in workflow_c_views
+    assert '<time dateTime={report.approved_at}>' in workflow_c_views
+    assert '<caption className="srOnly">' in workflow_c_views
+    assert 'scope="col"' in workflow_c_views
+    assert 'aria-label="报告注意事项"' in workflow_c_views
+    assert ".workflowCReportItem h3" in styles
+    assert "overflow-wrap: anywhere" in styles
+    assert "word-break: break-all" in styles
+    assert "CUSTOMER_WORKFLOW_C_METRIC_KEYS" in workflow_c_contract
+    assert "COUNT_METRIC_KEYS" in workflow_c_contract
+    assert "SIGNED_METRIC_KEYS" in workflow_c_contract
+    assert "decimalTextIsInteger" in workflow_c_contract
+    assert "decimalAbsoluteAtMostOne" in workflow_c_contract
+    assert "Number(value)" not in workflow_c_contract
+    assert "hasExactKeys" in workflow_c_contract
+    assert "customerWorkflowCReportPageGuard" in workflow_c_contract
+    assert "item.project_id === projectId" in workflow_c_contract
+    assert "item.campaign_id === campaignId" in workflow_c_contract
     assert "暂无验证通过的公开投放 URL" in views
     assert "Record<string, unknown>" not in types
     assert "JSON.stringify" not in module
     assert "<pre>" not in module
 
-    combined = "\n".join((runtime, client, types, views, module))
+    combined = "\n".join(
+        (runtime, client, types, views, workflow_c_views, workflow_c_contract, module)
+    )
     for forbidden in (
         "/v1/geo/customer-summary",
         "/v1/visibility-scores/runtime",
@@ -91,14 +127,16 @@ def test_customer_pages_cover_auth_empty_partial_failure_and_loading_states() ->
     runtime = read("apps/customer-web/app/runtime.ts")
     module = read("apps/customer-web/app/portal/[module]/page.tsx")
     views = read("apps/customer-web/app/_components/GeoViews.tsx")
+    workflow_c_views = read("apps/customer-web/app/_components/WorkflowCReports.tsx")
     loading = read("apps/customer-web/app/loading.tsx")
 
     assert 'identity.problem.status === 401' in runtime
     assert 'problem.status === 403' in views
-    assert "resourceProblems(model)" in module
+    assert "resourceProblems(model, workflowCReports)" in module
     assert "Promise.all" in runtime
     assert "暂无验证通过的公开投放 URL" in views
     assert "暂无已批准报告" in views
+    assert "Workflow C 报告暂不可用" in workflow_c_views
     assert "aria-busy" in loading
 
 
@@ -108,8 +146,10 @@ def test_customer_frontend_files_stay_within_module_budget() -> None:
         "apps/customer-web/app/runtime.ts",
         "apps/customer-web/app/portal/[module]/page.tsx",
         "apps/customer-web/app/_components/GeoViews.tsx",
+        "apps/customer-web/app/_components/WorkflowCReports.tsx",
         "apps/customer-web/app/_components/PortalChrome.tsx",
         "packages/web/api-client/src/customer.ts",
+        "packages/web/api-client/src/customer-workflow-c-contract.ts",
         "packages/web/types/src/customer.ts",
     ):
         assert len(read(relative).splitlines()) < 600, relative

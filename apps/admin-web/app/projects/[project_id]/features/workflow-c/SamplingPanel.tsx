@@ -14,7 +14,8 @@ import type {
   SamplingRun,
   SamplingRunDetail,
   SamplingSuite,
-  SamplingSuiteInputOption
+  SamplingSuiteInputOption,
+  SurfaceParserReleasePage
 } from "./workflowCTypes";
 import styles from "./WorkflowC.module.css";
 
@@ -30,6 +31,7 @@ export function SamplingPanel({
   requestedNotBefore,
   resource,
   runs,
+  surfaceParserReleases,
   suite,
   suiteInputOptions,
   suites
@@ -45,6 +47,7 @@ export function SamplingPanel({
   requestedNotBefore: string;
   resource: Resource<SamplingRunDetail>;
   runs: Resource<{ items: SamplingRun[]; total: number }>;
+  surfaceParserReleases: Resource<SurfaceParserReleasePage>;
   suite: Resource<SamplingSuite>;
   suiteInputOptions: Resource<{ items: SamplingSuiteInputOption[]; total: number }>;
   suites: Resource<{ items: SamplingSuite[]; total: number }>;
@@ -71,8 +74,13 @@ export function SamplingPanel({
         imports={manualEvidence.data?.items || []}
         projectId={projectId}
         runId={resource.data?.run.id || null}
+        releases={surfaceParserReleases.data?.items || []}
+        source={resource.data?.suite.source_stratum || suite.data?.source_stratum || null}
         tasks={resource.data?.tasks || []}
       />
+      {surfaceParserReleases.problem
+        ? <LoadProblem label="Consumer surface parser releases" problem={surfaceParserReleases.problem} />
+        : null}
     </>
   );
   if (resource.problem) return <div className={styles.sectionStack}>{commands}<LoadProblem label="Sampling Run" problem={resource.problem} /></div>;

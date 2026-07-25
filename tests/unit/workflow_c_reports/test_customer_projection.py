@@ -19,7 +19,10 @@ def _report(**changes: object) -> WorkflowCCustomerApprovedReport:
         "semantic_snapshot_hash": "a" * 64,
         "report_hash": "b" * 64,
         "source_kind": "provider_api",
-        "approved_safe_payload": {"headline": "Approved result", "metrics": [1, 2]},
+        "approved_safe_payload": {
+            "headline": "Approved result",
+            "metrics": {"mention": "0.8"},
+        },
         "approved_at": datetime(2026, 7, 23, 10, 0, tzinfo=UTC),
     }
     values.update(changes)
@@ -35,11 +38,94 @@ def test_customer_projection_accepts_only_non_manual_real_source_kinds() -> None
             _report(source_kind=source_kind)
 
 
-def test_customer_projection_rejects_raw_or_debug_payload_recursively() -> None:
-    with pytest.raises(WorkflowCCustomerProjectionError, match="internal field"):
-        _report(approved_safe_payload={"summary": {"raw_response": "no"}})
-    with pytest.raises(WorkflowCCustomerProjectionError, match="internal field"):
-        _report(approved_safe_payload={"summary": {"rawResponse": "no"}})
+@pytest.mark.parametrize("key", ["access_token", "raw_text", "system_prompt", "new_field"])
+def test_customer_projection_rejects_every_unknown_top_level_field(key: str) -> None:
+    with pytest.raises(WorkflowCCustomerProjectionError, match="unknown field"):
+        _report(approved_safe_payload={"headline": "Result", key: "private"})
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"summary": {"raw_response": "no"}},
+        {"metrics": {"mention": {"value": "0.8"}}},
+        {"metrics": {"access_token": "1"}},
+        {"metrics": ["0.8"]},
+    ],
+)
+def test_customer_projection_rejects_nested_or_complex_values(payload: object) -> None:
+    with pytest.raises(WorkflowCCustomerProjectionError):
+        _report(approved_safe_payload=payload)
+
+
+def test_customer_projection_normalizes_only_the_documented_compatibility_shape() -> None:
+    report = _report(
+        approved_safe_payload={
+            "headline": "  Approved result  ",
+            "summary": "Aggregate evidence",
+            "methodology": "Observational comparison",
+            "warnings": ["Small sample"],
+            "mention_rate": 0.8,
+            "recommendation_rate": "0.60",
+            "metrics": {
+                "sentiment": -0.2,
+                "fact_accuracy": "1",
+                "source_domain_diversity": 4,
+                "source_type_diversity": "3",
+            },
+        }
+    )
+
+    assert dict(report.approved_safe_payload) == {
+        "headline": "Approved result",
+        "summary": "Aggregate evidence",
+        "methodology": "Observational comparison",
+        "warnings": ["Small sample"],
+        "mention_rate": 0.8,
+        "recommendation_rate": "0.60",
+        "metrics": {
+            "fact_accuracy": "1",
+            "sentiment": -0.2,
+            "source_domain_diversity": 4,
+            "source_type_diversity": "3",
+        },
+    }
+
+
+@pytest.mark.parametrize("value", ["01", "+1", "1e-2", "NaN", float("inf"), True])
+def test_customer_projection_rejects_noncanonical_or_nonfinite_metric_values(
+    value: object,
+) -> None:
+    with pytest.raises(WorkflowCCustomerProjectionError):
+        _report(approved_safe_payload={"headline": "Result", "metrics": {"mention": value}})
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("source_domain_diversity", -1),
+        ("source_type_diversity", "1.5"),
+        ("sentiment", "-1.1"),
+        ("competitor_relative_position", 1.1),
+        ("fact_accuracy", "1.01"),
+        ("mention", -0.01),
+    ],
+)
+def test_customer_projection_rejects_metric_values_outside_kind_specific_ranges(
+    key: str,
+    value: object,
+) -> None:
+    with pytest.raises(WorkflowCCustomerProjectionError, match="allowed range"):
+        _report(approved_safe_payload={"headline": "Result", "metrics": {key: value}})
+
+
+@pytest.mark.parametrize(("key", "value"), [("mention_rate", 1.1), ("recommendation_rate", -0.1)])
+def test_customer_projection_rejects_out_of_range_legacy_rates(
+    key: str,
+    value: object,
+) -> None:
+    with pytest.raises(WorkflowCCustomerProjectionError, match="must be a ratio"):
+        _report(approved_safe_payload={"headline": "Result", key: value})
 
 
 def test_customer_projection_requires_immutable_hashes_and_aware_approval_time() -> None:

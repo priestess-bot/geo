@@ -69,9 +69,7 @@ def seed_provider_artifacts(
     now = datetime.now(UTC)
     manifest = _runtime_manifest(provider_secret=provider_secret, approved_at=now)
     catalog = PostgresRuntimeCatalog(database_url)
-    handles = register_runtime_manifest(
-        cast(RuntimeManifestRegistrationCatalog, catalog), manifest
-    )
+    handles = register_runtime_manifest(cast(RuntimeManifestRegistrationCatalog, catalog), manifest)
     if handles != (provider_secret,):
         raise RestoreGateSeedError("runtime manifest did not bind the exact Provider secret")
     option = runtime_options_for_manifest(manifest)[0]
@@ -233,7 +231,10 @@ def _runtime_manifest(
             "provider_runtimes": [
                 {
                     "adapter_release_id": "restore-gate-openai-adapter-v1",
-                    "allowed_purposes": ["restore_gate.model_call"],
+                    "allowed_purposes": [
+                        "recommendations.recommendation",
+                        "restore_gate.model_call",
+                    ],
                     "allowed_search_modes": ["web"],
                     "capabilities": {
                         "data_retention_days": 7,
@@ -262,9 +263,7 @@ def _runtime_manifest(
                         "terms_reference": (
                             "minio://geo-restore-gate-evidence/model-gateway/openai-terms-v1.json"
                         ),
-                        "terms_sha256": stable_hash(
-                            "restore-gate-provider-terms-evidence-v1"
-                        ),
+                        "terms_sha256": stable_hash("restore-gate-provider-terms-evidence-v1"),
                     },
                     "expected_capture_method": "provider_api",
                     "interface_contract_version": "geo-model-gateway-v1",

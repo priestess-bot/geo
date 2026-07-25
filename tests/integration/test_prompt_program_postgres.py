@@ -13,6 +13,7 @@ from geo_core.prompts.application import (
     PromptProgramApplication,
     PromptProgramForbidden,
     PromptProgramNotFound,
+    PromptProgramRuntimeBlocked,
     PromptProgramVersionConflict,
 )
 from geo_core.prompts.postgres import build_prompt_program_api, prompt_program_uow_factory
@@ -288,6 +289,35 @@ def test_prompt_program_history_replays_across_uow_and_resolves_exact_binding() 
         assert resolved.binding == bound.value.binding
         assert approved.value.admitted_test_evidence == tested.value.evidence
 
+        retired = _command(
+            factory,
+            first["project"],
+            lambda application: application.retire_release(
+                reviewer,
+                project_id=first["project"],
+                release_id=created.value.release.id,
+                expected_version=4,
+                idempotency_key="retire:generation:v1",
+            ),
+        )
+        assert retired.value.state.status.value == "retired"
+        with pytest.raises(PromptProgramRuntimeBlocked, match="exact frozen"):
+            _command(
+                factory,
+                first["project"],
+                lambda application: application.resolve_runtime_binding(
+                    project_id=first["project"],
+                    purpose="synthetic_lab.generation",
+                ),
+            )
+        with factory(first["project"]) as unit_of_work:
+            assert unit_of_work.prompts.list_current_bindings(
+                project_id=first["project"],
+                program_kind=None,
+                limit=10,
+                offset=0,
+            ).items == ()
+
         with pytest.raises(PromptProgramVersionConflict, match="changed after"):
             _command(
                 factory,
@@ -312,7 +342,7 @@ def test_prompt_program_history_replays_across_uow_and_resolves_exact_binding() 
                      (SELECT count(*) FROM prompt_program_bindings),
                      (SELECT count(*) FROM prompt_program_command_receipts)"""
             ).fetchone()
-            assert counts == (1, 2, 5, 1, 1, 7)
+            assert counts == (1, 2, 6, 1, 1, 8)
 
         _assert_rls_and_immutability(
             app_url=app_url,

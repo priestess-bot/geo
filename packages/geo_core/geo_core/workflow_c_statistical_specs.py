@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
+from uuid import UUID
 
 from geo_core.statistical_methods import (
     ComparisonInput,
@@ -20,18 +22,35 @@ from geo_core.workflow_c_analysis_common import (
     object_value,
     only_keys,
     text_value,
+    uuid_value,
 )
 from geo_core.workflow_c_job_specs import WorkflowCJobSpec
 
 
 def comparison_inputs(spec: WorkflowCJobSpec) -> tuple[ComparisonInput, ...]:
     payload = object_value(spec.payload, "comparison Worker payload")
+    admission = analysis_admission_lineage(payload)
     value = object_value(payload.get("comparison"), "comparison Worker input")
     only_keys(value, {"inputs"}, "comparison Worker input")
     raw_inputs = array_value(value.get("inputs"), "comparison inputs")
     if not raw_inputs:
         raise WorkflowCAnalysisWorkerError("comparison inputs are required")
-    return tuple(comparison_input(object_value(item, "comparison input")) for item in raw_inputs)
+    inputs = tuple(
+        comparison_input(object_value(item, "comparison input")) for item in raw_inputs
+    )
+    if admission is not None:
+        if admission.protocol_kind != "comparison_plan":
+            raise WorkflowCAnalysisWorkerError("comparison admission kind is invalid")
+        for item in inputs:
+            if item.protocol.protocol_hash != admission.protocol_hash or (
+                item.protocol.baseline_version != f"snapshot:{admission.source_snapshot_hash}"
+            ) or (
+                item.protocol.candidate_version != f"snapshot:{admission.target_snapshot_hash}"
+            ):
+                raise WorkflowCAnalysisWorkerError(
+                    "comparison input differs from its frozen admission lineage"
+                )
+    return inputs
 
 
 def comparison_input(value: Mapping[str, object]) -> ComparisonInput:
@@ -122,18 +141,35 @@ def paired_observation(value: Mapping[str, object]) -> PairedObservation:
 
 def drift_inputs(
     spec: WorkflowCJobSpec,
-) -> tuple[str, str, tuple[DriftObservation, ...], tuple[DriftObservation, ...]]:
+) -> tuple[
+    str | None,
+    str,
+    str,
+    tuple[DriftObservation, ...],
+    tuple[DriftObservation, ...],
+]:
     payload = object_value(spec.payload, "drift Worker payload")
+    admission = analysis_admission_lineage(payload)
     value = object_value(payload.get("drift"), "drift Worker input")
     only_keys(
         value,
         {"source_snapshot_hash", "target_snapshot_hash", "baseline", "current"},
         "drift Worker input",
     )
+    protocol_hash = None if admission is None else admission.protocol_hash
+    if admission is not None and admission.protocol_kind != "drift_protocol":
+        raise WorkflowCAnalysisWorkerError("drift admission kind is invalid")
     source_hash = hash_value(value.get("source_snapshot_hash"), "source snapshot hash")
     target_hash = hash_value(value.get("target_snapshot_hash"), "target snapshot hash")
     if source_hash == target_hash:
         raise WorkflowCAnalysisWorkerError("drift source and target snapshots must differ")
+    if admission is not None and (
+        source_hash != admission.source_snapshot_hash
+        or target_hash != admission.target_snapshot_hash
+    ):
+        raise WorkflowCAnalysisWorkerError(
+            "drift snapshots differ from their frozen admission lineage"
+        )
     baseline = tuple(
         drift_observation(object_value(item, "baseline drift observation"))
         for item in array_value(value.get("baseline"), "baseline drift observations")
@@ -142,7 +178,69 @@ def drift_inputs(
         drift_observation(object_value(item, "current drift observation"))
         for item in array_value(value.get("current"), "current drift observations")
     )
-    return source_hash, target_hash, baseline, current
+    return protocol_hash, source_hash, target_hash, baseline, current
+
+
+@dataclass(frozen=True)
+class AnalysisAdmissionLineage:
+    protocol_kind: str
+    protocol_id: UUID
+    protocol_hash: str
+    source_snapshot_hash: str
+    target_snapshot_hash: str
+    requested_by: str
+
+
+def analysis_admission_lineage(
+    payload: Mapping[str, object],
+) -> AnalysisAdmissionLineage | None:
+    raw = payload.get("admission")
+    if raw is None:
+        return None
+    value = object_value(raw, "analysis admission lineage")
+    only_keys(
+        value,
+        {
+            "protocol_kind",
+            "protocol_id",
+            "protocol_hash",
+            "source_snapshot_hash",
+            "target_snapshot_hash",
+            "requested_by",
+        },
+        "analysis admission lineage",
+    )
+    return AnalysisAdmissionLineage(
+        protocol_kind=text_value(value.get("protocol_kind"), "protocol kind"),
+        protocol_id=uuid_value(value.get("protocol_id"), "protocol id"),
+        protocol_hash=hash_value(value.get("protocol_hash"), "protocol hash"),
+        source_snapshot_hash=hash_value(
+            value.get("source_snapshot_hash"), "source snapshot hash"
+        ),
+        target_snapshot_hash=hash_value(
+            value.get("target_snapshot_hash"), "target snapshot hash"
+        ),
+        requested_by=text_value(value.get("requested_by"), "analysis requester"),
+    )
+
+
+def comparison_input_value(value: ComparisonInput) -> dict[str, object]:
+    protocol = dict(value.protocol.canonical_value())
+    protocol.pop("seed_hex")
+    return {
+        "protocol": protocol,
+        "sampling_source_stratum_hash": value.sampling_source_stratum_hash,
+        "planned_pair_count": value.planned_pair_count,
+        "pairs": [item.canonical_value() for item in value.pairs],
+    }
+
+
+def drift_observation_value(value: DriftObservation) -> dict[str, object]:
+    return {
+        "observation_id": value.observation_id,
+        "stratum": value.stratum.canonical_value(),
+        "effect": str(value.effect),
+    }
 
 
 def drift_observation(value: Mapping[str, object]) -> DriftObservation:
@@ -179,4 +277,10 @@ def statistical_stratum(value: Mapping[str, object]) -> StatisticalStratum:
     )
 
 
-__all__ = ["comparison_inputs", "drift_inputs"]
+__all__ = [
+    "comparison_input_value",
+    "comparison_inputs",
+    "analysis_admission_lineage",
+    "drift_inputs",
+    "drift_observation_value",
+]

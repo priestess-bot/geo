@@ -147,6 +147,30 @@ export async function approveManualImportPreviewAction(
     || !booleanField(formData, "anonymization_verified")) {
     return invalid("请选择可批准行，并完成澳洲英文与匿名化明审确认。");
   }
+  const previewResponse = await runtimeRequest<ManualImportPreview>(
+    `${syntheticBase(projectId)}/sample-import-previews/${encodeURIComponent(previewId)}`
+  );
+  if (!previewResponse.ok) return commandFailure(previewResponse);
+  if (!isManualImportPreview(previewResponse.data)
+    || previewResponse.data.project_id !== projectId) {
+    return upstreamInvalid("样本导入预览响应不安全或无法识别。");
+  }
+  if (previewResponse.data.submitted_by === access.actorIdentityId) {
+    return safeState({
+      kind: "error",
+      status: 403,
+      message: "独立复核失败：提交者不能批准自己的导入预览。"
+    });
+  }
+  if (previewResponse.data.status !== "pending") {
+    return invalid("仅待复核的导入预览可以批准。");
+  }
+  const selectableRows = new Set(
+    previewResponse.data.rows.filter((row) => row.selectable).map((row) => row.row_number)
+  );
+  if (selectedRows.some((rowNumber) => !selectableRows.has(rowNumber))) {
+    return invalid("所选行包含不可批准或已阻断的样本。");
+  }
   const response = await runtimeRequest<ManualImportResult>(
     `${syntheticBase(projectId)}/sample-import-previews/${encodeURIComponent(previewId)}/approve`,
     {

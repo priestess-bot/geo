@@ -4,17 +4,199 @@ import { useActionState, useState } from "react";
 
 import {
   admitStyleCollectionAction,
-  cancelSyntheticJobAction
+  cancelSyntheticJobAction,
+  enqueueApprovedCorpusAction,
+  enqueueCandidateCorpusAction,
+  enqueueOfflineExperimentAction,
+  enqueueReviewCaseRunAction,
+  enqueueStyleProfileBuildAction
 } from "./syntheticLabJobActions";
 import { SyntheticActionFeedback } from "./SyntheticActionFeedback";
 import {
   initialSyntheticActionState,
   type CollectionAuthorization,
+  type ReviewCase,
+  type ReviewSuite,
   type StyleLoginSecretReference,
+  type StyleProfile,
   type StyleSource,
-  type SyntheticJob
+  type SyntheticJob,
+  type SyntheticResourceInventory,
+  type SyntheticRuntimeOption
 } from "./syntheticLabTypes";
 import styles from "./SyntheticLab.module.css";
+
+const PROFILE_PURPOSE = "synthetic_lab.style_profile";
+const OFFLINE_PURPOSE = "synthetic_lab.offline_answer";
+const REVIEW_PURPOSES = [
+  "synthetic_lab.generation",
+  "synthetic_lab.claim_extraction",
+  "synthetic_lab.conflict_check",
+  "synthetic_lab.revision",
+  "synthetic_lab.style_judge",
+  "synthetic_lab.arbiter"
+] as const;
+
+export function StyleProfileBuildForm({
+  canContribute,
+  commandKey,
+  inventory,
+  profile,
+  projectId,
+  runtimes
+}: {
+  canContribute: boolean;
+  commandKey: string;
+  inventory: SyntheticResourceInventory;
+  profile: StyleProfile;
+  projectId: string;
+  runtimes: SyntheticRuntimeOption[];
+}) {
+  const [state, action, pending] = useActionState(
+    enqueueStyleProfileBuildAction, initialSyntheticActionState
+  );
+  const facts = inventory.fact_snapshots.filter((item) => item.status === "ready");
+  const eligibleRuntimes = runtimes.filter((item) => item.capture_method === "provider_api"
+    && item.allowed_purposes.includes(PROFILE_PURPOSE)
+    && item.allowed_search_modes.includes(null));
+  const blocked = profile.status !== "draft" || profile.approved_sample_count < 200
+    || facts.length === 0 || eligibleRuntimes.length === 0;
+  return (
+    <details className={styles.inlineDetails}>
+      <summary>构建 Profile</summary>
+      <form action={action} className={styles.writeForm}>
+        <CommandFields commandKey={commandKey} projectId={projectId} />
+        <input name="profile_version_id" type="hidden" value={profile.id} />
+        <fieldset disabled={!canContribute || pending || blocked}>
+          <legend>冻结样本、Fact、Prompt 与模型后构建</legend>
+          <div className={styles.formGridThree}>
+            <OptionSelect label="Fact snapshot" name="fact_snapshot_id" options={facts} />
+            <RuntimeSelect name="runtime_selection_id" options={eligibleRuntimes} />
+            <p className={styles.formNote}>服务端将冻结创建 Profile 时保存的 {profile.approved_sample_count} 条样本 manifest。</p>
+            <button type="submit">{pending ? "排队中..." : "构建 Profile"}</button>
+          </div>
+        </fieldset>
+        {blocked ? <p className={styles.formNote}>blocked · draft / persisted 200-sample manifest / Fact / approved Provider API runtime required</p> : null}
+        <SyntheticActionFeedback state={state} />
+      </form>
+    </details>
+  );
+}
+
+export function ReviewCaseRunForm({
+  canContribute,
+  cases,
+  commandKey,
+  projectId,
+  runtimes,
+  suite
+}: {
+  canContribute: boolean;
+  cases: ReviewCase[];
+  commandKey: string;
+  projectId: string;
+  runtimes: SyntheticRuntimeOption[];
+  suite: ReviewSuite;
+}) {
+  const [state, action, pending] = useActionState(
+    enqueueReviewCaseRunAction, initialSyntheticActionState
+  );
+  const eligibleRuntimes = runtimes.filter((item) => item.capture_method === "provider_api"
+    && item.allowed_search_modes.includes(null)
+    && REVIEW_PURPOSES.every((purpose) => item.allowed_purposes.includes(purpose)));
+  const blocked = suite.status !== "frozen" || cases.length === 0 || eligibleRuntimes.length === 0;
+  return (
+    <form action={action} className={styles.writeForm}>
+      <CommandFields commandKey={commandKey} projectId={projectId} />
+      <input name="suite_version_id" type="hidden" value={suite.id} />
+      <fieldset disabled={!canContribute || pending || blocked}>
+        <legend>运行一个冻结 Review Case</legend>
+        <div className={styles.formGridThree}>
+          <OptionSelect label="Review Case" name="case_id" options={cases.map((item) => ({ id: item.id, label: `${item.ordinal} · ${item.case_key}` }))} />
+          <RuntimeSelect name="runtime_selection_id" options={eligibleRuntimes} />
+          <label><span>Style pass threshold</span><input defaultValue="4.2" max="5" min="0" name="style_pass_threshold" required step="0.1" type="number" /></label>
+          <button type="submit">{pending ? "排队中..." : "运行 Case"}</button>
+        </div>
+      </fieldset>
+      {blocked ? <p className={styles.formNote}>blocked · frozen Suite / Case / six-purpose Provider API runtime required</p> : null}
+      <SyntheticActionFeedback state={state} />
+    </form>
+  );
+}
+
+export function CorpusOfflineExperimentForms({
+  canApprove,
+  canContribute,
+  commandKeys,
+  inventory,
+  projectId,
+  runtimes
+}: {
+  canApprove: boolean;
+  canContribute: boolean;
+  commandKeys: Readonly<{ candidate: string; approve: string; experiment: string }>;
+  inventory: SyntheticResourceInventory;
+  projectId: string;
+  runtimes: SyntheticRuntimeOption[];
+}) {
+  const [candidateState, candidateAction, candidatePending] = useActionState(
+    enqueueCandidateCorpusAction, initialSyntheticActionState
+  );
+  const [approvalState, approvalAction, approvalPending] = useActionState(
+    enqueueApprovedCorpusAction, initialSyntheticActionState
+  );
+  const [experimentState, experimentAction, experimentPending] = useActionState(
+    enqueueOfflineExperimentAction, initialSyntheticActionState
+  );
+  const eligibleRuntimes = runtimes.filter((item) => item.capture_method === "provider_api"
+    && item.allowed_search_modes.includes(null)
+    && item.allowed_purposes.includes(OFFLINE_PURPOSE));
+  const experimentBlocked = inventory.question_sets.length === 0
+    || inventory.candidate_corpora.length === 0
+    || inventory.approved_corpora.length === 0
+    || eligibleRuntimes.length === 0;
+  return (
+    <div className={styles.selectedSuite}>
+      <form action={candidateAction} className={styles.writeForm}>
+        <CommandFields commandKey={commandKeys.candidate} projectId={projectId} />
+        <fieldset disabled={!canContribute || candidatePending || inventory.review_jobs.length === 0}>
+          <legend>从通过或 Warning 的 Review 结果冻结候选 Corpus</legend>
+          <div className={styles.formGridThree}>
+            <label><span>Completed Review Jobs</span><select multiple name="review_job_ids" required size={Math.min(8, Math.max(3, inventory.review_jobs.length))}>{inventory.review_jobs.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
+            <button type="submit">{candidatePending ? "排队中..." : "冻结候选 Corpus"}</button>
+          </div>
+        </fieldset>
+        <SyntheticActionFeedback state={candidateState} />
+      </form>
+      <form action={approvalAction} className={styles.writeForm}>
+        <CommandFields commandKey={commandKeys.approve} projectId={projectId} />
+        <fieldset disabled={!canApprove || approvalPending || inventory.candidate_corpora.length === 0}>
+          <legend>批准候选 Corpus</legend>
+          <div className={styles.formGridThree}>
+            <OptionSelect label="Candidate Corpus" name="source_corpus_job_id" options={inventory.candidate_corpora} />
+            <button type="submit">{approvalPending ? "排队中..." : "批准并冻结"}</button>
+          </div>
+        </fieldset>
+        <SyntheticActionFeedback state={approvalState} />
+      </form>
+      <form action={experimentAction} className={styles.writeForm}>
+        <CommandFields commandKey={commandKeys.experiment} projectId={projectId} />
+        <fieldset disabled={!canContribute || experimentPending || experimentBlocked}>
+          <legend>运行 baseline / current / candidate 三臂配对实验</legend>
+          <div className={styles.formGridThree}>
+            <OptionSelect label="Question Set" name="question_set_id" options={inventory.question_sets} />
+            <OptionSelect label="Current approved Corpus" name="current_corpus_job_id" options={inventory.approved_corpora} />
+            <OptionSelect label="Candidate Corpus" name="candidate_corpus_job_id" options={inventory.candidate_corpora} />
+            <RuntimeSelect name="runtime_selection_id" options={eligibleRuntimes} />
+            <label><span>Minimum valid pair ratio</span><input defaultValue="0.8" max="1" min="0.01" name="minimum_valid_pair_ratio" required step="0.01" type="number" /></label>
+            <button type="submit">{experimentPending ? "排队中..." : "运行三臂实验"}</button>
+          </div>
+        </fieldset>
+        <SyntheticActionFeedback state={experimentState} />
+      </form>
+    </div>
+  );
+}
 
 export function StyleCollectionAdmissionForm({
   authorizations,
@@ -87,4 +269,24 @@ export function SelectedJobControls({
       <SyntheticActionFeedback state={state} />
     </form>
   );
+}
+
+function CommandFields({ commandKey, projectId }: { commandKey: string; projectId: string }) {
+  return <><input name="project_id" type="hidden" value={projectId} /><input name="idempotency_key" type="hidden" value={commandKey} /></>;
+}
+
+function OptionSelect({
+  label,
+  name,
+  options
+}: {
+  label: string;
+  name: string;
+  options: ReadonlyArray<{ id: string; label: string }>;
+}) {
+  return <label><span>{label}</span><select name={name} required>{options.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>;
+}
+
+function RuntimeSelect({ name, options }: { name: string; options: SyntheticRuntimeOption[] }) {
+  return <label><span>Approved model runtime</span><select name={name} required>{options.map((option) => <option key={option.selection_id} value={option.selection_id}>{option.provider} · {option.configured_model} · {option.model_release_id}</option>)}</select></label>;
 }

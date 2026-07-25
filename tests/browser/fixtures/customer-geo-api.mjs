@@ -5,9 +5,18 @@ const PROJECT_A = "10000000-0000-4000-8000-000000000001";
 const PROJECT_B = "10000000-0000-4000-8000-000000000002";
 const CAMPAIGN_A = "20000000-0000-4000-8000-000000000001";
 const CAMPAIGN_B = "20000000-0000-4000-8000-000000000002";
+const CAMPAIGN_MALICIOUS = "20000000-0000-4000-8000-000000000003";
+const CAMPAIGN_FORBIDDEN = "20000000-0000-4000-8000-000000000004";
+const CAMPAIGN_UNAVAILABLE = "20000000-0000-4000-8000-000000000005";
+const CAMPAIGN_LONG = "20000000-0000-4000-8000-000000000006";
+const CAMPAIGN_INVALID_METRIC = "20000000-0000-4000-8000-000000000007";
+const CAMPAIGN_INVALID_COUNT = "20000000-0000-4000-8000-000000000008";
+const CAMPAIGN_UNRELATED_FORBIDDEN = "20000000-0000-4000-8000-000000000009";
+const CAMPAIGN_UNRELATED_UNAVAILABLE = "20000000-0000-4000-8000-000000000010";
 const PROTOCOL = "30000000-0000-4000-8000-000000000001";
 const SNAPSHOT = "40000000-0000-4000-8000-000000000001";
 const REPORT = "50000000-0000-4000-8000-000000000001";
+const WORKFLOW_C_REPORT = "50000000-0000-4000-8000-000000000002";
 const DESTINATION = "60000000-0000-4000-8000-000000000001";
 const QUERY = "90000000-0000-4000-8000-000000000001";
 const NOW = "2026-07-19T06:00:00Z";
@@ -45,6 +54,78 @@ const campaigns = [
     id: CAMPAIGN_B,
     project_id: PROJECT_A,
     name: "新品发布观察",
+    objective: "recommendation_influence",
+    status: "active",
+    approved_report_count: 0,
+    latest_approved_at: null
+  },
+  {
+    id: CAMPAIGN_MALICIOUS,
+    project_id: PROJECT_A,
+    name: "异常投影隔离",
+    objective: "recommendation_influence",
+    status: "active",
+    approved_report_count: 0,
+    latest_approved_at: null
+  },
+  {
+    id: CAMPAIGN_FORBIDDEN,
+    project_id: PROJECT_A,
+    name: "权限隔离验证",
+    objective: "recommendation_influence",
+    status: "active",
+    approved_report_count: 0,
+    latest_approved_at: null
+  },
+  {
+    id: CAMPAIGN_UNAVAILABLE,
+    project_id: PROJECT_A,
+    name: "服务降级验证",
+    objective: "recommendation_influence",
+    status: "active",
+    approved_report_count: 0,
+    latest_approved_at: null
+  },
+  {
+    id: CAMPAIGN_LONG,
+    project_id: PROJECT_A,
+    name: "长内容布局验证",
+    objective: "recommendation_influence",
+    status: "active",
+    approved_report_count: 0,
+    latest_approved_at: null
+  },
+  {
+    id: CAMPAIGN_INVALID_METRIC,
+    project_id: PROJECT_A,
+    name: "越界指标隔离",
+    objective: "recommendation_influence",
+    status: "active",
+    approved_report_count: 0,
+    latest_approved_at: null
+  },
+  {
+    id: CAMPAIGN_INVALID_COUNT,
+    project_id: PROJECT_A,
+    name: "非整数 Count 隔离",
+    objective: "recommendation_influence",
+    status: "active",
+    approved_report_count: 0,
+    latest_approved_at: null
+  },
+  {
+    id: CAMPAIGN_UNRELATED_FORBIDDEN,
+    project_id: PROJECT_A,
+    name: "无关模块权限隔离",
+    objective: "recommendation_influence",
+    status: "active",
+    approved_report_count: 0,
+    latest_approved_at: null
+  },
+  {
+    id: CAMPAIGN_UNRELATED_UNAVAILABLE,
+    project_id: PROJECT_A,
+    name: "无关模块服务隔离",
     objective: "recommendation_influence",
     status: "active",
     approved_report_count: 0,
@@ -160,6 +241,74 @@ const report = {
   approved_at: NOW
 };
 
+const workflowCReport = {
+  id: WORKFLOW_C_REPORT,
+  project_id: PROJECT_A,
+  campaign_id: CAMPAIGN_A,
+  semantic_snapshot_hash: "1".repeat(64),
+  report_hash: "2".repeat(64),
+  source_kind: "provider_api",
+  approved_safe_payload: {
+    headline: "跨引擎推荐表现",
+    summary: "澳洲英文采样中，产品提及和推荐保持稳定。",
+    methodology: "结果来自已批准、满足有效完成度门槛的真实观测。",
+    mention_rate: "1.0000",
+    metrics: {
+      brand_mention: "0.78",
+      recommendation: "0.67",
+      citation_entailment: "0.89",
+      competitor_relative_position: "-1",
+      sentiment: "1.0000",
+      source_domain_diversity: "4",
+      approved_corpus_absorption: "0.7500"
+    },
+    warnings: ["自动化界面与 Provider API 使用独立分母。"]
+  },
+  approved_at: NOW
+};
+
+const invalidWorkflowCReport = {
+  ...workflowCReport,
+  id: "50000000-0000-4000-8000-000000000003",
+  campaign_id: CAMPAIGN_MALICIOUS,
+  approved_safe_payload: {
+    headline: "不得进入客户门户",
+    access_token: "customer-secret-must-not-render"
+  }
+};
+
+const longWorkflowCReport = {
+  ...workflowCReport,
+  id: "50000000-0000-4000-8000-000000000004",
+  campaign_id: CAMPAIGN_LONG,
+  report_hash: "f".repeat(64),
+  approved_safe_payload: {
+    headline: "H".repeat(200),
+    metrics: { source_domain_diversity: "4" },
+    warnings: ["W".repeat(500)]
+  }
+};
+
+const invalidMetricWorkflowCReport = {
+  ...workflowCReport,
+  id: "50000000-0000-4000-8000-000000000005",
+  campaign_id: CAMPAIGN_INVALID_METRIC,
+  approved_safe_payload: {
+    headline: "越界指标不得进入客户门户",
+    metrics: { brand_mention: `1.${"0".repeat(60)}1` }
+  }
+};
+
+const invalidCountWorkflowCReport = {
+  ...workflowCReport,
+  id: "50000000-0000-4000-8000-000000000006",
+  campaign_id: CAMPAIGN_INVALID_COUNT,
+  approved_safe_payload: {
+    headline: "非整数 Count 不得进入客户门户",
+    metrics: { source_domain_diversity: `${"9".repeat(61)}.5` }
+  }
+};
+
 function campaignReadModel(campaignId) {
   const campaign = campaigns.find((item) => item.id === campaignId);
   if (!campaign) return null;
@@ -251,6 +400,46 @@ const server = createServer((request, response) => {
   const campaignList = url.pathname.match(/^\/v1\/projects\/([^/]+)\/geo\/campaigns$/);
   if (campaignList) {
     return send(response, campaignList[1] === PROJECT_A ? campaigns : []);
+  }
+  const workflowCReports = url.pathname.match(
+    /^\/v1\/projects\/([^/]+)\/geo\/workflow-c-reports$/
+  );
+  if (workflowCReports) {
+    const campaignId = url.searchParams.get("campaign_id");
+    if (campaignId === CAMPAIGN_FORBIDDEN || campaignId === CAMPAIGN_UNRELATED_FORBIDDEN) {
+      return send(response, {
+        type: "urn:geo:problem:forbidden",
+        title: "Forbidden",
+        status: 403,
+        detail: "Workflow C reports are not authorized for this Campaign.",
+        instance: url.pathname,
+        request_id: "customer-workflow-c-forbidden"
+      }, 403);
+    }
+    if (campaignId === CAMPAIGN_UNAVAILABLE || campaignId === CAMPAIGN_UNRELATED_UNAVAILABLE) {
+      return send(response, {
+        type: "urn:geo:problem:service-unavailable",
+        title: "Service Unavailable",
+        status: 503,
+        detail: "Workflow C report storage is temporarily unavailable.",
+        instance: url.pathname,
+        request_id: "customer-workflow-c-unavailable"
+      }, 503);
+    }
+    const items = workflowCReports[1] !== PROJECT_A
+      ? []
+      : campaignId === CAMPAIGN_A
+        ? [workflowCReport]
+        : campaignId === CAMPAIGN_MALICIOUS
+          ? [invalidWorkflowCReport]
+          : campaignId === CAMPAIGN_LONG
+            ? [longWorkflowCReport]
+            : campaignId === CAMPAIGN_INVALID_METRIC
+              ? [invalidMetricWorkflowCReport]
+              : campaignId === CAMPAIGN_INVALID_COUNT
+                ? [invalidCountWorkflowCReport]
+                : [];
+    return send(response, { items, total: items.length });
   }
   const readModel = url.pathname.match(
     /^\/v1\/projects\/([^/]+)\/geo\/campaigns\/([^/]+)\/read-model$/

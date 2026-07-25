@@ -9,7 +9,8 @@ import type {
   CustomerCampaignReadModel,
   CustomerProblemDetails,
   CustomerProjectPage,
-  CustomerProjectSummary
+  CustomerProjectSummary,
+  CustomerWorkflowCReportPage
 } from "@geo/types/customer";
 
 export type SelectionStatus =
@@ -40,6 +41,7 @@ export type ResourceState<T> =
   | Readonly<{ status: "error"; problem: CustomerProblemDetails }>;
 
 export type CustomerGeoReadModel = ResourceState<CustomerCampaignReadModel>;
+export type CustomerWorkflowCReports = ResourceState<CustomerWorkflowCReportPage>;
 
 const PROJECT_PAGE_SIZE = 100;
 const MAX_AUTHORIZED_PROJECTS = 5000;
@@ -131,8 +133,19 @@ export async function loadCustomerGeoReadModel(
   );
 }
 
-export function resourceProblems(model: CustomerGeoReadModel): CustomerProblemDetails[] {
-  return model.status === "error" ? [model.problem] : [];
+export async function loadCustomerWorkflowCReports(
+  projectId: string,
+  campaignId: string
+): Promise<CustomerWorkflowCReports> {
+  return resource(
+    await (await customerClient()).listWorkflowCApprovedReports(projectId, campaignId)
+  );
+}
+
+export function resourceProblems(
+  ...models: ReadonlyArray<ResourceState<unknown>>
+): CustomerProblemDetails[] {
+  return models.flatMap((model) => model.status === "error" ? [model.problem] : []);
 }
 
 async function customerClient(): Promise<CustomerApiClient> {

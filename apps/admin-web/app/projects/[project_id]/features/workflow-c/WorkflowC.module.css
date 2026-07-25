@@ -28,7 +28,7 @@
 .kicker,
 .sectionHeading p {
   color: #4f6a75;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   letter-spacing: 0;
   margin: 0;
@@ -94,7 +94,7 @@
 
 .summaryBand span {
   color: #c4d0d4;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 750;
   text-transform: uppercase;
 }
@@ -139,7 +139,7 @@
 .resourceSelector label span,
 .commandForm label span {
   color: #536972;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 750;
 }
 
@@ -270,7 +270,7 @@
 .factGrid dt,
 .compactFacts dt {
   color: #5c7079;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 750;
   margin-bottom: 5px;
   text-transform: uppercase;
@@ -362,7 +362,7 @@
 .denominatorBand span,
 .negativeBand span {
   color: #60727a;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 750;
   text-transform: uppercase;
 }
@@ -400,7 +400,7 @@
 .dataTable th {
   background: #e9eff1;
   color: #4f646d;
-  font-size: 10px;
+  font-size: 12px;
   padding: 9px 10px;
   text-align: left;
   text-transform: uppercase;
@@ -424,7 +424,7 @@
 .dataTable td small,
 .dataTable td code {
   color: #647780;
-  font-size: 10px;
+  font-size: 12px;
   margin-top: 4px;
 }
 
@@ -434,7 +434,7 @@
   border-radius: 999px;
   color: #435860;
   display: inline-block;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
   line-height: 1.2;
   padding: 4px 7px;
@@ -506,7 +506,7 @@
 
 .driftList dt {
   color: #5c7079;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 750;
   margin-bottom: 4px;
   text-transform: uppercase;

@@ -37,7 +37,7 @@ CaptureMethodValue = Literal[
 ]
 PublicCaptureMethodValue = Literal["manual_ui", "provider_api", "proxy_grounded_api"]
 ObservationPlatformValue = Literal[
-    "openai", "google", "perplexity", "microsoft", "anthropic", "other"
+    "openai", "google", "perplexity", "microsoft", "kimi", "anthropic", "other"
 ]
 SurfaceKindValue = Literal[
     "consumer_ui",
@@ -60,6 +60,7 @@ ObservationSurfaceValue = Literal[
     "openai_api",
     "google_gemini_api",
     "perplexity_api",
+    "kimi_api",
     "anthropic_api",
     "microsoft_foundry_bing_grounding",
     "google_vertex_grounding",

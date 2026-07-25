@@ -184,6 +184,7 @@ export async function importManualEvidenceAction(
   const [taskId, rawVersion] = field(formData, "task_ref").split(":", 2);
   const expectedTaskVersion = Number(rawVersion);
   const evidenceKind = field(formData, "evidence_kind");
+  const surfaceParserReleaseId = field(formData, "surface_parser_release_id");
   const preRedactedAttestation = formData.get("pre_redacted_attestation") === "on";
   const device = field(formData, "device");
   const locale = field(formData, "locale");
@@ -197,6 +198,9 @@ export async function importManualEvidenceAction(
   }
   if (!EVIDENCE_KINDS.has(evidenceKind) || !DEVICES.has(device)) {
     return invalid("证据类型或采集设备无效。");
+  }
+  if (surfaceParserReleaseId && !UUID_PATTERN.test(surfaceParserReleaseId)) {
+    return invalid("Consumer surface parser release 无效。");
   }
   if (!locale || locale.length > 100 || !capturedAt) {
     return invalid("Locale 或采集时间无效。");
@@ -214,6 +218,10 @@ export async function importManualEvidenceAction(
     "text/plain"
   ]);
   if (!allowedTypes.has(contentType)) return invalid("证据文件 MIME 类型不受支持。");
+  if (surfaceParserReleaseId
+    && (evidenceKind !== "transcript_export" || contentType !== "application/json")) {
+    return invalid("Consumer surface parser 只接受 JSON transcript export。");
+  }
   const access = await verifyWorkflowCActor(command.projectId, OPERATORS);
   if (!access.ok) return access.state;
   const contentBase64 = Buffer.from(await artifact.arrayBuffer()).toString("base64");
@@ -232,7 +240,8 @@ export async function importManualEvidenceAction(
         pre_redacted_attestation: preRedactedAttestation,
         device,
         locale,
-        captured_at: capturedAt
+        captured_at: capturedAt,
+        surface_parser_release_id: surfaceParserReleaseId || null
       }
     }
   );

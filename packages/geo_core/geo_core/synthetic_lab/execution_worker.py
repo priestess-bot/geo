@@ -22,6 +22,7 @@ from geo_core.synthetic_lab.application_support import assert_runtime_current
 from geo_core.synthetic_lab.domain import SyntheticLabContractError
 from geo_core.synthetic_lab.execution import SyntheticTaskExecutor
 from geo_core.synthetic_lab.execution_contracts import (
+    CorpusFinalizeTask,
     OfflineExperimentRunTask,
     ReviewCaseRunTask,
     StyleProfileBuildTask,
@@ -43,6 +44,7 @@ from geo_core.synthetic_lab.ports import (
 _TASK_KINDS: Mapping[type[object], frozenset[str]] = {
     StyleProfileBuildTask: frozenset({"style.profile.build"}),
     ReviewCaseRunTask: frozenset({"review.case.run", "candidate_generation"}),
+    CorpusFinalizeTask: frozenset({"corpus.finalize", "corpus_finalize"}),
     OfflineExperimentRunTask: frozenset({"offline_experiment.run", "offline_experiment"}),
 }
 
@@ -148,7 +150,11 @@ class SyntheticExecutionHandler:
         def check() -> RuntimeInputSnapshot:
             heartbeat.raise_if_stopped()
             self._store.heartbeat(lease, lease_for=self._lease_for)
-            current = assert_runtime_current(task.runtime_inputs, self._runtime_inputs)
+            current = assert_runtime_current(
+                task.runtime_inputs,
+                self._runtime_inputs,
+                require_frozen_profile=not isinstance(task, StyleProfileBuildTask),
+            )
             for frozen in prompt_refs(task):
                 self._prompts.assert_current(frozen)
             heartbeat.raise_if_stopped()

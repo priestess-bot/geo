@@ -16,7 +16,8 @@ import type {
   SamplingSuiteInputOptionPage,
   SamplingSuitePage,
   SemanticMetricSnapshot,
-  SemanticMetricSnapshotPage
+  SemanticMetricSnapshotPage,
+  SurfaceParserReleasePage
 } from "./workflowCTypes";
 
 const captureMethods = new Set(["provider_api", "proxy_grounded_api", "manual_ui"]);
@@ -41,6 +42,50 @@ const authorizationStates = new Set([
   "assessed_no_basis",
   "expired",
   "revoked"
+]);
+const consumerSurfaces = new Set([
+  "google_ai_overviews",
+  "google_ai_mode",
+  "bing_copilot"
+]);
+const surfaceParseOutcomes = new Set([
+  "captured",
+  "surface_not_present",
+  "consent_required",
+  "login_required",
+  "access_blocked",
+  "geo_mismatch",
+  "egress_changed",
+  "parser_failed",
+  "timeout"
+]);
+const surfaceBlockReasons = new Set([
+  "consent",
+  "login",
+  "captcha",
+  "rate_limit",
+  "ban",
+  "geo_mismatch",
+  "egress_changed",
+  "timeout",
+  "selector_drift",
+  "page_incomplete",
+  "invalid_artifact",
+  "wrong_surface"
+]);
+const outcomeBySurfaceBlockReason = new Map([
+  ["consent", "consent_required"],
+  ["login", "login_required"],
+  ["captcha", "access_blocked"],
+  ["rate_limit", "access_blocked"],
+  ["ban", "access_blocked"],
+  ["geo_mismatch", "geo_mismatch"],
+  ["egress_changed", "egress_changed"],
+  ["timeout", "timeout"],
+  ["selector_drift", "parser_failed"],
+  ["page_incomplete", "parser_failed"],
+  ["invalid_artifact", "parser_failed"],
+  ["wrong_surface", "parser_failed"]
 ]);
 
 export function isAdmissionPolicyPage(value: unknown): value is AdmissionPolicyPage {
@@ -206,7 +251,34 @@ export function isManualEvidenceImportPage(value: unknown): value is ManualEvide
         "status",
         "definition_hash"
       ])
-      && integer(item.aggregate_version));
+      && integer(item.aggregate_version)
+      && (item.surface_parse === null || isSurfaceParseSummary(item.surface_parse)));
+}
+
+export function isSurfaceParserReleasePage(
+  value: unknown
+): value is SurfaceParserReleasePage {
+  return record(value)
+    && integer(value.total)
+    && Array.isArray(value.items)
+    && value.items.every((item) => record(item)
+      && uuid(item.id)
+      && strings(item, [
+        "release_key",
+        "release_version",
+        "release_hash",
+        "platform",
+        "surface",
+        "artifact_schema_version",
+        "parser_engine_version",
+        "status",
+        "evidence_scope"
+      ])
+      && sha256(item.release_hash)
+      && consumerSurfaces.has(String(item.surface))
+      && (item.status === "candidate" || item.status === "fixture_ready")
+      && item.automated_capture_eligible === false
+      && item.evidence_scope === "fixture_or_manual_non_live");
 }
 
 export function isSemanticMetricSnapshot(value: unknown): value is SemanticMetricSnapshot {
@@ -314,6 +386,75 @@ function uuid(value: unknown): value is string {
 
 function integer(value: unknown): value is number {
   return Number.isSafeInteger(value) && Number(value) >= 0;
+}
+
+function isSurfaceParseSummary(value: unknown): boolean {
+  if (!record(value)) return false;
+  const forbidden = [
+    "answer_text",
+    "answer_blocks",
+    "citations",
+    "citation_urls",
+    "final_url",
+    "raw_artifact_uri"
+  ];
+  return forbidden.every((key) => !(key in value))
+    && uuid(value.parser_release_id)
+    && strings(value, [
+      "parser_release_hash",
+      "platform",
+      "surface",
+      "capture_kind",
+      "outcome",
+      "citation_set_hash",
+      "locator_set_hash",
+      "parser_result_hash",
+      "summary_hash"
+    ])
+    && consumerSurfaces.has(String(value.surface))
+    && value.capture_kind === "manual_ui"
+    && surfaceParseOutcomes.has(String(value.outcome))
+    && (value.block_reason === null || surfaceBlockReasons.has(String(value.block_reason)))
+    && typeof value.content_eligible === "boolean"
+    && value.automated_capture === false
+    && value.live_capture_eligible === false
+    && (value.answer_text_hash === null || sha256(value.answer_text_hash))
+    && integer(value.answer_character_count)
+    && integer(value.citation_count)
+    && [
+      value.parser_release_hash,
+      value.citation_set_hash,
+      value.locator_set_hash,
+      value.parser_result_hash,
+      value.summary_hash
+    ].every(sha256)
+    && surfaceSummaryStateIsConsistent(value);
+}
+
+function surfaceSummaryStateIsConsistent(value: Record<string, unknown>): boolean {
+  if (value.outcome === "captured") {
+    return value.block_reason === null
+      && value.content_eligible === true
+      && sha256(value.answer_text_hash)
+      && Number(value.answer_character_count) > 0;
+  }
+  if (value.outcome === "surface_not_present") {
+    return value.block_reason === null
+      && value.content_eligible === true
+      && value.answer_text_hash === null
+      && value.answer_character_count === 0
+      && value.citation_count === 0;
+  }
+  return typeof value.block_reason === "string"
+    && outcomeBySurfaceBlockReason.get(value.block_reason) === value.outcome
+    && value.content_eligible === false
+    && value.answer_text_hash === null
+    && value.answer_character_count === 0
+    && value.citation_count === 0;
+}
+
+function sha256(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
 }
 
 function strings(value: Record<string, unknown>, keys: string[]): boolean {

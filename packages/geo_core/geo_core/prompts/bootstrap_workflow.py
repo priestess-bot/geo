@@ -24,7 +24,6 @@ from geo_core.prompts.bootstrap_catalog import (
     prompt_bootstrap_catalog_hash,
 )
 from geo_core.prompts.bootstrap_contracts import (
-    BOOTSTRAP_COMPILER_VERSION,
     PromptBootstrapSpec,
 )
 from geo_core.prompts.bootstrap_evaluation import (
@@ -165,7 +164,7 @@ def create_prompt_bootstrap_drafts(
                 test_set_id=spec.test_set_id,
                 test_set_version=1,
                 test_set_hash=spec.test_set_hash,
-                compiler_version=BOOTSTRAP_COMPILER_VERSION,
+                compiler_version=spec.compiler_version,
                 expected_version=0,
                 idempotency_key=item_key,
             )

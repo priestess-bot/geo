@@ -2,10 +2,12 @@ import { createServer } from "node:http";
 
 import {
   handleSyntheticLabFixture,
-  resetSyntheticLabFixture
+  resetSyntheticLabFixture,
+  syntheticRuntimeOptions
 } from "./synthetic-lab-fixture.mjs";
 import {
   handleRecommendationFixture,
+  recommendationRuntimeOptions,
   resetRecommendationFixture
 } from "./recommendation-fixture.mjs";
 import {
@@ -1146,6 +1148,18 @@ const server = createServer(async (request, response) => {
   if (path === `${base}/invitations`) return send(response, { items: [], total: 0, limit: 100, offset: 0 });
   if (path === `${base}/members`) return send(response, { items: [{ membership_id: "00000000-0000-4000-8000-000000000004", project_id: PROJECT_ID, identity_id: secretActorId, issuer: "browser-fixture", subject: secretActorId, email: "owner@example.test", display_name: "Fixture Owner", role: secretRole, status: "active", created_at: NOW }], total: 1, limit: 100, offset: 0 });
   if (path === "/v1/auth/me") return send(response, { actor_id: secretActorId, tenant_id: TENANT_ID, project_ids: [PROJECT_ID], roles: [secretRole] });
+  if (path === `${base}/model-gateway/options` && request.method === "GET") {
+    const synthetic = syntheticRuntimeOptions();
+    const recommendation = recommendationRuntimeOptions();
+    const currentManifestId = recommendation.current_manifest_id;
+    return send(response, {
+      current_manifest_id: currentManifestId,
+      items: [...synthetic.items, ...recommendation.items].map((item) => ({
+        ...item,
+        manifest_id: currentManifestId
+      }))
+    });
+  }
   if (handleSyntheticLabFixture({
     actorId: secretActorId,
     now: NOW,
@@ -1367,7 +1381,7 @@ const server = createServer(async (request, response) => {
     const release = promptReleases().find((item) => item.id === promptReleaseRead[1]);
     return send(response, release || { detail: "Prompt Release not found" }, release ? 200 : 404);
   }
-  const promptCommand = path.match(new RegExp(`^${base}/prompt-programs/${PROMPT_PROGRAM_ID}/releases/([^/]+)/(tests|approve|freeze|diff)$`));
+  const promptCommand = path.match(new RegExp(`^${base}/prompt-programs/${PROMPT_PROGRAM_ID}/releases/([^/]+)/(tests|approve|freeze|retire|diff)$`));
   if (promptCommand && request.method === "POST") {
     const releaseId = promptCommand[1];
     const command = promptCommand[2];
@@ -1413,6 +1427,16 @@ const server = createServer(async (request, response) => {
     if (command === "freeze") {
       if (promptCandidateStatus !== "approved") return send(response, { detail: "Release is not approved" }, 409);
       promptCandidateStatus = "frozen";
+      promptCandidateStateVersion += 1;
+      return send(response, {
+        release: promptReleases().find((item) => item.id === PROMPT_CANDIDATE_RELEASE_ID),
+        admitted_test_evidence_hash: null,
+        replayed: false
+      });
+    }
+    if (command === "retire") {
+      if (promptCandidateStatus !== "frozen") return send(response, { detail: "Release is not frozen" }, 409);
+      promptCandidateStatus = "retired";
       promptCandidateStateVersion += 1;
       return send(response, {
         release: promptReleases().find((item) => item.id === PROMPT_CANDIDATE_RELEASE_ID),

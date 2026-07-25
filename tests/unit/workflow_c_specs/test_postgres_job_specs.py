@@ -102,6 +102,98 @@ def test_job_spec_allows_secret_reference_lineage_and_token_limits() -> None:
     assert spec.payload["secret_reference_id"] == payload["secret_reference_id"]
 
 
+def test_job_spec_accepts_only_the_minimal_semantic_v2_manifest_pointer() -> None:
+    manifest_id = uuid4()
+    payload: dict[str, object] = {
+        "schema_version": 2,
+        "kind": "workflow_c.analysis.semantic_metrics",
+        "semantic_metrics": {
+            "manifest_id": str(manifest_id),
+            "manifest_hash": "a" * 64,
+        },
+    }
+
+    spec = WorkflowCJobSpec(
+        project_id=uuid4(),
+        job_id=uuid4(),
+        kind="workflow_c.analysis.semantic_metrics",
+        spec_hash=_hash(payload),
+        payload=payload,
+        created_at=datetime.now(UTC),
+    )
+
+    assert spec.payload["semantic_metrics"] == payload["semantic_metrics"]
+
+
+@pytest.mark.parametrize(
+    "kind,pointer",
+    (
+        (
+            "workflow_c.alert.notify",
+            {"manifest_id": str(uuid4()), "manifest_hash": "a" * 64},
+        ),
+        (
+            "workflow_c.analysis.semantic_metrics",
+            {"manifest_id": "not-a-uuid", "manifest_hash": "a" * 64},
+        ),
+        (
+            "workflow_c.analysis.semantic_metrics",
+            {"manifest_id": str(uuid4()), "manifest_hash": "A" * 64},
+        ),
+        (
+            "workflow_c.analysis.semantic_metrics",
+            {
+                "manifest_id": str(uuid4()),
+                "manifest_hash": "a" * 64,
+                "answer_text": "must never enter a Job spec",
+            },
+        ),
+    ),
+)
+def test_job_spec_rejects_noncanonical_semantic_v2_pointers(
+    kind: str, pointer: dict[str, object]
+) -> None:
+    payload: dict[str, object] = {
+        "schema_version": 2,
+        "kind": kind,
+        "semantic_metrics": pointer,
+    }
+
+    with pytest.raises(WorkflowCJobSpecError):
+        WorkflowCJobSpec(
+            project_id=uuid4(),
+            job_id=uuid4(),
+            kind=kind,
+            spec_hash=_hash(payload),
+            payload=payload,
+            created_at=datetime.now(UTC),
+        )
+
+
+def test_generic_writer_rejects_semantic_v2_before_database_access() -> None:
+    payload: dict[str, object] = {
+        "schema_version": 2,
+        "kind": "workflow_c.analysis.semantic_metrics",
+        "semantic_metrics": {
+            "manifest_id": str(uuid4()),
+            "manifest_hash": "a" * 64,
+        },
+    }
+    connection = _WriterConnection(
+        project_id=uuid4(), job_id=uuid4(), payload=payload
+    )
+
+    with pytest.raises(WorkflowCJobSpecError, match="atomic semantic admission"):
+        PostgresWorkflowCJobSpecWriter(lambda: connection).enqueue(
+            project_id=connection.project_id,
+            kind="workflow_c.analysis.semantic_metrics",
+            payload=payload,
+            idempotency_key="semantic-v2-cannot-use-generic-writer",
+        )
+
+    assert connection.queries == []
+
+
 def test_job_spec_rejects_an_unknown_worker_kind_before_database_access() -> None:
     payload = _payload(kind="workflow_c.unsupported")
 

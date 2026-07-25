@@ -73,11 +73,12 @@ LOCATION_EVIDENCE_HASH = hashlib.sha256(
 @dataclass(frozen=True)
 class ProviderIdentity:
     provider: str = "openai"
+    source_platform: str = "openai"
     model: str = "gpt-fixture"
     reported_model: str = "gpt-fixture-reported"
     capture_method: CaptureMethod = CaptureMethod.PROVIDER_API
     search_mode: str = "web"
-    surface: str = "web_search"
+    surface: str = "openai_api"
 
     @property
     def model_capture_method(self) -> ModelCaptureMethod:
@@ -199,7 +200,7 @@ def execution_fixture(
         else RecordingExactGateway([model_result(identity, route)])
     )
     source = SamplingSourceStratum(
-        platform=identity.provider,
+        platform=identity.source_platform,
         surface=identity.surface,
         configured_model=identity.model,
         reported_model=identity.reported_model,
@@ -232,7 +233,7 @@ def execution_fixture(
     )
     policy = replace(
         make_policy(suite),
-        platform=identity.provider,
+        platform=identity.source_platform,
         capture_method=identity.capture_method,
         adapter_release=adapter.adapter_release_id,
         location_control=source.location_control,

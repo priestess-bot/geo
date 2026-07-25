@@ -1,0 +1,296 @@
+{
+  "schema_version": "roadmap-evidence-v1",
+  "roadmap_id": "GEO-next-phase-six-month-roadmap-2026-07-21",
+  "stage": "PACK-08-NONB-LOCAL-CLOSURE",
+  "environment_fingerprint": "4c21e6730087b2a56152b5b3833c0628cad79f03b64a3a16a7d558f718eb9bc1",
+  "generated_at": "2026-07-25T12:22:44+08:00",
+  "git_commit": "6b37e49a533600b5d7bb6b2ef798dbcb0274506d",
+  "included_workstreams": [
+    "A.synthetic_and_knowledge",
+    "C.observation_statistics_non_b",
+    "D.prompt_recommendation",
+    "shared_foundations",
+    "operations_verification"
+  ],
+  "excluded_workstreams": [
+    "B.connector_and_attribution",
+    "B.consumer_browser_capture_and_australian_egress"
+  ],
+  "checks": [
+    {
+      "check_id": "PACK-08-NONB-LOCAL-CLOSURE",
+      "work_package_type": "verification_release",
+      "capabilities": {
+        "changes_database": true,
+        "changes_api": true,
+        "has_customer_surface": true,
+        "handles_sensitive_data": true,
+        "has_runtime_operation": true,
+        "calls_external_service": false,
+        "requires_live_evidence": true
+      },
+      "status": "BLOCKED_EXTERNAL",
+      "owner": "codex-autonomous-agent",
+      "verifier": "unassigned-independent-verifier",
+      "started_at": "2026-07-24T00:00:00+08:00",
+      "ended_at": "2026-07-25T12:22:44+08:00",
+      "scope": {
+        "environment": "local-isolated-test",
+        "project_id": "e9e7f256-1b0b-4ef7-a0ff-99b415bfffea",
+        "campaign_id": "aae576d2-e15a-4dd4-ad06-a88d26dae048",
+        "account_reference": "controlled-no-live-account",
+        "connection_scope": "postgresql16-minio-valkey-isolated"
+      },
+      "clauses": [
+        {
+          "clause_id": "DOR-01",
+          "applicability": "required",
+          "outcome": "pending",
+          "evidence": [],
+          "not_applicable": null
+        },
+        {
+          "clause_id": "DOR-02",
+          "applicability": "required",
+          "outcome": "passed",
+          "evidence": [
+            {
+              "uri": "docs/engineering/execution-packs/pack-08-final-review-evidence.md",
+              "sha256": "4ab895c30375ca228b00212f051d9075bfbad5bcafa9f6311b13135f10ea37be"
+            }
+          ],
+          "not_applicable": null
+        },
+        {
+          "clause_id": "DOR-03",
+          "applicability": "required",
+          "outcome": "passed",
+          "evidence": [
+            {
+              "uri": "artifacts/geo-acceptance/pack-08-final-result.json",
+              "sha256": "d82c546b4faa7913822dfaa7aa3fa2123d42faf08d8d1c16198b54fe3e1ed80f"
+            }
+          ],
+          "not_applicable": null
+        },
+        {
+          "clause_id": "DOR-04",
+          "applicability": "required",
+          "outcome": "passed",
+          "evidence": [
+            {
+              "uri": "contracts/openapi/stable/manifest.json",
+              "sha256": "8714e6a8f3f45dcc5fde45d199e16c0c214eee9efdff17a71aa6de5174930508"
+            },
+            {
+              "uri": "artifacts/migration-cutover/20260725T000608Z/receipt.json",
+              "sha256": "4d27684617749ff60611a8133b1e4c2013de680338266e42c2f63ae155dd0e67"
+            }
+          ],
+          "not_applicable": null
+        },
+        {
+          "clause_id": "DOR-05",
+          "applicability": "required",
+          "outcome": "passed",
+          "evidence": [
+            {
+              "uri": "docs/engineering/execution-packs/pack-08-change-record.md",
+              "sha256": "66683bcbf35c2b1dba3b0e3b0ed40cd46f4499d8a7cc142fe51b45e8b0eea132"
+            }
+          ],
+          "not_applicable": null
+        },
+        {
+          "clause_id": "DOR-06",
+          "applicability": "required",
+          "outcome": "passed",
+          "evidence": [
+            {
+              "uri": "artifacts/backup-restore-smoke-authenticated/20260725T035704Z-619020/receipt.json",
+              "sha256": "e25deddf96b97adcd19e0cdc8e947ea4d82114867a58b457307bba86553286c5"
+            }
+          ],
+          "not_applicable": null
+        },
+        {
+          "clause_id": "DOD-01",
+          "applicability": "required",
+          "outcome": "passed",
+          "evidence": [
+            {
+              "uri": "artifacts/geo-acceptance/pack-08-final-result.json",
+              "sha256": "d82c546b4faa7913822dfaa7aa3fa2123d42faf08d8d1c16198b54fe3e1ed80f"
+            },
+            {
+              "uri": "artifacts/non-b-fault/20260725T040225Z/receipt.json",
+              "sha256": "bce182fb6a06bbada551e445a9139af3e87673222b06490f00878d170582dc4f"
+            }
+          ],
+          "not_applicable": null
+        },
+        {
+          "clause_id": "DOD-02",
+          "applicability": "required",
+          "outcome": "passed",
+          "evidence": [
+            {
+              "uri": "docs/engineering/execution-packs/pack-08-final-review-evidence.md",
+              "sha256": "4ab895c30375ca228b00212f051d9075bfbad5bcafa9f6311b13135f10ea37be"
+            }
+          ],
+          "not_applicable": null
+        },
+        {
+          "clause_id": "DOD-03",
+          "applicability": "required",
+          "outcome": "passed",
+          "evidence": [
+            {
+              "uri": "artifacts/migration-cutover/20260725T000608Z/receipt.json",
+              "sha256": "4d27684617749ff60611a8133b1e4c2013de680338266e42c2f63ae155dd0e67"
+            },
+            {
+              "uri": "artifacts/backup-restore-smoke-authenticated/20260725T035704Z-619020/receipt.json",
+              "sha256": "e25deddf96b97adcd19e0cdc8e947ea4d82114867a58b457307bba86553286c5"
+            }
+          ],
+          "not_applicable": null
+        },
+        {
+          "clause_id": "DOD-04",
+          "applicability": "required",
+          "outcome": "passed",
+          "evidence": [
+            {
+              "uri": "contracts/openapi/stable/manifest.json",
+              "sha256": "8714e6a8f3f45dcc5fde45d199e16c0c214eee9efdff17a71aa6de5174930508"
+            }
+          ],
+          "not_applicable": null
+        },
+        {
+          "clause_id": "DOD-05",
+          "applicability": "required",
+          "outcome": "passed",
+          "evidence": [
+            {
+              "uri": "artifacts/non-b-fault/20260725T040225Z/receipt.json",
+              "sha256": "bce182fb6a06bbada551e445a9139af3e87673222b06490f00878d170582dc4f"
+            },
+            {
+              "uri": "docs/engineering/execution-packs/pack-07-hardening-operations-evidence.md",
+              "sha256": "c2733eea781dad52f4d57f35058131db116e57322888db03c5b41fc8234a9ccb"
+            }
+          ],
+          "not_applicable": null
+        },
+        {
+          "clause_id": "DOD-06",
+          "applicability": "required",
+          "outcome": "pending",
+          "evidence": [],
+          "not_applicable": null
+        },
+        {
+          "clause_id": "DOD-07",
+          "applicability": "required",
+          "outcome": "pending",
+          "evidence": [],
+          "not_applicable": null
+        }
+      ],
+      "git_commits": [
+        "6b37e49a533600b5d7bb6b2ef798dbcb0274506d"
+      ],
+      "evidence": [
+        {
+          "uri": "docs/engineering/execution-packs/pack-08-final-review-evidence.md",
+          "sha256": "4ab895c30375ca228b00212f051d9075bfbad5bcafa9f6311b13135f10ea37be"
+        },
+        {
+          "uri": "docs/engineering/execution-packs/pack-08-change-record.md",
+          "sha256": "66683bcbf35c2b1dba3b0e3b0ed40cd46f4499d8a7cc142fe51b45e8b0eea132"
+        },
+        {
+          "uri": "docs/engineering/execution-packs/pack-08-external-needs-register.md",
+          "sha256": "f6a38204aece8ae93cd3c8d63af7603a47f2de5b7bda263d78a8ede0b9cc9747"
+        },
+        {
+          "uri": "artifacts/geo-acceptance/pack-08-final-result.json",
+          "sha256": "d82c546b4faa7913822dfaa7aa3fa2123d42faf08d8d1c16198b54fe3e1ed80f"
+        },
+        {
+          "uri": "artifacts/backup-restore-smoke-authenticated/20260725T035704Z-619020/receipt.json",
+          "sha256": "e25deddf96b97adcd19e0cdc8e947ea4d82114867a58b457307bba86553286c5"
+        },
+        {
+          "uri": "artifacts/non-b-fault/20260725T040225Z/receipt.json",
+          "sha256": "bce182fb6a06bbada551e445a9139af3e87673222b06490f00878d170582dc4f"
+        },
+        {
+          "uri": "artifacts/migration-cutover/20260725T000608Z/receipt.json",
+          "sha256": "4d27684617749ff60611a8133b1e4c2013de680338266e42c2f63ae155dd0e67"
+        },
+        {
+          "uri": "contracts/openapi/stable/manifest.json",
+          "sha256": "8714e6a8f3f45dcc5fde45d199e16c0c214eee9efdff17a71aa6de5174930508"
+        },
+        {
+          "uri": "benchmarks/roadmap/performance-profile-v1-non-b.json",
+          "sha256": "1faf03973a4d13c57d7d122667af79cf42d3774e2aeac16af0f8e1f4bf05312d"
+        },
+        {
+          "uri": "benchmarks/roadmap/performance-workload-v1-non-b.json",
+          "sha256": "4508593c7e2b4e84b3268a3f9ac7a9cc0b68c74ee5d8f703ff61697af4ca3ce7"
+        }
+      ],
+      "migration_revisions": [
+        "0073_wfc_metric_protocols",
+        "0074_wfc_semantic_job_v2",
+        "0075_wfc_manual_attempt_scope",
+        "0076_wfc_stat_protocols",
+        "0077_wfc_alert_report_api",
+        "0078_provider_source_identity",
+        "0079_synth_profile_runtime",
+        "0080_synthetic_corpus_execution",
+        "0081_surface_parser_results",
+        "0082_recommendation_evidence",
+        "0083_prompt_release_retirement",
+        "0084_recommendation_stale",
+        "0085_recommendation_worker_res",
+        "0086_recommendation_summaries",
+        "0087_wfc_report_receipts"
+      ],
+      "openapi_contracts": [
+        "contracts/openapi/stable/internal.openapi.json",
+        "contracts/openapi/stable/customer.openapi.json"
+      ],
+      "adapter_releases": [
+        "openai-provider-release-local-v1",
+        "gemini-provider-release-local-v1",
+        "perplexity-provider-release-local-v1",
+        "microsoft-provider-release-local-v1",
+        "kimi-provider-release-local-v1",
+        "google-aio-surface-parser-release-local-v1",
+        "google-ai-mode-surface-parser-release-local-v1",
+        "bing-copilot-surface-parser-release-local-v1"
+      ],
+      "test_run_ids": [
+        "required-non-live:2317-passed-0-failed-0-skipped",
+        "real-dependency-integration:117-passed-0-failed-0-skipped",
+        "chromium:46-passed-0-skipped-0-flaky",
+        "architecture:42-passed",
+        "infra-contracts:71-passed",
+        "production-network:2-passed",
+        "infra-runtime:7-passed",
+        "fault-matrix:148-passed-0-failed-0-skipped",
+        "geo-inline-20260725035543-611250"
+      ],
+      "live_run_ids": [],
+      "result": "All locally controllable non-B implementation, regression, security and usability review gates passed; external live evidence and independent acceptance remain pending.",
+      "deviation": "The implementation is present in a dirty working tree and is not claimed to be contained by the recorded HEAD commit; the final acceptance register binds the exact tree fingerprint. Board B is excluded. Two pre-existing 2026-07-16 plaintext backup directories remain a disclosed residual risk."
+    }
+  ],
+  "manifest_hash": "d5c662724554099fead2a1a2dc92c07778f9d0b8fb8e87dfca6f11eb114c30ab"
+}

@@ -170,8 +170,19 @@ def install_provider_policy(api: WorkflowCApi) -> None:
     install_suite_inputs(api, approved.record.id, approved.record.definition_hash)
 
 
-def install_manual_policy(api: WorkflowCApi) -> None:
-    install_admission_runtime_option(api, capture_method=CaptureMethod.MANUAL_UI)
+def install_manual_policy(
+    api: WorkflowCApi,
+    *,
+    source_platform: str = "openai",
+    source_surface: str = "web_search",
+    adapter_release: str = "openai-web-search@2026-07-23",
+) -> None:
+    install_admission_runtime_option(
+        api,
+        capture_method=CaptureMethod.MANUAL_UI,
+        platform=source_platform,
+        adapter_release=adapter_release,
+    )
     created = api.sampling.create_admission_policy(
         project_id=PROJECT_ID,
         actor_id="policy-maker",
@@ -204,6 +215,9 @@ def install_manual_policy(api: WorkflowCApi) -> None:
         approved.record.id,
         approved.record.definition_hash,
         capture_method=CaptureMethod.MANUAL_UI,
+        platform=source_platform,
+        surface=source_surface,
+        adapter_release=adapter_release,
     )
 
 
@@ -211,6 +225,8 @@ def install_admission_runtime_option(
     api: WorkflowCApi,
     *,
     capture_method: CaptureMethod = CaptureMethod.PROVIDER_API,
+    platform: str = "openai",
+    adapter_release: str = "openai-web-search@2026-07-23",
 ) -> str:
     option_key = f"runtime-option-{capture_method.value}"
     _RUNTIME_OPTION_KEYS[capture_method.value] = option_key
@@ -223,9 +239,9 @@ def install_admission_runtime_option(
                 if capture_method is CaptureMethod.MANUAL_UI
                 else "OpenAI Web Search API authorization"
             ),
-            platform="openai",
+            platform=platform,
             capture_method=capture_method,
-            adapter_release="openai-web-search@2026-07-23",
+            adapter_release=adapter_release,
             location_control=(
                 "not_controlled"
                 if capture_method is CaptureMethod.MANUAL_UI
@@ -249,6 +265,9 @@ def install_suite_inputs(
     policy_hash: str,
     *,
     capture_method: CaptureMethod = CaptureMethod.PROVIDER_API,
+    platform: str = "openai",
+    surface: str = "web_search",
+    adapter_release: str = "openai-web-search@2026-07-23",
 ) -> None:
     manual = capture_method is CaptureMethod.MANUAL_UI
     option_key = f"suite-option-{uuid5(SAMPLING_API_NAMESPACE, str(policy_id))}"
@@ -279,12 +298,12 @@ def install_suite_inputs(
             admission_policy_id=policy_id,
             admission_policy_hash=policy_hash,
             source_stratum=SamplingSourceStratum(
-                platform="openai",
-                surface="web_search",
+                platform=platform,
+                surface=surface,
                 configured_model="gpt-5-mini",
                 reported_model="gpt-5-mini-2026-07-01",
                 capture_method=capture_method,
-                adapter_release="openai-web-search@2026-07-23",
+                adapter_release=adapter_release,
                 locale="en-AU",
                 region="not_controlled" if manual else "AU",
                 language="en",

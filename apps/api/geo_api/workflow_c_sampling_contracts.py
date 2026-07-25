@@ -335,11 +335,82 @@ class SubmitManualEvidenceRequest(StrictModel):
     device: Literal["desktop", "mobile", "tablet"]
     locale: str = Field(min_length=1, max_length=100)
     captured_at: datetime
+    surface_parser_release_id: UUID | None = None
 
 
 class ReviewManualEvidenceRequest(StrictModel):
     expected_version: int = Field(ge=1)
     reason: str = Field(min_length=1, max_length=1000)
+
+
+class SurfaceParserReleaseResponse(StrictModel):
+    id: UUID
+    release_key: str
+    release_version: str
+    release_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    platform: str
+    surface: Literal[
+        "google_ai_overviews",
+        "google_ai_mode",
+        "bing_copilot",
+    ]
+    artifact_schema_version: str
+    parser_engine_version: str
+    status: Literal["candidate", "fixture_ready"]
+    automated_capture_eligible: Literal[False]
+    evidence_scope: Literal["fixture_or_manual_non_live"]
+
+
+class SurfaceParserReleasePageResponse(StrictModel):
+    items: list[SurfaceParserReleaseResponse]
+    total: int
+
+
+class SurfaceParseSummaryResponse(StrictModel):
+    parser_release_id: UUID
+    parser_release_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    platform: str
+    surface: Literal[
+        "google_ai_overviews",
+        "google_ai_mode",
+        "bing_copilot",
+    ]
+    capture_kind: Literal["manual_ui"]
+    outcome: Literal[
+        "captured",
+        "surface_not_present",
+        "consent_required",
+        "login_required",
+        "access_blocked",
+        "geo_mismatch",
+        "egress_changed",
+        "parser_failed",
+        "timeout",
+    ]
+    block_reason: Literal[
+        "consent",
+        "login",
+        "captcha",
+        "rate_limit",
+        "ban",
+        "geo_mismatch",
+        "egress_changed",
+        "timeout",
+        "selector_drift",
+        "page_incomplete",
+        "invalid_artifact",
+        "wrong_surface",
+    ] | None
+    content_eligible: bool
+    automated_capture: Literal[False]
+    live_capture_eligible: Literal[False]
+    answer_text_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    answer_character_count: int = Field(ge=0)
+    citation_count: int = Field(ge=0)
+    citation_set_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    locator_set_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    parser_result_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    summary_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
 class ManualEvidenceImportResponse(StrictModel):
@@ -368,6 +439,7 @@ class ManualEvidenceImportResponse(StrictModel):
     committed_at: datetime | None
     aggregate_version: int
     definition_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    surface_parse: SurfaceParseSummaryResponse | None
 
 
 class ManualEvidenceImportPageResponse(StrictModel):

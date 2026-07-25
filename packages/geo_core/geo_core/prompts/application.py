@@ -295,6 +295,26 @@ class PromptProgramApplication(PromptProgramReleaseOperationsMixin):
             command=ProgramReleaseCommand.FREEZE,
         )
 
+    def retire_release(
+        self,
+        principal: AccessPrincipal,
+        *,
+        project_id: UUID,
+        release_id: UUID,
+        expected_version: int,
+        idempotency_key: str,
+    ) -> CommandReceipt[TransitionedPromptProgram]:
+        _require_project_role(principal, project_id, allowed=_APPROVER_ROLES)
+        return self._transition_governed_release(
+            principal,
+            project_id=project_id,
+            release_id=release_id,
+            expected_version=expected_version,
+            idempotency_key=idempotency_key,
+            operation=PromptCommandOperation.RETIRE,
+            command=ProgramReleaseCommand.RETIRE,
+        )
+
     def bind_release(
         self,
         principal: AccessPrincipal,
@@ -471,8 +491,10 @@ class PromptProgramApplication(PromptProgramReleaseOperationsMixin):
             evidence_ref = (
                 f"approval:{admitted_evidence.id}:{admitted_evidence.evidence_hash}"
             )
-        else:
+        elif operation == PromptCommandOperation.FREEZE:
             evidence_ref = f"freeze:{current.id}:{current.release_hash}"
+        else:
+            evidence_ref = f"retire:{current.id}:{current.release_hash}"
 
         state = transition_release_state(
             id=self._id_factory(),

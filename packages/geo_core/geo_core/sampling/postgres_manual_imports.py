@@ -20,6 +20,10 @@ from geo_core.sampling.manual_import import (
     ManualEvidenceKind,
     ManualEvidenceStatus,
 )
+from geo_core.sampling.surface_parsers import (
+    SurfaceParseSummary,
+    surface_parse_summary_from_mapping,
+)
 from geo_core.sampling.postgres_worker_contracts import parse_manual_sampling_spec
 
 
@@ -50,8 +54,7 @@ class PostgresManualEvidenceRepository:
             governance_policy_option_key=governance_policy_option_key,
             pre_redacted_attestation=pre_redacted_attestation,
         )
-        input_hash = canonical_json_hash(
-            {
+        input_value: dict[str, object] = {
                 "operation": "submit",
                 "manual_import_id": str(item.id),
                 "attempt_id": str(item.attempt_id),
@@ -67,14 +70,11 @@ class PostgresManualEvidenceRepository:
                 "submitted_by": item.submitted_by,
                 "submitted_at": item.submitted_at.isoformat(),
             }
-        )
-        self._call(
-            project_id=item.project_id,
-            statement="""SELECT * FROM geo_submit_workflow_c_manual_sampling_evidence(
-                           %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                           %s, %s::jsonb, %s, %s
-                       )""",
-            parameters=(
+        summary = item.surface_parse.persisted_value() if item.surface_parse is not None else None
+        if summary is not None:
+            input_value["surface_parse"] = summary
+        input_hash = canonical_json_hash(input_value)
+        parameters: tuple[object, ...] = (
                 item.project_id,
                 item.id,
                 item.attempt_id,
@@ -91,7 +91,22 @@ class PostgresManualEvidenceRepository:
                 Jsonb(payload),
                 item.submitted_by,
                 item.submitted_at,
-            ),
+            )
+        if summary is None:
+            statement = """SELECT * FROM geo_submit_workflow_c_manual_sampling_evidence(
+                               %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                               %s, %s::jsonb, %s, %s
+                           )"""
+        else:
+            statement = """SELECT * FROM geo_submit_workflow_c_surface_parsed_evidence(
+                               %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                               %s, %s::jsonb, %s, %s, %s::jsonb
+                           )"""
+            parameters = (*parameters, Jsonb(summary))
+        self._call(
+            project_id=item.project_id,
+            statement=statement,
+            parameters=parameters,
         )
         return self.get(project_id=item.project_id, import_id=item.id)
 
@@ -112,16 +127,24 @@ class PostgresManualEvidenceRepository:
         content_type: str,
         governance_policy_option_key: str,
         pre_redacted_attestation: bool,
+        surface_parse: SurfaceParseSummary | None,
     ) -> ManualEvidenceImport | None:
         row = self._read_one(
             project_id=project_id,
-            statement="""SELECT * FROM workflow_c_sampling_manual_imports
-                         WHERE project_id = %s AND id = %s""",
+            statement="""SELECT manual.*, parsed.summary AS surface_parse_summary
+                           FROM workflow_c_sampling_manual_imports AS manual
+                           LEFT JOIN workflow_c_surface_parse_results AS parsed
+                             ON parsed.project_id = manual.project_id
+                            AND parsed.manual_import_id = manual.id
+                          WHERE manual.project_id = %s AND manual.id = %s""",
             parameters=(project_id, import_id),
         )
         if row is None:
             return None
         payload = _mapping(row.get("payload"))
+        actual_surface_parse = surface_parse_summary_from_mapping(
+            row.get("surface_parse_summary")
+        )
         expected = {
             "run_id": str(run_id),
             "task_id": str(task_id),
@@ -135,6 +158,9 @@ class PostgresManualEvidenceRepository:
             "content_type": content_type,
             "governance_policy_option_key": governance_policy_option_key,
             "pre_redacted_attestation": pre_redacted_attestation,
+            "surface_parse_summary_hash": (
+                surface_parse.summary_hash if surface_parse is not None else None
+            ),
         }
         actual = {
             "run_id": str(row.get("run_id")),
@@ -149,6 +175,11 @@ class PostgresManualEvidenceRepository:
             "content_type": payload.get("content_type"),
             "governance_policy_option_key": payload.get("governance_policy_option_key"),
             "pre_redacted_attestation": payload.get("pre_redacted_attestation"),
+            "surface_parse_summary_hash": (
+                actual_surface_parse.summary_hash
+                if actual_surface_parse is not None
+                else None
+            ),
         }
         if actual != expected:
             raise PostgresManualEvidenceError(
@@ -217,8 +248,12 @@ class PostgresManualEvidenceRepository:
     def get(self, *, project_id: UUID, import_id: UUID) -> ManualEvidenceImport:
         row = self._read_one(
             project_id=project_id,
-            statement="""SELECT * FROM workflow_c_sampling_manual_imports
-                         WHERE project_id = %s AND id = %s""",
+            statement="""SELECT manual.*, parsed.summary AS surface_parse_summary
+                           FROM workflow_c_sampling_manual_imports AS manual
+                           LEFT JOIN workflow_c_surface_parse_results AS parsed
+                             ON parsed.project_id = manual.project_id
+                            AND parsed.manual_import_id = manual.id
+                          WHERE manual.project_id = %s AND manual.id = %s""",
             parameters=(project_id, import_id),
         )
         if row is None:
@@ -230,8 +265,13 @@ class PostgresManualEvidenceRepository:
         try:
             set_project_scope(connection, project_id)
             rows = connection.execute(
-                """SELECT * FROM workflow_c_sampling_manual_imports
-                   WHERE project_id = %s ORDER BY submitted_at DESC, id DESC""",
+                """SELECT manual.*, parsed.summary AS surface_parse_summary
+                   FROM workflow_c_sampling_manual_imports AS manual
+                   LEFT JOIN workflow_c_surface_parse_results AS parsed
+                     ON parsed.project_id = manual.project_id
+                    AND parsed.manual_import_id = manual.id
+                  WHERE manual.project_id = %s
+                  ORDER BY manual.submitted_at DESC, manual.id DESC""",
                 (project_id,),
             ).fetchall()
             connection.rollback()
@@ -245,9 +285,13 @@ class PostgresManualEvidenceRepository:
     def for_attempt(self, *, project_id: UUID, attempt_id: UUID) -> ManualEvidenceImport:
         row = self._read_one(
             project_id=project_id,
-            statement="""SELECT * FROM workflow_c_sampling_manual_imports
-                         WHERE project_id = %s AND attempt_id = %s
-                           AND status IN ('approved', 'committed')""",
+            statement="""SELECT manual.*, parsed.summary AS surface_parse_summary
+                           FROM workflow_c_sampling_manual_imports AS manual
+                           LEFT JOIN workflow_c_surface_parse_results AS parsed
+                             ON parsed.project_id = manual.project_id
+                            AND parsed.manual_import_id = manual.id
+                          WHERE manual.project_id = %s AND manual.attempt_id = %s
+                            AND manual.status IN ('approved', 'committed')""",
             parameters=(project_id, attempt_id),
         )
         if row is None:
@@ -382,6 +426,9 @@ def _manual_import(row: Mapping[str, object]) -> ManualEvidenceImport:
         review_reason=_optional_text(row, "review_reason"),
         committed_at=_optional_timestamp(row, "committed_at"),
         aggregate_version=_positive(row, "aggregate_version"),
+        surface_parse=surface_parse_summary_from_mapping(
+            row.get("surface_parse_summary")
+        ),
     )
 
 

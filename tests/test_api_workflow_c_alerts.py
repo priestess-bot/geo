@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from datetime import timedelta
 import json
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
 from geo_api.workflow_c_runtime import WorkflowCApi
+from geo_api.workflow_c_alert_runtime import AlertEvaluationJobReceipt
 from geo_core.alerts import (
     AlertCommandResult,
     AlertEvidenceReference,
@@ -16,7 +17,13 @@ from geo_core.alerts import (
     NotificationChannel,
 )
 
-from tests.workflow_c_api_test_support import NOW, PROJECT_ID, digest, internal_app
+from tests.workflow_c_api_test_support import (
+    NOW,
+    PROJECT_ID,
+    digest,
+    internal_app,
+    principal,
+)
 
 
 def test_alert_lifecycle_is_versioned_idempotent_and_projects_safe_notifications() -> None:
@@ -153,6 +160,78 @@ def test_alert_trigger_is_worker_private_and_absent_from_internal_http_contract(
 
     assert response.status_code == 405
     assert "must-never-enter-alert-state" not in response.text
+
+
+def test_alert_rule_is_independently_approved_and_evaluation_accepts_only_selectors(
+    monkeypatch,
+) -> None:
+    app, api, _, services = internal_app()
+    rules = f"/v1/projects/{PROJECT_ID}/alerts/rules"
+    with TestClient(app) as client:
+        created = client.post(
+            rules,
+            headers={"Idempotency-Key": "alert-rule:create"},
+            json={
+                "rule_key": "recommendation-rate-low",
+                "version": 1,
+                "kind": "threshold",
+                "severity": "warning",
+                "parameters": {
+                    "schema_version": "alert-rule-threshold-v1",
+                    "metric_key": "recommendation_rate",
+                    "operator": "lt",
+                    "threshold": "0.5",
+                },
+            },
+        )
+        rule_id = created.json()["id"]
+        self_approval = client.post(
+            f"{rules}/{rule_id}/approve",
+            headers={"Idempotency-Key": "alert-rule:self-approve"},
+            json={"expected_aggregate_version": 1, "reason": "reviewed"},
+        )
+        services.principal = principal("owner")
+        approved = client.post(
+            f"{rules}/{rule_id}/approve",
+            headers={"Idempotency-Key": "alert-rule:approve"},
+            json={"expected_aggregate_version": 1, "reason": "fixed threshold reviewed"},
+        )
+
+        job_id = uuid4()
+
+        def enqueue(**kwargs) -> AlertEvaluationJobReceipt:
+            assert kwargs["payload"].source_hash == digest("semantic-snapshot")
+            assert kwargs["payload"].alert_rule_id == UUID(rule_id)
+            return AlertEvaluationJobReceipt(job_id, digest("alert-evaluation-spec"), False)
+
+        monkeypatch.setattr(api.alerts, "enqueue_evaluation", enqueue)
+        accepted = client.post(
+            f"/v1/projects/{PROJECT_ID}/alerts/evaluations/jobs",
+            headers={"Idempotency-Key": "alert-evaluation:one"},
+            json={
+                "alert_rule_id": rule_id,
+                "source_hash": digest("semantic-snapshot"),
+            },
+        )
+        forged = client.post(
+            f"/v1/projects/{PROJECT_ID}/alerts/evaluations/jobs",
+            headers={"Idempotency-Key": "alert-evaluation:forged"},
+            json={
+                "alert_rule_id": rule_id,
+                "source_hash": digest("semantic-snapshot"),
+                "observed_value": "0",
+            },
+        )
+
+    assert created.status_code == 201
+    assert created.json()["status"] == "draft"
+    assert self_approval.status_code == 422
+    assert approved.status_code == 200
+    assert approved.json()["status"] == "approved"
+    assert approved.json()["approved_by"] == "workflow-c-owner"
+    assert accepted.status_code == 202
+    assert accepted.headers["Location"] == f"/v1/jobs/{job_id}"
+    assert forged.status_code == 422
 
 
 def _seed_alert(api: WorkflowCApi, *, key: str) -> AlertCommandResult:

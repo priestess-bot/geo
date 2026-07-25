@@ -29,6 +29,9 @@ from geo_api.workflow_c_sampling_contracts import (
     SamplingSuiteInputOptionPageResponse,
     SamplingSuiteInputOptionResponse,
     SamplingTaskResponse,
+    SurfaceParseSummaryResponse,
+    SurfaceParserReleasePageResponse,
+    SurfaceParserReleaseResponse,
 )
 from geo_api.workflow_c_sampling_catalog import ResolvedSamplingSuiteInputs
 from geo_api.workflow_c_sampling_runtime import (
@@ -46,6 +49,8 @@ from geo_core.sampling import (
     SamplingRunAssessment,
     SamplingSuite,
     SamplingTask,
+    SurfaceParseSummary,
+    SurfaceParserRelease,
 )
 
 
@@ -176,6 +181,11 @@ def manual_evidence_response(
         committed_at=item.committed_at,
         aggregate_version=item.aggregate_version,
         definition_hash=item.definition_hash,
+        surface_parse=(
+            surface_parse_summary_response(item.surface_parse)
+            if item.surface_parse is not None
+            else None
+        ),
     )
 
 
@@ -185,6 +195,54 @@ def manual_evidence_page_response(
     return ManualEvidenceImportPageResponse(
         items=[manual_evidence_response(item) for item in items],
         total=len(items),
+    )
+
+
+def surface_parser_release_page_response(
+    items: tuple[SurfaceParserRelease, ...],
+) -> SurfaceParserReleasePageResponse:
+    return SurfaceParserReleasePageResponse(
+        items=[
+            SurfaceParserReleaseResponse(
+                id=item.id,
+                release_key=item.release_key,
+                release_version=item.release_version,
+                release_hash=item.release_hash,
+                platform=item.platform,
+                surface=item.surface.value,
+                artifact_schema_version=item.artifact_schema_version,
+                parser_engine_version=item.parser_engine_version,
+                status=item.status.value,
+                automated_capture_eligible=False,
+                evidence_scope="fixture_or_manual_non_live",
+            )
+            for item in items
+        ],
+        total=len(items),
+    )
+
+
+def surface_parse_summary_response(
+    item: SurfaceParseSummary,
+) -> SurfaceParseSummaryResponse:
+    return SurfaceParseSummaryResponse(
+        parser_release_id=item.parser_release_id,
+        parser_release_hash=item.parser_release_hash,
+        platform=item.platform,
+        surface=item.surface.value,
+        capture_kind="manual_ui",
+        outcome=item.outcome.value,
+        block_reason=item.block_reason.value if item.block_reason is not None else None,
+        content_eligible=item.content_eligible,
+        automated_capture=False,
+        live_capture_eligible=False,
+        answer_text_hash=item.answer_text_hash,
+        answer_character_count=item.answer_character_count,
+        citation_count=item.citation_count,
+        citation_set_hash=item.citation_set_hash,
+        locator_set_hash=item.locator_set_hash,
+        parser_result_hash=item.parser_result_hash,
+        summary_hash=item.summary_hash,
     )
 
 

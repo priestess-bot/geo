@@ -110,7 +110,7 @@ export function handlePromptBootstrapFixture({
 
 function catalogView() {
   return {
-    catalog_version: "geo-prompt-bootstrap-v1",
+    catalog_version: "geo-prompt-bootstrap-v2",
     catalog_hash: CATALOG_HASH,
     items: KINDS.map(kindView),
     external_model_calls: 0,
@@ -125,12 +125,12 @@ function kindView(kind, index) {
   return {
     program_kind: kind,
     purpose: purposeFor(kind),
-    spec_version: `geo-${kind}-spec-v1`,
+    spec_version: "geo-prompt-spec-v2",
     spec_hash: hash.repeat(64),
     test_set_id: uuid(910 + index),
     test_set_version: 1,
     test_set_hash: hashChar(index + 1).repeat(64),
-    variable_schema_version: "geo-prompt-request-json-v1",
+    variable_schema_version: "geo-prompt-request-json-v2",
     variable_schema: {
       type: "object",
       additionalProperties: false,
@@ -284,7 +284,7 @@ function createdDraft(projectId, actorId, now, kind, index, replayed) {
       test_set_id: spec.test_set_id,
       test_set_version: 1,
       test_set_hash: spec.test_set_hash,
-      compiler_version: "geo-prompt-bootstrap-compiler-v1",
+      compiler_version: "geo-prompt-bootstrap-compiler-v2",
       state: {
         id: uuid(970 + index),
         version: 1,

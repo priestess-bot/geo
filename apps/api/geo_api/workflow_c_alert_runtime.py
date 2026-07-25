@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from threading import RLock
 from uuid import UUID, uuid5
 
 from geo_api.workflow_c_alert_contracts import (
+    AlertRuleTransitionRequest,
     AlertTransitionRequest,
+    CreateAlertRuleRequest,
+    EnqueueAlertEvaluationRequest,
     SuppressAlertRequest,
 )
 from geo_core.alerts import (
@@ -18,6 +22,8 @@ from geo_core.alerts import (
     AlertEvaluationCommandResult,
     AlertEvidenceReference,
     AlertNotFound,
+    AlertRuleKind,
+    AlertSeverity,
     AlertRuleVersion,
     AlertScope,
     AlertStatus,
@@ -33,9 +39,29 @@ from geo_core.alerts import (
     resolve_alert,
     suppress_alert,
 )
+from geo_core.workflow_c_alert_admission import AlertEvaluationSelector
+from geo_core.workflow_c_alert_rules import (
+    AlertRuleRelease,
+    AlertRuleReleaseStatus,
+    WorkflowCAlertRuleError,
+    WorkflowCAlertRuleNotFound,
+    new_alert_rule_release,
+    transition_alert_rule_release,
+)
 
 
 ALERT_API_NAMESPACE = UUID("ac521951-fad6-5cc0-a293-1890a87916b2")
+
+
+class WorkflowCAlertUnavailable(RuntimeError):
+    """Durable frozen-output alert admission is not connected."""
+
+
+@dataclass(frozen=True)
+class AlertEvaluationJobReceipt:
+    job_id: UUID
+    spec_hash: str
+    replayed: bool
 
 
 class WorkflowCAlertRuntime:
@@ -50,6 +76,124 @@ class WorkflowCAlertRuntime:
         self._rule_channels: dict[
             tuple[UUID, str], tuple[NotificationChannel, ...]
         ] = {}
+        self._rule_releases: dict[tuple[UUID, UUID], AlertRuleRelease] = {}
+
+    def create_rule(
+        self,
+        *,
+        project_id: UUID,
+        actor_id: str,
+        idempotency_key: str,
+        payload: CreateAlertRuleRequest,
+    ) -> AlertRuleRelease:
+        release = new_alert_rule_release(
+            project_id=project_id,
+            rule_key=payload.rule_key,
+            version=payload.version,
+            kind=AlertRuleKind(payload.kind),
+            severity=AlertSeverity(payload.severity),
+            parameters=payload.parameters,
+            actor_id=actor_id,
+            idempotency_key=idempotency_key,
+            occurred_at=self._clock(),
+        )
+        with self._lock:
+            key = (project_id, release.id)
+            prior = self._rule_releases.get(key)
+            if prior is not None and prior != release:
+                raise WorkflowCAlertRuleError(
+                    "alert rule Idempotency-Key was reused with different input"
+                )
+            if prior is not None:
+                return prior
+            if any(
+                item.project_id == project_id
+                and item.rule.rule_key == release.rule.rule_key
+                and item.rule.version == release.rule.version
+                for item in self._rule_releases.values()
+            ):
+                raise WorkflowCAlertRuleError("alert rule key/version already exists")
+            self._rule_releases[key] = release
+            return release
+
+    def transition_rule(
+        self,
+        *,
+        project_id: UUID,
+        rule_id: UUID,
+        actor_id: str,
+        idempotency_key: str,
+        target_status: AlertRuleReleaseStatus,
+        payload: AlertRuleTransitionRequest,
+    ) -> AlertRuleRelease:
+        del idempotency_key
+        with self._lock:
+            current = self._rule_releases.get((project_id, rule_id))
+            if current is None:
+                raise WorkflowCAlertRuleNotFound("alert rule does not exist")
+            if current.aggregate_version != payload.expected_aggregate_version:
+                if (
+                    current.aggregate_version == payload.expected_aggregate_version + 1
+                    and current.status is target_status
+                    and current.decision_reason == payload.reason
+                    and (
+                        current.approved_by == actor_id
+                        or current.retired_by == actor_id
+                    )
+                ):
+                    return current
+                raise WorkflowCAlertRuleError("alert rule aggregate version is stale")
+            updated = transition_alert_rule_release(
+                current,
+                target_status=target_status,
+                actor_id=actor_id,
+                reason=payload.reason,
+                occurred_at=self._clock(),
+            )
+            self._rule_releases[(project_id, rule_id)] = updated
+            return updated
+
+    def get_rule(self, *, project_id: UUID, rule_id: UUID) -> AlertRuleRelease:
+        with self._lock:
+            result = self._rule_releases.get((project_id, rule_id))
+        if result is None:
+            raise WorkflowCAlertRuleNotFound("alert rule does not exist")
+        return result
+
+    def list_rules(self, *, project_id: UUID) -> tuple[AlertRuleRelease, ...]:
+        with self._lock:
+            return tuple(
+                sorted(
+                    (
+                        item
+                        for item in self._rule_releases.values()
+                        if item.project_id == project_id
+                    ),
+                    key=lambda item: (item.rule.frozen_at, str(item.id)),
+                    reverse=True,
+                )
+            )
+
+    def enqueue_evaluation(
+        self,
+        *,
+        project_id: UUID,
+        actor_id: str,
+        idempotency_key: str,
+        payload: EnqueueAlertEvaluationRequest,
+    ) -> AlertEvaluationJobReceipt:
+        del project_id, actor_id, idempotency_key
+        AlertEvaluationSelector(
+            alert_rule_id=payload.alert_rule_id,
+            source_hash=payload.source_hash,
+            baseline_source_hash=payload.baseline_source_hash,
+            source_item_key=payload.source_item_key,
+            channels=tuple(NotificationChannel(item) for item in payload.channels),
+            max_attempts=payload.max_attempts,
+        )
+        raise WorkflowCAlertUnavailable(
+            "durable frozen-output alert admission is unavailable in the memory runtime"
+        )
 
     def evaluate_rule(
         self,

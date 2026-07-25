@@ -5,7 +5,7 @@ from decimal import Decimal
 import hashlib
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlsplit, urlunsplit
 from uuid import UUID, uuid4
 
@@ -17,18 +17,18 @@ from psycopg.rows import dict_row
 import pytest
 
 from geo_core.access.models import AccessPrincipal, MembershipRecord
+from geo_core.jobs.postgres import PostgresDurableJobStore
 from geo_core.model_gateway.contracts import ModelPolicy
 from geo_core.model_gateway.runtime_catalog import NewModelCallJobSelection
 from geo_core.project_scope import set_project_scope
+from geo_core.prompts.bootstrap_catalog import default_prompt_bootstrap_spec
+from geo_core.prompts.compiler_versions import BOOTSTRAP_COMPILER_VERSION
 from geo_core.prompts.application import PromptProgramApplication
 from geo_core.prompts.postgres import prompt_program_uow_factory
-from geo_core.prompts.program import (
-    ModelPolicySnapshot,
-    ProgramKind,
-    ProgramSchemaContract,
-)
+from geo_core.prompts.program import ProgramKind
 from geo_core.recommendations import (
     DownstreamDraftKind,
+    InputChangeReason,
     RecommendationApplication,
     RecommendationDecision,
     RecommendationEvidenceKind,
@@ -40,9 +40,27 @@ from geo_core.recommendations.generation_admission import (
     GenerationModelSelector,
     RecommendationGenerationSelection,
 )
+from geo_core.recommendations.generation_artifact_contracts import (
+    RecommendationTaskArtifactStore,
+)
+from geo_core.recommendations.generation_result_recovery import (
+    GovernedRecommendationModelResultLoader,
+)
+from geo_core.recommendations.generation_worker_contracts import (
+    RECOMMENDATION_PARENT_JOB_KIND,
+)
 from geo_core.recommendations.postgres import build_recommendation_api
+from geo_core.recommendations.postgres.generation_worker import (
+    RecommendationParentHandler,
+)
+from geo_core.recommendations.postgres.generation_worker_repository import (
+    PostgresRecommendationGenerationWorkerRepository,
+)
 from geo_core.recommendations.postgres.generation_submission import (
     PsycopgRecommendationGenerationSubmission,
+)
+from geo_core.recommendations.postgres.prompt_runtime import (
+    build_recommendation_prompt_resolver,
 )
 from geo_core.recommendations.postgres.uow import RecommendationUnitOfWorkFactory
 from geo_core.secrets import SecretVersionHandle
@@ -63,8 +81,10 @@ def test_recommendation_lifecycle_uses_append_only_app_privileges() -> None:
     database_name = f"geo_recommendation_{suffix}"
     target_url = _database_url(ADMIN_URL, database_name)
     app_login, password = f"geo_recommendation_{suffix}", uuid4().hex
+    worker_login, worker_password = f"geo_recommendation_worker_{suffix}", uuid4().hex
     created_database = False
     created_role = False
+    created_worker_role = False
     try:
         with psycopg.connect(ADMIN_URL, autocommit=True) as server:
             server.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(database_name)))
@@ -81,6 +101,12 @@ def test_recommendation_lifecycle_uses_append_only_app_privileges() -> None:
                 )
             )
             created_role = True
+            admin.execute(
+                sql.SQL("CREATE ROLE {} LOGIN PASSWORD {} IN ROLE geo_worker").format(
+                    sql.Identifier(worker_login), sql.Literal(worker_password)
+                )
+            )
+            created_worker_role = True
             seeded = seed_project(admin, suffix=f"recommendation-{suffix}")
             approver_id = uuid4()
             admin.execute(
@@ -92,6 +118,11 @@ def test_recommendation_lifecycle_uses_append_only_app_privileges() -> None:
             question_id = _seed_frozen_question(admin, seeded=seeded)
 
         app_url = login_url(target_url, user=app_login, password=password)
+        worker_url = login_url(
+            target_url,
+            user=worker_login,
+            password=worker_password,
+        )
         application = RecommendationApplication(
             RecommendationUnitOfWorkFactory(
                 lambda: psycopg.connect(app_url, row_factory=dict_row),
@@ -200,6 +231,10 @@ def test_recommendation_lifecycle_uses_append_only_app_privileges() -> None:
                 RecommendationEvidenceSelector(
                     RecommendationEvidenceKind.QUESTION, str(question_id)
                 ),
+                RecommendationEvidenceSelector(
+                    RecommendationEvidenceKind.ATTRIBUTION,
+                    "attribution:board-b-excluded",
+                ),
             ),
             prompt_binding_id=prompt_binding_id,
             model=GenerationModelSelector(runtime_selection_id=_RECOMMENDATION_RUNTIME_OPTION_ID),
@@ -246,6 +281,171 @@ def test_recommendation_lifecycle_uses_append_only_app_privileges() -> None:
             "receipts": 1,
         }
 
+        def worker_connect():
+            return psycopg.connect(worker_url, row_factory=dict_row)
+
+        job_store = PostgresDurableJobStore(worker_connect)
+        claimed = job_store.claim(
+            job_id=enqueued.job.id,
+            project_id=seeded["project"],
+            expected_kind=RECOMMENDATION_PARENT_JOB_KIND,
+            worker_id="recommendation-integration-worker",
+            lease_for=timedelta(minutes=2),
+        )
+        assert claimed.disposition == "claimed" and claimed.lease is not None
+        parent_handler = RecommendationParentHandler(
+            store=job_store,
+            repository=PostgresRecommendationGenerationWorkerRepository(
+                worker_connect,
+                prompts=build_recommendation_prompt_resolver(connection_factory=worker_connect),
+                artifacts=cast(
+                    RecommendationTaskArtifactStore,
+                    _UnusedRecommendationDependency("artifact store"),
+                ),
+                model_results=cast(
+                    GovernedRecommendationModelResultLoader,
+                    _UnusedRecommendationDependency("model result loader"),
+                ),
+            ),
+            clock=lambda: now,
+        )
+        worker_result = parent_handler.handle(claimed.lease)
+        worker_execution = generation.get(
+            creator,
+            project_id=seeded["project"],
+            job_id=enqueued.job.id,
+        )
+        assert worker_result["status"] == "succeeded", worker_execution.job
+        completed = generation.get(
+            creator,
+            project_id=seeded["project"],
+            job_id=enqueued.job.id,
+        )
+        assert completed.job.status.value == "succeeded"
+        assert completed.result is not None
+        assert completed.result.recommendation.recommendation_type.value == (
+            "insufficient_evidence"
+        )
+        assert completed.result.recommendation.proposed_draft_kind is (
+            DownstreamDraftKind.SAMPLING_PLAN
+        )
+        assert completed.result.model_call_ids == ()
+        assert completed.result.insufficient_reasons == (
+            "insufficient_real_observation_count",
+            "missing_sufficient_metric_comparison",
+            "missing_question_or_surface_lineage",
+            "missing_active_rule",
+            "attribution_unavailable:connector_attribution_excluded_from_this_phase",
+        )
+        assert len(completed.result.recommendation.evidence.prompt_releases) == 1
+        with psycopg.connect(target_url, row_factory=dict_row) as admin:
+            model_lineage = admin.execute(
+                """SELECT
+                       (SELECT count(*) FROM recommendation_model_tasks
+                         WHERE project_id = %s AND parent_job_id = %s) AS tasks,
+                       (SELECT count(*) FROM recommendation_model_call_lineage
+                         WHERE project_id = %s AND parent_job_id = %s) AS calls""",
+                (
+                    seeded["project"],
+                    enqueued.job.id,
+                    seeded["project"],
+                    enqueued.job.id,
+                ),
+            ).fetchone()
+        assert model_lineage == {"tasks": 0, "calls": 0}
+
+        stale_created = application.create_recommendation(
+            creator,
+            **{
+                **values,
+                "idempotency_key": "recommendation:create:fact-retirement",
+            },
+        ).value
+        stale_submitted = application.submit_recommendation(
+            creator,
+            project_id=seeded["project"],
+            recommendation_id=stale_created.recommendation.id,
+            expected_version=1,
+            idempotency_key="recommendation:submit:fact-retirement",
+        ).value
+        stale_reviewed = application.review_recommendation(
+            reviewer,
+            project_id=seeded["project"],
+            recommendation_id=stale_submitted.recommendation.id,
+            notes="Reviewed before the source Fact retirement.",
+            expected_version=2,
+            idempotency_key="recommendation:review:fact-retirement",
+        ).value
+        stale_approved = application.approve_recommendation(
+            approver,
+            project_id=seeded["project"],
+            recommendation_id=stale_reviewed.workflow.recommendation.id,
+            expected_version=2,
+            idempotency_key="recommendation:approve:fact-retirement",
+        ).value
+        pending_message_id = uuid4()
+        with psycopg.connect(app_url) as app:
+            set_project_scope(app, seeded["project"])
+            app.execute(
+                """INSERT INTO recommendation_outbox_messages(
+                       id, project_id, recommendation_id, recommendation_version,
+                       message_type, payload_hash, status
+                   ) VALUES (%s, %s, %s, 3, 'recommendation.approved', %s, 'pending')""",
+                (
+                    pending_message_id,
+                    seeded["project"],
+                    stale_approved.workflow.recommendation.id,
+                    _hash("recommendation-approved-fact-retirement"),
+                ),
+            )
+            app.commit()
+        with psycopg.connect(target_url) as admin:
+            admin.execute(
+                """UPDATE knowledge_fact_candidates
+                   SET lifecycle_status = 'withdrawn', updated_at = clock_timestamp()
+                   WHERE project_id = %s AND id = %s""",
+                (seeded["project"], fact_id),
+            )
+            admin.commit()
+
+        stale = application.reconcile_stale(
+            creator,
+            project_id=seeded["project"],
+            recommendation_id=stale_approved.workflow.recommendation.id,
+            change_reason=InputChangeReason.FACT_RETIRED,
+            expected_version=3,
+            idempotency_key="recommendation:stale:fact-retirement",
+        ).value
+        assert stale.workflow.recommendation.status.value == "stale"
+        assert stale.workflow.recommendation.evidence.facts[0].retired is False
+        assert stale.cancelled_outbox_ids == (pending_message_id,)
+        with psycopg.connect(app_url, row_factory=dict_row) as app:
+            set_project_scope(app, seeded["project"])
+            stale_projection = app.execute(
+                """SELECT
+                       (SELECT status FROM recommendation_drafts
+                         WHERE project_id = %s AND recommendation_id = %s) AS draft_status,
+                       (SELECT status FROM recommendation_outbox_messages
+                         WHERE project_id = %s AND id = %s) AS outbox_status,
+                       (SELECT result->>'retired'
+                          FROM (SELECT geo_resolve_recommendation_evidence(
+                              %s, 'fact', %s
+                          ) AS result) AS resolved) AS fact_retired""",
+                (
+                    seeded["project"],
+                    stale_approved.workflow.recommendation.id,
+                    seeded["project"],
+                    pending_message_id,
+                    seeded["project"],
+                    str(fact_id),
+                ),
+            ).fetchone()
+        assert stale_projection == {
+            "draft_status": "blocked_source_stale",
+            "outbox_status": "cancelled",
+            "fact_retired": "true",
+        }
+
         expired = application.expire_recommendation(
             approver,
             project_id=seeded["project"],
@@ -282,6 +482,11 @@ def test_recommendation_lifecycle_uses_append_only_app_privileges() -> None:
         if created_role:
             with psycopg.connect(ADMIN_URL, autocommit=True) as server:
                 server.execute(sql.SQL("DROP ROLE IF EXISTS {}").format(sql.Identifier(app_login)))
+        if created_worker_role:
+            with psycopg.connect(ADMIN_URL, autocommit=True) as server:
+                server.execute(
+                    sql.SQL("DROP ROLE IF EXISTS {}").format(sql.Identifier(worker_login))
+                )
 
 
 def _principal(seeded: dict[str, UUID], identity_id: UUID, role: str) -> AccessPrincipal:
@@ -393,7 +598,7 @@ def _block_drafts(
         """UPDATE recommendation_drafts
            SET status = %s, blocked_at = %s, blocked_reason = %s
            WHERE project_id = %s AND recommendation_id = %s
-             AND status IN ('draft', 'started')
+             AND status = 'draft'
            RETURNING id""",
         (status, blocked_at, reason, project_id, recommendation_id),
     ).fetchall()
@@ -467,22 +672,7 @@ def _seed_frozen_recommendation_prompt(
     reviewer: AccessPrincipal,
 ) -> UUID:
     factory = prompt_program_uow_factory(lambda: psycopg.connect(app_url))
-    schema = {
-        "type": "object",
-        "properties": {"subject_id": {"type": "string"}},
-        "required": ["subject_id"],
-        "additionalProperties": False,
-    }
-    schemas = ProgramSchemaContract(
-        variable_schema_version="recommendation-vars-v1",
-        variable_schema={"type": "object", "properties": {}, "additionalProperties": False},
-        input_schema_version="recommendation-input-v1",
-        input_schema={"type": "object", "properties": {}, "additionalProperties": False},
-        output_schema_version="recommendation-output-v1",
-        output_schema=schema,
-        application_output_schema_version="recommendation-application-output-v1",
-        application_output_schema=schema,
-    )
+    spec = default_prompt_bootstrap_spec(ProgramKind.RECOMMENDATION)
 
     def command(operation):
         with factory(seeded["project"]) as unit_of_work:
@@ -499,19 +689,16 @@ def _seed_frozen_recommendation_prompt(
         lambda app: app.create_program(
             owner,
             project_id=seeded["project"],
-            program_kind=ProgramKind.RECOMMENDATION,
-            purpose="recommendations.recommendation",
-            system_template="Return one structured recommendation.",
-            user_template="Assess the frozen evidence.",
-            schemas=schemas,
-            model_policy=ModelPolicySnapshot(
-                version="recommendation-model-policy-v1",
-                policy={"allowed_providers": ["openai"], "fallback": False},
-            ),
-            test_set_id=uuid4(),
+            program_kind=spec.program_kind,
+            purpose=spec.purpose,
+            system_template=spec.system_template,
+            user_template=spec.user_template,
+            schemas=spec.schemas,
+            model_policy=spec.model_policy,
+            test_set_id=spec.test_set_id,
             test_set_version=1,
-            test_set_hash=_hash("recommendation-prompt-test-set"),
-            compiler_version="geo-prompt-compiler-v2",
+            test_set_hash=spec.test_set_hash,
+            compiler_version=BOOTSTRAP_COMPILER_VERSION,
             expected_version=0,
             idempotency_key="recommendation-generation-prompt:create",
         )
@@ -564,3 +751,13 @@ class _RecommendationPromptEvidenceVerifier:
         assert evidence.release_id == release.id
         assert evidence.release_hash == release.release_hash
         assert evidence.output_artifact_ref.startswith("s3://prompt-tests/")
+
+
+class _UnusedRecommendationDependency:
+    """Fail if an insufficient-evidence parent ever enters a model-call path."""
+
+    def __init__(self, label: str) -> None:
+        self._label = label
+
+    def __getattr__(self, name: str) -> Any:
+        raise AssertionError(f"unused {self._label} accessed through {name}")

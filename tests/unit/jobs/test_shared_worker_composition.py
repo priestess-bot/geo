@@ -159,6 +159,16 @@ def test_workflow_c_production_composes_the_exact_real_operation_set(
     )
     monkeypatch.setattr(
         workflow_c_production,
+        "build_workflow_c_artifact_reader_composition",
+        lambda **_kwargs: SimpleNamespace(reader=object()),
+    )
+    monkeypatch.setattr(
+        workflow_c_production,
+        "PostgresWorkflowCSemanticInputMaterializer",
+        lambda **_kwargs: object(),
+    )
+    monkeypatch.setattr(
+        workflow_c_production,
         "build_workflow_c_analysis_operations",
         lambda **_kwargs: SimpleNamespace(
             semantic_metrics=operations["semantic"],

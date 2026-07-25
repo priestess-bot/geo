@@ -1,0 +1,286 @@
+{
+  "$defs": {
+    "AtomicFailureProbe": {
+      "additionalProperties": false,
+      "properties": {
+        "after_change_count": {
+          "title": "After Change Count",
+          "type": "integer"
+        },
+        "after_new_count": {
+          "title": "After New Count",
+          "type": "integer"
+        },
+        "after_old_count": {
+          "title": "After Old Count",
+          "type": "integer"
+        },
+        "before_change_count": {
+          "title": "Before Change Count",
+          "type": "integer"
+        },
+        "before_new_count": {
+          "title": "Before New Count",
+          "type": "integer"
+        },
+        "before_old_count": {
+          "title": "Before Old Count",
+          "type": "integer"
+        },
+        "failure_code": {
+          "title": "Failure Code",
+          "type": "string"
+        }
+      },
+      "required": [
+        "failure_code",
+        "before_change_count",
+        "after_change_count",
+        "before_old_count",
+        "after_old_count",
+        "before_new_count",
+        "after_new_count"
+      ],
+      "title": "AtomicFailureProbe",
+      "type": "object"
+    },
+    "ProjectionDigest": {
+      "additionalProperties": false,
+      "properties": {
+        "row_count": {
+          "title": "Row Count",
+          "type": "integer"
+        },
+        "sha256": {
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "row_count",
+        "sha256"
+      ],
+      "title": "ProjectionDigest",
+      "type": "object"
+    },
+    "ReconciliationRound": {
+      "additionalProperties": false,
+      "properties": {
+        "change_log_lag": {
+          "title": "Change Log Lag",
+          "type": "integer"
+        },
+        "difference_count": {
+          "title": "Difference Count",
+          "type": "integer"
+        },
+        "new_projection": {
+          "$ref": "#/$defs/ProjectionDigest"
+        },
+        "old_projection": {
+          "$ref": "#/$defs/ProjectionDigest"
+        },
+        "phase": {
+          "title": "Phase",
+          "type": "string"
+        },
+        "round_number": {
+          "title": "Round Number",
+          "type": "integer"
+        },
+        "scope_count": {
+          "title": "Scope Count",
+          "type": "integer"
+        },
+        "watermark": {
+          "title": "Watermark",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "round_number",
+        "phase",
+        "watermark",
+        "scope_count",
+        "difference_count",
+        "change_log_lag",
+        "old_projection",
+        "new_projection"
+      ],
+      "title": "ReconciliationRound",
+      "type": "object"
+    },
+    "WriterInventoryEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "compatibility_path": {
+          "title": "Compatibility Path",
+          "type": "string"
+        },
+        "contract_state": {
+          "title": "Contract State",
+          "type": "string"
+        },
+        "resources": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Resources",
+          "type": "array"
+        },
+        "start_state": {
+          "title": "Start State",
+          "type": "string"
+        },
+        "writer_id": {
+          "title": "Writer Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "writer_id",
+        "resources",
+        "start_state",
+        "compatibility_path",
+        "contract_state"
+      ],
+      "title": "WriterInventoryEntry",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "atomic_failure_probe": {
+      "$ref": "#/$defs/AtomicFailureProbe"
+    },
+    "compatible_writer_installed": {
+      "title": "Compatible Writer Installed",
+      "type": "boolean"
+    },
+    "cutover_lock_acquired": {
+      "title": "Cutover Lock Acquired",
+      "type": "boolean"
+    },
+    "cutover_watermark": {
+      "title": "Cutover Watermark",
+      "type": "integer"
+    },
+    "environment_fingerprint": {
+      "title": "Environment Fingerprint",
+      "type": "string"
+    },
+    "excluded_workstreams": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Excluded Workstreams",
+      "type": "array"
+    },
+    "finished_at": {
+      "format": "date-time",
+      "title": "Finished At",
+      "type": "string"
+    },
+    "included_workstreams": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Included Workstreams",
+      "type": "array"
+    },
+    "initial_watermark": {
+      "title": "Initial Watermark",
+      "type": "integer"
+    },
+    "legacy_writers_retired": {
+      "title": "Legacy Writers Retired",
+      "type": "boolean"
+    },
+    "post_contract_legacy_write_rejected": {
+      "title": "Post Contract Legacy Write Rejected",
+      "type": "boolean"
+    },
+    "receipt_hash": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Receipt Hash"
+    },
+    "reconciliations": {
+      "items": {
+        "$ref": "#/$defs/ReconciliationRound"
+      },
+      "title": "Reconciliations",
+      "type": "array"
+    },
+    "rehearsal_schema_removed": {
+      "title": "Rehearsal Schema Removed",
+      "type": "boolean"
+    },
+    "resources": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Resources",
+      "type": "array"
+    },
+    "rollback_window_watermark": {
+      "title": "Rollback Window Watermark",
+      "type": "integer"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "started_at": {
+      "format": "date-time",
+      "title": "Started At",
+      "type": "string"
+    },
+    "strategy": {
+      "title": "Strategy",
+      "type": "string"
+    },
+    "writer_inventory": {
+      "items": {
+        "$ref": "#/$defs/WriterInventoryEntry"
+      },
+      "title": "Writer Inventory",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "run_id",
+    "strategy",
+    "included_workstreams",
+    "excluded_workstreams",
+    "resources",
+    "environment_fingerprint",
+    "started_at",
+    "finished_at",
+    "initial_watermark",
+    "cutover_watermark",
+    "rollback_window_watermark",
+    "writer_inventory",
+    "compatible_writer_installed",
+    "cutover_lock_acquired",
+    "legacy_writers_retired",
+    "post_contract_legacy_write_rejected",
+    "rehearsal_schema_removed",
+    "atomic_failure_probe",
+    "reconciliations"
+  ],
+  "title": "MigrationCutoverReceipt",
+  "type": "object"
+}

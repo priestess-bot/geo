@@ -80,6 +80,7 @@ def test_every_prompt_server_action_reauthorizes_project_actor_and_uses_guards()
         "enqueuePromptTestAction",
         "approvePromptReleaseAction",
         "freezePromptReleaseAction",
+        "retirePromptReleaseAction",
         "bindPromptReleaseAction",
         "diffPromptReleaseAction",
     ]
@@ -123,6 +124,7 @@ def test_prompt_controls_cover_release_lifecycle_and_do_not_derive_state_in_effe
         "运行固定测试集",
         "批准",
         "冻结",
+        "退役 Release",
         "绑定 Frozen Release",
         "比较版本",
     ]:

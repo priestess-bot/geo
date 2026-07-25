@@ -60,6 +60,7 @@ export type StyleProfile = SyntheticBoundary & Readonly<{
   project_id: string;
   profile_id: string;
   version_number: number;
+  state_version: number;
   channel: SyntheticChannel;
   locale: "en-AU";
   corpus_hash: string;
@@ -76,6 +77,7 @@ export type ReviewSuite = SyntheticBoundary & Readonly<{
   project_id: string;
   suite_id: string;
   version_number: number;
+  state_version: number;
   channel: SyntheticChannel;
   case_count: number;
   case_set_hash: string;
@@ -88,6 +90,7 @@ export type ReviewCase = SyntheticBoundary & Readonly<{
   project_id: string;
   review_suite_version_id: string;
   review_suite_version_number: number;
+  state_version: number;
   case_key: string;
   ordinal: number;
   mode: "autonomous_scenario" | "guided_scenario";
@@ -112,7 +115,7 @@ export type WarningSummary = Readonly<{
 export type SyntheticJob = SyntheticBoundary & Readonly<{
   id: string;
   project_id: string;
-  kind: "style_collection" | "candidate_generation" | "candidate_revision" | "corpus_finalize" | "offline_experiment";
+  kind: "style_collection" | "style_profile_build" | "candidate_generation" | "candidate_revision" | "corpus_finalize" | "offline_experiment";
   status: "queued" | "running" | "finalizing" | "retry_wait" | "succeeded" | "failed" | "dead_lettered" | "cancelled";
   version: number;
   input_hash: string;
@@ -199,7 +202,7 @@ export type ManualImportPreview = ManualImportPreviewSummary & Readonly<{
 export type SyntheticResourceOption = Readonly<{
   id: string;
   label: string;
-  kind: "sample" | "prompt_binding" | "question_set" | "fact_snapshot" | "profile";
+  kind: "sample" | "prompt_binding" | "question_set" | "fact_snapshot" | "profile" | "review_job" | "corpus_candidate" | "corpus_approved";
   status: string;
   channel: SyntheticChannel | null;
 }>;
@@ -210,6 +213,24 @@ export type SyntheticResourceInventory = SyntheticBoundary & Readonly<{
   question_sets: SyntheticResourceOption[];
   fact_snapshots: SyntheticResourceOption[];
   profiles: SyntheticResourceOption[];
+  review_jobs: SyntheticResourceOption[]; candidate_corpora: SyntheticResourceOption[]; approved_corpora: SyntheticResourceOption[];
+}>;
+
+export type SyntheticRuntimeOption = Readonly<{
+  selection_id: string;
+  manifest_id: string;
+  provider: string;
+  adapter_release_id: string;
+  model_release_id: string;
+  configured_model: string;
+  capture_method: "provider_api" | "proxy_grounded_api";
+  allowed_purposes: string[];
+  allowed_search_modes: Array<string | null>;
+}>;
+
+export type SyntheticRuntimeOptions = Readonly<{
+  current_manifest_id: string | null;
+  items: SyntheticRuntimeOption[];
 }>;
 
 export type SyntheticLoadProblem = Readonly<{
@@ -229,6 +250,8 @@ export type SyntheticWorkspaceData = Readonly<{
   importPreviewProblem?: SyntheticLoadProblem;
   inventory: SyntheticResourceInventory;
   inventoryProblem?: SyntheticLoadProblem;
+  runtimeOptions: SyntheticRuntimeOptions;
+  runtimeOptionsProblem?: SyntheticLoadProblem;
   loginSecrets: StyleLoginSecretReference[];
   loginSecretsProblem?: SyntheticLoadProblem;
   profiles: SyntheticPage<StyleProfile>;
@@ -255,7 +278,6 @@ export type SyntheticActionState = Readonly<{
 }>;
 
 export const initialSyntheticActionState: SyntheticActionState = { kind: "idle" };
-
 const HASH_PATTERN = /^[0-9a-f]{64}$/;
 const FORBIDDEN_FIELDS = new Set([
   "authorization",
@@ -306,8 +328,26 @@ export function isManualImportPreview(value: unknown): value is ManualImportPrev
 
 export function isSyntheticResourceInventory(value: unknown): value is SyntheticResourceInventory {
   if (!safeRecord(value) || !boundary(value)) return false;
-  return ["samples", "prompt_bindings", "question_sets", "fact_snapshots", "profiles"]
+  return [
+    "samples", "prompt_bindings", "question_sets", "fact_snapshots", "profiles",
+    "review_jobs", "candidate_corpora", "approved_corpora"
+  ]
     .every((name) => Array.isArray(value[name]) && value[name].every(isResourceOption));
+}
+
+export function isSyntheticRuntimeOptions(value: unknown): value is SyntheticRuntimeOptions {
+  return safeRecord(value)
+    && (value.current_manifest_id === null || nonEmptyString(value.current_manifest_id))
+    && Array.isArray(value.items)
+    && value.items.every((item) => safeRecord(item)
+      && ids(item, ["selection_id", "manifest_id"])
+      && [item.provider, item.adapter_release_id, item.model_release_id, item.configured_model]
+        .every(nonEmptyString)
+      && ["provider_api", "proxy_grounded_api"].includes(String(item.capture_method))
+      && stringArray(item.allowed_purposes)
+      && Array.isArray(item.allowed_search_modes)
+      && item.allowed_search_modes.length > 0
+      && item.allowed_search_modes.every((mode) => mode === null || nonEmptyString(mode)));
 }
 
 export function isStyleProfilePage(value: unknown): value is SyntheticPage<StyleProfile> {
@@ -356,6 +396,7 @@ export function isStyleProfile(value: unknown): value is StyleProfile {
   if (!safeRecord(value) || !boundary(value)) return false;
   return ids(value, ["id", "project_id", "profile_id", "prompt_release_id"])
     && positiveInteger(value.version_number)
+    && positiveInteger(value.state_version)
     && isChannel(value.channel)
     && value.locale === "en-AU"
     && [value.corpus_hash, value.profile_hash, value.prompt_release_hash].every(isHash)
@@ -368,6 +409,7 @@ export function isReviewSuite(value: unknown): value is ReviewSuite {
   if (!safeRecord(value) || !boundary(value)) return false;
   return ids(value, ["id", "project_id", "suite_id"])
     && positiveInteger(value.version_number)
+    && positiveInteger(value.state_version)
     && isChannel(value.channel)
     && nonNegativeInteger(value.case_count)
     && isHash(value.case_set_hash)
@@ -379,6 +421,7 @@ export function isReviewCase(value: unknown): value is ReviewCase {
   if (!safeRecord(value) || !boundary(value)) return false;
   return ids(value, ["id", "project_id", "review_suite_version_id"])
     && positiveInteger(value.review_suite_version_number)
+    && positiveInteger(value.state_version)
     && nonEmptyString(value.case_key)
     && positiveInteger(value.ordinal)
     && ["autonomous_scenario", "guided_scenario"].includes(String(value.mode))
@@ -391,7 +434,7 @@ export function isReviewCase(value: unknown): value is ReviewCase {
 export function isSyntheticJob(value: unknown): value is SyntheticJob {
   if (!safeRecord(value) || !boundary(value)) return false;
   return ids(value, ["id", "project_id"])
-    && ["style_collection", "candidate_generation", "candidate_revision", "corpus_finalize", "offline_experiment"].includes(String(value.kind))
+    && ["style_collection", "style_profile_build", "candidate_generation", "candidate_revision", "corpus_finalize", "offline_experiment"].includes(String(value.kind))
     && ["queued", "running", "finalizing", "retry_wait", "succeeded", "failed", "dead_lettered", "cancelled"].includes(String(value.status))
     && positiveInteger(value.version)
     && isHash(value.input_hash)
@@ -463,7 +506,10 @@ function isResourceOption(value: unknown): value is SyntheticResourceOption {
   return safeRecord(value)
     && ids(value, ["id"])
     && nonEmptyString(value.label)
-    && ["sample", "prompt_binding", "question_set", "fact_snapshot", "profile"].includes(String(value.kind))
+    && [
+      "sample", "prompt_binding", "question_set", "fact_snapshot", "profile",
+      "review_job", "corpus_candidate", "corpus_approved"
+    ].includes(String(value.kind))
     && nonEmptyString(value.status)
     && (value.channel === null || isChannel(value.channel));
 }

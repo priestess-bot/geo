@@ -14,6 +14,7 @@ from geo_api.workflow_c_analysis_runtime import (
     WorkflowCAnalysisNotFound,
     WorkflowCAnalysisUnavailable,
 )
+from geo_api.workflow_c_alert_runtime import WorkflowCAlertUnavailable
 from geo_api.workflow_c_runtime import WorkflowCApi, WorkflowCUnavailable
 from geo_core.access.models import AccessPrincipal
 from geo_core.alerts import AlertConflict, AlertNotFound, AlertRuleViolation
@@ -22,6 +23,18 @@ from geo_core.jobs.lifecycle import InvalidTransition
 from geo_core.sampling import SamplingConflict, SamplingNotFound, SamplingRuleViolation
 from geo_core.semantic_metrics import SemanticMetricRuleViolation
 from geo_core.statistical_methods import StatisticalRuleViolation
+from geo_core.workflow_c_analysis_admission import WorkflowCAnalysisAdmissionError
+from geo_core.workflow_c_alert_admission import WorkflowCAlertAdmissionError
+from geo_core.workflow_c_alert_rules import (
+    WorkflowCAlertRuleError,
+    WorkflowCAlertRuleNotFound,
+)
+from geo_core.workflow_c_reports import (
+    WorkflowCReportConflict,
+    WorkflowCReportNotFound,
+    WorkflowCReportRuleViolation,
+)
+from geo_core.workflow_c_statistical_protocols import StatisticalProtocolError
 
 
 AuthorizationHeader = Annotated[str | None, Header(alias="Authorization")]
@@ -35,12 +48,14 @@ T = TypeVar("T")
 def workflow_c_router() -> APIRouter:
     from geo_api.workflow_c_alert_routes import workflow_c_alert_router
     from geo_api.workflow_c_analysis_routes import workflow_c_analysis_router
+    from geo_api.workflow_c_report_routes import workflow_c_report_router
     from geo_api.workflow_c_sampling_routes import workflow_c_sampling_router
 
     router = APIRouter()
     router.include_router(workflow_c_sampling_router())
     router.include_router(workflow_c_analysis_router())
     router.include_router(workflow_c_alert_router())
+    router.include_router(workflow_c_report_router())
     return router
 
 
@@ -90,19 +105,35 @@ def workflow_c_call(operation: Callable[[], T]) -> T:
         SamplingRuleViolation,
         SemanticMetricRuleViolation,
         StatisticalRuleViolation,
+        StatisticalProtocolError,
         AlertRuleViolation,
+        WorkflowCAnalysisAdmissionError,
+        WorkflowCAlertAdmissionError,
+        WorkflowCAlertRuleError,
+        WorkflowCReportRuleViolation,
     ) as error:
         raise _problem(422, "Unprocessable Content", error, "rule-violation") from error
-    except (SamplingNotFound, AlertNotFound, WorkflowCAnalysisNotFound) as error:
+    except (
+        SamplingNotFound,
+        AlertNotFound,
+        WorkflowCAnalysisNotFound,
+        WorkflowCAlertRuleNotFound,
+        WorkflowCReportNotFound,
+    ) as error:
         raise _problem(404, "Not Found", error, "not-found") from error
     except (
         SamplingConflict,
         AlertConflict,
         LeaseConflict,
         InvalidTransition,
+        WorkflowCReportConflict,
     ) as error:
         raise _problem(409, "Conflict", error, "conflict") from error
-    except (WorkflowCUnavailable, WorkflowCAnalysisUnavailable) as error:
+    except (
+        WorkflowCUnavailable,
+        WorkflowCAnalysisUnavailable,
+        WorkflowCAlertUnavailable,
+    ) as error:
         raise _problem(503, "Service Unavailable", error, "unavailable") from error
 
 

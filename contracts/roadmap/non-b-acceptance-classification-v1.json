@@ -1,0 +1,199 @@
+{
+  "schema_version": "non-b-acceptance-classification-v1",
+  "roadmap": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
+  "expected_counts": {
+    "all": 312,
+    "templates": 13,
+    "acceptance": 218,
+    "implementation_ledger": 81,
+    "roadmap_checked": 87,
+    "excluded_b": 47,
+    "mixed_atomic": 68,
+    "included_non_b": 252
+  },
+  "excluded_b_ids": [
+    "B-CONTRACT-01",
+    "B-CONTRACT-02",
+    "B-CONTRACT-03",
+    "B-CONTRACT-04",
+    "M4-ATTR-01",
+    "M4-ATTR-02",
+    "M5-ATTR-01",
+    "M5-ATTR-02",
+    "M5-ATTR-03",
+    "M6-ATTR-01",
+    "M4-AC-06",
+    "M5-AC-01",
+    "M5-AC-02",
+    "M6-AC-06",
+    "ATTR-METHOD-AC-01",
+    "ATTR-IDENTITY-AC-01",
+    "ATTR-LINEAGE-AC-01",
+    "ATTR-LIVE-AC-01",
+    "PLAN-FINAL-08",
+    "C-CONTRACT-02",
+    "M0-PLAN-01",
+    "M0-AC-06",
+    "M1-EXT-01",
+    "M1-AC-06",
+    "M2-EXT-01",
+    "M2-AC-04",
+    "M2-AC-07",
+    "M3-EXT-01",
+    "M4-EXT-01",
+    "M4-AC-07",
+    "M5-EXT-01",
+    "M5-AC-06",
+    "M5-AC-07",
+    "M6-LIVE-02",
+    "M6-EXT-01",
+    "M6-AC-08",
+    "REAL-EXT-AC-01",
+    "REAL-EXT-AC-02",
+    "REAL-EXT-AC-03",
+    "REAL-EXT-AC-04",
+    "CORE-RAW-AC-01",
+    "CORE-EXT-AC-01",
+    "STAT-EGRESS-AC-01",
+    "STAT-UI-AC-01",
+    "PLAN-FINAL-02",
+    "PLAN-FINAL-06",
+    "IMPL-B-SEARCH-AGGREGATION-PROTOTYPE-2026-07-24"
+  ],
+  "mixed_atomic_ids": [
+    "FND-VIS-01",
+    "FND-AUTH-01",
+    "FND-CUSTOMER-01",
+    "SHARED-RAW-01",
+    "C-CONTRACT-01",
+    "C-CONTRACT-03",
+    "C-CONTRACT-06",
+    "D-CONTRACT-01",
+    "D-CONTRACT-04",
+    "M0-RES-01",
+    "M0-AUTH-01",
+    "M0-BUD-01",
+    "M0-ARCH-01",
+    "M0-AC-02",
+    "M0-AC-04",
+    "M1-BASE-01",
+    "M1-PERF-01",
+    "M1-AC-07",
+    "M2-AUTH-01",
+    "M2-AC-05",
+    "M2-AC-06",
+    "M3-AC-05",
+    "M4-ALERT-01",
+    "M5-CUST-01",
+    "M5-REC-01",
+    "M5-AC-03",
+    "M5-AC-04",
+    "M6-LIVE-01",
+    "M6-PERF-01",
+    "M6-FAIL-01",
+    "M6-RESTORE-01",
+    "M6-OPS-01",
+    "M6-EVD-01",
+    "M6-AC-01",
+    "M6-AC-02",
+    "M6-AC-04",
+    "M6-AC-05",
+    "M6-AC-07",
+    "M6-AC-09",
+    "CORE-SECRET-AC-02",
+    "CORE-JOB-AC-01",
+    "STAT-SAMPLE-AC-01",
+    "STAT-SAMPLE-AC-02",
+    "REPO-GATE-02",
+    "REPO-GATE-03",
+    "REPO-GATE-06",
+    "REPO-GATE-07",
+    "REPO-GATE-08",
+    "PERF-AC-01",
+    "PERF-AC-02",
+    "PERF-AC-03",
+    "PERF-AC-04",
+    "PLAN-FINAL-01",
+    "PLAN-FINAL-03",
+    "PLAN-FINAL-04",
+    "PLAN-FINAL-07",
+    "PLAN-FINAL-09",
+    "PLAN-FINAL-10",
+    "PLAN-FINAL-11",
+    "PLAN-FINAL-12",
+    "PLAN-FINAL-13",
+    "PLAN-FINAL-14",
+    "PLAN-FINAL-15",
+    "PLAN-FINAL-16",
+    "PLAN-FINAL-17",
+    "PLAN-FINAL-18",
+    "PLAN-FINAL-19",
+    "PLAN-FINAL-20"
+  ],
+  "blocked_non_b_impl_ids": [
+    "IMPL-WORKFLOW-C-PROVIDER-EXECUTION-INPUT-2026-07-23",
+    "IMPL-WORKFLOW-C-SAMPLING-WORKER-2026-07-23",
+    "IMPL-WORKFLOW-C-METRIC-WORKER-2026-07-23",
+    "IMPL-SYNTHETIC-RETENTION-PROJECT-SCOPE-2026-07-23"
+  ],
+  "evidence_groups": [
+    {
+      "prefixes": ["SYN-", "LAB-"],
+      "paths": [
+        "docs/engineering/execution-packs/pack-04-synthetic-lab-evidence.md"
+      ]
+    },
+    {
+      "prefixes": ["C-", "STAT-"],
+      "paths": [
+        "docs/engineering/execution-packs/pack-01-semantic-vertical.md",
+        "docs/engineering/execution-packs/pack-02-statistics-alert-report.md",
+        "docs/engineering/execution-packs/pack-03-provider-sampling-evidence.md",
+        "docs/engineering/execution-packs/pack-05-surface-parsers-evidence.md"
+      ]
+    },
+    {
+      "prefixes": ["D-", "REC-"],
+      "paths": [
+        "docs/engineering/execution-packs/pack-06-prompt-recommendation-evidence.md"
+      ]
+    },
+    {
+      "prefixes": ["FND-", "SHARED-", "CORE-", "REAL-"],
+      "paths": [
+        "docs/engineering/execution-packs/pack-03-provider-sampling-evidence.md",
+        "docs/engineering/execution-packs/pack-04-synthetic-lab-evidence.md",
+        "docs/engineering/execution-packs/pack-06-prompt-recommendation-evidence.md",
+        "docs/engineering/execution-packs/pack-07-hardening-operations-evidence.md"
+      ]
+    },
+    {
+      "prefixes": ["REPO-", "PERF-"],
+      "paths": [
+        "docs/engineering/execution-packs/pack-07-hardening-operations-evidence.md",
+        "docs/operations/non-b-performance-runbook.md",
+        "docs/operations/non-b-roadmap-operations.md"
+      ]
+    },
+    {
+      "prefixes": ["M0-", "M1-", "M2-", "M3-", "M4-", "M5-", "M6-", "PLAN-"],
+      "paths": [
+        "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
+        "docs/engineering/execution-packs/pack-08-external-needs-register.md"
+      ]
+    },
+    {
+      "prefixes": ["IMPL-"],
+      "paths": [
+        "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
+        "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md"
+      ]
+    },
+    {
+      "prefixes": ["DOR-", "DOD-", "B-", "ATTR-"],
+      "paths": [
+        "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md"
+      ]
+    }
+  ]
+}

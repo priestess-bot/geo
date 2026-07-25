@@ -10,10 +10,12 @@ import type {
   CustomerMeasurementWindow,
   CustomerProblemDetails,
   CustomerProjectPage,
-  CustomerVerifiedUrl
+  CustomerVerifiedUrl,
+  CustomerWorkflowCReportPage
 } from "@geo/types/customer";
 
 import { isSourceStratum } from "./customer-source-contract";
+import { customerWorkflowCReportPageGuard } from "./customer-workflow-c-contract";
 import {
   geoApiUrl,
   mergeClientRequestInit,
@@ -112,6 +114,17 @@ export class CustomerApiClient {
       this.geoPath(projectId, "reports"),
       campaignQuery(campaignId),
       isApprovedReportList
+    );
+  }
+
+  listWorkflowCApprovedReports(
+    projectId: string,
+    campaignId: string
+  ): Promise<CustomerApiResult<CustomerWorkflowCReportPage>> {
+    return this.get(
+      this.geoPath(projectId, "workflow-c-reports"),
+      campaignQuery(campaignId),
+      customerWorkflowCReportPageGuard(projectId, campaignId)
     );
   }
 

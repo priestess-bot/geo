@@ -360,6 +360,58 @@ def freeze_corpus_version(
     )
 
 
+def create_no_corpus_baseline(
+    *,
+    id: UUID,
+    project_id: UUID,
+    corpus_id: UUID,
+    approved_fact_snapshot_id: UUID,
+    approved_fact_snapshot_hash: str,
+    profile_version_id: UUID,
+    profile_hash: str,
+    prompt_release_id: UUID,
+    prompt_release_hash: str,
+    experiment_id: UUID,
+) -> CorpusVersion:
+    """Create the immutable empty arm descriptor without impersonating a Worker lease."""
+
+    _require_uuid(experiment_id, "baseline Offline Experiment")
+    candidate_set_hash = corpus_candidate_set_hash(())
+    return CorpusVersion(
+        id=id,
+        project_id=project_id,
+        corpus_id=corpus_id,
+        version_number=1,
+        role=CorpusRole.NO_CORPUS_BASELINE,
+        approved_fact_snapshot_id=approved_fact_snapshot_id,
+        approved_fact_snapshot_hash=approved_fact_snapshot_hash,
+        profile_version_id=profile_version_id,
+        profile_hash=profile_hash,
+        prompt_release_id=prompt_release_id,
+        prompt_release_hash=prompt_release_hash,
+        candidates=(),
+        candidate_set_hash=candidate_set_hash,
+        guard_evidence_hash=_canonical_hash(
+            {
+                "kind": "derived_no_corpus_baseline",
+                "experiment_id": str(experiment_id),
+                "corpus_version_id": str(id),
+                "project_id": str(project_id),
+            }
+        ),
+        content_hash=corpus_version_content_hash(
+            role=CorpusRole.NO_CORPUS_BASELINE,
+            approved_fact_snapshot_id=approved_fact_snapshot_id,
+            approved_fact_snapshot_hash=approved_fact_snapshot_hash,
+            profile_version_id=profile_version_id,
+            profile_hash=profile_hash,
+            prompt_release_id=prompt_release_id,
+            prompt_release_hash=prompt_release_hash,
+            candidate_set_hash=candidate_set_hash,
+        ),
+    )
+
+
 def assert_finalization_guard(
     *,
     project_id: UUID,
@@ -403,6 +455,7 @@ __all__ = [
     "FinalizationGuard",
     "assert_finalization_guard",
     "candidate_entry_from_resolution",
+    "create_no_corpus_baseline",
     "corpus_candidate_set_hash",
     "corpus_version_content_hash",
     "freeze_corpus_version",

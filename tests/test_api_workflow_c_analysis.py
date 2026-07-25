@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 import pytest
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
 
@@ -12,7 +12,11 @@ from geo_api.workflow_c_analysis_contracts import (
     ComputeDriftRequest,
     ComputeSemanticMetricsRequest,
 )
-from geo_api.workflow_c_analysis_runtime import WorkflowCAnalysisUnavailable
+from geo_api.workflow_c_analysis_runtime import (
+    SemanticAnalysisJobReceipt,
+    StatisticalAnalysisJobReceipt,
+    WorkflowCAnalysisUnavailable,
+)
 from geo_api.workflow_c_presenters import semantic_snapshot_response
 from geo_core.semantic_metrics import (
     DeterministicRuleVersions,
@@ -27,15 +31,15 @@ from geo_core.semantic_metrics import (
     first_metric_suite,
 )
 from geo_core.workflow_c_analysis_reads import StoredSemanticMetricSnapshot
-from geo_core.statistical_methods import (
-    ComparisonInput,
-    DriftObservation,
-    FrozenComparisonProtocol,
-    PairedObservation,
-    StatisticalStratum,
-)
+from geo_core.workflow_c_statistical_protocols import ComparisonPlanDefinition
 
-from tests.workflow_c_api_test_support import PROJECT_ID, digest, internal_app
+from tests.workflow_c_analysis_test_support import metric_protocol_definition_fixture
+from tests.workflow_c_api_test_support import (
+    PROJECT_ID,
+    digest,
+    internal_app,
+    principal,
+)
 
 
 RUN_ID = UUID("71000000-0000-4000-8000-000000000001")
@@ -47,92 +51,268 @@ COMPARISON_PLAN_ID = UUID("71000000-0000-4000-8000-000000000006")
 DRIFT_PROTOCOL_ID = UUID("71000000-0000-4000-8000-000000000007")
 
 
-def test_semantic_compute_accepts_only_server_resolved_immutable_selectors() -> None:
-    app, api, _, _ = internal_app()
-    selector, input_set, metric_suite = _semantic_fixture()
-    api.analysis.install_semantic_inputs(
-        project_id=PROJECT_ID,
-        selector=selector,
-        input_set=input_set,
-        metric_suite=metric_suite,
-    )
-    path = f"/v1/projects/{PROJECT_ID}/analysis/semantic-metrics/compute"
+def test_metric_protocol_api_enforces_maker_checker_lifecycle() -> None:
+    app, _, _, services = internal_app()
+    path = f"/v1/projects/{PROJECT_ID}/analysis/metric-protocols"
 
     with TestClient(app) as client:
-        response = client.post(path, json=_json(selector))
-        inventory = client.get(f"/v1/projects/{PROJECT_ID}/analysis/semantic-metrics")
+        created = client.post(
+            path,
+            headers={"Idempotency-Key": "metric-protocol:create"},
+            json={
+                "definition": metric_protocol_definition_fixture().canonical_value(),
+                "supersedes_protocol_id": None,
+            },
+        )
+        protocol_id = created.json()["id"]
+        submitted = client.post(
+            f"{path}/{protocol_id}/submit",
+            headers={"Idempotency-Key": "metric-protocol:submit"},
+            json={"expected_aggregate_version": 1},
+        )
+        self_approval = client.post(
+            f"{path}/{protocol_id}/approve",
+            headers={"Idempotency-Key": "metric-protocol:self-approve"},
+            json={
+                "expected_aggregate_version": 2,
+                "reason": "fixed regression suite passed",
+            },
+        )
+        services.principal = principal("owner")
+        approved = client.post(
+            f"{path}/{protocol_id}/approve",
+            headers={"Idempotency-Key": "metric-protocol:approve"},
+            json={
+                "expected_aggregate_version": 2,
+                "reason": "fixed regression suite passed",
+            },
+        )
+        listed = client.get(path)
+
+    assert created.status_code == 201
+    assert submitted.status_code == 200
+    assert submitted.json()["status"] == "in_review"
+    assert self_approval.status_code == 422
+    assert approved.status_code == 200
+    assert approved.json()["status"] == "approved"
+    assert approved.json()["approved_by"] == "workflow-c-owner"
+    assert listed.status_code == 200
+    assert listed.json()["items"] == [approved.json()]
+
+
+def test_semantic_job_enqueue_returns_pollable_immutable_receipt(monkeypatch) -> None:
+    app, api, _, _ = internal_app()
+    job_id, manifest_id = uuid4(), uuid4()
+
+    def enqueue(**kwargs) -> SemanticAnalysisJobReceipt:
+        assert kwargs == {
+            "project_id": PROJECT_ID,
+            "payload": kwargs["payload"],
+            "actor_id": "workflow-c-admin",
+            "idempotency_key": "semantic-metrics:one",
+        }
+        assert kwargs["payload"].sampling_run_id == RUN_ID
+        assert kwargs["payload"].metric_protocol_id == METRIC_PROTOCOL_ID
+        return SemanticAnalysisJobReceipt(
+            job_id=job_id,
+            manifest_id=manifest_id,
+            manifest_hash=digest("semantic-manifest"),
+            replayed=False,
+        )
+
+    monkeypatch.setattr(api.analysis, "enqueue_semantic_metrics", enqueue)
+    path = f"/v1/projects/{PROJECT_ID}/analysis/semantic-metrics/jobs"
+    with TestClient(app) as client:
+        response = client.post(
+            path,
+            headers={"Idempotency-Key": "semantic-metrics:one"},
+            json={
+                "sampling_run_id": str(RUN_ID),
+                "metric_protocol_id": str(METRIC_PROTOCOL_ID),
+                "max_attempts": 3,
+            },
+        )
         forged = client.post(
             path,
+            headers={"Idempotency-Key": "semantic-metrics:forged"},
             json={
-                **_json(selector),
-                "observations": [{"answer_text": "fabricated"}],
-                "planned_slots": [{"slot_id": "forged"}],
-                "minimum_valid_completion": "0.01",
+                "sampling_run_id": str(RUN_ID),
+                "metric_protocol_id": str(METRIC_PROTOCOL_ID),
+                "answer_text": "client supplied truth",
             },
         )
 
-    assert response.status_code == 200, response.text
-    assert inventory.status_code == 200, inventory.text
-    assert inventory.json()["total"] == 1
-    assert inventory.json()["items"][0]["snapshot_hash"] == response.json()["snapshot_hash"]
-    body = response.json()
-    assert forged.status_code == 422
-    assert len(body["results"]) == 18
-    assert len(body["snapshot_hash"]) == 64
-    assert body["input_set_hash"] == input_set.input_set_hash
-    assert {item["denominator"] for item in body["results"]} <= {0, 1}
-    for item in body["results"]:
-        assert (
-            item["valid_input_count"] + item["invalid_input_count"] + item["missing_input_count"]
-            == item["denominator"]
-        )
-        assert item["status"] == "insufficient_evidence"
-
-    request_schema = app.openapi()["components"]["schemas"]["ComputeSemanticMetricsRequest"][
-        "properties"
-    ]
-    forbidden = {
-        "observations",
-        "observation_artifacts",
-        "planned_slots",
-        "approved_facts",
-        "verified_urls",
-        "subjects",
-        "judge_version",
-        "rule_versions",
-        "computed_at",
+    assert response.status_code == 202
+    assert response.headers["Location"] == f"/v1/jobs/{job_id}"
+    assert response.json() == {
+        "job_id": str(job_id),
+        "status": "queued",
+        "status_url": f"/v1/jobs/{job_id}",
+        "manifest_id": str(manifest_id),
+        "manifest_hash": digest("semantic-manifest"),
+        "replayed": False,
     }
-    assert not forbidden.intersection(request_schema)
+    assert forged.status_code == 422
 
 
-def test_semantic_answer_stays_in_server_artifact_resolution() -> None:
-    app, api, _, _ = internal_app()
-    answer = "Advinsys is recommended for the Australian accounting workflow."
-    observation = MetricObservation(
-        id=UUID("72000000-0000-4000-8000-000000000001"),
-        slot_id="slot-1",
-        payload_hash=digest("metric-observation-content"),
-        question_id="q-1",
-        question_cluster="purchase",
-        answer_text=answer,
-    )
-    selector, input_set, metric_suite = _semantic_fixture(observation=observation)
-    api.analysis.install_semantic_inputs(
-        project_id=PROJECT_ID,
-        selector=selector,
-        input_set=input_set,
-        metric_suite=metric_suite,
-    )
+def test_statistical_protocol_api_enforces_kind_and_maker_checker_lifecycle() -> None:
+    app, _, _, services = internal_app()
+    path = f"/v1/projects/{PROJECT_ID}/analysis/statistical-protocols"
+    definition = _comparison_plan_definition()
 
     with TestClient(app) as client:
-        response = client.post(
-            f"/v1/projects/{PROJECT_ID}/analysis/semantic-metrics/compute",
-            json=_json(selector),
+        created = client.post(
+            path,
+            headers={"Idempotency-Key": "comparison-plan:create"},
+            json={"definition": definition.canonical_value()},
+        )
+        protocol_id = created.json()["id"]
+        submitted = client.post(
+            f"{path}/{protocol_id}/submit",
+            headers={"Idempotency-Key": "comparison-plan:submit"},
+            json={"expected_aggregate_version": 1},
+        )
+        self_approval = client.post(
+            f"{path}/{protocol_id}/approve",
+            headers={"Idempotency-Key": "comparison-plan:self-approve"},
+            json={"expected_aggregate_version": 2, "reason": "frozen design reviewed"},
+        )
+        services.principal = principal("owner")
+        approved = client.post(
+            f"{path}/{protocol_id}/approve",
+            headers={"Idempotency-Key": "comparison-plan:approve"},
+            json={"expected_aggregate_version": 2, "reason": "frozen design reviewed"},
+        )
+        listed = client.get(path)
+
+    assert created.status_code == 201, created.text
+    assert created.json()["kind"] == "comparison_plan"
+    assert created.json()["definition_hash"] == definition.definition_hash
+    assert submitted.status_code == 200
+    assert self_approval.status_code == 422
+    assert approved.status_code == 200
+    assert approved.json()["status"] == "approved"
+    assert listed.json()["items"] == [approved.json()]
+
+
+def test_statistical_job_routes_accept_only_protocol_and_snapshot_selectors(
+    monkeypatch,
+) -> None:
+    app, api, _, _ = internal_app()
+    comparison_job, drift_job = uuid4(), uuid4()
+
+    def enqueue_comparison(**kwargs) -> StatisticalAnalysisJobReceipt:
+        assert kwargs["payload"].comparison_plan_id == COMPARISON_PLAN_ID
+        assert kwargs["actor_id"] == "workflow-c-admin"
+        return StatisticalAnalysisJobReceipt(
+            comparison_job, digest("comparison-spec"), False
         )
 
-    assert response.status_code == 200, response.text
-    assert answer not in response.text
-    assert "answer_text" not in str(_json(selector))
+    def enqueue_drift(**kwargs) -> StatisticalAnalysisJobReceipt:
+        assert kwargs["payload"].drift_protocol_id == DRIFT_PROTOCOL_ID
+        assert kwargs["actor_id"] == "workflow-c-admin"
+        return StatisticalAnalysisJobReceipt(drift_job, digest("drift-spec"), True)
+
+    monkeypatch.setattr(api.analysis, "enqueue_comparison", enqueue_comparison)
+    monkeypatch.setattr(api.analysis, "enqueue_drift", enqueue_drift)
+    comparison_path = f"/v1/projects/{PROJECT_ID}/analysis/comparisons/jobs"
+    drift_path = f"/v1/projects/{PROJECT_ID}/analysis/drift/jobs"
+    with TestClient(app) as client:
+        comparison = client.post(
+            comparison_path,
+            headers={"Idempotency-Key": "comparison:one"},
+            json={
+                "comparison_plan_id": str(COMPARISON_PLAN_ID),
+                "baseline_metric_snapshot_hash": digest("baseline"),
+                "candidate_metric_snapshot_hash": digest("candidate"),
+            },
+        )
+        drift = client.post(
+            drift_path,
+            headers={"Idempotency-Key": "drift:one"},
+            json={
+                "drift_protocol_id": str(DRIFT_PROTOCOL_ID),
+                "baseline_metric_snapshot_hash": digest("baseline"),
+                "current_metric_snapshot_hash": digest("current"),
+            },
+        )
+        forged = client.post(
+            comparison_path,
+            headers={"Idempotency-Key": "comparison:forged"},
+            json={
+                "comparison_plan_id": str(COMPARISON_PLAN_ID),
+                "baseline_metric_snapshot_hash": digest("baseline"),
+                "candidate_metric_snapshot_hash": digest("candidate"),
+                "pairs": [{"baseline": "0", "candidate": "999"}],
+            },
+        )
+
+    assert comparison.status_code == 202
+    assert comparison.headers["Location"] == f"/v1/jobs/{comparison_job}"
+    assert comparison.json()["spec_hash"] == digest("comparison-spec")
+    assert drift.status_code == 202
+    assert drift.headers["Location"] == f"/v1/jobs/{drift_job}"
+    assert drift.json()["replayed"] is True
+    assert forged.status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("resource", "legacy_action", "runtime_method"),
+    (
+        ("semantic-metrics", "compute", "compute_semantic_metrics"),
+        ("comparisons", "analyze", "analyze_comparisons"),
+        ("drift", "compute", "compute_drift"),
+    ),
+)
+def test_synchronous_analysis_compatibility_endpoints_are_stable_gone(
+    monkeypatch: pytest.MonkeyPatch,
+    resource: str,
+    legacy_action: str,
+    runtime_method: str,
+) -> None:
+    app, api, _, _ = internal_app()
+    monkeypatch.setattr(
+        api.analysis,
+        runtime_method,
+        lambda **_kwargs: pytest.fail("removed endpoint called its runtime computation method"),
+    )
+    if resource == "semantic-metrics":
+        payload = _json(_semantic_fixture()[0])
+    elif resource == "comparisons":
+        payload = _json(_comparison_selector())
+    else:
+        payload = _json(_drift_selector())
+    path = f"/v1/projects/{PROJECT_ID}/analysis/{resource}/{legacy_action}"
+    successor = f"/v1/projects/{PROJECT_ID}/analysis/{resource}/jobs"
+
+    with TestClient(app) as client:
+        response = client.post(path, json=payload)
+        inventory = client.get(f"/v1/projects/{PROJECT_ID}/analysis/{resource}")
+
+    assert response.status_code == 410, response.text
+    assert response.headers["content-type"].startswith("application/problem+json")
+    assert response.headers["deprecation"] == "true"
+    assert response.headers["link"] == f'<{successor}>; rel="successor-version"'
+    assert response.json() == {
+        "type": "urn:geo:problem:synchronous-analysis-removed",
+        "title": "Gone",
+        "status": 410,
+        "detail": (
+            "Synchronous Workflow C analysis has been removed. "
+            f"Enqueue the durable job with POST {successor}."
+        ),
+        "instance": path,
+        "request_id": response.headers["x-request-id"],
+    }
+    assert inventory.status_code == 200, inventory.text
+    assert inventory.json() == {"items": [], "total": 0}
+
+    openapi_path = f"/v1/projects/{{project_id}}/analysis/{resource}/{legacy_action}"
+    operation = app.openapi()["paths"][openapi_path]["post"]
+    assert operation["deprecated"] is True
+    assert "200" not in operation["responses"]
+    assert "410" in operation["responses"]
+    assert "application/problem+json" in operation["responses"]["410"]["content"]
 
 
 def test_stored_semantic_projection_rechecks_hash_and_lineage_before_rendering() -> None:
@@ -170,113 +350,6 @@ def test_stored_semantic_projection_rechecks_hash_and_lineage_before_rendering()
                 payload=snapshot.canonical_value(),
             ),
         )
-
-
-def test_comparison_endpoint_resolves_pairs_and_holm_protocol_server_side() -> None:
-    app, api, _, _ = internal_app()
-    stratum = _stratum("model-v1")
-    selector = _comparison_selector()
-    api.analysis.install_comparison_inputs(
-        project_id=PROJECT_ID,
-        selector=selector,
-        comparisons=(_comparison_input(stratum),),
-    )
-    path = f"/v1/projects/{PROJECT_ID}/analysis/comparisons/analyze"
-
-    with TestClient(app) as client:
-        first = client.post(path, json=_json(selector))
-        second = client.post(path, json=_json(selector))
-        inventory = client.get(f"/v1/projects/{PROJECT_ID}/analysis/comparisons")
-        forged = client.post(
-            path,
-            json={
-                **_json(selector),
-                "comparisons": [{"pairs": [{"baseline": 0, "candidate": 100}]}],
-                "adjusted_p_value": "0",
-            },
-        )
-
-    assert first.status_code == second.status_code == 200, first.text
-    assert inventory.status_code == 200, inventory.text
-    assert inventory.json()["items"][0]["family_hash"] == first.json()["family_hash"]
-    assert forged.status_code == 422
-    body = first.json()
-    assert body == second.json()
-    assert body["correction_method"] == "holm-v1"
-    assert body["results"][0]["conclusion"] == "win"
-    assert body["results"][0]["valid_pair_count"] == 4
-    assert body["results"][0]["planned_pair_count"] == 4
-    assert body["results"][0]["completion_ratio"] == "1"
-
-    properties = app.openapi()["components"]["schemas"]["AnalyzeComparisonFamilyRequest"][
-        "properties"
-    ]
-    assert not {
-        "comparisons",
-        "pairs",
-        "achieved_power",
-        "p_value",
-        "effect",
-    }.intersection(properties)
-
-
-def test_drift_endpoint_resolves_effects_from_snapshot_selectors() -> None:
-    app, api, _, _ = internal_app()
-    baseline = _stratum("model-v1")
-    current = _stratum("model-v2")
-    selector = _drift_selector()
-    api.analysis.install_drift_inputs(
-        project_id=PROJECT_ID,
-        selector=selector,
-        baseline=(DriftObservation("baseline-1", baseline, Decimal("0.20")),),
-        current=(DriftObservation("current-1", current, Decimal("0.10")),),
-    )
-    path = f"/v1/projects/{PROJECT_ID}/analysis/drift/compute"
-
-    with TestClient(app) as client:
-        response = client.post(path, json=_json(selector))
-        inventory = client.get(f"/v1/projects/{PROJECT_ID}/analysis/drift")
-        forged = client.post(
-            path,
-            json={
-                **_json(selector),
-                "baseline": [{"observation_id": "fake", "effect": "999"}],
-                "current": [],
-            },
-        )
-
-    assert response.status_code == 200, response.text
-    assert inventory.status_code == 200, inventory.text
-    assert inventory.json()["items"][0]["report_hash"] == response.json()["report_hash"]
-    assert forged.status_code == 422
-    body = response.json()
-    assert len(body["model_drift"]) == 1
-    assert body["model_drift"][0]["baseline_models"] == ["model-v1"]
-    assert body["model_drift"][0]["current_models"] == ["model-v2"]
-    assert body["source_drift"] == []
-    assert body["effect_drift"] == []
-    properties = app.openapi()["components"]["schemas"]["ComputeDriftRequest"]["properties"]
-    assert not {"baseline", "current", "effects", "observations"}.intersection(properties)
-
-
-def test_unknown_or_hash_mismatched_selector_fails_without_projection() -> None:
-    app, api, _, _ = internal_app()
-    selector, input_set, metric_suite = _semantic_fixture()
-    api.analysis.install_semantic_inputs(
-        project_id=PROJECT_ID,
-        selector=selector,
-        input_set=input_set,
-        metric_suite=metric_suite,
-    )
-    forged = {**_json(selector), "fact_snapshot_hash": digest("different-facts")}
-
-    with TestClient(app) as client:
-        response = client.post(
-            f"/v1/projects/{PROJECT_ID}/analysis/semantic-metrics/compute",
-            json=forged,
-        )
-
-    assert response.status_code == 404
 
 
 def _semantic_fixture(
@@ -334,19 +407,6 @@ def _semantic_fixture(
     return selector, input_set, metric_suite
 
 
-def _stratum(model: str) -> StatisticalStratum:
-    return StatisticalStratum(
-        provider="openai",
-        reported_model=model,
-        capture_method="provider_api",
-        locale="en-AU",
-        region="AU",
-        source_composition_hash=digest("source-composition"),
-        sampling_source_stratum_hash=digest("sampling-source-stratum"),
-        question_cluster="purchase",
-    )
-
-
 def _comparison_selector() -> AnalyzeComparisonFamilyRequest:
     return AnalyzeComparisonFamilyRequest(
         comparison_plan_id=COMPARISON_PLAN_ID,
@@ -356,41 +416,19 @@ def _comparison_selector() -> AnalyzeComparisonFamilyRequest:
     )
 
 
-def _comparison_input(stratum: StatisticalStratum) -> ComparisonInput:
-    protocol = FrozenComparisonProtocol(
-        protocol_hash=digest("comparison-protocol"),
-        question_set_hash=digest("comparison-question-set"),
-        baseline_version="baseline-v1",
-        candidate_version="candidate-v2",
-        metric_key="recommendation",
-        metric_method_version="semantic-metrics-v1",
-        comparison_id="recommendation-primary",
+def _comparison_plan_definition() -> ComparisonPlanDefinition:
+    return ComparisonPlanDefinition(
         family="primary-metrics",
-        stratum=stratum,
+        question_clusters=("purchase",),
         alpha=Decimal("0.05"),
         delta=Decimal("0.10"),
         target_power=Decimal("0.80"),
-        precision=Decimal("1.00"),
+        precision=Decimal("0.20"),
         min_pairs=3,
         power_plan_hash=digest("a-priori-power-plan"),
-        a_priori_design_power=Decimal("0.80"),
-        minimum_completion_ratio=Decimal("0.80"),
+        a_priori_design_power=Decimal("0.85"),
         bootstrap_iterations=100,
     )
-    pairs = tuple(
-        PairedObservation(
-            pair_id=f"pair-{index}",
-            question_id=f"q-{index}",
-            question_cluster="purchase",
-            stratum_hash=stratum.stratum_hash,
-            sampling_source_stratum_hash=stratum.sampling_source_stratum_hash,
-            capture_method="provider_api",
-            baseline=Decimal("0.10") * index,
-            candidate=Decimal("0.10") * index + Decimal("1.00"),
-        )
-        for index in range(1, 5)
-    )
-    return ComparisonInput(protocol, stratum.sampling_source_stratum_hash, 4, pairs)
 
 
 def _drift_selector() -> ComputeDriftRequest:

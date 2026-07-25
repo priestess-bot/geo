@@ -18,6 +18,7 @@ from geo_api.workflow_c_sampling_contracts import (
     SubmitManualEvidenceRequest,
 )
 from geo_api.workflow_c_sampling_ids import sampling_command_id
+from geo_api.workflow_c_surface_parsing import parse_manual_surface_summary
 from geo_core.sampling import (
     CaptureMethod,
     InMemorySamplingStore,
@@ -81,37 +82,56 @@ class WorkflowCManualEvidenceControl:
             raise SamplingConflict("manual evidence requires a manual_ui Task")
         if task.version != payload.expected_task_version:
             raise SamplingConflict("Sampling Task optimistic version check failed")
+        run = self._store.run(project_id=project_id, run_id=run_id)
+        suite = (
+            self._store.suite(project_id=project_id, suite_id=run.suite_id)
+            if run is not None
+            else None
+        )
+        if run is None or suite is None:
+            raise SamplingNotFound("Sampling Run or Suite does not exist")
         content = decode_manual_artifact(payload.content_base64.get_secret_value())
-        content_hash = hashlib.sha256(content).hexdigest()
-        signature = (
-            run_id,
-            task_id,
-            actor_id,
-            payload.expected_task_version,
-            content_hash,
-            payload.content_type,
-            payload.governance_policy_option_key,
-            payload.evidence_kind,
-            payload.pre_redacted_attestation,
-            payload.device,
-            payload.locale,
-            payload.captured_at,
-        )
-        import_id = sampling_command_id(project_id, "manual-evidence", idempotency_key)
-        with self._lock:
-            prior = self._submissions.get((project_id, import_id))
-            if prior is not None:
-                if prior[0] != signature:
-                    raise SamplingConflict(
-                        "manual evidence Idempotency-Key was reused with different input"
-                    )
-                return prior[1]
-        attempt_id = sampling_command_id(project_id, "manual-attempt", idempotency_key)
-        manifest_id = sampling_command_id(project_id, "manual-manifest", idempotency_key)
-        capture_session_id = sampling_command_id(
-            project_id, "manual-capture-session", idempotency_key
-        )
         try:
+            content_hash = hashlib.sha256(content).hexdigest()
+            signature = (
+                run_id,
+                task_id,
+                actor_id,
+                payload.expected_task_version,
+                content_hash,
+                payload.content_type,
+                payload.governance_policy_option_key,
+                payload.evidence_kind,
+                payload.pre_redacted_attestation,
+                payload.device,
+                payload.locale,
+                payload.captured_at,
+                payload.surface_parser_release_id,
+            )
+            import_id = sampling_command_id(project_id, "manual-evidence", idempotency_key)
+            with self._lock:
+                prior = self._submissions.get((project_id, import_id))
+                if prior is not None:
+                    if prior[0] != signature:
+                        raise SamplingConflict(
+                            "manual evidence Idempotency-Key was reused with different input"
+                        )
+                    return prior[1]
+            surface_parse = parse_manual_surface_summary(
+                release_id=payload.surface_parser_release_id,
+                source_platform=suite.source_stratum.platform,
+                source_surface=suite.source_stratum.surface,
+                evidence_kind=payload.evidence_kind,
+                content_type=payload.content_type,
+                content=content,
+                governance_policy_key=payload.governance_policy_option_key,
+                pre_redacted_attestation=payload.pre_redacted_attestation,
+            )
+            attempt_id = sampling_command_id(project_id, "manual-attempt", idempotency_key)
+            manifest_id = sampling_command_id(project_id, "manual-manifest", idempotency_key)
+            capture_session_id = sampling_command_id(
+                project_id, "manual-capture-session", idempotency_key
+            )
             receipt = self._artifact_writer.write(
                 project_id=project_id,
                 run_id=run_id,
@@ -146,6 +166,7 @@ class WorkflowCManualEvidenceControl:
             captured_at=payload.captured_at,
             submitted_by=actor_id,
             submitted_at=now,
+            surface_parse=surface_parse,
         )
         key = (project_id, import_id)
         with self._lock:

@@ -226,6 +226,42 @@ class SyntheticLabApi(Protocol):
         idempotency_key: str,
     ) -> object: ...
 
+    def enqueue_profile_build(
+        self,
+        principal: AccessPrincipal,
+        *,
+        project_id: UUID,
+        payload: object,
+        idempotency_key: str,
+    ) -> object: ...
+
+    def enqueue_review_case(
+        self,
+        principal: AccessPrincipal,
+        *,
+        project_id: UUID,
+        payload: object,
+        idempotency_key: str,
+    ) -> object: ...
+
+    def enqueue_corpus_finalize(
+        self,
+        principal: AccessPrincipal,
+        *,
+        project_id: UUID,
+        payload: object,
+        idempotency_key: str,
+    ) -> object: ...
+
+    def enqueue_offline_experiment(
+        self,
+        principal: AccessPrincipal,
+        *,
+        project_id: UUID,
+        payload: object,
+        idempotency_key: str,
+    ) -> object: ...
+
     def admit_style_collection(
         self,
         principal: AccessPrincipal,

@@ -29,6 +29,9 @@ from geo_core.semantic_metrics.program_output import (
     ParsedMetricJudgeProgramOutput,
 )
 from geo_core.semantic_metrics.judges import validate_judgement
+from geo_core.semantic_metrics.prompt_injection import (
+    has_high_confidence_prompt_injection,
+)
 
 
 METRIC_JUDGE_MAX_RESULTS: Final[int] = 50
@@ -152,7 +155,9 @@ class MetricJudgePlanBatch:
             "evidence": evidence,
             "output_locale": output_locale,
             "untrusted_text": self.observation.answer_text[:10_000],
-            "prompt_injection_present": False,
+            "prompt_injection_present": has_high_confidence_prompt_injection(
+                self.observation.answer_text
+            ),
             "answer_text": self.observation.answer_text,
             "locator_sources": locator_sources,
             "metrics": [
@@ -334,6 +339,10 @@ def apply_metric_judge_output(
 ) -> MetricObservation:
     """Attach one accepted batch while rejecting duplicated metric identities."""
 
+    if has_high_confidence_prompt_injection(observation.answer_text):
+        raise SemanticMetricRuleViolation(
+            "metric judge output cannot aggregate a prompt-injection observation"
+        )
     existing = tuple(observation.judge_outputs)
     incoming = tuple(selected.output.results)
     existing_ids = {

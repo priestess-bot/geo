@@ -214,6 +214,19 @@ def test_memory_api_profile_suite_case_and_all_job_routes() -> None:
         )
         assert profile.status_code == 201, profile.text
         profile_id = profile.json()["id"]
+        runtime_selection_id = str(uuid4())
+        profile_build = client.post(
+            f"{prefix}/jobs/profile-build",
+            headers={"Idempotency-Key": "synthetic:profile:build"},
+            json={
+                "profile_version_id": profile_id,
+                "fact_snapshot_id": str(uuid4()),
+                "approved_sample_ids": sample_ids,
+                "runtime_selection_id": runtime_selection_id,
+            },
+        )
+        assert profile_build.status_code == 202, profile_build.text
+        assert profile_build.json()["kind"] == "style_profile_build"
         submitted = client.post(
             f"{prefix}/style-profiles/{profile_id}/submit",
             headers={"Idempotency-Key": "synthetic:profile:submit"},
@@ -223,13 +236,13 @@ def test_memory_api_profile_suite_case_and_all_job_routes() -> None:
         decided = client.post(
             f"{prefix}/style-profiles/{profile_id}/decision",
             headers={"Idempotency-Key": "synthetic:profile:approve"},
-            json={"expected_version": 1, "decision": "approve"},
+            json={"expected_version": submitted.json()["state_version"], "decision": "approve"},
         )
         assert decided.json()["status"] == "approved"
         frozen_profile = client.post(
             f"{prefix}/style-profiles/{profile_id}/freeze",
             headers=headers,
-            json={"expected_version": 1, "approved_sample_ids": sample_ids},
+            json={"expected_version": decided.json()["state_version"]},
         )
         assert frozen_profile.json()["status"] == "frozen"
 
@@ -253,17 +266,54 @@ def test_memory_api_profile_suite_case_and_all_job_routes() -> None:
         frozen_suite = client.post(
             f"{prefix}/review-suites/{suite_id}/freeze",
             headers=headers,
-            json={"expected_version": 1},
+            json={"expected_version": suite.json()["state_version"]},
         )
         assert frozen_suite.json()["status"] == "frozen"
 
-        job_ids = []
-        for path in ("generation", "revision", "corpus", "offline-experiment"):
-            payload = _job_payload()
-            job = client.post(f"{prefix}/jobs/{path}", headers=headers, json=payload)
-            assert job.status_code == 202, job.text
-            _boundary(job.json())
-            job_ids.append(job.json()["id"])
+        generation = client.post(
+            f"{prefix}/jobs/generation",
+            headers={"Idempotency-Key": "synthetic:review:run"},
+            json={
+                "suite_version_id": suite_id,
+                "case_id": case.json()["id"],
+                "runtime_selection_id": runtime_selection_id,
+                "style_pass_threshold": 4.2,
+            },
+        )
+        assert generation.status_code == 202, generation.text
+        assert generation.json()["kind"] == "candidate_generation"
+        job_ids = [generation.json()["id"]]
+        revision = client.post(
+            f"{prefix}/jobs/revision", headers=headers, json=_job_payload()
+        )
+        assert revision.status_code == 202, revision.text
+        job_ids.append(revision.json()["id"])
+        corpus = client.post(
+            f"{prefix}/jobs/corpus",
+            headers={"Idempotency-Key": "synthetic:corpus:candidate"},
+            json={
+                "role": "new_candidate_corpus",
+                "review_job_ids": [generation.json()["id"]],
+                "source_corpus_job_id": None,
+            },
+        )
+        assert corpus.status_code == 202, corpus.text
+        _boundary(corpus.json())
+        job_ids.append(corpus.json()["id"])
+        experiment = client.post(
+            f"{prefix}/jobs/offline-experiment",
+            headers={"Idempotency-Key": "synthetic:offline:experiment"},
+            json={
+                "question_set_id": str(uuid4()),
+                "current_corpus_job_id": str(uuid4()),
+                "candidate_corpus_job_id": corpus.json()["id"],
+                "runtime_selection_id": runtime_selection_id,
+                "minimum_valid_pair_ratio": 0.8,
+            },
+        )
+        assert experiment.status_code == 202, experiment.text
+        _boundary(experiment.json())
+        job_ids.append(experiment.json()["id"])
         fetched = client.get(f"{prefix}/jobs/{job_ids[0]}")
         assert fetched.status_code == 200
         cancelled = client.post(

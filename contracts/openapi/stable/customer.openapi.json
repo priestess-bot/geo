@@ -1423,6 +1423,7 @@
               "google",
               "perplexity",
               "microsoft",
+              "kimi",
               "anthropic",
               "other"
             ],
@@ -1488,6 +1489,7 @@
               "openai_api",
               "google_gemini_api",
               "perplexity_api",
+              "kimi_api",
               "anthropic_api",
               "microsoft_foundry_bing_grounding",
               "google_vertex_grounding",
@@ -1639,9 +1641,7 @@
             "type": "string"
           },
           "approved_safe_payload": {
-            "additionalProperties": true,
-            "title": "Approved Safe Payload",
-            "type": "object"
+            "$ref": "#/components/schemas/WorkflowCCustomerSafePayload"
           },
           "campaign_id": {
             "format": "uuid",
@@ -1687,6 +1687,126 @@
           "approved_at"
         ],
         "title": "WorkflowCCustomerReportResponse",
+        "type": "object"
+      },
+      "WorkflowCCustomerSafePayload": {
+        "$ref": "#/components/schemas/WorkflowCCustomerSafePayloadSerialized"
+      },
+      "WorkflowCCustomerSafePayloadSerialized": {
+        "additionalProperties": false,
+        "properties": {
+          "headline": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Headline",
+            "type": "string"
+          },
+          "mention_rate": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              }
+            ],
+            "title": "Mention Rate"
+          },
+          "methodology": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Methodology",
+            "type": "string"
+          },
+          "metrics": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "maxLength": 64,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              ]
+            },
+            "maxProperties": 32,
+            "minProperties": 1,
+            "propertyNames": {
+              "enum": [
+                "mention",
+                "mention_rate",
+                "recommendation_rate",
+                "brand_mention",
+                "product_mention",
+                "recommendation",
+                "recommendation_strength",
+                "competitor_mention",
+                "competitor_relative_position",
+                "sentiment",
+                "fact_accuracy",
+                "explicit_conflict",
+                "subject_mixup",
+                "key_fact_omission",
+                "citation_entailment",
+                "citation_position",
+                "citation_order",
+                "verified_url_hit",
+                "source_domain_diversity",
+                "source_type_diversity",
+                "approved_corpus_absorption"
+              ]
+            },
+            "title": "Metrics",
+            "type": "object"
+          },
+          "recommendation_rate": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              }
+            ],
+            "title": "Recommendation Rate"
+          },
+          "summary": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Summary",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "headline"
+        ],
+        "title": "WorkflowCCustomerSafePayloadSerialized",
         "type": "object"
       }
     }

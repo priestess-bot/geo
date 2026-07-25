@@ -85,14 +85,20 @@ class DriftReport:
     unmatched_current_strata: tuple[str, ...]
     baseline_input_hash: str
     current_input_hash: str
+    protocol_hash: str | None = None
     method_version: str = "strict-stratum-drift-v1"
     report_hash: str = field(init=False)
 
     def __post_init__(self) -> None:
+        if self.protocol_hash is not None and (
+            len(self.protocol_hash) != 64
+            or any(character not in "0123456789abcdef" for character in self.protocol_hash)
+        ):
+            raise StatisticalRuleViolation("drift protocol hash must be SHA-256")
         object.__setattr__(self, "report_hash", canonical_hash(self.canonical_value()))
 
     def canonical_value(self) -> dict[str, object]:
-        return {
+        value = {
             "model_drift": [
                 {
                     "cohort": _cohort_value(item.cohort),
@@ -126,12 +132,16 @@ class DriftReport:
             "current_input_hash": self.current_input_hash,
             "method_version": self.method_version,
         }
+        if self.protocol_hash is not None:
+            value["protocol_hash"] = self.protocol_hash
+        return value
 
 
 def compute_drift_report(
     *,
     baseline: Sequence[DriftObservation],
     current: Sequence[DriftObservation],
+    protocol_hash: str | None = None,
 ) -> DriftReport:
     baseline_values = _freeze_observations(baseline, "baseline")
     current_values = _freeze_observations(current, "current")
@@ -183,6 +193,7 @@ def compute_drift_report(
         unmatched_current_strata=tuple(sorted(set(current_strata) - set(baseline_strata))),
         baseline_input_hash=_observations_hash(baseline_values),
         current_input_hash=_observations_hash(current_values),
+        protocol_hash=protocol_hash,
     )
 
 

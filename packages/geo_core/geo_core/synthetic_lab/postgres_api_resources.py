@@ -194,14 +194,25 @@ class PostgresSyntheticResourceApiMixin:
             profile=profile,
             expected_version=int(request["expected_version"]),
             idempotency_key=str(values["idempotency_key"]),
+            sample_ids=sample_ids,
         )
 
     def submit_profile(self, principal: AccessPrincipal, **values: object):
         project_id = project(values)
         request = payload(values)
+        profile = self._profile(project_id, uuid_value(values["profile_version_id"]))
+        build = self._reads.profile_build_output(
+            project_id,
+            profile_version_id=profile.id,
+            profile_hash=profile.profile_hash,
+        )
+        if build is None or not build.profile_summary:
+            raise SyntheticLabPersistenceError(
+                "Style Profile requires a completed governed build before review"
+            )
         return self._review.submit_profile(
             principal=domain_principal(principal, project_id),
-            profile=self._profile(project_id, uuid_value(values["profile_version_id"])),
+            profile=profile,
             expected_version=int(request["expected_version"]),
             idempotency_key=str(values["idempotency_key"]),
         )
@@ -222,10 +233,16 @@ class PostgresSyntheticResourceApiMixin:
         project_id = project(values)
         request = payload(values)
         profile = self._profile(project_id, uuid_value(values["profile_version_id"]))
+        sample_ids = self._reads.profile_sample_ids(
+            project_id,
+            profile_version_id=profile.id,
+            corpus_hash=profile.corpus_hash,
+            legacy_sample_ids=tuple(request["approved_sample_ids"]),
+        )
         samples = self._reads.approved_style_samples(
             project_id,
             channel=profile.channel,
-            sample_ids=tuple(request["approved_sample_ids"]),
+            sample_ids=sample_ids,
         )
         return self._review.freeze_profile(
             principal=domain_principal(principal, project_id),
@@ -353,6 +370,7 @@ class PostgresSyntheticResourceApiMixin:
             kind=kind,
             limit=int_value(values["limit"]),
             offset=int_value(values["offset"]),
+            include_state=True,
         )
 
     def _profile(self, project_id: UUID, profile_id: UUID) -> StyleProfileVersion:

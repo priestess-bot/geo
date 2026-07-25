@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 import hashlib
+import json
 import os
 from pathlib import Path
 from typing import Any, Literal
@@ -22,6 +24,7 @@ from geo_core.workflow_c_reports import (
     CreateWorkflowCReportSnapshot,
     PostgresWorkflowCApprovedReportSnapshots,
     WorkflowCReportApprovalError,
+    WorkflowCReportConflict,
 )
 from tests.integration.placement_worker_support import login_url, seed_project
 
@@ -70,10 +73,88 @@ def test_workflow_c_customer_projection_is_approved_only_and_source_rechecked() 
         repository = PostgresWorkflowCApprovedReportSnapshots(
             lambda: psycopg.connect(app_url, row_factory=dict_row)
         )
-        draft = repository.create_draft(_draft(first, source, now=now))
-        review = repository.advance(_advance(draft, status="in_review", now=now))
-        approved = repository.advance(_advance(review, status="approved", now=now))
+        draft_command = replace(
+            _draft(first, source, now=now),
+            idempotency_key="report:integration:create",
+        )
+        draft = repository.create_draft(draft_command)
+        review_command = _advance(
+            draft,
+            status="in_review",
+            now=now,
+            idempotency_key="report:integration:submit",
+        )
+        review = repository.advance(review_command)
+        approval_command = _advance(
+                review,
+                status="approved",
+                now=now,
+                actor_id=first["reviewer"],
+                idempotency_key="report:integration:approve",
+        )
+        approved = repository.advance(approval_command)
         assert approved.status == "approved"
+        assert _approved(repository, first, source) == (draft.report_id,)
+
+        assert repository.create_draft(
+            replace(draft_command, occurred_at=now + timedelta(minutes=1))
+        ) == draft
+        assert repository.advance(
+            replace(review_command, occurred_at=now + timedelta(minutes=1))
+        ) == review
+        with pytest.raises(WorkflowCReportConflict, match="different input or resource"):
+            repository.advance(replace(review_command, expected_version=2))
+        with psycopg.connect(target_url, row_factory=dict_row) as admin:
+            receipts = admin.execute(
+                """SELECT command_scope, idempotency_key_hash, input_hash,
+                          result_version, result_version_hash
+                     FROM workflow_c_report_command_receipts
+                    WHERE project_id = %s AND report_id = %s
+                    ORDER BY result_version""",
+                (first["project"], draft.report_id),
+            ).fetchall()
+        assert [row["command_scope"] for row in receipts] == ["create", "submit", "approve"]
+        assert [row["result_version"] for row in receipts] == [1, 2, 3]
+        assert all(len(str(row["idempotency_key_hash"])) == 64 for row in receipts)
+        assert "report:integration" not in json.dumps(receipts, default=str)
+
+        safe_payload = draft_command.approved_safe_payload.to_dict()
+        unsafe_payload = {
+            "headline": "Approved Australian evidence",
+            "access_token": "must-not-cross",
+        }
+        with psycopg.connect(target_url) as admin:
+            admin.execute("SET LOCAL session_replication_role = replica")
+            admin.execute(
+                """UPDATE workflow_c_report_snapshot_versions
+                      SET approved_safe_payload = %s,
+                          approved_safe_payload_hash = %s
+                    WHERE project_id = %s AND report_id = %s AND version = %s""",
+                (
+                    Jsonb(unsafe_payload),
+                    _canonical_hash(unsafe_payload),
+                    first["project"],
+                    draft.report_id,
+                    approved.version,
+                ),
+            )
+        with pytest.raises(WorkflowCReportApprovalError, match="Customer report row is invalid"):
+            _approved(repository, first, source)
+        with psycopg.connect(target_url) as admin:
+            admin.execute("SET LOCAL session_replication_role = replica")
+            admin.execute(
+                """UPDATE workflow_c_report_snapshot_versions
+                      SET approved_safe_payload = %s,
+                          approved_safe_payload_hash = %s
+                    WHERE project_id = %s AND report_id = %s AND version = %s""",
+                (
+                    Jsonb(safe_payload),
+                    _canonical_hash(safe_payload),
+                    first["project"],
+                    draft.report_id,
+                    approved.version,
+                ),
+            )
         assert _approved(repository, first, source) == (draft.report_id,)
 
         with psycopg.connect(target_url) as admin:
@@ -110,7 +191,14 @@ def test_workflow_c_customer_projection_is_approved_only_and_source_rechecked() 
                 (first["project"], source["semantic_snapshot_hash"]),
             )
         with pytest.raises(WorkflowCReportApprovalError, match="insufficient-evidence"):
-            repository.advance(_advance(in_review, status="approved", now=now))
+            repository.advance(
+                _advance(
+                    in_review,
+                    status="approved",
+                    now=now,
+                    actor_id=first["reviewer"],
+                )
+            )
         with psycopg.connect(app_url) as app:
             set_project_scope(app, first["project"])
             with pytest.raises(psycopg.errors.CheckViolation, match="Customer eligible"):
@@ -124,11 +212,12 @@ def test_workflow_c_customer_projection_is_approved_only_and_source_rechecked() 
                        SELECT project_id, report_id, 3, 'approved', campaign_id,
                               monitoring_report_id, monitoring_report_hash, semantic_snapshot_hash,
                               source_kind, approved_safe_payload, approved_safe_payload_hash,
-                              %s, actor_id, NULL, %s
+                              %s, %s, NULL, %s
                          FROM workflow_c_report_snapshot_versions
                         WHERE project_id = %s AND report_id = %s AND version = 2""",
                     (
                         _hash("attempted-direct-approved-version"),
+                        first["reviewer"],
                         now,
                         first["project"],
                         pending.report_id,
@@ -196,6 +285,7 @@ def _draft(
         },
         actor_id=seeded["owner"],
         occurred_at=now,
+        idempotency_key=f"report:create:{uuid4()}",
     )
 
 
@@ -205,14 +295,17 @@ def _advance(
     status: Literal["in_review", "approved", "stale", "superseded", "revoked"],
     now: datetime,
     reason: str | None = None,
+    actor_id: UUID | None = None,
+    idempotency_key: str | None = None,
 ) -> AdvanceWorkflowCReportSnapshot:
     return AdvanceWorkflowCReportSnapshot(
         report_id=version.report_id,
         project_id=version.project_id,
         expected_version=version.version,
         status=status,
-        actor_id=version.actor_id,
+        actor_id=actor_id or version.actor_id,
         occurred_at=now,
+        idempotency_key=idempotency_key or f"report:{status}:{uuid4()}",
         reason=reason,
     )
 
@@ -429,6 +522,11 @@ def _text(values: dict[str, UUID | str], key: str) -> str:
 
 def _hash(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _canonical_hash(value: object) -> str:
+    payload = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def _database_url(base: str, database_name: str) -> str:

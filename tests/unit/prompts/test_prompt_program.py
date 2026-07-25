@@ -179,20 +179,27 @@ def test_release_lifecycle_is_linear_and_requires_transition_evidence() -> None:
         ProgramReleaseCommand.FREEZE,
         "freeze:change-42",
     )
+    retired = _transition(
+        release,
+        frozen,
+        ProgramReleaseCommand.RETIRE,
+        "retire:operator-23",
+    )
 
-    assert [draft.status, tested.status, approved.status, frozen.status] == [
+    assert [draft.status, tested.status, approved.status, frozen.status, retired.status] == [
         ProgramReleaseStatus.DRAFT,
         ProgramReleaseStatus.TESTED,
         ProgramReleaseStatus.APPROVED,
         ProgramReleaseStatus.FROZEN,
+        ProgramReleaseStatus.RETIRED,
     ]
-    assert frozen.version == 4
-    assert frozen.previous_state_id == approved.id
-    assert frozen.release_hash == release.release_hash
+    assert retired.version == 5
+    assert retired.previous_state_id == frozen.id
+    assert retired.release_hash == release.release_hash
     with pytest.raises(PromptProgramRuleViolation, match="not allowed"):
         _transition(
             release,
-            frozen,
+            retired,
             ProgramReleaseCommand.RECORD_TEST,
             "test-run:late",
         )

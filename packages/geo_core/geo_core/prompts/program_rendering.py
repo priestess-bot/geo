@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from decimal import Decimal
 import json
 
 from geo_core.prompts.program_contracts import (
+    BOOTSTRAP_COMPILER_VERSION,
+    LEGACY_BOOTSTRAP_COMPILER_VERSION,
     ProgramReleaseStatus,
     PromptProgramRuleViolation,
     _VARIABLE,
@@ -22,6 +25,13 @@ from geo_core.prompts.program_models import (
     PromptProgramRelease,
     _assert_state_matches_release,
 )
+
+
+_MAX_REQUEST_JSON_BYTES = 100_000
+_MAX_REQUEST_JSON_DEPTH = 64
+_MAX_REQUEST_JSON_NODES = 20_000
+_MAX_JSON_NUMBER_DIGITS = 256
+_MAX_JSON_NUMBER_EXPONENT = 308
 
 
 def render_program_release(
@@ -42,12 +52,13 @@ def render_program_release(
                 f"unknown Prompt Program variables: {', '.join(unknown)}"
             )
 
-    compiled_system = _render_template(release.system_template, frozen_variables)
-    compiled_user = _render_template(release.user_template, frozen_variables)
+    render_variables = _variables_for_compiler(release, frozen_variables)
+    compiled_system = _render_template(release.system_template, render_variables)
+    compiled_user = _render_template(release.user_template, render_variables)
     return CompiledProgramPrompt(
         release_id=release.id,
         release_hash=release.release_hash,
-        variable_input_hash=_canonical_hash(_canonical_value(frozen_variables)),
+        variable_input_hash=_canonical_hash(_canonical_value(render_variables)),
         compiled_system=compiled_system,
         compiled_system_hash=_text_hash(compiled_system),
         compiled_user=compiled_user,
@@ -144,3 +155,134 @@ def _render_value(value: object) -> str:
         separators=(",", ":"),
         allow_nan=False,
     )
+
+
+def _variables_for_compiler(
+    release: PromptProgramRelease, variables: Mapping[str, object]
+) -> Mapping[str, object]:
+    if "request_json" not in variables:
+        return variables
+    if release.compiler_version == LEGACY_BOOTSTRAP_COMPILER_VERSION:
+        return variables
+    if release.compiler_version == BOOTSTRAP_COMPILER_VERSION:
+        return _normalize_render_variables(variables)
+    raise PromptProgramRuleViolation(
+        "request_json requires a supported versioned Prompt compiler"
+    )
+
+
+def _normalize_render_variables(variables: Mapping[str, object]) -> Mapping[str, object]:
+    """Normalize the v2 bootstrap JSON envelope under deterministic budgets."""
+
+    request_json = variables["request_json"]
+    if not isinstance(request_json, str):
+        raise PromptProgramRuleViolation("request_json must be a pre-serialized JSON string")
+    try:
+        encoded_size = len(request_json.encode("utf-8"))
+    except UnicodeEncodeError as exc:
+        raise PromptProgramRuleViolation("request_json must contain valid Unicode") from exc
+    if encoded_size > _MAX_REQUEST_JSON_BYTES:
+        raise PromptProgramRuleViolation("request_json exceeds the UTF-8 byte budget")
+    try:
+        parsed = json.loads(
+            request_json,
+            parse_constant=_reject_json_constant,
+            parse_float=_parse_exact_decimal,
+            object_pairs_hook=_unique_json_object,
+        )
+    except RecursionError as exc:
+        raise PromptProgramRuleViolation(
+            "request_json exceeds the strict JSON nesting budget"
+        ) from exc
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise PromptProgramRuleViolation("request_json must contain valid strict JSON") from exc
+
+    _assert_request_json_budget(parsed)
+    canonical = _canonical_json(parsed)
+    safe = (
+        canonical.replace("&", "\\u0026")
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+    )
+    normalized = dict(variables)
+    normalized["request_json"] = safe
+    return _freeze_json_object(normalized, field_name="Prompt Program render variables")
+
+
+def _reject_json_constant(token: str) -> object:
+    raise ValueError(f"non-JSON numeric constant: {token}")
+
+
+def _parse_exact_decimal(token: str) -> Decimal:
+    value = Decimal(token)
+    _assert_decimal_budget(value)
+    return value
+
+
+def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("request_json contains duplicate object keys")
+        result[key] = value
+    return result
+
+
+def _assert_request_json_budget(value: object) -> None:
+    nodes = 0
+    pending: list[tuple[object, int]] = [(value, 0)]
+    while pending:
+        current, depth = pending.pop()
+        nodes += 1
+        if nodes > _MAX_REQUEST_JSON_NODES:
+            raise PromptProgramRuleViolation("request_json exceeds the JSON node budget")
+        if depth > _MAX_REQUEST_JSON_DEPTH:
+            raise PromptProgramRuleViolation("request_json exceeds the JSON depth budget")
+        if isinstance(current, Mapping):
+            pending.extend((item, depth + 1) for item in current.values())
+        elif isinstance(current, list):
+            pending.extend((item, depth + 1) for item in current)
+        elif isinstance(current, Decimal):
+            _assert_decimal_budget(current)
+        elif isinstance(current, int) and not isinstance(current, bool):
+            if len(str(abs(current))) > _MAX_JSON_NUMBER_DIGITS:
+                raise PromptProgramRuleViolation(
+                    "request_json integer exceeds the numeric digit budget"
+                )
+
+
+def _assert_decimal_budget(value: Decimal) -> None:
+    if not value.is_finite():
+        raise ValueError("request_json contains a non-finite number")
+    if len(value.as_tuple().digits) > _MAX_JSON_NUMBER_DIGITS:
+        raise ValueError("request_json number exceeds the numeric digit budget")
+    if not value.is_zero() and abs(value.adjusted()) > _MAX_JSON_NUMBER_EXPONENT:
+        raise ValueError("request_json number exceeds the numeric exponent budget")
+
+
+def _canonical_json(value: object) -> str:
+    if value is None:
+        return "null"
+    if value is True:
+        return "true"
+    if value is False:
+        return "false"
+    if isinstance(value, str):
+        return json.dumps(value, ensure_ascii=True, allow_nan=False)
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, Decimal):
+        if value.is_zero():
+            return "0"
+        rendered = format(value, "f")
+        if "." in rendered:
+            rendered = rendered.rstrip("0").rstrip(".")
+        return rendered
+    if isinstance(value, list):
+        return "[" + ",".join(_canonical_json(item) for item in value) + "]"
+    if isinstance(value, Mapping):
+        return "{" + ",".join(
+            f"{json.dumps(key, ensure_ascii=True)}:{_canonical_json(value[key])}"
+            for key in sorted(value)
+        ) + "}"
+    raise PromptProgramRuleViolation("request_json contains an unsupported JSON value")

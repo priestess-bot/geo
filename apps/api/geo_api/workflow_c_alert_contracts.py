@@ -117,3 +117,76 @@ class AlertCommandResponse(StrictModel):
     alert: AlertResponse
     notifications: list[NotificationProjectionResponse]
     replayed: bool
+
+
+class CreateAlertRuleRequest(StrictModel):
+    rule_key: str = Field(pattern=r"^[a-z][a-z0-9_.:-]{0,199}$")
+    version: int = Field(ge=1)
+    kind: Literal[
+        "threshold",
+        "baseline_delta",
+        "negative_question",
+        "completion_freshness",
+        "model_drift",
+        "source_drift",
+    ]
+    severity: Literal["info", "warning", "critical"]
+    parameters: dict[str, object] = Field(min_length=1, max_length=100)
+
+
+class AlertRuleTransitionRequest(StrictModel):
+    expected_aggregate_version: int = Field(ge=1)
+    reason: str = Field(min_length=1, max_length=2_000)
+
+
+class AlertRuleReleaseResponse(StrictModel):
+    id: UUID
+    project_id: UUID
+    rule_key: str
+    version: int
+    kind: Literal[
+        "threshold",
+        "baseline_delta",
+        "negative_question",
+        "completion_freshness",
+        "model_drift",
+        "source_drift",
+    ]
+    severity: Literal["info", "warning", "critical"]
+    parameters: dict[str, object]
+    rule_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    status: Literal["draft", "approved", "retired"]
+    aggregate_version: int
+    created_by: str
+    created_at: datetime
+    approved_by: str | None
+    approved_at: datetime | None
+    retired_by: str | None
+    retired_at: datetime | None
+    decision_reason: str | None
+
+
+class AlertRuleReleasePageResponse(StrictModel):
+    items: list[AlertRuleReleaseResponse]
+    total: int
+
+
+class EnqueueAlertEvaluationRequest(StrictModel):
+    alert_rule_id: UUID
+    source_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    baseline_source_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    source_item_key: str | None = Field(default=None, min_length=1, max_length=500)
+    channels: list[AlertChannelValue] = Field(
+        default_factory=default_alert_channels,
+        min_length=1,
+        max_length=3,
+    )
+    max_attempts: int = Field(default=3, ge=1, le=10)
+
+
+class AlertEvaluationJobAccepted(StrictModel):
+    job_id: UUID
+    status: Literal["queued"] = "queued"
+    status_url: str
+    spec_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    replayed: bool

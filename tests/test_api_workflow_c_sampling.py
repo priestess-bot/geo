@@ -4,12 +4,17 @@ import base64
 from copy import deepcopy
 from datetime import timedelta
 import hashlib
+import json
 from uuid import UUID
 
 from fastapi.testclient import TestClient
 import pytest
 
-from geo_core.sampling import EvidenceStatus, SamplingRuleViolation
+from geo_core.sampling import (
+    EvidenceStatus,
+    SURFACE_PARSER_RELEASES,
+    SamplingRuleViolation,
+)
 
 from tests.unit.sampling.factories import make_evidence
 from tests.workflow_c_api_test_support import (
@@ -487,6 +492,112 @@ def test_manual_evidence_requires_independent_review_before_job_creation() -> No
     assert attempt is not None
     assert attempt.job.spec.kind == "sampling.manual_import"
     assert "answer_text" not in attempt.job.spec.payload
+
+
+def test_manual_consumer_surface_import_exposes_text_free_non_live_parse() -> None:
+    app, api, _, _ = internal_app(role="admin")
+    install_manual_policy(
+        api,
+        source_platform="google",
+        source_surface="ai_overviews",
+        adapter_release="manual-google-aio-v1",
+    )
+    release = SURFACE_PARSER_RELEASES[0]
+    collection = f"/v1/projects/{PROJECT_ID}/sampling"
+
+    with TestClient(app) as client:
+        releases_response = client.get(f"{collection}/surface-parser-releases")
+        assert releases_response.status_code == 200
+        releases = releases_response.json()
+        assert releases["total"] == 3
+        assert {item["surface"] for item in releases["items"]} == {
+            "google_ai_overviews",
+            "google_ai_mode",
+            "bing_copilot",
+        }
+        assert all(
+            item["evidence_scope"] == "fixture_or_manual_non_live"
+            and item["automated_capture_eligible"] is False
+            for item in releases["items"]
+        )
+
+        suite_response = client.post(
+            f"{collection}/suites",
+            headers={"Idempotency-Key": "suite:manual-aio"},
+            json=provider_suite_payload(capture_method="manual_ui"),
+        )
+        assert suite_response.status_code == 201, suite_response.text
+        run_response = client.post(
+            f"{collection}/suites/{suite_response.json()['id']}/runs",
+            headers={"Idempotency-Key": "run:manual-aio"},
+            json={"purpose": "geo_measurement", "requested_not_before": NOW.isoformat()},
+        )
+        detail = run_response.json()
+        task = detail["tasks"][0]
+        artifact = {
+            "schema_version": "consumer-surface-artifact-v1",
+            "platform": "google",
+            "surface": "google_ai_overviews",
+            "final_url": "https://www.google.com/search?q=advinsys",
+            "page_ready": True,
+            "surface_markers": [release.surface_marker],
+            "ordinary_result_markers": ["ordinary_results_ready"],
+            "answer_blocks": [
+                {"text": "Advinsys answer", "locator": "dom://answer/1"}
+            ],
+            "citations": [
+                {
+                    "url": "https://example.com/official",
+                    "title": "Official source",
+                    "position": 1,
+                    "locator": "dom://citation/1",
+                }
+            ],
+            "blocking_state": None,
+            "follow_up_count": 1,
+        }
+        submit_path = (
+            f"{collection}/runs/{detail['run']['id']}/tasks/{task['id']}/manual-evidence"
+        )
+        payload = {
+            "expected_task_version": task["version"],
+            "content_base64": base64.b64encode(json.dumps(artifact).encode()).decode(),
+            "content_type": "application/json",
+            "governance_policy_option_key": "manual-evidence-redaction-v1",
+            "evidence_kind": "transcript_export",
+            "pre_redacted_attestation": False,
+            "device": "desktop",
+            "locale": "en-AU",
+            "captured_at": NOW.isoformat(),
+            "surface_parser_release_id": str(release.id),
+        }
+        submitted_response = client.post(
+            submit_path,
+            headers={"Idempotency-Key": "manual-aio:submit"},
+            json=payload,
+        )
+        assert submitted_response.status_code == 201, submitted_response.text
+        submitted = submitted_response.json()
+        surface_parse = submitted["surface_parse"]
+        assert surface_parse["outcome"] == "captured"
+        assert surface_parse["capture_kind"] == "manual_ui"
+        assert surface_parse["automated_capture"] is False
+        assert surface_parse["live_capture_eligible"] is False
+        assert surface_parse["answer_character_count"] == len("Advinsys answer")
+        assert surface_parse["citation_count"] == 1
+        serialized = json.dumps(surface_parse)
+        assert "Advinsys answer" not in serialized
+        assert "https://example.com" not in serialized
+
+        changed_release = client.post(
+            submit_path,
+            headers={"Idempotency-Key": "manual-aio:submit"},
+            json={
+                **payload,
+                "surface_parser_release_id": str(SURFACE_PARSER_RELEASES[1].id),
+            },
+        )
+        assert changed_release.status_code == 409
 
 
 def test_sampling_contract_rejects_automated_ui_unknown_fields_and_bad_manual_floor() -> None:

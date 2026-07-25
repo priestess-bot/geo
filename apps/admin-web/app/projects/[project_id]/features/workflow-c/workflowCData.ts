@@ -2,6 +2,16 @@ import { isAuthIdentity, type AuthIdentity } from "@geo/types/auth";
 
 import { runtimeRequest, type RuntimeResult } from "../../../../runtime";
 import {
+  isMetricProtocolPage,
+  isStatisticalProtocolPage,
+  isWorkflowCReportPage
+} from "./workflowCControlTypeGuards";
+import type {
+  MetricProtocolPage,
+  StatisticalProtocolPage,
+  WorkflowCReportPage
+} from "./workflowCControlTypes";
+import {
   isProjectMemberListResponse,
   type ProjectMemberListResponse
 } from "../../memberTypes";
@@ -21,7 +31,8 @@ import {
   isSamplingSuiteInputOptionPage,
   isSamplingSuitePage,
   isSemanticMetricSnapshot,
-  isSemanticMetricSnapshotPage
+  isSemanticMetricSnapshotPage,
+  isSurfaceParserReleasePage
 } from "./workflowCTypeGuards";
 import {
   workflowViews,
@@ -43,6 +54,7 @@ import {
   type SamplingSuitePage,
   type SemanticMetricSnapshot,
   type SemanticMetricSnapshotPage,
+  type SurfaceParserReleasePage,
   type WorkflowCWorkspaceData,
   type WorkflowView
 } from "./workflowCTypes";
@@ -81,12 +93,24 @@ export async function loadWorkflowCWorkspace(
   const metricSnapshotsRequest = runtimeRequest<SemanticMetricSnapshotPage>(
     `${base}/analysis/semantic-metrics`
   );
+  const metricProtocolsRequest = runtimeRequest<MetricProtocolPage>(
+    `${base}/analysis/metric-protocols`
+  );
+  const statisticalProtocolsRequest = runtimeRequest<StatisticalProtocolPage>(
+    `${base}/analysis/statistical-protocols`
+  );
   const comparisonFamiliesRequest = runtimeRequest<ComparisonFamilyPage>(
     `${base}/analysis/comparisons`
   );
   const driftReportsRequest = runtimeRequest<DriftReportPage>(`${base}/analysis/drift`);
   const manualEvidenceRequest = runtimeRequest<ManualEvidenceImportPage>(
     `${base}/sampling/manual-evidence-imports`
+  );
+  const surfaceParserReleasesRequest = runtimeRequest<SurfaceParserReleasePage>(
+    `${base}/sampling/surface-parser-releases`
+  );
+  const workflowCReportsRequest = runtimeRequest<WorkflowCReportPage>(
+    `${base}/analysis/reports`
   );
   const suiteRequest = selection.suiteId
     ? runtimeRequest<SamplingSuite>(`${base}/sampling/suites/${encodeURIComponent(selection.suiteId)}`)
@@ -117,9 +141,13 @@ export async function loadWorkflowCWorkspace(
     suites,
     runs,
     metricSnapshots,
+    metricProtocols,
+    statisticalProtocols,
     comparisonFamilies,
     driftReports,
     manualEvidence,
+    surfaceParserReleases,
+    workflowCReports,
     suite,
     run,
     metrics,
@@ -136,9 +164,13 @@ export async function loadWorkflowCWorkspace(
     suitesRequest,
     runsRequest,
     metricSnapshotsRequest,
+    metricProtocolsRequest,
+    statisticalProtocolsRequest,
     comparisonFamiliesRequest,
     driftReportsRequest,
     manualEvidenceRequest,
+    surfaceParserReleasesRequest,
+    workflowCReportsRequest,
     suiteRequest,
     runRequest,
     metricsRequest,
@@ -181,6 +213,7 @@ export async function loadWorkflowCWorkspace(
 
   return {
     actorId,
+    currentIdentityId: membership?.identity_id || null,
     currentRole: membership?.role || null,
     activeView,
     selection: {
@@ -202,6 +235,16 @@ export async function loadWorkflowCWorkspace(
       metricSnapshots,
       isSemanticMetricSnapshotPage,
       "Semantic Metric Snapshot inventory 加载失败。"
+    ),
+    metricProtocols: resource(
+      metricProtocols,
+      isMetricProtocolPage,
+      "Metric Protocol inventory 加载失败。"
+    ),
+    statisticalProtocols: resource(
+      statisticalProtocols,
+      isStatisticalProtocolPage,
+      "Statistical Protocol inventory 加载失败。"
     ),
     comparisons: optionalResource(
       comparisons,
@@ -246,6 +289,16 @@ export async function loadWorkflowCWorkspace(
       isManualEvidenceImportPage,
       "Manual evidence inventory 加载失败。"
     ),
+    surfaceParserReleases: resource(
+      surfaceParserReleases,
+      isSurfaceParserReleasePage,
+      "Consumer surface parser releases 加载失败。"
+    ),
+    workflowCReports: resource(
+      workflowCReports,
+      isWorkflowCReportPage,
+      "Workflow C Report inventory 加载失败。"
+    ),
     notifications: selectedAlertId
       ? resource(notifications, isNotificationPage, "通知投影加载失败。")
       : { data: [] },
@@ -264,9 +317,16 @@ export async function loadWorkflowCWorkspace(
         suites: { data: null, problem: accessProblem(identity, members, membership) },
         runs: { data: null, problem: accessProblem(identity, members, membership) },
         metricSnapshots: { data: null, problem: accessProblem(identity, members, membership) },
+        metricProtocols: { data: null, problem: accessProblem(identity, members, membership) },
+        statisticalProtocols: { data: null, problem: accessProblem(identity, members, membership) },
         comparisonFamilies: { data: null, problem: accessProblem(identity, members, membership) },
         driftReports: { data: null, problem: accessProblem(identity, members, membership) },
-        manualEvidence: { data: null, problem: accessProblem(identity, members, membership) }
+        manualEvidence: { data: null, problem: accessProblem(identity, members, membership) },
+        surfaceParserReleases: {
+          data: null,
+          problem: accessProblem(identity, members, membership)
+        },
+        workflowCReports: { data: null, problem: accessProblem(identity, members, membership) }
       }
       : {})
   };

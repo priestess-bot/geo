@@ -21,11 +21,15 @@ from geo_core.semantic_metrics.contracts import (
     MetricObservation,
     MetricStatus,
     MetricValueKind,
+    SemanticMetricRuleViolation,
     StructuredJudgeOutput,
 )
 from geo_core.semantic_metrics.judges import (
     locator_reference_ids,
     validate_judgement,
+)
+from geo_core.semantic_metrics.prompt_injection import (
+    has_high_confidence_prompt_injection,
 )
 from geo_core.semantic_metrics.results import MetricInterval, SemanticMetricResult
 from geo_core.semantic_metrics.rules import (
@@ -68,6 +72,16 @@ def compute_semantic_metric_snapshot(
     suite: FrozenMetricSuite,
     computed_at: datetime,
 ) -> SemanticMetricSnapshot:
+    injected = tuple(
+        str(observation.id)
+        for observation in input_set.observations
+        if has_high_confidence_prompt_injection(observation.answer_text)
+    )
+    if injected:
+        raise SemanticMetricRuleViolation(
+            "semantic metric snapshot cannot aggregate prompt-injection observations: "
+            + ", ".join(injected)
+        )
     results = tuple(
         _compute_result(definition, input_set=input_set, suite=suite)
         for definition in suite.definitions

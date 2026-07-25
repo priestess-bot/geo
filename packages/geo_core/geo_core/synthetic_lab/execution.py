@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+import json
 from typing import cast
 from uuid import UUID
 
@@ -16,10 +17,13 @@ from geo_core.prompts.bootstrap_validation import (
 from geo_core.prompts.program_contracts import ProgramKind
 from geo_core.synthetic_lab.application_support import canonical_hash
 from geo_core.synthetic_lab.execution_contracts import (
+    CorpusFinalizeOutput,
+    CorpusFinalizeTask,
     ExecutionCheckpoint,
     OfflineExperimentRunOutput,
     OfflineExperimentRunTask,
     ResolvedSyntheticPrompt,
+    ReviewCaseRunTask,
     StyleProfileBuildOutput,
     StyleProfileBuildTask,
     SyntheticExecutionError,
@@ -30,12 +34,14 @@ from geo_core.synthetic_lab.execution_contracts import (
     SyntheticModelResult,
     SyntheticPromptResolverPort,
 )
+from geo_core.synthetic_lab.corpus import FinalizationGuard, freeze_corpus_version
 from geo_core.synthetic_lab.offline_experiment import (
     OfflineSlotResult,
     PlannedExperimentSlot,
     make_slot_result,
     planned_experiment_slots,
 )
+from geo_core.synthetic_lab.offline_results import finalize_offline_experiment
 from geo_core.synthetic_lab.review_executor import ReviewCaseExecutor
 
 
@@ -67,9 +73,54 @@ class SyntheticTaskExecutor:
             raise SyntheticExecutionError("execution task does not match the claimed Job")
         if isinstance(task, StyleProfileBuildTask):
             return self._build_profile(lease=lease, task=task, checkpoint=checkpoint)
+        if isinstance(task, CorpusFinalizeTask):
+            return self._finalize_corpus(lease=lease, task=task, checkpoint=checkpoint)
         if isinstance(task, OfflineExperimentRunTask):
             return self._run_offline(lease=lease, task=task, checkpoint=checkpoint)
-        return self._reviews.run(lease=lease, task=task, checkpoint=checkpoint)
+        if isinstance(task, ReviewCaseRunTask):
+            return self._reviews.run(lease=lease, task=task, checkpoint=checkpoint)
+        raise SyntheticExecutionError("unsupported Synthetic execution task")
+
+    def _finalize_corpus(
+        self,
+        *,
+        lease: WorkerLease,
+        task: CorpusFinalizeTask,
+        checkpoint: ExecutionCheckpoint,
+    ) -> CorpusFinalizeOutput:
+        runtime = checkpoint()
+        corpus = freeze_corpus_version(
+            id=task.corpus_version_id,
+            project_id=task.project_id,
+            corpus_id=task.corpus_id,
+            version_number=task.version_number,
+            role=task.role,
+            approved_fact_snapshot_id=runtime.fact_snapshot_id,
+            approved_fact_snapshot_hash=runtime.fact_snapshot_hash,
+            profile_version_id=runtime.profile_version_id,
+            profile_hash=runtime.profile_hash,
+            prompt_release_id=runtime.prompt_release_id,
+            prompt_release_hash=runtime.prompt_release_hash,
+            candidates=task.candidates,
+            guard=FinalizationGuard(
+                project_id=task.project_id,
+                resource_id=task.corpus_version_id,
+                expected_lease_id=lease.lease_token,
+                held_lease_id=lease.lease_token,
+                expected_fencing_token=lease.fencing_generation,
+                held_fencing_token=lease.fencing_generation,
+                fact_snapshot_id=runtime.fact_snapshot_id,
+                fact_snapshot_hash=runtime.fact_snapshot_hash,
+                facts_current_approved=runtime.facts_current_approved,
+                cancelled=False,
+            ),
+        )
+        checkpoint()
+        return CorpusFinalizeOutput(
+            project_id=task.project_id,
+            corpus=corpus,
+            candidate_text=task.candidate_text,
+        )
 
     def _build_profile(
         self,
@@ -124,22 +175,19 @@ class SyntheticTaskExecutor:
             "avoid_patterns",
         ):
             _string_list(result.output.get(field_name), field_name)
-        profile_hash = canonical_hash(
-            {
-                "profile_version_id": task.profile_version_id,
-                "corpus_hash": task.corpus_hash,
-                "sample_manifest_hash": task.sample_manifest_hash,
-                "prompt_release_hash": task.prompt.release_hash,
-                "model_identity_hash": result.model_identity_hash,
-                "profile": result.output,
-            }
+        profile_summary = json.dumps(
+            dict(result.output),
+            ensure_ascii=True,
+            sort_keys=True,
+            separators=(",", ":"),
         )
         return StyleProfileBuildOutput(
             project_id=task.project_id,
             profile_version_id=task.profile_version_id,
-            profile_hash=profile_hash,
+            profile_hash=task.runtime_inputs.profile_hash,
             artifact_hash=canonical_hash(result.output),
             model_call_ids=(result.model_call_id,),
+            profile_summary=profile_summary,
         )
 
     def _run_offline(
@@ -205,12 +253,32 @@ class SyntheticTaskExecutor:
         ordered = tuple(sorted(slot_results, key=lambda item: item.slot_id))
         if len(ordered) != len(slots):
             raise SyntheticExecutionError("Offline Experiment did not resolve every slot")
+        runtime = checkpoint()
+        summary = finalize_offline_experiment(
+            result_id=task.result_id,
+            plan=task.plan,
+            slot_results=ordered,
+            guard=FinalizationGuard(
+                project_id=task.project_id,
+                resource_id=task.plan.id,
+                expected_lease_id=lease.lease_token,
+                held_lease_id=lease.lease_token,
+                expected_fencing_token=lease.fencing_generation,
+                held_fencing_token=lease.fencing_generation,
+                fact_snapshot_id=runtime.fact_snapshot_id,
+                fact_snapshot_hash=runtime.fact_snapshot_hash,
+                facts_current_approved=runtime.facts_current_approved,
+                cancelled=False,
+            ),
+        )
+        checkpoint()
         return OfflineExperimentRunOutput(
             project_id=task.project_id,
             experiment_id=task.plan.id,
             result_id=task.result_id,
             slot_results=ordered,
             model_call_ids=tuple(model_call_ids),
+            summary=summary,
         )
 
     def _offline_call(
@@ -221,6 +289,10 @@ class SyntheticTaskExecutor:
         slot: PlannedExperimentSlot,
         checkpoint: ExecutionCheckpoint,
     ) -> SyntheticModelResult:
+        context = task.question_corpus_context.get(
+            (slot.corpus_version_id, slot.question_version_id),
+            task.corpus_context[slot.corpus_version_id],
+        )
         structured_input = {
             "subject_id": slot.question_cluster_key,
             "allowed_subject_ids": [slot.question_cluster_key],
@@ -229,7 +301,10 @@ class SyntheticTaskExecutor:
                     "ref": f"corpus:{slot.corpus_version_id}:{slot.corpus_hash}",
                     "subject_id": slot.question_cluster_key,
                     "evidence_scope": "primary_subject",
-                    "summary": task.corpus_context[slot.corpus_version_id],
+                    "summary": (
+                        "Frozen synthetic Corpus context; content hash "
+                        f"{canonical_hash(context)}."
+                    ),
                 }
             ],
             "output_locale": "en-AU",
@@ -246,7 +321,7 @@ class SyntheticTaskExecutor:
             "arm": slot.arm.value,
             "corpus_version_id": str(slot.corpus_version_id),
             "corpus_hash": slot.corpus_hash,
-            "corpus_context": task.corpus_context[slot.corpus_version_id],
+            "corpus_context": context,
         }
         return self._invoke(
             lease=lease,

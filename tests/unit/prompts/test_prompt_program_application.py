@@ -278,6 +278,35 @@ def test_approval_separates_author_and_approver_then_freezes_and_binds() -> None
     assert binding_replay.value is bound.value
     assert runtime.binding == bound.value.binding
     assert runtime.release == release
+    retired = application.retire_release(
+        approver,
+        project_id=project_id,
+        release_id=release.id,
+        expected_version=4,
+        idempotency_key="retire:generation:v1",
+    )
+    retirement_replay = application.retire_release(
+        approver,
+        project_id=project_id,
+        release_id=release.id,
+        expected_version=4,
+        idempotency_key="retire:generation:v1",
+    )
+    assert retired.value.state.status == ProgramReleaseStatus.RETIRED
+    assert retired.value.state.evidence_ref == (
+        f"retire:{frozen.value.state.id}:{release.release_hash}"
+    )
+    assert retirement_replay.replayed is True
+    assert repository.list_current_bindings(
+        project_id=project_id,
+        program_kind=None,
+        limit=10,
+        offset=0,
+    ).items == ()
+    with pytest.raises(PromptProgramRuntimeBlocked, match="exact frozen"):
+        application.resolve_runtime_binding(
+            project_id=project_id, purpose=release.purpose
+        )
     with pytest.raises(PromptProgramVersionConflict, match="changed"):
         application.bind_release(
             approver,

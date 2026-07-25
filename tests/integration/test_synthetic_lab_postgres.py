@@ -20,7 +20,7 @@ from geo_core.model_gateway.contracts import ModelPolicy
 from geo_core.model_gateway.releases import ModelRoute
 from geo_core.project_scope import set_project_scope
 from geo_core.prompts.program_contracts import ProgramKind
-from geo_core.synthetic_lab.application_support import new_synthetic_job
+from geo_core.synthetic_lab.application_support import canonical_hash, new_synthetic_job
 from geo_core.synthetic_lab.authorization import (
     AuthorizationRecord,
     AuthorizationState,
@@ -30,12 +30,15 @@ from geo_core.synthetic_lab.authorization import (
     recheck_before_navigation,
 )
 from geo_core.synthetic_lab.execution_contracts import (
+    CorpusFinalizeTask,
     FrozenEvidence,
     FrozenPromptRef,
     StyleProfileBuildOutput,
     StyleProfileBuildTask,
     SyntheticExecutionError,
 )
+from geo_core.synthetic_lab.execution import SyntheticTaskExecutor
+from geo_core.synthetic_lab.corpus import CorpusCandidateEntry, CorpusRole
 from geo_core.synthetic_lab.ports import (
     LabPrincipal,
     LabRole,
@@ -44,6 +47,8 @@ from geo_core.synthetic_lab.ports import (
 )
 from geo_core.synthetic_lab.postgres import build_synthetic_lab_persistence
 from geo_core.synthetic_lab.postgres_execution import build_synthetic_execution_repository
+from geo_core.synthetic_lab.postgres_api_reads import PostgresSyntheticApiReads
+from geo_core.synthetic_lab.revision import ReviewRunStatus
 from tests.integration.placement_worker_support import login_url, seed_project
 
 
@@ -331,9 +336,120 @@ def test_synthetic_lab_postgres_authorization_execution_and_guards(
         alembic_command.downgrade(migration, "0029_model_gateway")
 
 
+def test_synthetic_corpus_execution_is_fenced_projected_and_downgrade_safe(
+    database: _Database,
+) -> None:
+    persistence = build_synthetic_lab_persistence(database.app_url)
+    assert persistence is not None
+    project_id = database.first["project"]
+    principal = _principal(database.first, "owner", LabRole.OPERATOR)
+    runtime = _task(project_id, requested_by=principal.actor_id).runtime_inputs
+    candidate_id = uuid4()
+    candidate_text = "Plain Australian English candidate grounded in the approved facts."
+    candidate = CorpusCandidateEntry(
+        project_id=project_id,
+        resolution_id=uuid4(),
+        candidate_id=candidate_id,
+        candidate_output_hash=canonical_hash(candidate_text),
+        status=ReviewRunStatus.COMPLETED_WITH_WARNING,
+        warning_codes=("derived_or_unknown",),
+        channel="reddit",
+        scenario_mode="autonomous_scenario",
+        competitor_scenario=False,
+        model_key="openai:judge-v1",
+        model_identity_hash=_hash("corpus-model-identity"),
+        question_cluster_key="pressure-washer-comparison",
+    )
+    task = CorpusFinalizeTask(
+        project_id=project_id,
+        job_id=uuid4(),
+        model_job_version=1,
+        requested_by=principal.actor_id,
+        corpus_version_id=uuid4(),
+        corpus_id=uuid4(),
+        version_number=1,
+        role=CorpusRole.NEW_CANDIDATE,
+        candidates=(candidate,),
+        candidate_text={candidate_id: candidate_text},
+        source_review_job_ids=(uuid4(),),
+        source_corpus_job_id=None,
+        runtime_inputs=runtime,
+    )
+    persistence.execution.enqueue(
+        principal=principal,
+        task=task,
+        outbox_id=uuid4(),
+        runtime_inputs=StaticRuntimeInputPort(runtime),
+        prompts=_CurrentPrompts(),
+        idempotency_key="execution:corpus-finalize:v1",
+    )
+
+    def connect_worker() -> psycopg.Connection[dict_row]:
+        return psycopg.connect(database.worker_url, row_factory=dict_row)
+
+    store = PostgresDurableJobStore(connect_worker)
+    claim = store.claim(
+        job_id=task.job_id,
+        project_id=project_id,
+        expected_kind="corpus.finalize",
+        worker_id="synthetic-corpus-integration-worker",
+        lease_for=timedelta(minutes=2),
+    )
+    assert claim.disposition == "claimed" and claim.lease is not None
+    lease = claim.lease
+    repository = build_synthetic_execution_repository(database.worker_url)
+    assert repository.load(lease) == task
+    output = SyntheticTaskExecutor(
+        prompts=_CurrentPrompts(),
+        model_gateway=_NeverModelGateway(),
+    ).run(lease=lease, task=task, checkpoint=lambda: runtime)
+    with store.fenced_transaction(lease) as connection:
+        repository.finalize(
+            connection=connection,
+            lease=lease,
+            task=task,
+            output=output,
+            runtime=runtime,
+        )
+        store.complete_in_transaction(
+            connection,
+            lease,
+            result_ref=f"synthetic://result/{output.result_hash}",
+            details={"result_hash": output.result_hash, "task_input_hash": task.input_hash},
+        )
+
+    reads = PostgresSyntheticApiReads(
+        lambda: psycopg.connect(database.app_url, row_factory=dict_row)
+    )
+    view = reads.job_view(project_id, task.job_id)
+    assert view.job.status.value == "succeeded"
+    assert view.warning_summary == {
+        "warning_count": 1,
+        "candidate_count": 1,
+        "warning_ratio": 1.0,
+        "by_code": {"derived_or_unknown": 1},
+        "by_channel": {"reddit": 1},
+        "by_scenario_mode": {"autonomous_scenario": 1},
+        "by_competitor": {"non_competitor": 1},
+        "by_model": {"openai:judge-v1": 1},
+        "by_question_cluster": {"pressure-washer-comparison": 1},
+    }
+
+    migration = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+    migration.attributes["geo_database_url_override"] = database.admin_url
+    with pytest.raises(Exception, match="cannot downgrade synthetic Corpus execution"):
+        alembic_command.downgrade(migration, "0079_synth_profile_runtime")
+
+
 class _CurrentPrompts:
     def assert_current(self, frozen: FrozenPromptRef) -> None:
         del frozen
+
+
+class _NeverModelGateway:
+    def execute(self, invocation: object) -> object:
+        del invocation
+        raise AssertionError("Corpus finalization must not issue a model call")
 
 
 def _authorization(

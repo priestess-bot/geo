@@ -136,6 +136,7 @@ export function WorkbenchShell({
         ) : null}
         {activeTab === "synthetic-lab" ? (
           syntheticData ? <SyntheticLabWorkspace
+            actorIdentityId={actorIdentityId}
             currentRole={syntheticRuntimeUnavailable ? null : members.currentRole}
             data={syntheticData}
             projectId={project.id}

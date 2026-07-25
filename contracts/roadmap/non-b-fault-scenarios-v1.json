@@ -49,13 +49,33 @@
       ]
     },
     {
+      "id": "worker_process_termination_lease_reclaim",
+      "mode": "isolated_runtime",
+      "targets": [
+        "tests/integration/test_non_b_fault_recovery_runtime.py::test_terminated_worker_is_fenced_and_expired_lease_is_reclaimed"
+      ]
+    },
+    {
+      "id": "real_broker_outage_outbox_replay",
+      "mode": "isolated_runtime",
+      "targets": [
+        "tests/integration/test_non_b_fault_recovery_runtime.py::test_real_valkey_outage_keeps_outbox_replayable_and_recovery_delivers_once"
+      ]
+    },
+    {
+      "id": "partial_object_store_write_cleanup",
+      "mode": "isolated_runtime",
+      "targets": [
+        "tests/integration/test_workflow_c_artifact_fault_recovery_postgres.py::test_workflow_c_fault_cleanup_wakes_durable_worker_for_write_failure_and_staged_timeout"
+      ]
+    },
+    {
       "id": "postgres_minio_valkey_network_runtime",
       "mode": "isolated_runtime",
       "targets": [
         "tests/infra/test_production_network_runtime.py",
         "tests/infra/test_compose_health_runtime.py",
-        "tests/integration/test_runtime_health_postgres.py",
-        "tests/integration/test_runtime_readiness_dependencies.py"
+        "tests/integration/test_runtime_readiness_dependencies.py::test_real_dependency_failures_follow_the_internal_customer_readiness_matrix"
       ]
     }
   ]

@@ -14,6 +14,8 @@ from psycopg.types.json import Jsonb
 from geo_core.jobs.postgres import WorkerLease
 from geo_core.project_scope import set_project_scope
 from geo_core.synthetic_lab.execution_contracts import (
+    CorpusFinalizeOutput,
+    CorpusFinalizeTask,
     OfflineExperimentRunOutput,
     OfflineExperimentRunTask,
     ReviewCaseRunOutput,
@@ -32,16 +34,19 @@ from geo_core.synthetic_lab.postgres_codec import decode_object, encode_object, 
 _TASK_KIND = {
     StyleProfileBuildTask: "style.profile.build",
     ReviewCaseRunTask: "review.case.run",
+    CorpusFinalizeTask: "corpus.finalize",
     OfflineExperimentRunTask: "offline_experiment.run",
 }
 _OUTPUT_FOR_TASK = {
     StyleProfileBuildTask: StyleProfileBuildOutput,
     ReviewCaseRunTask: ReviewCaseRunOutput,
+    CorpusFinalizeTask: CorpusFinalizeOutput,
     OfflineExperimentRunTask: OfflineExperimentRunOutput,
 }
 _DOMAIN_KIND = {
     StyleProfileBuildTask: "style_profile_build",
     ReviewCaseRunTask: "candidate_generation",
+    CorpusFinalizeTask: "corpus_finalize",
     OfflineExperimentRunTask: "offline_experiment",
 }
 
@@ -146,7 +151,12 @@ class PostgresSyntheticExecutionRepository:
             task = decode_object(row["task_type"], row["task_payload"])
             if not isinstance(
                 task,
-                (StyleProfileBuildTask, ReviewCaseRunTask, OfflineExperimentRunTask),
+                (
+                    StyleProfileBuildTask,
+                    ReviewCaseRunTask,
+                    CorpusFinalizeTask,
+                    OfflineExperimentRunTask,
+                ),
             ):
                 raise SyntheticExecutionError("stored Synthetic execution task type is invalid")
             if (

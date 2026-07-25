@@ -245,6 +245,21 @@ class PromptApiStub:
         self.states[release.id] = state
         return CommandReceipt(TransitionedPromptProgram(release, state), False)
 
+    def retire_release(self, principal: AccessPrincipal, **values: object):
+        release = self.releases[values["release_id"]]
+        current = self.states[release.id]
+        state = transition_release_state(
+            id=uuid4(),
+            release=release,
+            current=current,
+            command="retire",
+            actor_id=principal.identity_id,
+            acted_at=NOW,
+            evidence_ref=f"retire:{current.id}:{current.release_hash}",
+        )
+        self.states[release.id] = state
+        return CommandReceipt(TransitionedPromptProgram(release, state), False)
+
     def diff_release(self, principal: AccessPrincipal, **values: object):
         del principal
         baseline = self.releases[values["baseline_release_id"]]
@@ -302,6 +317,7 @@ def test_prompt_program_openapi_is_internal_stable_and_redacted() -> None:
         f"{prefix}/{{program_id}}/releases/{{release_id}}/tests",
         f"{prefix}/{{program_id}}/releases/{{release_id}}/approve",
         f"{prefix}/{{program_id}}/releases/{{release_id}}/freeze",
+        f"{prefix}/{{program_id}}/releases/{{release_id}}/retire",
         f"{prefix}/{{program_id}}/releases/{{release_id}}/diff",
         "/v1/projects/{project_id}/prompt-program-test-options",
         "/v1/projects/{project_id}/prompt-program-bindings",
@@ -325,6 +341,7 @@ def test_prompt_program_openapi_is_internal_stable_and_redacted() -> None:
         "testPromptProgramRelease",
         "approvePromptProgramRelease",
         "freezePromptProgramRelease",
+        "retirePromptProgramRelease",
         "diffPromptProgramRelease",
         "bindPromptProgramRelease",
         "listPromptProgramBindings",
@@ -456,6 +473,11 @@ def test_create_and_test_responses_expose_hash_lineage_without_raw_content() -> 
             f"/v1/projects/{project_id}/prompt-program-bindings",
             params={"program_kind": "generation"},
         )
+        retired = client.post(
+            f"/v1/projects/{project_id}/prompt-programs/{program_id}/releases/{release_id}/retire",
+            headers={"Idempotency-Key": "retire:one"},
+            json={"expected_version": 4},
+        )
 
     assert created.status_code == 201
     assert stub.last_call["principal"] is principal
@@ -468,6 +490,8 @@ def test_create_and_test_responses_expose_hash_lineage_without_raw_content() -> 
     assert tested.json()["test_set_hash"] == body["release"]["test_set_hash"]
     assert "output_artifact_ref" not in tested.json()
     assert "passed" not in tested.json()
+    assert retired.status_code == 200
+    assert retired.json()["release"]["state"]["status"] == "retired"
     assert fetched_program.status_code == 200
     assert listed_programs.status_code == 200
     assert listed_programs.json()["items"] == [body["program"]]

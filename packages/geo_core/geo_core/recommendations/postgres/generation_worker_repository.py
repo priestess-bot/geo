@@ -12,7 +12,6 @@ from psycopg.types.json import Jsonb
 from geo_core.jobs.postgres import LostJobLease, WorkerLease
 from geo_core.project_scope import set_project_scope
 from geo_core.recommendations.errors import RecommendationSourceStale
-from geo_core.recommendations.evidence import AttributionRef
 from geo_core.recommendations.generation_artifact_contracts import (
     RecommendationTaskArtifactStore,
 )
@@ -136,11 +135,7 @@ class PostgresRecommendationGenerationWorkerRepository:
             )
             expected = tuple(item.canonical_value() for item in spec.evidence.all_refs)
             observed = tuple(item.canonical_value() for item in current)
-            if observed != expected or any(
-                not item.current_and_valid
-                and not isinstance(item, AttributionRef)
-                for item in current
-            ):
+            if observed != expected:
                 raise RecommendationGenerationStale(
                     "Recommendation evidence identity or validity changed"
                 )

@@ -8,6 +8,7 @@ from geo_core.synthetic_lab.application_support import canonical_hash
 
 if TYPE_CHECKING:
     from geo_core.synthetic_lab.execution_contracts import (
+        CorpusFinalizeTask,
         OfflineExperimentRunTask,
         ReviewCaseRunTask,
         StyleProfileBuildTask,
@@ -50,8 +51,27 @@ def review_task_value(task: ReviewCaseRunTask) -> dict[str, object]:
     }
 
 
-def offline_task_value(task: OfflineExperimentRunTask) -> dict[str, object]:
+def corpus_task_value(task: CorpusFinalizeTask) -> dict[str, object]:
     return {
+        "project_id": task.project_id,
+        "job_id": task.job_id,
+        "requested_by": task.requested_by,
+        "corpus_version_id": task.corpus_version_id,
+        "corpus_id": task.corpus_id,
+        "version_number": task.version_number,
+        "role": task.role.value,
+        "candidates": task.candidates,
+        "candidate_text_hashes": {
+            str(key): canonical_hash(value) for key, value in task.candidate_text.items()
+        },
+        "source_review_job_ids": task.source_review_job_ids,
+        "source_corpus_job_id": task.source_corpus_job_id,
+        "runtime": task.runtime_inputs,
+    }
+
+
+def offline_task_value(task: OfflineExperimentRunTask) -> dict[str, object]:
+    value: dict[str, object] = {
         "project_id": task.project_id,
         "job_id": task.job_id,
         "requested_by": task.requested_by,
@@ -66,6 +86,17 @@ def offline_task_value(task: OfflineExperimentRunTask) -> dict[str, object]:
         "runtime": task.runtime_inputs,
         "prompt": task.prompt.identity_hash,
     }
+    if task.question_corpus_context:
+        value["question_corpus_context_hashes"] = {
+            f"{corpus_id}:{question_id}": canonical_hash(context)
+            for (corpus_id, question_id), context in task.question_corpus_context.items()
+        }
+    return value
 
 
-__all__ = ["offline_task_value", "review_task_value", "style_task_value"]
+__all__ = [
+    "corpus_task_value",
+    "offline_task_value",
+    "review_task_value",
+    "style_task_value",
+]

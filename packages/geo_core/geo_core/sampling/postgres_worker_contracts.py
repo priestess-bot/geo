@@ -176,6 +176,8 @@ class ProviderSamplingCommit:
 class ManualSamplingCommit:
     observation_id: UUID
     observation_hash: str
+    evidence_status: str
+    ineligible_reasons: tuple[str, ...]
     actual_location: Mapping[str, object]
     actual_location_hash: str
     evidence: Mapping[str, object]

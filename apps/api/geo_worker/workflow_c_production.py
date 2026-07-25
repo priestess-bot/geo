@@ -15,7 +15,13 @@ from geo_core.alerts.postgres_worker import PostgresWorkflowCAlertNotificationOp
 from geo_core.jobs.postgres import PostgresDurableJobStore
 from geo_core.placements.worker_composition import JobHandler
 from geo_core.workflow_c_analysis_worker import build_workflow_c_analysis_operations
+from geo_core.workflow_c_artifacts.composition import (
+    build_workflow_c_artifact_reader_composition,
+)
 from geo_core.workflow_c_job_specs import PostgresWorkflowCJobSpecRepository
+from geo_core.workflow_c_semantic_materialization import (
+    PostgresWorkflowCSemanticInputMaterializer,
+)
 from geo_core.workflow_c_metric_judge_worker import build_workflow_c_metric_judge_operations
 from geo_worker.workflow_c_delivery import build_workflow_c_notification_dispatcher
 from geo_worker.workflow_c_handlers import (
@@ -76,11 +82,20 @@ def build_workflow_c_production_worker_handlers(
     )
     metric_judge = _operation(metric_children, "workflow_c.metric_judge")
     metric_arbiter = _operation(metric_children, "workflow_c.metric_arbiter")
+    semantic_artifacts = build_workflow_c_artifact_reader_composition(
+        connection_factory=connect,
+        keyring_path=workflow_c_artifact_keyring_path,
+    )
     analysis = build_workflow_c_analysis_operations(
         store=store,
         specs=specs,
         lease_for=lease_for,
         workflow_c_artifact_keyring_path=workflow_c_artifact_keyring_path,
+        semantic_materializer=PostgresWorkflowCSemanticInputMaterializer(
+            connect=connect,
+            manual_artifacts=semantic_artifacts.reader,
+            provider_artifacts=provider_result_recovery,
+        ),
     )
     alerts = build_workflow_c_alert_operations(store=store, specs=specs)
     notification = PostgresWorkflowCAlertNotificationOperation(

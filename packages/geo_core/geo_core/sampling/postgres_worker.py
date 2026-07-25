@@ -39,6 +39,7 @@ from geo_core.sampling.postgres_worker_contracts import (
     parse_manual_sampling_spec,
     parse_provider_sampling_spec,
 )
+from geo_core.sampling.provider_sources import gateway_provider_for_source
 from geo_core.sampling.postgres_worker_evidence import (
     build_manual_commit,
     build_provider_commit,
@@ -219,9 +220,14 @@ class PostgresProviderSamplingOperation:
         )
         runtime = self._model_runtime.load(project_id=lease.project_id, job_id=lease.job_id)
         source = state.source.source
+        expected_provider = gateway_provider_for_source(
+            platform=source.platform,
+            surface=source.surface,
+            capture_method=source.capture_method,
+        )
         if (
             runtime.job.runtime_option_id != spec.runtime_selection_id
-            or runtime.job.route.provider != source.platform
+            or runtime.job.route.provider != expected_provider
             or runtime.job.purpose != state.run_purpose
             or runtime.job.purpose != spec.prompt.purpose
             or runtime.job.prompt_binding_id != prompt.binding_id
@@ -365,6 +371,11 @@ class PostgresManualSamplingOperation:
         spec = parse_manual_sampling_spec(job_spec.payload)
         state = self._repository.manual_state(project_id=lease.project_id, spec=spec)
         _assert_lease_job(lease, state.sampling)
+        spec = replace(
+            spec,
+            task_version=state.sampling.task_version,
+            attempt_version=state.sampling.attempt_version,
+        )
         try:
             recovered = self._artifacts.load(
                 WorkflowCManualArtifactReadRequest(
@@ -389,6 +400,7 @@ class PostgresManualSamplingOperation:
                     task_key=state.sampling.task_key,
                     source=state.sampling.source,
                     manifest_uri=state.manifest_uri,
+                    surface_parse=state.surface_parse,
                     observed_at=self._clock(),
                 )
             finally:
@@ -408,13 +420,16 @@ class PostgresManualSamplingOperation:
                 connection,
                 lease,
                 result_ref=f"workflow-c-observation:{commit.observation_id}",
-                details={"observation_id": str(commit.observation_id), "evidence_status": "complete"},
+                details={
+                    "observation_id": str(commit.observation_id),
+                    "evidence_status": commit.evidence_status,
+                },
             )
         return {
             "status": "succeeded",
             "job_id": str(lease.job_id),
             "observation_id": str(commit.observation_id),
-            "evidence_status": "complete",
+            "evidence_status": commit.evidence_status,
         }
 
     def _terminal_failure(

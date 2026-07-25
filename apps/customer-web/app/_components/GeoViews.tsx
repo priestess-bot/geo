@@ -8,7 +8,8 @@ import type {
   MeasurementWindow
 } from "@geo/types/customer";
 
-import type { CustomerGeoReadModel } from "../runtime";
+import type { CustomerGeoReadModel, CustomerWorkflowCReports } from "../runtime";
+import { WorkflowCReportsSection } from "./WorkflowCReports";
 
 const WINDOW_ORDER: Record<MeasurementWindow, number> = {
   baseline: 0,
@@ -26,7 +27,13 @@ const WINDOW_LABELS: Record<MeasurementWindow, string> = {
   ad_hoc: "临时测量"
 };
 
-export function SummaryView({ model }: Readonly<{ model: CustomerGeoReadModel }>) {
+export function SummaryView({
+  model,
+  workflowCReports
+}: Readonly<{
+  model: CustomerGeoReadModel;
+  workflowCReports: CustomerWorkflowCReports;
+}>) {
   if (model.status === "error") {
     return <ResourceProblem problem={model.problem} title="Campaign 概览不可用" />;
   }
@@ -46,6 +53,10 @@ export function SummaryView({ model }: Readonly<{ model: CustomerGeoReadModel }>
         <MetricStat label="批准窗口" value={String(summary.measurement_window_count)} />
         <MetricStat label="已验证 URL" value={String(summary.verified_url_count)} />
         <MetricStat label="已批准报告" value={String(summary.approved_report_count)} />
+        <MetricStat
+          label="Workflow C 报告"
+          value={workflowCReports.status === "ready" ? String(workflowCReports.data.total) : "暂不可用"}
+        />
       </section>
       <section className="contentSection">
         <div className="sectionHeader">
@@ -117,28 +128,36 @@ export function PlacementsView({ model }: Readonly<{ model: CustomerGeoReadModel
   );
 }
 
-export function ReportsView({ model }: Readonly<{ model: CustomerGeoReadModel }>) {
-  if (model.status === "error") {
-    return <ResourceProblem problem={model.problem} title="报告不可用" />;
-  }
+export function ReportsView({
+  model,
+  workflowCReports
+}: Readonly<{
+  model: CustomerGeoReadModel;
+  workflowCReports: CustomerWorkflowCReports;
+}>) {
   return (
-    <section className="contentSection">
-      <div className="sectionHeader">
-        <div>
-          <p className="eyebrow">已批准报告</p>
-          <h2>报告与不可变测量快照</h2>
+    <div className="sectionStack">
+      <WorkflowCReportsSection reports={workflowCReports} />
+      <section className="contentSection">
+        <div className="sectionHeader">
+          <div>
+            <p className="eyebrow">监测报告</p>
+            <h2>报告与不可变测量快照</h2>
+          </div>
         </div>
-      </div>
-      {model.data.approved_measurements.length ? (
-        <div className="reportList">
-          {model.data.approved_measurements.map((item) => (
-            <ReportItem key={item.report.id} measurement={item} />
-          ))}
-        </div>
-      ) : (
-        <NoApprovedReport />
-      )}
-    </section>
+        {model.status === "error" ? (
+          <ResourceProblem problem={model.problem} title="监测报告不可用" />
+        ) : model.data.approved_measurements.length ? (
+          <div className="reportList">
+            {model.data.approved_measurements.map((item) => (
+              <ReportItem key={item.report.id} measurement={item} />
+            ))}
+          </div>
+        ) : (
+          <NoApprovedReport />
+        )}
+      </section>
+    </div>
   );
 }
 

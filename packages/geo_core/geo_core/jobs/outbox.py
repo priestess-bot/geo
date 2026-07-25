@@ -49,20 +49,24 @@ class PostgresOutboxStore:
 
     def acknowledge(self, message: OutboxMessage, *, worker_id: str) -> bool:
         with self._connection_factory() as connection:
+            row = connection.execute(
+                """SELECT geo_worker_ack_broker_outbox(%s, %s, %s)
+                          AS acknowledged""",
+                (message.id, message.project_id, worker_id),
+            ).fetchone()
             return bool(
-                connection.execute(
-                    "SELECT geo_worker_ack_broker_outbox(%s, %s, %s)",
-                    (message.id, message.project_id, worker_id),
-                ).fetchone()[0]
+                row is not None and _row_value(row, 0, "acknowledged")
             )
 
     def fail(self, message: OutboxMessage, *, worker_id: str, error: str) -> bool:
         with self._connection_factory() as connection:
+            row = connection.execute(
+                """SELECT geo_worker_fail_broker_outbox(%s, %s, %s, %s)
+                          AS failed""",
+                (message.id, message.project_id, worker_id, error),
+            ).fetchone()
             return bool(
-                connection.execute(
-                    "SELECT geo_worker_fail_broker_outbox(%s, %s, %s, %s)",
-                    (message.id, message.project_id, worker_id, error),
-                ).fetchone()[0]
+                row is not None and _row_value(row, 0, "failed")
             )
 
     def recoverable(self, *, batch_size: int) -> tuple[RecoverableJob, ...]:

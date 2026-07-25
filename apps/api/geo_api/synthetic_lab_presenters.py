@@ -215,16 +215,22 @@ def resource_inventory_response(item: object) -> SyntheticResourceInventoryRespo
         question_sets=options("question_sets"),
         fact_snapshots=options("fact_snapshots"),
         profiles=options("profiles"),
+        review_jobs=options("review_jobs"),
+        candidate_corpora=options("candidate_corpora"),
+        approved_corpora=options("approved_corpora"),
     )
 
 
 def profile_response(item: object) -> StyleProfileResponse:
     value, replayed = _unwrap(item)
+    state_version = _field(value, "state_version", None)
+    value = _field(value, "payload", value)
     return StyleProfileResponse(
         id=_field(value, "id"),
         project_id=_field(value, "project_id"),
         profile_id=_field(value, "profile_id"),
         version_number=_field(value, "version_number"),
+        state_version=state_version or _field(value, "version_number"),
         channel=cast(Channel, _enum_value(_field(value, "channel"))),
         locale=_field(value, "locale"),
         corpus_hash=_field(value, "corpus_hash"),
@@ -239,11 +245,14 @@ def profile_response(item: object) -> StyleProfileResponse:
 
 def suite_response(item: object) -> ReviewSuiteResponse:
     value, replayed = _unwrap(item)
+    state_version = _field(value, "state_version", None)
+    value = _field(value, "payload", value)
     return ReviewSuiteResponse(
         id=_field(value, "id"),
         project_id=_field(value, "project_id"),
         suite_id=_field(value, "suite_id"),
         version_number=_field(value, "version_number"),
+        state_version=state_version or _field(value, "version_number"),
         channel=cast(Channel, _enum_value(_field(value, "channel"))),
         case_count=_field(value, "case_count"),
         case_set_hash=_field(value, "case_set_hash"),
@@ -254,11 +263,14 @@ def suite_response(item: object) -> ReviewSuiteResponse:
 
 def case_response(item: object) -> ReviewCaseResponse:
     value, replayed = _unwrap(item)
+    state_version = _field(value, "state_version", None)
+    value = _field(value, "payload", value)
     return ReviewCaseResponse(
         id=_field(value, "id"),
         project_id=_field(value, "project_id"),
         review_suite_version_id=_field(value, "review_suite_version_id"),
         review_suite_version_number=_field(value, "review_suite_version_number"),
+        state_version=state_version or 1,
         case_key=_field(value, "case_key"),
         ordinal=_field(value, "ordinal"),
         mode=_enum_value(_field(value, "mode")),
@@ -271,6 +283,7 @@ def case_response(item: object) -> ReviewCaseResponse:
 
 def job_response(item: object) -> SyntheticJobResponse:
     value, replayed = _unwrap(item)
+    warning_summary = _field(value, "warning_summary", None)
     nested_job = _field(value, "job", _MISSING)
     if nested_job is not _MISSING:
         if nested_job is None:
@@ -280,6 +293,8 @@ def job_response(item: object) -> SyntheticJobResponse:
     result_hash = _field(value, "result_hash", None)
     if result_hash is None and durable is not None:
         result_hash = _field(durable, "result_ref", None)
+    if isinstance(result_hash, str) and result_hash.startswith("synthetic://result/"):
+        result_hash = result_hash.removeprefix("synthetic://result/")
     return SyntheticJobResponse(
         id=_field(value, "id"),
         project_id=_field(value, "project_id"),
@@ -290,6 +305,7 @@ def job_response(item: object) -> SyntheticJobResponse:
         fencing_generation=_field(value, "fencing_token", 0),
         cancel_requested=_field(value, "cancel_requested", False),
         result_hash=result_hash,
+        warning_summary=warning_summary,
         replayed=replayed,
     )
 

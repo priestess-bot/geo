@@ -18,6 +18,9 @@ from geo_core.workflow_c_analysis_persistence import (
     persist_semantic_snapshot,
 )
 from geo_core.workflow_c_semantic_specs import semantic_inputs
+from geo_core.workflow_c_semantic_materialization import (
+    PostgresWorkflowCSemanticInputMaterializer,
+)
 from geo_core.workflow_c_metric_parent_orchestration import (
     PostgresWorkflowCMetricParentOrchestrator,
 )
@@ -39,6 +42,7 @@ def build_workflow_c_analysis_operations(
     specs: PostgresWorkflowCJobSpecRepository,
     lease_for: timedelta,
     workflow_c_artifact_keyring_path: str | None = None,
+    semantic_materializer: PostgresWorkflowCSemanticInputMaterializer | None = None,
     clock: Callable[[], datetime] = lambda: datetime.now(UTC),
 ) -> WorkflowCAnalysisOperations:
     """Build the three non-model analytical operations from one frozen reader."""
@@ -60,6 +64,7 @@ def build_workflow_c_analysis_operations(
             specs=specs,
             lease_for=lease_for,
             metric_parent=metric_parent,
+            semantic_materializer=semantic_materializer,
             clock=clock,
         ),
         comparison=PostgresWorkflowCComparisonOperation(
@@ -122,6 +127,7 @@ class PostgresWorkflowCSemanticMetricOperation:
         specs: PostgresWorkflowCJobSpecRepository,
         lease_for: timedelta,
         metric_parent: PostgresWorkflowCMetricParentOrchestrator | None = None,
+        semantic_materializer: PostgresWorkflowCSemanticInputMaterializer | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         _validate_lease_for(lease_for)
@@ -129,12 +135,25 @@ class PostgresWorkflowCSemanticMetricOperation:
         self._specs = specs
         self._lease_for = lease_for
         self._metric_parent = metric_parent
+        self._semantic_materializer = semantic_materializer
         self._clock = clock
 
     def execute(self, lease: WorkerLease) -> Mapping[str, object]:
         _require_kind(lease, self.kind)
         spec = self._specs.load(lease)
-        metadata, input_set, suite = semantic_inputs(spec)
+        if spec.payload.get("schema_version") == 2:
+            if self._semantic_materializer is None:
+                raise WorkflowCAnalysisWorkerError(
+                    "semantic v2 input materializer is unavailable"
+                )
+            materialized = self._semantic_materializer.materialize(
+                lease=lease, spec=spec
+            )
+            metadata = materialized.metadata
+            input_set = materialized.input_set
+            suite = materialized.metric_suite
+        else:
+            metadata, input_set, suite = semantic_inputs(spec)
         model_program = metric_model_program_admission(spec)
         if model_program is not None:
             if self._metric_parent is None:
@@ -197,9 +216,15 @@ class PostgresWorkflowCDriftOperation:
 
     def execute(self, lease: WorkerLease) -> Mapping[str, object]:
         _require_kind(lease, self.kind)
-        source_hash, target_hash, baseline, current = drift_inputs(self._specs.load(lease))
+        protocol_hash, source_hash, target_hash, baseline, current = drift_inputs(
+            self._specs.load(lease)
+        )
         with _heartbeat(self._store, lease, self._lease_for) as heartbeat:
-            report = compute_drift_report(baseline=baseline, current=current)
+            report = compute_drift_report(
+                baseline=baseline,
+                current=current,
+                protocol_hash=protocol_hash,
+            )
             heartbeat.raise_if_stopped()
         persist_drift_report(
             self._store,

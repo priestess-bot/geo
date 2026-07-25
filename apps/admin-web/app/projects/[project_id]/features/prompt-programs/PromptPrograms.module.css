@@ -341,6 +341,39 @@
   color: #28576b;
 }
 
+.status_retired {
+  background: #f5f0f0;
+  border-color: #d8c4c4;
+  color: #6c3d3d;
+}
+
+.retirementForm {
+  align-items: center;
+  border-top: 1px solid #d8e0e8;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
+.retirementForm label {
+  align-items: center;
+  display: inline-flex;
+  flex: 1 1 260px;
+  gap: 8px;
+}
+
+.retirementForm input {
+  flex: 0 0 auto;
+}
+
+.retireButton {
+  background: #7a3030;
+  border-color: #7a3030;
+  color: #fff;
+}
+
 .lineageGrid,
 .feedbackDetails,
 .diffColumn {

@@ -180,63 +180,93 @@ class PostgresWorkflowCJobSpecWriter:
         idempotency_key: str,
         max_attempts: int = 3,
     ) -> WorkflowCEnqueuedJob:
-        normalized_kind = kind.strip()
-        normalized_key = idempotency_key.strip()
-        if not normalized_kind or not normalized_key or max_attempts < 1:
-            raise WorkflowCJobSpecError("Workflow C Job enqueue input is invalid")
-        _validate_payload(payload, expected_kind=normalized_kind)
-        spec_hash = _canonical_hash(payload)
-        _validate_analysis_payload(
-            payload,
-            expected_kind=normalized_kind,
-            spec_hash=spec_hash,
-        )
         connection = self._connect()
         try:
-            set_project_scope(connection, project_id)
-            row = connection.execute(
-                """SELECT job_id, input_hash, replayed
-                   FROM geo_enqueue_workflow_c_job_spec(
-                       %s, %s, %s, %s::jsonb, %s, %s
-                   )""",
-                (
-                    project_id,
-                    normalized_kind,
-                    spec_hash,
-                    json.dumps(payload, separators=(",", ":"), sort_keys=True, ensure_ascii=False),
-                    normalized_key,
-                    max_attempts,
-                ),
-            ).fetchone()
-            if row is None:
-                raise WorkflowCJobSpecError("Workflow C Durable Job was not persisted")
-            values = dict(row) if isinstance(row, Mapping) else _enqueued_row(row)
-            job_id = values.get("job_id")
-            input_hash = values.get("input_hash")
-            replayed = values.get("replayed")
-            if (
-                not isinstance(job_id, UUID)
-                or not isinstance(input_hash, str)
-                or not isinstance(replayed, bool)
-            ):
-                raise WorkflowCJobSpecError("Workflow C Durable Job row has invalid types")
-            if not hmac.compare_digest(input_hash, spec_hash):
-                raise WorkflowCJobSpecError(
-                    "Workflow C idempotency key was reused with different input"
-                )
-            connection.commit()
-            return WorkflowCEnqueuedJob(
+            result = enqueue_workflow_c_job_spec_in_transaction(
+                connection,
                 project_id=project_id,
-                job_id=job_id,
-                kind=normalized_kind,
-                spec_hash=spec_hash,
-                replayed=replayed,
+                kind=kind,
+                payload=payload,
+                idempotency_key=idempotency_key,
+                max_attempts=max_attempts,
             )
+            connection.commit()
+            return result
         except BaseException:
             connection.rollback()
             raise
         finally:
             connection.close()
+
+
+def enqueue_workflow_c_job_spec_in_transaction(
+    connection: Any,
+    *,
+    project_id: UUID,
+    kind: str,
+    payload: Mapping[str, object],
+    idempotency_key: str,
+    max_attempts: int = 3,
+) -> WorkflowCEnqueuedJob:
+    """Write one immutable Job on a caller-owned transaction."""
+    normalized_kind = kind.strip()
+    normalized_key = idempotency_key.strip()
+    if not normalized_kind or not normalized_key or max_attempts < 1:
+        raise WorkflowCJobSpecError("Workflow C Job enqueue input is invalid")
+    _validate_payload(payload, expected_kind=normalized_kind)
+    if payload.get("schema_version") != 1:
+        raise WorkflowCJobSpecError(
+            "Workflow C semantic v2 Jobs require the atomic semantic admission"
+        )
+    spec_hash = _canonical_hash(payload)
+    _validate_analysis_payload(
+        payload,
+        expected_kind=normalized_kind,
+        spec_hash=spec_hash,
+    )
+    set_project_scope(connection, project_id)
+    row = connection.execute(
+        """SELECT job_id, input_hash, replayed
+           FROM geo_enqueue_workflow_c_job_spec(
+               %s, %s, %s, %s::jsonb, %s, %s
+           )""",
+        (
+            project_id,
+            normalized_kind,
+            spec_hash,
+            json.dumps(
+                payload,
+                separators=(",", ":"),
+                sort_keys=True,
+                ensure_ascii=False,
+            ),
+            normalized_key,
+            max_attempts,
+        ),
+    ).fetchone()
+    if row is None:
+        raise WorkflowCJobSpecError("Workflow C Durable Job was not persisted")
+    values = dict(row) if isinstance(row, Mapping) else _enqueued_row(row)
+    job_id = values.get("job_id")
+    input_hash = values.get("input_hash")
+    replayed = values.get("replayed")
+    if (
+        not isinstance(job_id, UUID)
+        or not isinstance(input_hash, str)
+        or not isinstance(replayed, bool)
+    ):
+        raise WorkflowCJobSpecError("Workflow C Durable Job row has invalid types")
+    if not hmac.compare_digest(input_hash, spec_hash):
+        raise WorkflowCJobSpecError(
+            "Workflow C idempotency key was reused with different input"
+        )
+    return WorkflowCEnqueuedJob(
+        project_id=project_id,
+        job_id=job_id,
+        kind=normalized_kind,
+        spec_hash=spec_hash,
+        replayed=replayed,
+    )
 
 
 def _enqueued_row(row: object) -> Mapping[str, object]:
@@ -292,10 +322,13 @@ def _validate_metric_child_task_binding(values: Mapping[str, object], durable_ha
 def _validate_payload(payload: Mapping[str, object], *, expected_kind: str) -> None:
     if expected_kind not in WORKFLOW_C_JOB_KINDS:
         raise WorkflowCJobSpecError("Workflow C Job spec kind is unsupported")
-    if payload.get("schema_version") != 1:
-        raise WorkflowCJobSpecError("Workflow C Job spec schema_version must be 1")
+    schema_version = payload.get("schema_version")
+    if type(schema_version) is not int or schema_version not in {1, 2}:
+        raise WorkflowCJobSpecError("Workflow C Job spec schema_version is unsupported")
     if payload.get("kind") != expected_kind:
         raise WorkflowCJobSpecError("Workflow C Job spec payload kind differs from Job kind")
+    if schema_version == 2:
+        _validate_semantic_v2_pointer(payload, expected_kind=expected_kind)
     try:
         reject_secret_bearing_payload(payload)
     except SecretSerializationRejected as error:
@@ -303,6 +336,40 @@ def _validate_payload(payload: Mapping[str, object], *, expected_kind: str) -> N
             "Workflow C Job spec cannot contain secret or credential material"
         ) from error
     _reject_sensitive_fields(payload)
+
+
+def _validate_semantic_v2_pointer(
+    payload: Mapping[str, object], *, expected_kind: str
+) -> None:
+    if expected_kind != "workflow_c.analysis.semantic_metrics":
+        raise WorkflowCJobSpecError(
+            "Workflow C Job spec schema_version 2 is reserved for semantic metrics"
+        )
+    if set(payload) != {"schema_version", "kind", "semantic_metrics"}:
+        raise WorkflowCJobSpecError("Workflow C semantic v2 Job pointer is malformed")
+    pointer = payload.get("semantic_metrics")
+    if not isinstance(pointer, Mapping) or set(pointer) != {
+        "manifest_id",
+        "manifest_hash",
+    }:
+        raise WorkflowCJobSpecError("Workflow C semantic v2 Job pointer is malformed")
+    manifest_id = pointer.get("manifest_id")
+    manifest_hash = pointer.get("manifest_hash")
+    try:
+        if not isinstance(manifest_id, str) or str(UUID(manifest_id)) != manifest_id:
+            raise ValueError
+    except ValueError as error:
+        raise WorkflowCJobSpecError(
+            "Workflow C semantic v2 manifest_id is invalid"
+        ) from error
+    if (
+        not isinstance(manifest_hash, str)
+        or len(manifest_hash) != 64
+        or any(character not in "0123456789abcdef" for character in manifest_hash)
+    ):
+        raise WorkflowCJobSpecError(
+            "Workflow C semantic v2 manifest_hash is invalid"
+        )
 
 
 def _validate_analysis_payload(

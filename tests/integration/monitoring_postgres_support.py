@@ -11,6 +11,7 @@ import time
 from uuid import UUID, uuid4
 
 import psycopg
+from redis import Redis
 
 from geo_core.monitoring.domain import (
     CitationDraft,
@@ -39,6 +40,7 @@ from geo_core.object_store import ObjectStoreError, S3CompatibleObjectStore
 
 ADMIN_URL = os.getenv("GEO_ACCESS_TEST_ADMIN_DATABASE_URL", "").strip()
 MINIO_IMAGE = "minio/minio:RELEASE.2025-01-20T14-49-07Z"
+VALKEY_IMAGE = "valkey/valkey:8.0.2-alpine"
 
 
 def draft(
@@ -506,6 +508,43 @@ def isolated_minio_store() -> Iterator[S3CompatibleObjectStore]:
                     raise
                 time.sleep(0.25)
         yield store
+    finally:
+        docker_command("rm", "--force", name, check=False, timeout=30)
+
+
+@contextmanager
+def isolated_valkey_url() -> Iterator[str]:
+    run_id = uuid4().hex[:12]
+    name = f"geo-wfc-valkey-{run_id}"
+    docker_command("info", "--format", "{{.ServerVersion}}", timeout=30)
+    try:
+        docker_command(
+            "run",
+            "--detach",
+            "--name",
+            name,
+            "--label",
+            "geo.test=workflow-c",
+            "--publish",
+            "127.0.0.1::6379",
+            VALKEY_IMAGE,
+        )
+        published = docker_command("port", name, "6379/tcp")
+        url = f"redis://{published.strip()}/0"
+        client = Redis.from_url(url, socket_connect_timeout=1, socket_timeout=1)
+        deadline = time.monotonic() + 30
+        try:
+            while True:
+                try:
+                    if client.ping():
+                        break
+                except Exception:
+                    if time.monotonic() >= deadline:
+                        raise
+                    time.sleep(0.25)
+            yield url
+        finally:
+            client.close()
     finally:
         docker_command("rm", "--force", name, check=False, timeout=30)
 

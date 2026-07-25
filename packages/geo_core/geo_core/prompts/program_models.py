@@ -8,6 +8,7 @@ from datetime import datetime
 from uuid import UUID
 
 from geo_core.prompts.program_contracts import (
+    BOOTSTRAP_COMPILER_VERSION,
     FIRST_PHASE_PROGRAM_KINDS,
     ModelPolicySnapshot,
     ProgramKind,
@@ -127,6 +128,15 @@ class PromptProgramRelease:
         test_set_hash: str,
         compiler_version: str,
     ) -> PromptProgramRelease:
+        properties = schemas.variable_schema.get("properties", {})
+        if (
+            isinstance(properties, Mapping)
+            and "request_json" in properties
+            and compiler_version.strip() != BOOTSTRAP_COMPILER_VERSION
+        ):
+            raise PromptProgramRuleViolation(
+                "new request_json Releases require the current secure Prompt compiler"
+            )
         return cls(
             id=id,
             project_id=program.project_id,
@@ -218,7 +228,7 @@ class ProgramReleaseState:
         if status == ProgramReleaseStatus.DRAFT and evidence_ref is not None:
             raise PromptProgramRuleViolation("a draft state cannot claim transition evidence")
         if status != ProgramReleaseStatus.DRAFT and evidence_ref is None:
-            raise PromptProgramRuleViolation("tested, approved and frozen states require evidence")
+            raise PromptProgramRuleViolation("non-draft Prompt Program states require evidence")
         object.__setattr__(self, "status", status)
         object.__setattr__(self, "evidence_ref", evidence_ref)
 

@@ -135,6 +135,20 @@ def test_generation_freezes_unavailable_attribution_as_an_insufficient_reason() 
     assert frozen.input_hash != evidence.input_hash
 
 
+def test_valid_but_underpowered_comparison_remains_insufficient_not_stale() -> None:
+    evidence = frozen_evidence()
+    underpowered = replace(
+        evidence,
+        metric_comparisons=(
+            replace(evidence.metric_comparisons[0], sufficient_evidence=False),
+        ),
+    )
+
+    assert underpowered.insufficiency_reasons(minimum_real_observations=3) == (
+        "missing_sufficient_metric_comparison",
+    )
+
+
 def test_spec_input_hash_is_stable_and_arbiter_must_use_another_model() -> None:
     first = generation_spec()
     second = replace(first)

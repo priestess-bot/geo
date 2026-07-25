@@ -18,6 +18,7 @@ from geo_core.object_store import RetrievedObject, StoredObject
 from geo_core.project_scope import set_project_scope
 from geo_core.prompts.bootstrap_catalog import default_prompt_bootstrap_spec
 from geo_core.prompts.bootstrap_contracts import EvalScenario, thaw_mapping
+from geo_core.prompts.compiler_versions import BOOTSTRAP_COMPILER_VERSION
 from geo_core.prompts.postgres import build_prompt_program_api
 from geo_core.prompts.program import ProgramKind, ProgramReleaseStatus
 from geo_core.prompts.test_artifacts import S3PromptTestArtifactStore
@@ -91,7 +92,7 @@ def test_prompt_test_enqueue_worker_evidence_and_approval_are_one_frozen_chain()
             test_set_id=spec.test_set_id,
             test_set_version=1,
             test_set_hash=spec.test_set_hash,
-            compiler_version="geo-prompt-bootstrap-compiler-v1",
+            compiler_version=BOOTSTRAP_COMPILER_VERSION,
             expected_version=0,
             idempotency_key="prompt-run-create-v1",
         )

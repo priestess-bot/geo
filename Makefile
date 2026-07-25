@@ -6,12 +6,16 @@ PROD_COMPOSE := docker compose --env-file $(PROD_ENV) -f infra/compose.prod.yml 
 
 .PHONY: bootstrap install lint python-typecheck web-typecheck typecheck quality test test-migrated test-integration test-integration-required \
 	roadmap-evidence-schema roadmap-evidence-verify roadmap-performance-profile \
+	non-b-acceptance-register non-b-acceptance-register-verify \
 	model-gateway-runtime-schema model-gateway-runtime-template \
 	model-gateway-runtime-verify model-gateway-runtime-register \
 	roadmap-performance-workload \
+	roadmap-migration-cutover-schema roadmap-migration-cutover-verify \
+	roadmap-migration-cutover-rehearsal \
 	roadmap-performance-api-load \
 	roadmap-performance-api-load-verify \
-	roadmap-non-b-fault-contracts \
+	roadmap-non-b-fault-contracts roadmap-non-b-fault-runtime \
+	roadmap-non-b-fault-receipt-verify \
 	roadmap-performance-result-schema roadmap-performance-result-verify \
 	scan-backup-plaintext scan-repository-secrets \
 	openapi-snapshots openapi-contracts \
@@ -46,8 +50,10 @@ lint:
 		scripts/production_preflight*.py scripts/geo_staging_smoke.py \
 		scripts/run_infra_runtime_tests.py scripts/verify_geo_acceptance_report.py \
 		scripts/roadmap_evidence_manifest.py \
+		scripts/non_b_roadmap_acceptance.py \
 		scripts/roadmap_performance_profile.py \
 		scripts/roadmap_performance_workload.py \
+		scripts/roadmap_migration_cutover.py \
 		scripts/run_roadmap_api_load.py \
 		scripts/roadmap_performance_api_load.py \
 		scripts/run_non_b_fault_contracts.py \
@@ -76,8 +82,10 @@ python-typecheck:
 		scripts/run_infra_runtime_tests.py \
 		scripts/verify_geo_acceptance_report.py \
 		scripts/roadmap_evidence_manifest.py \
+		scripts/non_b_roadmap_acceptance.py \
 		scripts/roadmap_performance_profile.py \
 		scripts/roadmap_performance_workload.py \
+		scripts/roadmap_migration_cutover.py \
 		scripts/run_roadmap_api_load.py \
 		scripts/roadmap_performance_api_load.py \
 		scripts/run_non_b_fault_contracts.py \
@@ -107,6 +115,12 @@ roadmap-evidence-verify:
 	@test -n "$$MANIFEST" || (echo "MANIFEST is required" >&2; exit 2)
 	uv run python scripts/roadmap_evidence_manifest.py verify "$$MANIFEST"
 
+non-b-acceptance-register:
+	uv run python scripts/non_b_roadmap_acceptance.py export
+
+non-b-acceptance-register-verify:
+	uv run python scripts/non_b_roadmap_acceptance.py verify
+
 model-gateway-runtime-schema:
 	uv run python scripts/model_gateway_runtime_manifest.py export-schema \
 		--output contracts/roadmap/model-gateway-runtime-manifest-v2.schema.json
@@ -133,6 +147,21 @@ roadmap-performance-workload:
 	uv run python scripts/roadmap_performance_workload.py export \
 		benchmarks/roadmap/performance-workload-v1-non-b.json
 
+roadmap-migration-cutover-schema:
+	uv run python scripts/roadmap_migration_cutover.py export-schema \
+		contracts/roadmap/migration-cutover-receipt-v1.schema.json
+
+roadmap-migration-cutover-verify:
+	@test -n "$$RECEIPT" || (echo "RECEIPT is required" >&2; exit 2)
+	uv run python scripts/roadmap_migration_cutover.py verify "$$RECEIPT"
+
+roadmap-migration-cutover-rehearsal:
+	@test -n "$$GEO_MIGRATION_REHEARSAL_DATABASE_URL" || \
+		(echo "GEO_MIGRATION_REHEARSAL_DATABASE_URL is required" >&2; exit 2)
+	@test -n "$$OUTPUT" || (echo "OUTPUT is required" >&2; exit 2)
+	uv run python scripts/roadmap_migration_cutover.py run \
+		--output "$$OUTPUT" --confirm-isolated-database
+
 roadmap-performance-api-load:
 	@test -n "$(PERF_ARGS)" || (echo "PERF_ARGS is required" >&2; exit 2)
 	uv run python scripts/run_roadmap_api_load.py $(PERF_ARGS)
@@ -143,6 +172,20 @@ roadmap-performance-api-load-verify:
 
 roadmap-non-b-fault-contracts:
 	uv run python scripts/run_non_b_fault_contracts.py --execute
+
+roadmap-non-b-fault-runtime:
+	@test -n "$$GEO_MIGRATION_REHEARSAL_DATABASE_URL" || \
+		(echo "GEO_MIGRATION_REHEARSAL_DATABASE_URL is required" >&2; exit 2)
+	@test -n "$$GEO_PLACEMENT_TEST_ADMIN_URL" || \
+		(echo "GEO_PLACEMENT_TEST_ADMIN_URL is required" >&2; exit 2)
+	@test -n "$$FAULT_RECEIPT" || (echo "FAULT_RECEIPT is required" >&2; exit 2)
+	uv run python scripts/run_non_b_fault_contracts.py --execute \
+		--include-isolated-runtime --receipt "$$FAULT_RECEIPT"
+
+roadmap-non-b-fault-receipt-verify:
+	@test -n "$$FAULT_RECEIPT" || (echo "FAULT_RECEIPT is required" >&2; exit 2)
+	uv run python scripts/run_non_b_fault_contracts.py \
+		--verify-receipt "$$FAULT_RECEIPT"
 
 roadmap-performance-result-verify:
 	@test -n "$$RESULT" || (echo "RESULT is required" >&2; exit 2)

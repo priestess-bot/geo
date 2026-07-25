@@ -316,6 +316,29 @@ class PsycopgPromptProgramApi:
             ),
         )
 
+    def retire_release(
+        self,
+        principal: AccessPrincipal,
+        *,
+        project_id: UUID,
+        program_id: UUID,
+        release_id: UUID,
+        expected_version: int,
+        idempotency_key: str,
+    ) -> CommandReceipt[TransitionedPromptProgram]:
+        return self._release_command(
+            project_id=project_id,
+            program_id=program_id,
+            release_id=release_id,
+            operation=lambda application: application.retire_release(
+                principal,
+                project_id=project_id,
+                release_id=release_id,
+                expected_version=expected_version,
+                idempotency_key=idempotency_key,
+            ),
+        )
+
     def diff_release(
         self,
         principal: AccessPrincipal,

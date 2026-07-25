@@ -70,7 +70,7 @@ export function ManualSampleImportForm({ sources, ...props }: CommandProps & {
           <OptionSelect label="Style Source" name="style_source_revision_id" options={manualSources.map((source) => ({ id: source.id, label: `${source.channel} · revision ${source.revision_number}` }))} />
           <label><span>格式</span><select defaultValue="text" name="import_format"><option value="text">Text</option><option value="csv">CSV</option><option value="jsonl">JSONL</option></select></label>
           <label><span>样本文件</span><input accept=".txt,.text,.csv,.jsonl,.ndjson,text/plain,text/csv,application/x-ndjson" name="sample_file" required type="file" /></label>
-          <label><span>来源权利</span><select defaultValue="authorized_manual_capture" name="default_source_rights"><option value="owned">Owned</option><option value="licensed">Licensed</option><option value="public_reference">Public reference</option><option value="authorized_manual_capture">Authorised manual capture</option></select></label>
+          <label><span>来源权利</span><select defaultValue="" name="default_source_rights" required><option disabled value="">请选择权利依据</option><option value="owned">Owned</option><option value="licensed">Licensed</option><option value="public_reference">Public reference</option><option value="authorized_manual_capture">Authorised manual capture</option></select></label>
           <label className={styles.spanTwo}><span>权利依据</span><textarea maxLength={2000} name="rights_evidence_reference" required rows={3} /></label>
           <button type="submit">{pending ? "扫描中..." : "生成安全预览"}</button>
         </div>
@@ -80,18 +80,23 @@ export function ManualSampleImportForm({ sources, ...props }: CommandProps & {
   );
 }
 
-export function ManualImportApprovalForm({ preview, ...props }: CommandProps & {
+export function ManualImportApprovalForm({ actorIdentityId, preview, ...props }: CommandProps & {
+  actorIdentityId: string;
   preview: ManualImportPreview;
 }) {
   const [state, action, pending] = useActionState(
     approveManualImportPreviewAction,
     initialSyntheticActionState
   );
+  const selfSubmitted = Boolean(actorIdentityId) && actorIdentityId === preview.submitted_by;
+  const identityUnavailable = !actorIdentityId;
+  const reviewBlocked = !props.canContribute || pending || preview.status !== "pending"
+    || selfSubmitted || identityUnavailable;
   return (
     <form action={action} className={styles.writeForm}>
       <CommandFields {...props} />
       <input name="preview_id" type="hidden" value={preview.id} />
-      <fieldset disabled={!props.canContribute || pending || preview.status !== "pending"}>
+      <fieldset disabled={reviewBlocked}>
         <legend>独立复核 · {preview.filename}</legend>
         <div className={formStyles.previewRows}>
           {preview.rows.map((row) => (
@@ -107,6 +112,9 @@ export function ManualImportApprovalForm({ preview, ...props }: CommandProps & {
         </div>
         <button type="submit">{pending ? "批准中..." : "批准所选样本"}</button>
       </fieldset>
+      {selfSubmitted ? <p className={styles.formNote} role="status">提交者不能复核自己的导入预览；请由另一位具备复核权限的项目成员处理。</p> : null}
+      {identityUnavailable ? <p className={styles.formNote} role="status">当前成员身份无法确认，独立复核保持关闭。</p> : null}
+      {!props.canContribute ? <p className={styles.formNote} role="status">当前项目角色没有样本复核权限。</p> : null}
       <SyntheticActionFeedback state={state} />
     </form>
   );

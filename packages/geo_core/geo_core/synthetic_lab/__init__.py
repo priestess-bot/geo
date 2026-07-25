@@ -27,6 +27,7 @@ from geo_core.synthetic_lab.corpus import (
     candidate_entry_from_resolution,
     corpus_candidate_set_hash,
     corpus_version_content_hash,
+    create_no_corpus_baseline,
     freeze_corpus_version,
 )
 from geo_core.synthetic_lab.domain import (
@@ -316,6 +317,7 @@ __all__ = [
     "can_read_artifact",
     "corpus_candidate_set_hash",
     "corpus_version_content_hash",
+    "create_no_corpus_baseline",
     "create_offline_experiment_plan",
     "create_artifact_tombstone",
     "create_authorization_record",

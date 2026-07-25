@@ -112,10 +112,11 @@ def _openai_case() -> AdapterCase:
 def _kimi_case() -> AdapterCase:
     identity = ProviderIdentity(
         provider="kimi",
+        source_platform="kimi",
         model="kimi-fixture",
         reported_model="kimi-fixture-reported",
         search_mode="disabled",
-        surface="chat_completion",
+        surface="kimi_api",
     )
     body = {
         "id": "kimi-response-id",
@@ -152,10 +153,11 @@ def _kimi_case() -> AdapterCase:
 def _gemini_case() -> AdapterCase:
     identity = ProviderIdentity(
         provider="gemini",
+        source_platform="google",
         model="gemini-3.1-pro-preview",
         reported_model="gemini-3.1-pro-reported",
         search_mode="google_search",
-        surface="google_search_grounding",
+        surface="google_gemini_api",
     )
     body = {
         "responseId": "gemini-response-id",
@@ -213,9 +215,10 @@ def _gemini_case() -> AdapterCase:
 def _perplexity_case() -> AdapterCase:
     identity = ProviderIdentity(
         provider="perplexity",
+        source_platform="perplexity",
         model="sonar-pro-fixture",
         reported_model="sonar-pro-reported",
-        surface="sonar_web",
+        surface="perplexity_api",
     )
     url = "https://example.test/perplexity"
     body = {
@@ -249,11 +252,12 @@ def _perplexity_case() -> AdapterCase:
 def _microsoft_case() -> AdapterCase:
     identity = ProviderIdentity(
         provider="microsoft",
+        source_platform="microsoft",
         model="foundry-fixture",
         reported_model="foundry-fixture-reported",
         capture_method=CaptureMethod.PROXY_GROUNDED_API,
         search_mode="bing_grounding",
-        surface="bing_grounding",
+        surface="microsoft_foundry_bing_grounding",
     )
     body = {
         "id": "microsoft-response-id",

@@ -15,6 +15,9 @@ from geo_core.semantic_metrics.contracts import (
 )
 from geo_core.semantic_metrics.judges import JudgeOutputRejected
 from geo_core.semantic_metrics.judges import parse_structured_judge_output
+from geo_core.semantic_metrics.prompt_injection import (
+    has_high_confidence_prompt_injection,
+)
 
 
 COMMON_OUTPUT_FIELDS = frozenset(
@@ -121,7 +124,16 @@ def parse_metric_judge_program_output(
     subject_id: str,
     output_locale: str,
     schema_version: str,
+    prompt_injection_expected: bool,
 ) -> ParsedMetricJudgeProgramOutput:
+    if not isinstance(prompt_injection_expected, bool):
+        raise JudgeOutputRejected("metric Program injection expectation must be boolean")
+    if prompt_injection_expected is not has_high_confidence_prompt_injection(
+        observation.answer_text
+    ):
+        raise JudgeOutputRejected(
+            "metric Program injection expectation changed from frozen observation"
+        )
     if frozenset(payload) != METRIC_JUDGE_FIELDS:
         raise JudgeOutputRejected(
             "metric_judge output fields do not match the frozen Program schema"
@@ -134,6 +146,7 @@ def parse_metric_judge_program_output(
             reference for plan in plans for reference in plan.allowed_evidence_refs
         },
         allowed_citation_refs={item.id for item in observation.citations},
+        prompt_injection_expected=prompt_injection_expected,
     )
     overall = _enum_text(
         payload["overall_status"], {"pass", "warning", "fail"}, "overall status"
@@ -268,6 +281,7 @@ def _validate_common(
     output_locale: str,
     allowed_evidence_refs: set[str],
     allowed_citation_refs: set[str],
+    prompt_injection_expected: bool | None = None,
 ) -> None:
     if payload["subject_id"] != subject_id or payload["output_locale"] != output_locale:
         raise JudgeOutputRejected("Program output subject or locale changed")
@@ -286,6 +300,13 @@ def _validate_common(
             raise JudgeOutputRejected(f"Program output {field} must be boolean")
     if payload["automatic_action_authorised"]:
         raise JudgeOutputRejected("metric Programs cannot authorize automatic action")
+    if (
+        prompt_injection_expected is not None
+        and payload["injection_detected"] is not prompt_injection_expected
+    ):
+        raise JudgeOutputRejected(
+            "metric Program injection detection does not match deterministic input"
+        )
     if payload["injection_detected"] or payload["untrusted_instruction_followed"]:
         raise JudgeOutputRejected("metric Program output failed injection governance")
 

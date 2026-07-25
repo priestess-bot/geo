@@ -116,6 +116,50 @@ def test_recovery_allows_child_artifact_only_under_its_active_parent_fence() -> 
     assert fixture.database.receipt["recovery_job_id"] == PARENT_JOB_ID
 
 
+def test_recovery_allows_cross_job_only_for_exact_semantic_manifest_member() -> None:
+    fixture = _Fixture()
+    fixture.database.analysis_authorized = True
+    request = ProviderArtifactRecoveryRequest(
+        project_id=PROJECT_ID,
+        source_model_job_id=JOB_ID,
+        recovery_job_id=PARENT_JOB_ID,
+        lease_token=LEASE_TOKEN,
+        fencing_generation=3,
+        model_call_attempt_id=ATTEMPT_ID,
+        expected_output_hash=canonical_json_hash(OUTPUT),
+        output_schema=SCHEMA,
+        application_output_schema=SCHEMA,
+        purpose="geo_measurement",
+    )
+
+    recovered = fixture.recovery.recover_derived(request)
+
+    assert recovered.output == OUTPUT
+    assert fixture.database.analysis_authorization_checks == 1
+
+
+def test_recovery_rejects_cross_job_without_semantic_manifest_membership() -> None:
+    fixture = _Fixture()
+    request = ProviderArtifactRecoveryRequest(
+        project_id=PROJECT_ID,
+        source_model_job_id=JOB_ID,
+        recovery_job_id=PARENT_JOB_ID,
+        lease_token=LEASE_TOKEN,
+        fencing_generation=3,
+        model_call_attempt_id=ATTEMPT_ID,
+        expected_output_hash=canonical_json_hash(OUTPUT),
+        output_schema=SCHEMA,
+        application_output_schema=SCHEMA,
+        purpose="geo_measurement",
+    )
+
+    with pytest.raises(ProviderArtifactError, match="lineage is inconsistent"):
+        fixture.recovery.recover_derived(request)
+
+    assert fixture.database.analysis_authorization_checks == 1
+    assert fixture.database.insert_count == 0
+
+
 class _Fixture:
     def __init__(self) -> None:
         self.store = _ObjectStore()
@@ -315,6 +359,8 @@ class _Database:
         self.artifact = artifact
         self.receipt: dict[str, object] | None = None
         self.insert_count = 0
+        self.analysis_authorized = False
+        self.analysis_authorization_checks = 0
         self.fence = {
             "status": "running",
             "lease_token": LEASE_TOKEN,
@@ -346,6 +392,9 @@ class _Connection:
             return _Result(self.database.receipt)
         if "SELECT status, lease_token" in query:
             return _Result(self.database.fence)
+        if "workflow_c_analysis_input_manifest_items AS member" in query:
+            self.database.analysis_authorization_checks += 1
+            return _Result({"authorized": self.database.analysis_authorized})
         if "INSERT INTO model_gateway_artifact_recovery_receipts" in query:
             self.database.insert_count += 1
             self.database.receipt = {

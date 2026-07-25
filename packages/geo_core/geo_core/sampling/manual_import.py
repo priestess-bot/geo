@@ -14,6 +14,10 @@ from geo_core.sampling.contracts import (
     _text,
     canonical_hash,
 )
+from geo_core.sampling.surface_parsers import (
+    SurfaceArtifactCaptureKind,
+    SurfaceParseSummary,
+)
 
 
 class ManualEvidenceStatus(StrEnum):
@@ -61,6 +65,7 @@ class ManualEvidenceImport:
     review_reason: str | None = None
     committed_at: datetime | None = None
     aggregate_version: int = 1
+    surface_parse: SurfaceParseSummary | None = None
     definition_hash: str = field(init=False)
 
     def __post_init__(self) -> None:
@@ -123,6 +128,12 @@ class ManualEvidenceImport:
             "submitted_by": submitted_by,
             "submitted_at": self.submitted_at.isoformat(),
         }
+        if self.surface_parse is not None:
+            if self.surface_parse.capture_kind is not SurfaceArtifactCaptureKind.MANUAL_UI:
+                raise SamplingRuleViolation(
+                    "manual evidence surface parse must use manual_ui capture"
+                )
+            definition["surface_parse"] = self.surface_parse.persisted_value()
         object.__setattr__(self, "status", status)
         object.__setattr__(self, "evidence_kind", kind)
         object.__setattr__(self, "device", device)

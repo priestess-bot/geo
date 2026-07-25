@@ -385,7 +385,11 @@ def test_customer_workflow_c_reports_use_only_the_durable_approved_reader() -> N
         semantic_snapshot_hash="a" * 64,
         report_hash="b" * 64,
         source_kind="provider_api",
-        approved_safe_payload={"summary": "Approved aggregate", "mention_rate": "0.5"},
+        approved_safe_payload={
+            "headline": "Approved aggregate",
+            "summary": "Approved aggregate",
+            "mention_rate": "0.5",
+        },
         approved_at=NOW,
     )
     reader = WorkflowCCustomerReaderStub(report)
@@ -417,6 +421,7 @@ def test_customer_workflow_c_reports_use_only_the_durable_approved_reader() -> N
                 "report_hash": "b" * 64,
                 "source_kind": "provider_api",
                 "approved_safe_payload": {
+                    "headline": "Approved aggregate",
                     "summary": "Approved aggregate",
                     "mention_rate": "0.5",
                 },

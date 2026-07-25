@@ -47,26 +47,40 @@ class GateSeedIds:
     project: UUID = uuid5(NAMESPACE_URL, "geo-restore-gate:project")
     owner: UUID = uuid5(NAMESPACE_URL, "geo-restore-gate:owner")
     reviewer: UUID = uuid5(NAMESPACE_URL, "geo-restore-gate:reviewer")
-    restore_probe_service: UUID = uuid5(
-        NAMESPACE_URL, "geo-restore-gate:restore-probe-service"
-    )
+    restore_probe_service: UUID = uuid5(NAMESPACE_URL, "geo-restore-gate:restore-probe-service")
     owner_membership: UUID = uuid5(NAMESPACE_URL, "geo-restore-gate:owner-membership")
-    reviewer_membership: UUID = uuid5(
-        NAMESPACE_URL, "geo-restore-gate:reviewer-membership"
-    )
+    reviewer_membership: UUID = uuid5(NAMESPACE_URL, "geo-restore-gate:reviewer-membership")
     secret_v1: UUID = uuid5(NAMESPACE_URL, "geo-restore-gate:secret-v1")
     secret_v2: UUID = uuid5(NAMESPACE_URL, "geo-restore-gate:secret-v2")
     provider_secret: UUID = uuid5(NAMESPACE_URL, "geo-restore-gate:provider-secret")
     prompt_test_set: UUID = uuid5(NAMESPACE_URL, "geo-restore-gate:prompt-test-set")
+    recommendation_prompt_test_set: UUID = uuid5(
+        NAMESPACE_URL, "geo-restore-gate:recommendation-prompt-test-set"
+    )
     policy: UUID = uuid5(NAMESPACE_URL, "geo-restore-gate:model-policy")
     runtime_manifest: UUID = uuid5(NAMESPACE_URL, "geo-restore-gate:runtime-manifest")
     provider_job: UUID = uuid5(NAMESPACE_URL, "geo-restore-gate:provider-job")
     provider_lease: UUID = uuid5(NAMESPACE_URL, "geo-restore-gate:provider-lease")
-    synthetic_job: UUID = uuid5(NAMESPACE_URL, "geo-restore-gate:synthetic-job")
-    synthetic_restricted: UUID = uuid5(
-        NAMESPACE_URL, "geo-restore-gate:synthetic-restricted"
+    recommendation_parent_job: UUID = uuid5(
+        NAMESPACE_URL, "geo-restore-gate:recommendation-parent-job"
     )
+    recommendation_parent_lease: UUID = uuid5(
+        NAMESPACE_URL, "geo-restore-gate:recommendation-parent-lease"
+    )
+    recommendation_child_job: UUID = uuid5(
+        NAMESPACE_URL, "geo-restore-gate:recommendation-child-job"
+    )
+    synthetic_job: UUID = uuid5(NAMESPACE_URL, "geo-restore-gate:synthetic-job")
+    synthetic_restricted: UUID = uuid5(NAMESPACE_URL, "geo-restore-gate:synthetic-restricted")
     synthetic_tier: UUID = uuid5(NAMESPACE_URL, "geo-restore-gate:synthetic-tier")
+    workflow_c_policy: UUID = uuid5(NAMESPACE_URL, "geo-restore-gate:workflow-c-policy")
+    workflow_c_suite: UUID = uuid5(NAMESPACE_URL, "geo-restore-gate:workflow-c-suite")
+    workflow_c_run: UUID = uuid5(NAMESPACE_URL, "geo-restore-gate:workflow-c-run")
+    workflow_c_task: UUID = uuid5(NAMESPACE_URL, "geo-restore-gate:workflow-c-task")
+    workflow_c_artifact: UUID = uuid5(NAMESPACE_URL, "geo-restore-gate:workflow-c-artifact")
+    workflow_c_capture_session: UUID = uuid5(
+        NAMESPACE_URL, "geo-restore-gate:workflow-c-capture-session"
+    )
 
 
 IDS = GateSeedIds()
@@ -112,9 +126,7 @@ def create_keyrings(directory: Path) -> None:
     )
     _write_json(
         directory / KEYRING_FILES["recommendation"],
-        _application_keyring(
-            {1: recommendation_v1, 2: recommendation_v2}, active_version=2
-        ),
+        _application_keyring({1: recommendation_v1, 2: recommendation_v2}, active_version=2),
     )
     _write_json(
         directory / KEYRING_FILES["synthetic"],

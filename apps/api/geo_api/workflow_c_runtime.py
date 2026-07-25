@@ -12,6 +12,7 @@ from typing import cast
 
 from geo_api.workflow_c_alert_runtime import WorkflowCAlertRuntime
 from geo_api.workflow_c_analysis_runtime import WorkflowCAnalysisPort, WorkflowCAnalysisRuntime
+from geo_api.workflow_c_report_runtime import WorkflowCReportPort, WorkflowCReportRuntime
 from geo_api.workflow_c_sampling_runtime import WorkflowCSamplingRuntime
 from geo_api.workflow_c_manual_artifacts import InMemoryManualArtifactWriter
 
@@ -25,6 +26,7 @@ class WorkflowCApi:
     sampling: WorkflowCSamplingRuntime
     analysis: WorkflowCAnalysisPort
     alerts: WorkflowCAlertRuntime
+    reports: WorkflowCReportPort
     persistence: str
 
     def __post_init__(self) -> None:
@@ -41,6 +43,7 @@ def memory_workflow_c_api(*, clock: Callable[[], datetime]) -> WorkflowCApi:
         ),
         analysis=WorkflowCAnalysisRuntime(clock=clock),
         alerts=WorkflowCAlertRuntime(clock=clock),
+        reports=WorkflowCReportRuntime(clock=clock),
         persistence="memory_test_only",
     )
 

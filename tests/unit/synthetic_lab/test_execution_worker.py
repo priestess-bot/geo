@@ -410,6 +410,7 @@ def test_shared_worker_builder_registers_only_non_browser_execution_kinds() -> N
     assert set(handlers) == {
         "style.profile.build",
         "review.case.run",
+        "corpus.finalize",
         "offline_experiment.run",
         "synthetic.model.call",
     }

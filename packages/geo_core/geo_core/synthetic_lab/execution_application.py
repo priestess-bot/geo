@@ -14,6 +14,7 @@ from geo_core.synthetic_lab.application_support import (
     stage_command,
 )
 from geo_core.synthetic_lab.execution_contracts import (
+    CorpusFinalizeTask,
     OfflineExperimentRunTask,
     ReviewCaseRunTask,
     StyleProfileBuildTask,
@@ -52,7 +53,11 @@ class SyntheticExecutionApplication:
             raise SyntheticExecutionError(
                 "Synthetic execution task requester must match the admitting principal"
             )
-        current = assert_runtime_current(task.runtime_inputs, runtime_inputs)
+        current = assert_runtime_current(
+            task.runtime_inputs,
+            runtime_inputs,
+            require_frozen_profile=not isinstance(task, StyleProfileBuildTask),
+        )
         for prompt in prompt_refs(task):
             prompts.assert_current(prompt)
         kind, event_type = _task_kind(task)
@@ -99,6 +104,8 @@ def _task_kind(task: SyntheticExecutionTask) -> tuple[str, str]:
         return "style.profile.build", "synthetic.style.profile.build.queued"
     if isinstance(task, ReviewCaseRunTask):
         return "review.case.run", "synthetic.review.case.run.queued"
+    if isinstance(task, CorpusFinalizeTask):
+        return "corpus.finalize", "synthetic.corpus.finalize.queued"
     if isinstance(task, OfflineExperimentRunTask):
         return "offline_experiment.run", "synthetic.offline_experiment.run.queued"
     raise TypeError("unsupported Synthetic execution task")

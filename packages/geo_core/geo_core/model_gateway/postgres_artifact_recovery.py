@@ -151,6 +151,16 @@ class PostgresProviderArtifactRecovery:
                         request.expected_output_hash,
                     ),
                 ).fetchone()
+                analysis_authorized = False
+                if row is not None:
+                    _validate_current_fence(connection, request, recovered_at)
+                    if (
+                        request.source_model_job_id != request.recovery_job_id
+                        and row["source_parent_job_id"] != request.recovery_job_id
+                    ):
+                        analysis_authorized = _analysis_recovery_authorized(
+                            connection, request, row
+                        )
         except psycopg.Error as exc:
             raise ProviderArtifactError(
                 "Provider artifact recovery metadata is unavailable"
@@ -162,6 +172,7 @@ class PostgresProviderArtifactRecovery:
             (
                 request.source_model_job_id != request.recovery_job_id
                 and row["source_parent_job_id"] != request.recovery_job_id
+                and not analysis_authorized
             ),
             row["attempt_id"] != request.model_call_attempt_id,
             row["bundle_status"] != "committed",
@@ -386,6 +397,63 @@ def _validate_current_fence(
         or row["cancel_requested_at"] is not None
     ):
         raise ProviderArtifactError("Provider artifact recovery lease is stale")
+
+
+def _analysis_recovery_authorized(
+    connection: Any,
+    request: ProviderArtifactRecoveryRequest,
+    artifact: Mapping[str, Any],
+) -> bool:
+    """Authorize only an exact immutable semantic-manifest membership.
+
+    Sampling retries and parent/child model workflows retain their existing
+    identity rule. Cross-Job recovery is admitted solely when the current
+    semantic v2 Job points at a frozen manifest item that names every source
+    and artifact hash being decrypted.
+    """
+
+    if request.source_model_job_id == request.recovery_job_id:
+        return False
+    row = connection.execute(
+        """SELECT EXISTS (
+               SELECT 1
+                 FROM durable_jobs AS recovery
+                 JOIN workflow_c_job_specs AS analysis_spec
+                   ON analysis_spec.project_id = recovery.project_id
+                  AND analysis_spec.job_id = recovery.id
+                 JOIN workflow_c_analysis_input_manifests AS manifest
+                   ON manifest.project_id = recovery.project_id
+                  AND manifest.id =
+                      (analysis_spec.spec_payload->'semantic_metrics'->>'manifest_id')::uuid
+                 JOIN workflow_c_analysis_input_manifest_items AS member
+                   ON member.project_id = manifest.project_id
+                  AND member.manifest_id = manifest.id
+                WHERE recovery.project_id = %s
+                  AND recovery.id = %s
+                  AND recovery.kind = 'workflow_c.analysis.semantic_metrics'
+                  AND analysis_spec.kind = recovery.kind
+                  AND analysis_spec.spec_payload->'schema_version' = '2'::jsonb
+                  AND analysis_spec.spec_payload->>'kind' = recovery.kind
+                  AND analysis_spec.spec_payload->'semantic_metrics'->>'manifest_hash'
+                      = manifest.manifest_hash
+                  AND member.artifact_kind = 'provider'
+                  AND member.source_job_id = %s
+                  AND member.provider_model_attempt_id = %s
+                  AND member.output_hash = %s
+                  AND member.artifact_manifest_hash = %s
+                  AND member.artifact_content_hash = %s
+           ) AS authorized""",
+        (
+            request.project_id,
+            request.recovery_job_id,
+            request.source_model_job_id,
+            request.model_call_attempt_id,
+            request.expected_output_hash,
+            artifact["manifest_hash"],
+            artifact["content_hash"],
+        ),
+    ).fetchone()
+    return bool(row is not None and row["authorized"])
 
 
 def _wipe(value: bytearray) -> None:

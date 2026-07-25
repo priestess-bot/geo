@@ -11,6 +11,10 @@ from geo_api.foundation_services import FoundationServiceUnavailable
 from geo_api.problems import ApiProblem
 from geo_api.synthetic_lab_runtime import SyntheticLabApi, SyntheticLabApiNotFound
 from geo_core.synthetic_lab.domain import SyntheticLabContractError, SyntheticLabScopeError
+from geo_core.synthetic_lab.execution_contracts import (
+    SyntheticExecutionError,
+    SyntheticExecutionStale,
+)
 from geo_core.synthetic_lab.ports import (
     SyntheticLabIdempotencyConflict,
     SyntheticLabJobOwnershipLost,
@@ -66,6 +70,10 @@ def _call(operation: Callable[[], _ResultT]) -> _ResultT:
         raise _problem(404, "Not Found", error, "not-found") from error
     except (SyntheticLabPermissionDenied, SyntheticLabScopeError) as error:
         raise _problem(403, "Forbidden", error, "forbidden") from error
+    except SyntheticExecutionStale as error:
+        raise _problem(409, "Conflict", error, "stale-execution-input") from error
+    except SyntheticExecutionError as error:
+        raise _problem(422, "Unprocessable Content", error, "execution-contract") from error
     except SyntheticLabContractError as error:
         raise _problem(422, "Unprocessable Content", error, "contract") from error
     except (

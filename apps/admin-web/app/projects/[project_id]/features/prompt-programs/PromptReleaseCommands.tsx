@@ -7,6 +7,7 @@ import {
   bindPromptReleaseAction,
   diffPromptReleaseAction,
   freezePromptReleaseAction,
+  retirePromptReleaseAction,
   enqueuePromptTestAction
 } from "./promptProgramActions";
 import { PromptActionFeedback } from "./PromptActionFeedback";
@@ -24,6 +25,7 @@ type CommandKeys = Readonly<{
   bind: string;
   diff: string;
   freeze: string;
+  retire: string;
   test: string;
 }>;
 
@@ -64,6 +66,10 @@ export function PromptReleaseCommands({
     freezePromptReleaseAction,
     initialPromptActionState
   );
+  const [retireState, retireAction, retirePending] = useActionState(
+    retirePromptReleaseAction,
+    initialPromptActionState
+  );
   const [bindState, bindAction, bindPending] = useActionState(
     bindPromptReleaseAction,
     initialPromptActionState
@@ -78,6 +84,7 @@ export function PromptReleaseCommands({
   const selfOwned = actorIdentityId === release.owner_id;
   const canApproveRelease = canApprove && status === "tested" && !selfOwned;
   const canFreeze = canApprove && status === "approved";
+  const canRetire = canApprove && status === "frozen";
   const bindingInventoryAvailable = !bindingProblem;
   const canBind = canApprove && status === "frozen" && bindingInventoryAvailable;
   const canDiff = canContribute
@@ -158,6 +165,32 @@ export function PromptReleaseCommands({
         </div>
         <PromptActionFeedback state={approveState} />
         <PromptActionFeedback state={freezeState} />
+        <form action={retireAction} className={styles.retirementForm}>
+          <ReleaseHiddenFields
+            idempotencyKey={commandKeys.retire}
+            projectId={projectId}
+            release={release}
+          />
+          <label>
+            <input
+              disabled={!canRetire || retirePending}
+              name="confirm_retirement"
+              required
+              type="checkbox"
+              value="confirmed"
+            />
+            <span>停止该 Release 的新运行时解析</span>
+          </label>
+          <button
+            className={styles.retireButton}
+            disabled={!canRetire || retirePending}
+            title={retireDisabledReason(canApprove, status)}
+            type="submit"
+          >
+            {retirePending ? "退役中..." : "退役 Release"}
+          </button>
+        </form>
+        <PromptActionFeedback state={retireState} />
       </section>
 
       <section className={styles.commandSection} aria-labelledby="prompt-binding-heading">
@@ -266,6 +299,11 @@ function approveDisabledReason(canApprove: boolean, status: string, selfOwned: b
 function freezeDisabledReason(canApprove: boolean, status: string): string {
   if (!canApprove) return "仅项目负责人或管理员可以冻结";
   return status === "approved" ? "" : "仅 Approved Release 可以冻结";
+}
+
+function retireDisabledReason(canApprove: boolean, status: string): string {
+  if (!canApprove) return "仅项目负责人或管理员可以退役";
+  return status === "frozen" ? "" : "仅 Frozen Release 可以退役";
 }
 
 function bindDisabledReason(

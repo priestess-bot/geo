@@ -19,6 +19,12 @@ from geo_core.model_gateway.location import (
     RequestedModelLocation,
 )
 from geo_core.jobs.postgres import WorkerLease
+from geo_core.sampling import (
+    SURFACE_PARSER_RELEASES,
+    SurfaceArtifactCaptureKind,
+    SurfaceParseSummary,
+    parse_surface_artifact,
+)
 from geo_core.sampling.postgres_worker_contracts import (
     ManualSamplingWorkerSpec,
     WorkflowCSamplingSpecError,
@@ -202,9 +208,76 @@ def test_manual_repository_uses_complete_status_and_empty_ineligible_reasons() -
     query, parameters = connection.calls[0]
     assert "geo_commit_workflow_c_manual_sampling" in query
     assert len(parameters) == 24
+    assert query.count("%s") == len(parameters)
     assert parameters[18] == "complete"
     assert isinstance(parameters[19], str)
     assert json.loads(parameters[19]) == []
+
+
+def test_manual_surface_parse_controls_observation_eligibility_without_text() -> None:
+    source = parse_sampling_worker_source(_manual_suite_payload())
+    spec = ManualSamplingWorkerSpec(
+        manual_import_id=uuid4(),
+        run_id=RUN_ID,
+        task_id=TASK_ID,
+        attempt_id=ATTEMPT_ID,
+        artifact_manifest_id=uuid4(),
+        artifact_manifest_hash=HASH,
+        artifact_content_hash="b" * 64,
+        governance_policy_hash="c" * 64,
+        capture_session_id=uuid4(),
+        task_version=1,
+        attempt_version=1,
+    )
+    release = SURFACE_PARSER_RELEASES[0]
+    captured = SurfaceParseSummary.from_result(
+        parse_surface_artifact(
+            release,
+            _surface_artifact(release),
+            capture_kind=SurfaceArtifactCaptureKind.MANUAL_UI,
+        )
+    )
+    blocked_artifact = _surface_artifact(release)
+    blocked_artifact["blocking_state"] = "captcha"
+    blocked = SurfaceParseSummary.from_result(
+        parse_surface_artifact(
+            release,
+            blocked_artifact,
+            capture_kind=SurfaceArtifactCaptureKind.MANUAL_UI,
+        )
+    )
+
+    captured_commit = build_manual_commit(
+        project_id=PROJECT_ID,
+        spec=spec,
+        task_key=HASH,
+        source=source,
+        manifest_uri="s3://geo-restricted-workflow-c-artifacts/path/manifest.json",
+        surface_parse=captured,
+        observed_at=NOW,
+    )
+    blocked_commit = build_manual_commit(
+        project_id=PROJECT_ID,
+        spec=spec,
+        task_key=HASH,
+        source=source,
+        manifest_uri="s3://geo-restricted-workflow-c-artifacts/path/manifest.json",
+        surface_parse=blocked,
+        observed_at=NOW,
+    )
+
+    assert captured_commit.evidence_status == "complete"
+    assert captured_commit.ineligible_reasons == ()
+    assert blocked_commit.evidence_status == "ineligible"
+    assert blocked_commit.ineligible_reasons == (
+        "surface_parse:access_blocked:captcha",
+    )
+    assert "Australian answer" not in repr(dict(captured_commit.evidence))
+    surface_lineage = captured_commit.evidence["surface_parse"]
+    assert isinstance(surface_lineage, dict)
+    assert surface_lineage["summary_hash"] == captured.summary_hash
+    assert surface_lineage["automated_capture"] is False
+    assert surface_lineage["live_capture_eligible"] is False
 
 
 class _CommitCursor:
@@ -306,6 +379,8 @@ def _manual_suite_payload() -> dict[str, object]:
     source = dict(source_value)
     source.update(
         {
+            "platform": "google",
+            "surface": "ai_overviews",
             "capture_method": "manual_ui",
             "region": "not_controlled",
             "location_control": "not_controlled",
@@ -313,6 +388,24 @@ def _manual_suite_payload() -> dict[str, object]:
         }
     )
     return {"source_stratum": source, "questions": payload["questions"]}
+
+
+def _surface_artifact(release) -> dict[str, object]:
+    return {
+        "schema_version": "consumer-surface-artifact-v1",
+        "platform": release.platform,
+        "surface": release.surface.value,
+        "final_url": "https://www.google.com/search?q=fixture",
+        "page_ready": True,
+        "surface_markers": [release.surface_marker],
+        "ordinary_result_markers": ["ordinary_results_ready"],
+        "answer_blocks": [
+            {"text": "Australian answer", "locator": "dom://answer/1"}
+        ],
+        "citations": [],
+        "blocking_state": None,
+        "follow_up_count": 0,
+    }
 
 
 def _provider_result(*, answer: str) -> ModelGatewayResult:

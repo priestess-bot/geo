@@ -6,6 +6,7 @@ from functools import lru_cache
 
 from geo_core.prompts.bootstrap_contracts import (
     BOOTSTRAP_CATALOG_VERSION,
+    BOOTSTRAP_COMPILER_VERSION,
     PromptBootstrapRuleViolation,
     PromptBootstrapSpec,
     PromptRubricCriterion,
@@ -31,8 +32,8 @@ from geo_core.prompts.program_contracts import (
 )
 
 
-BOOTSTRAP_SPEC_VERSION = "geo-prompt-spec-v1"
-VARIABLE_SCHEMA_VERSION = "geo-prompt-request-json-v1"
+BOOTSTRAP_SPEC_VERSION = "geo-prompt-spec-v2"
+VARIABLE_SCHEMA_VERSION = "geo-prompt-request-json-v2"
 MODEL_POLICY_VERSION = "geo-prompt-provider-neutral-v1"
 
 
@@ -115,6 +116,7 @@ def _build_spec(kind: ProgramKind) -> PromptBootstrapSpec:
         ),
         application_output_schema=application_output_schema,
         model_policy=DEFAULT_BOOTSTRAP_MODEL_POLICY,
+        compiler_version=BOOTSTRAP_COMPILER_VERSION,
         application_rules=(*COMMON_APPLICATION_RULES, *KIND_APPLICATION_RULES[kind]),
         fixtures=build_eval_fixtures(kind),
         rubric=_rubric(kind),

@@ -378,7 +378,7 @@ class RecommendationGenerationApplication:
             raise RecommendationGenerationStale("Fact resolver rejected frozen Facts") from error
         if tuple(item.canonical_value() for item in current) != tuple(
             item.canonical_value() for item in spec.evidence.facts
-        ) or not all(item.current_and_valid for item in current):
+        ):
             raise RecommendationGenerationStale("frozen Fact identity or status changed")
 
     def _assert_terminal_inputs(

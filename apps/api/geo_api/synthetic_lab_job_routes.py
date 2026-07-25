@@ -9,7 +9,11 @@ from fastapi import APIRouter, Request, status
 from geo_api.catalog_routes import _principal
 from geo_api.synthetic_lab_contracts import (
     CancelSyntheticJobRequest,
+    EnqueueCorpusFinalizeRequest,
+    EnqueueOfflineExperimentRequest,
+    EnqueueReviewCaseRunRequest,
     EnqueueStyleCollectionRequest,
+    EnqueueStyleProfileBuildRequest,
     EnqueueSyntheticJobRequest,
     FinalizeSyntheticJobRequest,
     SyntheticJobResponse,
@@ -52,6 +56,30 @@ def synthetic_lab_job_router() -> APIRouter:
         )
 
     @router.post(
+        "/jobs/profile-build",
+        response_model=SyntheticJobResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+        operation_id="enqueueSyntheticStyleProfileBuildJob",
+    )
+    def enqueue_profile_build(
+        project_id: UUID,
+        payload: EnqueueStyleProfileBuildRequest,
+        request: Request,
+        idempotency_key: IdempotencyHeader,
+        authorization: AuthorizationHeader = None,
+    ) -> SyntheticJobResponse:
+        return job_response(
+            _run_write(
+                request,
+                "enqueue_profile_build",
+                _principal(request, authorization),
+                idempotency_key,
+                project_id=project_id,
+                payload=payload,
+            )
+        )
+
+    @router.post(
         "/jobs/generation",
         response_model=SyntheticJobResponse,
         status_code=status.HTTP_202_ACCEPTED,
@@ -59,18 +87,20 @@ def synthetic_lab_job_router() -> APIRouter:
     )
     def enqueue_generation(
         project_id: UUID,
-        payload: EnqueueSyntheticJobRequest,
+        payload: EnqueueReviewCaseRunRequest,
         request: Request,
         idempotency_key: IdempotencyHeader,
         authorization: AuthorizationHeader = None,
     ) -> SyntheticJobResponse:
-        return _enqueue(
-            request,
-            authorization,
-            project_id,
-            payload,
-            idempotency_key,
-            "candidate_generation",
+        return job_response(
+            _run_write(
+                request,
+                "enqueue_review_case",
+                _principal(request, authorization),
+                idempotency_key,
+                project_id=project_id,
+                payload=payload,
+            )
         )
 
     @router.post(
@@ -103,18 +133,20 @@ def synthetic_lab_job_router() -> APIRouter:
     )
     def enqueue_corpus(
         project_id: UUID,
-        payload: EnqueueSyntheticJobRequest,
+        payload: EnqueueCorpusFinalizeRequest,
         request: Request,
         idempotency_key: IdempotencyHeader,
         authorization: AuthorizationHeader = None,
     ) -> SyntheticJobResponse:
-        return _enqueue(
-            request,
-            authorization,
-            project_id,
-            payload,
-            idempotency_key,
-            "corpus_finalize",
+        return job_response(
+            _run_write(
+                request,
+                "enqueue_corpus_finalize",
+                _principal(request, authorization),
+                idempotency_key,
+                project_id=project_id,
+                payload=payload,
+            )
         )
 
     @router.post(
@@ -125,18 +157,20 @@ def synthetic_lab_job_router() -> APIRouter:
     )
     def enqueue_experiment(
         project_id: UUID,
-        payload: EnqueueSyntheticJobRequest,
+        payload: EnqueueOfflineExperimentRequest,
         request: Request,
         idempotency_key: IdempotencyHeader,
         authorization: AuthorizationHeader = None,
     ) -> SyntheticJobResponse:
-        return _enqueue(
-            request,
-            authorization,
-            project_id,
-            payload,
-            idempotency_key,
-            "offline_experiment",
+        return job_response(
+            _run_write(
+                request,
+                "enqueue_offline_experiment",
+                _principal(request, authorization),
+                idempotency_key,
+                project_id=project_id,
+                payload=payload,
+            )
         )
 
     @router.get(

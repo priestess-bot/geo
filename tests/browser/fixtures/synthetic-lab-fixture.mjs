@@ -8,6 +8,12 @@ const BOUNDARY = Object.freeze({
 const AUTHORIZATION_ID = "00000000-0000-4000-8000-000000000701";
 const SOURCE_ID = "00000000-0000-4000-8000-000000000702";
 const SOURCE_REVISION_ID = "00000000-0000-4000-8000-000000000703";
+const MANUAL_SOURCE_ID = "00000000-0000-4000-8000-000000000721";
+const MANUAL_SOURCE_REVISION_ID = "00000000-0000-4000-8000-000000000722";
+const MANUAL_PREVIEW_ID = "00000000-0000-4000-8000-000000000723";
+const MANUAL_IMPORT_ID = "00000000-0000-4000-8000-000000000724";
+const MANUAL_REQUEST_ID = "00000000-0000-4000-8000-000000000725";
+const MANUAL_SUBMITTER_ID = "00000000-0000-4000-8000-000000000003";
 const PROFILE_ID = "00000000-0000-4000-8000-000000000704";
 const PROFILE_VERSION_ID = "00000000-0000-4000-8000-000000000705";
 const SUITE_ID = "00000000-0000-4000-8000-000000000706";
@@ -15,11 +21,20 @@ const SUITE_VERSION_ID = "00000000-0000-4000-8000-000000000707";
 const CASE_A_ID = "00000000-0000-4000-8000-000000000708";
 const CASE_B_ID = "00000000-0000-4000-8000-000000000709";
 const PROMPT_RELEASE_ID = "00000000-0000-4000-8000-000000000710";
+const RUNTIME_SELECTION_ID = "00000000-0000-4000-8000-000000000713";
+const FACT_SNAPSHOT_ID = "00000000-0000-4000-8000-000000000714";
 const EXISTING_STYLE_COLLECTION_JOB_ID = "00000000-0000-4000-8000-000000000712";
+const COMPLETED_REVIEW_JOB_A_ID = "00000000-0000-4000-8000-000000000716";
+const COMPLETED_REVIEW_JOB_B_ID = "00000000-0000-4000-8000-000000000717";
+const CANDIDATE_CORPUS_JOB_ID = "00000000-0000-4000-8000-000000000718";
+const APPROVED_CORPUS_JOB_ID = "00000000-0000-4000-8000-000000000719";
+const QUESTION_SET_ID = "00000000-0000-4000-8000-000000000720";
 
 let mode = "normal";
 let authorizationState = "approved";
 let authorizationVersion = 1;
+let profileStatus = "frozen";
+let previewStatus = "pending";
 let suiteStatus = "draft";
 const jobs = new Map();
 
@@ -27,6 +42,8 @@ export function resetSyntheticLabFixture() {
   mode = "normal";
   authorizationState = "approved";
   authorizationVersion = 1;
+  profileStatus = "frozen";
+  previewStatus = "pending";
   suiteStatus = "draft";
   jobs.clear();
 }
@@ -42,13 +59,21 @@ export function handleSyntheticLabFixture({
   send
 }) {
   if (path === "/__synthetic_mode" && request.method === "POST") {
-    mode = ["normal", "empty", "unavailable", "conflict"].includes(payload?.mode)
+    mode = [
+      "normal", "governance", "manual_approval_rejected", "empty", "unavailable", "conflict"
+    ].includes(payload?.mode)
       ? payload.mode
       : "normal";
+    authorizationState = mode === "governance" ? "not_assessed" : "approved";
+    profileStatus = mode === "governance" ? "in_review" : "frozen";
     send(response, { mode });
     return true;
   }
   const base = `/v1/projects/${projectId}/synthetic-lab`;
+  if (path === `/v1/projects/${projectId}/model-gateway/options` && request.method === "GET") {
+    send(response, syntheticRuntimeOptions());
+    return true;
+  }
   if (!path.startsWith(base)) return false;
   if (mode === "unavailable") {
     send(response, { detail: "Synthetic Lab persistence is unavailable" }, 503);
@@ -71,7 +96,9 @@ export function handleSyntheticLabFixture({
     return true;
   }
   if (path === `${base}/style-sources`) {
-    if (request.method === "GET") send(response, page(empty ? [] : [source(projectId)]));
+    if (request.method === "GET") {
+      send(response, page(empty ? [] : [source(projectId), manualSource(projectId)]));
+    }
     else send(response, {
       ...source(projectId),
       id: SOURCE_REVISION_ID,
@@ -84,7 +111,35 @@ export function handleSyntheticLabFixture({
     return true;
   }
   if (path === `${base}/sample-import-previews` && request.method === "GET") {
-    send(response, page([]));
+    send(response, page(empty ? [] : [manualImportPreview(projectId, false)]));
+    return true;
+  }
+  const previewRoute = path.match(new RegExp(`^${base}/sample-import-previews/([^/]+)$`));
+  if (previewRoute && request.method === "GET") {
+    if (previewRoute[1] !== MANUAL_PREVIEW_ID) {
+      send(response, { detail: "manual import preview not found" }, 404);
+    } else {
+      send(response, manualImportPreview(projectId, true));
+    }
+    return true;
+  }
+  const previewApproval = path.match(
+    new RegExp(`^${base}/sample-import-previews/([^/]+)/approve$`)
+  );
+  if (previewApproval && request.method === "POST") {
+    if (previewApproval[1] !== MANUAL_PREVIEW_ID) {
+      send(response, { detail: "manual import preview not found" }, 404);
+    } else if (mode === "manual_approval_rejected") {
+      send(response, { detail: "independent manual review was rejected by the service" }, 403);
+    } else if (actorId === MANUAL_SUBMITTER_ID) {
+      send(response, { detail: "manual import submitter cannot approve their own preview" }, 403);
+    } else if (!payload?.au_english_verified || !payload?.anonymization_verified
+        || JSON.stringify(payload?.selected_row_numbers) !== JSON.stringify([1])) {
+      send(response, { detail: "manual import approval payload is invalid" }, 422);
+    } else {
+      previewStatus = "approved";
+      send(response, manualImportResult(projectId));
+    }
     return true;
   }
   if (path === `${base}/resource-inventory` && request.method === "GET") {
@@ -92,9 +147,43 @@ export function handleSyntheticLabFixture({
       ...BOUNDARY,
       samples: [],
       prompt_bindings: [],
-      question_sets: [],
+      question_sets: [
+        resourceOption(QUESTION_SET_ID, "Frozen AU buyer questions", "question_set", "frozen")
+      ],
       fact_snapshots: [],
-      profiles: []
+      profiles: [],
+      review_jobs: [
+        resourceOption(
+          COMPLETED_REVIEW_JOB_A_ID,
+          "Reddit passed Review",
+          "review_job",
+          "passed",
+          "reddit"
+        ),
+        resourceOption(
+          COMPLETED_REVIEW_JOB_B_ID,
+          "Reddit warning Review",
+          "review_job",
+          "completed_with_warning",
+          "reddit"
+        )
+      ],
+      candidate_corpora: [
+        resourceOption(
+          CANDIDATE_CORPUS_JOB_ID,
+          "Candidate Corpus v1",
+          "corpus_candidate",
+          "new_candidate_corpus"
+        )
+      ],
+      approved_corpora: [
+        resourceOption(
+          APPROVED_CORPUS_JOB_ID,
+          "Approved Corpus v2",
+          "corpus_approved",
+          "current_approved_corpus"
+        )
+      ]
     });
     return true;
   }
@@ -219,11 +308,18 @@ export function handleSyntheticLabFixture({
       corpus: "corpus_finalize",
       "offline-experiment": "offline_experiment"
     }[enqueue[1]];
+    const idempotencyKey = request.headers["idempotency-key"];
+    const forbiddenKeys = ["job_id", "input_hash", "outbox_id", "runtime_inputs"];
+    if (typeof idempotencyKey !== "string" || !idempotencyKey
+        || Object.keys(payload || {}).some((key) => forbiddenKeys.includes(key))) {
+      send(response, { detail: "Synthetic execution admission payload is invalid" }, 422);
+      return true;
+    }
     const job = jobView({
-      id: payload.job_id,
+      id: executionJobId(projectId, idempotencyKey, enqueue[1]),
       projectId,
       kind,
-      status: "running",
+      status: "queued",
       version: 1,
       cancelRequested: false
     });
@@ -261,6 +357,17 @@ function styleCollectionJobId(projectId, idempotencyKey) {
   return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-5${hash.slice(13, 16)}-8${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
 }
 
+function executionJobId(projectId, idempotencyKey, route) {
+  const hash = createHash("sha256")
+    .update(`${projectId}:${idempotencyKey}:${route}:server-owned-job`)
+    .digest("hex");
+  return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-5${hash.slice(13, 16)}-8${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
+}
+
+function resourceOption(id, label, kind, status, channel = null) {
+  return { id, label, kind, status, channel };
+}
+
 function page(items) {
   return { ...BOUNDARY, items, total: items.length, limit: 100, offset: 0 };
 }
@@ -280,7 +387,7 @@ function authorization(projectId, replayed = false) {
     max_requests_per_period: authorizationState === "approved" ? 20 : null,
     period_seconds: authorizationState === "approved" ? 60 : null,
     max_concurrency: authorizationState === "approved" ? 2 : null,
-    expires_at: null,
+    expires_at: authorizationState === "approved" ? "2027-07-24T02:00:00Z" : null,
     record_hash: "a".repeat(64),
     replayed
   };
@@ -302,6 +409,86 @@ function source(projectId) {
   };
 }
 
+function manualSource(projectId) {
+  return {
+    ...BOUNDARY,
+    id: MANUAL_SOURCE_REVISION_ID,
+    project_id: projectId,
+    source_id: MANUAL_SOURCE_ID,
+    revision_number: 1,
+    channel: "reddit",
+    access_mode: "manual_import",
+    locale: "en-AU",
+    source_locator_hash: "7".repeat(64),
+    status: "active",
+    replayed: false
+  };
+}
+
+function manualImportPreview(projectId, includeRows) {
+  const summary = {
+    ...BOUNDARY,
+    id: MANUAL_PREVIEW_ID,
+    project_id: projectId,
+    style_source_revision_id: MANUAL_SOURCE_REVISION_ID,
+    channel: "reddit",
+    filename: "australian-reddit-style-samples.txt",
+    import_format: "text",
+    status: previewStatus,
+    version: previewStatus === "pending" ? 1 : 2,
+    submitted_by: MANUAL_SUBMITTER_ID,
+    submitted_at: "2026-07-24T02:00:00Z",
+    expires_at: "2027-07-24T02:00:00Z",
+    row_count: 2,
+    selectable_count: 1,
+    blocked_count: 1,
+    preview_manifest_hash: "8".repeat(64),
+    replayed: false
+  };
+  return includeRows ? {
+    ...summary,
+    rows: [
+      {
+        row_number: 1,
+        redacted_text: "Easy setup and solid performance on a medium Australian lawn.",
+        source_rights: "owned",
+        detected_codes: ["en_au_confirmed"],
+        blocking_codes: [],
+        disposition: "ready_for_review",
+        selectable: true
+      },
+      {
+        row_number: 2,
+        redacted_text: "[REDACTED] account-linked sample",
+        source_rights: "public_reference",
+        detected_codes: ["account_link_detected"],
+        blocking_codes: ["restricted_identifier"],
+        disposition: "blocked",
+        selectable: false
+      }
+    ]
+  } : summary;
+}
+
+function manualImportResult(projectId) {
+  return {
+    ...BOUNDARY,
+    id: MANUAL_IMPORT_ID,
+    project_id: projectId,
+    request_id: MANUAL_REQUEST_ID,
+    channel: "reddit",
+    locale: "en-AU",
+    row_count: 2,
+    accepted_count: 1,
+    rejected_count: 1,
+    duplicate_row_count: 0,
+    input_hash: "9".repeat(64),
+    manifest_hash: "0".repeat(64),
+    row_errors: [],
+    replayed: false
+  };
+}
+
 function profile(projectId) {
   return {
     ...BOUNDARY,
@@ -309,6 +496,7 @@ function profile(projectId) {
     project_id: projectId,
     profile_id: PROFILE_ID,
     version_number: 1,
+    state_version: 1,
     channel: "reddit",
     locale: "en-AU",
     corpus_hash: "c".repeat(64),
@@ -316,7 +504,7 @@ function profile(projectId) {
     prompt_release_id: PROMPT_RELEASE_ID,
     prompt_release_hash: "e".repeat(64),
     approved_sample_count: 240,
-    status: "frozen",
+    status: profileStatus,
     replayed: false
   };
 }
@@ -328,6 +516,7 @@ function suite(projectId) {
     project_id: projectId,
     suite_id: SUITE_ID,
     version_number: 1,
+    state_version: 1,
     channel: "reddit",
     case_count: 2,
     case_set_hash: "f".repeat(64),
@@ -350,6 +539,7 @@ function caseView(projectId, id, ordinal, scenarioMode, competitor, key) {
     project_id: projectId,
     review_suite_version_id: SUITE_VERSION_ID,
     review_suite_version_number: 1,
+    state_version: 1,
     case_key: key,
     ordinal,
     mode: scenarioMode,
@@ -357,6 +547,32 @@ function caseView(projectId, id, ordinal, scenarioMode, competitor, key) {
     competitor_scenario: competitor,
     content_hash: String(ordinal).repeat(64),
     replayed: false
+  };
+}
+
+export function syntheticRuntimeOptions() {
+  return {
+    current_manifest_id: "00000000-0000-4000-8000-000000000715",
+    items: [{
+      selection_id: RUNTIME_SELECTION_ID,
+      manifest_id: "00000000-0000-4000-8000-000000000715",
+      provider: "openai",
+      adapter_release_id: "openai-responses-v1",
+      model_release_id: "gpt-fixture-v1",
+      configured_model: "gpt-fixture",
+      capture_method: "provider_api",
+      allowed_purposes: [
+        "synthetic_lab.style_profile",
+        "synthetic_lab.generation",
+        "synthetic_lab.claim_extraction",
+        "synthetic_lab.conflict_check",
+        "synthetic_lab.revision",
+        "synthetic_lab.style_judge",
+        "synthetic_lab.arbiter",
+        "synthetic_lab.offline_answer"
+      ],
+      allowed_search_modes: [null]
+    }]
   };
 }
 

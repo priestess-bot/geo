@@ -60,7 +60,7 @@ def block_recommendation_drafts(
         """UPDATE recommendation_drafts
            SET status = %s, blocked_at = %s, blocked_reason = %s
            WHERE project_id = %s AND recommendation_id = %s
-             AND status IN ('draft', 'started')
+             AND status = 'draft'
            RETURNING id""",
         (
             f"blocked_source_{source_status}",
@@ -86,9 +86,10 @@ class PsycopgRecommendationOutbox:
         try:
             rows = self._connection.execute(
                 """UPDATE recommendation_outbox_messages
-                   SET cancelled_at = clock_timestamp(), cancellation_reason = %s
+                   SET status = 'cancelled',
+                       cancelled_at = clock_timestamp(), cancellation_reason = %s
                    WHERE project_id = %s AND recommendation_id = %s
-                     AND delivered_at IS NULL AND cancelled_at IS NULL
+                     AND status = 'pending'
                    RETURNING id""",
                 (reason, project_id, recommendation_id),
             ).fetchall()

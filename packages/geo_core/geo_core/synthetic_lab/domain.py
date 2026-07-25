@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from datetime import datetime
 from enum import StrEnum
 import hashlib
@@ -217,8 +217,7 @@ class StyleSource(SyntheticOnly):
                 or parsed.password is not None
                 or parsed.query
                 or parsed.fragment
-                or hashlib.sha256(self.source_url.encode()).hexdigest()
-                != self.source_locator_hash
+                or hashlib.sha256(self.source_url.encode()).hexdigest() != self.source_locator_hash
             ):
                 raise SyntheticLabContractError(
                     "Style Source URL must be credential-free HTTPS matching its locator hash"
@@ -397,6 +396,29 @@ class StyleProfileVersion(SyntheticOnly):
                 )
 
 
+@dataclass(frozen=True, kw_only=True)
+class StyleProfileSampleManifest(SyntheticOnly):
+    project_id: UUID
+    profile_version_id: UUID
+    corpus_hash: str
+    sample_ids: tuple[UUID, ...]
+
+    def __post_init__(self) -> None:
+        _require_uuid(self.project_id, "Style Profile sample manifest Project")
+        _require_uuid(self.profile_version_id, "Style Profile sample manifest Profile")
+        _require_hash(self.corpus_hash, "Style Profile sample manifest corpus")
+        if len(self.sample_ids) < 200 or len(self.sample_ids) > 10_000:
+            raise SyntheticLabContractError(
+                "Style Profile sample manifest requires 200 to 10000 samples"
+            )
+        if len(self.sample_ids) != len(set(self.sample_ids)):
+            raise SyntheticLabContractError(
+                "Style Profile sample manifest cannot contain duplicate samples"
+            )
+        for sample_id in self.sample_ids:
+            _require_uuid(sample_id, "Style Profile sample manifest sample")
+
+
 def assert_same_project(*resources: ProjectScoped) -> UUID:
     if not resources:
         raise SyntheticLabScopeError("Project scope check requires at least one resource")
@@ -513,22 +535,20 @@ def _target_status(
     transitions: Mapping[_EnumT, Mapping[str, _EnumT]],
     label: str,
 ) -> _EnumT:
-    target = transitions[current].get(command)
-    if target is None:
-        raise SyntheticLabTransitionError(
-            f"{label} command {command!r} is not allowed from {current.value!r}"
-        )
-    return target
+    from geo_core.synthetic_lab.domain_lifecycle import _target_status as implementation
+
+    return implementation(
+        current=current,
+        command=command,
+        transitions=transitions,
+        label=label,
+    )
 
 
 def transition_style_source(source: StyleSource, *, command: str) -> StyleSource:
-    target = _target_status(
-        current=source.status,
-        command=command,
-        transitions=STYLE_SOURCE_TRANSITIONS,
-        label="Style Source",
-    )
-    return replace(source, status=target)
+    from geo_core.synthetic_lab.domain_lifecycle import transition_style_source as implementation
+
+    return implementation(source, command=command)
 
 
 def transition_collection_run(
@@ -538,26 +558,16 @@ def transition_collection_run(
     raw_manifest_hash: str | None = None,
     reason: str | None = None,
 ) -> CollectionRun:
-    target = _target_status(
-        current=run.status,
-        command=command,
-        transitions=COLLECTION_RUN_TRANSITIONS,
-        label="Collection Run",
+    from geo_core.synthetic_lab.domain_lifecycle import (
+        transition_collection_run as implementation,
     )
-    if target == CollectionRunStatus.COMPLETED:
-        return replace(
-            run,
-            status=target,
-            raw_manifest_hash=raw_manifest_hash,
-            terminal_reason=None,
-        )
-    if target in {CollectionRunStatus.FAILED, CollectionRunStatus.CANCELLED}:
-        return replace(run, status=target, terminal_reason=reason)
-    if raw_manifest_hash is not None or reason is not None:
-        raise SyntheticLabContractError(
-            "non-terminal Collection Run transition cannot set terminal evidence"
-        )
-    return replace(run, status=target)
+
+    return implementation(
+        run,
+        command=command,
+        raw_manifest_hash=raw_manifest_hash,
+        reason=reason,
+    )
 
 
 def transition_style_sample_review(
@@ -567,18 +577,13 @@ def transition_style_sample_review(
     reviewer_id: UUID,
     reviewed_at: datetime,
 ) -> StyleSample:
-    if sample.review_status != StyleSampleReviewStatus.PENDING_REVIEW:
-        raise SyntheticLabTransitionError("reviewed Style Sample is terminal")
-    targets = {
-        "approve": StyleSampleReviewStatus.APPROVED,
-        "reject": StyleSampleReviewStatus.REJECTED,
-    }
-    target = targets.get(command)
-    if target is None:
-        raise SyntheticLabTransitionError(f"unsupported Style Sample command: {command!r}")
-    return replace(
+    from geo_core.synthetic_lab.domain_lifecycle import (
+        transition_style_sample_review as implementation,
+    )
+
+    return implementation(
         sample,
-        review_status=target,
-        reviewed_by=reviewer_id,
+        command=command,
+        reviewer_id=reviewer_id,
         reviewed_at=reviewed_at,
     )

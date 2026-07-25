@@ -69,7 +69,7 @@ export async function verifyWorkflowCActor(
     membership = activeMembership(page.data, identity.data.actor_id);
   }
   if (!membership || !allowedRoles.includes(membership.role)) {
-    return { ok: false, state: forbidden("当前项目角色不能处置 Alert。") };
+    return { ok: false, state: forbidden("当前项目角色不能执行此操作。") };
   }
   return { ok: true, actorId: identity.data.actor_id, role: membership.role };
 }

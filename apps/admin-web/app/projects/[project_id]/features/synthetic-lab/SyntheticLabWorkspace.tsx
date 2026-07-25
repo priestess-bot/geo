@@ -8,7 +8,10 @@ import {
   FreezeSuiteForm
 } from "./SyntheticLabGovernanceForms";
 import {
+  CorpusOfflineExperimentForms,
+  ReviewCaseRunForm,
   StyleCollectionAdmissionForm,
+  StyleProfileBuildForm,
   SelectedJobControls
 } from "./SyntheticLabJobForms";
 import {
@@ -31,10 +34,12 @@ import { SyntheticLabWarnings } from "./SyntheticLabWarnings";
 import styles from "./SyntheticLab.module.css";
 
 export function SyntheticLabWorkspace({
+  actorIdentityId,
   currentRole,
   data,
   projectId
 }: {
+  actorIdentityId: string;
   currentRole: ManagedMemberRole | null;
   data: SyntheticWorkspaceData;
   projectId: string;
@@ -45,6 +50,7 @@ export function SyntheticLabWorkspace({
     data.importPreviewsProblem,
     data.importPreviewProblem,
     data.inventoryProblem,
+    data.runtimeOptionsProblem,
     data.loginSecretsProblem,
     data.profilesProblem,
     data.suitesProblem,
@@ -122,7 +128,7 @@ export function SyntheticLabWorkspace({
         {!data.sourcesProblem && data.sources.items.length === 0 ? <EmptyState text="暂无 Style Source。" /> : null}
         {data.sources.items.length ? <StyleSourceTable items={data.sources.items} /> : null}
         {data.importPreviews.items.length ? <ImportPreviewTable items={data.importPreviews.items} projectId={projectId} /> : null}
-        {data.selectedImportPreview ? <ManualImportApprovalForm canContribute={canContribute} commandKey={key("sample-import-approve")} preview={data.selectedImportPreview} projectId={projectId} /> : null}
+        {data.selectedImportPreview ? <ManualImportApprovalForm actorIdentityId={actorIdentityId} canContribute={canContribute} commandKey={key("sample-import-approve")} preview={data.selectedImportPreview} projectId={projectId} /> : null}
       </section>
 
       <section className={styles.section} aria-labelledby="synthetic-profile-heading">
@@ -142,7 +148,10 @@ export function SyntheticLabWorkspace({
                   <td><Status value={profile.status} /></td>
                   <td>{profile.approved_sample_count}</td>
                   <td><code>{profile.corpus_hash}</code><code>{profile.profile_hash}</code><code>{profile.prompt_release_hash}</code></td>
-                  <td><ProfileCommands canApprove={canApprove} canContribute={canContribute} commandKeys={{ decision: key("profile-decision"), freeze: key("profile-freeze"), submit: key("profile-submit") }} profile={profile} projectId={projectId} samples={data.inventory.samples} /></td>
+                  <td>
+                    <ProfileCommands canApprove={canApprove} canContribute={canContribute} commandKeys={{ decision: key("profile-decision"), freeze: key("profile-freeze"), submit: key("profile-submit") }} profile={profile} projectId={projectId} />
+                    {profile.status === "draft" ? <StyleProfileBuildForm canContribute={canContribute && !data.runtimeOptionsProblem} commandKey={key("profile-build")} inventory={data.inventory} profile={profile} projectId={projectId} runtimes={data.runtimeOptions.items} /> : null}
+                  </td>
                 </tr>
               ))}</tbody>
             </table>
@@ -164,6 +173,7 @@ export function SyntheticLabWorkspace({
             <details className={styles.createSection}><summary>新增 Review Case</summary><CreateReviewCaseForm canContribute={canContribute} commandKey={key("case-create")} inventory={data.inventory} projectId={projectId} suite={selectedSuite} /></details>
             {data.casesProblem ? null : data.selectedCases.items.length === 0 ? <EmptyState text="所选 Suite 暂无 Case。" /> : <CaseTable items={data.selectedCases.items} />}
             <FreezeSuiteForm canApprove={canApprove} cases={data.selectedCases.items} commandKey={key("suite-freeze")} projectId={projectId} suite={selectedSuite} />
+            {selectedSuite.status === "frozen" ? <ReviewCaseRunForm canContribute={canContribute && !data.runtimeOptionsProblem} cases={data.selectedCases.items} commandKey={key("review-case-run")} projectId={projectId} runtimes={data.runtimeOptions.items} suite={selectedSuite} /> : null}
           </div>
         ) : <p className={styles.selectionHint}>打开一个 Suite 后可管理 Case 与冻结清单。</p>}
       </section>
@@ -173,6 +183,18 @@ export function SyntheticLabWorkspace({
           <div><p>Durable Job + Outbox</p><h3 id="synthetic-job-heading">生成、修订、Corpus 与三臂实验</h3></div>
           <span>每批次冻结 Fact / Profile / Prompt</span>
         </div>
+        <CorpusOfflineExperimentForms
+          canApprove={canApprove}
+          canContribute={canContribute && !data.runtimeOptionsProblem}
+          commandKeys={{
+            candidate: key("corpus-candidate"),
+            approve: key("corpus-approve"),
+            experiment: key("offline-experiment")
+          }}
+          inventory={data.inventory}
+          projectId={projectId}
+          runtimes={data.runtimeOptions.items}
+        />
         {data.jobProblem ? null : data.selectedJob ? (
           <div className={styles.jobDetail}>
             <div className={styles.sectionHeading}><div><p>Selected job</p><h4>{data.selectedJob.kind}</h4></div><Status value={data.selectedJob.status} /></div>

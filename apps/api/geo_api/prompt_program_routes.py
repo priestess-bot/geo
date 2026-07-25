@@ -384,6 +384,32 @@ def prompt_program_router() -> APIRouter:
         return _transitioned(result)
 
     @router.post(
+        "/prompt-programs/{program_id}/releases/{release_id}/retire",
+        response_model=TransitionedPromptProgramResponse,
+        operation_id="retirePromptProgramRelease",
+    )
+    def retire_release(
+        project_id: UUID,
+        program_id: UUID,
+        release_id: UUID,
+        payload: TransitionPromptProgramReleaseRequest,
+        request: Request,
+        idempotency_key: IdempotencyHeader,
+        authorization: AuthorizationHeader = None,
+    ) -> TransitionedPromptProgramResponse:
+        result = _call(
+            lambda: _api(request).retire_release(
+                _principal(request, authorization),
+                project_id=project_id,
+                program_id=program_id,
+                release_id=release_id,
+                expected_version=payload.expected_version,
+                idempotency_key=idempotency_key,
+            )
+        )
+        return _transitioned(result)
+
+    @router.post(
         "/prompt-programs/{program_id}/releases/{release_id}/diff",
         response_model=PromptProgramDiffResponse,
         operation_id="diffPromptProgramRelease",

@@ -46,6 +46,25 @@ def test_f009_domain_01_all_public_capture_methods_build_separate_strata() -> No
     assert len({item.stratum_key().canonical_hash() for item in sources}) == len(sources)
 
 
+def test_kimi_api_has_a_first_class_provider_source_identity() -> None:
+    source = replace(
+        _source(CaptureMethod.PROVIDER_API),
+        platform=ObservationPlatform.KIMI,
+        surface=ObservationSurface.KIMI_API,
+        run=replace(
+            _source(CaptureMethod.PROVIDER_API).run,
+            engine="kimi",
+            search_enabled=False,
+            search_mode=SearchMode.DISABLED,
+            adapter_name="kimi",
+        ),
+    )
+
+    assert not source.hard_violations()
+    assert source.stratum_key().platform is ObservationPlatform.KIMI
+    assert source.stratum_key().surface is ObservationSurface.KIMI_API
+
+
 @pytest.mark.parametrize(
     ("method", "surface", "kind"),
     [

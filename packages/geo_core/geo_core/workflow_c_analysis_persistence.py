@@ -10,7 +10,7 @@ from uuid import UUID
 from geo_core.jobs.postgres import PostgresDurableJobStore, WorkerLease
 from geo_core.semantic_metrics import MetricStatus
 from geo_core.statistical_methods import ComparisonInput
-from geo_core.statistical_methods.contracts import canonical_hash
+from geo_core.statistical_methods.contracts import canonical_hash, decimal_value
 from geo_core.workflow_c_analysis_common import (
     WorkflowCAnalysisWorkerError,
     canonical_json,
@@ -231,22 +231,42 @@ def persist_drift_report(
 ) -> None:
     payload = report.canonical_value()
     with store.fenced_transaction(lease) as connection:
-        connection.execute(
-            """SELECT geo_persist_workflow_c_drift_report(
-                   %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s
-               )""",
-            (
-                lease.project_id,
-                lease.job_id,
-                lease.lease_token,
-                lease.fencing_generation,
-                report.report_hash,
-                source_snapshot_hash,
-                target_snapshot_hash,
-                json_value(payload),
-                computed_at,
-            ),
-        )
+        protocol_hash = getattr(report, "protocol_hash", None)
+        if protocol_hash is None:
+            connection.execute(
+                """SELECT geo_persist_workflow_c_drift_report(
+                       %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s
+                   )""",
+                (
+                    lease.project_id,
+                    lease.job_id,
+                    lease.lease_token,
+                    lease.fencing_generation,
+                    report.report_hash,
+                    source_snapshot_hash,
+                    target_snapshot_hash,
+                    json_value(payload),
+                    computed_at,
+                ),
+            )
+        else:
+            connection.execute(
+                """SELECT geo_persist_workflow_c_drift_report_v2(
+                       %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s
+                   )""",
+                (
+                    lease.project_id,
+                    lease.job_id,
+                    lease.lease_token,
+                    lease.fencing_generation,
+                    report.report_hash,
+                    protocol_hash,
+                    source_snapshot_hash,
+                    target_snapshot_hash,
+                    json_value(payload),
+                    computed_at,
+                ),
+            )
         row = mapping_row(
             connection.execute(
                 """SELECT project_id, source_snapshot_hash, target_snapshot_hash, payload
@@ -285,7 +305,7 @@ def _comparison_result_row(result: Any, *, source: ComparisonInput) -> dict[str,
         "stratum_hash": result.stratum_hash,
         "sampling_source_stratum_hash": source.sampling_source_stratum_hash,
         "conclusion": result.conclusion.value,
-        "adjusted_p_value": str(result.adjusted_p_value),
+        "adjusted_p_value": decimal_value(result.adjusted_p_value),
         "interval_json": result.adjusted_interval.canonical_value(),
         "payload": result.canonical_value(),
     }

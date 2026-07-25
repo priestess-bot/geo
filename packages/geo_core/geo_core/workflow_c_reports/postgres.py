@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
 from datetime import datetime
 import hashlib
 import json
@@ -11,89 +10,34 @@ from typing import Any, Literal, cast
 from uuid import UUID
 
 from geo_core.project_scope import set_project_scope
+from geo_core.workflow_c_reports.postgres_contracts import (
+    AdvanceWorkflowCReportSnapshot,
+    CreateWorkflowCReportSnapshot,
+    WorkflowCReportApprovalError,
+    WorkflowCReportConflict,
+    WorkflowCReportNotFound,
+    WorkflowCReportSnapshotStatus,
+    WorkflowCReportSnapshotVersion,
+    _TERMINAL_STATUSES,
+    _require_aware,
+)
+from geo_core.workflow_c_reports.postgres_receipts import (
+    command_scope,
+    create_input_hash,
+    find_command_receipt,
+    idempotency_key_hash,
+    insert_command_receipt,
+    lock_command_receipt,
+    replay_command_receipt,
+    report_version_hash,
+    same_draft,
+    transition_input_hash,
+)
 from geo_core.workflow_c_reports.customer_projection import (
     WorkflowCCustomerApprovedReport,
     WorkflowCCustomerProjectionError,
+    WorkflowCCustomerReportPayload,
 )
-
-
-WorkflowCReportSnapshotStatus = Literal[
-    "draft", "in_review", "approved", "stale", "superseded", "revoked"
-]
-_TERMINAL_STATUSES = frozenset({"stale", "superseded", "revoked"})
-_TRANSITION_STATUSES = frozenset(
-    {"in_review", "approved", "stale", "superseded", "revoked"}
-)
-
-
-class WorkflowCReportApprovalError(RuntimeError):
-    """A Workflow C Report Snapshot lifecycle command is invalid or unsafe."""
-
-
-@dataclass(frozen=True)
-class CreateWorkflowCReportSnapshot:
-    """Freeze immutable lineage and a Customer-safe payload as version one."""
-
-    report_id: UUID
-    project_id: UUID
-    campaign_id: UUID
-    monitoring_report_id: UUID
-    monitoring_report_hash: str
-    semantic_snapshot_hash: str
-    source_kind: Literal["provider_api", "proxy_grounded_api", "automated_ui"]
-    approved_safe_payload: Mapping[str, object]
-    actor_id: UUID
-    occurred_at: datetime
-
-    def __post_init__(self) -> None:
-        _require_aware(self.occurred_at, "Workflow C report draft timestamp")
-        _validated_customer_payload(self)
-
-
-@dataclass(frozen=True)
-class AdvanceWorkflowCReportSnapshot:
-    """Append exactly one legal transition to an immutable Report Snapshot."""
-
-    report_id: UUID
-    project_id: UUID
-    expected_version: int
-    status: Literal["in_review", "approved", "stale", "superseded", "revoked"]
-    actor_id: UUID
-    occurred_at: datetime
-    reason: str | None = None
-
-    def __post_init__(self) -> None:
-        if self.expected_version < 1:
-            raise WorkflowCReportApprovalError("Workflow C report expected version is invalid")
-        if self.status not in _TRANSITION_STATUSES:
-            raise WorkflowCReportApprovalError("Workflow C report target status is invalid")
-        _require_aware(self.occurred_at, "Workflow C report transition timestamp")
-        if self.status in _TERMINAL_STATUSES:
-            if not isinstance(self.reason, str) or not self.reason.strip() or len(self.reason) > 500:
-                raise WorkflowCReportApprovalError("Workflow C terminal report transition needs a reason")
-        elif self.reason is not None:
-            raise WorkflowCReportApprovalError("Workflow C non-terminal report transition cannot have a reason")
-
-
-@dataclass(frozen=True)
-class WorkflowCReportSnapshotVersion:
-    """One immutable version, returned to Admin lifecycle callers."""
-
-    report_id: UUID
-    project_id: UUID
-    version: int
-    status: WorkflowCReportSnapshotStatus
-    campaign_id: UUID
-    monitoring_report_id: UUID
-    monitoring_report_hash: str
-    semantic_snapshot_hash: str
-    source_kind: Literal["provider_api", "proxy_grounded_api", "automated_ui"]
-    approved_safe_payload: Mapping[str, object]
-    approved_safe_payload_hash: str
-    version_hash: str
-    actor_id: UUID
-    reason: str | None
-    occurred_at: datetime
 
 
 class PostgresWorkflowCApprovedReportSnapshots:
@@ -110,10 +54,28 @@ class PostgresWorkflowCApprovedReportSnapshots:
         connection = self._connect()
         try:
             set_project_scope(connection, command.project_id)
+            command_scope = "create"
+            key_hash = idempotency_key_hash(command.idempotency_key)
+            input_hash = create_input_hash(command)
+            lock_command_receipt(connection, command.project_id, command_scope, key_hash)
+            receipt = find_command_receipt(
+                connection, command.project_id, command_scope, key_hash
+            )
+            if receipt is not None:
+                result = replay_command_receipt(
+                    connection,
+                    project_id=command.project_id,
+                    receipt=receipt,
+                    report_id=command.report_id,
+                    input_hash=input_hash,
+                    load_version=self._version_at,
+                )
+                connection.commit()
+                return result
             source = self._source(connection, command)
             _assert_source_lineage(source, command)
             payload_hash = _canonical_hash(command.approved_safe_payload)
-            version_hash = _version_hash(
+            version_hash = report_version_hash(
                 report_id=command.report_id,
                 version=1,
                 status="draft",
@@ -150,8 +112,18 @@ class PostgresWorkflowCApprovedReportSnapshots:
             )
             row = self._current(connection, command.project_id, command.report_id)
             result = _version(row)
-            if not _same_draft(result, command, payload_hash, version_hash):
-                raise WorkflowCReportApprovalError("Workflow C report draft identity was reused")
+            if not same_draft(result, command, payload_hash):
+                raise WorkflowCReportConflict("Workflow C report draft identity was reused")
+            insert_command_receipt(
+                connection,
+                project_id=command.project_id,
+                report_id=command.report_id,
+                command_scope=command_scope,
+                key_hash=key_hash,
+                input_hash=input_hash,
+                result=result,
+                occurred_at=command.occurred_at,
+            )
             connection.commit()
             return result
         except BaseException:
@@ -166,16 +138,43 @@ class PostgresWorkflowCApprovedReportSnapshots:
         connection = self._connect()
         try:
             set_project_scope(connection, command.project_id)
+            command_scope_for_status = command_scope(command.status)
+            key_hash = idempotency_key_hash(command.idempotency_key)
+            input_hash = transition_input_hash(command)
+            lock_command_receipt(
+                connection, command.project_id, command_scope_for_status, key_hash
+            )
+            receipt = find_command_receipt(
+                connection, command.project_id, command_scope_for_status, key_hash
+            )
+            if receipt is not None:
+                result = replay_command_receipt(
+                    connection,
+                    project_id=command.project_id,
+                    receipt=receipt,
+                    report_id=command.report_id,
+                    input_hash=input_hash,
+                    load_version=self._version_at,
+                )
+                connection.commit()
+                return result
             self._lock_lifecycle(connection, command.project_id, command.report_id)
             predecessor = _version(self._current(connection, command.project_id, command.report_id))
             if predecessor.version != command.expected_version:
-                raise WorkflowCReportApprovalError("Workflow C report version is stale")
+                raise WorkflowCReportConflict("Workflow C report version is stale")
             _assert_application_transition(predecessor.status, command.status)
             if command.status == "approved":
+                draft_actor = self._draft_actor(
+                    connection, command.project_id, command.report_id
+                )
+                if draft_actor == command.actor_id:
+                    raise WorkflowCReportApprovalError(
+                        "Workflow C report maker cannot approve the same report"
+                    )
                 source = self._source_for_version(connection, predecessor)
                 _assert_approvable_source(source, predecessor)
             version = predecessor.version + 1
-            version_hash = _version_hash(
+            version_hash = report_version_hash(
                 report_id=predecessor.report_id,
                 version=version,
                 status=command.status,
@@ -216,8 +215,56 @@ class PostgresWorkflowCApprovedReportSnapshots:
             result = _version(self._current(connection, command.project_id, command.report_id))
             if result.version != version or result.version_hash != version_hash:
                 raise WorkflowCReportApprovalError("Workflow C report transition was not persisted")
+            insert_command_receipt(
+                connection,
+                project_id=command.project_id,
+                report_id=command.report_id,
+                command_scope=command_scope_for_status,
+                key_hash=key_hash,
+                input_hash=input_hash,
+                result=result,
+                occurred_at=command.occurred_at,
+            )
             connection.commit()
             return result
+        except BaseException:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
+    def get(
+        self, *, project_id: UUID, report_id: UUID
+    ) -> WorkflowCReportSnapshotVersion:
+        connection = self._connect()
+        try:
+            set_project_scope(connection, project_id)
+            result = _version(self._current(connection, project_id, report_id))
+            connection.rollback()
+            return result
+        except BaseException:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
+    def list(self, *, project_id: UUID) -> tuple[WorkflowCReportSnapshotVersion, ...]:
+        connection = self._connect()
+        try:
+            set_project_scope(connection, project_id)
+            rows = connection.execute(
+                """SELECT DISTINCT ON (report_id)
+                          project_id, report_id, version, status, campaign_id,
+                          monitoring_report_id, monitoring_report_hash,
+                          semantic_snapshot_hash, source_kind, approved_safe_payload,
+                          approved_safe_payload_hash, version_hash, actor_id, reason, occurred_at
+                     FROM workflow_c_report_snapshot_versions
+                    WHERE project_id = %s
+                    ORDER BY report_id, version DESC""",
+                (project_id,),
+            ).fetchall()
+            connection.rollback()
+            return tuple(_version(_mapping(row)) for row in rows)
         except BaseException:
             connection.rollback()
             raise
@@ -314,6 +361,7 @@ class PostgresWorkflowCApprovedReportSnapshots:
                 approved_safe_payload=version.approved_safe_payload,
                 actor_id=version.actor_id,
                 occurred_at=version.occurred_at,
+                idempotency_key="source-revalidation",
             ),
         )
 
@@ -329,6 +377,36 @@ class PostgresWorkflowCApprovedReportSnapshots:
         )
 
     @staticmethod
+    def _version_at(
+        connection: Any, project_id: UUID, report_id: UUID, version: int
+    ) -> WorkflowCReportSnapshotVersion:
+        row = _row(
+            connection.execute(
+                """SELECT project_id, report_id, version, status, campaign_id,
+                          monitoring_report_id, monitoring_report_hash,
+                          semantic_snapshot_hash, source_kind, approved_safe_payload,
+                          approved_safe_payload_hash, version_hash, actor_id, reason, occurred_at
+                     FROM workflow_c_report_snapshot_versions
+                    WHERE project_id = %s AND report_id = %s AND version = %s""",
+                (project_id, report_id, version),
+            )
+        )
+        return _version(row)
+
+    @staticmethod
+    def _draft_actor(connection: Any, project_id: UUID, report_id: UUID) -> UUID:
+        row = _row(
+            connection.execute(
+                """SELECT actor_id FROM workflow_c_report_snapshot_versions
+                    WHERE project_id = %s AND report_id = %s AND version = 1""",
+                (project_id, report_id),
+            )
+        )
+        if row is None:
+            raise WorkflowCReportApprovalError("Workflow C report draft disappeared")
+        return _uuid(row, "actor_id")
+
+    @staticmethod
     def _current(connection: Any, project_id: UUID, report_id: UUID) -> Mapping[str, object] | None:
         return _row(
             connection.execute(
@@ -342,19 +420,6 @@ class PostgresWorkflowCApprovedReportSnapshots:
                 (project_id, report_id),
             )
         )
-
-
-def _validated_customer_payload(command: CreateWorkflowCReportSnapshot) -> None:
-    WorkflowCCustomerApprovedReport(
-        id=command.report_id,
-        project_id=command.project_id,
-        campaign_id=command.campaign_id,
-        semantic_snapshot_hash=command.semantic_snapshot_hash,
-        report_hash=command.monitoring_report_hash,
-        source_kind=command.source_kind,
-        approved_safe_payload=command.approved_safe_payload,
-        approved_at=command.occurred_at,
-    )
 
 
 def _assert_source_lineage(
@@ -384,6 +449,7 @@ def _assert_approvable_source(
         approved_safe_payload=version.approved_safe_payload,
         actor_id=version.actor_id,
         occurred_at=version.occurred_at,
+        idempotency_key="source-revalidation",
     )
     _assert_source_lineage(source, command)
     if source is None:
@@ -411,56 +477,6 @@ def _assert_application_transition(
         raise WorkflowCReportApprovalError("Workflow C report status transition is invalid")
 
 
-def _same_draft(
-    result: WorkflowCReportSnapshotVersion,
-    command: CreateWorkflowCReportSnapshot,
-    payload_hash: str,
-    version_hash: str,
-) -> bool:
-    return (
-        result.version == 1
-        and result.status == "draft"
-        and result.project_id == command.project_id
-        and result.campaign_id == command.campaign_id
-        and result.monitoring_report_id == command.monitoring_report_id
-        and result.monitoring_report_hash == command.monitoring_report_hash
-        and result.semantic_snapshot_hash == command.semantic_snapshot_hash
-        and result.source_kind == command.source_kind
-        and dict(result.approved_safe_payload) == dict(command.approved_safe_payload)
-        and result.approved_safe_payload_hash == payload_hash
-        and result.version_hash == version_hash
-    )
-
-
-def _version_hash(
-    *,
-    report_id: UUID,
-    version: int,
-    status: str,
-    command: CreateWorkflowCReportSnapshot | WorkflowCReportSnapshotVersion,
-    payload_hash: str,
-    actor_id: UUID,
-    reason: str | None,
-    occurred_at: datetime,
-) -> str:
-    return _canonical_hash(
-        {
-            "report_id": str(report_id),
-            "version": version,
-            "status": status,
-            "campaign_id": str(command.campaign_id),
-            "monitoring_report_id": str(command.monitoring_report_id),
-            "monitoring_report_hash": command.monitoring_report_hash,
-            "semantic_snapshot_hash": command.semantic_snapshot_hash,
-            "source_kind": command.source_kind,
-            "approved_safe_payload_hash": payload_hash,
-            "actor_id": str(actor_id),
-            "reason": reason,
-            "occurred_at": occurred_at.isoformat(),
-        }
-    )
-
-
 def _approved_report(row: Mapping[str, object]) -> WorkflowCCustomerApprovedReport:
     try:
         payload = row["approved_safe_payload"]
@@ -475,7 +491,7 @@ def _approved_report(row: Mapping[str, object]) -> WorkflowCCustomerApprovedRepo
             semantic_snapshot_hash=_hash(row, "semantic_snapshot_hash"),
             report_hash=_hash(row, "monitoring_report_hash"),
             source_kind=_source_kind(row["source_kind"]),
-            approved_safe_payload=dict(payload),
+            approved_safe_payload=WorkflowCCustomerReportPayload.from_mapping(payload),
             approved_at=_timestamp(row, "approved_at"),
         )
     except (KeyError, TypeError, ValueError, WorkflowCCustomerProjectionError) as error:
@@ -484,7 +500,7 @@ def _approved_report(row: Mapping[str, object]) -> WorkflowCCustomerApprovedRepo
 
 def _version(row: Mapping[str, object] | None) -> WorkflowCReportSnapshotVersion:
     if row is None:
-        raise WorkflowCReportApprovalError("Workflow C report snapshot does not exist")
+        raise WorkflowCReportNotFound("Workflow C report snapshot does not exist")
     try:
         payload = row["approved_safe_payload"]
         if not isinstance(payload, Mapping):
@@ -502,7 +518,7 @@ def _version(row: Mapping[str, object] | None) -> WorkflowCReportSnapshotVersion
             monitoring_report_hash=_hash(row, "monitoring_report_hash"),
             semantic_snapshot_hash=_hash(row, "semantic_snapshot_hash"),
             source_kind=_source_kind(row["source_kind"]),
-            approved_safe_payload=dict(payload),
+            approved_safe_payload=WorkflowCCustomerReportPayload.from_mapping(payload),
             approved_safe_payload_hash=_hash(row, "approved_safe_payload_hash"),
             version_hash=_hash(row, "version_hash"),
             actor_id=_uuid(row, "actor_id"),
@@ -565,22 +581,18 @@ def _timestamp(row: Mapping[str, object], field: str) -> datetime:
     return cast(datetime, value)
 
 
-def _require_aware(value: object, label: str) -> None:
-    if not isinstance(value, datetime) or value.tzinfo is None or value.utcoffset() is None:
-        raise WorkflowCReportApprovalError(f"{label} must be timezone-aware")
-
-
 def _canonical_hash(value: object) -> str:
     return hashlib.sha256(_json(value).encode("utf-8")).hexdigest()
 
 
 def _json(value: object) -> str:
+    if isinstance(value, WorkflowCCustomerReportPayload):
+        value = value.to_dict()
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
 
 
 __all__ = [
-    "AdvanceWorkflowCReportSnapshot",
-    "CreateWorkflowCReportSnapshot",
+    "AdvanceWorkflowCReportSnapshot", "CreateWorkflowCReportSnapshot",
     "PostgresWorkflowCApprovedReportSnapshots",
     "WorkflowCReportApprovalError",
     "WorkflowCReportSnapshotStatus",

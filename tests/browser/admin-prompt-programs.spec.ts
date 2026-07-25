@@ -93,6 +93,21 @@ test("M1-PROMPT-WEB-01: Admin governs, diffs and binds Prompt Program releases",
   await expect(restoredBinding.getByRole("status")).toContainText("Frozen Release 已绑定");
   await expect(restoredBinding.getByRole("status")).toContainText("Binding version");
 
+  const retirement = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "批准与冻结" })
+  }).last();
+  await retirement.getByText("停止该 Release 的新运行时解析", { exact: true }).click();
+  await retirement.getByRole("button", { name: "退役 Release" }).click();
+  await expect(retirement.getByRole("status").last()).toContainText("Release 已退役");
+  await expect(
+    page.getByRole("region", { name: "Release v2" }).getByText("retired", { exact: true }).first()
+  ).toBeVisible();
+  await expect(
+    page.locator("section").filter({ has: page.getByRole("heading", { name: "Runtime Binding" }) })
+      .last()
+      .getByRole("button", { name: "绑定 Frozen Release" })
+  ).toBeDisabled();
+
   const nextRelease = page.locator("details").filter({
     has: page.getByText("创建下一版 Release", { exact: true })
   });
@@ -120,6 +135,7 @@ test("M1-PROMPT-WEB-01: Admin governs, diffs and binds Prompt Program releases",
   expect(logged.some((entry) => entry.path.endsWith("/tests") && entry.method === "POST")).toBe(true);
   expect(logged.some((entry) => entry.path.endsWith("/approve") && entry.method === "POST")).toBe(true);
   expect(logged.some((entry) => entry.path.endsWith("/freeze") && entry.method === "POST")).toBe(true);
+  expect(logged.some((entry) => entry.path.endsWith("/retire") && entry.method === "POST")).toBe(true);
   expect(logged.some((entry) => entry.path.endsWith("/prompt-program-bindings") && entry.method === "POST")).toBe(true);
   expect(runtimeErrors).toEqual([]);
   await page.screenshot({ path: testInfo.outputPath("prompt-programs-desktop.png"), fullPage: true });

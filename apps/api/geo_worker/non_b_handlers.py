@@ -23,6 +23,7 @@ SYNTHETIC_REQUIRED_JOB_KINDS = frozenset(
     {
         "style.profile.build",
         "review.case.run",
+        "corpus.finalize",
         "offline_experiment.run",
         SYNTHETIC_MODEL_CHILD_KIND,
     }

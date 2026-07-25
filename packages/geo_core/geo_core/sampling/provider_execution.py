@@ -61,6 +61,7 @@ from geo_core.sampling.provider_observation import (
     location_ineligibility,
     map_provider_success,
 )
+from geo_core.sampling.provider_sources import gateway_provider_for_source
 
 
 class ProviderSamplingUnknownOutcome(RuntimeError):
@@ -357,8 +358,13 @@ def _validate_context(
         or hashlib.sha256(command.question_text.encode()).hexdigest() != question.text_hash
     ):
         raise ProviderSamplingAdmissionError("question text does not match its frozen hash")
+    expected_provider = gateway_provider_for_source(
+        platform=source.platform,
+        surface=source.surface,
+        capture_method=source.capture_method,
+    )
     if (
-        command.route.provider != source.platform
+        command.route.provider != expected_provider
         or command.route.adapter_release_id != source.adapter_release
     ):
         raise ProviderSamplingAdmissionError("route differs from Task provider/Adapter Release")

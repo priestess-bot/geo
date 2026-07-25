@@ -84,8 +84,25 @@ export async function decideAuthorizationAction(
     || expiresAt === undefined) {
     return invalid("证据、用途、限流或失效时间无效。");
   }
-  if (decision === "approved" && (!evidenceReference || allowedPurposes.length === 0)) {
-    return invalid("批准必须包含证据引用和至少一个允许用途。");
+  if (decision === "approved" && (
+    !evidenceReference
+    || allowedPurposes.length === 0
+    || maxRequests === null
+    || periodSeconds === null
+    || maxConcurrency === null
+    || expiresAt === null
+  )) {
+    return invalid("批准必须包含证据、用途、完整限流配额和失效时间。");
+  }
+  if (decision === "assessed_no_basis" && (
+    evidenceReference
+    || allowedPurposes.length > 0
+    || maxRequests !== null
+    || periodSeconds !== null
+    || maxConcurrency !== null
+    || expiresAt !== null
+  )) {
+    return invalid("无依据决定不能携带采集用途、配额或失效时间。");
   }
   const key = commandKey(formData);
   if (!key) return invalid("Idempotency-Key 无效，请刷新后重试。");
@@ -173,20 +190,16 @@ export async function freezeStyleProfileAction(
   if (!access.ok) return access.state;
   const profileVersionId = field(formData, "profile_version_id");
   const expectedVersion = integerField(formData, "expected_version", 1);
-  const approvedSampleIds = formData.getAll("approved_sample_ids").map(String);
   const key = commandKey(formData);
-  if (!UUID_PATTERN.test(profileVersionId) || expectedVersion === null
-    || approvedSampleIds.length < 200 || approvedSampleIds.length > 10_000
-    || approvedSampleIds.some((value) => !UUID_PATTERN.test(value))
-    || approvedSampleIds.length !== new Set(approvedSampleIds).size || !key) {
-    return invalid("Profile、版本或批准样本选择无效；冻结至少需要 200 个样本。");
+  if (!UUID_PATTERN.test(profileVersionId) || expectedVersion === null || !key) {
+    return invalid("Profile、版本或 Idempotency-Key 无效。");
   }
   const response = await runtimeRequest<StyleProfile>(
     `${syntheticBase(projectId)}/style-profiles/${encodeURIComponent(profileVersionId)}/freeze`,
     {
       method: "POST",
       idempotencyKey: key,
-      body: { expected_version: expectedVersion, approved_sample_ids: approvedSampleIds }
+      body: { expected_version: expectedVersion }
     }
   );
   if (!response.ok) return commandFailure(response);

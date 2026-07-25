@@ -272,9 +272,15 @@ class PromptProgramReadMixin:
                     AND state.release_id = binding.release_id
                     AND state.status = 'frozen'
                    WHERE binding.project_id = %s
+                     AND NOT EXISTS (
+                         SELECT 1 FROM prompt_program_release_states AS later
+                          WHERE later.project_id = binding.project_id
+                            AND later.release_id = binding.release_id
+                            AND later.version > state.version
+                     )
                    ORDER BY binding.purpose, binding.binding_version DESC
                ) SELECT count(*) AS total FROM latest
-                 WHERE (%s IS NULL OR program_kind = %s)""",
+                 WHERE (CAST(%s AS text) IS NULL OR program_kind = CAST(%s AS text))""",
             (project_id, kind, kind),
         )
         rows = self._many(
@@ -292,9 +298,15 @@ class PromptProgramReadMixin:
                     AND state.release_id = binding.release_id
                     AND state.status = 'frozen'
                    WHERE binding.project_id = %s
+                     AND NOT EXISTS (
+                         SELECT 1 FROM prompt_program_release_states AS later
+                          WHERE later.project_id = binding.project_id
+                            AND later.release_id = binding.release_id
+                            AND later.version > state.version
+                     )
                    ORDER BY binding.purpose, binding.binding_version DESC
                ) SELECT * FROM latest
-                 WHERE (%s IS NULL OR program_kind = %s)
+                 WHERE (CAST(%s AS text) IS NULL OR program_kind = CAST(%s AS text))
                  ORDER BY bound_at DESC, id
                  LIMIT %s OFFSET %s""",
             (project_id, kind, kind, limit, offset),

@@ -190,7 +190,10 @@ class FrozenGenerationEvidence:
             for item in self.metric_comparisons
         ):
             reasons.append("missing_sufficient_metric_comparison")
-        if not self.questions or not self.surfaces:
+        if (
+            not any(item.current_and_valid for item in self.questions)
+            or not any(item.current_and_valid for item in self.surfaces)
+        ):
             reasons.append("missing_question_or_surface_lineage")
         if not self.facts or not all(item.current_and_valid for item in self.facts):
             reasons.append("missing_current_approved_fact")

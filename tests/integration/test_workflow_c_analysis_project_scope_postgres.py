@@ -191,9 +191,10 @@ def _assert_project_projection_view(
             (project_id, f"{family_hash}:baseline-vs-candidate"),
         ).fetchone()
         assert row is not None
-        value = row["value"]
-        assert isinstance(value, dict)
-        assert value["project_id"] == str(expected_project_id)
+        # Directly seeded projections prove RLS scope, but intentionally lack
+        # the producer-owned Job, manifest and observation lineage required to
+        # become Recommendation evidence.
+        assert row["value"] is None
 
 
 def _project_ids(

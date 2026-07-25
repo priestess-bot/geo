@@ -27,6 +27,7 @@ AuthorizationState = Literal[
 ]
 JobKind = Literal[
     "style_collection",
+    "style_profile_build",
     "candidate_generation",
     "candidate_revision",
     "corpus_finalize",
@@ -176,12 +177,26 @@ class CreateStyleProfileRequest(SyntheticContract):
     channel: Channel
     locale: Literal["en-AU"] = "en-AU"
     prompt_binding_id: UUID
-    approved_sample_ids: list[UUID] = Field(min_length=1, max_length=10_000)
+    approved_sample_ids: list[UUID] = Field(min_length=200, max_length=10_000)
+
+    @field_validator("approved_sample_ids")
+    @classmethod
+    def unique_profile_samples(cls, values: list[UUID]) -> list[UUID]:
+        if len(values) != len(set(values)):
+            raise ValueError("Style Profile sample IDs must be unique")
+        return values
 
 
 class FreezeStyleProfileRequest(SyntheticContract):
     expected_version: int = Field(ge=1)
-    approved_sample_ids: list[UUID] = Field(min_length=200, max_length=10_000)
+    approved_sample_ids: list[UUID] = Field(default_factory=list, max_length=10_000)
+
+    @field_validator("approved_sample_ids")
+    @classmethod
+    def legacy_samples_are_valid(cls, values: list[UUID]) -> list[UUID]:
+        if values and (len(values) < 200 or len(values) != len(set(values))):
+            raise ValueError("legacy Style Profile sample manifest is invalid")
+        return values
 
 
 class SubmitStyleProfileRequest(SyntheticContract):
@@ -223,7 +238,16 @@ class FreezeReviewSuiteRequest(SyntheticContract):
 class SyntheticResourceOptionResponse(SyntheticContract):
     id: UUID
     label: str
-    kind: Literal["sample", "prompt_binding", "question_set", "fact_snapshot", "profile"]
+    kind: Literal[
+        "sample",
+        "prompt_binding",
+        "question_set",
+        "fact_snapshot",
+        "profile",
+        "review_job",
+        "corpus_candidate",
+        "corpus_approved",
+    ]
     status: str
     channel: Channel | None = None
 
@@ -234,6 +258,9 @@ class SyntheticResourceInventoryResponse(SyntheticBoundaryResponse):
     question_sets: list[SyntheticResourceOptionResponse]
     fact_snapshots: list[SyntheticResourceOptionResponse]
     profiles: list[SyntheticResourceOptionResponse]
+    review_jobs: list[SyntheticResourceOptionResponse]
+    candidate_corpora: list[SyntheticResourceOptionResponse]
+    approved_corpora: list[SyntheticResourceOptionResponse]
 
 
 class FrozenRuntimeInputRequest(SyntheticContract):
@@ -243,6 +270,62 @@ class FrozenRuntimeInputRequest(SyntheticContract):
     profile_hash: Sha256
     prompt_release_id: UUID
     prompt_release_hash: Sha256
+
+
+class EnqueueStyleProfileBuildRequest(SyntheticContract):
+    profile_version_id: UUID
+    fact_snapshot_id: UUID
+    approved_sample_ids: list[UUID] = Field(default_factory=list, max_length=10_000)
+    runtime_selection_id: UUID
+
+    @field_validator("approved_sample_ids")
+    @classmethod
+    def unique_profile_samples(cls, values: list[UUID]) -> list[UUID]:
+        if values and len(values) < 200:
+            raise ValueError("legacy Style Profile sample manifest requires at least 200 IDs")
+        if len(values) != len(set(values)):
+            raise ValueError("approved Style Profile sample IDs must be unique")
+        return values
+
+
+class EnqueueReviewCaseRunRequest(SyntheticContract):
+    suite_version_id: UUID
+    case_id: UUID
+    runtime_selection_id: UUID
+    style_pass_threshold: float = Field(default=4.2, ge=0, le=5)
+
+
+class EnqueueCorpusFinalizeRequest(SyntheticContract):
+    role: Literal["new_candidate_corpus", "current_approved_corpus"]
+    review_job_ids: list[UUID] = Field(default_factory=list, max_length=5000)
+    source_corpus_job_id: UUID | None = None
+
+    @model_validator(mode="after")
+    def exact_source_shape(self) -> "EnqueueCorpusFinalizeRequest":
+        if len(self.review_job_ids) != len(set(self.review_job_ids)):
+            raise ValueError("Corpus Review Job selectors must be unique")
+        candidate = self.role == "new_candidate_corpus"
+        if candidate != bool(self.review_job_ids) or candidate == (
+            self.source_corpus_job_id is not None
+        ):
+            raise ValueError(
+                "candidate Corpus requires Review Jobs; approved Corpus requires one source Corpus"
+            )
+        return self
+
+
+class EnqueueOfflineExperimentRequest(SyntheticContract):
+    question_set_id: UUID
+    current_corpus_job_id: UUID
+    candidate_corpus_job_id: UUID
+    runtime_selection_id: UUID
+    minimum_valid_pair_ratio: float = Field(default=0.8, gt=0, le=1)
+
+    @model_validator(mode="after")
+    def distinct_corpora(self) -> "EnqueueOfflineExperimentRequest":
+        if self.current_corpus_job_id == self.candidate_corpus_job_id:
+            raise ValueError("Offline Experiment Corpus selectors must be distinct")
+        return self
 
 
 class EnqueueSyntheticJobRequest(SyntheticContract):
@@ -368,6 +451,7 @@ class StyleProfileResponse(SyntheticMutationResponse):
     project_id: UUID
     profile_id: UUID
     version_number: int = Field(ge=1)
+    state_version: int = Field(ge=1)
     channel: Channel
     locale: Literal["en-AU"]
     corpus_hash: Sha256
@@ -383,6 +467,7 @@ class ReviewSuiteResponse(SyntheticMutationResponse):
     project_id: UUID
     suite_id: UUID
     version_number: int = Field(ge=1)
+    state_version: int = Field(ge=1)
     channel: Channel
     case_count: int = Field(ge=0)
     case_set_hash: Sha256
@@ -394,12 +479,25 @@ class ReviewCaseResponse(SyntheticMutationResponse):
     project_id: UUID
     review_suite_version_id: UUID
     review_suite_version_number: int = Field(ge=1)
+    state_version: int = Field(ge=1)
     case_key: str
     ordinal: int = Field(ge=1)
     mode: Literal["autonomous_scenario", "guided_scenario"]
     channel: Channel
     competitor_scenario: bool
     content_hash: Sha256
+
+
+class SyntheticWarningSummaryResponse(SyntheticContract):
+    warning_count: int = Field(ge=0)
+    candidate_count: int = Field(ge=0)
+    warning_ratio: float = Field(ge=0, le=1)
+    by_code: dict[str, int]
+    by_channel: dict[str, int]
+    by_scenario_mode: dict[str, int]
+    by_competitor: dict[str, int]
+    by_model: dict[str, int]
+    by_question_cluster: dict[str, int]
 
 
 class SyntheticJobResponse(SyntheticMutationResponse):
@@ -421,6 +519,7 @@ class SyntheticJobResponse(SyntheticMutationResponse):
     fencing_generation: int = Field(ge=0)
     cancel_requested: bool
     result_hash: Sha256 | None = None
+    warning_summary: SyntheticWarningSummaryResponse | None = None
 
 
 class StyleCollectionAdmissionResponse(SyntheticBoundaryResponse):

@@ -35,7 +35,10 @@ _RELEASE_TRANSITIONS: Mapping[
         ProgramReleaseStatus.APPROVED: MappingProxyType(
             {ProgramReleaseCommand.FREEZE: ProgramReleaseStatus.FROZEN}
         ),
-        ProgramReleaseStatus.FROZEN: MappingProxyType({}),
+        ProgramReleaseStatus.FROZEN: MappingProxyType(
+            {ProgramReleaseCommand.RETIRE: ProgramReleaseStatus.RETIRED}
+        ),
+        ProgramReleaseStatus.RETIRED: MappingProxyType({}),
     }
 )
 

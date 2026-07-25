@@ -129,10 +129,14 @@ def reject_self_approval(principal: LabPrincipal, submitted_by: UUID) -> None:
         )
 
 
-def assert_runtime_ready(snapshot: RuntimeInputSnapshot) -> None:
+def assert_runtime_ready(
+    snapshot: RuntimeInputSnapshot,
+    *,
+    require_frozen_profile: bool = True,
+) -> None:
     if not snapshot.facts_current_approved:
         raise SyntheticLabStaleInput("approved Fact snapshot is stale or inactive")
-    if not snapshot.profile_frozen:
+    if require_frozen_profile and not snapshot.profile_frozen:
         raise SyntheticLabStaleInput("Style Profile is not frozen or is stale")
     if not snapshot.prompt_frozen:
         raise SyntheticLabStaleInput("Prompt Release is not frozen or is stale")
@@ -141,6 +145,8 @@ def assert_runtime_ready(snapshot: RuntimeInputSnapshot) -> None:
 def assert_runtime_current(
     frozen: RuntimeInputSnapshot,
     port: RuntimeInputPort,
+    *,
+    require_frozen_profile: bool = True,
 ) -> RuntimeInputSnapshot:
     current = port.current(frozen)
     frozen_identity = (
@@ -163,7 +169,7 @@ def assert_runtime_current(
     )
     if frozen_identity != current_identity:
         raise SyntheticLabStaleInput("frozen Fact/Profile/Prompt identity or hash changed")
-    assert_runtime_ready(current)
+    assert_runtime_ready(current, require_frozen_profile=require_frozen_profile)
     return current
 
 

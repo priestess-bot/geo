@@ -65,13 +65,7 @@ export function handleRecommendationFixture({
   }
   if (path === `/v1/projects/${projectId}/model-gateway/options`
     && request.method === "GET") {
-    send(response, {
-      items: [
-        runtimeOption(RECOMMENDATION_RUNTIME_ID, "recommendations.recommendation", "gpt-5.2"),
-        runtimeOption(ARBITER_RUNTIME_ID, "synthetic_lab.arbiter", "gemini-2.5-pro")
-      ],
-      current_manifest_id: RUNTIME_MANIFEST_ID
-    });
+    send(response, recommendationRuntimeOptions());
     return true;
   }
   const base = `/v1/projects/${projectId}/recommendations`;
@@ -119,6 +113,16 @@ export function handleRecommendationFixture({
   }
   send(response, { detail: "Recommendation fixture route not found" }, 404);
   return true;
+}
+
+export function recommendationRuntimeOptions() {
+  return {
+    items: [
+      runtimeOption(RECOMMENDATION_RUNTIME_ID, "recommendations.recommendation", "gpt-5.2"),
+      runtimeOption(ARBITER_RUNTIME_ID, "synthetic_lab.arbiter", "gemini-2.5-pro")
+    ],
+    current_manifest_id: RUNTIME_MANIFEST_ID
+  };
 }
 
 function promptBindingOption(projectId, kind) {

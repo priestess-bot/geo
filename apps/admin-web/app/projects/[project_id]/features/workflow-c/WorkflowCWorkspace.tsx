@@ -8,6 +8,7 @@ import {
   MetricsPanel
 } from "./AnalysisPanels";
 import { SamplingPanel } from "./SamplingPanel";
+import { ProtocolsPanel, ReportsPanel } from "./WorkflowCControlPanels";
 import { workflowCHref } from "./workflowCData";
 import {
   workflowViews,
@@ -63,6 +64,22 @@ function WorkflowCContents({
   const canReviewManualEvidence = !data.manualEvidence.problem && (
     data.currentRole === "owner" || data.currentRole === "admin"
   );
+  const hasManagerRole = data.currentRole === "owner" || data.currentRole === "admin";
+  const canManageProtocols = !data.metricProtocols.problem
+    && !data.statisticalProtocols.problem
+    && hasManagerRole;
+  const canManageReports = !data.workflowCReports.problem
+    && !data.metricSnapshots.problem
+    && hasManagerRole;
+  const canEnqueueAnalysis = !data.metricProtocols.problem
+    && !data.statisticalProtocols.problem
+    && !data.runs.problem
+    && !data.metricSnapshots.problem
+    && (
+      data.currentRole === "owner"
+      || data.currentRole === "admin"
+      || data.currentRole === "analyst"
+    );
   const now = new Date();
   const suppression = new Date(now.valueOf() + 60 * 60 * 1000);
   const commandKeys = {
@@ -172,14 +189,26 @@ function WorkflowCContents({
             requestedNotBefore={localDateTime(now)}
             resource={data.run}
             runs={data.runs}
+            surfaceParserReleases={data.surfaceParserReleases}
             suite={data.suite}
             suiteInputOptions={data.suiteInputOptions}
             suites={data.suites}
           />
         ) : null}
+        {data.activeView === "protocols" ? (
+          <ProtocolsPanel
+            canAnalyze={canEnqueueAnalysis}
+            canManage={canManageProtocols}
+            data={data}
+            projectId={projectId}
+          />
+        ) : null}
         {data.activeView === "metrics" ? <MetricsPanel resource={data.metrics} /> : null}
         {data.activeView === "comparisons" ? <ComparisonPanel resource={data.comparisons} /> : null}
         {data.activeView === "drift" ? <DriftPanel resource={data.drift} /> : null}
+        {data.activeView === "reports" ? (
+          <ReportsPanel canManage={canManageReports} data={data} projectId={projectId} />
+        ) : null}
         {data.activeView === "alerts" ? (
           <AlertInbox
             alerts={data.alerts}
@@ -381,9 +410,11 @@ function viewLabel(view: WorkflowView): string {
     overview: "总览",
     admission: "授权策略",
     sampling: "采样",
+    protocols: "协议与任务",
     metrics: "指标",
     comparisons: "比较",
     drift: "漂移",
+    reports: "报告",
     alerts: "告警"
   }[view];
 }

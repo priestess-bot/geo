@@ -32,11 +32,13 @@ from geo_core.project_scope import set_project_scope
 from geo_core.secrets import EnvelopeCipher, load_master_keyring_from_docker_secret
 from geo_core.semantic_metrics import (
     MetricJudgeCandidate,
+    has_high_confidence_prompt_injection,
     parse_arbiter_program_output,
     parse_metric_judge_program_output,
 )
 from geo_core.workflow_c_artifacts.postgres import verify_workflow_c_artifact_keyring_canaries
 from geo_core.workflow_c_job_specs import PostgresWorkflowCJobSpecRepository, WorkflowCJobSpecError
+from geo_core.workflow_c_metric_runtime_lineage import metric_runtime_lineage_matches
 from geo_core.workflow_c_metric_judge_worker_contracts import (
     MetricChild,
     MetricChildReference,
@@ -379,7 +381,10 @@ class _PostgresWorkflowCMetricOperation:
             )
         )
         runtime = self._model_runtime.load(project_id=lease.project_id, job_id=lease.job_id)
-        _assert_runtime_lineage(runtime, child)
+        if not metric_runtime_lineage_matches(runtime, child):
+            raise WorkflowCMetricJudgeWorkerError(
+                "frozen model admission differs from metric child"
+            )
         request = ModelGatewayRequest(
             messages=task.request.messages,
             configured_model=task.request.configured_model,
@@ -438,6 +443,9 @@ class _PostgresWorkflowCMetricOperation:
                 subject_id=task.judge.subject_id,
                 output_locale=task.judge.output_locale,
                 schema_version=task.judge.schema_version,
+                prompt_injection_expected=has_high_confidence_prompt_injection(
+                    task.judge.observation.answer_text
+                ),
             )
             projection = {
                 "results": [item.canonical_value() for item in parsed_judge.results],
@@ -564,29 +572,6 @@ def build_workflow_c_metric_judge_operations(
             lease_for=lease_for,
         ),
     }
-
-
-def _assert_runtime_lineage(runtime: LoadedModelCallRuntime, child: MetricChild) -> None:
-    job = runtime.job
-    if not all(
-        (
-            job.runtime_manifest_id == child.runtime_manifest_id,
-            job.runtime_manifest_hash == child.runtime_manifest_hash,
-            job.runtime_option_id == child.runtime_option_id,
-            job.runtime_option_hash == child.runtime_option_hash,
-            job.runtime_option_id == child.runtime_selection_id,
-            job.prompt_binding_id == child.prompt_binding_id,
-            job.prompt_release_id == child.prompt_release_id,
-            job.prompt_release_hash == child.prompt_release_hash,
-            job.prompt_state_id == child.prompt_frozen_state_id,
-            job.prompt_state_version == child.prompt_state_version,
-            job.prompt_bundle_hash == child.prompt_bundle_hash,
-            job.output_schema_hash == child.portable_output_schema_hash,
-            job.application_output_schema_hash == child.application_output_schema_hash,
-            job.purpose == child.prompt_purpose,
-        )
-    ):
-        raise WorkflowCMetricJudgeWorkerError("frozen model admission differs from metric child")
 
 
 __all__ = [

@@ -31,6 +31,7 @@ class ObservationPlatform(StrEnum):
     GOOGLE = "google"
     PERPLEXITY = "perplexity"
     MICROSOFT = "microsoft"
+    KIMI = "kimi"
     ANTHROPIC = "anthropic"
     OTHER = "other"
 
@@ -57,6 +58,7 @@ class ObservationSurface(StrEnum):
     OPENAI_API = "openai_api"
     GOOGLE_GEMINI_API = "google_gemini_api"
     PERPLEXITY_API = "perplexity_api"
+    KIMI_API = "kimi_api"
     ANTHROPIC_API = "anthropic_api"
     MICROSOFT_FOUNDRY_BING_GROUNDING = "microsoft_foundry_bing_grounding"
     GOOGLE_VERTEX_GROUNDING = "google_vertex_grounding"
@@ -109,6 +111,9 @@ SURFACE_DEFINITIONS: Mapping[ObservationSurface, SurfaceDefinition] = MappingPro
         ),
         ObservationSurface.PERPLEXITY_API: SurfaceDefinition(
             ObservationPlatform.PERPLEXITY, SurfaceKind.PROVIDER_API
+        ),
+        ObservationSurface.KIMI_API: SurfaceDefinition(
+            ObservationPlatform.KIMI, SurfaceKind.PROVIDER_API
         ),
         ObservationSurface.ANTHROPIC_API: SurfaceDefinition(
             ObservationPlatform.ANTHROPIC, SurfaceKind.PROVIDER_API

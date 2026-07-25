@@ -20,6 +20,7 @@ from geo_core.model_gateway.releases import ModelRoute
 from geo_core.prompts.application_models import RuntimePromptProgram
 from geo_core.prompts.bootstrap_catalog import default_prompt_bootstrap_spec
 from geo_core.prompts.bootstrap_contracts import thaw_mapping
+from geo_core.prompts.compiler_versions import BOOTSTRAP_COMPILER_VERSION
 from geo_core.prompts.program import (
     ProgramBinding,
     ProgramReleaseState,
@@ -52,12 +53,19 @@ from geo_core.synthetic_lab.execution_gateway import (
     ModelCallExecutionAdapter,
     PromptProgramExecutionResolver,
 )
+from geo_core.synthetic_lab.postgres_codec import decode_object, encode_object
 from geo_core.secrets.models import SecretVersionHandle
 from geo_core.synthetic_lab.offline_experiment import (
     FrozenExperimentQuestion,
     create_offline_experiment_plan,
 )
 from geo_core.synthetic_lab.revision import ReviewRunStatus
+from tests.unit.synthetic_lab.execution_prompt_contract_support import (
+    _CaptureModelCallApplication,
+    _GovernedApplication,
+    _GovernedRuntime,
+    _NoopRecovery,
+)
 
 
 PROJECT_ID = UUID("34000000-0000-0000-0000-000000000001")
@@ -89,7 +97,9 @@ class _GovernedModel:
         common = {
             "subject_id": value["subject_id"],
             "evidence_refs": [reference],
-            "citation_refs": [reference] if invocation.prompt.frozen.program_kind is ProgramKind.OFFLINE_ANSWER else [],
+            "citation_refs": [reference]
+            if invocation.prompt.frozen.program_kind is ProgramKind.OFFLINE_ANSWER
+            else [],
             "output_locale": "en-AU",
             "automatic_action_authorised": False,
             "injection_detected": False,
@@ -121,51 +131,6 @@ class _GovernedModel:
             request_hash=canonical_hash({"step": invocation.step_key}),
             response_hash=canonical_hash(output),
         )
-
-
-class _CaptureModelCallApplication:
-    def __init__(self) -> None:
-        self.command = None
-
-    def execute(self, command, *, policy):
-        del policy
-        self.command = command
-        raise RuntimeError("captured before external execution")
-
-
-class _GovernedRuntime:
-    def __init__(self, loaded) -> None:
-        self.loaded = loaded
-        self.admissions = []
-        self.loads = []
-
-    def load_or_admit_claimed_job(self, request):
-        self.admissions.append(request)
-        return SimpleNamespace(job=self.loaded.job)
-
-    def load(self, *, project_id, job_id):
-        self.loads.append((project_id, job_id))
-        return self.loaded
-
-
-class _GovernedApplication:
-    def __init__(self, result: ModelGatewayResult) -> None:
-        self.result = result
-        self.command = None
-
-    def execute(self, command, *, policy):
-        del policy
-        self.command = command
-        return SimpleNamespace(
-            attempt=SimpleNamespace(spec=SimpleNamespace(id=uuid4())),
-            result=self.result,
-        )
-
-
-class _NoopRecovery:
-    def recover_derived(self, request):
-        del request
-        raise AssertionError("non-replayed model call must not recover an artifact")
 
 
 @pytest.mark.parametrize(
@@ -271,9 +236,9 @@ def test_model_call_adapter_passes_portable_and_application_schema_pair() -> Non
                 expected_job_version=1,
                 parent_task_input_hash=_hash("parent-task"),
                 runtime_inputs=inputs,
-            prompt=prompt,
-            admitted_by=uuid4(),
-            step_key="style-profile:build:v1",
+                prompt=prompt,
+                admitted_by=uuid4(),
+                step_key="style-profile:build:v1",
                 structured_input=structured_input,
             )
         )
@@ -363,9 +328,7 @@ def test_governed_child_executor_admits_exact_prompt_before_provider_execution()
         composition=SimpleNamespace(
             adapters={
                 (frozen.route.provider, frozen.route.adapter_release_id): SimpleNamespace(
-                    runtime=SimpleNamespace(
-                        capture_method=ModelCaptureMethod.PROVIDER_API
-                    )
+                    runtime=SimpleNamespace(capture_method=ModelCaptureMethod.PROVIDER_API)
                 )
             }
         ),
@@ -444,15 +407,25 @@ def test_governed_child_executor_rejects_changed_admitted_route_before_execution
     )
     application = _GovernedApplication(
         ModelGatewayResult(
-            output={}, call_log_id=uuid4(), provider_request_id=None,
+            output={},
+            call_log_id=uuid4(),
+            provider_request_id=None,
             configured_model=frozen.configured_model,
             provider_reported_model=frozen.configured_model,
-            prompt_tokens=None, completion_tokens=None, cost_usd=None,
-            finish_reason="stop", response_hash=_hash("unused"),
+            prompt_tokens=None,
+            completion_tokens=None,
+            cost_usd=None,
+            finish_reason="stop",
+            response_hash=_hash("unused"),
         )
     )
     gateway = _GovernedRuntime(
-        SimpleNamespace(job=job, policy=ModelPolicy(), composition=SimpleNamespace(adapters={}), application=application)
+        SimpleNamespace(
+            job=job,
+            policy=ModelPolicy(),
+            composition=SimpleNamespace(adapters={}),
+            application=application,
+        )
     )
 
     with pytest.raises(SyntheticExecutionStale, match="admission differs"):
@@ -509,6 +482,13 @@ def test_offline_executor_uses_exact_corpus_evidence_for_all_paired_slots() -> N
 
     assert len(output.slot_results) == 30
     assert all(item.valid for item in output.slot_results)
+    assert output.summary is not None
+    assert output.summary.planned_pair_count == 10
+    assert output.summary.valid_pair_count == 10
+    assert output.summary.completion_ratio == 1
+    assert output.summary.slot_membership_hash == canonical_hash(
+        [{"slot_id": item.slot_id, "result_hash": item.result_hash} for item in output.slot_results]
+    )
     assert len(model.inputs) == 30
     for value in model.inputs:
         expected = f"corpus:{value['corpus_version_id']}:{value['corpus_hash']}"
@@ -516,6 +496,14 @@ def test_offline_executor_uses_exact_corpus_evidence_for_all_paired_slots() -> N
         assert isinstance(evidence, tuple)
         assert evidence[0]["ref"] == expected
         assert value["subject_id"] == value["question_cluster_key"]
+
+    type_name, payload, _payload_hash = encode_object(output)
+    fields = payload["fields"]
+    assert isinstance(fields, dict)
+    fields.pop("summary")
+    legacy = decode_object(type_name, payload)
+    assert isinstance(legacy, type(output))
+    assert legacy.summary is None
 
 
 def test_profile_and_offline_tasks_reject_the_wrong_program_kind() -> None:
@@ -547,7 +535,7 @@ def _runtime(kind: ProgramKind) -> tuple[RuntimePromptProgram, FrozenPromptRef]:
         test_set_id=uuid4(),
         test_set_version=1,
         test_set_hash=_hash(f"{kind.value}:test-set"),
-        compiler_version="prompt-compiler-v1",
+        compiler_version=BOOTSTRAP_COMPILER_VERSION,
     )
     state = ProgramReleaseState(
         id=uuid4(),

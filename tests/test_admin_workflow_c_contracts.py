@@ -70,6 +70,28 @@ def test_sampling_keeps_a_fixed_denominator_and_supported_capture_methods() -> N
     assert "derived_summary" in panel
 
 
+def test_manual_consumer_surface_parsers_stay_non_live_and_text_free() -> None:
+    commands = source(FEATURE / "ManualEvidenceCommands.tsx")
+    actions = source(FEATURE / "samplingActions.ts")
+    data = source(FEATURE / "workflowCData.ts")
+    guards = source(FEATURE / "workflowCTypeGuards.ts")
+
+    assert "/sampling/surface-parser-releases" in data
+    assert 'name="surface_parser_release_id"' in commands
+    assert "releaseMatchesSource" in commands
+    assert "Non-live evidence · no Australian egress proof" in commands
+    assert "answer_character_count" in commands
+    assert "citation_count" in commands
+    assert "summary_hash" in commands
+    assert "surface_parser_release_id: surfaceParserReleaseId || null" in actions
+    assert 'evidenceKind !== "transcript_export"' in actions
+    assert 'contentType !== "application/json"' in actions
+    assert "item.automated_capture_eligible === false" in guards
+    assert "value.live_capture_eligible === false" in guards
+    for forbidden in ["answer_text", "citations", "citation_urls", "raw_artifact_uri"]:
+        assert f'"{forbidden}"' in guards
+
+
 def test_sampling_run_purpose_is_resolved_from_the_governed_inventory() -> None:
     commands = source(FEATURE / "SamplingCommands.tsx")
     actions = source(FEATURE / "samplingActions.ts")
@@ -111,6 +133,19 @@ def test_analysis_preserves_all_five_conclusions_and_explainable_evidence() -> N
         "effect_drift",
     ]:
         assert field in panels
+
+
+def test_report_diversity_metrics_require_integer_counts_across_admin_boundaries() -> None:
+    actions = source(FEATURE / "workflowCReportActions.ts")
+    guards = source(FEATURE / "workflowCControlTypeGuards.ts")
+    commands = source(FEATURE / "WorkflowCReportCommands.tsx")
+
+    assert "isWorkflowCReportMetricValue(key, value)" in actions
+    assert 'value.length > 64 || !DECIMAL_PATTERN.test(value)' in guards
+    assert "fractionalPartIsZero" in guards
+    assert "const nonNegative = !negative || decimalIsZero" in guards
+    assert "magnitudeAtMostOne" in guards
+    assert 'step: "1", label: "Nonnegative integer count"' in commands
 
 
 def test_alert_actions_reauthorize_membership_and_cover_lifecycle() -> None:
@@ -171,6 +206,60 @@ def test_workflow_c_has_loading_error_empty_long_text_and_mobile_guards() -> Non
     assert "table-layout: fixed" in main_styles
     assert "@media (max-width: 620px)" in main_styles
     assert "@media (max-width: 620px)" in alert_styles
+
+
+def test_protocol_job_and_report_controls_use_internal_guarded_contracts() -> None:
+    data = source(FEATURE / "workflowCData.ts")
+    workspace = source(FEATURE / "WorkflowCWorkspace.tsx")
+    protocol_actions = source(FEATURE / "workflowCProtocolActions.ts")
+    job_actions = source(FEATURE / "workflowCAnalysisJobActions.ts")
+    report_actions = source(FEATURE / "workflowCReportActions.ts")
+    report_commands = source(FEATURE / "WorkflowCReportCommands.tsx")
+    guards = source(FEATURE / "workflowCControlTypeGuards.ts")
+
+    for endpoint in [
+        "/analysis/metric-protocols",
+        "/analysis/statistical-protocols",
+        "/analysis/reports",
+    ]:
+        assert endpoint in data
+    assert 'protocols: "协议与任务"' in workspace
+    assert 'reports: "报告"' in workspace
+    assert "await verifyWorkflowCActor" in protocol_actions
+    assert "expected_aggregate_version" in protocol_actions
+    for path in ["semantic-metrics/jobs", '"comparisons"', '"drift"', "${path}/jobs"]:
+        assert path in job_actions
+    assert "isSemanticMetricsJobReceipt" in job_actions
+    assert "isStatisticalAnalysisJobReceipt" in job_actions
+    assert "approved_safe_payload: payload.value" in report_actions
+    assert 'name="approved_safe_payload"' not in report_commands
+    assert 'name="definition"' not in source(FEATURE / "WorkflowCProtocolCommands.tsx")
+    assert "workflowCReportMetricKeys.map" in report_commands
+    assert "onlyKeys(value, safePayloadKeys)" in guards
+    assert "reportMetricKeys.has(key)" in guards
+    for forbidden in ["access_token", "raw_text", "system_prompt"]:
+        assert forbidden not in report_commands
+    assert "headline.length > 200" in report_actions
+    assert 'maxLength={200}' in report_commands
+    assert "isWorkflowCReportMetricValue(key, value)" in report_actions
+    assert "countMetricKeys.has(key)" in guards
+    assert "signedMetricKeys.has(key)" in guards
+    assert "magnitudeAtMostOne" in guards
+    assert "Nonnegative integer count" in report_commands
+    assert "Signed score · -1 to 1" in report_commands
+    assert "Rate / score · 0 to 1" in report_commands
+
+
+def test_protocol_and_report_maker_checker_buttons_are_identity_aware() -> None:
+    protocols = source(FEATURE / "WorkflowCProtocolCommands.tsx")
+    reports = source(FEATURE / "WorkflowCReportCommands.tsx")
+    data = source(FEATURE / "workflowCData.ts")
+
+    assert 'protocol.created_by === actorId' in protocols
+    assert 'currentIdentityId === report.actor_id' in reports
+    assert "currentIdentityId: membership?.identity_id || null" in data
+    assert "需其他审批人" in protocols
+    assert "需其他审批人" in reports
 
 
 def test_workflow_c_modules_stay_within_size_budget() -> None:

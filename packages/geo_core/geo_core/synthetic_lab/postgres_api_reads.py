@@ -2,39 +2,35 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any
 from uuid import UUID
 
-from geo_core.project_scope import set_project_scope
-from geo_core.secrets.models import SecretVersionHandle
 from geo_core.synthetic_lab.authorization import AuthorizationRecord
-from geo_core.synthetic_lab.collection_execution_contracts import StyleCollectionTask
+from geo_core.synthetic_lab.execution_contracts import (
+    CorpusFinalizeOutput,
+    ReviewCaseRunOutput,
+    ReviewCaseRunTask,
+)
 from geo_core.synthetic_lab.domain import (
+    StyleProfileSampleManifest,
     StyleProfileStatus,
     StyleProfileVersion,
     StyleSample,
     StyleSampleReviewStatus,
-    StyleSource,
 )
-from geo_core.synthetic_lab.ports import SyntheticJob, SyntheticLabNotFound, VersionedAggregate
+from geo_core.synthetic_lab.ports import SyntheticLabNotFound
 from geo_core.synthetic_lab.postgres_rows import (
     aggregate_from_row,
     authorization_from_row,
-    job_from_row,
 )
 from geo_core.synthetic_lab.postgres_codec import decode_object, payload_hash
+from geo_core.synthetic_lab.postgres_api_read_models import (
+    SyntheticAggregateView,
+    SyntheticApiPage,
+)
+from geo_core.synthetic_lab.postgres_api_reads_tail import _PostgresSyntheticApiReadsTail
 
 
-@dataclass(frozen=True)
-class SyntheticApiPage:
-    items: tuple[object, ...]
-    total: int
-    limit: int
-    offset: int
-
-
-class PostgresSyntheticApiReads:
+class PostgresSyntheticApiReads(_PostgresSyntheticApiReadsTail):
     def __init__(self, connection_factory) -> None:
         self._connection_factory = connection_factory
 
@@ -139,8 +135,82 @@ class PostgresSyntheticApiReads:
                    ORDER BY resource_id, version DESC""",
                 (project_id,),
             ).fetchall()
-            profiles = tuple(
-                aggregate_from_row(dict(row)).payload for row in profile_rows
+            profiles = tuple(aggregate_from_row(dict(row)).payload for row in profile_rows)
+            execution_rows = connection.execute(
+                """SELECT task.job_id, task.task_type, task.task_payload,
+                          task.task_payload_hash, result.result_type,
+                          result.result_payload, result.result_payload_hash,
+                          result.result_hash, result.created_at
+                   FROM synthetic_lab_execution_tasks AS task
+                   JOIN synthetic_lab_execution_results AS result
+                     ON result.project_id = task.project_id
+                    AND result.job_id = task.job_id
+                   JOIN durable_jobs AS job
+                     ON job.project_id = task.project_id AND job.id = task.job_id
+                   WHERE task.project_id = %s AND job.status = 'succeeded'
+                   ORDER BY result.created_at DESC, task.job_id
+                   LIMIT 5000""",
+                (project_id,),
+            ).fetchall()
+            completed: list[tuple[UUID, object, object]] = []
+            for row in execution_rows:
+                if payload_hash(row["task_payload"]) != row["task_payload_hash"]:
+                    raise ValueError("stored Synthetic execution task payload hash changed")
+                if payload_hash(row["result_payload"]) != row["result_payload_hash"]:
+                    raise ValueError("stored Synthetic execution result payload hash changed")
+                task = decode_object(row["task_type"], row["task_payload"])
+                result = decode_object(row["result_type"], row["result_payload"])
+                if getattr(result, "result_hash", None) != row["result_hash"]:
+                    raise ValueError("stored Synthetic execution result hash changed")
+                completed.append((row["job_id"], task, result))
+            review_jobs = tuple(
+                {
+                    "id": job_id,
+                    "label": (
+                        f"{task.case.channel} · {task.case.case_key} · "
+                        f"{result.resolution.status.value}"
+                    ),
+                    "kind": "review_job",
+                    "status": result.resolution.status.value,
+                    "channel": task.case.channel,
+                }
+                for job_id, task, result in completed
+                if isinstance(task, ReviewCaseRunTask)
+                and isinstance(result, ReviewCaseRunOutput)
+                and result.resolved_candidate_text is not None
+                and result.resolution.offline_experiment_eligible
+            )
+            candidate_corpora = tuple(
+                {
+                    "id": job_id,
+                    "label": (
+                        f"Candidate Corpus v{result.corpus.version_number} · "
+                        f"{len(result.corpus.candidates)} candidates · "
+                        f"{result.corpus.warning_count} warnings"
+                    ),
+                    "kind": "corpus_candidate",
+                    "status": result.corpus.role.value,
+                    "channel": None,
+                }
+                for job_id, _task, result in completed
+                if isinstance(result, CorpusFinalizeOutput)
+                and result.corpus.role.value == "new_candidate_corpus"
+            )
+            approved_corpora = tuple(
+                {
+                    "id": job_id,
+                    "label": (
+                        f"Approved Corpus v{result.corpus.version_number} · "
+                        f"{len(result.corpus.candidates)} candidates · "
+                        f"{result.corpus.warning_count} warnings"
+                    ),
+                    "kind": "corpus_approved",
+                    "status": result.corpus.role.value,
+                    "channel": None,
+                }
+                for job_id, _task, result in completed
+                if isinstance(result, CorpusFinalizeOutput)
+                and result.corpus.role.value == "current_approved_corpus"
             )
             return {
                 "samples": tuple(
@@ -202,6 +272,9 @@ class PostgresSyntheticApiReads:
                     if isinstance(profile, StyleProfileVersion)
                     and profile.status is StyleProfileStatus.FROZEN
                 ),
+                "review_jobs": review_jobs,
+                "candidate_corpora": candidate_corpora,
+                "approved_corpora": approved_corpora,
             }
         finally:
             connection.rollback()
@@ -251,6 +324,35 @@ class PostgresSyntheticApiReads:
         finally:
             connection.rollback()
             connection.close()
+
+    def profile_sample_ids(
+        self,
+        project_id: UUID,
+        *,
+        profile_version_id: UUID,
+        corpus_hash: str,
+        legacy_sample_ids: tuple[UUID, ...] = (),
+    ) -> tuple[UUID, ...]:
+        try:
+            record = self.aggregate(
+                project_id,
+                kind="style_profile_sample_manifest",
+                resource_id=profile_version_id,
+            )
+        except SyntheticLabNotFound:
+            if len(legacy_sample_ids) < 200:
+                raise SyntheticLabNotFound(
+                    "legacy Style Profile requires its original sample manifest"
+                ) from None
+            return legacy_sample_ids
+        manifest = record.payload
+        if not isinstance(manifest, StyleProfileSampleManifest):
+            raise SyntheticLabNotFound("Style Profile sample manifest type changed")
+        if manifest.profile_version_id != profile_version_id or manifest.corpus_hash != corpus_hash:
+            raise SyntheticLabNotFound("Style Profile sample manifest lineage changed")
+        if legacy_sample_ids and legacy_sample_ids != manifest.sample_ids:
+            raise SyntheticLabNotFound("submitted Style Profile sample manifest changed")
+        return manifest.sample_ids
 
     def approved_style_samples(
         self,
@@ -369,6 +471,7 @@ class PostgresSyntheticApiReads:
         kind: str,
         limit: int,
         offset: int,
+        include_state: bool = False,
     ) -> SyntheticApiPage:
         connection = self._open(project_id)
         try:
@@ -386,8 +489,14 @@ class PostgresSyntheticApiReads:
                    LIMIT %s OFFSET %s""",
                 (project_id, kind, limit, offset),
             ).fetchall()
+            aggregates = tuple(aggregate_from_row(dict(row)) for row in rows)
             return SyntheticApiPage(
-                tuple(aggregate_from_row(dict(row)).payload for row in rows),
+                tuple(
+                    SyntheticAggregateView(item.payload, item.version)
+                    if include_state
+                    else item.payload
+                    for item in aggregates
+                ),
                 int(total),
                 limit,
                 offset,
@@ -395,122 +504,6 @@ class PostgresSyntheticApiReads:
         finally:
             connection.rollback()
             connection.close()
-
-    def aggregate(
-        self,
-        project_id: UUID,
-        *,
-        kind: str,
-        resource_id: UUID,
-    ) -> VersionedAggregate:
-        connection = self._open(project_id)
-        try:
-            row = connection.execute(
-                """SELECT * FROM synthetic_lab_aggregate_versions
-                   WHERE project_id = %s AND kind = %s AND resource_id = %s
-                   ORDER BY version DESC LIMIT 1""",
-                (project_id, kind, resource_id),
-            ).fetchone()
-            if row is None:
-                raise SyntheticLabNotFound("Synthetic aggregate was not found")
-            return aggregate_from_row(dict(row))
-        finally:
-            connection.rollback()
-            connection.close()
-
-    def style_source(self, project_id: UUID, revision_id: UUID) -> StyleSource:
-        aggregate = self.aggregate(project_id, kind="style_source", resource_id=revision_id)
-        if not isinstance(aggregate.payload, StyleSource):
-            raise SyntheticLabNotFound("Style Source payload type changed")
-        return aggregate.payload
-
-    def style_collection_task_or_none(
-        self, project_id: UUID, job_id: UUID
-    ) -> StyleCollectionTask | None:
-        """Load an admitted immutable task so an API retry can replay after state changes."""
-
-        connection = self._open(project_id)
-        try:
-            row = connection.execute(
-                """SELECT task_type, task_payload, task_payload_hash
-                   FROM synthetic_lab_style_collection_tasks
-                   WHERE project_id = %s AND job_id = %s""",
-                (project_id, job_id),
-            ).fetchone()
-            if row is None:
-                return None
-            if payload_hash(row["task_payload"]) != row["task_payload_hash"]:
-                raise ValueError("stored Style Collection task payload hash changed")
-            task = decode_object(row["task_type"], row["task_payload"])
-            if not isinstance(task, StyleCollectionTask):
-                raise ValueError("stored Style Collection task type changed")
-            return task
-        finally:
-            connection.rollback()
-            connection.close()
-
-    def job(self, project_id: UUID, job_id: UUID) -> SyntheticJob:
-        connection = self._open(project_id)
-        try:
-            row = connection.execute(
-                """SELECT metadata.*, durable.kind AS durable_kind, durable.status,
-                          durable.priority, durable.input_hash, durable.idempotency_key,
-                          durable.attempt_count, durable.max_attempts, durable.next_run_at,
-                          durable.lease_owner, durable.lease_token,
-                          durable.lease_expires_at, durable.heartbeat_at,
-                          durable.fencing_generation, durable.cancel_requested_at,
-                          durable.parent_job_id, durable.replay_nonce, durable.result_ref,
-                          durable.error_code
-                   FROM synthetic_lab_job_metadata AS metadata
-                   JOIN durable_jobs AS durable
-                     ON durable.id = metadata.job_id
-                    AND durable.project_id = metadata.project_id
-                   WHERE metadata.project_id = %s AND metadata.job_id = %s""",
-                (project_id, job_id),
-            ).fetchone()
-            if row is None:
-                raise SyntheticLabNotFound("Synthetic Job was not found")
-            return job_from_row(dict(row))
-        finally:
-            connection.rollback()
-            connection.close()
-
-    def current_secret_handle(
-        self,
-        project_id: UUID,
-        *,
-        reference_id: UUID,
-        purpose: str,
-    ) -> SecretVersionHandle:
-        connection = self._open(project_id)
-        try:
-            row = connection.execute(
-                """SELECT reference.current_version, version.status
-                   FROM secret_references AS reference
-                   JOIN secret_versions AS version
-                     ON version.reference_id = reference.id
-                    AND version.project_id = reference.project_id
-                    AND version.version = reference.current_version
-                   WHERE reference.project_id = %s AND reference.id = %s
-                     AND reference.purpose = %s""",
-                (project_id, reference_id, purpose),
-            ).fetchone()
-            if row is None or row["status"] != "active":
-                raise SyntheticLabNotFound("Style Collection login Secret is unavailable")
-            return SecretVersionHandle(
-                reference_id=reference_id,
-                project_id=project_id,
-                purpose=purpose,
-                version=int(row["current_version"]),
-            )
-        finally:
-            connection.rollback()
-            connection.close()
-
-    def _open(self, project_id: UUID) -> Any:
-        connection = self._connection_factory()
-        set_project_scope(connection, project_id)
-        return connection
 
 
 __all__ = ["PostgresSyntheticApiReads", "SyntheticApiPage"]

@@ -67,7 +67,7 @@ def build_synthetic_worker_handlers(
     child_model_gateway: SyntheticModelCallPort,
     lease_for: timedelta,
 ) -> Mapping[str, SyntheticJobHandler]:
-    """Build only the three non-browser handlers owned by the shared worker."""
+    """Build the non-browser handlers owned by the shared worker."""
 
     repository = PostgresSyntheticExecutionRepository(connection_factory)
     executor = SyntheticTaskExecutor(prompts=prompts, model_gateway=child_calls)
@@ -91,6 +91,7 @@ def build_synthetic_worker_handlers(
     return {
         "style.profile.build": handler,
         "review.case.run": handler,
+        "corpus.finalize": handler,
         "offline_experiment.run": handler,
         SYNTHETIC_MODEL_CHILD_KIND: child_handler,
     }

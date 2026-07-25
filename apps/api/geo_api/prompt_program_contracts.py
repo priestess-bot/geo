@@ -22,7 +22,7 @@ ProgramKindValue = Literal[
     "offline_answer",
     "reference_translation",
 ]
-ReleaseStatusValue = Literal["draft", "tested", "approved", "frozen"]
+ReleaseStatusValue = Literal["draft", "tested", "approved", "frozen", "retired"]
 
 
 class PromptProgramContract(BaseModel):

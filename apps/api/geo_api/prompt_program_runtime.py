@@ -181,6 +181,17 @@ class PromptProgramApi(Protocol):
         idempotency_key: str,
     ) -> CommandReceipt[TransitionedPromptProgram]: ...
 
+    def retire_release(
+        self,
+        principal: AccessPrincipal,
+        *,
+        project_id: UUID,
+        program_id: UUID,
+        release_id: UUID,
+        expected_version: int,
+        idempotency_key: str,
+    ) -> CommandReceipt[TransitionedPromptProgram]: ...
+
     def diff_release(
         self,
         principal: AccessPrincipal,

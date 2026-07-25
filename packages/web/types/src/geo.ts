@@ -286,11 +286,11 @@ export type ObservationCaptureMethod =
 export type OperatorObservationCaptureMethod =
   | "manual_ui" | "provider_api" | "proxy_grounded_api";
 export type ObservationPlatform =
-  | "openai" | "google" | "perplexity" | "microsoft" | "anthropic" | "other";
+  | "openai" | "google" | "perplexity" | "microsoft" | "kimi" | "anthropic" | "other";
 export type ObservationSurface =
   | "chatgpt_search" | "google_search" | "google_ai_overviews" | "google_ai_mode"
   | "gemini" | "perplexity_answer" | "bing_search" | "bing_copilot" | "claude_ai"
-  | "openai_api" | "google_gemini_api" | "perplexity_api" | "anthropic_api"
+  | "openai_api" | "google_gemini_api" | "perplexity_api" | "kimi_api" | "anthropic_api"
   | "microsoft_foundry_bing_grounding" | "google_vertex_grounding"
   | "google_generative_ai_performance_report" | "bing_ai_performance_report"
   | "internal_benchmark" | "other";

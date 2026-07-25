@@ -1,0 +1,217 @@
+.controlHeading {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin-bottom: 15px;
+  min-width: 0;
+}
+
+.controlHeading p {
+  color: #4f6a75;
+  font-size: 12px;
+  font-weight: 800;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.controlHeading h2 {
+  font-size: 17px;
+  letter-spacing: 0;
+  margin: 3px 0 0;
+}
+
+.controlHeading > span {
+  color: #60727a;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.createGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.createGrid textarea,
+.reportForm textarea {
+  background: #ffffff;
+  border: 1px solid #aebdc3;
+  border-radius: 4px;
+  color: #1f3038;
+  font: inherit;
+  min-width: 0;
+  padding: 8px 9px;
+  resize: vertical;
+  width: 100%;
+}
+
+.createGrid textarea { line-height: 1.45; }
+
+.lifecycleList {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.lifecycleRow {
+  align-items: end;
+  border-top: 1px solid #d6e0e2;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(200px, 1fr) minmax(260px, 2fr);
+  padding-top: 12px;
+}
+
+.lifecycleRow > div:first-child {
+  display: grid;
+  font-size: 12px;
+  gap: 4px;
+  min-width: 0;
+}
+
+.lifecycleRow code {
+  overflow-wrap: anywhere;
+}
+
+.inlineCommand {
+  align-items: end;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(160px, 1fr) auto;
+  min-width: 0;
+}
+
+.inlineCommand label {
+  display: grid;
+  gap: 4px;
+}
+
+.inlineCommand label span {
+  color: #536972;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.inlineCommand input {
+  border: 1px solid #aebdc3;
+  border-radius: 4px;
+  font: inherit;
+  min-height: 34px;
+  min-width: 0;
+  padding: 7px 9px;
+}
+
+.inlineCommand button {
+  background: #236d67;
+  border: 1px solid #236d67;
+  border-radius: 4px;
+  color: #ffffff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  min-height: 34px;
+  padding: 7px 12px;
+}
+
+.inlineCommand button:disabled {
+  background: #b5bec1;
+  border-color: #b5bec1;
+  cursor: not-allowed;
+}
+
+.reportForm {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.wideField {
+  grid-column: 1 / -1;
+}
+
+.metricRows {
+  display: grid;
+  gap: 8px;
+}
+
+.metricRows > div {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(180px, 1fr) minmax(120px, 1fr);
+}
+
+.reportList {
+  display: grid;
+  gap: 10px;
+}
+
+.reportList article {
+  border-top: 1px solid #d6e0e2;
+  display: grid;
+  gap: 10px;
+  padding-top: 12px;
+}
+
+.reportList article:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.reportList header,
+.reportList footer {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.reportList header > div {
+  display: grid;
+  gap: 3px;
+}
+
+.reportList p,
+.reportList code {
+  overflow-wrap: anywhere;
+}
+
+.safeMetrics {
+  display: grid;
+  gap: 1px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  margin: 0;
+}
+
+.safeMetrics > div {
+  background: #f3f6f7;
+  padding: 9px;
+}
+
+.safeMetrics dt {
+  color: #5c7079;
+  font-size: 12px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.safeMetrics dd {
+  font-size: 13px;
+  font-weight: 750;
+  margin: 4px 0 0;
+}
+
+@media (max-width: 900px) {
+  .createGrid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 620px) {
+  .controlHeading { align-items: flex-start; }
+  .lifecycleRow,
+  .inlineCommand,
+  .reportForm,
+  .metricRows > div { grid-template-columns: 1fr; }
+  .wideField { grid-column: auto; }
+  .reportList header,
+  .reportList footer { align-items: flex-start; flex-direction: column; }
+}

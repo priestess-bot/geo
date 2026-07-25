@@ -12,6 +12,7 @@ from geo_api.monitoring_dependencies import authorize_monitoring_project
 from geo_api.problems import ApiProblem
 from geo_api.stable_routes import PROBLEM_RESPONSES
 from geo_api.workflow_c_customer_contracts import WorkflowCCustomerReportResponse
+from geo_api.workflow_c_report_payload_contracts import WorkflowCCustomerSafePayload
 from geo_core.monitoring.domain import READER_ROLES
 from geo_core.workflow_c_reports import WorkflowCCustomerReportReader
 
@@ -72,7 +73,9 @@ def workflow_c_customer_router(
                     semantic_snapshot_hash=item.semantic_snapshot_hash,
                     report_hash=item.report_hash,
                     source_kind=item.source_kind,
-                    approved_safe_payload=dict(item.approved_safe_payload),
+                    approved_safe_payload=WorkflowCCustomerSafePayload.model_validate(
+                        item.approved_safe_payload
+                    ),
                     approved_at=item.approved_at,
                 )
                 for item in reports

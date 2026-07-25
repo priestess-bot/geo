@@ -41,6 +41,126 @@ class ComputeSemanticMetricsRequest(StrictModel):
     baseline_snapshot_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
 
+class CreateMetricProtocolRequest(StrictModel):
+    definition: dict[str, object]
+    supersedes_protocol_id: UUID | None = None
+
+
+class MetricProtocolTransitionRequest(StrictModel):
+    expected_aggregate_version: int = Field(ge=1)
+    reason: str | None = Field(default=None, min_length=1, max_length=2_000)
+
+
+class MetricProtocolDecisionRequest(MetricProtocolTransitionRequest):
+    reason: str = Field(min_length=1, max_length=2_000)
+
+
+class MetricProtocolResponse(StrictModel):
+    id: UUID
+    project_id: UUID
+    series_id: UUID
+    version: int
+    supersedes_protocol_id: UUID | None
+    status: Literal["draft", "in_review", "approved", "retired"]
+    protocol_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    definition: dict[str, object]
+    created_by: str
+    submitted_by: str | None
+    approved_by: str | None
+    retired_by: str | None
+    decision_reason: str | None
+    aggregate_version: int
+    created_at: datetime
+    updated_at: datetime
+    submitted_at: datetime | None
+    approved_at: datetime | None
+    retired_at: datetime | None
+
+
+class MetricProtocolPageResponse(StrictModel):
+    items: list[MetricProtocolResponse]
+    total: int
+
+
+class CreateStatisticalProtocolRequest(StrictModel):
+    definition: dict[str, object]
+    supersedes_protocol_id: UUID | None = None
+
+
+class StatisticalProtocolTransitionRequest(StrictModel):
+    expected_aggregate_version: int = Field(ge=1)
+    reason: str | None = Field(default=None, min_length=1, max_length=2_000)
+
+
+class StatisticalProtocolDecisionRequest(StatisticalProtocolTransitionRequest):
+    reason: str = Field(min_length=1, max_length=2_000)
+
+
+class StatisticalProtocolResponse(StrictModel):
+    id: UUID
+    project_id: UUID
+    series_id: UUID
+    version: int
+    supersedes_protocol_id: UUID | None
+    kind: Literal["comparison_plan", "drift_protocol"]
+    status: Literal["draft", "in_review", "approved", "retired"]
+    definition_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    definition: dict[str, object]
+    created_by: str
+    submitted_by: str | None
+    approved_by: str | None
+    retired_by: str | None
+    decision_reason: str | None
+    aggregate_version: int
+    created_at: datetime
+    updated_at: datetime
+    submitted_at: datetime | None
+    approved_at: datetime | None
+    retired_at: datetime | None
+
+
+class StatisticalProtocolPageResponse(StrictModel):
+    items: list[StatisticalProtocolResponse]
+    total: int
+
+
+class EnqueueSemanticMetricsRequest(StrictModel):
+    sampling_run_id: UUID
+    metric_protocol_id: UUID
+    max_attempts: int = Field(default=3, ge=1, le=10)
+
+
+class SemanticMetricsJobAccepted(StrictModel):
+    job_id: UUID
+    status: Literal["queued"] = "queued"
+    status_url: str
+    manifest_id: UUID
+    manifest_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    replayed: bool
+
+
+class EnqueueComparisonJobRequest(StrictModel):
+    comparison_plan_id: UUID
+    baseline_metric_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    candidate_metric_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    max_attempts: int = Field(default=3, ge=1, le=10)
+
+
+class EnqueueDriftJobRequest(StrictModel):
+    drift_protocol_id: UUID
+    baseline_metric_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    current_metric_snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    max_attempts: int = Field(default=3, ge=1, le=10)
+
+
+class StatisticalAnalysisJobAccepted(StrictModel):
+    job_id: UUID
+    status: Literal["queued"] = "queued"
+    status_url: str
+    spec_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    replayed: bool
+
+
 class MetricIntervalResponse(StrictModel):
     method: str
     confidence_level: str | None
@@ -191,6 +311,7 @@ class DriftReportResponse(StrictModel):
     baseline_input_hash: str
     current_input_hash: str
     method_version: str
+    protocol_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     report_hash: str
 
 

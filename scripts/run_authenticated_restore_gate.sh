@@ -100,6 +100,8 @@ uv run python scripts/backup_restore_gate_seed.py seed \
   --expected-head "$head_revision" \
   --object-store-endpoint "http://127.0.0.1:$minio_port" \
   --object-store-bucket "$source_bucket" \
+  --recommendation-object-store-bucket "$recommendation_source_bucket" \
+  --workflow-c-object-store-bucket "$workflow_c_source_bucket" \
   --synthetic-raw-object-store-bucket "$synthetic_raw_source_bucket" \
   --synthetic-derived-object-store-bucket "$synthetic_derived_source_bucket" \
   --keyring-directory "$keyring_root" >"$seed_receipt"
@@ -129,11 +131,16 @@ assert payload["synthetic_artifacts"] == {
 }
 assert payload["recommendation_artifacts"] == {
     "active_master_key_version": 2,
-    "artifact_lineage_count": 0,
+    "artifact_lineage_count": 1,
     "master_key_version_count": 2,
-    "representative_artifact_verified": False,
+    "representative_artifact_verified": True,
 }
-assert payload["workflow_c_artifacts"] == {"master_key_version_count": 2}
+assert payload["workflow_c_artifacts"] == {
+    "active_dek_count": 1,
+    "master_key_version_count": 2,
+    "recoverable_artifact_count": 1,
+    "representative_artifact_verified": True,
+}
 canary = payload["secret_runtime_canary"]
 assert set(canary) == {
     "idempotency_key", "project_id", "purpose", "reference_id",
@@ -227,12 +234,12 @@ assert restored["synthetic_artifacts"]["verified_master_key_versions"] == ["1", 
 assert restored["synthetic_artifacts"]["restricted_representative_verified"] is True
 assert restored["synthetic_artifacts"]["tier_representative_verified"] is True
 assert restored["recommendation_artifacts"]["verified_master_key_versions"] == [1, 2]
-assert restored["recommendation_artifacts"]["artifact_lineage_count"] == 0
-assert restored["recommendation_artifacts"]["representative_artifact_verified"] is False
+assert restored["recommendation_artifacts"]["artifact_lineage_count"] == 1
+assert restored["recommendation_artifacts"]["representative_artifact_verified"] is True
 assert restored["workflow_c_artifacts"]["verified_master_key_versions"] == [1, 2]
-assert restored["workflow_c_artifacts"]["active_dek_count"] == 0
-assert restored["workflow_c_artifacts"]["recoverable_artifact_count"] == 0
-assert restored["workflow_c_artifacts"]["representative_artifact_verified"] is False
+assert restored["workflow_c_artifacts"]["active_dek_count"] == 1
+assert restored["workflow_c_artifacts"]["recoverable_artifact_count"] == 1
+assert restored["workflow_c_artifacts"]["representative_artifact_verified"] is True
 PY
 
 "${compose[@]}" exec -T postgres psql -X -v ON_ERROR_STOP=1 \

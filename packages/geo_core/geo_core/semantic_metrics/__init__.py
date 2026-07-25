@@ -65,6 +65,9 @@ from geo_core.semantic_metrics.metric_judge_workflow import (
     resolve_metric_judge_arbiter,
     resolve_metric_judge_candidates,
 )
+from geo_core.semantic_metrics.prompt_injection import (
+    has_high_confidence_prompt_injection,
+)
 from geo_core.semantic_metrics.rules import (
     MentionMatch,
     brand_mentions,
@@ -135,6 +138,7 @@ __all__ = [
     "competitor_relative_position",
     "compute_semantic_metric_snapshot",
     "first_metric_suite",
+    "has_high_confidence_prompt_injection",
     "parse_structured_judge_output",
     "parse_arbiter_program_output",
     "parse_metric_judge_program_output",

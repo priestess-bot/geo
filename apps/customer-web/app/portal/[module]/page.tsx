@@ -15,6 +15,7 @@ import {
 import {
   loadCampaignPortal,
   loadCustomerGeoReadModel,
+  loadCustomerWorkflowCReports,
   loadSessionPortal,
   resourceProblems
 } from "../../runtime";
@@ -89,30 +90,56 @@ export default async function PortalModulePage({
     );
   }
 
-  const model = await loadCustomerGeoReadModel(
-    session.selectedProject.project_id,
-    campaignPortal.selectedCampaign.id
-  );
+  const projectId = session.selectedProject.project_id;
+  const selectedCampaignId = campaignPortal.selectedCampaign.id;
+  const modelPromise = loadCustomerGeoReadModel(projectId, selectedCampaignId);
+  const workflowCReportsPromise = moduleUsesWorkflowCReports(rawModule)
+    ? loadCustomerWorkflowCReports(projectId, selectedCampaignId)
+    : null;
+  let model: Awaited<ReturnType<typeof loadCustomerGeoReadModel>>;
+  let workflowCReports: Awaited<ReturnType<typeof loadCustomerWorkflowCReports>> | null;
+  if (workflowCReportsPromise) {
+    [model, workflowCReports] = await Promise.all([modelPromise, workflowCReportsPromise]);
+  } else {
+    model = await modelPromise;
+    workflowCReports = null;
+  }
   return (
     <PortalChrome
       active={rawModule}
       campaignPortal={campaignPortal}
-      problems={resourceProblems(model)}
+      problems={workflowCReports
+        ? resourceProblems(model, workflowCReports)
+        : resourceProblems(model)}
       session={session}
     >
-      {view(rawModule, model)}
+      {view(rawModule, model, workflowCReports)}
     </PortalChrome>
   );
 }
 
 function view(
   module: PortalModule,
-  model: Awaited<ReturnType<typeof loadCustomerGeoReadModel>>
+  model: Awaited<ReturnType<typeof loadCustomerGeoReadModel>>,
+  workflowCReports: Awaited<ReturnType<typeof loadCustomerWorkflowCReports>> | null
 ) {
-  if (module === "summary") return <SummaryView model={model} />;
+  if (module === "summary") {
+    return <SummaryView model={model} workflowCReports={requiredWorkflowCReports(workflowCReports)} />;
+  }
   if (module === "metrics") return <MetricsView model={model} />;
   if (module === "placements") return <PlacementsView model={model} />;
-  return <ReportsView model={model} />;
+  return <ReportsView model={model} workflowCReports={requiredWorkflowCReports(workflowCReports)} />;
+}
+
+function moduleUsesWorkflowCReports(module: PortalModule): boolean {
+  return module === "summary" || module === "reports";
+}
+
+function requiredWorkflowCReports(
+  reports: Awaited<ReturnType<typeof loadCustomerWorkflowCReports>> | null
+): Awaited<ReturnType<typeof loadCustomerWorkflowCReports>> {
+  if (!reports) throw new Error("Workflow C reports were not loaded for this portal module");
+  return reports;
 }
 
 function campaignSelectionState(status: string): Readonly<{ detail: string; title: string }> {

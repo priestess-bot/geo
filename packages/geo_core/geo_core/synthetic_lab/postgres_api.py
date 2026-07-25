@@ -44,6 +44,9 @@ from geo_core.synthetic_lab.postgres_api_support import (
     stable_id,
     uuid_value,
 )
+from geo_core.synthetic_lab.postgres_execution_admission import (
+    PostgresSyntheticExecutionAdmission,
+)
 from geo_core.synthetic_lab.postgres_uow import synthetic_lab_uow_factory
 from geo_core.synthetic_lab.resource_application import SyntheticResourceApplication
 from geo_core.synthetic_lab.review_application import ReviewApplication
@@ -69,6 +72,13 @@ class PostgresSyntheticLabApi(PostgresSyntheticResourceApiMixin):
         self._resources = SyntheticResourceApplication(self._uow_factory)
         self._registry = _load_registry()
         self._manual_imports = build_manual_import_service(connect)
+        self._execution_admission = PostgresSyntheticExecutionAdmission(
+            database_url,
+            connection_factory=connect,
+            uow_factory=self._uow_factory,
+            reads=self._reads,
+            manual_imports=self._manual_imports,
+        )
 
     def list_authorizations(self, principal: AccessPrincipal, **values: object):
         project_id = project(values)
@@ -298,7 +308,7 @@ class PostgresSyntheticLabApi(PostgresSyntheticResourceApiMixin):
     def get_job(self, principal: AccessPrincipal, **values: object):
         project_id = project(values)
         domain_principal(principal, project_id)
-        return self._reads.job(project_id, uuid_value(values["job_id"]))
+        return self._reads.job_view(project_id, uuid_value(values["job_id"]))
 
     def cancel_job(self, principal: AccessPrincipal, **values: object):
         project_id = project(values)
@@ -308,6 +318,54 @@ class PostgresSyntheticLabApi(PostgresSyntheticResourceApiMixin):
             job_id=uuid_value(values["job_id"]),
             expected_version=int(request["expected_version"]),
             cancelled_at=datetime.now(UTC),
+            idempotency_key=str(values["idempotency_key"]),
+        )
+
+    def enqueue_profile_build(self, principal: AccessPrincipal, **values: object):
+        project_id = project(values)
+        request = payload(values)
+        return self._execution_admission.enqueue_profile_build(
+            principal=domain_principal(principal, project_id),
+            profile_version_id=request["profile_version_id"],
+            fact_snapshot_id=request["fact_snapshot_id"],
+            approved_sample_ids=tuple(request["approved_sample_ids"]),
+            runtime_selection_id=request["runtime_selection_id"],
+            idempotency_key=str(values["idempotency_key"]),
+        )
+
+    def enqueue_review_case(self, principal: AccessPrincipal, **values: object):
+        project_id = project(values)
+        request = payload(values)
+        return self._execution_admission.enqueue_review_case(
+            principal=domain_principal(principal, project_id),
+            suite_version_id=request["suite_version_id"],
+            case_id=request["case_id"],
+            runtime_selection_id=request["runtime_selection_id"],
+            style_pass_threshold=float(request["style_pass_threshold"]),
+            idempotency_key=str(values["idempotency_key"]),
+        )
+
+    def enqueue_corpus_finalize(self, principal: AccessPrincipal, **values: object):
+        project_id = project(values)
+        request = payload(values)
+        return self._execution_admission.enqueue_corpus_finalize(
+            principal=domain_principal(principal, project_id),
+            role=request["role"],
+            review_job_ids=tuple(request["review_job_ids"]),
+            source_corpus_job_id=request["source_corpus_job_id"],
+            idempotency_key=str(values["idempotency_key"]),
+        )
+
+    def enqueue_offline_experiment(self, principal: AccessPrincipal, **values: object):
+        project_id = project(values)
+        request = payload(values)
+        return self._execution_admission.enqueue_offline_experiment(
+            principal=domain_principal(principal, project_id),
+            question_set_id=request["question_set_id"],
+            current_corpus_job_id=request["current_corpus_job_id"],
+            candidate_corpus_job_id=request["candidate_corpus_job_id"],
+            runtime_selection_id=request["runtime_selection_id"],
+            minimum_valid_pair_ratio=float(request["minimum_valid_pair_ratio"]),
             idempotency_key=str(values["idempotency_key"]),
         )
 

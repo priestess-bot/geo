@@ -28,6 +28,17 @@ MANIFEST_NAME = "manifest.json"
 MANIFEST_VERSION = 1
 HTTP_METHODS = frozenset({"get", "put", "post", "delete", "options", "head", "patch", "trace"})
 MUTATING_METHODS = frozenset({"post", "put", "patch", "delete"})
+DEPRECATED_SYNC_ANALYSIS_SUCCESSORS = {
+    "/v1/projects/{project_id}/analysis/semantic-metrics/compute": (
+        "/v1/projects/{project_id}/analysis/semantic-metrics/jobs"
+    ),
+    "/v1/projects/{project_id}/analysis/comparisons/analyze": (
+        "/v1/projects/{project_id}/analysis/comparisons/jobs"
+    ),
+    "/v1/projects/{project_id}/analysis/drift/compute": (
+        "/v1/projects/{project_id}/analysis/drift/jobs"
+    ),
+}
 SHARED_REQUIRED_OPERATIONS = (
     ("get", "/health"),
     ("get", "/ready"),
@@ -185,15 +196,18 @@ INTERNAL_REQUIRED_OPERATIONS = (
         "/v1/projects/{project_id}/sampling/runs/{run_id}/tasks/{task_id}/attempts",
     ),
     ("post", "/v1/projects/{project_id}/sampling/attempts/{attempt_id}/cancel"),
+    ("post", "/v1/projects/{project_id}/analysis/semantic-metrics/jobs"),
     (
         "post",
         "/v1/projects/{project_id}/analysis/semantic-metrics/compute",
     ),
     ("get", "/v1/projects/{project_id}/analysis/semantic-metrics"),
     ("get", "/v1/projects/{project_id}/analysis/semantic-metrics/{snapshot_hash}"),
+    ("post", "/v1/projects/{project_id}/analysis/comparisons/jobs"),
     ("post", "/v1/projects/{project_id}/analysis/comparisons/analyze"),
     ("get", "/v1/projects/{project_id}/analysis/comparisons"),
     ("get", "/v1/projects/{project_id}/analysis/comparisons/{family_hash}"),
+    ("post", "/v1/projects/{project_id}/analysis/drift/jobs"),
     ("post", "/v1/projects/{project_id}/analysis/drift/compute"),
     ("get", "/v1/projects/{project_id}/analysis/drift"),
     ("get", "/v1/projects/{project_id}/analysis/drift/{report_hash}"),
@@ -324,6 +338,8 @@ def validate_document(surface: str, document: Mapping[str, Any]) -> None:
 
     if surface == "customer":
         _validate_customer_isolation(paths)
+    if surface == "internal":
+        _validate_deprecated_sync_analysis(paths)
 
 
 def _validate_customer_isolation(paths: Mapping[str, Any]) -> None:
@@ -337,6 +353,43 @@ def _validate_customer_isolation(paths: Mapping[str, Any]) -> None:
                 raise StableOpenAPIError(
                     f"customer contract exposes a non-customer write: {method.upper()} {path}"
                 )
+
+
+def _validate_deprecated_sync_analysis(paths: Mapping[str, Any]) -> None:
+    for legacy_path, successor_path in DEPRECATED_SYNC_ANALYSIS_SUCCESSORS.items():
+        legacy_item = paths.get(legacy_path)
+        successor_item = paths.get(successor_path)
+        legacy = legacy_item.get("post") if isinstance(legacy_item, dict) else None
+        successor = successor_item.get("post") if isinstance(successor_item, dict) else None
+        if not isinstance(legacy, dict) or not isinstance(successor, dict):
+            raise StableOpenAPIError(
+                f"internal analysis compatibility pair is incomplete: {legacy_path}"
+            )
+        responses = legacy.get("responses")
+        if legacy.get("deprecated") is not True or not isinstance(responses, dict):
+            raise StableOpenAPIError(
+                f"internal synchronous analysis operation is not deprecated: {legacy_path}"
+            )
+        gone = responses.get("410")
+        gone_content = gone.get("content") if isinstance(gone, dict) else None
+        if (
+            "200" in responses
+            or not isinstance(gone_content, dict)
+            or "application/problem+json" not in gone_content
+        ):
+            raise StableOpenAPIError(
+                f"internal synchronous analysis operation must expose only a 410 outcome: "
+                f"{legacy_path}"
+            )
+        successor_responses = successor.get("responses")
+        if (
+            successor.get("deprecated") is True
+            or not isinstance(successor_responses, dict)
+            or "202" not in successor_responses
+        ):
+            raise StableOpenAPIError(
+                f"internal durable analysis successor must expose 202: {successor_path}"
+            )
 
 
 def canonical_json_bytes(value: object) -> bytes:

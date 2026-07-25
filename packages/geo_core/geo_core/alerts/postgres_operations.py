@@ -26,9 +26,9 @@ from geo_core.alerts.evaluation import AlertEvaluation, evaluate_alert_rule
 from geo_core.alerts.lifecycle import open_alert
 from geo_core.alerts.notifications import (
     NotificationChannel,
-    NotificationOutboxCommand,
     build_notification_commands,
 )
+from geo_core.alerts.postgres_notification_values import _notification_value
 from geo_core.alerts.postgres_operation_values import (
     ALERT_OPERATION_NAMESPACE,
     canonical_hash,
@@ -223,7 +223,7 @@ class PostgresWorkflowCAlertEvaluateOperation:
                 connection.execute(
                     """SELECT * FROM geo_complete_workflow_c_alert_evaluation(
                            %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                           %s, %s, %s, %s, %s::jsonb, %s, %s,
+                           %s, %s, %s, %s, %s::jsonb, %s,
                            %s, %s, %s::jsonb, %s::jsonb
                        )""",
                     (
@@ -448,6 +448,15 @@ def _evaluation_completion(
     evaluation_payload: dict[str, object] = {
         "schema_version": EVALUATION_RESULT_SCHEMA_VERSION,
         **evaluation.canonical_value(),
+        "trigger_snapshot": (
+            {
+                "values": json_value(evaluation.trigger_snapshot.values),
+                "captured_at": evaluation.trigger_snapshot.captured_at.isoformat(),
+                "snapshot_hash": evaluation.trigger_snapshot.snapshot_hash,
+            }
+            if evaluation.trigger_snapshot is not None
+            else None
+        ),
         "evaluation_hash": evaluation.evaluation_hash,
         "rule": rule_value(command.rule_version),
         "schedule": {
@@ -504,37 +513,6 @@ def _evaluation_completion(
             _notification_value(item, lease.project_id) for item in notifications
         ),
     )
-
-
-def _notification_value(
-    command: NotificationOutboxCommand, project_id: UUID
-) -> Mapping[str, object]:
-    spec_payload: dict[str, object] = {
-        "schema_version": 1,
-        "kind": "workflow_c.alert.notify",
-        "notification_id": str(command.id),
-    }
-    spec_hash = canonical_hash(spec_payload)
-    job_key = f"workflow-c-alert-notify:{command.idempotency_key}"
-    return {
-        "id": str(command.id),
-        "alert_id": str(command.alert_id),
-        "alert_version": command.alert_version,
-        "channel": command.channel.value,
-        "topic": command.topic,
-        "idempotency_key": command.idempotency_key,
-        "payload_hash": command.payload_hash,
-        "payload": {"summary": command.summary.payload()},
-        "safe_summary": (
-            f"Workflow C {command.summary.severity.value} alert "
-            f"{command.alert_id} {command.summary.event_type}"
-        ),
-        "created_at": command.created_at.isoformat(),
-        "notify_job_id": str(deterministic_id(project_id, "notify", job_key)),
-        "notify_spec_hash": spec_hash,
-        "notify_spec_payload": spec_payload,
-    }
-
 
 
 def _mapping_row(cursor: Any) -> Mapping[str, object] | None:
