@@ -39,7 +39,7 @@ test("M1-SECRET-WEB-01: Admin completes write-only two-person rotation lifecycle
   const runtimeErrors = collectRuntimeErrors(page);
   await page.goto(`/projects/${PROJECT_ID}?tab=secrets`);
 
-  await expect(page.getByRole("heading", { level: 2, name: "Secret Store" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 2, name: "密钥库" })).toBeVisible();
   await expect(page.getByText("暂无 Secret Reference", { exact: true })).toBeVisible();
   const createPanel = page.locator("details").filter({
     has: page.getByText("新建 Secret Reference", { exact: true })
@@ -122,7 +122,7 @@ test("M1-SECRET-WEB-02: Secret Store fails closed for unavailable runtime and an
   await setSecretMode(request, { unavailable: true });
   await page.goto(`/projects/${PROJECT_ID}?tab=secrets`);
   const unavailable = page.getByRole("alert").filter({ hasText: "所有写入保持关闭" });
-  await expect(unavailable).toContainText("Secret Store unavailable");
+  await expect(unavailable).toContainText("密钥库暂不可用");
   const createPanel = page.locator("details").filter({
     has: page.getByText("新建 Secret Reference", { exact: true })
   });

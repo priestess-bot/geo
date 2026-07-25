@@ -58,24 +58,24 @@ export function ManualEvidenceCommands({
   return (
     <section className={styles.commandBand} aria-labelledby="manual-evidence-heading">
       <div className={styles.sectionHeading}>
-        <div><p>Governed import</p><h3 id="manual-evidence-heading">手工 UI 证据</h3></div>
-        <span>{pending.length} pending review</span>
+        <div><p>受治理导入</p><h3 id="manual-evidence-heading">手工 UI 证据</h3></div>
+        <span>{pending.length} 条待复核</span>
       </div>
       <div className={styles.scopeNotice} data-tone="warning">
-        <strong>Fixture/manual parser</strong>
-        <span>Non-live evidence · no Australian egress proof</span>
+        <strong>测试夹具 / 手工解析器</strong>
+        <span>非实时证据 · 不具备澳大利亚出口证明</span>
       </div>
       <form action={importAction} className={styles.commandForm}>
         <input name="project_id" type="hidden" value={projectId} />
         <input name="run_id" type="hidden" value={runId || ""} />
         <input name="idempotency_key" type="hidden" value={`${commandKey}-import`} />
-        <label><span>待采集 Task</span><select disabled={uploadDisabled} name="task_ref" required><option value="">选择 Task</option>{manualTasks.map((task) => <option key={task.id} value={`${task.id}:${task.version}`}>{task.question_id} · repeat {task.repetition}</option>)}</select></label>
-        <label><span>Surface parser release</span><select disabled={uploadDisabled || !matchingReleases.length} name="surface_parser_release_id" onChange={(event) => { const value = event.currentTarget.value; setParserReleaseId(value); if (value) setEvidenceKind("transcript_export"); }} title="Only fixture or governed manual transcript parsing; this does not establish live capture or egress provenance." value={parserReleaseId}><option value="">通用人工证据（不解析 Surface）</option>{matchingReleases.map((release) => <option key={release.id} value={release.id}>{surfaceLabel(release.surface)} · {release.release_version}</option>)}</select></label>
-        <label><span>证据类型</span><select disabled={uploadDisabled} name="evidence_kind" onChange={(event) => { const value = event.currentTarget.value; setEvidenceKind(value); if (value !== "transcript_export") setParserReleaseId(""); }} value={evidenceKind}><option value="screenshot">Screenshot</option><option value="html_export">HTML export</option><option value="transcript_export">Transcript export</option></select></label>
+        <label><span>待采集任务</span><select disabled={uploadDisabled} name="task_ref" required><option value="">选择任务</option>{manualTasks.map((task) => <option key={task.id} value={`${task.id}:${task.version}`}>{task.question_id} · 第 {task.repetition} 次重复</option>)}</select></label>
+        <label><span>页面解析器发布版本</span><select disabled={uploadDisabled || !matchingReleases.length} name="surface_parser_release_id" onChange={(event) => { const value = event.currentTarget.value; setParserReleaseId(value); if (value) setEvidenceKind("transcript_export"); }} title="仅用于测试夹具或受治理的人工文本解析；不能证明实时采集或出口来源。" value={parserReleaseId}><option value="">通用人工证据（不解析页面类型）</option>{matchingReleases.map((release) => <option key={release.id} value={release.id}>{surfaceLabel(release.surface)} · {release.release_version}</option>)}</select></label>
+        <label><span>证据类型</span><select disabled={uploadDisabled} name="evidence_kind" onChange={(event) => { const value = event.currentTarget.value; setEvidenceKind(value); if (value !== "transcript_export") setParserReleaseId(""); }} value={evidenceKind}><option value="screenshot">截图</option><option value="html_export">HTML 导出</option><option value="transcript_export">文本记录导出</option></select></label>
         <label><span>文件</span><input accept={parserReleaseId ? "application/json,.json" : ".html,.htm,.json,.txt,image/jpeg,image/png,image/webp"} disabled={uploadDisabled} name="artifact" required type="file" /></label>
         <label><span>截图已脱敏</span><input disabled={uploadDisabled} name="pre_redacted_attestation" type="checkbox" /></label>
-        <label><span>设备</span><select disabled={uploadDisabled} name="device"><option value="desktop">Desktop</option><option value="mobile">Mobile</option><option value="tablet">Tablet</option></select></label>
-        <label><span>Locale</span><input defaultValue="en-AU" disabled={uploadDisabled} maxLength={100} name="locale" required /></label>
+        <label><span>设备</span><select disabled={uploadDisabled} name="device"><option value="desktop">桌面端</option><option value="mobile">移动端</option><option value="tablet">平板设备</option></select></label>
+        <label><span>区域语言</span><input defaultValue="en-AU" disabled={uploadDisabled} maxLength={100} name="locale" required /></label>
         <label><span>采集时间</span><input defaultValue={capturedAt} disabled={uploadDisabled} name="captured_at" required type="datetime-local" /></label>
         <button disabled={uploadDisabled} type="submit">{importPending ? "导入中..." : "导入并提交复核"}</button>
       </form>
@@ -118,15 +118,15 @@ function ParseSummary({ summary }: { summary: SurfaceParseSummary }) {
       <div className={styles.badgeRow}>
         <span>{surfaceLabel(summary.surface)}</span>
         <span>{summary.capture_kind}</span>
-        <span>non-live</span>
+        <span>非实时</span>
         <span data-status={summary.content_eligible ? "eligible" : "blocked"}>{summary.outcome}</span>
       </div>
       <dl>
-        <div><dt>Answer characters</dt><dd>{summary.answer_character_count}</dd></div>
-        <div><dt>Citations</dt><dd>{summary.citation_count}</dd></div>
-        <div><dt>Block reason</dt><dd>{summary.block_reason || "-"}</dd></div>
-        <div><dt>Release SHA-256</dt><dd><code>{summary.parser_release_hash}</code></dd></div>
-        <div><dt>Summary SHA-256</dt><dd><code>{summary.summary_hash}</code></dd></div>
+        <div><dt>回答字符数</dt><dd>{summary.answer_character_count}</dd></div>
+        <div><dt>引用数</dt><dd>{summary.citation_count}</dd></div>
+        <div><dt>阻断原因</dt><dd>{summary.block_reason || "-"}</dd></div>
+        <div><dt>发布版本 SHA-256</dt><dd><code>{summary.parser_release_hash}</code></dd></div>
+        <div><dt>摘要 SHA-256</dt><dd><code>{summary.summary_hash}</code></dd></div>
       </dl>
     </div>
   );

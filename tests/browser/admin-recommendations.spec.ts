@@ -29,7 +29,7 @@ test("M5-REC-WEB-01: approval creates only an unstarted draft and remains respon
   await page.goto(`/projects/${PROJECT_ID}?tab=recommendations&recommendation_id=${RECOMMENDATION_ID}`);
 
   await expect(page).toHaveTitle(/GEO/i);
-  await expect(page.getByRole("heading", { level: 2, name: "Recommendations" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 2, name: "建议" })).toBeVisible();
   await expect(page.getByText("批准只创建未启动草稿", { exact: false })).toBeVisible();
   await expect(page.getByText("真实观测 / 投影", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "批准并创建草稿" }).click();
@@ -45,7 +45,7 @@ test("M5-REC-WEB-01: approval creates only an unstarted draft and remains respon
   await page.screenshot({ path: testInfo.outputPath("recommendations-desktop.png"), fullPage: true });
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.getByRole("heading", { level: 2, name: "Recommendations" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 2, name: "建议" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath("recommendations-mobile.png"), fullPage: true });
 });

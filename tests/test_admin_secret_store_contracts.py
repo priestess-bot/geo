@@ -19,7 +19,7 @@ def test_secret_store_tab_loads_reference_and_audit_metadata_in_parallel() -> No
 
     assert 'activeTab === "secrets" ? loadSecretWorkspace(projectId, query)' in page
     assert "SecretStoreWorkspace" in shell
-    assert 'id: "secrets", label: "Secret Store"' in tabs
+    assert 'id: "secrets", label: "密钥库"' in tabs
     assert "let [referencesResponse, auditsResponse, selectedResponse] = await Promise.all" in data
     assert "SecretReferencePage" in data and "SecretAuditPage" in data
     assert "lastPageOffset" in data
@@ -98,7 +98,7 @@ def test_secret_workspace_covers_two_person_lifecycle_and_fail_closed_states() -
     assert "version_verified" in forms
     assert "version_activated" in forms
     assert "aggregate_version" in forms
-    assert "Secret Store unavailable" in workspace
+    assert "密钥库暂不可用" in workspace
     assert "current_version" in workspace
     assert "master_key_version" in workspace
     assert "fingerprint" in workspace

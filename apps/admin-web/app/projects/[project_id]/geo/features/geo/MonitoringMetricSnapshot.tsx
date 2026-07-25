@@ -14,7 +14,7 @@ export function MonitoringMetricSnapshot({ metric }: { metric: MetricView }) {
   ]));
   return <article className={styles.metricSnapshot} data-testid="monitoring-metric-snapshot">
     <header className={styles.rowHeader}>
-      <strong>{metric.measurement_window} · {metric.query_cluster_key || "legacy cluster unknown"}</strong>
+      <strong>{metric.measurement_window} · {metric.query_cluster_key || "历史问题簇未知"}</strong>
       <Status value={metric.status} />
     </header>
     {metric.status === "insufficient_evidence" ? <div className={styles.metricWarning}>
@@ -59,7 +59,7 @@ export function MonitoringMetricSnapshot({ metric }: { metric: MetricView }) {
         <thead><tr><th>冻结问题</th><th>样本</th><th>推荐 Wilson CI</th><th>产品提及</th><th>引用</th></tr></thead>
         <tbody>{metric.query_results.map((query) => <tr key={query.monitoring_query_id}>
           <td><strong>{query.query_text_snapshot}</strong><div className={styles.meta}>{query.query_cluster_key}</div></td>
-          <td>{query.sampled_sample_count} sampled · {query.valid_sample_count} valid · {query.invalid_sample_count} invalid · {query.missing_sample_count} missing<div className={styles.meta}>{query.meets_threshold ? "达到门槛" : "未达到门槛"}</div></td>
+          <td>{query.sampled_sample_count} 已采样 · {query.valid_sample_count} 有效 · {query.invalid_sample_count} 无效 · {query.missing_sample_count} 缺失<div className={styles.meta}>{query.meets_threshold ? "达到门槛" : "未达到门槛"}</div></td>
           <td>{estimate(query.recommendation)}</td>
           <td>{estimate(query.product_mention)}</td>
           <td>{estimate(query.placement_citation)}</td>
@@ -67,11 +67,11 @@ export function MonitoringMetricSnapshot({ metric }: { metric: MetricView }) {
       </table>
     </details> : null}
     <TechnicalInfo label="指标审计信息">
-      <code>Result {metric.result_hash || "legacy result hash unavailable"}</code>
-      <code>Input {metric.input_hash}</code>
-      <code>Analysis {metric.analysis_stratum_hash || "legacy analysis hash unavailable"}</code>
-      <code>Observations {metric.observation_membership_hash || "legacy membership unavailable"}</code>
-      <span>{metric.observation_membership_version || "legacy membership version unavailable"} · {count(metric.observation_membership_count)} observations</span>
+      <code>结果 {metric.result_hash || "历史结果哈希不可用"}</code>
+      <code>输入 {metric.input_hash}</code>
+      <code>分析 {metric.analysis_stratum_hash || "历史分析哈希不可用"}</code>
+      <code>观察记录 {metric.observation_membership_hash || "历史成员记录不可用"}</code>
+      <span>{metric.observation_membership_version || "历史成员版本不可用"} · {count(metric.observation_membership_count)} 条观察记录</span>
       <span>{metric.statistics_contract_version} · {metric.method_version}</span>
       <span>{new Date(metric.computed_at).toLocaleString("zh-CN")}</span>
     </TechnicalInfo>

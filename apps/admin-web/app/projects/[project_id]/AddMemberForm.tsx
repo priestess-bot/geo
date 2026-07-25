@@ -45,7 +45,7 @@ export function AddMemberForm({
       </div>
       <div className={styles.formGrid}>
         <label>
-          <span>Issuer</span>
+          <span>签发方</span>
           <input
             name="issuer"
             type="url"
@@ -56,7 +56,7 @@ export function AddMemberForm({
           />
         </label>
         <label>
-          <span>Subject</span>
+          <span>主体标识</span>
           <input name="subject" autoComplete="off" required />
         </label>
         <label>

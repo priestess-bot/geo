@@ -13,11 +13,11 @@ export function WorkflowCActionFeedback({ state }: { state: WorkflowCActionState
       <strong>{state.kind === "error" ? "处置未完成" : "处置已记录"}</strong>
       <span>{state.message}</span>
       {state.alert ? (
-        <small>Alert {state.alert.id} · {state.alert.status} · v{state.alert.version}</small>
+        <small>告警 {state.alert.id} · {state.alert.status} · v{state.alert.version}</small>
       ) : null}
       {state.policy ? (
         <small>
-          Admission Policy {state.policy.id} · {state.policy.status} · v{state.policy.version}
+          准入策略 {state.policy.id} · {state.policy.status} · v{state.policy.version}
         </small>
       ) : null}
       {state.correlationId ? <small>关联 ID：{state.correlationId}</small> : null}

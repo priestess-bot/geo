@@ -135,7 +135,7 @@ export async function loadPromptWorkspace(
       programs,
       releases: emptyReleases,
       releasesProblem: selectedProblem
-        || loadProblem(releasesResponse, "Prompt Release 列表加载失败。"),
+        || loadProblem(releasesResponse, "Prompt 发布版本列表加载失败。"),
       selectedProgram,
       selectedRelease: null
     };

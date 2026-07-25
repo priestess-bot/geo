@@ -87,11 +87,11 @@ export function PromptReleaseEditorForm({
       <input name="model_policy_version" type="hidden" value={inventory?.model_policy_version || ""} />
       <input name="model_policy" type="hidden" value={JSON.stringify(inventory?.model_policy || {})} />
       <fieldset disabled={formDisabled}>
-        <legend>{creatingProgram ? "创建 Program 与 v1" : `创建 v${expectedVersion + 1}`}</legend>
+        <legend>{creatingProgram ? "创建 Prompt 程序与 v1" : `创建 v${expectedVersion + 1}`}</legend>
         <div className={styles.formGrid}>
           {creatingProgram ? (
             <label>
-              <span>Program 类型</span>
+              <span>Prompt 程序类型</span>
               <select
                 name="program_kind"
                 onChange={(event) => {
@@ -116,12 +116,12 @@ export function PromptReleaseEditorForm({
             </label>
           ) : (
             <label>
-              <span>Program 类型（固定）</span>
+              <span>Prompt 程序类型（固定）</span>
               <span className={styles.readOnlyValue}>{selectedKind ? kindLabel(selectedKind) : "不可用"}</span>
             </label>
           )}
           <label className={styles.doubleField}>
-            <span>Purpose（由 Program 类型固定）</span>
+            <span>用途（由 Prompt 程序类型固定）</span>
             <span className={styles.readOnlyValue}>{inventory?.purpose || "基线目录不可用"}</span>
           </label>
         </div>
@@ -129,18 +129,18 @@ export function PromptReleaseEditorForm({
         {!selectionAvailable ? (
           <p className={styles.editorNotice} role="alert">
             {inventory
-              ? "当前 Program 的 Purpose 与冻结目录不一致，不能从此表单创建新 Release。"
+              ? "当前程序的用途与冻结目录不一致，不能从此表单创建新发布版本。"
               : "冻结 Prompt 基线目录不可用，创建操作保持关闭。"}
           </p>
         ) : null}
 
         <div className={styles.templateGrid}>
           <label>
-            <span>System Template</span>
+            <span>系统模板</span>
             <textarea maxLength={100000} name="system_template" required spellCheck={false} />
           </label>
           <label>
-            <span>User Template</span>
+            <span>用户模板</span>
             <textarea maxLength={100000} name="user_template" required spellCheck={false} />
           </label>
         </div>
@@ -149,7 +149,7 @@ export function PromptReleaseEditorForm({
           <summary>冻结 Schema、模型策略与测试集</summary>
           <div className={styles.formGrid}>
             <label>
-              <span>Variable / Input Schema</span>
+              <span>变量 / 输入 Schema</span>
               <span className={styles.readOnlyValue}>
                 {inventory
                   ? `${inventory.variable_schema_version} · ${inventory.input_schema_version}`
@@ -157,7 +157,7 @@ export function PromptReleaseEditorForm({
               </span>
             </label>
             <label className={styles.doubleField}>
-              <span>Provider / Application Output Schema</span>
+              <span>Provider / 应用输出 Schema</span>
               <span className={styles.readOnlyValue}>
                 {inventory
                   ? `${inventory.output_schema_version} · ${inventory.application_output_schema_version}`
@@ -165,19 +165,19 @@ export function PromptReleaseEditorForm({
               </span>
               <small className={styles.inventoryLineage}>
                 {inventory
-                  ? `Provider ${inventory.output_schema_hash} · Application ${inventory.application_output_schema_hash}`
-                  : "没有可提交的双 Schema 身份。"}
+                  ? `Provider ${inventory.output_schema_hash} · 应用 ${inventory.application_output_schema_hash}`
+                  : "没有可提交的双 Schema 标识。"}
               </small>
             </label>
             <label>
-              <span>Model Policy（目录固定）</span>
+              <span>模型策略（目录固定）</span>
               <span className={styles.readOnlyValue}>{inventory?.model_policy_version || "目录不可用"}</span>
               <small className={styles.inventoryLineage}>
                 {inventory ? `SHA-256 ${inventory.model_policy_hash}` : "没有可提交的模型策略。"}
               </small>
             </label>
             <label className={styles.doubleField}>
-              <span>固定 Test Set（目录）</span>
+              <span>固定测试集（目录）</span>
               <select
                 aria-describedby={testSetLineageId}
                 defaultValue={testSetSelection}
@@ -188,11 +188,11 @@ export function PromptReleaseEditorForm({
                 ) : <option value="">目录不可用</option>}
               </select>
               <small id={testSetLineageId} className={styles.inventoryLineage}>
-                {inventory ? `SHA-256 ${inventory.test_set_hash}` : "没有可提交的 Test Set 身份。"}
+                {inventory ? `SHA-256 ${inventory.test_set_hash}` : "没有可提交的测试集身份。"}
               </small>
             </label>
             <label>
-              <span>Compiler version</span>
+              <span>编译器版本</span>
               <input defaultValue="geo-prompt-compiler-v2" maxLength={100} name="compiler_version" required />
             </label>
           </div>

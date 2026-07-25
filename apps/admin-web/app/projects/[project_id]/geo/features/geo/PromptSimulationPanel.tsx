@@ -45,21 +45,21 @@ export function PromptSimulationPanel({ projectId, data, catalog }: {
 
   return <div className={styles.workspace} data-testid="prompt-simulation-panel">
     <div className={styles.testBanner} role="status">
-      <strong>TEST ONLY</strong>
+      <strong>仅限测试</strong>
       <span>允许合成消费者身份与评价 · 不可用于正式审查、导出或发布 · publication_eligible=false</span>
     </div>
     <div className={styles.split}>
       <aside className={`${styles.panel} ${styles.sticky}`}>
-        <SectionHeader eyebrow="Isolated preview input" title="提示词技术预览" />
+        <SectionHeader eyebrow="隔离预览输入" title="提示词技术预览" />
         {isLegacySimulation ? <div className={styles.legacyReadOnly} data-testid="legacy-simulation-readonly">
           <div className={styles.testBanner} role="status"><strong>迁移历史 · 只读</strong>
-            <span>该记录没有 Campaign / Opportunity 绑定，只允许查看和下载，不能作为新建、审核、导出或发布输入。</span></div>
+            <span>该记录没有活动或渠道任务绑定，只允许查看和下载，不能作为新建、审核、导出或发布输入。</span></div>
           {selection.campaignId && opportunity ? <Link className="button secondary"
             href={geoHref(projectId, selection, { simulation_id: undefined, job_id: undefined })}>
-            返回当前 Campaign 新建预览
-          </Link> : <Empty>先选择当前 Campaign 和渠道任务，才能新建预览。</Empty>}
+            返回当前活动新建预览
+          </Link> : <Empty>先选择当前活动和渠道任务，才能新建预览。</Empty>}
         </div> : <>
-        <ActionForm action={createPromptSimulation} submitLabel="运行 TEST ONLY 预览"
+        <ActionForm action={createPromptSimulation} submitLabel="运行仅测试预览"
           disabled={!canCreate} key={editableSimulation?.id || "new-simulation"}>
           <HiddenProject projectId={projectId} />
           <input type="hidden" name="campaign_id" value={selection.campaignId || ""} />
@@ -67,10 +67,10 @@ export function PromptSimulationPanel({ projectId, data, catalog }: {
           <input type="hidden" name="prompt_release_binding_id" value={binding?.id || ""} />
           <input type="hidden" name="destination_id" value={destination?.id || ""} />
           <input type="hidden" name="confirmed_release_hash" value={binding?.release_hash || ""} />
-          <div className={styles.keyValue}><span>渠道与 Prompt Release</span><strong>{destination
+          <div className={styles.keyValue}><span>渠道与 Prompt 发布版本</span><strong>{destination
             ? `${destination.publication_channel} · ${destination.destination_key}` : "未选择"}</strong>
-            <code>{binding?.template_release_id || "unbound"}</code>
-            <code>{binding?.release_hash || "no approved release hash"}</code></div>
+            <code>{binding?.template_release_id || "未绑定"}</code>
+            <code>{binding?.release_hash || "无已批准发布版本哈希"}</code></div>
           <label>主品牌
             <select name="primary_brand_entity_id" required
               defaultValue={editableSimulation?.primary_brand_entity_id || ""}><option value="" disabled>选择品牌</option>
@@ -114,7 +114,7 @@ export function PromptSimulationPanel({ projectId, data, catalog }: {
             </select>
           </label>
           <label>测试目标<select name="intent" defaultValue="product recommendation"><option value="product recommendation">商品推荐</option><option value="product comparison">产品比较</option><option value="buying guide">购买指南</option></select></label>
-          <label>模拟受众<input name="audience" defaultValue="Australian consumers" required /></label>
+          <label>模拟受众<input name="audience" defaultValue="澳大利亚消费者" required /></label>
           <label>输出形式<select name="deliverable" defaultValue="channel-specific draft"><option value="channel-specific draft">渠道适配文案</option><option value="short review">短评</option><option value="community post">社区帖子</option></select></label>
           <label className={styles.check}><input type="checkbox" name="public_citations_required" defaultChecked />公开事实需要引用</label>
           <label className={styles.check}><input type="checkbox" name="unsupported_superlatives" />允许无证据最高级表述</label>
@@ -128,48 +128,48 @@ export function PromptSimulationPanel({ projectId, data, catalog }: {
             </div>
           </details>
         </ActionForm>
-        {!canCreate ? <Empty>当前 Opportunity 缺少可用 Prompt 绑定、品牌、产品或证据。</Empty> : null}
+        {!canCreate ? <Empty>当前渠道任务缺少可用 Prompt 绑定、品牌、产品或证据。</Empty> : null}
         </>}
       </aside>
       <div className={styles.workspace}>
         <div className={styles.panel}>
-          <SectionHeader eyebrow="Technical preview history" title="预览记录" />
+          <SectionHeader eyebrow="技术预览记录" title="预览记录" />
           <ResourceBlock resource={data.simulations}>{(items) => items.length
             ? <SimulationHistory projectId={projectId} data={data} items={items} />
             : <Empty>尚未运行提示词技术预览。</Empty>}</ResourceBlock>
         </div>
         <div className={styles.panel}>
-          <SectionHeader eyebrow="Non-publishable result" title={simulation ? `预览 ${simulation.id.slice(0, 8)}` : "生成结果"}>
+          <SectionHeader eyebrow="不可发布结果" title={simulation ? `预览 ${simulation.id.slice(0, 8)}` : "生成结果"}>
             {simulation ? <Status value={simulation.artifact_status} /> : null}
           </SectionHeader>
           {simulation ? <>
             {isLegacySimulation ? <div className={styles.testBanner} role="status">
               <strong>迁移历史 · 只读</strong>
-              <span>legacy-v1 · 无 Campaign / Opportunity 绑定 · 仅供审计查看与工件下载</span>
+              <span>历史 v1 · 无活动 / 渠道任务绑定 · 仅供审计查看与工件下载</span>
             </div> : null}
             <div className={styles.keyValues}>
               <div><span className={styles.meta}>输入 Hash</span><br /><code>{simulation.input_hash.slice(0, 16)}</code></div>
-              <div><span className={styles.meta}>输出 Hash</span><br /><code>{simulation.output_hash?.slice(0, 16) || "pending"}</code></div>
-              <div><span className={styles.meta}>Job</span><br /><ShortId value={simulation.generation_job_id} /></div>
-              <div><span className={styles.meta}>Prompt binding</span><br />
+              <div><span className={styles.meta}>输出哈希</span><br /><code>{simulation.output_hash?.slice(0, 16) || "等待处理"}</code></div>
+              <div><span className={styles.meta}>任务</span><br /><ShortId value={simulation.generation_job_id} /></div>
+              <div><span className={styles.meta}>Prompt 绑定</span><br />
                 <strong>{simulation.prompt_release_binding_version === null
-                  ? "legacy-v1" : `v${simulation.prompt_release_binding_version}`}</strong><br />
+                  ? "历史 v1" : `v${simulation.prompt_release_binding_version}`}</strong><br />
                 <ShortId value={simulation.prompt_release_binding_id} /></div>
-              <div><span className={styles.meta}>Release</span><br /><strong>v{simulation.release_version}</strong><br /><code>{simulation.release_hash.slice(0, 16)}</code></div>
+              <div><span className={styles.meta}>发布版本</span><br /><strong>v{simulation.release_version}</strong><br /><code>{simulation.release_hash.slice(0, 16)}</code></div>
             </div>
             <p className={styles.meta}>模拟身份：{simulation.authenticity_mode}</p>
-            <div className={styles.testBanner} role="status"><strong>NON-PUBLISHABLE</strong>
+            <div className={styles.testBanner} role="status"><strong>不可发布</strong>
               <span>test_only={String(simulation.test_only)} · publication_eligible={String(simulation.publication_eligible)}</span></div>
             {simulation.simulation_purpose === "geo_question_test" ? <div className={styles.keyValues}>
-              <div><span>QuestionSet</span><br /><ShortId value={simulation.question_set_id} /></div>
-              <div><span>QuestionSet Hash</span><br /><code>{simulation.question_set_hash?.slice(0, 16)}</code></div>
+              <div><span>问题集</span><br /><ShortId value={simulation.question_set_id} /></div>
+              <div><span>问题集哈希</span><br /><code>{simulation.question_set_hash?.slice(0, 16)}</code></div>
               <div><span>问题项</span><br /><ShortId value={simulation.question_set_item_id} /></div>
             </div> : null}
             {renderedText ? <div className={styles.content}>{renderedText}</div> : <Empty>模型任务完成并 finalize 后显示正文。</Empty>}
-            {claims !== undefined ? <details><summary>Claim inventory</summary><pre className={styles.code}>{JSON.stringify(claims, null, 2)}</pre></details> : null}
+            {claims !== undefined ? <details><summary>表述清单</summary><pre className={styles.code}>{JSON.stringify(claims, null, 2)}</pre></details> : null}
             {simulation.input_snapshot ? <details><summary>冻结输入快照</summary><pre className={styles.code}>{JSON.stringify(simulation.input_snapshot, null, 2)}</pre></details> : null}
             {simulation.artifact_status === "finalized" ? <Link className="button secondary"
-              href={simulationDownloadHref(projectId, simulation)}>下载 TEST ONLY 工件</Link> : null}
+              href={simulationDownloadHref(projectId, simulation)}>下载仅测试工件</Link> : null}
           </> : <Empty>选择一条预览记录查看冻结输入和生成结果。</Empty>}
         </div>
       </div>
@@ -186,7 +186,7 @@ function SimulationHistory({ projectId, data, items }: {
   const legacy = items.filter((item) => item.campaign_id === null);
   return <div className={styles.historyGroups}>
     {current.length ? <SimulationHistoryGroup
-      data={data} items={current} label="当前 Campaign" projectId={projectId} /> : null}
+      data={data} items={current} label="当前活动" projectId={projectId} /> : null}
     {legacy.length ? <SimulationHistoryGroup
       data={data} items={legacy} label="迁移历史（只读）" projectId={projectId} legacy /> : null}
   </div>;
@@ -209,7 +209,7 @@ function SimulationHistoryGroup({ projectId, data, items, label, legacy = false 
         simulation_id: item.id,
         job_id: item.campaign_id ? item.generation_job_id : undefined
       })}>
-      <span className={styles.rowHeader}><strong>{legacy ? "历史只读" : "TEST ONLY"} · <ShortId value={item.id} /></strong>
+      <span className={styles.rowHeader}><strong>{legacy ? "历史只读" : "仅限测试"} · <ShortId value={item.id} /></strong>
         <Status value={item.generation_status} /></span>
       <span className={styles.meta}><span>{destinationName(data, item)}</span>
         <span>{item.simulation_purpose}</span><span>{item.authenticity_mode}</span>

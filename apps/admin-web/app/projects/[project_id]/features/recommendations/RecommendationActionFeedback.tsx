@@ -16,12 +16,12 @@ export function RecommendationActionFeedback({
       {state.kind === "error" ? <span>{state.message}</span> : null}
       {state.recommendation ? (
         <dl className={styles.feedbackFacts}>
-          <Fact label="Recommendation" value={state.recommendation.id} />
+          <Fact label="建议" value={state.recommendation.id} />
           <Fact
             label="状态 / 版本"
             value={`${state.recommendation.status} / v${state.recommendation.version}`}
           />
-          <Fact label="Evidence graph SHA-256" value={state.recommendation.evidenceGraphHash} />
+          <Fact label="证据图谱 SHA-256" value={state.recommendation.evidenceGraphHash} />
         </dl>
       ) : null}
       {state.draft ? (

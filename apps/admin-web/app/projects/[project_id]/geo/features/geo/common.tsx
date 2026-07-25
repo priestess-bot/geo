@@ -36,7 +36,7 @@ export function SectionHeader({ eyebrow, title, children }: { eyebrow: string; t
 export function FailureNotice({ failure }: { failure: LoadFailure }) {
   const label = failure.status === 403 ? "无权读取此资源" : failure.status === 409 ? "资源状态已变化" : failure.status === 422 ? "查询条件无效" : "数据加载失败";
   return <div className={styles.failure} role="alert"><strong>{label}</strong><span>{failure.detail}</span>
-    {failure.correlationId ? <code>Correlation {failure.correlationId}</code> : null}
+    {failure.correlationId ? <code>关联 ID {failure.correlationId}</code> : null}
     <Link href="">重新加载</Link></div>;
 }
 export function ResourceBlock<T>({ resource, children }: { resource: Resource<T>; children: (data: T) => ReactNode }) {

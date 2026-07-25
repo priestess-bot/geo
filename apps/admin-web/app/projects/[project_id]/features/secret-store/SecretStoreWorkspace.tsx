@@ -31,23 +31,23 @@ export function SecretStoreWorkspace({
   return (
     <div className={styles.workspace}>
       <header className={styles.workspaceHeader}>
-        <div><p>Encrypted credentials</p><h2>Secret Store</h2></div>
+        <div><p>加密凭据</p><h2>密钥库</h2></div>
         <div className={styles.summary}>
-          <span><strong>{data.references.total}</strong> References</span>
-          <span><strong>{data.audits.total}</strong> Audit events</span>
+          <span><strong>{data.references.total}</strong> 个引用</span>
+          <span><strong>{data.audits.total}</strong> 条审计事件</span>
           <span><strong>{currentRole ? roleLabel(currentRole) : "未授权"}</strong> 当前角色</span>
         </div>
       </header>
 
       {runtimeUnavailable ? (
         <div className={styles.unavailable} role="alert">
-          <strong>Secret Store unavailable</strong>
+          <strong>密钥库暂不可用</strong>
           <span>持久化或密钥运行时未连接，所有写入保持关闭。</span>
         </div>
       ) : null}
 
       <details className={styles.createSection}>
-        <summary>新建 Secret Reference</summary>
+        <summary>新建密钥引用</summary>
         <CreateSecretReferenceForm
           canManage={canManage}
           idempotencyKey={`admin-secret-create-${randomUUID()}`}
@@ -55,21 +55,21 @@ export function SecretStoreWorkspace({
         />
       </details>
 
-      {data.referencesProblem ? <LoadProblem label="Secret Reference" problem={data.referencesProblem} /> : null}
-      {data.selectionProblem ? <LoadProblem label="所选 Secret Reference" problem={data.selectionProblem} /> : null}
+      {data.referencesProblem ? <LoadProblem label="密钥引用" problem={data.referencesProblem} /> : null}
+      {data.selectionProblem ? <LoadProblem label="所选密钥引用" problem={data.selectionProblem} /> : null}
       {!data.referencesProblem && data.references.items.length === 0 ? (
-        <div className={styles.emptyState}><strong>暂无 Secret Reference</strong></div>
+        <div className={styles.emptyState}><strong>暂无密钥引用</strong></div>
       ) : null}
 
       {data.references.items.length ? (
         <section className={styles.referenceSection} aria-labelledby="secret-reference-list-heading">
           <div className={styles.sectionHeading}>
-            <h3 id="secret-reference-list-heading">References</h3>
+            <h3 id="secret-reference-list-heading">密钥引用</h3>
             <span>{pageRange(data.references.offset, data.references.items.length, data.references.total)}</span>
           </div>
           <div className={styles.tableWrap}>
             <table className={styles.table}>
-              <thead><tr><th>Purpose / Reference</th><th>状态</th><th>版本</th><th>Key version</th><th>Fingerprint</th><th>操作</th></tr></thead>
+              <thead><tr><th>用途 / 引用</th><th>状态</th><th>版本</th><th>主密钥版本</th><th>指纹</th><th>操作</th></tr></thead>
               <tbody>{data.references.items.map((reference) => (
                 <ReferenceRow
                   active={reference.reference_id === data.selectedReference?.reference_id}
@@ -93,7 +93,7 @@ export function SecretStoreWorkspace({
       {data.selectedReference ? (
         <section className={styles.detailSection} aria-labelledby="secret-detail-heading">
           <div className={styles.sectionHeading}>
-            <div><p>{data.selectedReference.purpose}</p><h3 id="secret-detail-heading">Secret Reference</h3></div>
+            <div><p>{data.selectedReference.purpose}</p><h3 id="secret-detail-heading">密钥引用</h3></div>
             <StatusPill value={data.selectedReference.status} />
           </div>
           <ReferenceMetadata reference={data.selectedReference} />
@@ -115,10 +115,10 @@ export function SecretStoreWorkspace({
 
       <section className={styles.auditSection} aria-labelledby="secret-audit-heading">
         <div className={styles.sectionHeading}>
-          <h3 id="secret-audit-heading">Audit 与版本状态</h3>
+          <h3 id="secret-audit-heading">审计与版本状态</h3>
           <span>{pageRange(data.audits.offset, data.audits.items.length, data.audits.total)}</span>
         </div>
-        {data.auditsProblem ? <LoadProblem label="Secret Audit" problem={data.auditsProblem} /> : null}
+        {data.auditsProblem ? <LoadProblem label="密钥审计" problem={data.auditsProblem} /> : null}
         {!data.auditsProblem && data.audits.items.length === 0 ? (
           <div className={styles.emptyState}><strong>暂无审计事件</strong></div>
         ) : null}
@@ -149,7 +149,7 @@ function ReferenceRow({
     <tr className={active ? styles.activeRow : undefined}>
       <td><strong>{reference.purpose}</strong><code>{reference.reference_id}</code></td>
       <td><StatusPill value={reference.status} /></td>
-      <td><span>aggregate v{reference.aggregate_version}</span><small>current {reference.current_version ?? "-"} · latest {reference.latest_version}</small></td>
+      <td><span>聚合版本 v{reference.aggregate_version}</span><small>当前 {reference.current_version ?? "-"} · 最新 {reference.latest_version}</small></td>
       <td>v{reference.master_key_version}</td>
       <td><code>{reference.fingerprint}</code></td>
       <td><a className={styles.tableLink} href={secretHref(projectId, reference.reference_id)}>打开</a></td>
@@ -160,14 +160,14 @@ function ReferenceRow({
 function ReferenceMetadata({ reference }: { reference: SecretReference }) {
   return (
     <dl className={styles.metadataGrid}>
-      <Metadata label="Reference ID" value={reference.reference_id} />
-      <Metadata label="Purpose" value={reference.purpose} />
-      <Metadata label="Aggregate version" value={String(reference.aggregate_version)} />
-      <Metadata label="Current / Latest" value={`${reference.current_version ?? "-"} / ${reference.latest_version}`} />
-      <Metadata label="Master key version" value={String(reference.master_key_version)} />
-      <Metadata label="Fingerprint" value={reference.fingerprint} />
-      <Metadata label="Created" value={formatTime(reference.created_at)} />
-      <Metadata label="Updated" value={formatTime(reference.updated_at)} />
+      <Metadata label="引用 ID" value={reference.reference_id} />
+      <Metadata label="用途" value={reference.purpose} />
+      <Metadata label="聚合版本" value={String(reference.aggregate_version)} />
+      <Metadata label="当前 / 最新" value={`${reference.current_version ?? "-"} / ${reference.latest_version}`} />
+      <Metadata label="主密钥版本" value={String(reference.master_key_version)} />
+      <Metadata label="指纹" value={reference.fingerprint} />
+      <Metadata label="创建时间" value={formatTime(reference.created_at)} />
+      <Metadata label="更新时间" value={formatTime(reference.updated_at)} />
     </dl>
   );
 }
@@ -180,7 +180,7 @@ function AuditTable({ items }: { items: SecretAuditEvent[] }) {
   return (
     <div className={styles.tableWrap}>
       <table className={`${styles.table} ${styles.auditTable}`}>
-        <thead><tr><th>时间</th><th>Reference</th><th>版本 / Action</th><th>Key version</th><th>Fingerprint</th></tr></thead>
+        <thead><tr><th>时间</th><th>引用</th><th>版本 / 操作</th><th>主密钥版本</th><th>指纹</th></tr></thead>
         <tbody>{items.map((event, index) => (
           <tr key={`${event.reference_id}:${event.version}:${event.action}:${event.occurred_at}:${index}`}>
             <td>{formatTime(event.occurred_at)}</td>
@@ -212,7 +212,7 @@ function Pagination({
 }) {
   const nextOffset = offset + limit;
   return (
-    <nav className={styles.pagination} aria-label={kind === "secret_page" ? "Secret Reference 分页" : "Secret Audit 分页"}>
+    <nav className={styles.pagination} aria-label={kind === "secret_page" ? "密钥引用分页" : "密钥审计分页"}>
       {offset > 0
         ? <a href={pageHref(projectId, kind, Math.max(0, offset - limit), limit, referenceId)}>上一页</a>
         : <span aria-disabled="true">上一页</span>}
@@ -228,14 +228,18 @@ function LoadProblem({ label, problem }: { label: string; problem: SecretLoadPro
   return (
     <div className={styles.loadError} role="alert">
       <strong>{problem.status ? `${problem.status} · ` : ""}{label}加载失败</strong>
-      <span>{problem.status === 503 ? "Secret Store unavailable。" : problem.detail}</span>
+      <span>{problem.status === 503 ? "密钥库暂不可用。" : problem.detail}</span>
       {problem.correlationId ? <small>关联 ID：{problem.correlationId}</small> : null}
     </div>
   );
 }
 
 function StatusPill({ value }: { value: string }) {
-  return <span className={`${styles.statusPill} ${styles[`status_${value}`] || ""}`}>{value}</span>;
+  return <span className={`${styles.statusPill} ${styles[`status_${value}`] || ""}`}>{secretStatusLabel(value)}</span>;
+}
+
+function secretStatusLabel(value: string): string {
+  return { active: "已启用", pending: "待处理", revoked: "已撤销", staged: "已暂存" }[value] || value;
 }
 
 function secretHref(projectId: string, referenceId: string): string {
@@ -256,7 +260,12 @@ function pageHref(
 }
 
 function actionLabel(value: string): string {
-  return value.replaceAll("_", " ");
+  return {
+    version_created: "已创建版本",
+    version_verified: "已验证版本",
+    version_activated: "已激活版本",
+    version_revoked: "已撤销版本"
+  }[value] || value.replaceAll("_", " ");
 }
 
 function pageRange(offset: number, count: number, total: number): string {

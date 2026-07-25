@@ -40,7 +40,7 @@ export function QuestionSetWorkspace({ projectId, data }: {
     <div className={styles.pageHeading}>
       <div>
         <h2 id="question-set-title">GEO 测试问题</h2>
-        <p>知识来源、候选复核、QuestionSet 版本与监测方案绑定</p>
+        <p>知识来源、候选复核、问题集版本与监测方案绑定</p>
       </div>
       <CommandPanel label="生成测试问题">
         <ResourceBlock resource={data.questionFacts}>{() => <QuestionGenerationForm
@@ -50,13 +50,13 @@ export function QuestionSetWorkspace({ projectId, data }: {
     </div>
 
     <div className={styles.testBanner} role="status">
-      <strong>INTERNAL TEST</strong>
-      <span>仿真固定 test_only=true · publication_eligible=false</span>
+      <strong>仅限内部测试</strong>
+      <span>仿真固定为仅测试且不可发布</span>
     </div>
 
     <div className={styles.columns}>
       <section className={styles.panel}>
-        <SectionHeader eyebrow="Immutable inputs" title="生成任务">
+        <SectionHeader eyebrow="不可变输入" title="生成任务">
           <span className={styles.meta}>{data.questionGenerations.data.length} 次</span>
         </SectionHeader>
         <ResourceBlock resource={data.questionGenerations}>{(jobs) => jobs.length
@@ -70,7 +70,7 @@ export function QuestionSetWorkspace({ projectId, data }: {
             data-testid="question-generation-job"
           >
             <span className={styles.rowHeader}>
-              <strong>Job <ShortId value={job.job_id} /></strong><Status value={job.status} />
+              <strong>任务 <ShortId value={job.job_id} /></strong><Status value={job.status} />
             </span>
             <span className={styles.meta}>
               <span>{job.dimension_count ?? 0} 个维度</span>
@@ -87,7 +87,7 @@ export function QuestionSetWorkspace({ projectId, data }: {
       </section>
 
       <section className={styles.panel}>
-        <SectionHeader eyebrow="Human gate" title="候选问题">
+        <SectionHeader eyebrow="人工门禁" title="候选问题">
           <span className={styles.meta}>{candidates.length} 条</span>
         </SectionHeader>
         <ResourceBlock resource={data.questionCandidates}>{(items) => items.length
@@ -104,8 +104,8 @@ export function QuestionSetWorkspace({ projectId, data }: {
     </div>
 
     <section className={styles.panel}>
-      <SectionHeader eyebrow="Versioned inventory" title="QuestionSet">
-        <CommandPanel label="创建 QuestionSet 草稿">
+      <SectionHeader eyebrow="版本化清单" title="问题集">
+        <CommandPanel label="创建问题集草稿">
           <ActionForm
             action={createQuestionSet}
             disabled={!approvedCandidates.length || !data.selection.questionGenerationJobId}
@@ -115,7 +115,7 @@ export function QuestionSetWorkspace({ projectId, data }: {
             <input name="campaign_id" type="hidden" value={campaignId} />
             <input name="generation_job_id" type="hidden"
               value={data.selection.questionGenerationJobId || ""} />
-            <label>QuestionSet 名称<input name="name" required /></label>
+            <label>问题集名称<input name="name" required /></label>
             <label>已批准候选
               <select className={styles.multiSelect} name="candidate_ids" required multiple
                 size={Math.min(Math.max(approvedCandidates.length, 3), 10)}>
@@ -134,7 +134,7 @@ export function QuestionSetWorkspace({ projectId, data }: {
           projectId={projectId}
           set={set}
         />)}</div>
-        : <Empty>批准候选后创建 QuestionSet 草稿。</Empty>}
+        : <Empty>批准候选后创建问题集草稿。</Empty>}
       </ResourceBlock>
     </section>
   </section>;
@@ -149,7 +149,7 @@ function QuestionGenerationForm({ campaignId, facts, projectId }: {
     submitLabel="生成候选问题">
     <HiddenProject projectId={projectId} />
     <input name="campaign_id" type="hidden" value={campaignId} />
-    <label>已批准 Fact
+    <label>已批准事实
       <select className={styles.multiSelect} name="fact_candidate_ids" required multiple
         size={Math.min(Math.max(facts.length, 3), 10)}>
         {facts.map((fact) => <option key={fact.id} value={fact.id}>
@@ -158,12 +158,12 @@ function QuestionGenerationForm({ campaignId, facts, projectId }: {
       </select>
     </label>
     <div className={styles.inline}>
-      <label>人群<input name="persona" required placeholder="Australian homeowners" /></label>
-      <label>主题<input name="subject" required placeholder="robotic lawn mower" /></label>
+      <label>人群<input name="persona" required placeholder="澳洲住宅业主" /></label>
+      <label>主题<input name="subject" required placeholder="机器人割草机" /></label>
     </div>
     <label>场景<textarea name="scenario" required
-      placeholder="Researching a reliable mower for a medium lawn" /></label>
-    <label>意图<input name="intent" required placeholder="compare suitable products" /></label>
+      placeholder="为中等面积草坪寻找可靠的割草机" /></label>
+    <label>意图<input name="intent" required placeholder="比较合适的产品" /></label>
     <div className={styles.inline}>
       <label>漏斗阶段<select name="funnel" defaultValue="consideration">
         <option value="awareness">认知</option><option value="consideration">考虑</option>
@@ -199,7 +199,7 @@ function QuestionGenerationForm({ campaignId, facts, projectId }: {
       <label>模型调用预算<input name="model_call_budget" type="number"
         min="1" max="1000" defaultValue="60" /></label>
     </div></details>
-    {!facts.length ? <Empty>知识库中没有已批准且 active 的 Fact。</Empty> : null}
+    {!facts.length ? <Empty>知识库中没有已批准且启用的事实。</Empty> : null}
   </ActionForm>;
 }
 
@@ -221,10 +221,10 @@ function CandidateRow({ campaignId, candidate, factLabels, projectId }: {
     </span>
     <div className={styles.meta}>
       {candidate.fact_source_ids.map((id) => <span className={styles.sourceBadge} key={id}>
-        Fact · {factLabels.get(id) || id.slice(0, 8)}
+        事实 · {factLabels.get(id) || id.slice(0, 8)}
       </span>)}
       {candidate.entity_source_ids.map((id) => <span className={styles.sourceBadge} key={id}>
-        Entity · {id.slice(0, 8)}
+        实体 · {id.slice(0, 8)}
       </span>)}
     </div>
     <TechnicalInfo label="语义与来源哈希">
@@ -271,19 +271,19 @@ function QuestionSetRow({ data, projectId, set }: {
         · {percent(set.duplicate_ratio)}</strong></div>
       <div><span>问题数量</span><strong>{set.items.length}</strong></div>
     </div>
-    <details className={styles.metricDetails}><summary>问题清单与来源 Lineage</summary>
+    <details className={styles.metricDetails}><summary>问题清单与来源溯源</summary>
       <table className={styles.table}><thead><tr><th>#</th><th>问题</th><th>维度 / 簇</th><th>来源</th></tr></thead>
         <tbody>{set.items.map((item) => <tr key={item.id}><td>{item.ordinal}</td>
           <td>{item.query_text_snapshot}</td><td>{item.dimension_key}<br />{item.query_cluster_key}</td>
           <td><ShortId value={item.source_lineage_hash} /></td></tr>)}</tbody></table>
     </details>
     <div className={styles.toolbar}>
-      {set.status === "draft" ? <ActionForm action={transitionQuestionSet} submitLabel="批准 QuestionSet">
+      {set.status === "draft" ? <ActionForm action={transitionQuestionSet} submitLabel="批准问题集">
         <HiddenProject projectId={projectId} /><input name="campaign_id" type="hidden" value={campaignId} />
         <input name="question_set_id" type="hidden" value={set.id} />
         <input name="command" type="hidden" value="approve" />
       </ActionForm> : null}
-      {set.status === "approved" ? <ActionForm action={transitionQuestionSet} submitLabel="冻结 QuestionSet">
+      {set.status === "approved" ? <ActionForm action={transitionQuestionSet} submitLabel="冻结问题集">
         <HiddenProject projectId={projectId} /><input name="campaign_id" type="hidden" value={campaignId} />
         <input name="question_set_id" type="hidden" value={set.id} />
         <input name="command" type="hidden" value="freeze" />

@@ -85,7 +85,7 @@ export function RecommendationCommands({
   return (
     <section className={styles.commandsSection} aria-labelledby="recommendation-actions-heading">
       <div className={styles.sectionHeading}>
-        <div><p>Human gate</p><h3 id="recommendation-actions-heading">审核与失效控制</h3></div>
+        <div><p>人工门禁</p><h3 id="recommendation-actions-heading">审核与失效控制</h3></div>
         <StatusPill value={status} />
       </div>
 
@@ -96,8 +96,8 @@ export function RecommendationCommands({
 
       <div className={styles.commandGrid}>
         <section className={styles.commandBlock} aria-labelledby="recommendation-submit-heading">
-          <header><h4 id="recommendation-submit-heading">提交审核</h4><span>Contributor</span></header>
-          <p>将 Draft 交给 Owner 或 Admin 进行独立证据审核。</p>
+          <header><h4 id="recommendation-submit-heading">提交审核</h4><span>提交人</span></header>
+          <p>将草稿交给负责人或管理员进行独立证据审核。</p>
           <form action={submitAction}>
             <CommandFields idempotencyKey={commandKeys.submit} projectId={projectId} recommendation={recommendation} />
             <button disabled={!canSubmit || submitPending} title={submitReason(canContribute, status)} type="submit">
@@ -108,7 +108,7 @@ export function RecommendationCommands({
         </section>
 
         <section className={styles.commandBlock} aria-labelledby="recommendation-review-heading">
-          <header><h4 id="recommendation-review-heading">证据审核</h4><span>Owner / Admin</span></header>
+          <header><h4 id="recommendation-review-heading">证据审核</h4><span>负责人 / 管理员</span></header>
           <form action={reviewAction} className={styles.stackedForm}>
             <CommandFields idempotencyKey={commandKeys.review} projectId={projectId} recommendation={recommendation} />
             <label><span>审核记录</span><textarea disabled={!canReview || reviewPending} maxLength={20_000} name="notes" required /></label>
@@ -137,7 +137,7 @@ export function RecommendationCommands({
             <CommandFields idempotencyKey={commandKeys.reject} projectId={projectId} recommendation={recommendation} />
             <label><span>拒绝原因</span><textarea disabled={!canReject || rejectPending} maxLength={5000} name="reason" required /></label>
             <button className="danger" disabled={!canReject || rejectPending} title={rejectReason(canApprove, status)} type="submit">
-              {rejectPending ? "拒绝中..." : "拒绝 Recommendation"}
+              {rejectPending ? "拒绝中..." : "拒绝建议"}
             </button>
           </form>
           <RecommendationActionFeedback state={rejectState} />
@@ -160,13 +160,13 @@ export function RecommendationCommands({
           </section>
 
           <section className={styles.commandBlock} aria-labelledby="recommendation-reconcile-heading">
-            <header><h4 id="recommendation-reconcile-heading">核对当前输入</h4><span>Approved only</span></header>
+            <header><h4 id="recommendation-reconcile-heading">核对当前输入</h4><span>仅已批准</span></header>
             <form action={reconcileAction} className={styles.stackedForm}>
               <CommandFields idempotencyKey={commandKeys.reconcile} projectId={projectId} recommendation={recommendation} />
               <ChangeReason disabled={!canReconcile || reconcilePending} />
               <p>当前证据版本由服务端在同一项目事务中重新解析。</p>
               <button disabled={!canReconcile || reconcilePending} title={reconcileReason(canContribute, status)} type="submit">
-                {reconcilePending ? "核对中..." : "核对并同步 stale 状态"}
+                {reconcilePending ? "核对中..." : "核对并同步失效状态"}
               </button>
             </form>
             <RecommendationActionFeedback state={reconcileState} />
@@ -198,7 +198,7 @@ function DraftPreparationList({
   projectId: string;
   recommendation: Recommendation;
 }) {
-  if (!drafts.length) return <p className={styles.inlineEmpty}>当前没有关联草稿。批准 actionable Recommendation 后才会创建草稿。</p>;
+  if (!drafts.length) return <p className={styles.inlineEmpty}>当前没有关联草稿。批准可执行建议后才会创建草稿。</p>;
   return (
     <div className={styles.draftCommands}>
       <div className={styles.subheading}><h4>关联草稿执行前复核</h4><span>{drafts.length} 个草稿</span></div>
@@ -284,44 +284,56 @@ function ChangeReason({ disabled }: { disabled: boolean }) {
 }
 
 function StatusPill({ value }: { value: string }) {
-  return <span className={`${styles.statusPill} ${styles[`status_${value}`] || ""}`}>{value}</span>;
+  return <span className={`${styles.statusPill} ${styles[`status_${value}`] || ""}`}>{recommendationStatusLabel(value)}</span>;
+}
+
+function recommendationStatusLabel(value: string): string {
+  return {
+    draft: "草稿",
+    in_review: "审核中",
+    approved: "已批准",
+    rejected: "已拒绝",
+    stale: "已失效",
+    expired: "已过期",
+    prepared: "已准备"
+  }[value] || value;
 }
 
 function submitReason(allowed: boolean, status: string): string {
-  if (!allowed) return "当前角色不能提交 Recommendation";
-  return status === "draft" ? "" : "仅 Draft 可以提交审核";
+  if (!allowed) return "当前角色不能提交建议";
+  return status === "draft" ? "" : "仅草稿可以提交审核";
 }
 
 function reviewReason(allowed: boolean, status: string): string {
-  if (!allowed) return "仅 Owner 或 Admin 可以审核";
-  return status === "in_review" ? "" : "仅 In Review 状态可以登记审核";
+  if (!allowed) return "仅负责人或管理员可以审核";
+  return status === "in_review" ? "" : "仅审核中状态可以登记审核";
 }
 
 function approveReason(allowed: boolean, status: string, selfOwned: boolean): string {
-  if (!allowed) return "仅 Owner 或 Admin 可以批准";
-  if (selfOwned) return "Recommendation 创建者不能自批";
-  return status === "in_review" ? "" : "仅已审核的 In Review Recommendation 可以批准";
+  if (!allowed) return "仅负责人或管理员可以批准";
+  if (selfOwned) return "建议创建者不能自批";
+  return status === "in_review" ? "" : "仅审核中的建议可以批准";
 }
 
 function rejectReason(allowed: boolean, status: string): string {
-  if (!allowed) return "仅 Owner 或 Admin 可以拒绝";
-  return status === "draft" || status === "in_review" ? "" : "仅 Draft 或 In Review 可以拒绝";
+  if (!allowed) return "仅负责人或管理员可以拒绝";
+  return status === "draft" || status === "in_review" ? "" : "仅草稿或审核中建议可以拒绝";
 }
 
 function expireReason(allowed: boolean, status: string): string {
-  if (!allowed) return "仅 Owner 或 Admin 可以标记过期";
-  return ["draft", "in_review", "approved"].includes(status) ? "" : "当前状态不能进入 Expired";
+  if (!allowed) return "仅负责人或管理员可以标记过期";
+  return ["draft", "in_review", "approved"].includes(status) ? "" : "当前状态不能标记为已过期";
 }
 
 function reconcileReason(allowed: boolean, status: string): string {
   if (!allowed) return "当前角色不能核对输入";
-  return status === "approved" ? "" : "仅 Approved Recommendation 可以核对 stale 条件";
+  return status === "approved" ? "" : "仅已批准建议可以核对失效条件";
 }
 
 function prepareReason(allowed: boolean, recommendationStatus: string, draftStatus: string): string {
   if (!allowed) return "当前角色不能复核草稿来源";
-  if (recommendationStatus !== "approved") return "来源 Recommendation 已失效，草稿被阻断";
-  return draftStatus === "draft" ? "" : "仅未启动 Draft 可以进行执行前复核";
+  if (recommendationStatus !== "approved") return "来源建议已失效，草稿被阻断";
+  return draftStatus === "draft" ? "" : "仅未启动草稿可以进行执行前复核";
 }
 
 function changeReasonLabel(value: InputChangeReason): string {

@@ -49,33 +49,33 @@ export function WorkflowCReportCommands({
     <>
       <section>
         <header className={styles.controlHeading}>
-          <div><p>Approved projection</p><h2>报告草稿</h2></div>
-          <span>{canManage ? "owner / admin" : "只读"}</span>
+          <div><p>已批准投影</p><h2>报告草稿</h2></div>
+          <span>{canManage ? "所有者 / 管理员" : "只读"}</span>
         </header>
         <form action={createAction} className={`${alertStyles.commandForm} ${styles.reportForm}`}>
           <input name="project_id" type="hidden" value={projectId} />
           <input name="idempotency_key" type="hidden" value={commandKeys.create} />
-          <label><span>Campaign ID</span><input disabled={createDisabled} name="campaign_id" required /></label>
-          <label><span>Monitoring Report ID</span><input disabled={createDisabled} name="monitoring_report_id" required /></label>
-          <label><span>Monitoring Report SHA-256</span><input disabled={createDisabled} maxLength={64} minLength={64} name="monitoring_report_hash" required /></label>
+          <label><span>活动 ID</span><input disabled={createDisabled} name="campaign_id" required /></label>
+          <label><span>监测报告 ID</span><input disabled={createDisabled} name="monitoring_report_id" required /></label>
+          <label><span>监测报告 SHA-256</span><input disabled={createDisabled} maxLength={64} minLength={64} name="monitoring_report_hash" required /></label>
           <label>
-            <span>Semantic Snapshot</span>
+            <span>语义快照</span>
             <select disabled={createDisabled} name="semantic_snapshot_hash" required>
               <option value="">选择</option>
               {snapshots.map((item) => <option key={item.snapshot_hash} value={item.snapshot_hash}>{short(item.snapshot_hash)} · {formatTime(item.computed_at)}</option>)}
             </select>
           </label>
           <label>
-            <span>Source kind</span>
+            <span>来源类型</span>
             <select disabled={createDisabled} name="source_kind" required>
               <option value="provider_api">Provider API</option>
-              <option value="proxy_grounded_api">Proxy grounded API</option>
+              <option value="proxy_grounded_api">经代理检索的 API</option>
             </select>
           </label>
-          <label><span>Headline</span><input disabled={createDisabled} maxLength={200} name="headline" required /></label>
-          <label className={styles.wideField}><span>Summary</span><textarea disabled={createDisabled} maxLength={2_000} name="summary" rows={3} /></label>
-          <label className={styles.wideField}><span>Methodology</span><textarea disabled={createDisabled} maxLength={2_000} name="methodology" rows={3} /></label>
-          <label className={styles.wideField}><span>Warnings</span><textarea disabled={createDisabled} maxLength={10_000} name="warnings" rows={3} /></label>
+          <label><span>标题</span><input disabled={createDisabled} maxLength={200} name="headline" required /></label>
+          <label className={styles.wideField}><span>摘要</span><textarea disabled={createDisabled} maxLength={2_000} name="summary" rows={3} /></label>
+          <label className={styles.wideField}><span>方法说明</span><textarea disabled={createDisabled} maxLength={2_000} name="methodology" rows={3} /></label>
+          <label className={styles.wideField}><span>警告</span><textarea disabled={createDisabled} maxLength={10_000} name="warnings" rows={3} /></label>
           <div className={`${styles.metricRows} ${styles.wideField}`}>
             {[1, 2, 3].map((index) => (
               <ReportMetricRow disabled={createDisabled} index={index} key={index} />
@@ -90,8 +90,8 @@ export function WorkflowCReportCommands({
 
       <section>
         <header className={styles.controlHeading}>
-          <div><p>Maker-checker</p><h2>报告状态变更</h2></div>
-          <span>{reports.length} reports</span>
+          <div><p>制作者与复核者分离</p><h2>报告状态变更</h2></div>
+          <span>{reports.length} 份报告</span>
         </header>
         <div className={styles.lifecycleList}>
           {reports.map((report) => (
@@ -119,14 +119,14 @@ function ReportMetricRow({ disabled, index }: { disabled: boolean; index: number
   return (
     <div>
       <label>
-        <span>Metric {index}</span>
+        <span>指标 {index}</span>
         <select disabled={disabled} name="metric_key" onChange={(event) => setMetricKey(event.target.value)} value={metricKey}>
           <option value="">未设置</option>
           {workflowCReportMetricKeys.map((key) => <option key={key} value={key}>{key.replaceAll("_", " ")}</option>)}
         </select>
       </label>
       <label>
-        <span>Metric value {index}</span>
+        <span>指标值 {index}</span>
         <input disabled={disabled} inputMode="decimal" max={range.max} min={range.min} name="metric_value" step={range.step} type="number" />
         <small>{range.label}</small>
       </label>
@@ -136,12 +136,12 @@ function ReportMetricRow({ disabled, index }: { disabled: boolean; index: number
 
 function metricRange(key: string): { min: string; max?: string; step: string; label: string } {
   if (key === "source_domain_diversity" || key === "source_type_diversity") {
-    return { min: "0", step: "1", label: "Nonnegative integer count" };
+    return { min: "0", step: "1", label: "非负整数计数" };
   }
   if (key === "competitor_relative_position" || key === "sentiment") {
-    return { min: "-1", max: "1", step: "any", label: "Signed score · -1 to 1" };
+    return { min: "-1", max: "1", step: "any", label: "有符号评分 · -1 至 1" };
   }
-  return { min: "0", max: "1", step: "any", label: "Rate / score · 0 to 1" };
+  return { min: "0", max: "1", step: "any", label: "比例 / 评分 · 0 至 1" };
 }
 
 function ReportLifecycle({

@@ -32,19 +32,19 @@ export function PromptBootstrapDraftForm({
   return (
     <section className={styles.actionSection} aria-labelledby="prompt-bootstrap-create-heading">
       <div className={styles.sectionHeading}>
-        <div><p>Idempotent per-item batch</p><h4 id="prompt-bootstrap-create-heading">创建 {promptProgramKinds.length} 个未批准 Draft</h4></div>
-        <span>owner / admin</span>
+        <div><p>逐项幂等批处理</p><h4 id="prompt-bootstrap-create-heading">创建 {promptProgramKinds.length} 个未批准草稿</h4></div>
+        <span>负责人 / 管理员</span>
       </div>
       <div className={styles.boundaryNotice}>
-        <strong>只创建 Draft</strong>
-        <span>不会执行测试、批准、冻结或 Runtime Binding；每项独立提交，失败项可安全重试。</span>
+        <strong>只创建草稿</strong>
+        <span>不会执行测试、批准、冻结或运行时绑定；每项独立提交，失败项可安全重试。</span>
       </div>
       <form action={action} className={styles.actionForm}>
         <input name="project_id" type="hidden" value={projectId} />
         <input name="catalog_hash" type="hidden" value={catalogHash} />
         <input name="idempotency_key" type="hidden" value={`prompt-bootstrap-drafts-${projectId}-${catalogHash}`} />
         <button disabled={!canManage || pending} type="submit">
-          {pending ? "处理中..." : failed ? "使用同一 Key 重试失败项" : `创建 / 恢复 ${promptProgramKinds.length} 个 Draft`}
+          {pending ? "处理中..." : failed ? "使用同一键重试失败项" : `创建 / 恢复 ${promptProgramKinds.length} 个草稿`}
         </button>
       </form>
       <DraftFeedback state={state} />
@@ -81,8 +81,8 @@ export function PromptBootstrapEvaluationForm({
   return (
     <section className={styles.actionSection} aria-labelledby="prompt-bootstrap-evaluate-heading">
       <div className={styles.sectionHeading}>
-        <div><p>Deterministic local judge</p><h4 id="prompt-bootstrap-evaluate-heading">离线评估 5 个固定 Fixture</h4></div>
-        <span>0 external model calls</span>
+        <div><p>确定性本地评审</p><h4 id="prompt-bootstrap-evaluate-heading">离线评估 5 个固定用例</h4></div>
+        <span>0 次外部模型调用</span>
       </div>
       <form action={action} className={styles.evaluationForm}>
         <input name="project_id" type="hidden" value={projectId} />
@@ -91,7 +91,7 @@ export function PromptBootstrapEvaluationForm({
         <input name="spec_hash" type="hidden" value={specHash} />
         <input name="test_set_hash" type="hidden" value={testSetHash} />
         <label>
-          <span>5 个 Fixture Outputs（JSON object）</span>
+          <span>5 个固定用例输出（JSON 对象）</span>
           <textarea
             defaultValue={initialOutputs}
             disabled={!canManage || pending}
@@ -110,7 +110,7 @@ export function PromptBootstrapEvaluationForm({
 
 function DraftFeedback({ state }: { state: PromptBootstrapActionState }) {
   if (state.kind === "idle") {
-    return <div className={styles.resultEmpty}><strong>尚无本次创建结果</strong><span>目录预览不会自动创建任何 Program 或 Release。</span></div>;
+    return <div className={styles.resultEmpty}><strong>尚无本次创建结果</strong><span>目录预览不会自动创建任何程序或发布版本。</span></div>;
   }
   if (state.kind === "error") return <Problem state={state} />;
   const batch = state.batch;
@@ -120,28 +120,28 @@ function DraftFeedback({ state }: { state: PromptBootstrapActionState }) {
       <div className={styles.resultHeader}>
         <div><strong>{state.message}</strong><span>{batch.completion_status}</span></div>
         <dl>
-          <div><dt>Created</dt><dd>{batch.created_count}</dd></div>
-          <div><dt>Replayed</dt><dd>{batch.replayed_count}</dd></div>
-          <div><dt>Failed</dt><dd>{batch.failed_count}</dd></div>
+          <div><dt>已创建</dt><dd>{batch.created_count}</dd></div>
+          <div><dt>已重放</dt><dd>{batch.replayed_count}</dd></div>
+          <div><dt>失败</dt><dd>{batch.failed_count}</dd></div>
         </dl>
       </div>
       <details className={styles.resultDisclosure}>
         <summary>查看 {batch.items.length} 项创建明细</summary>
         <div className={styles.tableWrap}>
           <table className={styles.resultTable}>
-            <thead><tr><th>Kind</th><th>结果</th><th>Program / Draft Release</th><th>失败或幂等证据</th></tr></thead>
+          <thead><tr><th>类型</th><th>结果</th><th>程序 / 草稿发布版本</th><th>失败或幂等证据</th></tr></thead>
             <tbody>{batch.items.map((item) => (
               <tr key={item.program_kind}>
                 <td><strong>{item.program_kind}</strong><code>{item.spec_hash}</code></td>
                 <td><ResultStatus value={item.status} /></td>
-                <td>{item.program && item.release ? <><code>{item.program.id}</code><code>{item.release.id}</code><span>release state: draft · 未批准</span></> : <span>未创建</span>}</td>
-                <td>{item.failure ? <><strong>{item.failure.code}</strong><span>{item.failure.detail}</span><small>retryable: {String(item.failure.retryable)}</small></> : <code>{item.idempotency_key_hash}</code>}</td>
+                <td>{item.program && item.release ? <><code>{item.program.id}</code><code>{item.release.id}</code><span>发布版本状态：草稿 · 未批准</span></> : <span>未创建</span>}</td>
+                <td>{item.failure ? <><strong>{item.failure.code}</strong><span>{item.failure.detail}</span><small>可重试：{String(item.failure.retryable)}</small></> : <code>{item.idempotency_key_hash}</code>}</td>
               </tr>
             ))}</tbody>
           </table>
         </div>
       </details>
-      <small>atomic: false · safe_to_retry: true · {batch.action_boundary}</small>
+      <small>原子性：否 · 可安全重试：是 · {batch.action_boundary}</small>
     </div>
   );
 }
@@ -154,23 +154,23 @@ function EvaluationFeedback({ state }: { state: PromptBootstrapEvaluationState }
   return (
     <div className={result.passed ? styles.successResult : styles.partialResult} role="status">
       <div className={styles.resultHeader}>
-        <div><strong>{state.message}</strong><span>{result.program_kind} · score {result.score} / minimum {result.minimum_score}</span></div>
+        <div><strong>{state.message}</strong><span>{result.program_kind} · 得分 {result.score} / 最低 {result.minimum_score}</span></div>
         <code>{result.result_hash}</code>
       </div>
       <div className={styles.tableWrap}>
         <table className={styles.evaluationTable}>
-          <thead><tr><th>Fixture / Scenario</th><th>Score</th><th>结果</th><th>失败条件</th></tr></thead>
+          <thead><tr><th>固定用例 / 场景</th><th>得分</th><th>结果</th><th>失败条件</th></tr></thead>
           <tbody>{result.case_results.map((item) => (
             <tr key={item.fixture_id}>
               <td><strong>{item.fixture_id}</strong><span>{item.scenario}</span></td>
               <td>{item.score}</td>
               <td><ResultStatus value={item.passed ? "passed" : "failed"} /></td>
-              <td>{item.error_code || item.failed_criteria.join(", ") || "none"}</td>
+              <td>{item.error_code || item.failed_criteria.join(", ") || "无"}</td>
             </tr>
           ))}</tbody>
         </table>
       </div>
-      <small>external_model_calls: 0 · automatic_transitions: false</small>
+      <small>外部模型调用：0 · 自动状态转换：否</small>
     </div>
   );
 }
@@ -185,5 +185,5 @@ function Problem({ state }: { state: { status?: number; message?: string; correl
 }
 
 function ResultStatus({ value }: { value: string }) {
-  return <span className={`${styles.statusPill} ${styles[`status_${value}`] || ""}`}>{value}</span>;
+  return <span className={`${styles.statusPill} ${styles[`status_${value}`] || ""}`}>{value === "passed" ? "通过" : value === "failed" ? "失败" : value}</span>;
 }

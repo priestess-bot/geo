@@ -12,7 +12,7 @@ import type { CatalogLoadResult } from "../../../catalogTypes";
 
 export function GeoShell({ projectId, data, catalog }: { projectId: string; data: GeoWorkspaceData; catalog: CatalogLoadResult }) {
   const tabs: Array<{ id: GeoSection; label: string }> = [
-    { id: "campaigns", label: "Campaign 总览" }, { id: "observations", label: "AI 观察" },
+    { id: "campaigns", label: "活动总览" }, { id: "observations", label: "AI 观察" },
     { id: "destinations", label: "渠道计划" }, { id: "placement", label: "内容生产" }
   ];
   const campaign = data.campaigns.data.find((item) => item.id === data.selection.campaignId);
@@ -35,8 +35,8 @@ export function GeoShell({ projectId, data, catalog }: { projectId: string; data
   return <div className={styles.shell}>
     <section className={styles.commandCenter}>
       <div className={styles.contextMain}>
-        {campaignOptions.length ? <RouteSelect label="当前 Campaign" options={campaignOptions}
-          placeholder="选择 Campaign" value={campaign?.id} /> : <strong>尚未创建 Campaign</strong>}
+        {campaignOptions.length ? <RouteSelect label="当前活动" options={campaignOptions}
+          placeholder="选择活动" value={campaign?.id} /> : <strong>尚未创建活动</strong>}
         <div className={styles.contextMeta}>
           <span>{entityName(catalog.entities.data, campaign?.primary_product_entity_id)}</span>
           <span>{marketName(catalog.markets.data, campaign?.market_profile_id)}</span>
@@ -60,7 +60,7 @@ export function GeoShell({ projectId, data, catalog }: { projectId: string; data
 
     {data.selection.section === "campaigns" ? <CampaignWorkspace projectId={projectId} data={data} catalog={catalog} /> : null}
     {data.selection.section !== "campaigns" && !campaign && !canViewLegacySimulations
-      ? <Empty><span>未选择 Campaign。</span>{data.selection.section === "placement" && hasLegacySimulations
+      ? <Empty><span>未选择活动。</span>{data.selection.section === "placement" && hasLegacySimulations
         ? <> <a href={geoHref(projectId, data.selection, { placement_stage: "simulation" })}>
           查看迁移历史预览
         </a></> : null}</Empty> : null}
@@ -75,7 +75,7 @@ function readinessState(data: GeoWorkspaceData): {
   complete: number; label: string; updates: { [key: string]: string | undefined };
 } {
   if (!data.selection.campaignId) {
-    return { complete: 0, label: "选择 Campaign", updates: { section: "campaigns" } };
+    return { complete: 0, label: "选择活动", updates: { section: "campaigns" } };
   }
   if (!data.queries.data.length) {
     return { complete: 1, label: "添加消费者问题", updates: { section: "campaigns" } };

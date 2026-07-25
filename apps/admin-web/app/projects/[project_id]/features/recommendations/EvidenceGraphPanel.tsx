@@ -19,18 +19,18 @@ export function EvidenceGraphPanel({ recommendation }: { recommendation: Recomme
     { key: "metric-comparisons", label: "统计比较", items: graph.metric_comparisons },
     { key: "facts", label: "批准事实", items: graph.facts },
     { key: "rules", label: "规则版本", items: graph.rules },
-    { key: "prompt-releases", label: "Prompt Releases", items: graph.prompt_releases },
+    { key: "prompt-releases", label: "Prompt 发布版本", items: graph.prompt_releases },
     { key: "model-calls", label: "模型调用", items: graph.model_calls },
     { key: "contents", label: "内容版本", items: graph.contents },
     { key: "questions", label: "问题版本", items: graph.questions },
-    { key: "surfaces", label: "Surface Releases", items: graph.surfaces }
+    { key: "surfaces", label: "界面发布版本", items: graph.surfaces }
   ];
   const referenceCount = groups.reduce((total, group) => total + group.items.length, 0);
   return (
     <section className={styles.evidenceSection} aria-labelledby="recommendation-evidence-heading">
       <div className={styles.sectionHeading}>
         <div>
-          <p>Frozen lineage</p>
+          <p>冻结溯源</p>
           <h3 id="recommendation-evidence-heading">证据图与输入版本</h3>
         </div>
         <span>{referenceCount} 条证据 · {recommendation.input_versions.length} 个输入</span>
@@ -52,9 +52,9 @@ export function EvidenceGraphPanel({ recommendation }: { recommendation: Recomme
 function HashSummary({ recommendation }: { recommendation: Recommendation }) {
   return (
     <dl className={styles.hashGrid}>
-      <Value label="Evidence graph SHA-256" value={recommendation.evidence_graph_hash} />
-      <Value label="Input fingerprint" value={recommendation.input_fingerprint} />
-      <Value label="Recommendation ID" value={recommendation.id} />
+      <Value label="证据图谱 SHA-256" value={recommendation.evidence_graph_hash} />
+      <Value label="输入指纹" value={recommendation.input_fingerprint} />
+      <Value label="建议 ID" value={recommendation.id} />
       <Value label="适用版本" value={recommendation.evidence.scope.applicable_version} />
     </dl>
   );
@@ -66,11 +66,11 @@ function ScopeView({ graph }: { graph: EvidenceGraph }) {
     <details className={styles.detailDisclosure} open>
       <summary>证据作用域</summary>
       <dl className={styles.scopeGrid}>
-        <Value label="Project" value={scope.project_id} />
+        <Value label="项目" value={scope.project_id} />
         <Value label="Campaign" value={scope.campaign_id || "未限定"} />
-        <Value label="Question / Cluster" value={scope.question_or_cluster_ref || "未限定"} />
-        <Value label="Surface" value={scope.surface_ref || "未限定"} />
-        <Value label="Content Asset" value={scope.content_asset_ref || "未限定"} />
+        <Value label="问题 / 聚类" value={scope.question_or_cluster_ref || "未限定"} />
+        <Value label="界面" value={scope.surface_ref || "未限定"} />
+        <Value label="内容资产" value={scope.content_asset_ref || "未限定"} />
         <Value label="URL" value={scope.url_ref || "未限定"} />
       </dl>
     </details>
@@ -105,11 +105,11 @@ function EvidenceGroupView({ group }: { group: EvidenceGroup }) {
       {group.items.length ? (
         <div className={styles.tableWrap}>
           <table className={styles.evidenceTable}>
-            <thead><tr><th>Resource / Version</th><th>有效性</th><th>SHA-256</th><th>定位与属性</th></tr></thead>
+            <thead><tr><th>资源 / 版本</th><th>有效性</th><th>SHA-256</th><th>定位与属性</th></tr></thead>
             <tbody>{group.items.map((item, index) => (
               <tr key={`${item.resource_id}:${item.version}:${index}`}>
                 <td><code>{item.resource_id}</code><small>v {item.version}</small></td>
-                <td><span className={item.valid ? styles.validEvidence : styles.invalidEvidence}>{item.valid ? "valid" : "invalid"}</span></td>
+                <td><span className={item.valid ? styles.validEvidence : styles.invalidEvidence}>{item.valid ? "有效" : "无效"}</span></td>
                 <td><code>{item.sha256}</code></td>
                 <td><EvidenceMetadata item={item} /></td>
               </tr>
@@ -129,7 +129,7 @@ function EvidenceMetadata({ item }: { item: VersionedEvidenceRef }) {
       {metadata.map(([key, value]) => (
         <span key={key}><strong>{humanize(key)}</strong>{displayValue(value)}</span>
       ))}
-      <details><summary>locator</summary><pre>{JSON.stringify(item.locator, null, 2)}</pre></details>
+      <details><summary>定位信息</summary><pre>{JSON.stringify(item.locator, null, 2)}</pre></details>
     </div>
   );
 }
@@ -141,7 +141,7 @@ function InputVersions({ inputs }: { inputs: readonly InputVersion[] }) {
       {inputs.length ? (
         <div className={styles.tableWrap}>
           <table className={styles.inputTable}>
-            <thead><tr><th>Kind</th><th>Resource</th><th>Version</th><th>SHA-256</th></tr></thead>
+            <thead><tr><th>类型</th><th>资源</th><th>版本</th><th>SHA-256</th></tr></thead>
             <tbody>{inputs.map((input) => (
               <tr key={`${input.kind}:${input.resource_id}`}>
                 <td>{humanize(input.kind)}</td>
@@ -175,8 +175,8 @@ function StringList({ label, values, empty = "无" }: { label: string; values: r
 
 function displayValue(value: unknown): string {
   if (Array.isArray(value)) return value.length ? value.join(", ") : "[]";
-  if (typeof value === "boolean") return value ? "true" : "false";
-  if (value === null || value === undefined) return "null";
+  if (typeof value === "boolean") return value ? "是" : "否";
+  if (value === null || value === undefined) return "空";
   return String(value);
 }
 

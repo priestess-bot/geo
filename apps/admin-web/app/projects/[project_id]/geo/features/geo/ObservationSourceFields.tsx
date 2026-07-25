@@ -130,13 +130,13 @@ export function ObservationSourceFields({ locale }: { locale: string }) {
         {platformOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
       </select></label>
     </div>
-    <label>Surface<select name="source_surface" value={surface}
+    <label>页面类型<select name="source_surface" value={surface}
       onChange={(event) => setSurface(event.target.value as ObservationSurface)}>
       {selectedPlatform.surfaces.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
     </select></label>
     <input type="hidden" name="source_surface_kind" value={SURFACE_KIND[captureMethod]} />
     {selectedPlatform.value === "other" ? <label>平台说明<input name="platform_detail" required /></label> : null}
-    {surface === "other" ? <label>Surface 说明<input name="surface_detail" required /></label> : null}
+    {surface === "other" ? <label>页面类型说明<input name="surface_detail" required /></label> : null}
 
     <ModelIdentityFields
       key={`model-${captureMethod}`}
@@ -148,10 +148,10 @@ export function ObservationSourceFields({ locale }: { locale: string }) {
     />
 
     <fieldset><legend>运行参数</legend>
-      <label>Engine<input name="engine" required value={engine}
+      <label>引擎<input name="engine" required value={engine}
         onChange={(event) => setEngine(event.target.value)} pattern="[a-z0-9](?:[a-z0-9_]|-)*" /></label>
       <div className={styles.inline}>
-        <label>Locale<input name="locale" required defaultValue={locale} /></label>
+        <label>区域语言<input name="locale" required defaultValue={locale} /></label>
         <label>地区<input name="region" required placeholder="例如：AU" /></label>
         <label>语言<input name="language" required defaultValue={locale.split("-")[0] || "zh"} /></label>
       </div>
@@ -169,9 +169,9 @@ export function ObservationSourceFields({ locale }: { locale: string }) {
       <label>实际问题<textarea name="prompt_text" required /></label>
       <label>后续追问<textarea name="follow_up_prompts" placeholder="每行一个" /></label>
       <div className={styles.inline}>
-        <label>Adapter<input name="adapter_name" required={apiCapture} /></label>
-        <label>Adapter 版本<input name="adapter_version" required={apiCapture} /></label>
-        <label>Provider Request ID<input name="provider_request_id" required={apiCapture} /></label>
+        <label>适配器<input name="adapter_name" required={apiCapture} /></label>
+        <label>适配器版本<input name="adapter_version" required={apiCapture} /></label>
+        <label>Provider 请求 ID<input name="provider_request_id" required={apiCapture} /></label>
       </div>
     </fieldset>
 
@@ -240,17 +240,17 @@ export function ProtocolSourceStratumFields({ locale }: { locale: string }) {
         onChange={(event) => selectPlatform(event.target.value as ObservationPlatform)}>
         {platformOptions.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
       </select></label>
-      <label>Surface<select name="source_surface" value={surface}
+      <label>页面类型<select name="source_surface" value={surface}
         onChange={(event) => setSurface(event.target.value as ObservationSurface)}>
         {selectedPlatform.surfaces.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
       </select></label>
     </div>
     <input type="hidden" name="source_surface_kind" value={SURFACE_KIND[captureMethod]} />
     {selectedPlatform.value === "other" ? <label>平台说明<input name="stratum_platform_detail" required /></label> : null}
-    {surface === "other" ? <label>Surface 说明<input name="stratum_surface_detail" required /></label> : null}
+    {surface === "other" ? <label>页面类型说明<input name="stratum_surface_detail" required /></label> : null}
     <input type="hidden" name="platform" value={protocolPlatform(surface)} />
     <input type="hidden" name="protocol_device" value="desktop" />
-    <label>Engine<input name="stratum_engine" required value={engine}
+    <label>引擎<input name="stratum_engine" required value={engine}
       onChange={(event) => setEngine(event.target.value)} pattern="[a-z0-9](?:[a-z0-9_]|-)*" /></label>
     <ModelIdentityFields
       key={`stratum-model-${captureMethod}`}
@@ -261,7 +261,7 @@ export function ProtocolSourceStratumFields({ locale }: { locale: string }) {
       configuredDefault={apiCapture ? "disclosed" : "not_disclosed"}
     />
     <div className={styles.inline}>
-      <label>Locale<input name="locale" defaultValue={locale} required /></label>
+      <label>区域语言<input name="locale" defaultValue={locale} required /></label>
       <label>地区<input name="region" placeholder="例如：AU" required /></label>
       <label>语言<input name="language" defaultValue={locale.split("-")[0] || "zh"} required /></label>
     </div>
@@ -354,8 +354,8 @@ export function OfficialReportSourceFields() {
   return <div className={styles.formInset}>
     <label>官方数据源<select name="official_platform" value={platform}
       onChange={(event) => setPlatform(event.target.value as "google" | "microsoft")}>
-      <option value="google">Google Generative AI Performance</option>
-      <option value="microsoft">Bing AI Performance</option>
+      <option value="google">Google 生成式 AI 表现报告</option>
+      <option value="microsoft">Bing AI 表现报告</option>
     </select></label>
     <input type="hidden" name="official_surface" value={surface} />
   </div>;

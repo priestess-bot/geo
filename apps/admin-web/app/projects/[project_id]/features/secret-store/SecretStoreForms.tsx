@@ -38,7 +38,7 @@ export function CreateSecretReferenceForm({
       <input name="expected_version" type="hidden" value={0} />
       <input name="idempotency_key" type="hidden" value={idempotencyKey} />
       <fieldset disabled={!canManage || pending}>
-        <legend>创建 Secret Reference</legend>
+        <legend>创建密钥引用</legend>
         <div className={styles.createGrid}>
           <label>
             <span>用途</span>
@@ -54,7 +54,7 @@ export function CreateSecretReferenceForm({
             </select>
           </label>
           <WriteOnlySecretInput inputKey={state.responseToken || "secret-create-initial"} />
-          <button disabled={!canManage || pending} type="submit">{pending ? "创建中..." : "创建 Reference"}</button>
+          <button disabled={!canManage || pending} type="submit">{pending ? "创建中..." : "创建引用"}</button>
         </div>
       </fieldset>
       <SecretActionFeedback state={state} />
@@ -134,7 +134,7 @@ export function SecretLifecycleForms({
       </section>
 
       <section className={styles.commandBand} aria-labelledby="secret-rotate-heading">
-        <header><h4 id="secret-rotate-heading">Stage Rotation</h4><span>Aggregate v{reference.aggregate_version}</span></header>
+        <header><h4 id="secret-rotate-heading">暂存轮换版本</h4><span>聚合版本 v{reference.aggregate_version}</span></header>
         <form action={rotationAction} className={styles.rotationForm}>
           <input name="project_id" type="hidden" value={projectId} />
           <input name="reference_id" type="hidden" value={reference.reference_id} />
@@ -152,13 +152,13 @@ export function SecretLifecycleForms({
       </section>
 
       <section className={styles.commandBand} aria-labelledby="secret-revoke-heading">
-        <header><h4 id="secret-revoke-heading">Revoke Version</h4></header>
+        <header><h4 id="secret-revoke-heading">撤销版本</h4></header>
         <form action={revokeAction} className={styles.revokeForm}>
           <input name="project_id" type="hidden" value={projectId} />
           <input name="reference_id" type="hidden" value={reference.reference_id} />
           <input name="expected_version" type="hidden" value={reference.aggregate_version} />
           <input name="idempotency_key" type="hidden" value={commandKeys.revoke} />
-          <label><span>Secret version</span><input defaultValue={reference.current_version || reference.latest_version} disabled={!canRevoke || anyPending} min={1} name="version" required type="number" /></label>
+          <label><span>密钥版本</span><input defaultValue={reference.current_version || reference.latest_version} disabled={!canRevoke || anyPending} min={1} name="version" required type="number" /></label>
           <button className="danger" disabled={!canRevoke || anyPending} type="submit">
             {revokePending ? "撤销中..." : "撤销版本"}
           </button>
@@ -200,7 +200,7 @@ function WriteOnlySecretInput({
 }) {
   return (
     <label>
-      <span>SecretValue · write-only · max 64 KiB</span>
+      <span>密钥值 · 仅写入 · 最大 64 KiB</span>
       <input
         autoComplete="new-password"
         disabled={disabled}

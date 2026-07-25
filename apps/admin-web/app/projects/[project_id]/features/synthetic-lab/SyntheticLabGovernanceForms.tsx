@@ -38,8 +38,8 @@ export function CreateAuthorizationForm({
   return (
     <form action={action} className={styles.compactForm}>
       <CommonHidden idempotencyKey={commandKey} projectId={projectId} />
-      <label><span>Channel</span><select name="channel">{syntheticChannels.map((channel) => <option key={channel} value={channel}>{channel}</option>)}</select></label>
-      <label className={styles.grow}><span>Adapter release</span><input maxLength={200} name="adapter_release" required /></label>
+      <label><span>渠道</span><select name="channel">{syntheticChannels.map((channel) => <option key={channel} value={channel}>{channel}</option>)}</select></label>
+      <label className={styles.grow}><span>适配器发布版本</span><input maxLength={200} name="adapter_release" required /></label>
       <button disabled={!canCreate || pending} type="submit">{pending ? "创建中..." : "创建待评估记录"}</button>
       <SyntheticActionFeedback state={state} />
     </form>
@@ -83,13 +83,13 @@ export function AuthorizationCommands({
         <fieldset disabled={!canApprove || decisionPending || !decisionOpen}>
           <legend>{authorization.channel} · {authorization.adapter_release}</legend>
           <div className={styles.formGridThree}>
-            <label><span>Decision</span><select aria-label="Authorization 决策" name="decision" onChange={(event) => setDecision(event.target.value)} required value={decision}><option disabled value="">请选择决定</option><option value="approved">approved</option><option value="assessed_no_basis">assessed_no_basis</option></select></label>
+            <label><span>决定</span><select aria-label="授权决定" name="decision" onChange={(event) => setDecision(event.target.value)} required value={decision}><option disabled value="">请选择决定</option><option value="approved">批准</option><option value="assessed_no_basis">已评估但无依据</option></select></label>
             <label><span>证据引用</span><input disabled={!approvalSelected} maxLength={2000} name="evidence_reference" required={approvalSelected} /></label>
             <label><span>允许用途</span><span><input disabled={!approvalSelected} name="allowed_purposes" required={approvalSelected} type="checkbox" value="style_collection" /> 自动风格采集</span></label>
-            <label><span>Requests / period</span><input disabled={!approvalSelected} min={1} name="max_requests_per_period" required={approvalSelected} type="number" /></label>
-            <label><span>Period seconds</span><input disabled={!approvalSelected} min={1} name="period_seconds" required={approvalSelected} type="number" /></label>
-            <label><span>Max concurrency</span><input disabled={!approvalSelected} min={1} name="max_concurrency" required={approvalSelected} type="number" /></label>
-            <label><span>Expires at</span><input disabled={!approvalSelected} name="expires_at" required={approvalSelected} type="datetime-local" /></label>
+            <label><span>每周期请求数</span><input disabled={!approvalSelected} min={1} name="max_requests_per_period" required={approvalSelected} type="number" /></label>
+            <label><span>周期秒数</span><input disabled={!approvalSelected} min={1} name="period_seconds" required={approvalSelected} type="number" /></label>
+            <label><span>最大并发</span><input disabled={!approvalSelected} min={1} name="max_concurrency" required={approvalSelected} type="number" /></label>
+            <label><span>失效时间</span><input disabled={!approvalSelected} name="expires_at" required={approvalSelected} type="datetime-local" /></label>
             <label className={styles.spanTwo}><span>决策理由</span><input maxLength={2000} name="decision_reason" required /></label>
             <button disabled={!canApprove || decisionPending || !decisionOpen || !decision} type="submit">{decisionPending ? "记录中..." : "记录授权决策"}</button>
           </div>
@@ -149,9 +149,9 @@ export function ProfileCommands({
         <CommonHidden idempotencyKey={commandKeys.decision} projectId={projectId} />
         <input name="profile_version_id" type="hidden" value={profile.id} />
         <input name="expected_version" type="hidden" value={profile.state_version} />
-        <select aria-label="Profile 审批决定" disabled={!canApprove || decisionPending || profile.status !== "in_review"} name="decision" onChange={(event) => setDecision(event.target.value)} required value={decision}><option disabled value="">请选择决定</option><option value="approve">批准</option><option value="reject">拒绝</option></select>
+        <select aria-label="风格画像审批决定" disabled={!canApprove || decisionPending || profile.status !== "in_review"} name="decision" onChange={(event) => setDecision(event.target.value)} required value={decision}><option disabled value="">请选择决定</option><option value="approve">批准</option><option value="reject">拒绝</option></select>
         <button disabled={!canApprove || decisionPending || profile.status !== "in_review" || !decision} type="submit">{decisionPending ? "记录中..." : "记录决定"}</button>
-        <p className={styles.formNote} role="status">{!canApprove ? "当前项目角色没有 Profile 审批权限。" : decision ? "服务端将再次验证审批角色与独立复核条件。" : "尚未选择 Profile 审批决定。"}</p>
+        <p className={styles.formNote} role="status">{!canApprove ? "当前项目角色没有风格画像审批权限。" : decision ? "服务端将再次验证审批角色与独立复核条件。" : "尚未选择风格画像审批决定。"}</p>
         <SyntheticActionFeedback state={decisionState} />
       </form>
       <details className={styles.inlineDetails}>
@@ -160,8 +160,8 @@ export function ProfileCommands({
           <CommonHidden idempotencyKey={commandKeys.freeze} projectId={projectId} />
           <input name="profile_version_id" type="hidden" value={profile.id} />
           <input name="expected_version" type="hidden" value={profile.state_version} />
-          <p className={styles.formNote}>冻结时由服务端复核创建 Profile 时保存的样本 manifest、已完成 build 与审批状态。</p>
-          <button disabled={!canApprove || freezePending || profile.status !== "approved"} type="submit">{freezePending ? "冻结中..." : "冻结 Profile"}</button>
+          <p className={styles.formNote}>冻结时由服务端复核创建风格画像时保存的样本清单、已完成构建与审批状态。</p>
+          <button disabled={!canApprove || freezePending || profile.status !== "approved"} type="submit">{freezePending ? "冻结中..." : "冻结风格画像"}</button>
           <SyntheticActionFeedback state={freezeState} />
         </form>
       </details>
@@ -188,8 +188,8 @@ export function FreezeSuiteForm({
       <CommonHidden idempotencyKey={commandKey} projectId={projectId} />
       <input name="suite_version_id" type="hidden" value={suite.id} />
       <input name="expected_version" type="hidden" value={suite.state_version} />
-      <span className={styles.grow}>{cases.length} 个当前 Case</span>
-      <button disabled={!canApprove || pending || suite.status === "frozen" || cases.length === 0} type="submit">{pending ? "冻结中..." : "冻结 Suite"}</button>
+      <span className={styles.grow}>{cases.length} 个当前用例</span>
+      <button disabled={!canApprove || pending || suite.status === "frozen" || cases.length === 0} type="submit">{pending ? "冻结中..." : "冻结测评套件"}</button>
       <SyntheticActionFeedback state={state} />
     </form>
   );

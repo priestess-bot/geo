@@ -12,12 +12,12 @@ export function SecretActionFeedback({ state }: { state: SecretActionState }) {
       {state.correlationId ? <small>关联 ID：{state.correlationId}</small> : null}
       {state.version ? (
         <dl className={styles.feedbackMetadata}>
-          <div><dt>Secret version</dt><dd>v{state.version.version} · {state.version.status}</dd></div>
-          <div><dt>Aggregate version</dt><dd>{state.version.aggregate_version}</dd></div>
-          <div><dt>Master key version</dt><dd>{state.version.master_key_version}</dd></div>
-          <div><dt>Fingerprint</dt><dd><code>{state.version.fingerprint}</code></dd></div>
-          <div><dt>Verified</dt><dd>{formatTime(state.version.verified_at)}</dd></div>
-          <div><dt>Activated / Revoked</dt><dd>{formatTime(state.version.activated_at || state.version.revoked_at)}</dd></div>
+          <div><dt>密钥版本</dt><dd>v{state.version.version} · {state.version.status}</dd></div>
+          <div><dt>聚合版本</dt><dd>{state.version.aggregate_version}</dd></div>
+          <div><dt>主密钥版本</dt><dd>{state.version.master_key_version}</dd></div>
+          <div><dt>指纹</dt><dd><code>{state.version.fingerprint}</code></dd></div>
+          <div><dt>已验证</dt><dd>{formatTime(state.version.verified_at)}</dd></div>
+          <div><dt>已激活 / 已撤销</dt><dd>{formatTime(state.version.activated_at || state.version.revoked_at)}</dd></div>
         </dl>
       ) : null}
       {state.nextHref ? <a className={styles.resultLink} href={state.nextHref}>打开 Reference</a> : null}

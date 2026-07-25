@@ -91,7 +91,7 @@ test("M4-WORKFLOW-C-WEB-00: project workbench embeds one semantic measurement pa
 
   await expect(page).toHaveTitle("GEO 项目管理台");
   await expect(page.getByRole("heading", { level: 1, name: "Workflow C Browser Fixture" })).toBeVisible();
-  await expect(page.getByRole("heading", { level: 2, name: "Sampling, Evidence & Alerts" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 2, name: "采样、证据与告警" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Measurement & Alerts" })).toHaveClass(/active/);
   await expect(page.locator("main")).toHaveCount(1);
   await expect(page.getByText("Planned", { exact: true }).first()).toBeVisible();
@@ -100,7 +100,7 @@ test("M4-WORKFLOW-C-WEB-00: project workbench embeds one semantic measurement pa
   await page.screenshot({ path: testInfo.outputPath("workflow-c-embedded-desktop.png"), fullPage: true });
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.getByRole("heading", { level: 2, name: "Sampling, Evidence & Alerts" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 2, name: "采样、证据与告警" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath("workflow-c-embedded-mobile.png"), fullPage: true });
 });
@@ -111,7 +111,7 @@ test("M4-WORKFLOW-C-WEB-01: fixed denominator and five-state evidence stay expla
 
   await expect(page).toHaveTitle("GEO 项目管理台");
   await expect(page).toHaveURL(new RegExp(`/projects/${PROJECT_ID}/workflow-c`));
-  await expect(page.getByRole("heading", { level: 1, name: "Sampling, Evidence & Alerts" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "采样、证据与告警" })).toBeVisible();
   await expect(page.locator("[data-nextjs-dialog-overlay]")).toHaveCount(0);
   await expect(page.getByText("Planned", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("10", { exact: true }).first()).toBeVisible();
@@ -203,7 +203,7 @@ test("M4-WORKFLOW-C-WEB-03: protocols, durable jobs and reports complete maker-c
   await expect(page.getByText(/Semantic Metrics 分析任务已入队/)).toBeVisible();
 
   await page.goto(workspaceUrl("reports"));
-  await expect(page.getByRole("heading", { name: "Approved Workflow C Reports" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "已批准 Workflow C 报告" })).toBeVisible();
   await expect(page.getByText("Approved Australian evidence", { exact: true }).first()).toBeVisible();
   const metricOne = page.getByLabel("Metric 1");
   const metricValueOne = page.getByLabel("Metric value 1");
@@ -281,7 +281,7 @@ test("M5-SURFACE-PARSER-WEB-01: manual parser selection and review stay explicit
   await page.goto(manualWorkspaceUrl());
 
   await expect(page).toHaveTitle("GEO 项目管理台");
-  await expect(page.getByRole("heading", { level: 1, name: "Sampling, Evidence & Alerts" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "采样、证据与告警" })).toBeVisible();
   await expect(page.locator("[data-nextjs-dialog-overlay]")).toHaveCount(0);
   await expect(page.getByText("Fixture/manual parser", { exact: true })).toBeVisible();
   await expect(page.getByText("Non-live evidence · no Australian egress proof", { exact: true })).toBeVisible();

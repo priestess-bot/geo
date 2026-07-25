@@ -36,7 +36,7 @@ export function RecommendationWorkspace({
   return (
     <div className={styles.workspace}>
       <header className={styles.workspaceHeader}>
-        <div><p>Evidence to controlled draft</p><h2>Recommendations</h2></div>
+        <div><p>从证据到受控草稿</p><h2>建议</h2></div>
         <div className={styles.summary}>
           <span><strong>{data.sourceTotal}</strong> 总记录</span>
           <span><strong>{data.page.items.length}</strong> 当前筛选</span>
@@ -45,10 +45,10 @@ export function RecommendationWorkspace({
       </header>
 
       <FilterBar data={data} projectId={projectId} />
-      {data.listProblem ? <LoadProblem label="Recommendation 列表" problem={data.listProblem} /> : null}
+      {data.listProblem ? <LoadProblem label="建议列表" problem={data.listProblem} /> : null}
       {!data.listProblem && data.page.items.length === 0 ? (
         <div className={styles.emptyState}>
-          <strong>{data.sourceTotal ? "当前筛选没有结果" : "暂无 Recommendation"}</strong>
+          <strong>{data.sourceTotal ? "当前筛选没有结果" : "暂无建议"}</strong>
           <span>{data.sourceTotal ? "调整状态或类型筛选后重试。" : "真实证据形成建议后会显示在这里。"}</span>
         </div>
       ) : null}
@@ -61,7 +61,7 @@ export function RecommendationWorkspace({
         />
       ) : null}
 
-      {data.selectedProblem ? <LoadProblem label="所选 Recommendation" problem={data.selectedProblem} /> : null}
+      {data.selectedProblem ? <LoadProblem label="所选建议" problem={data.selectedProblem} /> : null}
       {data.selected ? (
         <RecommendationDetail
           actorIdentityId={actorIdentityId}
@@ -153,7 +153,7 @@ function RecommendationDetail({
         <div className={styles.detailHeading}>
           <div>
             <p>{typeLabel(recommendation.recommendation_type)}</p>
-            <h3 id="recommendation-detail-heading">Recommendation v{recommendation.version}</h3>
+            <h3 id="recommendation-detail-heading">建议 v{recommendation.version}</h3>
             <code>{recommendation.id}</code>
           </div>
           <StatusPill value={recommendation.status} />
@@ -161,7 +161,7 @@ function RecommendationDetail({
         {recommendation.status === "stale" || recommendation.status === "expired" ? (
           <div className={styles.blockedNotice} role="status">
             <strong>{recommendation.status === "stale" ? "证据输入已变化" : "批准有效期已结束"}</strong>
-            <span>此 Recommendation 不能继续授权关联草稿；未启动草稿必须保持 blocked 状态。</span>
+            <span>此建议不能继续授权关联草稿；未启动草稿必须保持阻断状态。</span>
           </div>
         ) : null}
         <RecommendationFacts recommendation={recommendation} />
@@ -193,12 +193,12 @@ function RecommendationDetail({
 function RecommendationFacts({ recommendation }: { recommendation: Recommendation }) {
   return (
     <dl className={styles.factGrid}>
-      <Fact label="Created by" value={recommendation.created_by} />
-      <Fact label="Created" value={formatTime(recommendation.created_at)} />
-      <Fact label="Updated" value={formatTime(recommendation.updated_at)} />
-      <Fact label="Valid until" value={formatTime(recommendation.valid_until)} />
-      <Fact label="Proposed draft" value={recommendation.proposed_draft_kind ? typeLabel(recommendation.proposed_draft_kind) : "无下游草稿"} />
-      <Fact label="Scope version" value={recommendation.evidence.scope.applicable_version} />
+      <Fact label="创建者" value={recommendation.created_by} />
+      <Fact label="创建时间" value={formatTime(recommendation.created_at)} />
+      <Fact label="更新时间" value={formatTime(recommendation.updated_at)} />
+      <Fact label="有效至" value={formatTime(recommendation.valid_until)} />
+      <Fact label="拟创建草稿" value={recommendation.proposed_draft_kind ? typeLabel(recommendation.proposed_draft_kind) : "无下游草稿"} />
+      <Fact label="适用范围版本" value={recommendation.evidence.scope.applicable_version} />
     </dl>
   );
 }
@@ -210,12 +210,12 @@ function ApprovalView({ recommendation }: { recommendation: Recommendation }) {
       <summary>人工批准记录</summary>
       {approval ? (
         <dl className={styles.factGrid}>
-          <Fact label="Approval ID" value={approval.id} />
-          <Fact label="Approved by" value={approval.approved_by} />
-          <Fact label="Approved at" value={formatTime(approval.approved_at)} />
-          <Fact label="Recommendation version" value={`v${approval.recommendation_version}`} />
-          <Fact label="Frozen input fingerprint" value={approval.frozen_input_fingerprint} />
-          <Fact label="Frozen graph SHA-256" value={approval.frozen_evidence_graph_hash} />
+          <Fact label="批准 ID" value={approval.id} />
+          <Fact label="批准人" value={approval.approved_by} />
+          <Fact label="批准时间" value={formatTime(approval.approved_at)} />
+          <Fact label="建议版本" value={`v${approval.recommendation_version}`} />
+          <Fact label="冻结输入指纹" value={approval.frozen_input_fingerprint} />
+          <Fact label="冻结证据图谱 SHA-256" value={approval.frozen_evidence_graph_hash} />
         </dl>
       ) : <p className={styles.inlineEmpty}>尚未批准。只有独立审核通过后才会生成批准记录。</p>}
     </details>
@@ -234,14 +234,14 @@ function DraftTable({ drafts }: { drafts: readonly LinkedDraft[] }) {
               <tr key={draft.id}>
                 <td><strong>{typeLabel(draft.kind)}</strong><code>{draft.id}</code></td>
                 <td><StatusPill value={draft.status} /></td>
-                <td><span>Recommendation v{draft.recommendation_version}</span><code>{draft.frozen_input_fingerprint}</code></td>
-                <td><span>仅草稿</span><small>queued: {String(draft.enqueued)} · executed: {String(draft.executed)} · published: {String(draft.published)}</small></td>
+                <td><span>建议 v{draft.recommendation_version}</span><code>{draft.frozen_input_fingerprint}</code></td>
+                <td><span>仅草稿</span><small>已排队：{String(draft.enqueued)} · 已执行：{String(draft.executed)} · 已发布：{String(draft.published)}</small></td>
                 <td>{draft.blocked_reason || "未阻断"}{draft.blocked_at ? <small>{formatTime(draft.blocked_at)}</small> : null}</td>
               </tr>
             ))}</tbody>
           </table>
         </div>
-      ) : <p className={styles.inlineEmpty}>没有关联草稿。No Change 类型在批准后也不会创建草稿。</p>}
+      ) : <p className={styles.inlineEmpty}>没有关联草稿。“无需变更”类型在批准后也不会创建草稿。</p>}
     </section>
   );
 }
@@ -261,7 +261,7 @@ function LoadProblem({ label, problem }: { label: string; problem: Recommendatio
 }
 
 function StatusPill({ value }: { value: string }) {
-  return <span className={`${styles.statusPill} ${styles[`status_${value}`] || ""}`}>{value}</span>;
+  return <span className={`${styles.statusPill} ${styles[`status_${value}`] || ""}`}>{statusLabel(value)}</span>;
 }
 
 function commandKeys(workflow: RecommendationWorkflow): RecommendationCommandKeys {
@@ -282,7 +282,7 @@ function commandKeys(workflow: RecommendationWorkflow): RecommendationCommandKey
 function draftStatusSummary(drafts: readonly LinkedDraft[]): string {
   if (!drafts.length) return "无";
   const blocked = drafts.filter((draft) => draft.status.startsWith("blocked_")).length;
-  return blocked ? `${blocked} blocked` : drafts.map((draft) => draft.status).join(", ");
+  return blocked ? `${blocked} 个已阻断` : drafts.map((draft) => statusLabel(draft.status)).join("、");
 }
 
 function validityLabel(value: string): string {
@@ -297,11 +297,29 @@ function formatTime(value: string): string {
 }
 
 function statusLabel(value: string): string {
-  return value.replaceAll("_", " ");
+  return {
+    draft: "草稿",
+    in_review: "审核中",
+    approved: "已批准",
+    rejected: "已拒绝",
+    stale: "已失效",
+    expired: "已过期",
+    prepared: "已准备",
+    blocked: "已阻断",
+    blocked_stale: "因失效阻断",
+    blocked_expired: "因过期阻断"
+  }[value] || value.replaceAll("_", " ");
 }
 
 function typeLabel(value: string): string {
-  return value.replaceAll("_", " ");
+  return {
+    hard_blocker: "硬性阻断",
+    gap: "缺口",
+    experiment: "实验",
+    optional: "可选",
+    no_change: "无需变更",
+    insufficient_evidence: "证据不足"
+  }[value] || value.replaceAll("_", " ");
 }
 
 function roleLabel(value: ManagedMemberRole): string {

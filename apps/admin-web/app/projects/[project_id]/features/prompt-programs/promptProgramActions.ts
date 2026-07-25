@@ -61,14 +61,14 @@ export async function createPromptProgramAction(
   if (!access.ok) return access.state;
   const kindValue = field(formData, "program_kind");
   if (kindValue === "reference_translation") {
-    return invalid("reference_translation 仅为预留类型，当前 Release 不允许创建。");
+    return invalid("reference_translation 仅为预留类型，当前不允许创建发布版本。");
   }
   const kind = promptProgramKinds.find((candidate) => candidate === kindValue);
   if (!kind) {
     return invalid("Prompt Program 类型无效。");
   }
   const purpose = field(formData, "purpose");
-  if (!validPurpose(purpose)) return invalid("Purpose 格式无效。");
+  if (!validPurpose(purpose)) return invalid("用途格式无效。");
   const parsed = parseReleasePayload(formData, 0);
   if (!parsed.ok) return parsed.state;
   if (parsed.value.expected_version !== 0) {
@@ -114,7 +114,7 @@ export async function createPromptReleaseAction(
   const kind = promptProgramKinds.find((candidate) => candidate === kindValue);
   if (!kind) return invalid("Prompt Program 类型无效。");
   const purpose = field(formData, "purpose");
-  if (!validPurpose(purpose)) return invalid("Purpose 格式无效。");
+  if (!validPurpose(purpose)) return invalid("用途格式无效。");
   const parsed = parseReleasePayload(formData, 1);
   if (!parsed.ok) return parsed.state;
   const idempotencyKey = commandKey(formData);
@@ -131,14 +131,14 @@ export async function createPromptReleaseAction(
     `${promptBase(projectId)}/${encodeURIComponent(programId)}/releases`,
     { method: "POST", idempotencyKey, body: parsed.value }
   );
-  if (!response.ok) return commandFailure(response, "Prompt Release 创建失败。");
+  if (!response.ok) return commandFailure(response, "Prompt 发布版本创建失败。");
   if (!isCreatedPromptReleaseResponse(response.data)) {
-    return upstreamInvalid("Prompt Release 创建接口返回了无法识别的响应。");
+    return upstreamInvalid("Prompt 发布版本创建接口返回了无法识别的响应。");
   }
   revalidateProject(projectId);
   return {
     kind: "success",
-    message: response.data.replayed ? "已恢复原 Release 结果。" : `Release v${response.data.release.version} 已创建。`,
+    message: response.data.replayed ? "已恢复原发布版本结果。" : `发布版本 v${response.data.release.version} 已创建。`,
     nextHref: promptHref(projectId, programId, response.data.release.id),
     release: releaseResult(response.data.release)
   };
@@ -161,8 +161,8 @@ export async function enqueuePromptTestAction(
   if (!UUID_PATTERN.test(testSetId) || testSetVersion === null || testSetVersion < 1 || !validHash(testSetHash)) {
     return invalid("冻结 TestSet 身份无效。");
   }
-  if (!UUID_PATTERN.test(runtimeSelectionId)) return invalid("已批准 Runtime 选择无效。");
-  if (expectedVersion === null) return invalid("Release 状态版本无效。");
+  if (!UUID_PATTERN.test(runtimeSelectionId)) return invalid("已批准运行时选择无效。");
+  if (expectedVersion === null) return invalid("发布版本状态版本无效。");
   const idempotencyKey = commandKey(formData);
   if (!idempotencyKey) return invalid("Idempotency-Key 无效，请刷新页面后重试。");
   const response = await runtimeRequest<PromptTestJobResponse>(
@@ -203,7 +203,7 @@ export async function approvePromptReleaseAction(
   const projectId = field(formData, "project_id");
   const access = await verifyPromptActor(projectId, APPROVERS);
   if (!access.ok) return access.state;
-  return transitionRelease(formData, projectId, "approve", "Release 已批准。");
+  return transitionRelease(formData, projectId, "approve", "发布版本已批准。");
 }
 
 export async function freezePromptReleaseAction(
@@ -213,7 +213,7 @@ export async function freezePromptReleaseAction(
   const projectId = field(formData, "project_id");
   const access = await verifyPromptActor(projectId, APPROVERS);
   if (!access.ok) return access.state;
-  return transitionRelease(formData, projectId, "freeze", "Release 已冻结。");
+  return transitionRelease(formData, projectId, "freeze", "发布版本已冻结。");
 }
 
 export async function retirePromptReleaseAction(
@@ -224,9 +224,9 @@ export async function retirePromptReleaseAction(
   const access = await verifyPromptActor(projectId, APPROVERS);
   if (!access.ok) return access.state;
   if (field(formData, "confirm_retirement") !== "confirmed") {
-    return invalid("退役前必须确认该 Release 将不再用于新的运行时解析。");
+    return invalid("退役前必须确认该发布版本将不再用于新的运行时解析。");
   }
-  return transitionRelease(formData, projectId, "retire", "Release 已退役。");
+  return transitionRelease(formData, projectId, "retire", "发布版本已退役。");
 }
 
 export async function bindPromptReleaseAction(
@@ -241,7 +241,7 @@ export async function bindPromptReleaseAction(
   const purpose = field(formData, "purpose");
   const expectedVersion = integerField(formData, "expected_version");
   if (!validPurpose(purpose) || expectedVersion === null || expectedVersion < 0) {
-    return invalid("Purpose 或当前 Binding 版本无效。");
+    return invalid("用途或当前绑定版本无效。");
   }
   const idempotencyKey = commandKey(formData);
   if (!idempotencyKey) return invalid("Idempotency-Key 无效，请刷新页面后重试。");
@@ -266,9 +266,9 @@ export async function bindPromptReleaseAction(
       }
     }
   );
-  if (!response.ok) return commandFailure(response, "Prompt Binding 创建失败。");
+  if (!response.ok) return commandFailure(response, "Prompt 绑定创建失败。");
   if (!isPromptProgramBindingResponse(response.data)) {
-    return upstreamInvalid("Prompt Binding 接口返回了无法识别的响应。");
+    return upstreamInvalid("Prompt 绑定接口返回了无法识别的响应。");
   }
   if (
     response.data.project_id !== projectId
@@ -277,12 +277,12 @@ export async function bindPromptReleaseAction(
     || response.data.purpose !== purpose
     || response.data.binding_version !== expectedVersion + 1
   ) {
-    return upstreamInvalid("Prompt Binding 接口返回了不一致的绑定身份。");
+    return upstreamInvalid("Prompt 绑定接口返回了不一致的绑定身份。");
   }
   revalidateProject(projectId);
   return {
     kind: "success",
-    message: response.data.replayed ? "已恢复原 Binding 结果。" : "Frozen Release 已绑定。",
+    message: response.data.replayed ? "已恢复原绑定结果。" : "冻结发布版本已绑定。",
     binding: {
       id: response.data.id,
       version: response.data.binding_version,
@@ -304,7 +304,7 @@ export async function diffPromptReleaseAction(
   const expectedVersion = positiveStateVersion(formData);
   const fixedVariables = parseJsonObjectField(formData, "fixed_variables", "固定输入");
   if (!UUID_PATTERN.test(baselineReleaseId) || expectedVersion === null) {
-    return invalid("Baseline Release 或状态版本无效。");
+    return invalid("基线发布版本或状态版本无效。");
   }
   if (!fixedVariables.ok) return invalid(fixedVariables.error);
   const idempotencyKey = commandKey(formData);
@@ -321,9 +321,9 @@ export async function diffPromptReleaseAction(
       }
     }
   );
-  if (!response.ok) return commandFailure(response, "Prompt Release 差异计算失败。");
+  if (!response.ok) return commandFailure(response, "Prompt 发布版本差异计算失败。");
   if (!isPromptProgramDiffResponse(response.data)) {
-    return upstreamInvalid("Prompt Diff 接口返回了无法识别的响应。");
+    return upstreamInvalid("Prompt 差异接口返回了无法识别的响应。");
   }
   return {
     kind: "success",
@@ -341,14 +341,14 @@ async function transitionRelease(
   const ids = releaseIds(formData);
   if (!ids.ok) return ids.state;
   const expectedVersion = positiveStateVersion(formData);
-  if (expectedVersion === null) return invalid("Release 状态版本无效。");
+  if (expectedVersion === null) return invalid("发布版本状态版本无效。");
   const idempotencyKey = commandKey(formData);
   if (!idempotencyKey) return invalid("Idempotency-Key 无效，请刷新页面后重试。");
   const response = await runtimeRequest<TransitionedPromptProgramResponse>(
     releaseCommandPath(projectId, ids.programId, ids.releaseId, command),
     { method: "POST", idempotencyKey, body: { expected_version: expectedVersion } }
   );
-  if (!response.ok) return commandFailure(response, `Prompt Release ${command} 失败。`);
+  if (!response.ok) return commandFailure(response, `Prompt 发布版本 ${command} 失败。`);
   if (!isTransitionedPromptProgramResponse(response.data)) {
     return upstreamInvalid("Prompt 状态接口返回了无法识别的响应。");
   }
@@ -369,7 +369,7 @@ function releaseIds(formData: FormData):
   const programId = field(formData, "program_id");
   const releaseId = field(formData, "release_id");
   if (!UUID_PATTERN.test(programId) || !UUID_PATTERN.test(releaseId)) {
-    return { ok: false, state: invalid("Program 或 Release ID 无效。") };
+    return { ok: false, state: invalid("程序或发布版本 ID 无效。") };
   }
   return { ok: true, programId, releaseId };
 }
@@ -437,7 +437,7 @@ async function verifyBootstrapSelection({
     || inventory.model_policy_version !== release.model_policy.version
     || !sameJson(inventory.model_policy, release.model_policy.policy)
   ) {
-    return invalid("Purpose 或 Test Set 已偏离冻结目录，请刷新页面后重试。");
+    return invalid("用途或测试集已偏离冻结目录，请刷新页面后重试。");
   }
   if (!programId) return null;
 
@@ -445,10 +445,10 @@ async function verifyBootstrapSelection({
     `${promptBase(projectId)}/${encodeURIComponent(programId)}`
   );
   if (!programResponse.ok) {
-    return commandFailure(programResponse, "Prompt Program 归属校验失败。");
+    return commandFailure(programResponse, "Prompt 程序归属校验失败。");
   }
   if (!isPromptProgramSummary(programResponse.data)) {
-    return upstreamInvalid("Prompt Program 接口返回了无法识别的响应。");
+    return upstreamInvalid("Prompt 程序接口返回了无法识别的响应。");
   }
   if (
     programResponse.data.id !== programId
@@ -456,7 +456,7 @@ async function verifyBootstrapSelection({
     || programResponse.data.program_kind !== kind
     || programResponse.data.purpose !== purpose
   ) {
-    return invalid("Prompt Program 与冻结目录不一致，不能创建新 Release。");
+    return invalid("Prompt 程序与冻结目录不一致，不能创建新发布版本。");
   }
   return null;
 }
@@ -495,10 +495,10 @@ async function verifyBindingSelection({
     `${promptBase(projectId)}/${encodeURIComponent(programId)}/releases/${encodeURIComponent(releaseId)}`
   );
   if (!releaseResponse.ok) {
-    return commandFailure(releaseResponse, "Frozen Release 归属校验失败。");
+    return commandFailure(releaseResponse, "冻结发布版本归属校验失败。");
   }
   if (!isPromptProgramRelease(releaseResponse.data)) {
-    return upstreamInvalid("Prompt Release 接口返回了无法识别的响应。");
+    return upstreamInvalid("Prompt 发布版本接口返回了无法识别的响应。");
   }
   const release = releaseResponse.data;
   if (
@@ -508,23 +508,23 @@ async function verifyBindingSelection({
     || release.purpose !== purpose
     || release.state.status !== "frozen"
   ) {
-    return invalid("Purpose 或 Frozen Release 身份已变化，请刷新页面后重试。");
+    return invalid("用途或冻结发布版本身份已变化，请刷新页面后重试。");
   }
   const bindingsResponse = await runtimeRequest<PromptProgramBindingOptionPage>(
     `/v1/projects/${encodeURIComponent(projectId)}/prompt-program-bindings`,
     { query: { program_kind: release.program_kind, limit: 200, offset: 0 } }
   );
   if (!bindingsResponse.ok) {
-    return commandFailure(bindingsResponse, "当前 Prompt Binding 目录校验失败。");
+    return commandFailure(bindingsResponse, "当前 Prompt 绑定目录校验失败。");
   }
   if (!isPromptProgramBindingOptionPage(bindingsResponse.data)) {
-    return upstreamInvalid("Prompt Binding 目录接口返回了无法识别的响应。");
+    return upstreamInvalid("Prompt 绑定目录接口返回了无法识别的响应。");
   }
   if (
     bindingsResponse.data.offset !== 0
     || bindingsResponse.data.items.length !== bindingsResponse.data.total
   ) {
-    return upstreamInvalid("Prompt Binding 目录不完整，无法安全计算当前版本。");
+    return upstreamInvalid("Prompt 绑定目录不完整，无法安全计算当前版本。");
   }
   const matches = bindingsResponse.data.items.filter((item) => (
     item.project_id === projectId
@@ -532,11 +532,11 @@ async function verifyBindingSelection({
     && item.purpose === purpose
   ));
   if (matches.length > 1) {
-    return upstreamInvalid("Prompt Binding 目录包含重复的当前 Purpose。");
+    return upstreamInvalid("Prompt 绑定目录包含重复的当前用途。");
   }
   const authoritativeVersion = matches[0]?.binding_version || 0;
   if (authoritativeVersion !== expectedVersion) {
-    return invalid("当前 Binding version 已变化，请刷新页面后重试。");
+    return invalid("当前绑定版本已变化，请刷新页面后重试。");
   }
   return null;
 }

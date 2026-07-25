@@ -40,7 +40,7 @@ export function EvidenceCreateForm({
           </select>
         </label>
         <label>
-          <span>Source UUID</span>
+          <span>来源 UUID</span>
           <input name="source_id" placeholder="00000000-0000-4000-8000-000000000000" required />
         </label>
         <label>
@@ -63,9 +63,9 @@ export function EvidenceCreateForm({
         <label>
           <span>来源版本类型</span>
           <select name="revision_kind" defaultValue="content_hash">
-            <option value="content_hash">Content hash</option>
-            <option value="row_version">Row version</option>
-            <option value="report_version">Report version</option>
+            <option value="content_hash">内容哈希</option>
+            <option value="row_version">行版本</option>
+            <option value="report_version">报告版本</option>
           </select>
         </label>
         <label>

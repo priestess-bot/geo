@@ -112,7 +112,7 @@ export function parseReleasePayload(
   );
   const modelPolicy = parseJsonObjectField(formData, "model_policy", "模型策略");
   if (!systemTemplate || !userTemplate) {
-    return { ok: false, state: invalid("System 与 User Template 均为必填项。") };
+    return { ok: false, state: invalid("系统与用户模板均为必填项。") };
   }
   if (systemTemplate.length > 100_000 || userTemplate.length > 100_000) {
     return { ok: false, state: invalid("单个 Template 不能超过 100000 个字符。") };
@@ -148,7 +148,7 @@ export function parseReleasePayload(
     || testSetVersion < 1
     || !validHash(testSetHash)
   ) {
-    return { ok: false, state: invalid("Test Set 必须包含有效 UUID、版本和 SHA-256。") };
+    return { ok: false, state: invalid("测试集必须包含有效 UUID、版本和 SHA-256。") };
   }
   if (expectedVersion === null || expectedVersion < minimumExpectedVersion) {
     return { ok: false, state: invalid("期望版本无效，请刷新页面后重试。") };

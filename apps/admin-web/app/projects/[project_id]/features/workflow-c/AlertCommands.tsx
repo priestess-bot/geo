@@ -58,7 +58,7 @@ export function AlertCommands({
   return (
     <section className={styles.commandBand} aria-labelledby="alert-command-heading">
       <div className={styles.sectionHeading}>
-        <div><p>Disposition</p><h3 id="alert-command-heading">处置 Alert</h3></div>
+        <div><p>处置</p><h3 id="alert-command-heading">处置告警</h3></div>
         <span>{canAct ? "可处置" : "只读"}</span>
       </div>
       <div className={styles.commandGrid}>

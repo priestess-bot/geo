@@ -30,11 +30,11 @@ export function ProtocolsPanel({
   return (
     <div className={styles.sectionStack}>
       <section>
-        <SectionHeading eyebrow="Frozen governance" title="Analysis Protocols" />
-        {data.metricProtocols.problem ? <LoadProblem label="Metric Protocols" problem={data.metricProtocols.problem} /> : null}
-        {data.statisticalProtocols.problem ? <LoadProblem label="Statistical Protocols" problem={data.statisticalProtocols.problem} /> : null}
+        <SectionHeading eyebrow="冻结治理" title="分析协议" />
+        {data.metricProtocols.problem ? <LoadProblem label="指标协议" problem={data.metricProtocols.problem} /> : null}
+        {data.statisticalProtocols.problem ? <LoadProblem label="统计协议" problem={data.statisticalProtocols.problem} /> : null}
         {!data.metricProtocols.problem && !data.statisticalProtocols.problem && !metrics.length && !statistics.length
-          ? <EmptyState title="Protocol inventory 为空" />
+          ? <EmptyState title="协议清单为空" />
           : <ProtocolInventory metrics={metrics} statistics={statistics} />}
       </section>
       <WorkflowCProtocolCommands
@@ -80,10 +80,10 @@ export function ReportsPanel({
   return (
     <div className={styles.sectionStack}>
       <section>
-        <SectionHeading eyebrow="Customer-safe projection" title="Approved Workflow C Reports" />
+        <SectionHeading eyebrow="客户安全投影" title="已批准 Workflow C 报告" />
         {data.workflowCReports.problem
-          ? <LoadProblem label="Workflow C Reports" problem={data.workflowCReports.problem} />
-          : reports.length ? <ReportInventory reports={reports} /> : <EmptyState title="Workflow C Report inventory 为空" />}
+          ? <LoadProblem label="Workflow C 报告" problem={data.workflowCReports.problem} />
+          : reports.length ? <ReportInventory reports={reports} /> : <EmptyState title="Workflow C 报告清单为空" />}
       </section>
       <WorkflowCReportCommands
         canManage={canManage}
@@ -130,12 +130,12 @@ function ProtocolInventory({
   return (
     <div className={styles.tableWrap}>
       <table className={styles.dataTable}>
-        <thead><tr><th>Kind</th><th>Version</th><th>Status</th><th>Definition SHA-256</th><th>Maker</th><th>Updated</th></tr></thead>
+        <thead><tr><th>类型</th><th>版本</th><th>状态</th><th>定义 SHA-256</th><th>创建者</th><th>更新时间</th></tr></thead>
         <tbody>{rows.map((row) => (
           <tr key={row.id}>
-            <td><strong>{row.kind.replaceAll("_", " ")}</strong><small>{row.id}</small></td>
+            <td><strong>{protocolKindLabel(row.kind)}</strong><small>{row.id}</small></td>
             <td>v{row.version}</td>
-            <td><span className={styles.status} data-status={row.status}>{row.status}</span></td>
+            <td><span className={styles.status} data-status={row.status}>{statusLabel(row.status)}</span></td>
             <td><code>{row.hash}</code></td>
             <td>{row.actor}</td>
             <td>{formatTime(row.updated)}</td>
@@ -152,8 +152,8 @@ function ReportInventory({ reports }: { reports: WorkflowCReport[] }) {
       {reports.map((report) => (
         <article key={report.report_id}>
           <header>
-            <div><strong>{report.approved_safe_payload.headline}</strong><small>{report.report_id} · {report.source_kind.replaceAll("_", " ")} · v{report.version}</small></div>
-            <span className={styles.status} data-status={report.status}>{report.status}</span>
+            <div><strong>{report.approved_safe_payload.headline}</strong><small>{report.report_id} · {sourceKindLabel(report.source_kind)} · v{report.version}</small></div>
+            <span className={styles.status} data-status={report.status}>{statusLabel(report.status)}</span>
           </header>
           {report.approved_safe_payload.summary ? <p>{report.approved_safe_payload.summary}</p> : null}
           <SafeMetrics payload={report.approved_safe_payload} />
@@ -178,7 +178,7 @@ function SafeMetrics({ payload }: { payload: WorkflowCApprovedSafePayload }) {
   if (!Object.keys(values).length) return null;
   return (
     <dl className={controlStyles.safeMetrics}>
-      {Object.entries(values).map(([key, value]) => <div key={key}><dt>{key.replaceAll("_", " ")}</dt><dd>{value}</dd></div>)}
+      {Object.entries(values).map(([key, value]) => <div key={key}><dt>{metricLabel(key)}</dt><dd>{value}</dd></div>)}
     </dl>
   );
 }
@@ -186,4 +186,20 @@ function SafeMetrics({ payload }: { payload: WorkflowCApprovedSafePayload }) {
 function formatTime(value: string): string {
   const date = new Date(value);
   return Number.isNaN(date.valueOf()) ? value : date.toLocaleString("zh-CN");
+}
+
+function protocolKindLabel(value: string): string {
+  return ({ metric: "指标协议", comparison_plan: "比较协议", drift_protocol: "漂移协议" } as Record<string, string>)[value] || value.replaceAll("_", " ");
+}
+
+function sourceKindLabel(value: string): string {
+  return ({ provider_api: "Provider API", proxy_grounded_api: "经代理检索的 API" } as Record<string, string>)[value] || value.replaceAll("_", " ");
+}
+
+function statusLabel(value: string): string {
+  return ({ draft: "草稿", in_review: "复核中", approved: "已批准", stale: "已失效", revoked: "已撤销", retired: "已退役" } as Record<string, string>)[value] || value.replaceAll("_", " ");
+}
+
+function metricLabel(value: string): string {
+  return ({ mention_rate: "提及率", recommendation_rate: "推荐率" } as Record<string, string>)[value] || value.replaceAll("_", " ");
 }

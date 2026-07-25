@@ -17,7 +17,7 @@ export function FactEvidencePromotionForm({
     <KnowledgeActionForm action={promoteKnowledgeFactEvidence} submitLabel="提升为正式 Evidence">
       <input name="project_id" type="hidden" value={projectId} />
       <input name="fact_id" type="hidden" value={proposal.fact.id} />
-      <label>Evidence 标题<input defaultValue={proposal.defaults.title} maxLength={500} name="title" required /></label>
+      <label>证据标题<input defaultValue={proposal.defaults.title} maxLength={500} name="title" required /></label>
       <label>事实主体<select defaultValue={defaultSubject(entities)} name="subject_assignment">
         <option value="neutral:">中立（不绑定实体）</option>
         {entities.map((entity) => <option key={entity.id} value={`${roleFor(entity.entity_type)}:${entity.id}`}>

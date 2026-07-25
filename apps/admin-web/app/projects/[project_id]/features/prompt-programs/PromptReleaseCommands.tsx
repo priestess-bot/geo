@@ -106,7 +106,7 @@ export function PromptReleaseCommands({
           <input name="test_set_hash" type="hidden" value={release.test_set_hash} />
           <div className={styles.commandGrid}>
             <label>
-              <span>Approved Runtime</span>
+              <span>已批准运行时</span>
               <select disabled={!canTest || testPending} name="runtime_selection_id" required>
                 {runtimeOptions.length ? runtimeOptions.map((item) => (
                   <option key={item.runtime_selection_id} value={item.runtime_selection_id}>
@@ -179,7 +179,7 @@ export function PromptReleaseCommands({
               type="checkbox"
               value="confirmed"
             />
-            <span>停止该 Release 的新运行时解析</span>
+            <span>停止该发布版本的新运行时解析</span>
           </label>
           <button
             className={styles.retireButton}
@@ -187,14 +187,14 @@ export function PromptReleaseCommands({
             title={retireDisabledReason(canApprove, status)}
             type="submit"
           >
-            {retirePending ? "退役中..." : "退役 Release"}
+            {retirePending ? "退役中..." : "退役发布版本"}
           </button>
         </form>
         <PromptActionFeedback state={retireState} />
       </section>
 
       <section className={styles.commandSection} aria-labelledby="prompt-binding-heading">
-        <header><h4 id="prompt-binding-heading">Runtime Binding</h4></header>
+        <header><h4 id="prompt-binding-heading">运行时绑定</h4></header>
         <form action={bindAction} className={styles.commandForm}>
           <input name="project_id" type="hidden" value={projectId} />
           <input name="program_id" type="hidden" value={release.program_id} />
@@ -204,15 +204,15 @@ export function PromptReleaseCommands({
           <input name="expected_version" type="hidden" value={currentBinding?.binding_version || 0} />
           <div className={styles.commandGrid}>
             <label>
-              <span>Purpose（由 Frozen Release 固定）</span>
+              <span>用途（由冻结发布版本固定）</span>
               <span className={styles.readOnlyValue}>{release.purpose}</span>
             </label>
             <label>
-              <span>当前 Binding version</span>
+              <span>当前绑定版本</span>
               <span className={styles.readOnlyValue}>{currentBinding?.binding_version || 0}</span>
             </label>
             <button disabled={!canBind || bindPending} title={bindDisabledReason(canApprove, status, bindingInventoryAvailable)} type="submit">
-              {bindPending ? "绑定中..." : "绑定 Frozen Release"}
+              {bindPending ? "绑定中..." : "绑定冻结发布版本"}
             </button>
           </div>
           {bindingProblem ? <p className={styles.commandNotice} role="status">{bindingProblem.detail}</p> : null}
@@ -221,7 +221,7 @@ export function PromptReleaseCommands({
       </section>
 
       <section className={styles.commandSection} aria-labelledby="prompt-diff-heading">
-        <header><h4 id="prompt-diff-heading">固定输入 Diff</h4><span>Candidate v{release.version}</span></header>
+        <header><h4 id="prompt-diff-heading">固定输入差异</h4><span>候选版本 v{release.version}</span></header>
         <form action={diffAction} className={styles.commandForm}>
           <ReleaseHiddenFields
             idempotencyKey={commandKeys.diff}
@@ -230,7 +230,7 @@ export function PromptReleaseCommands({
           />
           <div className={styles.diffFormGrid}>
             <label>
-              <span>Approved / Frozen baseline</span>
+              <span>已批准 / 已冻结基线</span>
               <select disabled={!canDiff || diffPending} name="baseline_release_id" required>
                 {baselineReleases.length ? baselineReleases.map((item) => (
                   <option key={item.id} value={item.id}>v{item.version} · {item.state.status}</option>
@@ -238,7 +238,7 @@ export function PromptReleaseCommands({
               </select>
             </label>
             <label className={styles.fixedInputField}>
-              <span>固定输入（JSON object）</span>
+              <span>固定输入（JSON 对象）</span>
               <textarea defaultValue="{}" disabled={!canDiff || diffPending} name="fixed_variables" required spellCheck={false} />
             </label>
             <button disabled={!canDiff || diffPending} title={diffDisabledReason(canContribute, status, baselineReleases.length)} type="submit">
@@ -273,7 +273,11 @@ function ReleaseHiddenFields({
 }
 
 function StatusPill({ value }: { value: string }) {
-  return <span className={`${styles.statusPill} ${styles[`status_${value}`] || ""}`}>{value}</span>;
+  return <span className={`${styles.statusPill} ${styles[`status_${value}`] || ""}`}>{statusLabel(value)}</span>;
+}
+
+function statusLabel(value: string): string {
+  return { draft: "草稿", tested: "已测试", approved: "已批准", frozen: "已冻结", retired: "已退役" }[value] || value;
 }
 
 function testDisabledReason(
@@ -282,7 +286,7 @@ function testDisabledReason(
   hasApprovedRuntime: boolean
 ): string {
   if (!canContribute) return "当前角色不能运行测试";
-  if (status !== "draft") return "仅 Draft Release 可以运行测试";
+  if (status !== "draft") return "仅草稿发布版本可以运行测试";
   return hasApprovedRuntime ? "" : "需要项目级已批准 Prompt 测试运行时";
 }
 
@@ -292,18 +296,18 @@ function runtimeLabel(item: PromptTestRuntimeOption): string {
 
 function approveDisabledReason(canApprove: boolean, status: string, selfOwned: boolean): string {
   if (!canApprove) return "仅项目负责人或管理员可以批准";
-  if (selfOwned) return "Release 创建者不能批准自己的 Release";
-  return status === "tested" ? "" : "仅 Tested Release 可以批准";
+  if (selfOwned) return "发布版本创建者不能批准自己的发布版本";
+  return status === "tested" ? "" : "仅已测试发布版本可以批准";
 }
 
 function freezeDisabledReason(canApprove: boolean, status: string): string {
   if (!canApprove) return "仅项目负责人或管理员可以冻结";
-  return status === "approved" ? "" : "仅 Approved Release 可以冻结";
+  return status === "approved" ? "" : "仅已批准发布版本可以冻结";
 }
 
 function retireDisabledReason(canApprove: boolean, status: string): string {
   if (!canApprove) return "仅项目负责人或管理员可以退役";
-  return status === "frozen" ? "" : "仅 Frozen Release 可以退役";
+  return status === "frozen" ? "" : "仅已冻结发布版本可以退役";
 }
 
 function bindDisabledReason(
@@ -312,12 +316,12 @@ function bindDisabledReason(
   inventoryAvailable: boolean
 ): string {
   if (!canApprove) return "仅项目负责人或管理员可以绑定";
-  if (status !== "frozen") return "仅 Frozen Release 可以绑定";
-  return inventoryAvailable ? "" : "当前 Binding 目录不可用";
+  if (status !== "frozen") return "仅已冻结发布版本可以绑定";
+  return inventoryAvailable ? "" : "当前绑定目录不可用";
 }
 
 function diffDisabledReason(canContribute: boolean, status: string, baselines: number): string {
-  if (!canContribute) return "当前角色不能执行 Diff";
-  if (status !== "draft" && status !== "tested") return "Candidate 必须为 Draft 或 Tested";
-  return baselines > 0 ? "" : "需要更早的 Approved 或 Frozen baseline";
+  if (!canContribute) return "当前角色不能执行差异比较";
+  if (status !== "draft" && status !== "tested") return "候选版本必须为草稿或已测试";
+  return baselines > 0 ? "" : "需要更早的已批准或已冻结基线";
 }

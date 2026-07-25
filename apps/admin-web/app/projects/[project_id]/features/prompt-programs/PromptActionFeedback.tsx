@@ -12,30 +12,30 @@ export function PromptActionFeedback({ state }: { state: PromptActionState }) {
       {state.correlationId ? <small>关联 ID：{state.correlationId}</small> : null}
       {state.release ? (
         <div className={styles.feedbackLineage}>
-          <span>Release v{state.release.version} · {state.release.status}</span>
+          <span>发布版本 v{state.release.version} · {state.release.status}</span>
           <code>{state.release.id}</code>
           <code>{state.release.releaseHash}</code>
         </div>
       ) : null}
       {state.job ? (
         <dl className={styles.feedbackDetails}>
-          <div><dt>Job</dt><dd><code>{state.job.id}</code></dd></div>
-          <div><dt>Status</dt><dd>{state.job.status}</dd></div>
-          <div><dt>Input SHA-256</dt><dd><code>{state.job.inputHash}</code></dd></div>
-          <div><dt>TestSet SHA-256</dt><dd><code>{state.job.testSetHash}</code></dd></div>
+          <div><dt>任务</dt><dd><code>{state.job.id}</code></dd></div>
+          <div><dt>状态</dt><dd>{state.job.status}</dd></div>
+          <div><dt>输入 SHA-256</dt><dd><code>{state.job.inputHash}</code></dd></div>
+          <div><dt>测试集 SHA-256</dt><dd><code>{state.job.testSetHash}</code></dd></div>
         </dl>
       ) : null}
       {state.admittedEvidenceHash ? (
         <div className={styles.feedbackLineage}>
-          <span>Admitted Evidence SHA-256</span>
+          <span>已准入证据 SHA-256</span>
           <code>{state.admittedEvidenceHash}</code>
         </div>
       ) : null}
       {state.binding ? (
         <dl className={styles.feedbackDetails}>
-          <div><dt>Binding</dt><dd><code>{state.binding.id}</code></dd></div>
-          <div><dt>Binding version</dt><dd>{state.binding.version}</dd></div>
-          <div><dt>Release SHA-256</dt><dd><code>{state.binding.releaseHash}</code></dd></div>
+          <div><dt>绑定</dt><dd><code>{state.binding.id}</code></dd></div>
+          <div><dt>绑定版本</dt><dd>{state.binding.version}</dd></div>
+          <div><dt>发布版本 SHA-256</dt><dd><code>{state.binding.releaseHash}</code></dd></div>
         </dl>
       ) : null}
       {state.diff ? <PromptDiffComparison diff={state.diff} /> : null}
@@ -46,21 +46,21 @@ export function PromptActionFeedback({ state }: { state: PromptActionState }) {
 
 function PromptDiffComparison({ diff }: { diff: PromptProgramDiffResponse }) {
   return (
-    <section className={styles.diffResult} aria-label="Prompt Release 差异结果">
+    <section className={styles.diffResult} aria-label="Prompt 发布版本差异结果">
       <header>
         <strong>{diff.changed_fields.length ? `${diff.changed_fields.length} 个字段变化` : "无字段变化"}</strong>
-        <span>{diff.changed_fields.length ? diff.changed_fields.join(" · ") : "identical"}</span>
+        <span>{diff.changed_fields.length ? diff.changed_fields.join(" · ") : "完全一致"}</span>
       </header>
       <div className={styles.diffColumns}>
         <DiffColumn
-          label="Baseline"
+          label="基线"
           releaseHash={diff.base_release_hash}
           releaseId={diff.base_release_id}
           systemHash={diff.base_system_hash}
           userHash={diff.base_user_hash}
         />
         <DiffColumn
-          label="Candidate"
+          label="候选版本"
           releaseHash={diff.candidate_release_hash}
           releaseId={diff.candidate_release_id}
           systemHash={diff.candidate_system_hash}
@@ -68,7 +68,7 @@ function PromptDiffComparison({ diff }: { diff: PromptProgramDiffResponse }) {
         />
       </div>
       <div className={styles.fixedInputHash}>
-        <span>Fixed input SHA-256</span><code>{diff.fixed_input_hash}</code>
+        <span>固定输入 SHA-256</span><code>{diff.fixed_input_hash}</code>
       </div>
     </section>
   );
@@ -89,10 +89,10 @@ function DiffColumn({
 }) {
   return (
     <dl className={styles.diffColumn}>
-      <div><dt>{label} Release</dt><dd><code>{releaseId}</code></dd></div>
-      <div><dt>Release SHA-256</dt><dd><code>{releaseHash}</code></dd></div>
-      <div><dt>System SHA-256</dt><dd><code>{systemHash}</code></dd></div>
-      <div><dt>User SHA-256</dt><dd><code>{userHash}</code></dd></div>
+      <div><dt>{label}发布版本</dt><dd><code>{releaseId}</code></dd></div>
+      <div><dt>发布版本 SHA-256</dt><dd><code>{releaseHash}</code></dd></div>
+      <div><dt>系统 SHA-256</dt><dd><code>{systemHash}</code></dd></div>
+      <div><dt>用户 SHA-256</dt><dd><code>{userHash}</code></dd></div>
     </dl>
   );
 }

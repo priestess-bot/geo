@@ -37,7 +37,7 @@ export function AdmissionPolicyPanel({
   validUntilDefault: string;
 }) {
   if (policies.problem) {
-    return <LoadProblem label="Sampling Admission Policy" problem={policies.problem} />;
+    return <LoadProblem label="采样准入策略" problem={policies.problem} />;
   }
   const selected = policies.data?.items.find((item) => item.id === selectedPolicyId)
     || policies.data?.items[0]
@@ -46,14 +46,14 @@ export function AdmissionPolicyPanel({
     <div className={styles.sectionStack}>
       <section>
         <SectionHeading
-          eyebrow="Authorization inventory"
-          title={`${policies.data?.total || 0} policies`}
+          eyebrow="授权清单"
+          title={`${policies.data?.total || 0} 条策略`}
         />
         {policies.data?.items.length ? (
           <div className={styles.tableWrap}>
             <table className={styles.dataTable}>
               <thead>
-                <tr><th>Target</th><th>Status</th><th>Effective</th><th>Expiry</th><th>Revision</th><th>Definition</th></tr>
+                <tr><th>目标</th><th>状态</th><th>生效情况</th><th>有效期</th><th>修订版本</th><th>定义</th></tr>
               </thead>
               <tbody>
                 {policies.data.items.map((policy) => (
@@ -74,7 +74,7 @@ export function AdmissionPolicyPanel({
               </tbody>
             </table>
           </div>
-        ) : <EmptyState title="Admission Policy 尚未创建" />}
+        ) : <EmptyState title="准入策略尚未创建" />}
       </section>
 
       {selected ? <PolicyDetail policy={selected} /> : null}
@@ -89,7 +89,7 @@ export function AdmissionPolicyPanel({
         validUntilDefault={validUntilDefault}
       />
       {runtimeOptions.problem ? (
-        <LoadProblem label="Sampling runtime authorization options" problem={runtimeOptions.problem} />
+        <LoadProblem label="采样运行时授权选项" problem={runtimeOptions.problem} />
       ) : null}
     </div>
   );
@@ -98,29 +98,29 @@ export function AdmissionPolicyPanel({
 function PolicyDetail({ policy }: { policy: AdmissionPolicy }) {
   return (
     <section>
-      <SectionHeading eyebrow="Immutable policy" title={policy.id} />
+      <SectionHeading eyebrow="不可变策略" title={policy.id} />
       <dl className={styles.factGrid}>
-        <Fact label="Status" value={`${policy.status} / ${policy.effective_authorization_state}`} />
-        <Fact label="Platform" value={`${policy.platform} / ${captureLabel(policy.capture_method)}`} />
-        <Fact label="Adapter Release" value={policy.adapter_release} />
-        <Fact label="Authorized purposes" value={policy.authorized_purposes.join(", ")} />
-        <Fact label="Authorization evidence" value={policy.authorization_reference} />
-        <Fact label="Valid until" value={formatTime(policy.valid_until)} />
-        <Fact label="Quota" value={`${policy.quota_remaining} total / ${policy.daily_task_limit} daily`} />
-        <Fact label="Rate" value={`${policy.minimum_request_interval_seconds}s / concurrency ${policy.max_concurrency}`} />
-        <Fact label="Next allowed" value={formatTime(policy.next_allowed_at)} />
-        <Fact label="Policy version" value={policy.policy_version} />
-        <Fact label="Definition SHA-256" value={policy.definition_hash} />
-        <Fact label="Supersedes" value={policy.supersedes_policy_id || "-"} />
+        <Fact label="状态" value={`${policy.status} / ${policy.effective_authorization_state}`} />
+        <Fact label="平台" value={`${policy.platform} / ${captureLabel(policy.capture_method)}`} />
+        <Fact label="适配器发布版本" value={policy.adapter_release} />
+        <Fact label="授权用途" value={policy.authorized_purposes.join(", ")} />
+        <Fact label="授权证据" value={policy.authorization_reference} />
+        <Fact label="有效至" value={formatTime(policy.valid_until)} />
+        <Fact label="配额" value={`总计 ${policy.quota_remaining} / 每日 ${policy.daily_task_limit}`} />
+        <Fact label="速率" value={`${policy.minimum_request_interval_seconds} 秒 / 并发 ${policy.max_concurrency}`} />
+        <Fact label="下次允许时间" value={formatTime(policy.next_allowed_at)} />
+        <Fact label="策略版本" value={policy.policy_version} />
+        <Fact label="定义 SHA-256" value={policy.definition_hash} />
+        <Fact label="替代策略" value={policy.supersedes_policy_id || "-"} />
       </dl>
       <div className={styles.tableWrap}>
         <table className={styles.dataTable}>
-          <thead><tr><th>Stage</th><th>Actor</th><th>Time</th><th>Reason</th></tr></thead>
+          <thead><tr><th>阶段</th><th>执行人</th><th>时间</th><th>原因</th></tr></thead>
           <tbody>
-            <AuditRow actor={policy.created_by} label="Created" time={policy.created_at} />
-            <AuditRow actor={policy.submitted_by} label="Submitted" time={policy.submitted_at} />
-            <AuditRow actor={policy.decided_by} label="Decided" reason={policy.decision_reason} time={policy.decided_at} />
-            <AuditRow actor={policy.revoked_by} label="Revoked" reason={policy.revocation_reason} time={policy.revoked_at} />
+            <AuditRow actor={policy.created_by} label="已创建" time={policy.created_at} />
+            <AuditRow actor={policy.submitted_by} label="已提交" time={policy.submitted_at} />
+            <AuditRow actor={policy.decided_by} label="已决策" reason={policy.decision_reason} time={policy.decided_at} />
+            <AuditRow actor={policy.revoked_by} label="已撤销" reason={policy.revocation_reason} time={policy.revoked_at} />
           </tbody>
         </table>
       </div>
@@ -143,7 +143,11 @@ function AuditRow({
 }
 
 function Status({ value }: { value: string }) {
-  return <span className={styles.status} data-status={value}>{value.replaceAll("_", " ")}</span>;
+  return <span className={styles.status} data-status={value}>{statusLabel(value)}</span>;
+}
+
+function statusLabel(value: string): string {
+  return ({ draft: "草稿", pending_review: "待复核", approved: "已批准", revoked: "已撤销", active: "生效中", not_assessed: "未评估", no_basis: "无依据", expired: "已过期" } as Record<string, string>)[value] || value.replaceAll("_", " ");
 }
 
 function formatTime(value: string | null): string {

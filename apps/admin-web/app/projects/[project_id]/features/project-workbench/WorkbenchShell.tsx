@@ -125,14 +125,14 @@ export function WorkbenchShell({
             currentRole={members.currentRole}
             data={promptData}
             projectId={project.id}
-          /> : <EmptyState text="正在准备 Prompt Program 工作台。" />
+          /> : <EmptyState text="正在准备 Prompt 程序工作台。" />
         ) : null}
         {activeTab === "secrets" ? (
           secretData ? <SecretStoreWorkspace
             currentRole={members.currentRole}
             data={secretData}
             projectId={project.id}
-          /> : <EmptyState text="正在准备 Secret Store 工作台。" />
+          /> : <EmptyState text="正在准备密钥库工作台。" />
         ) : null}
         {activeTab === "synthetic-lab" ? (
           syntheticData ? <SyntheticLabWorkspace
@@ -140,7 +140,7 @@ export function WorkbenchShell({
             currentRole={syntheticRuntimeUnavailable ? null : members.currentRole}
             data={syntheticData}
             projectId={project.id}
-          /> : <EmptyState text="正在准备 Synthetic Lab 工作台。" />
+          /> : <EmptyState text="正在准备合成测评实验室工作台。" />
         ) : null}
         {activeTab === "recommendations" ? (
           recommendationData ? <RecommendationWorkspace
@@ -148,13 +148,13 @@ export function WorkbenchShell({
             currentRole={recommendationRuntimeUnavailable ? null : members.currentRole}
             data={recommendationData}
             projectId={project.id}
-          /> : <EmptyState text="正在准备 Recommendations 工作台。" />
+          /> : <EmptyState text="正在准备建议工作台。" />
         ) : null}
         {activeTab === "measurement" ? (
           workflowCData ? <WorkflowCPanel
             data={workflowCData}
             projectId={project.id}
-          /> : <EmptyState text="正在准备 Measurement & Alerts 工作台。" />
+          /> : <EmptyState text="正在准备测量与告警工作台。" />
         ) : null}
         {activeTab === "knowledge" ? (
           knowledgeData ? <KnowledgeWorkspace

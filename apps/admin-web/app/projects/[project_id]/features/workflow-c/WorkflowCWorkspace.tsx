@@ -106,12 +106,12 @@ function WorkflowCContents({
     <>
       <header className={standalone ? styles.header : panelStyles.panelHeader}>
         <div>
-          <p className={styles.kicker}>GEO measurement control</p>
+          <p className={styles.kicker}>GEO 测量控制台</p>
           {standalone
-            ? <h1>Sampling, Evidence & Alerts</h1>
-            : <h2>Sampling, Evidence & Alerts</h2>}
+            ? <h1>采样、证据与告警</h1>
+            : <h2>采样、证据与告警</h2>}
           <div className={styles.headerMeta}>
-            <span>Project <code>{projectId}</code></span>
+            <span>项目 <code>{projectId}</code></span>
             <span>{roleLabel(data.currentRole)}</span>
           </div>
         </div>
@@ -125,22 +125,22 @@ function WorkflowCContents({
 
       {data.alerts.problem ? (
         <div className={panelStyles.controlGate}>
-          <LoadProblem label="Workflow C control plane" problem={data.alerts.problem} />
+          <LoadProblem label="Workflow C 控制平面" problem={data.alerts.problem} />
         </div>
       ) : null}
 
       <section className={styles.summaryBand} aria-label="当前运行摘要">
-        <Summary label="Planned" value={assessment?.planned_task_count ?? "-"} />
-        <Summary label="Valid" value={assessment?.valid_task_count ?? "-"} tone="good" />
-        <Summary label="Invalid" value={assessment?.invalid_task_count ?? "-"} tone="bad" />
-        <Summary label="Missing" value={assessment?.missing_task_count ?? "-"} tone="warning" />
+        <Summary label="已规划" value={assessment?.planned_task_count ?? "-"} />
+        <Summary label="有效" value={assessment?.valid_task_count ?? "-"} tone="good" />
+        <Summary label="无效" value={assessment?.invalid_task_count ?? "-"} tone="bad" />
+        <Summary label="缺失" value={assessment?.missing_task_count ?? "-"} tone="warning" />
         <Summary
-          label="Evidence"
+          label="证据"
           value={assessment ? evidenceLabel(assessment.status) : "未选择"}
           tone={assessment?.status === "complete" ? "good" : "warning"}
         />
         <Summary
-          label="Active alerts"
+          label="活动告警"
           value={data.alerts.data?.items.filter((item) => item.status !== "resolved").length ?? "-"}
           tone="bad"
         />
@@ -148,7 +148,7 @@ function WorkflowCContents({
 
       <ResourceSelector data={data} projectId={projectId} />
 
-      <nav className={styles.viewTabs} aria-label="Measurement views">
+      <nav className={styles.viewTabs} aria-label="测量视图">
         {workflowViews.map((view) => (
           <a
             aria-current={data.activeView === view ? "page" : undefined}
@@ -234,27 +234,27 @@ function Overview({ data }: { data: WorkflowCWorkspaceData }) {
   return (
     <div className={styles.overviewGrid}>
       <section className={styles.overviewPrimary}>
-        <SectionHeading eyebrow="Sampling run" title={run ? `Run ${shortId(run.run.id)}` : "未选择 Run"} />
-        {data.run.problem ? <LoadProblem label="Sampling Run" problem={data.run.problem} /> : null}
+        <SectionHeading eyebrow="采样运行" title={run ? `运行 ${shortId(run.run.id)}` : "未选择运行"} />
+        {data.run.problem ? <LoadProblem label="采样运行" problem={data.run.problem} /> : null}
         {run ? (
           <dl className={styles.factGrid}>
             <Fact label="状态" value={run.run.status} />
-            <Fact label="Capture" value={captureLabel(run.suite.source_stratum.capture_method)} />
+            <Fact label="采集方式" value={captureLabel(run.suite.source_stratum.capture_method)} />
             <Fact label="完成度" value={percent(run.assessment.valid_completion_ratio)} />
             <Fact label="有效问题" value={`${run.assessment.sufficient_question_count} / ${run.assessment.question_count}`} />
-            <Fact label="Adapter" value={run.suite.source_stratum.adapter_release} />
-            <Fact label="Denominator SHA-256" value={run.assessment.denominator_hash} />
+            <Fact label="适配器" value={run.suite.source_stratum.adapter_release} />
+            <Fact label="分母 SHA-256" value={run.assessment.denominator_hash} />
           </dl>
-        ) : <EmptyState title="Sampling Run 未加载" />}
+        ) : <EmptyState title="采样运行未加载" />}
       </section>
       <section>
-        <SectionHeading eyebrow="Evidence quality" title="结果门禁" />
+        <SectionHeading eyebrow="证据质量" title="结果门禁" />
         <div className={styles.signalList}>
-          <Signal label="Semantic metrics" value={metrics ? `${metrics.results.length} metrics` : "未选择"} />
-          <Signal label="Worst question" value={metrics?.performance.worst_question_id || "-"} />
-          <Signal label="Comparison" value={comparisons?.results[0] ? conclusionLabel(comparisons.results[0].conclusion) : "未选择"} />
-          <Signal label="Drift signals" value={drift ? String(drift.model_drift.length + drift.source_drift.length + drift.effect_drift.length) : "未选择"} />
-          <Signal label="Alerts" value={String(data.alerts.data?.total ?? 0)} />
+          <Signal label="语义指标" value={metrics ? `${metrics.results.length} 项指标` : "未选择"} />
+          <Signal label="最差问题" value={metrics?.performance.worst_question_id || "-"} />
+          <Signal label="比较结论" value={comparisons?.results[0] ? conclusionLabel(comparisons.results[0].conclusion) : "未选择"} />
+          <Signal label="漂移信号" value={drift ? String(drift.model_drift.length + drift.source_drift.length + drift.effect_drift.length) : "未选择"} />
+          <Signal label="告警" value={String(data.alerts.data?.total ?? 0)} />
         </div>
       </section>
     </div>
@@ -269,25 +269,25 @@ function ResourceSelector({ data, projectId }: { data: WorkflowCWorkspaceData; p
         <input name="workflow_view" type="hidden" value={data.activeView} />
         <ResourceSelect
           defaultValue={data.selection.suiteId}
-          label="Sampling Suite"
+          label="采样套件"
           name="suite_id"
           options={(data.suites.data?.items || []).map((item) => ({
-            label: `${item.source_stratum.platform} · ${shortId(item.id)} · ${item.planned_task_count} tasks`,
+            label: `${item.source_stratum.platform} · ${shortId(item.id)} · ${item.planned_task_count} 项任务`,
             value: item.id
           }))}
         />
         <ResourceSelect
           defaultValue={data.selection.runId}
-          label="Sampling Run"
+          label="采样运行"
           name="run_id"
           options={(data.runs.data?.items || []).map((item) => ({
-            label: `${item.status} · ${shortId(item.id)} · ${item.reserved_task_count} tasks`,
+            label: `${item.status} · ${shortId(item.id)} · ${item.reserved_task_count} 项任务`,
             value: item.id
           }))}
         />
         <ResourceSelect
           defaultValue={data.selection.snapshotHash}
-          label="Metric Snapshot"
+          label="指标快照"
           name="metric_snapshot"
           options={(data.metricSnapshots.data?.items || []).map((item) => ({
             label: `${formatResourceTime(item.computed_at)} · ${shortHash(item.snapshot_hash)}`,
@@ -296,7 +296,7 @@ function ResourceSelector({ data, projectId }: { data: WorkflowCWorkspaceData; p
         />
         <ResourceSelect
           defaultValue={data.selection.familyHash}
-          label="Comparison Family"
+          label="比较族"
           name="comparison_family"
           options={(data.comparisonFamilies.data?.items || []).map((item) => ({
             label: `${item.family} · ${shortHash(item.family_hash)}`,
@@ -305,7 +305,7 @@ function ResourceSelector({ data, projectId }: { data: WorkflowCWorkspaceData; p
         />
         <ResourceSelect
           defaultValue={data.selection.driftHash}
-          label="Drift Report"
+          label="漂移报告"
           name="drift_report"
           options={(data.driftReports.data?.items || []).map((item) => ({
             label: `${item.method_version} · ${shortHash(item.report_hash)}`,
@@ -314,7 +314,7 @@ function ResourceSelector({ data, projectId }: { data: WorkflowCWorkspaceData; p
         />
         <ResourceSelect
           defaultValue={data.selection.alertId}
-          label="Alert"
+          label="告警"
           name="alert_id"
           options={(data.alerts.data?.items || []).map((item) => ({
             label: `${item.status} · ${item.rule.rule_key} · ${shortId(item.id)}`,
@@ -323,7 +323,7 @@ function ResourceSelector({ data, projectId }: { data: WorkflowCWorkspaceData; p
         />
         <ResourceSelect
           defaultValue={data.selection.policyId}
-          label="Admission Policy"
+          label="准入策略"
           name="policy_id"
           options={(data.admissionPolicies.data?.items || []).map((item) => ({
             label: `${item.platform} · r${item.revision} · ${item.status}`,
@@ -392,8 +392,8 @@ function Signal({ label, value }: { label: string; value: string }) {
 
 export function captureLabel(value: string): string {
   if (value === "provider_api") return "Provider API";
-  if (value === "proxy_grounded_api") return "Grounded API";
-  if (value === "manual_ui") return "Manual UI";
+  if (value === "proxy_grounded_api") return "代理接地 API";
+  if (value === "manual_ui") return "人工界面";
   return value;
 }
 

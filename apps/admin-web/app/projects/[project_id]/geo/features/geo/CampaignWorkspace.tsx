@@ -28,11 +28,11 @@ export function CampaignWorkspace({ projectId, data, catalog }: {
     .filter((item): item is string => Boolean(item))));
   return <section className={styles.workspace}>
     <header className={styles.pageHeading}>
-      <div><h2>Campaign 总览</h2><p>围绕一个产品维护消费者问题、固定监测口径并查看阶段性结果。</p></div>
-      <CommandPanel label="新建 Campaign">
+      <div><h2>活动总览</h2><p>围绕一个产品维护消费者问题、固定监测口径并查看阶段性结果。</p></div>
+      <CommandPanel label="新建活动">
         <ActionForm action={createCampaign} submitLabel="创建并建立渠道任务" disabled={data.destinations.data.length === 0}>
           <HiddenProject projectId={projectId} />
-          <label>Campaign 名称<input name="name" required placeholder="例如：V600 澳大利亚推荐覆盖" /></label>
+          <label>活动名称<input name="name" required placeholder="例如：V600 澳大利亚推荐覆盖" /></label>
           <label>市场<select name="market_profile_id" required defaultValue={catalog.markets.data[0]?.id || ""}>{catalog.markets.data.map((item) => <option key={item.id} value={item.id}>{marketName(catalog.markets.data, item.id)}</option>)}</select></label>
           <label>主产品<select name="primary_product_entity_id" required defaultValue={products[0]?.id || ""}>{products.map((item) => <option key={item.id} value={item.id}>{item.canonical_name}</option>)}</select></label>
           <label>目标渠道<select name="destination_ids" required multiple size={Math.min(6, Math.max(3, data.destinations.data.length))}>{data.destinations.data.map((item) => <option key={item.id} value={item.id}>{item.destination_key}</option>)}</select></label>
@@ -43,8 +43,8 @@ export function CampaignWorkspace({ projectId, data, catalog }: {
     </header>
 
     <section className={styles.panel}>
-      <h3>产品 Campaign</h3>
-      <table className={styles.table}><thead><tr><th>Campaign</th><th>产品</th><th>市场</th><th>状态</th></tr></thead><tbody>
+      <h3>产品活动</h3>
+      <table className={styles.table}><thead><tr><th>活动</th><th>产品</th><th>市场</th><th>状态</th></tr></thead><tbody>
         {data.campaigns.data.map((item) => <tr key={item.id}><td><a href={geoHref(projectId, selection, {
           campaign_id: item.id, protocol_id: undefined, destination_id: undefined,
           opportunity_id: undefined, brief_version_id: undefined, attempt_id: undefined,
@@ -63,7 +63,7 @@ export function CampaignWorkspace({ projectId, data, catalog }: {
         <ResourceBlock resource={data.queries}>{(queries) => queries.length ? <table className={styles.table}><thead><tr><th>问题</th><th>意图</th><th>状态</th></tr></thead><tbody>{queries.map((query) => <tr key={query.id}><td><strong>{query.query_text}</strong></td><td>{queryKindLabel(query.query_kind)} · {query.locale}</td><td><Status value={query.status} /></td></tr>)}</tbody></table> : <Empty>还没有消费者问题。先添加真实购买或比较场景中的问法。</Empty>}</ResourceBlock>
         <CommandPanel label="添加消费者问题"><ActionForm action={createMonitoringQuery} submitLabel="添加问题" disabled={!selectedCampaign}>
           <HiddenProject projectId={projectId} /><input type="hidden" name="campaign_id" value={selectedCampaign?.id || ""} /><input type="hidden" name="market_profile_id" value={selectedCampaign?.market_profile_id || ""} />
-          <label>消费者问题<textarea name="query_text" required placeholder="例如：Which robotic lawn mower should I consider for a 600 m² lawn?" /></label>
+          <label>消费者问题<textarea name="query_text" required placeholder="例如：600 平方米草坪适合考虑哪款机器人割草机？" /></label>
           <div className={styles.inline}><label>意图<select name="query_kind" defaultValue="recommendation"><option value="recommendation">商品推荐</option><option value="comparison">产品比较</option><option value="research">购买调研</option><option value="support">使用支持</option></select></label>
             <label>语言<input name="locale" defaultValue={market?.locale || "en-AU"} required /></label></div>
         </ActionForm></CommandPanel>

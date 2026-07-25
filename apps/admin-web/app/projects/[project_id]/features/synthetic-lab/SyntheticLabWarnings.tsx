@@ -14,13 +14,13 @@ export function SyntheticLabWarnings({ summary }: { summary?: WarningSummary }) 
   return (
     <section className={styles.warningSection} aria-labelledby="synthetic-warning-heading">
       <div className={styles.sectionHeading}>
-        <div><p>Required evidence</p><h3 id="synthetic-warning-heading">Warning 数量、占比与分层</h3></div>
+        <div><p>必需证据</p><h3 id="synthetic-warning-heading">警告数量、占比与分层</h3></div>
         <span className={styles.evidenceState}>{summary ? "evidence available" : "evidence unavailable"}</span>
       </div>
       <div className={styles.warningTotals}>
-        <Metric label="Warning 数量" value={summary ? String(summary.warning_count) : "--"} />
+        <Metric label="警告数量" value={summary ? String(summary.warning_count) : "--"} />
         <Metric label="候选总数" value={summary ? String(summary.candidate_count) : "--"} />
-        <Metric label="Warning 占比" value={summary ? formatRatio(summary.warning_ratio) : "--"} />
+        <Metric label="警告占比" value={summary ? formatRatio(summary.warning_ratio) : "--"} />
       </div>
       {!summary ? (
         <p className={styles.unknownEvidence}>暂无可分层 warning evidence；不会将缺失证据记为 0。</p>

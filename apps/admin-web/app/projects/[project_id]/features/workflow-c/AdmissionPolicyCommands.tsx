@@ -74,10 +74,10 @@ export function AdmissionPolicyCommands({
     <section className={styles.commandBand} aria-labelledby="admission-command-heading">
       <div className={styles.sectionHeading}>
         <div>
-          <p>Control plane</p>
+          <p>控制面</p>
           <h3 id="admission-command-heading">授权策略操作</h3>
         </div>
-        <span>{canManage ? "owner / admin" : "只读"}</span>
+        <span>{canManage ? "所有者 / 管理员" : "只读"}</span>
       </div>
       <form action={createAction} className={styles.commandForm}>
         <input name="project_id" type="hidden" value={projectId} />
@@ -106,7 +106,7 @@ export function AdmissionPolicyCommands({
         <label><span>最小间隔（秒）</span><input defaultValue="2" disabled={createDisabled} min="0" name="minimum_request_interval_seconds" required type="number" /></label>
         <label><span>最大并发</span><input defaultValue="1" disabled={createDisabled} min="1" name="max_concurrency" required type="number" /></label>
         <label>
-          <span>替代现有 Policy（可选）</span>
+          <span>替代现有策略（可选）</span>
           <select disabled={createDisabled} name="supersedes_policy_id">
             <option value="">不替代</option>
             {policies.map((item) => (

@@ -38,10 +38,10 @@ export function PromptProgramWorkspace({
   return (
     <div className={styles.workspace}>
       <header className={styles.workspaceHeader}>
-        <div><p>Prompt governance</p><h2>Prompt Programs</h2></div>
+        <div><p>Prompt 治理</p><h2>Prompt 程序</h2></div>
         <div className={styles.summary}>
-          <span><strong>{data.programs.total}</strong> Programs</span>
-          <span><strong>{data.releases.total}</strong> Releases</span>
+          <span><strong>{data.programs.total}</strong> 个程序</span>
+          <span><strong>{data.releases.total}</strong> 个发布版本</span>
           <span><strong>{currentRole ? roleLabel(currentRole) : "未授权"}</strong> 当前角色</span>
         </div>
       </header>
@@ -55,7 +55,7 @@ export function PromptProgramWorkspace({
       />
 
       <details className={styles.createSection}>
-        <summary>新建 Prompt Program</summary>
+        <summary>新建 Prompt 程序</summary>
         <PromptReleaseEditorForm
           catalog={data.bootstrap}
           disabled={!canContribute}
@@ -66,20 +66,20 @@ export function PromptProgramWorkspace({
         />
       </details>
 
-      {data.programsProblem ? <LoadProblem label="Program 列表" problem={data.programsProblem} /> : null}
+      {data.programsProblem ? <LoadProblem label="程序列表" problem={data.programsProblem} /> : null}
       {!data.programsProblem && data.programs.items.length === 0 ? (
-        <div className={styles.emptyState}><strong>暂无 Prompt Program</strong></div>
+        <div className={styles.emptyState}><strong>暂无 Prompt 程序</strong></div>
       ) : null}
 
       {data.programs.items.length ? (
         <section className={styles.programSection} aria-labelledby="prompt-program-list-heading">
           <div className={styles.sectionHeading}>
-            <h3 id="prompt-program-list-heading">Programs</h3>
+            <h3 id="prompt-program-list-heading">程序列表</h3>
             <span>{data.programs.offset + 1}-{Math.min(data.programs.offset + data.programs.items.length, data.programs.total)} / {data.programs.total}</span>
           </div>
           <div className={styles.tableWrap}>
             <table className={styles.table}>
-              <thead><tr><th>Purpose</th><th>类型</th><th>Owner</th><th>操作</th></tr></thead>
+              <thead><tr><th>用途</th><th>类型</th><th>所有者</th><th>操作</th></tr></thead>
               <tbody>{data.programs.items.map((program) => (
                 <ProgramRow
                   active={program.id === data.selectedProgram?.id}
@@ -101,7 +101,7 @@ export function PromptProgramWorkspace({
             <code>{data.selectedProgram.id}</code>
           </div>
           <details className={styles.createSection}>
-            <summary>创建下一版 Release</summary>
+            <summary>创建下一版发布版本</summary>
             <PromptReleaseEditorForm
               catalog={data.bootstrap}
               disabled={!canContribute || latestReleaseVersion < 1 || data.selectedProgram.program_kind === "reference_translation"}
@@ -115,9 +115,9 @@ export function PromptProgramWorkspace({
               projectId={projectId}
             />
           </details>
-          {data.releasesProblem ? <LoadProblem label="Release 列表" problem={data.releasesProblem} /> : null}
+          {data.releasesProblem ? <LoadProblem label="发布版本列表" problem={data.releasesProblem} /> : null}
           {!data.releasesProblem && data.releases.items.length === 0 ? (
-            <div className={styles.emptyState}><strong>此 Program 没有 Release</strong></div>
+            <div className={styles.emptyState}><strong>此程序没有发布版本</strong></div>
           ) : null}
           {data.releases.items.length ? (
             <ReleaseTable
@@ -143,7 +143,7 @@ export function PromptProgramWorkspace({
           bindingProblem={data.bindingsProblem}
         />
       ) : data.selectedProgram && data.releases.items.length ? (
-        <div className={styles.loadError} role="alert"><strong>所选 Release 不属于当前 Program。</strong></div>
+        <div className={styles.loadError} role="alert"><strong>所选发布版本不属于当前程序。</strong></div>
       ) : null}
     </div>
   );
@@ -180,11 +180,11 @@ function ReleaseTable({
   return (
     <div className={styles.tableWrap}>
       <table className={styles.table}>
-        <thead><tr><th>版本</th><th>状态</th><th>Release SHA-256</th><th>模型策略</th><th>操作</th></tr></thead>
+        <thead><tr><th>版本</th><th>状态</th><th>发布版本 SHA-256</th><th>模型策略</th><th>操作</th></tr></thead>
         <tbody>{items.map((release) => (
           <tr className={release.id === selectedReleaseId ? styles.activeRow : undefined} key={release.id}>
             <td><strong>v{release.version}</strong><code>{release.id}</code></td>
-            <td><StatusPill value={release.state.status} /><small>state v{release.state.version}</small></td>
+            <td><StatusPill value={release.state.status} /><small>状态 v{release.state.version}</small></td>
             <td><code>{release.release_hash}</code></td>
             <td><span>{release.model_policy_version}</span><code>{release.model_policy_hash}</code></td>
             <td><a className={styles.tableLink} href={workspaceHref(projectId, release.program_id, release.id)}>检查</a></td>
@@ -225,19 +225,19 @@ function ReleaseDetail({
   return (
     <section className={styles.detailSection} aria-labelledby="prompt-release-detail-heading">
       <div className={styles.sectionHeading}>
-        <div><p>Release lineage</p><h3 id="prompt-release-detail-heading">Release v{release.version}</h3></div>
+        <div><p>发布版本溯源</p><h3 id="prompt-release-detail-heading">发布版本 v{release.version}</h3></div>
         <StatusPill value={release.state.status} />
       </div>
       <dl className={styles.lineageGrid}>
-        <Lineage label="Release SHA-256" value={release.release_hash} />
-        <Lineage label="System Template SHA-256" value={release.system_template_hash} />
-        <Lineage label="User Template SHA-256" value={release.user_template_hash} />
-        <Lineage label="Model Policy SHA-256" value={release.model_policy_hash} />
-        <Lineage label="Variable / Input / Output" value={`${release.variable_schema_version} · ${release.input_schema_version} · ${release.output_schema_version}`} />
-        <Lineage label="Test Set" value={`${release.test_set_id} · v${release.test_set_version}`} />
-        <Lineage label="Compiler" value={release.compiler_version} />
-        <Lineage label="State actor / time" value={`${release.state.acted_by} · ${formatTime(release.state.acted_at)}`} />
-        <Lineage label="Evidence reference" value={release.state.evidence_ref || "尚无"} />
+        <Lineage label="发布版本 SHA-256" value={release.release_hash} />
+        <Lineage label="系统模板 SHA-256" value={release.system_template_hash} />
+        <Lineage label="用户模板 SHA-256" value={release.user_template_hash} />
+        <Lineage label="模型策略 SHA-256" value={release.model_policy_hash} />
+        <Lineage label="变量 / 输入 / 输出" value={`${release.variable_schema_version} · ${release.input_schema_version} · ${release.output_schema_version}`} />
+        <Lineage label="测试集" value={`${release.test_set_id} · v${release.test_set_version}`} />
+        <Lineage label="编译器" value={release.compiler_version} />
+        <Lineage label="状态操作人 / 时间" value={`${release.state.acted_by} · ${formatTime(release.state.acted_at)}`} />
+        <Lineage label="证据引用" value={release.state.evidence_ref || "尚无"} />
       </dl>
       <PromptReleaseCommands
         actorIdentityId={actorIdentityId}
@@ -295,7 +295,17 @@ function LoadProblem({ label, problem }: { label: string; problem: PromptLoadPro
 }
 
 function StatusPill({ value }: { value: string }) {
-  return <span className={`${styles.statusPill} ${styles[`status_${value}`] || ""}`}>{value}</span>;
+  return <span className={`${styles.statusPill} ${styles[`status_${value}`] || ""}`}>{promptStatusLabel(value)}</span>;
+}
+
+function promptStatusLabel(value: string): string {
+  return {
+    draft: "草稿",
+    tested: "已测试",
+    approved: "已批准",
+    frozen: "已冻结",
+    retired: "已退役"
+  }[value] || value;
 }
 
 function workspaceHref(projectId: string, programId: string, releaseId?: string): string {

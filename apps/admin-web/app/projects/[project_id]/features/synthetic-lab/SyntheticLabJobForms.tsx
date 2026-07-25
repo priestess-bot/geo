@@ -70,7 +70,7 @@ export function StyleProfileBuildForm({
         <fieldset disabled={!canContribute || pending || blocked}>
           <legend>冻结样本、Fact、Prompt 与模型后构建</legend>
           <div className={styles.formGridThree}>
-            <OptionSelect label="Fact snapshot" name="fact_snapshot_id" options={facts} />
+            <OptionSelect label="事实快照" name="fact_snapshot_id" options={facts} />
             <RuntimeSelect name="runtime_selection_id" options={eligibleRuntimes} />
             <p className={styles.formNote}>服务端将冻结创建 Profile 时保存的 {profile.approved_sample_count} 条样本 manifest。</p>
             <button type="submit">{pending ? "排队中..." : "构建 Profile"}</button>
@@ -110,15 +110,15 @@ export function ReviewCaseRunForm({
       <CommandFields commandKey={commandKey} projectId={projectId} />
       <input name="suite_version_id" type="hidden" value={suite.id} />
       <fieldset disabled={!canContribute || pending || blocked}>
-        <legend>运行一个冻结 Review Case</legend>
+          <legend>运行一个冻结测评用例</legend>
         <div className={styles.formGridThree}>
-          <OptionSelect label="Review Case" name="case_id" options={cases.map((item) => ({ id: item.id, label: `${item.ordinal} · ${item.case_key}` }))} />
+          <OptionSelect label="测评用例" name="case_id" options={cases.map((item) => ({ id: item.id, label: `${item.ordinal} · ${item.case_key}` }))} />
           <RuntimeSelect name="runtime_selection_id" options={eligibleRuntimes} />
-          <label><span>Style pass threshold</span><input defaultValue="4.2" max="5" min="0" name="style_pass_threshold" required step="0.1" type="number" /></label>
-          <button type="submit">{pending ? "排队中..." : "运行 Case"}</button>
+          <label><span>风格通过阈值</span><input defaultValue="4.2" max="5" min="0" name="style_pass_threshold" required step="0.1" type="number" /></label>
+          <button type="submit">{pending ? "排队中..." : "运行用例"}</button>
         </div>
       </fieldset>
-      {blocked ? <p className={styles.formNote}>blocked · frozen Suite / Case / six-purpose Provider API runtime required</p> : null}
+      {blocked ? <p className={styles.formNote}>已阻断 · 需要冻结的测评套件 / 用例 / 支持六种用途的 Provider API 运行时</p> : null}
       <SyntheticActionFeedback state={state} />
     </form>
   );
@@ -162,7 +162,7 @@ export function CorpusOfflineExperimentForms({
         <fieldset disabled={!canContribute || candidatePending || inventory.review_jobs.length === 0}>
           <legend>从通过或 Warning 的 Review 结果冻结候选 Corpus</legend>
           <div className={styles.formGridThree}>
-            <label><span>Completed Review Jobs</span><select multiple name="review_job_ids" required size={Math.min(8, Math.max(3, inventory.review_jobs.length))}>{inventory.review_jobs.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
+            <label><span>已完成测评任务</span><select multiple name="review_job_ids" required size={Math.min(8, Math.max(3, inventory.review_jobs.length))}>{inventory.review_jobs.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
             <button type="submit">{candidatePending ? "排队中..." : "冻结候选 Corpus"}</button>
           </div>
         </fieldset>
@@ -173,7 +173,7 @@ export function CorpusOfflineExperimentForms({
         <fieldset disabled={!canApprove || approvalPending || inventory.candidate_corpora.length === 0}>
           <legend>批准候选 Corpus</legend>
           <div className={styles.formGridThree}>
-            <OptionSelect label="Candidate Corpus" name="source_corpus_job_id" options={inventory.candidate_corpora} />
+            <OptionSelect label="候选语料" name="source_corpus_job_id" options={inventory.candidate_corpora} />
             <button type="submit">{approvalPending ? "排队中..." : "批准并冻结"}</button>
           </div>
         </fieldset>
@@ -184,11 +184,11 @@ export function CorpusOfflineExperimentForms({
         <fieldset disabled={!canContribute || experimentPending || experimentBlocked}>
           <legend>运行 baseline / current / candidate 三臂配对实验</legend>
           <div className={styles.formGridThree}>
-            <OptionSelect label="Question Set" name="question_set_id" options={inventory.question_sets} />
-            <OptionSelect label="Current approved Corpus" name="current_corpus_job_id" options={inventory.approved_corpora} />
-            <OptionSelect label="Candidate Corpus" name="candidate_corpus_job_id" options={inventory.candidate_corpora} />
+            <OptionSelect label="问题集" name="question_set_id" options={inventory.question_sets} />
+            <OptionSelect label="当前已批准语料" name="current_corpus_job_id" options={inventory.approved_corpora} />
+            <OptionSelect label="候选语料" name="candidate_corpus_job_id" options={inventory.candidate_corpora} />
             <RuntimeSelect name="runtime_selection_id" options={eligibleRuntimes} />
-            <label><span>Minimum valid pair ratio</span><input defaultValue="0.8" max="1" min="0.01" name="minimum_valid_pair_ratio" required step="0.01" type="number" /></label>
+            <label><span>最小有效配对比例</span><input defaultValue="0.8" max="1" min="0.01" name="minimum_valid_pair_ratio" required step="0.01" type="number" /></label>
             <button type="submit">{experimentPending ? "排队中..." : "运行三臂实验"}</button>
           </div>
         </fieldset>
@@ -234,9 +234,9 @@ export function StyleCollectionAdmissionForm({
       <fieldset disabled={!canContribute || pending || blocked}>
         <legend>澳洲英文 Style Collection</legend>
         <div className={styles.formGridThree}>
-          <label><span>Style Source</span><select name="style_source_revision_id" onChange={(event) => setSourceId(event.target.value)} value={source?.id || ""}>{liveSources.map((item) => <option key={item.id} value={item.id}>{item.channel} · r{item.revision_number} · {item.access_mode}</option>)}</select></label>
-          <label><span>Approved adapter</span><select name="adapter_release">{adapters.map((item) => <option key={item.id} value={item.adapter_release}>{item.adapter_release}</option>)}</select></label>
-          <label><span>Login Secret Reference</span><select name="login_secret_reference_id" required={source?.access_mode === "authenticated"}><option value="">无需 Secret</option>{secrets.map((item) => <option key={item.reference_id} value={item.reference_id}>{item.purpose} · v{item.current_version}</option>)}</select></label>
+          <label><span>风格来源</span><select name="style_source_revision_id" onChange={(event) => setSourceId(event.target.value)} value={source?.id || ""}>{liveSources.map((item) => <option key={item.id} value={item.id}>{item.channel} · r{item.revision_number} · {item.access_mode}</option>)}</select></label>
+          <label><span>已批准适配器</span><select name="adapter_release">{adapters.map((item) => <option key={item.id} value={item.adapter_release}>{item.adapter_release}</option>)}</select></label>
+          <label><span>登录密钥引用</span><select name="login_secret_reference_id" required={source?.access_mode === "authenticated"}><option value="">无需密钥</option>{secrets.map((item) => <option key={item.reference_id} value={item.reference_id}>{item.purpose} · v{item.current_version}</option>)}</select></label>
           <button disabled={!canContribute || pending || blocked} type="submit">{pending ? "排队中..." : "批准并排队采集"}</button>
         </div>
       </fieldset>
@@ -288,5 +288,5 @@ function OptionSelect({
 }
 
 function RuntimeSelect({ name, options }: { name: string; options: SyntheticRuntimeOption[] }) {
-  return <label><span>Approved model runtime</span><select name={name} required>{options.map((option) => <option key={option.selection_id} value={option.selection_id}>{option.provider} · {option.configured_model} · {option.model_release_id}</option>)}</select></label>;
+  return <label><span>已批准模型运行时</span><select name={name} required>{options.map((option) => <option key={option.selection_id} value={option.selection_id}>{option.provider} · {option.configured_model} · {option.model_release_id}</option>)}</select></label>;
 }

@@ -44,7 +44,7 @@ export function RecommendationGenerationPanel({
   return (
     <section className={styles.commandsSection} aria-labelledby="recommendation-generation-heading">
       <div className={styles.sectionHeading}>
-        <div><p>Durable Job</p><h3 id="recommendation-generation-heading">重新生成建议</h3></div>
+        <div><p>持久化任务</p><h3 id="recommendation-generation-heading">重新生成建议</h3></div>
         <span>{selectors.length} 个证据引用</span>
       </div>
 
@@ -64,7 +64,7 @@ export function RecommendationGenerationPanel({
         <div className={styles.generationGrid}>
           <PromptSelect
             disabled={disabled || catalog.recommendationPrompts.length === 0}
-            label="Recommendation Prompt"
+            label="建议 Prompt"
             name="prompt_binding_id"
             options={catalog.recommendationPrompts}
           />
@@ -107,13 +107,13 @@ export function RecommendationGenerationPanel({
           {arbiterEnabled && (!catalog.arbiterPrompts.length || !arbiterRuntime) ? (
             <div className={styles.blockedNotice} role="status">
               <strong>独立仲裁不可用</strong>
-              <span>需要至少一个最新冻结的 Arbiter Prompt 和一个允许 arbiter 用途的批准运行时。</span>
+              <span>需要至少一个最新冻结的仲裁 Prompt 和一个允许仲裁用途的批准运行时。</span>
             </div>
           ) : null}
           <div className={styles.generationGrid}>
             <PromptSelect
               disabled={disabled || !arbiterEnabled || catalog.arbiterPrompts.length === 0}
-              label="Arbiter Prompt"
+              label="仲裁 Prompt"
               name="arbiter_prompt_binding_id"
               options={catalog.arbiterPrompts}
             />
@@ -165,7 +165,7 @@ function PromptSelect({ disabled, label, name, options }: {
         {!options.length ? <option value="">无最新冻结 Prompt</option> : null}
         {options.map((item) => (
           <option key={item.id} value={item.id}>
-            {item.purpose} · Release v{item.release_version} · Binding v{item.binding_version}
+            {item.purpose} · 发布版本 v{item.release_version} · 绑定 v{item.binding_version}
           </option>
         ))}
       </select>
@@ -227,10 +227,10 @@ function RuntimeLineage({ runtime }: { runtime: RecommendationModelRuntimeOption
     <details className={styles.lineageDisclosure}>
       <summary>查看冻结运行时身份</summary>
       <dl className={styles.factGrid}>
-        <div><dt>Selection</dt><dd><code>{runtime.selection_id}</code></dd></div>
-        <div><dt>Manifest</dt><dd><code>{runtime.manifest_id}</code></dd></div>
-        <div><dt>Adapter Release</dt><dd><code>{runtime.adapter_release_id}</code></dd></div>
-        <div><dt>Model Release</dt><dd><code>{runtime.model_release_id}</code></dd></div>
+        <div><dt>选择项</dt><dd><code>{runtime.selection_id}</code></dd></div>
+        <div><dt>清单</dt><dd><code>{runtime.manifest_id}</code></dd></div>
+        <div><dt>适配器发布版本</dt><dd><code>{runtime.adapter_release_id}</code></dd></div>
+        <div><dt>模型发布版本</dt><dd><code>{runtime.model_release_id}</code></dd></div>
       </dl>
     </details>
   );
@@ -271,12 +271,12 @@ function primaryBlockReason(
   selectorCount: number
 ): string {
   if (!catalog.recommendationPrompts.length) {
-    return "请先批准、冻结并绑定 Recommendation Prompt Release。";
+    return "请先批准、冻结并绑定建议 Prompt 发布版本。";
   }
   if (!runtimes.length) {
     return "请先批准项目模型运行时，并允许所选 Prompt 的精确用途。";
   }
-  if (!selectorCount) return "当前 Recommendation 没有可重新解析的证据选择器。";
+  if (!selectorCount) return "当前建议没有可重新解析的证据选择器。";
   return "生成目录尚未满足入队门禁。";
 }
 

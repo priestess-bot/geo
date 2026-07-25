@@ -30,7 +30,7 @@ def test_synthetic_loader_is_bounded_project_scoped_and_fail_closed() -> None:
     assert 'activeTab === "synthetic-lab" ? loadSyntheticLabWorkspace(projectId, query)' in page
     assert "SyntheticLabWorkspace" in shell
     assert "syntheticRuntimeUnavailable ? null : members.currentRole" in shell
-    assert 'id: "synthetic-lab", label: "Synthetic Lab"' in tabs
+    assert 'id: "synthetic-lab", label: "合成测评实验室"' in tabs
     assert "const PAGE_SIZE = 100" in data
     assert "await Promise.all([" in data
     for path in (
@@ -201,20 +201,20 @@ def test_ui_covers_governance_review_generation_and_warning_contracts() -> None:
         "synthetic = true",
         "test_only = true",
         "publication_eligible = false",
-        "Customer Portal 不读取、不展示且不可发布这些结果",
+            "客户门户不读取、不展示且不可发布这些结果",
     ):
         assert marker in workspace
     for control in (
-        "采集 Authorization",
-        "Style Source 与人工样本",
-        "Style Profile",
-        "Review Suite / Case",
-        "生成、修订、Corpus 与三臂实验",
+            "采集授权",
+            "风格来源与人工样本",
+            "风格画像",
+            "测评套件 / 用例",
+            "生成、修订、语料与三臂实验",
     ):
         assert control in workspace
     assert "取消任务" in jobs
     assert "构建 Profile" in jobs
-    assert "运行 Case" in jobs
+    assert "运行用例" in jobs
     assert "runtime_selection_id" in jobs
     assert "model-gateway/options" in source("syntheticLabData.ts")
     assert "EnqueueSyntheticJobForm" not in jobs
@@ -251,9 +251,9 @@ def test_ui_has_empty_loading_error_conflict_long_value_and_mobile_guards() -> N
     ).read_text(encoding="utf-8")
 
     assert "SyntheticLabLoading" in workspace
-    assert "Synthetic Lab unavailable" in workspace
+    assert "合成测评实验室暂不可用" in workspace
     assert "LoadProblem" in workspace
-    assert "暂无 Style Source" in workspace
+    assert "暂无风格来源" in workspace
     assert "409" in support and "状态冲突" in support
     assert "extraordinarily-long-release-identity" in fixture
     assert "overflow-x: auto" in styles

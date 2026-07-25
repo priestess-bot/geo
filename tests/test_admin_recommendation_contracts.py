@@ -21,7 +21,7 @@ def test_recommendation_loader_uses_bounded_project_scoped_projection() -> None:
     assert 'activeTab === "recommendations" ? loadRecommendationWorkspace(projectId, query)' in page
     assert "RecommendationWorkspace" in shell
     assert "recommendationRuntimeUnavailable ? null : members.currentRole" in shell
-    assert 'id: "recommendations", label: "Recommendations"' in tabs
+    assert 'id: "recommendations", label: "建议"' in tabs
     assert "const LIST_LIMIT = 200" in data
     assert "query: { limit: LIST_LIMIT, offset: 0 }" in data
     assert "`/v1/projects/${encodeURIComponent(projectId)}/recommendations`" in data
@@ -69,9 +69,9 @@ def test_recommendation_commands_cover_human_lifecycle_and_source_invalidation()
         "提交审核",
         "记录当前证据审核",
         "批准并创建草稿",
-        "拒绝 Recommendation",
+        "拒绝建议",
         "过期并阻断未启动草稿",
-        "核对并同步 stale 状态",
+        "核对并同步失效状态",
         "执行前复核来源",
     ]:
         assert label in commands
@@ -175,7 +175,7 @@ def test_recommendation_layout_handles_empty_errors_long_lineage_and_mobile() ->
     styles = source("Recommendations.module.css")
 
     assert "当前筛选没有结果" in workspace
-    assert "暂无 Recommendation" in workspace
+    assert "暂无建议" in workspace
     assert "problem.detail" in workspace
     assert "problem.correlationId" in workspace
     assert "state.correlationId" in feedback

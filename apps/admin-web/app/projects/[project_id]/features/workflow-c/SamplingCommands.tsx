@@ -57,28 +57,28 @@ export function SamplingCommands({
   return (
     <section className={styles.commandBand} aria-labelledby="sampling-command-heading">
       <div className={styles.sectionHeading}>
-        <div><p>Control plane</p><h3 id="sampling-command-heading">采样操作</h3></div>
-        <span>{canOperate ? "owner / admin / analyst" : "只读"}</span>
+        <div><p>控制平面</p><h3 id="sampling-command-heading">采样操作</h3></div>
+        <span>{canOperate ? "负责人 / 管理员 / 分析师" : "只读"}</span>
       </div>
       <div className={styles.commandGrid}>
         <form action={suiteAction} className={styles.commandForm}>
           <CommandIdentity commandKey={commandKeys.createSuite} projectId={projectId} />
-          <label><span>冻结输入</span><select disabled={suiteDisabled} name="suite_input_option_key" required><option value="">选择发布输入</option>{suiteInputOptions.map((option) => <option key={option.option_key} value={option.option_key}>{option.display_name} · {option.question_count} questions</option>)}</select></label>
+          <label><span>冻结输入</span><select disabled={suiteDisabled} name="suite_input_option_key" required><option value="">选择发布输入</option>{suiteInputOptions.map((option) => <option key={option.option_key} value={option.option_key}>{option.display_name} · {option.question_count} 个问题</option>)}</select></label>
           <label><span>每题重复</span><input defaultValue="10" disabled={suiteDisabled} max="100" min="1" name="repetitions" required type="number" /></label>
-          <label><span>统计合同</span><select disabled={suiteDisabled} name="statistics_method_version"><option value="paired-bootstrap-holm-v1">Paired bootstrap + Holm v1</option></select></label>
-          <label><span>Run 任务上限</span><input defaultValue="1000" disabled={suiteDisabled} min="1" name="max_planned_tasks" required type="number" /></label>
+          <label><span>统计合同</span><select disabled={suiteDisabled} name="statistics_method_version"><option value="paired-bootstrap-holm-v1">配对 Bootstrap + Holm v1</option></select></label>
+          <label><span>运行任务上限</span><input defaultValue="1000" disabled={suiteDisabled} min="1" name="max_planned_tasks" required type="number" /></label>
           <label><span>日任务上限</span><input defaultValue="1000" disabled={suiteDisabled} min="1" name="max_daily_tasks" required type="number" /></label>
           <label><span>最小间隔（秒）</span><input defaultValue="2" disabled={suiteDisabled} min="0" name="minimum_request_interval_seconds" required type="number" /></label>
           <label><span>最大并发</span><input defaultValue="1" disabled={suiteDisabled} min="1" name="max_concurrency" required type="number" /></label>
-          <button disabled={suiteDisabled} type="submit">{suitePending ? "冻结中..." : "创建 Suite"}</button>
+          <button disabled={suiteDisabled} type="submit">{suitePending ? "冻结中..." : "创建采样套件"}</button>
         </form>
 
         <form action={runAction} className={styles.commandForm}>
           <CommandIdentity commandKey={commandKeys.startRun} projectId={projectId} />
-          <label><span>Sampling Suite</span><select disabled={runDisabled} name="suite_id" required><option value="">选择 Suite</option>{suites.map((suite) => <option key={suite.id} value={suite.id}>{suite.source_stratum.platform} · {suitePurpose(suite, admissionPolicies)} · {suite.planned_task_count} tasks</option>)}</select></label>
-          <label><span>授权用途</span><output>由 Suite 的已批准 Admission Policy 冻结</output></label>
+          <label><span>采样套件</span><select disabled={runDisabled} name="suite_id" required><option value="">选择采样套件</option>{suites.map((suite) => <option key={suite.id} value={suite.id}>{suite.source_stratum.platform} · {suitePurpose(suite, admissionPolicies)} · {suite.planned_task_count} 项任务</option>)}</select></label>
+          <label><span>授权用途</span><output>由采样套件的已批准准入策略冻结</output></label>
           <label><span>最早执行时间</span><input defaultValue={requestedNotBefore} disabled={runDisabled} name="requested_not_before" required type="datetime-local" /></label>
-          <button disabled={runDisabled} type="submit">{runPending ? "创建中..." : "启动 Run"}</button>
+          <button disabled={runDisabled} type="submit">{runPending ? "创建中..." : "启动运行"}</button>
         </form>
 
         <form action={enqueueAction} className={styles.commandForm}>
@@ -92,7 +92,7 @@ export function SamplingCommands({
         <form action={cancelAction} className={styles.commandForm}>
           <CommandIdentity commandKey={commandKeys.cancelRun} projectId={projectId} />
           <RunSelector disabled={!canOperate || cancelPending} name="run_id" runs={runs} selectedRunId={selectedRunId} />
-          <button disabled={!canOperate || cancelPending || !selectedRunId} type="submit">{cancelPending ? "取消中..." : "取消 Run"}</button>
+          <button disabled={!canOperate || cancelPending || !selectedRunId} type="submit">{cancelPending ? "取消中..." : "取消运行"}</button>
         </form>
       </div>
       <WorkflowCActionFeedback state={suiteState} />
@@ -108,7 +108,7 @@ function CommandIdentity({ commandKey, projectId }: { commandKey: string; projec
 }
 
 function RunSelector({ disabled, name, runs, selectedRunId }: { disabled: boolean; name: string; runs: SamplingRun[]; selectedRunId: string }) {
-  return <label><span>Sampling Run</span><select defaultValue={selectedRunId} disabled={disabled} name={name} required><option value="">选择 Run</option>{runs.map((run) => <option key={run.id} value={run.id}>{run.status} · {shortId(run.id)} · {run.reserved_task_count} tasks</option>)}</select></label>;
+  return <label><span>采样运行</span><select defaultValue={selectedRunId} disabled={disabled} name={name} required><option value="">选择运行</option>{runs.map((run) => <option key={run.id} value={run.id}>{run.status} · {shortId(run.id)} · {run.reserved_task_count} 项任务</option>)}</select></label>;
 }
 
 function shortId(value: string): string {
@@ -123,5 +123,5 @@ function suitePurpose(suite: SamplingSuite, policies: AdmissionPolicy[]): string
   );
   return policy?.authorized_purposes.length === 1
     ? policy.authorized_purposes[0]
-    : "purpose unavailable";
+    : "用途暂不可用";
 }

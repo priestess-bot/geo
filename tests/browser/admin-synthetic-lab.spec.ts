@@ -60,7 +60,7 @@ test("M1-SYNTH-WEB-01: Admin admits a server-owned Style Collection job and obse
   const runtimeErrors = collectRuntimeErrors(page);
   await page.goto(`/projects/${PROJECT_ID}?tab=synthetic-lab&synthetic_suite_id=${SUITE_ID}&synthetic_job_id=${EXISTING_STYLE_COLLECTION_JOB_ID}`);
 
-  await expect(page.getByRole("heading", { level: 2, name: "Synthetic Lab" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 2, name: "合成测评实验室" })).toBeVisible();
   await expect(page.getByText("synthetic = true", { exact: true })).toBeVisible();
   await expect(page.getByText("test_only = true", { exact: true })).toBeVisible();
   await expect(page.getByText("publication_eligible = false", { exact: true })).toBeVisible();
@@ -118,7 +118,7 @@ test("M1-SYNTH-WEB-01: Admin admits a server-owned Style Collection job and obse
   await page.screenshot({ path: testInfo.outputPath("synthetic-lab-desktop.png"), fullPage: true });
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.getByRole("heading", { level: 2, name: "Synthetic Lab" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 2, name: "合成测评实验室" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath("synthetic-lab-mobile.png"), fullPage: true });
 });
@@ -131,7 +131,7 @@ test("M1-SYNTH-WEB-02: empty and unavailable projections fail closed", async ({ 
 
   await setMode(request, "unavailable");
   await page.reload();
-  await expect(page.getByRole("alert").filter({ hasText: "Synthetic Lab unavailable" }).first()).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: "合成测评实验室暂不可用" }).first()).toBeVisible();
   const admissionSection = page.locator("details").filter({
     has: page.getByText("排队自动 Style Collection", { exact: true })
   });

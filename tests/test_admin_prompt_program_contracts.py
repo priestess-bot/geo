@@ -19,7 +19,7 @@ def test_prompt_program_tab_loads_only_its_minimal_workspace_projection() -> Non
     assert 'activeTab === "prompts" ? loadPromptWorkspace(projectId, query)' in page
     assert "await Promise.all([" in page
     assert "PromptProgramWorkspace" in shell
-    assert 'id: "prompts", label: "Prompt Programs"' in tabs
+    assert 'id: "prompts", label: "Prompt 程序"' in tabs
     assert "limit: PROGRAM_PAGE_SIZE, offset" in data
     assert "const [programResponse, response] = await Promise.all([" in data
     assert "programsProblem" in data and "releasesProblem" in data
@@ -48,9 +48,9 @@ def test_prompt_bootstrap_catalog_is_strict_draft_only_and_idempotently_retryabl
     assert "idempotencyKey" in actions
     assert "revalidatePath" not in actions
     assert "目录不是批准结果" in panel
-    assert "只创建 v1 Draft" in panel
-    assert "使用同一 Key 重试失败项" in controls
-    assert "release state: draft · 未批准" in controls
+    assert "只创建 v1 草稿" in panel
+    assert "使用同一键重试失败项" in controls
+    assert "发布版本状态：草稿 · 未批准" in controls
     assert "approvePrompt" not in controls + actions
     assert "freezePrompt" not in controls + actions
     assert "bindPrompt" not in controls + actions
@@ -106,8 +106,8 @@ def test_prompt_controls_cover_release_lifecycle_and_do_not_derive_state_in_effe
     assert '<option disabled value="reference_translation">' in editor
     assert '<optgroup label="主类型（业务）">' in editor
     assert '<optgroup label="内部辅助（系统工作流）">' in editor
-    assert "Purpose（由 Program 类型固定）" in editor
-    assert "固定 Test Set（目录）" in editor
+    assert "用途（由 Prompt 程序类型固定）" in editor
+    assert "固定测试集（目录）" in editor
     assert 'name="purpose" type="hidden"' in editor
     assert 'name="test_set_id" type="hidden"' in editor
     assert 'name="test_set_hash" type="hidden"' in editor
@@ -117,15 +117,15 @@ def test_prompt_controls_cover_release_lifecycle_and_do_not_derive_state_in_effe
     assert 'programResponse.data.program_kind !== kind' in actions
     assert 'inventory.test_set_hash !== release.test_set_hash' in actions
     assert 'name="purpose" type="hidden" value={release.purpose}' in commands
-    assert "Purpose（由 Frozen Release 固定）" in commands
+    assert "用途（由冻结发布版本固定）" in commands
     assert 'defaultValue={release.purpose} name="purpose"' not in commands
     assert "authoritativeVersion !== expectedVersion" in actions
     for label in [
         "运行固定测试集",
         "批准",
         "冻结",
-        "退役 Release",
-        "绑定 Frozen Release",
+        "退役发布版本",
+        "绑定冻结发布版本",
         "比较版本",
     ]:
         assert label in commands

@@ -27,7 +27,7 @@ export function ObservationWorkspace({ projectId, data }: { projectId: string; d
       <div className={styles.metric}><span>产品被提及</span><strong>{data.observations.data.filter((item) => item.primary_product_mentioned).length}</strong></div>
       <div className={styles.metric}><span>引用投放页面</span><strong>{data.observations.data.flatMap((item) => item.citations).filter((item) => item.verified_placement).length}</strong></div>
     </div>
-    {!protocol ? <div className={styles.notice}><span>当前 Campaign 尚未建立监测方案。</span><a href={geoHref(projectId, selection, { section: "campaigns" })}>前往建立方案</a></div> : null}
+    {!protocol ? <div className={styles.notice}><span>当前活动尚未建立监测方案。</span><a href={geoHref(projectId, selection, { section: "campaigns" })}>前往建立方案</a></div> : null}
     {protocol && !canImport ? <div className={styles.notice}><span>方案需要批准并冻结后才能录入观察，确保前后测量口径一致。</span><a href={geoHref(projectId, selection, { section: "campaigns" })}>查看监测方案</a></div> : null}
     <ResourceBlock resource={data.observations}>{(observations) => observations.length ? <div className={styles.workspace}>{observations.map((observation) => <article className={styles.panel} key={observation.id}>
       <div className={styles.rowHeader}><div><strong>样本 #{observation.sample_index}</strong><span className={styles.meta}>{new Date(observation.observed_at).toLocaleString("zh-CN")}</span></div><div className={styles.toolbar}><span className={styles.sourceBadge}>{observation.source.source_badge}</span><Status value={observation.eligible ? "qualified" : "blocked"} /></div></div>
@@ -51,15 +51,15 @@ function OfficialReportForm({ projectId, campaignId }: {
     <label>不可变工件 URI<input name="artifact_uri" required pattern="s3://.+" placeholder="s3://bucket/report.json" /></label>
     <label>工件 SHA-256<input name="artifact_hash" required pattern="[0-9a-f]{64}" /></label>
     <div className={styles.inline}>
-      <label>Parser<input name="parser_name" required /></label>
-      <label>Parser 版本<input name="parser_version" required /></label>
+      <label>解析器<input name="parser_name" required /></label>
+      <label>解析器版本<input name="parser_version" required /></label>
       <label>账号引用<input name="account_ref" required /></label>
     </div>
     <div className={styles.inline}>
       <label>报告开始日期<input type="date" name="report_period_start" required /></label>
       <label>报告结束日期<input type="date" name="report_period_end" required /></label>
     </div>
-    <label>Rows JSON<textarea name="report_rows" required defaultValue="[]" /></label>
+    <label>行数据 JSON<textarea name="report_rows" required defaultValue="[]" /></label>
   </ActionForm>;
 }
 

@@ -41,7 +41,7 @@ export function CreateStyleSourceForm(props: CommandProps) {
         <legend>新增 Style Source</legend>
         <div className={styles.formGridThree}>
           <ChannelSelect />
-          <label><span>Access mode</span><select name="access_mode" onChange={(event) => setAccessMode(event.target.value)} value={accessMode}><option value="public">Public</option><option value="authenticated">Authenticated</option><option value="manual_import">Manual import</option></select></label>
+          <label><span>访问方式</span><select name="access_mode" onChange={(event) => setAccessMode(event.target.value)} value={accessMode}><option value="public">公开</option><option value="authenticated">已登录</option><option value="manual_import">人工导入</option></select></label>
           {manual
             ? <label className={styles.grow}><span>来源名称</span><input maxLength={200} name="source_label" required /></label>
             : <label className={styles.grow}><span>HTTPS URL</span><input maxLength={2048} name="source_url" required type="url" /></label>}
@@ -67,10 +67,10 @@ export function ManualSampleImportForm({ sources, ...props }: CommandProps & {
       <fieldset disabled={!props.canContribute || pending || manualSources.length === 0}>
         <legend>上传样本并生成预览</legend>
         <div className={styles.formGridThree}>
-          <OptionSelect label="Style Source" name="style_source_revision_id" options={manualSources.map((source) => ({ id: source.id, label: `${source.channel} · revision ${source.revision_number}` }))} />
-          <label><span>格式</span><select defaultValue="text" name="import_format"><option value="text">Text</option><option value="csv">CSV</option><option value="jsonl">JSONL</option></select></label>
+          <OptionSelect label="风格来源" name="style_source_revision_id" options={manualSources.map((source) => ({ id: source.id, label: `${source.channel} · 修订 ${source.revision_number}` }))} />
+          <label><span>格式</span><select defaultValue="text" name="import_format"><option value="text">纯文本</option><option value="csv">CSV</option><option value="jsonl">JSONL</option></select></label>
           <label><span>样本文件</span><input accept=".txt,.text,.csv,.jsonl,.ndjson,text/plain,text/csv,application/x-ndjson" name="sample_file" required type="file" /></label>
-          <label><span>来源权利</span><select defaultValue="" name="default_source_rights" required><option disabled value="">请选择权利依据</option><option value="owned">Owned</option><option value="licensed">Licensed</option><option value="public_reference">Public reference</option><option value="authorized_manual_capture">Authorised manual capture</option></select></label>
+          <label><span>来源权利</span><select defaultValue="" name="default_source_rights" required><option disabled value="">请选择权利依据</option><option value="owned">自有</option><option value="licensed">已授权</option><option value="public_reference">公开引用</option><option value="authorized_manual_capture">已授权人工采集</option></select></label>
           <label className={styles.spanTwo}><span>权利依据</span><textarea maxLength={2000} name="rights_evidence_reference" required rows={3} /></label>
           <button type="submit">{pending ? "扫描中..." : "生成安全预览"}</button>
         </div>
@@ -138,7 +138,7 @@ export function CreateStyleProfileForm({ inventory, ...props }: CommandProps & {
         <legend>创建 Style Profile draft</legend>
         <div className={styles.formGridThree}>
           <ChannelSelect onChange={setChannel} value={channel} />
-          <ResourceSelect label="Prompt Program" name="prompt_binding_id" options={prompts} />
+          <ResourceSelect label="Prompt 程序" name="prompt_binding_id" options={prompts} />
           <div className={formStyles.optionChecklist}>
             <strong>批准样本</strong>
             {samples.map((sample) => <label key={sample.id}><input name="approved_sample_ids" type="checkbox" value={sample.id} /> {sample.label}</label>)}
@@ -157,11 +157,11 @@ export function CreateReviewSuiteForm(props: CommandProps) {
     <form action={action} className={styles.writeForm}>
       <CommandFields {...props} />
       <fieldset disabled={!props.canContribute || pending}>
-        <legend>创建 Review Suite draft</legend>
+        <legend>创建测评套件草稿</legend>
         <div className={styles.formGridThree}>
           <ChannelSelect />
-          <label><span>Suite 名称</span><input maxLength={200} name="suite_name" required /></label>
-          <button type="submit">{pending ? "创建中..." : "创建 Suite"}</button>
+          <label><span>测评套件名称</span><input maxLength={200} name="suite_name" required /></label>
+          <button type="submit">{pending ? "创建中..." : "创建测评套件"}</button>
         </div>
       </fieldset>
       <SyntheticActionFeedback state={state} />
@@ -187,17 +187,17 @@ export function CreateReviewCaseForm({ inventory, suite, ...props }: CommandProp
       <fieldset disabled={!props.canContribute || pending || blocked}>
         <legend>新增 Review Case</legend>
         <div className={styles.formGridThree}>
-          <label><span>Case key</span><input maxLength={200} name="case_key" pattern="[a-zA-Z0-9_.:-]+" required /></label>
-          <label><span>Ordinal</span><input min={1} name="ordinal" required type="number" /></label>
-          <label><span>Mode</span><select name="mode" onChange={(event) => setMode(event.target.value)} value={mode}><option value="autonomous_scenario">Autonomous</option><option value="guided_scenario">Guided</option></select></label>
-          <label><span>Persona</span><input maxLength={4000} name="persona" required /></label>
-          <label><span>Use case</span><input maxLength={4000} name="use_case" required /></label>
-          <label><span>Subject</span><input maxLength={1000} name="subject" required /></label>
-          <ResourceSelect label="Question Set" name="question_set_version_id" options={inventory.question_sets} />
-          <ResourceSelect label="Fact snapshot" name="fact_snapshot_id" options={inventory.fact_snapshots} />
-          <ResourceSelect label="Style Profile" name="profile_version_id" options={profiles} />
-          <label><span>Expected risks</span><input name="expected_risks" /></label>
-          {mode === "guided_scenario" ? <label><span>Creative reference</span><input maxLength={4000} name="creative_reference" required /></label> : null}
+          <label><span>用例键</span><input maxLength={200} name="case_key" pattern="[a-zA-Z0-9_.:-]+" required /></label>
+          <label><span>序号</span><input min={1} name="ordinal" required type="number" /></label>
+          <label><span>模式</span><select name="mode" onChange={(event) => setMode(event.target.value)} value={mode}><option value="autonomous_scenario">自主</option><option value="guided_scenario">引导</option></select></label>
+          <label><span>人物设定</span><input maxLength={4000} name="persona" required /></label>
+          <label><span>使用场景</span><input maxLength={4000} name="use_case" required /></label>
+          <label><span>主体</span><input maxLength={1000} name="subject" required /></label>
+          <ResourceSelect label="问题集" name="question_set_version_id" options={inventory.question_sets} />
+          <ResourceSelect label="事实快照" name="fact_snapshot_id" options={inventory.fact_snapshots} />
+          <ResourceSelect label="风格画像" name="profile_version_id" options={profiles} />
+          <label><span>预期风险</span><input name="expected_risks" /></label>
+          {mode === "guided_scenario" ? <label><span>创意参考</span><input maxLength={4000} name="creative_reference" required /></label> : null}
         </div>
         <label className={styles.checkbox}><input name="competitor_scenario" type="checkbox" value="true" /> 竞品场景</label>
         <button type="submit">{pending ? "创建中..." : "创建 Case"}</button>
@@ -212,7 +212,7 @@ function CommandFields({ commandKey, projectId }: CommandProps) {
 }
 
 function ChannelSelect({ value, onChange }: { value?: string; onChange?: (value: string) => void }) {
-  return <label><span>Channel</span><select defaultValue={value ? undefined : "reddit"} name="channel" onChange={onChange ? (event) => onChange(event.target.value) : undefined} value={value}>{syntheticChannels.map((channel) => <option key={channel} value={channel}>{channel}</option>)}</select></label>;
+  return <label><span>渠道</span><select defaultValue={value ? undefined : "reddit"} name="channel" onChange={onChange ? (event) => onChange(event.target.value) : undefined} value={value}>{syntheticChannels.map((channel) => <option key={channel} value={channel}>{channel}</option>)}</select></label>;
 }
 
 function ResourceSelect({ label, name, options }: { label: string; name: string; options: SyntheticResourceOption[] }) {
