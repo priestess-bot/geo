@@ -10,6 +10,7 @@ import hashlib
 import hmac
 import ipaddress
 import json
+from pathlib import Path
 import smtplib
 from types import TracebackType
 from typing import Protocol
@@ -275,6 +276,15 @@ class WebhookClient(Protocol):
 class HttpxWebhookClient:
     """One-shot client that cannot inherit host proxy settings or follow redirects."""
 
+    def __init__(self, *, ca_file: str | Path | None = None) -> None:
+        if ca_file is None or not str(ca_file).strip():
+            self._verify: bool | str = True
+            return
+        path = Path(ca_file)
+        if path.is_symlink() or not path.is_file():
+            raise AlertRuleViolation("internal webhook CA file is invalid")
+        self._verify = str(path)
+
     def post(
         self,
         url: str,
@@ -291,6 +301,7 @@ class HttpxWebhookClient:
                 trust_env=False,
                 follow_redirects=False,
                 timeout=timeout_seconds,
+                verify=self._verify,
             ) as client:
                 response = client.post(url, content=content, headers=headers)
         except httpx.TimeoutException as error:

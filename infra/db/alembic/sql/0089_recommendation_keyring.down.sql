@@ -1,0 +1,1 @@
+REVOKE INSERT ON recommendation_artifact_master_key_versions FROM geo_worker;

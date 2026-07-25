@@ -72,6 +72,8 @@ class _CanaryConnection:
 
     def execute(self, query, params=None):
         normalized = " ".join(query.split())
+        if normalized == "SELECT pg_advisory_xact_lock(185613921, 1)":
+            return _Cursor()
         if normalized.startswith("SELECT master_key_version"):
             rows = tuple(
                 dict(self.rows[version])

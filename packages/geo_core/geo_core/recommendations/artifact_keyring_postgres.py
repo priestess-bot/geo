@@ -37,12 +37,17 @@ def synchronize_recommendation_artifact_key_canaries(
     now = clock()
     if now.tzinfo is None or now.utcoffset() is None:
         raise SecretConfigurationError("Recommendation artifact canary clock is invalid")
+    # Column-level UPDATE(status) is deliberately the only update privilege
+    # granted to the Worker. A transaction-scoped advisory lock serializes
+    # keyring initialization without SELECT FOR UPDATE, which would require
+    # broad table-level UPDATE permission.
+    connection.execute("SELECT pg_advisory_xact_lock(185613921, 1)")
     rows = tuple(
         connection.execute(
             """SELECT master_key_version, status, algorithm,
                       canary_nonce, canary_ciphertext, retired_at
                FROM recommendation_artifact_master_key_versions
-               ORDER BY master_key_version FOR UPDATE"""
+               ORDER BY master_key_version"""
         ).fetchall()
     )
     configured = cipher.master_key_versions

@@ -49,7 +49,9 @@ def build_workflow_c_notification_dispatcher(
                     allowed_hosts=webhook_hosts,
                     signing_secret=webhook_secret,
                 ),
-                HttpxWebhookClient(),
+                HttpxWebhookClient(
+                    ca_file=os.getenv("GEO_ALERT_WEBHOOK_CA_FILE", "").strip() or None
+                ),
             ),
         }
     )

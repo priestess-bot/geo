@@ -17,7 +17,9 @@ COPY benchmarks/f019/selection.json ./benchmarks/f019/selection.json
 COPY benchmarks/f019/reports/2026-07-19/project-native.json ./benchmarks/f019/reports/2026-07-19/project-native.json
 COPY prompt ./prompt
 COPY infra/db/alembic ./infra/db/alembic
-COPY scripts/provision_dev_database.py scripts/provision_initial_owner.py ./scripts/
+COPY scripts/provision_dev_database.py scripts/provision_initial_owner.py \
+     scripts/bootstrap_workflow_c_artifact_keyring.py \
+     scripts/staging_alert_smtp_sink.py scripts/staging_alert_webhook_sink.py ./scripts/
 
 RUN --mount=type=cache,id=geo-api-uv,target=/root/.cache/uv \
     uv sync --frozen --no-dev && \

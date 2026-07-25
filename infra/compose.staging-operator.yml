@@ -1,5 +1,99 @@
 services:
+  # The shared Worker may only verify Workflow C keyring canaries. This
+  # operator-controlled migration step initializes or validates them first.
+  migrate:
+    # Match the local secret-file owner while remaining a non-root container.
+    user: "${GEO_DEV_HOST_UID:-1000}:${GEO_DEV_HOST_GID:-1000}"
+    environment:
+      GEO_WORKFLOW_C_ARTIFACT_KEYRING_FILE: /run/geo-staging-secrets/workflow-c-artifact-keyring.json
+    command:
+      - /bin/sh
+      - -c
+      - alembic upgrade head && python scripts/provision_dev_database.py && python scripts/bootstrap_workflow_c_artifact_keyring.py
+    volumes:
+      - ${GEO_STAGING_WORKFLOW_C_ARTIFACT_KEYRING_FILE:?set the staging Workflow C artifact keyring path}:/run/geo-staging-secrets/workflow-c-artifact-keyring.json:ro
+
   admin-web:
     environment:
       GEO_ADMIN_ACTOR_ID: ${GEO_ADMIN_ACTOR_ID:?set the staging acceptance owner identity}
       GEO_ADMIN_TENANT_ID: ${GEO_ADMIN_TENANT_ID:?set the staging acceptance tenant}
+
+  # These internal-only sinks make all three alert channels testable in staging
+  # without relaying emails or webhook payloads to an external network.
+  alert-smtp-relay:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    command: ["python", "scripts/staging_alert_smtp_sink.py"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8025), 2).close()"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  alert-webhook-sink:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    user: "${GEO_DEV_HOST_UID:-1000}:${GEO_DEV_HOST_GID:-1000}"
+    command: ["python", "scripts/staging_alert_webhook_sink.py"]
+    environment:
+      GEO_STAGING_ALERT_WEBHOOK_TLS_CERT_FILE: /run/geo-staging-secrets/alert-webhook-ca.pem
+      GEO_STAGING_ALERT_WEBHOOK_TLS_KEY_FILE: /run/geo-staging-secrets/alert-webhook-tls-key.pem
+    volumes:
+      - ${GEO_STAGING_ALERT_WEBHOOK_CA_FILE:?set the staging alert webhook CA path}:/run/geo-staging-secrets/alert-webhook-ca.pem:ro
+      - ${GEO_STAGING_ALERT_WEBHOOK_TLS_KEY_FILE:?set the staging alert webhook TLS private key path}:/run/geo-staging-secrets/alert-webhook-tls-key.pem:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8080), 2).close()"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Governed jobs fail closed unless the worker can authenticate as its service
+  # identity and read every isolated key domain required by its handler map.
+  # The host paths stay in the ignored operator env file; images and Git never
+  # contain the generated key material.
+  task-worker:
+    environment:
+      GEO_MODEL_GATEWAY_WORKER_SERVICE_IDENTITY_ID: ${GEO_MODEL_GATEWAY_WORKER_SERVICE_IDENTITY_ID:?set the staging Model Gateway worker identity}
+      GEO_SECRET_STORE_MASTER_KEYRING_FILE: /run/geo-staging-secrets/secret-store-keyring.json
+      GEO_SECRET_STORE_REQUEST_HASH_KEY_FILE: /run/geo-staging-secrets/secret-request-hash-key
+      GEO_PROVIDER_ARTIFACT_KEYRING_FILE: /run/geo-staging-secrets/provider-artifact-keyring.json
+      GEO_SYNTHETIC_ARTIFACT_KEYRING_FILE: /run/geo-staging-secrets/synthetic-artifact-keyring.json
+      GEO_RECOMMENDATION_ARTIFACT_KEYRING_FILE: /run/geo-staging-secrets/recommendation-artifact-keyring.json
+      GEO_RECOMMENDATION_ARTIFACT_OBJECT_STORE_ENDPOINT: http://minio:9000
+      GEO_RECOMMENDATION_ARTIFACT_OBJECT_STORE_BUCKET: geo-restricted-recommendation-artifacts
+      GEO_RECOMMENDATION_ARTIFACT_OBJECT_STORE_ACCESS_KEY_FILE: /run/geo-staging-secrets/recommendation-artifact-object-store-access-key
+      GEO_RECOMMENDATION_ARTIFACT_OBJECT_STORE_SECRET_KEY_FILE: /run/geo-staging-secrets/recommendation-artifact-object-store-secret-key
+      GEO_RECOMMENDATION_ARTIFACT_OBJECT_STORE_AUTO_CREATE_BUCKET: "1"
+      GEO_WORKFLOW_C_ARTIFACT_KEYRING_FILE: /run/geo-staging-secrets/workflow-c-artifact-keyring.json
+      GEO_WORKFLOW_C_ARTIFACT_READER_ENDPOINT: http://minio:9000
+      GEO_WORKFLOW_C_ARTIFACT_READER_BUCKET: geo-restricted-workflow-c-artifacts
+      GEO_WORKFLOW_C_ARTIFACT_READER_ACCESS_KEY_FILE: /run/geo-staging-secrets/workflow-c-artifact-reader-access-key
+      GEO_WORKFLOW_C_ARTIFACT_READER_SECRET_KEY_FILE: /run/geo-staging-secrets/workflow-c-artifact-reader-secret-key
+      GEO_ALERT_SMTP_HOST: alert-smtp-relay
+      GEO_ALERT_SMTP_PORT: "8025"
+      GEO_ALERT_SMTP_SENDER: geo-alerts@staging.local
+      GEO_ALERT_SMTP_RECIPIENTS: geo-ops@staging.local
+      GEO_ALERT_WEBHOOK_ENDPOINT: https://alert-webhook-sink:8080/alerts
+      GEO_ALERT_WEBHOOK_ALLOWED_HOSTS: alert-webhook-sink
+      GEO_ALERT_WEBHOOK_SIGNING_SECRET_FILE: /run/geo-staging-secrets/alert-webhook-signing-secret
+      GEO_ALERT_WEBHOOK_CA_FILE: /run/geo-staging-secrets/alert-webhook-ca.pem
+    volumes:
+      - ${GEO_STAGING_SECRET_STORE_MASTER_KEYRING_FILE:?set the staging Secret Store keyring path}:/run/geo-staging-secrets/secret-store-keyring.json:ro
+      - ${GEO_STAGING_SECRET_STORE_REQUEST_HASH_KEY_FILE:?set the staging Secret Store request hash key path}:/run/geo-staging-secrets/secret-request-hash-key:ro
+      - ${GEO_STAGING_PROVIDER_ARTIFACT_KEYRING_FILE:?set the staging Provider artifact keyring path}:/run/geo-staging-secrets/provider-artifact-keyring.json:ro
+      - ${GEO_STAGING_SYNTHETIC_ARTIFACT_KEYRING_FILE:?set the staging Synthetic artifact keyring path}:/run/geo-staging-secrets/synthetic-artifact-keyring.json:ro
+      - ${GEO_STAGING_RECOMMENDATION_ARTIFACT_KEYRING_FILE:?set the staging Recommendation artifact keyring path}:/run/geo-staging-secrets/recommendation-artifact-keyring.json:ro
+      - ${GEO_STAGING_RECOMMENDATION_ARTIFACT_OBJECT_STORE_ACCESS_KEY_FILE:?set the staging Recommendation object store access key path}:/run/geo-staging-secrets/recommendation-artifact-object-store-access-key:ro
+      - ${GEO_STAGING_RECOMMENDATION_ARTIFACT_OBJECT_STORE_SECRET_KEY_FILE:?set the staging Recommendation object store secret key path}:/run/geo-staging-secrets/recommendation-artifact-object-store-secret-key:ro
+      - ${GEO_STAGING_WORKFLOW_C_ARTIFACT_KEYRING_FILE:?set the staging Workflow C artifact keyring path}:/run/geo-staging-secrets/workflow-c-artifact-keyring.json:ro
+      - ${GEO_STAGING_WORKFLOW_C_ARTIFACT_READER_ACCESS_KEY_FILE:?set the staging Workflow C reader access key path}:/run/geo-staging-secrets/workflow-c-artifact-reader-access-key:ro
+      - ${GEO_STAGING_WORKFLOW_C_ARTIFACT_READER_SECRET_KEY_FILE:?set the staging Workflow C reader secret key path}:/run/geo-staging-secrets/workflow-c-artifact-reader-secret-key:ro
+      - ${GEO_STAGING_ALERT_WEBHOOK_SIGNING_SECRET_FILE:?set the staging alert webhook signing secret path}:/run/geo-staging-secrets/alert-webhook-signing-secret:ro
+      - ${GEO_STAGING_ALERT_WEBHOOK_CA_FILE:?set the staging alert webhook CA path}:/run/geo-staging-secrets/alert-webhook-ca.pem:ro
+    depends_on:
+      alert-smtp-relay:
+        condition: service_healthy
+      alert-webhook-sink:
+        condition: service_healthy
