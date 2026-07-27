@@ -7,3 +7,7 @@ docs/research_sources/**/raw_pages/*.html -text
 # 作者撰写的文本统一使用 LF
 *.md text eol=lf
 *.txt text eol=lf
+
+# Unified diff context lines carry a required leading marker; validate the
+# applied source with git apply --check instead of treating the patch as source.
+infra/dify/patches/*.patch -whitespace

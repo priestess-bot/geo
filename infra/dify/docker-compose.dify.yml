@@ -1,4 +1,7 @@
 services:
+  web:
+    image: "${GEO_DIFY_WEB_IMAGE:-geo-dify-web:1.16.0-geo}"
+
   api:
     networks:
       default: {}

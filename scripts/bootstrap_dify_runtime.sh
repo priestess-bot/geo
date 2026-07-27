@@ -9,6 +9,9 @@ readonly RUNTIME_ROOT="${GEO_DIFY_RUNTIME_ROOT:-${REPO_ROOT}/.runtime/dify-1.16.
 readonly DIFY_DOCKER_DIR="${RUNTIME_ROOT}/docker"
 readonly DIFY_ENV_FILE="${DIFY_DOCKER_DIR}/.env"
 readonly DIFY_OVERRIDE="${REPO_ROOT}/infra/dify/docker-compose.dify.yml"
+readonly DEFAULT_DIFY_WEB_IMAGE="geo-dify-web:1.16.0-geo"
+readonly DIFY_WEB_BUILDER="${REPO_ROOT}/scripts/build_dify_web_overlay.sh"
+export GEO_DIFY_WEB_IMAGE="${GEO_DIFY_WEB_IMAGE:-${DEFAULT_DIFY_WEB_IMAGE}}"
 
 usage() {
   echo "usage: $0 prepare|up|down|status"
@@ -98,6 +101,17 @@ compose() {
     "$@"
 }
 
+ensure_web_image() {
+  if [[ "${GEO_DIFY_WEB_IMAGE}" == "${DEFAULT_DIFY_WEB_IMAGE}" ]]; then
+    GEO_DIFY_WEB_IMAGE="${GEO_DIFY_WEB_IMAGE}" "${DIFY_WEB_BUILDER}"
+    return
+  fi
+  if ! docker image inspect "${GEO_DIFY_WEB_IMAGE}" >/dev/null 2>&1; then
+    echo "Configured Dify Web image ${GEO_DIFY_WEB_IMAGE} is not available locally." >&2
+    exit 2
+  fi
+}
+
 command="${1:-}"
 case "${command}" in
   prepare)
@@ -105,6 +119,7 @@ case "${command}" in
     ;;
   up)
     prepare
+    ensure_web_image
     compose up -d
     compose restart nginx >/dev/null
     echo "Dify console is listening on ${GEO_DIFY_BIND_HOST:-127.0.0.1}:${GEO_DIFY_HOST_PORT:-15000}."

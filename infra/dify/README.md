@@ -30,8 +30,11 @@ Workflow DSL files. Dify source and persistent data stay under ignored
 ```
 
 The first command clones the exact upstream tag, creates local random service
-secrets, and starts Dify without publishing its database, Redis, plugin daemon,
-or sandbox ports. `down` preserves all volumes.
+secrets, builds the GEO-owned Web overlay from the pinned commit and checked-in
+patch, and starts Dify without publishing its database, Redis, plugin daemon,
+or sandbox ports. The build keeps a Docker-backed pnpm cache so a transient
+registry failure can be retried without downloading every dependency again.
+`down` preserves all volumes.
 
 ## Open the console from Admin
 
@@ -49,6 +52,35 @@ GEO_DIFY_BIND_HOST=0.0.0.0 GEO_DIFY_HOST_PORT=15000 \
 Then open Admin normally and use that action. Dify presents its own sign-in
 page; the generated local administrator record remains in the private
 `.runtime/geo-dify-state.json` file and is never copied into GEO or Git.
+
+## Test Run inputs
+
+The four GEO-managed workflows are detected by their five Start variables:
+`geo_context_json`, `geo_context_hash`, `geo_input_hash`,
+`geo_output_schema_json`, and `geo_purpose`. Opening **Test Run** queries Dify's
+own successful `app-run` history, fetches run details, and keeps only service
+API runs whose end-user session starts with `geo-job:`. Canary, debug, failed,
+malformed and unrelated runs are excluded.
+
+The newest compatible business run is selected automatically. Operators can
+select up to 20 compatible runs from the latest 100 successful records. Only
+the five `geo_*` values are copied into the draft run; Dify `sys.*` values are
+never copied. Technical inputs stay collapsed and read-only until the operator
+explicitly chooses Edit. If history is empty or temporarily unavailable, the
+normal input form remains available and the visible loading/error state can be
+retried by reopening Test Run; no GEO database or API is involved.
+
+This behavior is a small Web overlay, not a Dify fork. The reproducible input is
+`infra/dify/patches/dify-1.16.0-geo-run-input-picker.patch`; `.runtime` source
+changes are never the deployment artifact. Build it directly with:
+
+```bash
+GEO_DIFY_BUILD_NETWORK=host ./scripts/build_dify_web_overlay.sh
+```
+
+Omit the network override in restricted environments. The image label
+`io.geo.dify.web-overlay-sha` must match the patch SHA-256 before bootstrap will
+reuse it.
 
 Set `GEO_DIFY_STATE_HOST_FILE` to the absolute path of the private `0600` state
 file. To attach a GEO development or staging API and Worker, add the overlay after
@@ -159,3 +191,13 @@ and verify its Dify run ID plus final GEO result.
 - `./scripts/bootstrap_dify_runtime.sh down` preserves Dify data. Include the
   ignored Dify volumes and `.runtime/geo-dify-state.json` in a server migration;
   GEO database backup alone cannot recreate Dify application keys.
+- To roll back only the Test Run Web overlay while preserving Dify API, Worker
+  and data, run:
+
+  ```bash
+  GEO_DIFY_WEB_IMAGE=langgenius/dify-web:1.16.0 \
+    ./scripts/bootstrap_dify_runtime.sh up
+  ```
+
+  Remove that environment override and run `up` again to restore the matching
+  GEO overlay image.

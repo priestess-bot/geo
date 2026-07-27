@@ -1,0 +1,473 @@
+diff --git a/web/app/components/workflow/panel/__tests__/inputs-panel.spec.tsx b/web/app/components/workflow/panel/__tests__/inputs-panel.spec.tsx
+index 1b7e65f..a3e12b8 100644
+--- a/web/app/components/workflow/panel/__tests__/inputs-panel.spec.tsx
++++ b/web/app/components/workflow/panel/__tests__/inputs-panel.spec.tsx
+@@ -12,6 +12,8 @@ import InputsPanel from '../inputs-panel'
+ 
+ const mockCheckInputsForm = vi.fn()
+ const mockNotify = vi.fn()
++const mockUseWorkflowRunHistory = vi.fn()
++const mockFetchRunDetail = vi.fn()
+ 
+ vi.mock('next/navigation', () => ({
+   useParams: () => ({}),
+@@ -32,6 +34,14 @@ vi.mock('@/app/components/base/chat/chat/check-input-forms-hooks', () => ({
+   }),
+ }))
+ 
++vi.mock('@/service/use-workflow', () => ({
++  useWorkflowRunHistory: (...args: unknown[]) => mockUseWorkflowRunHistory(...args),
++}))
++
++vi.mock('@/service/log', () => ({
++  fetchRunDetail: (...args: unknown[]) => mockFetchRunDetail(...args),
++}))
++
+ const fileSettingsWithImage = {
+   enabled: true,
+   image: {
+@@ -63,6 +73,37 @@ const createHooksStoreProps = (
+   ...overrides,
+ })
+ 
++const geoVariables = [
++  'geo_context_json',
++  'geo_context_hash',
++  'geo_input_hash',
++  'geo_output_schema_json',
++  'geo_purpose',
++].map((variable) => ({
++  type: InputVarType.paragraph,
++  variable,
++  label: variable,
++  required: true,
++}))
++
++const createRunDetail = (overrides: Record<string, unknown> = {}) => ({
++  id: 'run-1',
++  status: 'succeeded',
++  inputs: {
++    geo_context_json: '{"question":"real context"}',
++    geo_context_hash: 'context-hash',
++    geo_input_hash: 'input-hash',
++    geo_output_schema_json: '{"type":"object"}',
++    geo_purpose: 'question_generation',
++    'sys.user_id': 'ignored',
++  },
++  created_by_end_user: {
++    session_id: 'geo-job:job-newest',
++  },
++  created_at: 200,
++  ...overrides,
++})
++
+ const renderInputsPanel = (
+   startNode: ReturnType<typeof createStartNode>,
+   options?: Omit<Parameters<typeof renderWorkflowFlowComponent>[1], 'nodes' | 'edges'>,
+@@ -78,6 +119,12 @@ describe('InputsPanel', () => {
+   beforeEach(() => {
+     vi.clearAllMocks()
+     mockCheckInputsForm.mockReturnValue(true)
++    mockUseWorkflowRunHistory.mockReturnValue({
++      data: { data: [] },
++      isLoading: false,
++      isError: false,
++    })
++    mockFetchRunDetail.mockResolvedValue(createRunDetail())
+   })
+ 
+   describe('Rendering', () => {
+@@ -120,6 +167,128 @@ describe('InputsPanel', () => {
+   })
+ 
+   describe('User Interactions', () => {
++    it('should inject the newest real GEO job, exclude canaries, and hide technical inputs', async () => {
++      mockUseWorkflowRunHistory.mockReturnValue({
++        data: {
++          data: [
++            { id: 'run-canary', created_at: 300 },
++            { id: 'run-business', created_at: 200 },
++          ],
++        },
++        isLoading: false,
++        isError: false,
++      })
++      mockFetchRunDetail.mockImplementation((url: string) =>
++        Promise.resolve(
++          url.endsWith('run-canary')
++            ? createRunDetail({
++                id: 'run-canary',
++                created_at: 300,
++                created_by_end_user: { session_id: 'geo-canary:release-1' },
++              })
++            : createRunDetail({ id: 'run-business' }),
++        ),
++      )
++
++      const { store } = renderInputsPanel(createStartNode({ data: { variables: geoVariables } }), {
++        hooksStoreProps: createHooksStoreProps(),
++      })
++
++      await waitFor(() => {
++        expect(store.getState().inputs).toEqual({
++          geo_context_json: '{"question":"real context"}',
++          geo_context_hash: 'context-hash',
++          geo_input_hash: 'input-hash',
++          geo_output_schema_json: '{"type":"object"}',
++          geo_purpose: 'question_generation',
++        })
++      })
++      expect(screen.getByRole('combobox', { name: 'GEO run history' })).toHaveTextContent(
++        'job-newest',
++      )
++      expect(screen.queryByDisplayValue('{"question":"real context"}')).not.toBeInTheDocument()
++    })
++
++    it('should select an older GEO job and allow explicit technical input editing', async () => {
++      const user = userEvent.setup()
++      mockUseWorkflowRunHistory.mockReturnValue({
++        data: {
++          data: [
++            { id: 'run-new', created_at: 200 },
++            { id: 'run-old', created_at: 100 },
++          ],
++        },
++        isLoading: false,
++        isError: false,
++      })
++      mockFetchRunDetail.mockImplementation((url: string) =>
++        Promise.resolve(
++          url.endsWith('run-old')
++            ? createRunDetail({
++                id: 'run-old',
++                created_at: 100,
++                created_by_end_user: { session_id: 'geo-job:job-older' },
++                inputs: {
++                  ...createRunDetail().inputs,
++                  geo_context_json: '{"question":"older context"}',
++                },
++              })
++            : createRunDetail({ id: 'run-new' }),
++        ),
++      )
++
++      const { store } = renderInputsPanel(createStartNode({ data: { variables: geoVariables } }), {
++        hooksStoreProps: createHooksStoreProps(),
++      })
++
++      const selector = await screen.findByRole('combobox', { name: 'GEO run history' })
++      await waitFor(() => expect(selector).toHaveTextContent('job-newest'))
++      await user.click(selector)
++      await user.click(await screen.findByText(/job-older/))
++      expect(store.getState().inputs.geo_context_json).toBe('{"question":"older context"}')
++
++      await user.click(screen.getByRole('button', { name: 'common.operation.edit' }))
++      expect(screen.getByDisplayValue('{"question":"older context"}')).toBeInTheDocument()
++    })
++
++    it('should run with only the five injected GEO inputs', async () => {
++      const user = userEvent.setup()
++      const handleRun = vi.fn()
++      mockUseWorkflowRunHistory.mockReturnValue({
++        data: { data: [{ id: 'run-business', created_at: 200 }] },
++        isLoading: false,
++        isError: false,
++      })
++
++      renderInputsPanel(createStartNode({ data: { variables: geoVariables } }), {
++        hooksStoreProps: createHooksStoreProps({
++          handleRun,
++          configsMap: {
++            flowId: 'flow-1',
++            flowType: FlowType.appFlow,
++            fileSettings: { enabled: false },
++          },
++        }),
++      })
++
++      await waitFor(() =>
++        expect(screen.getByRole('combobox', { name: 'GEO run history' })).toHaveTextContent(
++          'job-newest',
++        ),
++      )
++      await user.click(screen.getByRole('button', { name: 'workflow.singleRun.startRun' }))
++      expect(handleRun).toHaveBeenCalledWith({
++        inputs: {
++          geo_context_json: '{"question":"real context"}',
++          geo_context_hash: 'context-hash',
++          geo_input_hash: 'input-hash',
++          geo_output_schema_json: '{"type":"object"}',
++          geo_purpose: 'question_generation',
++        },
++        files: [],
++      })
++    })
++
+     it('should update workflow inputs and image files when users edit the form', async () => {
+       const user = userEvent.setup()
+       const { store } = renderInputsPanel(
+diff --git a/web/app/components/workflow/panel/geo-run-input-picker.tsx b/web/app/components/workflow/panel/geo-run-input-picker.tsx
+new file mode 100644
+index 0000000..6dbdfb7
+--- /dev/null
++++ b/web/app/components/workflow/panel/geo-run-input-picker.tsx
+@@ -0,0 +1,204 @@
++import type { ReactNode } from 'react'
++import type { InputVar } from '../types'
++import type { WorkflowRunDetailResponse } from '@/models/log'
++import type { WorkflowRunHistory } from '@/types/workflow'
++import { Button } from '@langgenius/dify-ui/button'
++import {
++  Select,
++  SelectContent,
++  SelectItem,
++  SelectItemIndicator,
++  SelectItemText,
++  SelectTrigger,
++} from '@langgenius/dify-ui/select'
++import { useQueries } from '@tanstack/react-query'
++import dayjs from 'dayjs'
++import { useEffect, useMemo, useRef, useState } from 'react'
++import { useTranslation } from 'react-i18next'
++import { fetchRunDetail } from '@/service/log'
++import { useWorkflowRunHistory } from '@/service/use-workflow'
++import { useWorkflowStore } from '../store'
++
++const GEO_INPUT_KEYS = [
++  'geo_context_json',
++  'geo_context_hash',
++  'geo_input_hash',
++  'geo_output_schema_json',
++  'geo_purpose',
++] as const
++
++type GeoInputKey = (typeof GEO_INPUT_KEYS)[number]
++type GeoInputs = Record<GeoInputKey, string>
++
++type GeoBusinessRun = {
++  id: string
++  createdAt: number
++  jobId: string
++  inputs: GeoInputs
++}
++
++type Props = Readonly<{
++  appId?: string
++  variables: InputVar[]
++  children: ReactNode
++}>
++
++const MAX_HISTORY_SCAN = 100
++const MAX_BUSINESS_RUNS = 20
++
++const isRecord = (value: unknown): value is Record<string, unknown> =>
++  typeof value === 'object' && value !== null && !Array.isArray(value)
++
++const parseInputs = (value: unknown): Record<string, unknown> | undefined => {
++  if (isRecord(value)) return value
++  if (typeof value !== 'string') return undefined
++
++  try {
++    const parsed: unknown = JSON.parse(value)
++    return isRecord(parsed) ? parsed : undefined
++  } catch {
++    return undefined
++  }
++}
++
++const extractGeoInputs = (value: unknown): GeoInputs | undefined => {
++  const parsed = parseInputs(value)
++  if (!parsed) return undefined
++  if (!GEO_INPUT_KEYS.every((key) => typeof parsed[key] === 'string')) return undefined
++
++  return Object.fromEntries(GEO_INPUT_KEYS.map((key) => [key, parsed[key]])) as GeoInputs
++}
++
++const isGeoManagedWorkflow = (variables: InputVar[]) => {
++  const variableNames = new Set(variables.map((variable) => variable.variable))
++  return GEO_INPUT_KEYS.every((key) => variableNames.has(key))
++}
++
++const getBusinessRun = (
++  history: WorkflowRunHistory,
++  detail?: WorkflowRunDetailResponse,
++): GeoBusinessRun | undefined => {
++  const sessionId = detail?.created_by_end_user?.session_id
++  const inputs = extractGeoInputs(detail?.inputs)
++  if (!detail || detail.status !== 'succeeded' || !sessionId?.startsWith('geo-job:') || !inputs)
++    return undefined
++
++  return {
++    id: history.id,
++    createdAt: detail.created_at || history.created_at,
++    jobId: sessionId.slice('geo-job:'.length),
++    inputs,
++  }
++}
++
++const formatRunLabel = (run: GeoBusinessRun) => {
++  const shortJobId = run.jobId.length > 12 ? `${run.jobId.slice(0, 12)}...` : run.jobId
++  return `${dayjs.unix(run.createdAt).format('YYYY-MM-DD HH:mm')} · ${run.inputs.geo_purpose} · ${shortJobId}`
++}
++
++export const GeoRunInputPicker = ({ appId, variables, children }: Props) => {
++  const { t } = useTranslation()
++  const workflowStore = useWorkflowStore()
++  const managed = isGeoManagedWorkflow(variables)
++  const [selectedRunId, setSelectedRunId] = useState('')
++  const [manualEditing, setManualEditing] = useState(false)
++  const initializedAppIdRef = useRef<string | undefined>(undefined)
++  const historyUrl = appId
++    ? `/apps/${appId}/workflow-runs?triggered_from=app-run&status=succeeded&limit=${MAX_HISTORY_SCAN}`
++    : undefined
++  const historyQuery = useWorkflowRunHistory(historyUrl, managed && !!appId)
++  const histories = useMemo(() => historyQuery.data?.data ?? [], [historyQuery.data?.data])
++  const { details, detailsFailed, detailsLoading } = useQueries({
++    queries: histories.map((history) => ({
++      enabled: managed && !!appId,
++      queryKey: ['geo-run-input', appId, history.id],
++      queryFn: () => fetchRunDetail(`/apps/${appId}/workflow-runs/${history.id}`),
++      staleTime: 30_000,
++    })),
++    combine: (results) => ({
++      details: results.map((result) => result.data),
++      detailsFailed: results.some((result) => result.isError),
++      detailsLoading: results.some((result) => result.isLoading),
++    }),
++  })
++  const businessRuns = useMemo(
++    () =>
++      histories
++        .map((history, index) => getBusinessRun(history, details[index]))
++        .filter((run): run is GeoBusinessRun => !!run)
++        .sort((left, right) => right.createdAt - left.createdAt)
++        .slice(0, MAX_BUSINESS_RUNS),
++    [details, histories],
++  )
++  const loading = historyQuery.isLoading || detailsLoading
++  const failed = historyQuery.isError || detailsFailed
++  const selectedRun = businessRuns.find((run) => run.id === selectedRunId) ?? businessRuns[0]
++  const editing = manualEditing || (!loading && !selectedRun)
++
++  useEffect(() => {
++    if (!managed || !appId || loading || failed || initializedAppIdRef.current === appId) return
++    initializedAppIdRef.current = appId
++    const newest = businessRuns[0]
++    if (!newest) return
++    workflowStore.getState().setInputs(newest.inputs)
++  }, [appId, businessRuns, failed, loading, managed, workflowStore])
++
++  if (!managed) return children
++
++  const handleRunChange = (runId: string | null) => {
++    if (!runId) return
++    const run = businessRuns.find((candidate) => candidate.id === runId)
++    if (!run) return
++    workflowStore.getState().setInputs(run.inputs)
++    setSelectedRunId(run.id)
++    setManualEditing(false)
++  }
++
++  return (
++    <>
++      <div className="border-b border-divider-subtle px-4 py-3">
++        <div className="mb-2 flex items-center justify-between gap-2">
++          <div className="text-xs font-medium text-text-secondary">
++            {t(($) => $['common.runHistory'], { ns: 'workflow' })}
++          </div>
++          {!!selectedRun && (
++            <Button
++              size="small"
++              variant="ghost"
++              onClick={() => setManualEditing((value) => !value)}
++            >
++              {editing
++                ? t(($) => $['operation.ok'], { ns: 'common' })
++                : t(($) => $['operation.edit'], { ns: 'common' })}
++            </Button>
++          )}
++        </div>
++        {loading && (
++          <div className="text-xs text-text-tertiary">{t(($) => $.loading, { ns: 'common' })}</div>
++        )}
++        {!loading && failed && (
++          <div className="text-xs text-text-warning">{t(($) => $.error, { ns: 'common' })}</div>
++        )}
++        {!loading && !failed && businessRuns.length === 0 && (
++          <div className="text-xs text-text-tertiary">{t(($) => $.noData, { ns: 'common' })}</div>
++        )}
++        {!loading && businessRuns.length > 0 && (
++          <Select value={selectedRun?.id ?? ''} onValueChange={handleRunChange}>
++            <SelectTrigger className="h-8 w-full" aria-label="GEO run history">
++              {selectedRun ? formatRunLabel(selectedRun) : t(($) => $.noData, { ns: 'common' })}
++            </SelectTrigger>
++            <SelectContent listClassName="max-h-[240px] overflow-y-auto">
++              {businessRuns.map((run) => (
++                <SelectItem key={run.id} value={run.id}>
++                  <SelectItemText>{formatRunLabel(run)}</SelectItemText>
++                  <SelectItemIndicator />
++                </SelectItem>
++              ))}
++            </SelectContent>
++          </Select>
++        )}
++      </div>
++      {(editing || !selectedRun) && children}
++    </>
++  )
++}
+diff --git a/web/app/components/workflow/panel/inputs-panel.tsx b/web/app/components/workflow/panel/inputs-panel.tsx
+index 0aed001..6450c56 100644
+--- a/web/app/components/workflow/panel/inputs-panel.tsx
++++ b/web/app/components/workflow/panel/inputs-panel.tsx
+@@ -11,6 +11,7 @@ import { useHooksStore } from '../hooks-store'
+ import FormItem from '../nodes/_base/components/before-run-form/form-item'
+ import { useStore, useWorkflowStore } from '../store'
+ import { BlockEnum, InputVarType, WorkflowRunningStatus } from '../types'
++import { GeoRunInputPicker } from './geo-run-input-picker'
+ 
+ type Props = Readonly<{
+   onRun: () => void
+@@ -21,6 +22,7 @@ const InputsPanel = ({ onRun }: Props) => {
+   const workflowStore = useWorkflowStore()
+   const inputs = useStore((s) => s.inputs)
+   const fileSettings = useHooksStore((s) => s.configsMap?.fileSettings)
++  const appId = useHooksStore((s) => s.configsMap?.flowId)
+   const canRunWorkflow = useHooksStore((s) => s.accessControl.canRun)
+   const nodes = useNodes<StartNodeType>()
+   const files = useStore((s) => s.files)
+@@ -89,19 +91,21 @@ const InputsPanel = ({ onRun }: Props) => {
+ 
+   return (
+     <>
+-      <div className="px-4 pt-3 pb-2">
+-        {variables.map((variable, index) => (
+-          <div key={variable.variable} className="mb-2 last-of-type:mb-0">
+-            <FormItem
+-              autoFocus={index === 0}
+-              className="block!"
+-              payload={variable}
+-              value={initialInputs[variable.variable]}
+-              onChange={(v) => handleValueChange(variable.variable, v)}
+-            />
+-          </div>
+-        ))}
+-      </div>
++      <GeoRunInputPicker appId={appId} variables={variables}>
++        <div className="px-4 pt-3 pb-2">
++          {variables.map((variable, index) => (
++            <div key={variable.variable} className="mb-2 last-of-type:mb-0">
++              <FormItem
++                autoFocus={index === 0}
++                className="block!"
++                payload={variable}
++                value={initialInputs[variable.variable]}
++                onChange={(v) => handleValueChange(variable.variable, v)}
++              />
++            </div>
++          ))}
++        </div>
++      </GeoRunInputPicker>
+       <div className="flex items-center justify-between px-4 py-2">
+         <Button
+           variant="primary"
