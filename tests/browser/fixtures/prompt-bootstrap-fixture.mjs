@@ -9,7 +9,11 @@ const KINDS = [
   "metric_judge",
   "recommendation",
   "style_profile",
-  "offline_answer"
+  "offline_answer",
+  "question_generation",
+  "rag_grounding",
+  "placement_generation",
+  "placement_simulation"
 ];
 const SCENARIOS = [
   "positive",
@@ -24,7 +28,7 @@ const RUBRIC_CODES = [
   "lineage.evidence_allowlist",
   "safety.untrusted_input"
 ];
-const LONG_FAILURE = "Fixture persistence was interrupted after the durable per-item boundary; the nine successful Drafts remain recoverable and this failed item can be retried with the same idempotency key. ".repeat(3);
+const LONG_FAILURE = "Fixture persistence was interrupted after the durable per-item boundary; the thirteen successful Drafts remain recoverable and this failed item can be retried with the same idempotency key. ".repeat(3);
 
 let mode = "normal";
 let draftAttempts = 0;

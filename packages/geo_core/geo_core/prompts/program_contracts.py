@@ -41,6 +41,10 @@ class ProgramKind(StrEnum):
     STYLE_PROFILE = "style_profile"
     OFFLINE_ANSWER = "offline_answer"
     REFERENCE_TRANSLATION = "reference_translation"
+    QUESTION_GENERATION = "question_generation"
+    RAG_GROUNDING = "rag_grounding"
+    PLACEMENT_GENERATION = "placement_generation"
+    PLACEMENT_SIMULATION = "placement_simulation"
 
 
 CORE_FIRST_PHASE_PROGRAM_KINDS: tuple[ProgramKind, ...] = (
@@ -60,6 +64,17 @@ AUXILIARY_PROGRAM_KINDS: tuple[ProgramKind, ...] = (
 FIRST_PHASE_PROGRAM_KINDS: tuple[ProgramKind, ...] = (
     *CORE_FIRST_PHASE_PROGRAM_KINDS,
     *AUXILIARY_PROGRAM_KINDS,
+)
+
+# These programs are not synthetic-lab variants.  They have their own input,
+# output and evaluator contracts, but use the same editable Release, preview
+# and controlled model-test runtime as the first-phase catalog.
+WORKSPACE_FLOW_PROGRAM_KINDS: tuple[ProgramKind, ...] = (
+    *FIRST_PHASE_PROGRAM_KINDS,
+    ProgramKind.QUESTION_GENERATION,
+    ProgramKind.RAG_GROUNDING,
+    ProgramKind.PLACEMENT_GENERATION,
+    ProgramKind.PLACEMENT_SIMULATION,
 )
 
 

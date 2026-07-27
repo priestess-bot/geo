@@ -182,6 +182,24 @@ def _input_properties(kind: ProgramKind) -> Mapping[str, object]:
             "corpus_hash": _sha256(),
             "corpus_context": _string(maximum=100_000),
         }
+    if kind is ProgramKind.QUESTION_GENERATION:
+        return {
+            "dimensions": _string_array(minimum=1, maximum=50),
+            "facts": _string_array(minimum=1, maximum=100),
+            "entities": _string_array(minimum=1, maximum=50),
+            "parent_candidates": _string_array(minimum=0, maximum=50),
+        }
+    if kind is ProgramKind.RAG_GROUNDING:
+        return {
+            "question": _string(maximum=4_000),
+            "facts": _string_array(minimum=1, maximum=100),
+            "entities": _string_array(minimum=1, maximum=50),
+        }
+    if kind in {ProgramKind.PLACEMENT_GENERATION, ProgramKind.PLACEMENT_SIMULATION}:
+        return {
+            "brief": _string(maximum=20_000),
+            "destination_policy": _string(maximum=8_000),
+        }
     raise ValueError(f"unsupported bootstrap Program kind: {kind.value}")
 
 
@@ -347,6 +365,38 @@ def _output_properties(kind: ProgramKind) -> Mapping[str, object]:
         return {
             "answer_text": _string(maximum=50_000),
             "metric_value": {"type": "number", "minimum": 0, "maximum": 1},
+        }
+    if kind is ProgramKind.QUESTION_GENERATION:
+        return {
+            "questions": _array(
+                _strict_object(
+                    {
+                        "question_id": _string(maximum=200),
+                        "text": _string(maximum=4_000),
+                        "evidence_refs": _string_array(minimum=1, maximum=100),
+                    }
+                ),
+                minimum=1,
+                maximum=20,
+            )
+        }
+    if kind is ProgramKind.RAG_GROUNDING:
+        return {
+            "grounded_question": _string(maximum=4_000),
+            "supporting_fact_refs": _string_array(minimum=1, maximum=100),
+            "unsupported_premises": _string_array(minimum=0, maximum=20),
+        }
+    if kind is ProgramKind.PLACEMENT_GENERATION:
+        return {
+            "content": _string(maximum=50_000),
+            "destination_policy_applied": {"type": "boolean"},
+            "destination_summary": _string(maximum=4_000),
+        }
+    if kind is ProgramKind.PLACEMENT_SIMULATION:
+        return {
+            "rendered_prompt": _string(maximum=50_000),
+            "output_preview": _string(maximum=50_000),
+            "warning_codes": _string_array(minimum=0, maximum=50),
         }
     raise ValueError(f"unsupported bootstrap Program kind: {kind.value}")
 

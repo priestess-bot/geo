@@ -1,25 +1,13 @@
 import type { PromptBootstrapCatalog } from "./promptBootstrapTypes";
+import { difyWorkflowPurposes, promptProgramKinds } from "./promptProgramKinds";
 
-export const primaryPromptProgramKinds = [
-  "generation",
-  "claim_extraction",
-  "conflict_check",
-  "revision",
-  "style_judge",
-  "arbiter",
-  "metric_judge",
-  "recommendation"
-] as const;
-
-export const auxiliaryPromptProgramKinds = [
-  "style_profile",
-  "offline_answer"
-] as const;
-
-export const promptProgramKinds = [
-  ...primaryPromptProgramKinds,
-  ...auxiliaryPromptProgramKinds
-] as const;
+export {
+  auxiliaryPromptProgramKinds,
+  difyWorkflowPurposes,
+  primaryPromptProgramKinds,
+  promptProgramKinds,
+  workflowPromptProgramKinds
+} from "./promptProgramKinds";
 
 export type PromptProgramKind = (typeof promptProgramKinds)[number];
 export type PromptReleaseStatus = "draft" | "tested" | "approved" | "frozen" | "retired";
@@ -65,6 +53,94 @@ export type PromptProgramRelease = Readonly<{
   test_set_hash: string;
   compiler_version: string;
   state: PromptReleaseState;
+}>;
+
+export type PromptProgramReleaseDetail = PromptProgramRelease & Readonly<{
+  system_template: string;
+  user_template: string;
+}>;
+
+export type PromptContextSlot = Readonly<{
+  key: string;
+  label: string;
+  description: string;
+  insertion: string;
+  source: "runtime_task";
+}>;
+
+export type PromptWorkingDraft = Readonly<{
+  project_id: string;
+  program_id: string;
+  display_name: string;
+  system_template: string;
+  user_template: string;
+  revision: number;
+  draft_hash: string;
+  base_release_id: string;
+  candidate_release_id: string | null;
+  updated_by: string;
+  updated_at: string;
+}>;
+
+export type PromptFlow = Readonly<{
+  flow_key: string;
+  purpose: string;
+  program_kind: PromptProgramSummary["program_kind"];
+  group: "synthetic_lab" | "question_and_content" | "measurement_and_recommendation";
+  display_name: string;
+  description: string;
+  configurable: boolean;
+  context_slots: PromptContextSlot[];
+  program: PromptProgramSummary | null;
+  draft: PromptWorkingDraft | null;
+  latest_release_version: number | null;
+  current_release_id: string | null;
+  current_release_version: number | null;
+  candidate_status: PromptReleaseStatus | null;
+  latest_test_job_id: string | null;
+  latest_test_status: string | null;
+  latest_test_score: number | null;
+}>;
+
+export type PromptFlowPage = Readonly<{
+  items: PromptFlow[];
+  total: number;
+}>;
+
+export type CompiledPrompt = Readonly<{
+  system_prompt: string;
+  user_prompt: string;
+  system_prompt_hash: string;
+  user_prompt_hash: string;
+}>;
+
+export type PromptRenderPreview = Readonly<{
+  fixture_id: string;
+  fixture_label: string;
+  input_value: Record<string, unknown>;
+  draft: CompiledPrompt;
+  current: CompiledPrompt | null;
+  current_release_version: number | null;
+}>;
+
+export type PromptTestRun = Readonly<{
+  job_id: string;
+  project_id: string;
+  program_id: string;
+  release_id: string;
+  release_version: number;
+  status: string;
+  requested_at: string;
+  finished_at: string | null;
+  passed: boolean | null;
+  score: number | null;
+  result_ref: string | null;
+  error_code: string | null;
+}>;
+
+export type PromptTestRunPage = Readonly<{
+  items: PromptTestRun[];
+  total: number;
 }>;
 
 export type PromptProgramPage = Readonly<{
@@ -179,12 +255,85 @@ export type PromptLoadProblem = Readonly<{
   correlationId?: string;
 }>;
 
+export type DifyWorkflowRuntimeCard = Readonly<{
+  purpose: typeof difyWorkflowPurposes[number];
+  backend: "native" | "dify";
+  activation_status:
+    | "not_configured"
+    | "active"
+    | "blocked_secret"
+    | "blocked_prompt_retired"
+    | "stale_prompt";
+  release_id: string | null;
+  release_version: number | null;
+  release_hash: string | null;
+  prompt_program_id: string | null;
+  prompt_release_id: string | null;
+  prompt_release_hash: string | null;
+  prompt_system_template: string | null;
+  prompt_user_template: string | null;
+  dify_app_id: string | null;
+  dify_workflow_id: string | null;
+  dsl_hash: string | null;
+  configured_model: string | null;
+  model_provider: string | null;
+  binding_version: number | null;
+  activated_at: string | null;
+  last_attempt_status: string | null;
+  last_attempt_kind: string | null;
+  last_attempt_at: string | null;
+  last_error_code: string | null;
+  last_error_message: string | null;
+  console_url: string | null;
+  published_workflow_hash: string | null;
+  published_snapshot_hash: string | null;
+  published_prompt_nodes: ReadonlyArray<Readonly<{
+    node_id: string;
+    title: string;
+    model_provider: string;
+    model_name: string;
+    model_mode: string;
+    completion_params: Record<string, unknown>;
+    messages: ReadonlyArray<Readonly<{ role: string; text: string }>>;
+  }>>;
+  published_input_variables: ReadonlyArray<Readonly<{
+    name: string;
+    label: string;
+    type: string;
+    required: boolean;
+    description: string;
+  }>>;
+  published_graph_nodes: ReadonlyArray<Readonly<{
+    node_id: string;
+    type: string;
+    title: string;
+  }>>;
+  published_at: string | null;
+  observed_at: string | null;
+  sync_status: "not_observed" | "cached" | "current" | "unreachable";
+  sync_error: string | null;
+}>;
+
+export type DifyWorkflowRuntimePage = Readonly<{
+  runtime_backend: "native" | "dify";
+  items: DifyWorkflowRuntimeCard[];
+  total: number;
+}>;
+
 export type PromptWorkspaceData = Readonly<{
+  flows: PromptFlowPage;
+  flowsProblem?: PromptLoadProblem;
+  selectedFlow: PromptFlow | null;
+  selectedReleaseDetail: PromptProgramReleaseDetail | null;
+  testRuns: PromptTestRunPage;
+  testRunsProblem?: PromptLoadProblem;
   bootstrap: PromptBootstrapCatalog | null;
   bootstrapProblem?: PromptLoadProblem;
   selectedBootstrapKind: PromptProgramKind | null;
   testRuntimes: PromptTestRuntimeOption[];
   testRuntimesProblem?: PromptLoadProblem;
+  workflowRuntimes: DifyWorkflowRuntimePage;
+  workflowRuntimesProblem?: PromptLoadProblem;
   bindings: PromptProgramBindingOptionPage;
   bindingsProblem?: PromptLoadProblem;
   programs: PromptProgramPage;
@@ -224,237 +373,23 @@ export type PromptActionState = Readonly<{
 
 export const initialPromptActionState: PromptActionState = { kind: "idle" };
 
-export function isPromptProgramPage(value: unknown): value is PromptProgramPage {
-  return record(value)
-    && Array.isArray(value.items)
-    && value.items.every(isPromptProgramSummary)
-    && pageNumbers(value);
-}
-
-export function isPromptReleasePage(value: unknown): value is PromptReleasePage {
-  return record(value)
-    && Array.isArray(value.items)
-    && value.items.every(isPromptProgramRelease)
-    && pageNumbers(value);
-}
-
-export function isCreatedPromptProgramResponse(
-  value: unknown
-): value is CreatedPromptProgramResponse {
-  return record(value)
-    && isPromptProgramSummary(value.program)
-    && isPromptProgramRelease(value.release)
-    && typeof value.replayed === "boolean";
-}
-
-export function isCreatedPromptReleaseResponse(
-  value: unknown
-): value is CreatedPromptReleaseResponse {
-  return record(value)
-    && isPromptProgramRelease(value.release)
-    && typeof value.replayed === "boolean";
-}
-
-export function isPromptTestJobResponse(
-  value: unknown
-): value is PromptTestJobResponse {
-  if (!record(value)) return false;
-  return [value.job_id, value.project_id, value.release_id, value.test_set_id]
-    .every(nonEmptyString)
-    && [value.release_hash, value.test_set_hash, value.input_hash].every(isHash)
-    && positiveInteger(value.test_set_version)
-    && ["queued", "running", "finalizing", "retry_wait", "succeeded", "failed", "dead_lettered", "cancelled"].includes(String(value.status))
-    && typeof value.replayed === "boolean";
-}
-
-export function isPromptTestRuntimeOptionPage(
-  value: unknown
-): value is PromptTestRuntimeOptionPage {
-  return record(value)
-    && Array.isArray(value.items)
-    && value.items.every(isPromptTestRuntimeOption)
-    && Number.isInteger(value.total)
-    && Number(value.total) >= 0
-    && value.total === value.items.length;
-}
-
-function isPromptTestRuntimeOption(value: unknown): value is PromptTestRuntimeOption {
-  if (!record(value)) return false;
-  return [
-    value.runtime_selection_id,
-    value.runtime_manifest_id,
-    value.policy_version_id,
-    value.provider,
-    value.adapter_release_id,
-    value.model_release_id,
-    value.configured_model
-  ].every(nonEmptyString)
-    && ["provider_api", "proxy_grounded_api"].includes(String(value.capture_method))
-    && [
-      value.runtime_selection_hash,
-      value.runtime_manifest_hash,
-      value.adapter_release_hash,
-      value.model_release_hash,
-      value.policy_version_hash
-    ].every(isHash);
-}
-
-export function isTransitionedPromptProgramResponse(
-  value: unknown
-): value is TransitionedPromptProgramResponse {
-  return record(value)
-    && isPromptProgramRelease(value.release)
-    && (value.admitted_test_evidence_hash === null || isHash(value.admitted_test_evidence_hash))
-    && typeof value.replayed === "boolean";
-}
-
-export function isPromptProgramDiffResponse(
-  value: unknown
-): value is PromptProgramDiffResponse {
-  if (!record(value)) return false;
-  return [
-    value.base_release_id,
-    value.candidate_release_id
-  ].every(nonEmptyString)
-    && [
-      value.base_release_hash,
-      value.candidate_release_hash,
-      value.fixed_input_hash,
-      value.base_system_hash,
-      value.candidate_system_hash,
-      value.base_user_hash,
-      value.candidate_user_hash
-    ].every(isHash)
-    && Array.isArray(value.changed_fields)
-    && value.changed_fields.every(nonEmptyString)
-    && typeof value.replayed === "boolean";
-}
-
-export function isPromptProgramBindingResponse(
-  value: unknown
-): value is PromptProgramBindingResponse {
-  if (!record(value)) return false;
-  return [
-    value.id,
-    value.project_id,
-    value.purpose,
-    value.program_id,
-    value.release_id,
-    value.frozen_state_id,
-    value.bound_by,
-    value.bound_at
-  ].every(nonEmptyString)
-    && isPromptProgramKind(value.program_kind)
-    && positiveInteger(value.release_version)
-    && positiveInteger(value.binding_version)
-    && isHash(value.release_hash)
-    && typeof value.replayed === "boolean";
-}
-
-export function isPromptProgramBindingOptionPage(
-  value: unknown
-): value is PromptProgramBindingOptionPage {
-  return record(value)
-    && Array.isArray(value.items)
-    && value.items.every(isPromptProgramBindingOption)
-    && nonNegativeInteger(value.total)
-    && positiveInteger(value.limit)
-    && nonNegativeInteger(value.offset)
-    && value.items.length <= value.limit
-    && value.offset + value.items.length <= value.total;
-}
-
-function isPromptProgramBindingOption(value: unknown): value is PromptProgramBindingOption {
-  if (!record(value)) return false;
-  return [
-    value.id,
-    value.project_id,
-    value.purpose,
-    value.program_id,
-    value.release_id,
-    value.frozen_state_id,
-    value.bound_by,
-    value.bound_at
-  ].every(nonEmptyString)
-    && isPromptProgramKind(value.program_kind)
-    && positiveInteger(value.release_version)
-    && positiveInteger(value.binding_version)
-    && isHash(value.release_hash);
-}
-
-export function isPromptProgramSummary(value: unknown): value is PromptProgramSummary {
-  return record(value)
-    && [value.id, value.project_id, value.purpose, value.owner_id].every(nonEmptyString)
-    && isPromptProgramKind(value.program_kind);
-}
-
-export function isPromptProgramRelease(value: unknown): value is PromptProgramRelease {
-  if (!record(value) || !record(value.state)) return false;
-  return [
-    value.id,
-    value.project_id,
-    value.program_id,
-    value.purpose,
-    value.owner_id,
-    value.variable_schema_version,
-    value.input_schema_version,
-    value.output_schema_version,
-    value.application_output_schema_version,
-    value.model_policy_version,
-    value.test_set_id,
-    value.test_set_hash,
-    value.compiler_version
-  ].every(nonEmptyString)
-    && isPromptProgramKind(value.program_kind)
-    && positiveInteger(value.version)
-    && positiveInteger(value.test_set_version)
-    && isHash(value.test_set_hash)
-    && [
-      value.release_hash,
-      value.system_template_hash,
-      value.user_template_hash,
-      value.model_policy_hash,
-      value.output_schema_hash,
-      value.application_output_schema_hash
-    ].every(isHash)
-    && isPromptReleaseState(value.state);
-}
-
-function isPromptReleaseState(value: unknown): value is PromptReleaseState {
-  return record(value)
-    && [value.id, value.acted_by, value.acted_at].every(nonEmptyString)
-    && positiveInteger(value.version)
-    && ["draft", "tested", "approved", "frozen", "retired"].includes(String(value.status))
-    && (value.evidence_ref === null || nonEmptyString(value.evidence_ref));
-}
-
-function isPromptProgramKind(value: unknown): value is PromptProgramSummary["program_kind"] {
-  return value === "reference_translation"
-    || promptProgramKinds.some((kind) => kind === value);
-}
-
-function pageNumbers(value: Record<string, unknown>): boolean {
-  return nonNegativeInteger(value.total)
-    && positiveInteger(value.limit)
-    && nonNegativeInteger(value.offset);
-}
-
-function isHash(value: unknown): value is string {
-  return typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
-}
-
-function record(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function nonEmptyString(value: unknown): value is string {
-  return typeof value === "string" && value.trim().length > 0;
-}
-
-function positiveInteger(value: unknown): value is number {
-  return typeof value === "number" && Number.isInteger(value) && value > 0;
-}
-
-function nonNegativeInteger(value: unknown): value is number {
-  return typeof value === "number" && Number.isInteger(value) && value >= 0;
-}
+export {
+  isCreatedPromptProgramResponse,
+  isCreatedPromptReleaseResponse,
+  isDifyWorkflowRuntimePage,
+  isPromptFlowPage,
+  isPromptProgramBindingOptionPage,
+  isPromptProgramBindingResponse,
+  isPromptProgramDiffResponse,
+  isPromptProgramPage,
+  isPromptProgramRelease,
+  isPromptProgramReleaseDetail,
+  isPromptProgramSummary,
+  isPromptReleasePage,
+  isPromptRenderPreview,
+  isPromptTestJobResponse,
+  isPromptTestRunPage,
+  isPromptTestRuntimeOptionPage,
+  isPromptWorkingDraft,
+  isTransitionedPromptProgramResponse
+} from "./promptProgramTypeGuards";

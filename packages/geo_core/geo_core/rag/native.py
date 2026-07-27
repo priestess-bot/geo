@@ -80,6 +80,53 @@ use outside knowledge. Return every dimension_key exactly once with at least one
 Return one JSON object only:
 {"supports":[{"dimension_key":"exact supplied key","fact_texts":["exact candidate text"]}]}"""
 
+RAG_EXTRACTION_OUTPUT_SCHEMA: Mapping[str, object] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["facts", "entities", "relations"],
+    "properties": {
+        "facts": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["text", "source_quote"],
+                "properties": {
+                    "text": {"type": "string", "minLength": 1},
+                    "source_quote": {"type": "string", "minLength": 1},
+                },
+            },
+        },
+        "entities": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["entity_type", "name", "source_quote"],
+                "properties": {
+                    "entity_type": {"type": "string", "minLength": 1},
+                    "name": {"type": "string", "minLength": 1},
+                    "source_quote": {"type": "string", "minLength": 1},
+                },
+            },
+        },
+        "relations": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["subject", "predicate", "object", "source_quote"],
+                "properties": {
+                    "subject": {"type": "string", "minLength": 1},
+                    "predicate": {"type": "string", "minLength": 1},
+                    "object": {"type": "string", "minLength": 1},
+                    "source_quote": {"type": "string", "minLength": 1},
+                },
+            },
+        },
+    },
+}
+
 
 class ProjectNativeRagAdapterV1:
     """LLM-backed extraction plus governed plan-to-question generation.

@@ -35,8 +35,20 @@ from geo_core.model_gateway.contracts import (
     RetryableModelGatewayError,
 )
 from geo_core.object_store import ObjectStoreError
-from geo_core.rag import CandidateGraph, RagSelection, selected_rag_adapter
+from geo_core.rag import (
+    CandidateGraph,
+    RAG_EXTRACTION_OUTPUT_SCHEMA,
+    RagSelection,
+    selected_rag_adapter,
+)
 from geo_core.rag.contracts import JsonModelInvoker
+from geo_core.workflow_runtime import (
+    DYNAMIC_JSON_OUTPUT_SCHEMA,
+    RetryableWorkflowExecutionError,
+    WorkflowExecutionError,
+    WorkflowExecutionRequest,
+    WorkflowExecutor,
+)
 
 
 class StoredObjectLike(Protocol):
@@ -105,6 +117,7 @@ class KnowledgeRagExtractHandler:
         selection: RagSelection,
         selection_manifest_hash: str,
         lease_for: timedelta,
+        workflow_executor: WorkflowExecutor | None = None,
     ) -> None:
         self._store = store
         self._repository = repository
@@ -113,6 +126,7 @@ class KnowledgeRagExtractHandler:
         self._selection = selection
         self._selection_manifest_hash = selection_manifest_hash
         self._lease_for = lease_for
+        self._workflow_executor = workflow_executor
 
     def handle(self, lease: WorkerLease) -> Mapping[str, object]:
         try:
@@ -123,6 +137,7 @@ class KnowledgeRagExtractHandler:
                 claim=claim,
                 repository=self._repository,
                 gateway=self._gateway,
+                workflow_executor=self._workflow_executor,
             )
             adapter = selected_rag_adapter(self._selection, invoker)
             with LeaseHeartbeat(
@@ -161,9 +176,10 @@ class KnowledgeRagExtractHandler:
             raise KnowledgeRagContractError("RAG job selection manifest changed after enqueue")
 
     def _fail(self, lease: WorkerLease, error: Exception) -> Mapping[str, object]:
-        retryable = isinstance(error, (RetryableModelGatewayError, ObjectStoreError)) or getattr(
-            error, "sqlstate", None
-        ) in {"40001", "40P01"}
+        retryable = isinstance(
+            error,
+            (RetryableModelGatewayError, RetryableWorkflowExecutionError, ObjectStoreError),
+        ) or getattr(error, "sqlstate", None) in {"40001", "40P01"}
         status = self._store.fail(
             lease,
             error_code=type(error).__name__,
@@ -184,11 +200,13 @@ class _AuditedRagInvoker(JsonModelInvoker):
         claim: KnowledgeRagClaim,
         repository: KnowledgeRagWorkerRepository,
         gateway: ModelGateway,
+        workflow_executor: WorkflowExecutor | None,
     ) -> None:
         self._lease = lease
         self._claim = claim
         self._repository = repository
         self._gateway = gateway
+        self._workflow_executor = workflow_executor
 
     def complete_json(
         self,
@@ -201,6 +219,37 @@ class _AuditedRagInvoker(JsonModelInvoker):
     ) -> Mapping[str, object]:
         if project_id != str(self._lease.project_id):
             raise KnowledgeRagContractError("RAG model request crossed its project boundary")
+        if self._workflow_executor is not None:
+            workflow_result = self._workflow_executor.execute_optional(
+                self._lease,
+                WorkflowExecutionRequest(
+                    project_id=self._lease.project_id,
+                    purpose="knowledge.rag_grounding",
+                    context={
+                        "adapter_purpose": purpose,
+                        "messages": [dict(value) for value in messages],
+                        "max_output_tokens": max_output_tokens,
+                    },
+                    input_hash=request_hash,
+                    output_schema=(
+                        RAG_EXTRACTION_OUTPUT_SCHEMA
+                        if purpose == "geo-rag-graph-extraction"
+                        else DYNAMIC_JSON_OUTPUT_SCHEMA
+                    ),
+                    system_prompt="\n\n".join(
+                        str(value.get("content", ""))
+                        for value in messages
+                        if value.get("role") == "system"
+                    ),
+                    user_prompt="\n\n".join(
+                        str(value.get("content", ""))
+                        for value in messages
+                        if value.get("role") == "user"
+                    ),
+                ),
+            )
+            if workflow_result is not None:
+                return workflow_result.output
         provider = str(getattr(self._gateway, "provider", "unknown"))
         reservation = self._repository.reserve_model_call(
             self._lease,
@@ -242,6 +291,8 @@ class _AuditedRagInvoker(JsonModelInvoker):
 
 
 def _model_error_classification(error: Exception) -> str:
+    if isinstance(error, WorkflowExecutionError):
+        return error.classification
     if isinstance(error, RetryableModelGatewayError):
         return "retryable"
     if isinstance(error, ProviderPolicyViolation):

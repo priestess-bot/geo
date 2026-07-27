@@ -80,7 +80,11 @@ export function MemberRow({
           <strong>{member.display_name}</strong>
           {isSelf ? <span className={styles.selfBadge}>当前账号</span> : null}
         </div>
-        <a href={`mailto:${member.email}`}>{member.email}</a>
+        {member.email ? (
+          <a href={`mailto:${member.email}`}>{member.email}</a>
+        ) : (
+          <span>系统身份（无登录邮箱）</span>
+        )}
         <span>{member.issuer}</span>
         <code>{member.subject}</code>
       </div>

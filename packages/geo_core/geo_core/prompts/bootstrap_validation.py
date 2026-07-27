@@ -77,6 +77,22 @@ KIND_APPLICATION_RULES: Mapping[ProgramKind, tuple[str, ...]] = {
         "offline_answer.slot_identity_frozen",
         "offline_answer.corpus_evidence_exact",
     ),
+    ProgramKind.QUESTION_GENERATION: (
+        "question_generation.question_ids_unique",
+        "question_generation.evidence_bound",
+    ),
+    ProgramKind.RAG_GROUNDING: (
+        "rag_grounding.question_preserved",
+        "rag_grounding.facts_allowlisted",
+    ),
+    ProgramKind.PLACEMENT_GENERATION: (
+        "placement_generation.destination_policy_applied",
+        "placement_generation.draft_only",
+    ),
+    ProgramKind.PLACEMENT_SIMULATION: (
+        "placement_simulation.rendered_preview_only",
+        "placement_simulation.no_live_surface_claim",
+    ),
 }
 
 
@@ -450,6 +466,31 @@ def _validate_kind_rules(
                 "offline answer must use exactly the frozen Corpus evidence"
             )
         _required_member(output, "answer_text")
+    elif kind is ProgramKind.QUESTION_GENERATION:
+        questions = _mapping_items(output.get("questions"))
+        question_ids = [_required_member(item, "question_id") for item in questions]
+        if len(question_ids) != len(set(question_ids)):
+            _semantic_error("question generation question IDs must be unique")
+        for item in questions:
+            _required_member(item, "text")
+            if not _string_items(item.get("evidence_refs")):
+                _semantic_error("question generation requires evidence for every question")
+    elif kind is ProgramKind.RAG_GROUNDING:
+        _required_member(output, "grounded_question")
+        supporting = set(_string_items(output.get("supporting_fact_refs")))
+        if not supporting:
+            _semantic_error("RAG grounding requires at least one supporting Fact")
+        allowed = {item["ref"] for item in _input_evidence(input_value)}
+        if not supporting.issubset(allowed):
+            _semantic_error("RAG grounding Fact refs are outside frozen evidence")
+    elif kind is ProgramKind.PLACEMENT_GENERATION:
+        _required_member(output, "content")
+        _required_member(output, "destination_summary")
+        if output.get("destination_policy_applied") is not True:
+            _semantic_error("placement generation must apply the frozen destination policy")
+    elif kind is ProgramKind.PLACEMENT_SIMULATION:
+        _required_member(output, "rendered_prompt")
+        _required_member(output, "output_preview")
 
 
 def _validate_recommendation_output(

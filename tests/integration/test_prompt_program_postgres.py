@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import psycopg
@@ -11,12 +12,15 @@ from geo_core.access.models import AccessPrincipal, MembershipRecord
 from geo_core.project_scope import set_project_scope
 from geo_core.prompts.application import (
     PromptProgramApplication,
-    PromptProgramForbidden,
     PromptProgramNotFound,
     PromptProgramRuntimeBlocked,
     PromptProgramVersionConflict,
 )
-from geo_core.prompts.postgres import build_prompt_program_api, prompt_program_uow_factory
+from geo_core.prompts.postgres import (
+    PsycopgPromptProgramApi,
+    build_prompt_program_api,
+    prompt_program_uow_factory,
+)
 from geo_core.prompts.program import (
     ModelPolicySnapshot,
     ProgramKind,
@@ -112,7 +116,7 @@ def test_prompt_program_history_replays_across_uow_and_resolves_exact_binding() 
             evidence_actor=first["reviewer"],
         )
 
-        tested = _command(
+        tested_receipt = _command(
             factory,
             first["project"],
             lambda application: application.record_test(
@@ -125,36 +129,15 @@ def test_prompt_program_history_replays_across_uow_and_resolves_exact_binding() 
                 idempotency_key="test:generation:v1",
             ),
         )
-        with pytest.raises(PromptProgramForbidden, match="cannot approve"):
-            _command(
-                factory,
-                first["project"],
-                lambda application: application.approve_release(
-                    owner,
-                    project_id=first["project"],
-                    release_id=created.value.release.id,
-                    expected_version=2,
-                    idempotency_key="approve:generation:owner",
-                ),
-            )
-        _assert_database_rejects_owner_approval(
-            app_url=app_url,
-            project_id=first["project"],
-            release_id=created.value.release.id,
-            release_hash=created.value.release.release_hash,
-            tested_state_id=tested.value.state.id,
-            owner_id=first["owner"],
-        )
-
         approved = _command(
             factory,
             first["project"],
             lambda application: application.approve_release(
-                reviewer,
+                owner,
                 project_id=first["project"],
                 release_id=created.value.release.id,
                 expected_version=2,
-                idempotency_key="approve:generation:v1",
+                idempotency_key="approve:generation:owner",
             ),
         )
         frozen = _command(
@@ -287,7 +270,7 @@ def test_prompt_program_history_replays_across_uow_and_resolves_exact_binding() 
         assert resolved.release == created.value.release
         assert resolved.state == frozen.value.state
         assert resolved.binding == bound.value.binding
-        assert approved.value.admitted_test_evidence == tested.value.evidence
+        assert approved.value.admitted_test_evidence == tested_receipt.value.evidence
 
         retired = _command(
             factory,
@@ -356,6 +339,128 @@ def test_prompt_program_history_replays_across_uow_and_resolves_exact_binding() 
                 admin,
                 projects=[first, second],
                 tenant_ids=[first["tenant"], second["tenant"]],
+                app_login=app_login,
+            )
+
+
+def test_prompt_workspace_publishes_the_exact_tested_draft_in_one_command() -> None:
+    suffix = uuid4().hex[:10]
+    app_login, password = f"geo_prompt_workspace_{suffix}", uuid4().hex
+    with psycopg.connect(ADMIN_URL) as admin:
+        admin.execute(
+            sql.SQL("CREATE ROLE {} LOGIN PASSWORD {} IN ROLE geo_app").format(
+                sql.Identifier(app_login), sql.Literal(password)
+            )
+        )
+        seeded = seed_project(admin, suffix=f"prompt-workspace-{suffix}")
+    app_url = login_url(ADMIN_URL, user=app_login, password=password)
+    factory = prompt_program_uow_factory(lambda: psycopg.connect(app_url))
+    api = PsycopgPromptProgramApi(
+        factory,
+        test_evidence_verifier=_DatabaseLifecycleEvidenceVerifier(),
+    )
+    owner = _principal(seeded, "owner")
+    try:
+        created = api.create_program(
+            owner,
+            project_id=seeded["project"],
+            program_kind=ProgramKind.GENERATION,
+            purpose="synthetic_lab.generation",
+            system_template="Return Australian English for {{channel}}.",
+            user_template="Write {{scenario}} for {{channel}}.",
+            schemas=_schemas(),
+            model_policy=_policy(),
+            test_set_id=uuid4(),
+            test_set_version=1,
+            test_set_hash="ab" * 32,
+            compiler_version="geo-prompt-compiler-v2",
+            expected_version=0,
+            idempotency_key="workspace:create",
+        ).value
+        draft = api.get_working_draft(
+            owner,
+            project_id=seeded["project"],
+            program_id=created.program.id,
+        )
+        saved = api.save_working_draft(
+            owner,
+            project_id=seeded["project"],
+            program_id=created.program.id,
+            display_name="澳洲候选测评",
+            system_template="Return concise Australian English for {{channel}}.",
+            user_template="Write a grounded {{scenario}} review for {{channel}}.",
+            expected_revision=draft.revision,
+        )
+        candidate = api.create_release(
+            owner,
+            project_id=seeded["project"],
+            program_id=created.program.id,
+            system_template=saved.system_template,
+            user_template=saved.user_template,
+            schemas=_schemas(),
+            model_policy=_policy(),
+            test_set_id=created.release.test_set_id,
+            test_set_version=1,
+            test_set_hash=created.release.test_set_hash,
+            compiler_version="geo-prompt-compiler-v2",
+            expected_version=1,
+            idempotency_key="workspace:candidate",
+        ).value
+        _command(
+            factory,
+            seeded["project"],
+            lambda application: application.record_test(
+                owner,
+                project_id=seeded["project"],
+                release_id=candidate.release.id,
+                output_artifact_ref="s3://prompt-tests/generation/fixed-run.json",
+                output_hash="e" * 64,
+                expected_version=1,
+                idempotency_key="workspace:test",
+            ),
+        )
+        with factory(seeded["project"]) as unit_of_work:
+            unit_of_work.prompts.set_working_draft_candidate(
+                project_id=seeded["project"],
+                program_id=created.program.id,
+                expected_revision=saved.revision,
+                candidate_release_id=candidate.release.id,
+                updated_by=owner.identity_id,
+                updated_at=datetime.now(UTC),
+            )
+            unit_of_work.commit()
+
+        published = api.publish_working_draft(
+            owner,
+            project_id=seeded["project"],
+            program_id=created.program.id,
+            expected_revision=saved.revision,
+            idempotency_key="workspace:publish",
+        )
+
+        assert published.release.id == candidate.release.id
+        assert published.state.status.value == "frozen"
+        assert published.binding.release_id == candidate.release.id
+        assert published.draft.base_release_id == candidate.release.id
+        assert published.draft.candidate_release_id is None
+
+        replayed = api.publish_working_draft(
+            owner,
+            project_id=seeded["project"],
+            program_id=created.program.id,
+            expected_revision=saved.revision,
+            idempotency_key="workspace:publish",
+        )
+        assert replayed.release.id == published.release.id
+        assert replayed.state.id == published.state.id
+        assert replayed.binding.id == published.binding.id
+        assert replayed.draft == published.draft
+    finally:
+        with psycopg.connect(ADMIN_URL) as admin:
+            cleanup_projects(
+                admin,
+                projects=[seeded],
+                tenant_ids=[seeded["tenant"]],
                 app_login=app_login,
             )
 
@@ -434,36 +539,6 @@ def _policy() -> ModelPolicySnapshot:
             "fallback": False,
         },
     )
-
-
-def _assert_database_rejects_owner_approval(
-    *,
-    app_url: str,
-    project_id: UUID,
-    release_id: UUID,
-    release_hash: str,
-    tested_state_id: UUID,
-    owner_id: UUID,
-) -> None:
-    with psycopg.connect(app_url) as connection:
-        set_project_scope(connection, project_id)
-        with pytest.raises(psycopg.Error, match="owner cannot approve"):
-            connection.execute(
-                """INSERT INTO prompt_program_release_states
-                     (id, project_id, release_id, release_hash, version,
-                      previous_state_id, status, acted_by, acted_at, evidence_ref)
-                   VALUES (%s, %s, %s, %s, 3, %s, 'approved', %s,
-                           clock_timestamp(), 'approval:forged')""",
-                (
-                    uuid4(),
-                    project_id,
-                    release_id,
-                    release_hash,
-                    tested_state_id,
-                    owner_id,
-                ),
-            )
-        connection.rollback()
 
 
 def _assert_database_rejects_release_version_gap(

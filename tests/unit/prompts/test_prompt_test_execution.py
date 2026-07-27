@@ -24,6 +24,7 @@ from geo_core.prompts.compiler_versions import BOOTSTRAP_COMPILER_VERSION
 from geo_core.prompts.memory import InMemoryPromptProgramRepository
 from geo_core.prompts.ports import PromptProgramIdempotencyConflict
 from geo_core.prompts.program import ProgramKind, create_initial_release_state
+from geo_core.prompts.workspace import workspace_schema_contract
 from geo_core.prompts.test_artifacts import (
     S3PromptTestArtifactStore,
     S3PromptTestEvidenceVerifier,
@@ -174,6 +175,75 @@ def test_admission_rejects_client_selected_test_set_or_reused_key() -> None:
             idempotency_key="same-key",
         )
     assert accepted.value.id in runs.tasks
+
+
+def test_admission_accepts_only_the_controlled_workspace_variable_schema() -> None:
+    project_id, owner_id = uuid4(), uuid4()
+    principal = _principal(project_id, owner_id)
+    prompts, release, _state = _stored_draft(project_id, owner_id)
+    workspace_release = release.compile(
+        id=uuid4(),
+        program=prompts.get_program(project_id=project_id, program_id=release.program_id),
+        version=2,
+        system_template=release.system_template,
+        user_template=release.user_template,
+        schemas=workspace_schema_contract(release),
+        model_policy=release.model_policy,
+        test_set_id=release.test_set_id,
+        test_set_version=release.test_set_version,
+        test_set_hash=release.test_set_hash,
+        compiler_version=release.compiler_version,
+    )
+    assert workspace_release.schemas.variable_schema_version == "geo-prompt-context-slots-v1"
+
+    state = create_initial_release_state(
+        id=uuid4(), release=workspace_release, actor_id=owner_id, acted_at=NOW
+    )
+    from geo_core.prompts.application_models import CreatedPromptRelease
+    from geo_core.prompts.application_support import command_record, request_hash
+    from geo_core.prompts.ports import PromptCommandOperation
+
+    prompts.store_created_release(
+        project_id=project_id,
+        release=workspace_release,
+        state=state,
+        expected_version=1,
+        command=command_record(
+            project_id=project_id,
+            key_hash="cd" * 32,
+            operation=PromptCommandOperation.CREATE_RELEASE,
+            request_hash=request_hash(
+                operation=PromptCommandOperation.CREATE_RELEASE,
+                actor_id=owner_id,
+                project_id=project_id,
+                expected_version=1,
+                values={"fixture": "workspace-schema"},
+            ),
+            result=CreatedPromptRelease(workspace_release, state),
+        ),
+    )
+    runs = _MemoryTestRuns()
+    selection = _selection(project_id)
+    application = PromptTestApplication(
+        uow_factory=_TestUowFactory(prompts, runs),
+        runtime_selector=_Selector(selection),
+        clock=lambda: NOW,
+    )
+
+    receipt = application.enqueue(
+        principal,
+        project_id=project_id,
+        program_id=release.program_id,
+        release_id=workspace_release.id,
+        test_set_id=workspace_release.test_set_id,
+        test_set_version=workspace_release.test_set_version,
+        test_set_hash=workspace_release.test_set_hash,
+        route=PromptTestRouteRequest(selection.runtime_selection_id),
+        expected_version=state.version,
+        idempotency_key="workspace-schema-suite",
+    )
+
+    assert runs.tasks[receipt.value.id].release_id == workspace_release.id
 
 
 def test_worker_evaluates_all_cases_and_only_passed_run_creates_evidence() -> None:

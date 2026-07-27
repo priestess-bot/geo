@@ -24,6 +24,7 @@ from geo_core.prompts.program import (
     PromptProgramRelease,
     PromptProgramRuleViolation,
 )
+from geo_core.prompts.workspace import workspace_schema_contract
 from geo_core.prompts.test_execution_contracts import (
     PromptTestExecutionError,
     PromptTestJobReceipt,
@@ -128,12 +129,46 @@ def _exact_test_spec(
     test_set_hash: str,
 ) -> PromptBootstrapSpec:
     spec = default_prompt_bootstrap_spec(release.program_kind)
+    workspace_schema = workspace_schema_contract(release)
+    legacy_workspace_schema = workspace_schema_contract(
+        release, require_context_slots=False
+    )
+    immutable_schema_matches = (
+        release.schemas.input_schema_version == spec.schemas.input_schema_version
+        and release.schemas.input_schema == spec.schemas.input_schema
+        and release.schemas.output_schema_version == spec.schemas.output_schema_version
+        and release.schemas.output_schema == spec.schemas.output_schema
+        and (
+            release.schemas.application_output_schema_version
+            == spec.schemas.application_output_schema_version
+        )
+        and (
+            release.schemas.application_output_schema
+            == spec.schemas.application_output_schema
+        )
+    )
+    variable_schema_matches = (
+        (
+            release.schemas.variable_schema_version
+            == spec.schemas.variable_schema_version
+            and release.schemas.variable_schema == spec.schemas.variable_schema
+        )
+        or (
+            release.schemas.variable_schema_version
+            == workspace_schema.variable_schema_version
+            and release.schemas.variable_schema in (
+                workspace_schema.variable_schema,
+                legacy_workspace_schema.variable_schema,
+            )
+        )
+    )
     if (
         release.purpose != spec.purpose
         or release.test_set_id != spec.test_set_id
         or release.test_set_version != BOOTSTRAP_TEST_SET_VERSION
         or release.test_set_hash != spec.test_set_hash
-        or release.schemas != spec.schemas
+        or not immutable_schema_matches
+        or not variable_schema_matches
         or test_set_id != release.test_set_id
         or test_set_version != release.test_set_version
         or test_set_hash != release.test_set_hash

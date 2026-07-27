@@ -23,7 +23,7 @@ from geo_api.prompt_program_contracts import (
     PromptProgramDiffResponse,
     PromptProgramPage,
     PromptProgramReleasePage,
-    PromptProgramReleaseResponse,
+    PromptProgramReleaseDetailResponse,
     PromptProgramSummaryResponse,
     PromptTestJobResponse,
     PromptTestRuntimeOptionPage,
@@ -38,11 +38,13 @@ from geo_api.prompt_program_presenters import (
     present_diff as _diff,
     present_program as _program,
     present_release as _release,
+    present_release_detail as _release_detail,
     present_test_job as _test_job,
     present_test_runtime as _test_runtime,
     present_transitioned as _transitioned,
 )
 from geo_api.prompt_program_runtime import PromptProgramApi
+from geo_api.prompt_workspace_routes import register_prompt_workspace_routes
 from geo_api.stable_routes import PROBLEM_RESPONSES
 from geo_core.prompts.application import (
     PromptProgramApplicationError,
@@ -127,6 +129,8 @@ def prompt_program_router() -> APIRouter:
             )
         )
         return _created(result)
+
+    register_prompt_workspace_routes(router, api=_api, call=_call)
 
     @router.get(
         "/prompt-programs",
@@ -278,7 +282,7 @@ def prompt_program_router() -> APIRouter:
 
     @router.get(
         "/prompt-programs/{program_id}/releases/{release_id}",
-        response_model=PromptProgramReleaseResponse,
+        response_model=PromptProgramReleaseDetailResponse,
         operation_id="getPromptProgramRelease",
     )
     def get_release(
@@ -287,7 +291,7 @@ def prompt_program_router() -> APIRouter:
         release_id: UUID,
         request: Request,
         authorization: AuthorizationHeader = None,
-    ) -> PromptProgramReleaseResponse:
+    ) -> PromptProgramReleaseDetailResponse:
         result = _call(
             lambda: _api(request).get_release(
                 _principal(request, authorization),
@@ -296,7 +300,7 @@ def prompt_program_router() -> APIRouter:
                 release_id=release_id,
             )
         )
-        return _release(result.release, result.state)
+        return _release_detail(result.release, result.state)
 
     @router.post(
         "/prompt-programs/{program_id}/releases/{release_id}/tests",
@@ -508,6 +512,8 @@ def _call(operation: Any) -> Any:
         return operation()
     except PromptProgramRuleViolation as error:
         raise _problem(422, "Unprocessable Content", error, "rule-violation") from error
+    except ValueError as error:
+        raise _problem(422, "Unprocessable Content", error, "invalid-input") from error
     except PromptTestExecutionError as error:
         raise _problem(422, "Unprocessable Content", error, "test-contract") from error
     except PromptProgramForbidden as error:

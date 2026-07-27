@@ -157,25 +157,38 @@ def _evidence_for(policy: dict[str, Any], check_id: str) -> list[dict[str, str]]
 
 def _source_identity(*, output: Path) -> dict[str, str]:
     try:
+        relative_output = output.resolve().relative_to(ROOT).as_posix()
+    except ValueError:
+        relative_output = None
+    pathspec = ["--", "."]
+    if relative_output is not None:
+        pathspec.append(f":(exclude){relative_output}")
+    try:
         commit = subprocess.check_output(
             ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
         ).strip()
         status = subprocess.check_output(
-            ["git", "status", "--porcelain=v1", "-z"], cwd=ROOT
+            ["git", "status", "--porcelain=v1", "-z", *pathspec], cwd=ROOT
         )
-        diff = subprocess.check_output(["git", "diff", "--binary", "HEAD"], cwd=ROOT)
+        diff = subprocess.check_output(
+            ["git", "diff", "--binary", "HEAD", *pathspec], cwd=ROOT
+        )
         untracked = subprocess.check_output(
-            ["git", "ls-files", "--others", "--exclude-standard", "-z"], cwd=ROOT
+            [
+                "git",
+                "ls-files",
+                "--others",
+                "--exclude-standard",
+                "-z",
+                *pathspec,
+            ],
+            cwd=ROOT,
         )
     except (OSError, subprocess.CalledProcessError) as exc:
         raise AcceptanceRegisterError("git source identity is unavailable") from exc
     digest = hashlib.sha256()
     digest.update(status)
     digest.update(diff)
-    try:
-        relative_output = output.resolve().relative_to(ROOT).as_posix()
-    except ValueError:
-        relative_output = None
     for raw_path in sorted(item for item in untracked.split(b"\0") if item):
         relative = raw_path.decode("utf-8")
         if relative_output is not None and relative == relative_output:

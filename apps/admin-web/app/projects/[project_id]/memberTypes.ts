@@ -102,10 +102,14 @@ function isProjectMemberSummary(value: unknown): value is ProjectMemberSummary {
     value.identity_id,
     value.issuer,
     value.subject,
-    value.email,
     value.display_name,
     value.created_at
   ].every(nonEmptyString)
+    // Service identities are valid project principals but do not have a login
+    // email. The API contract deliberately models email as a string, not a
+    // required human-contact field; rejecting their row made the entire
+    // member page appear unauthorized.
+    && typeof value.email === "string"
     && isManagedMemberRole(value.role)
     && (value.status === "active" || value.status === "revoked");
 }

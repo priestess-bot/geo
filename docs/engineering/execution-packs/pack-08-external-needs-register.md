@@ -1,6 +1,6 @@
 # Pack 08 consolidated external-needs register
 
-Status date: 2026-07-25. This register contains the inputs that an autonomous coding agent cannot
+Status date: 2026-07-26. This register contains the inputs that an autonomous coding agent cannot
 truthfully manufacture. They are non-blocking for locally controllable implementation and must be
 provided or approved together before the corresponding roadmap IDs can move from
 `BLOCKED_EXTERNAL`/`READY_FOR_REVIEW` to `ACCEPTED`.
@@ -20,7 +20,8 @@ independent decisions; Board B inputs remain separately excluded.
 |---|---|---|---|
 | Named accountable people | Product, engineering, Migration, API/OpenAPI, QA, Security, DevOps and release owners; independent verifier(s); substitutes/on-call; capacity allocation | M0 governance, DoR/DoD, evidence N/A decisions and final signatures | `BLOCKED_EXTERNAL` |
 | Approved budget and quotas | Per-provider/model, proxy-free non-B testing, storage and staging budget; quota/rate limits; cost-alert owner and stop rule | Provider/model live calls, nine-channel evaluation and full performance run | `BLOCKED_EXTERNAL` |
-| Model and Provider access | Project-scoped DeepSeek, OpenAI, Gemini, Perplexity, Microsoft Foundry/Bing Grounding and Kimi Secret References; approved exact models/agents, retention/display policy and ten-repeat canary Suites | `REAL-MODEL-AC-01`, five Provider release manifests, Prompt/Recommendation live evidence | `BLOCKED_EXTERNAL` |
+| Model and Provider access | The project-scoped DeepSeek Secret Reference and exact model have passed four Dify canaries and four business Jobs. Supply the remaining OpenAI, Gemini, Perplexity, Microsoft Foundry/Bing Grounding and Kimi Secret References plus approved exact models/agents, retention/display policy and ten-repeat canary Suites | `REAL-MODEL-AC-01`, five Provider release manifests and remaining Prompt/Recommendation live evidence | `PARTIAL / BLOCKED_EXTERNAL` |
+| Dify deployment rights | Written confirmation that the selected Dify edition/license permits the intended production user, workspace and commercial deployment model; identify any plugin/model-provider restrictions. The current single operations workspace remains usable while this is pending | multi-user or multi-workspace production rollout and final legal/operational sign-off | `BLOCKED_EXTERNAL` |
 | Nine-channel lawful inputs | Approved access or compliant manual-import material for owned site, ProductReview, YouTube, Reddit, Amazon, OzBargain, TikTok, Instagram and Quora; any login account has an approved authorization record | real Style Collection/Profile evidence | `BLOCKED_EXTERNAL` |
 | Human style/release review | At least 200 deduplicated, anonymized, Australian-English and human-approved samples per channel; independent review of 40 fixed Cases per channel and 360 total | per-channel `passed >= 95%`, zero subject mix/anti-copy, style `>=4.2/5` and `LAB-*` | `BLOCKED_EXTERNAL` |
 | Governed consumer-surface manual exports | Lawfully supplied, redacted real manual transcript artifacts for AIO, AI Mode and Copilot plus independent maker/checker, when real non-live parser validation is desired | real manual-artifact validation only; never Australian/automated capture claims | `BLOCKED_EXTERNAL` |

@@ -101,6 +101,12 @@ let projectExportErrorCode = null;
 let promptCandidateStatus = "draft";
 let promptCandidateStateVersion = 1;
 let promptCandidateEvidenceRef = null;
+let promptCandidateCreated = false;
+let promptWorkspaceInitialized = true;
+let promptCurrentReleaseId = PROMPT_BASE_RELEASE_ID;
+let promptCurrentReleaseVersion = 1;
+let promptDraft = initialPromptDraft();
+const promptWorkspaceTestRuns = [];
 let promptNextReleaseVersion = 3;
 const additionalPromptReleases = [];
 let secretActorId = ACTOR_ID;
@@ -214,21 +220,175 @@ function promptRelease({ id, version, status, stateVersion, evidenceRef = null }
 function promptReleases() {
   return [
     ...additionalPromptReleases,
-    promptRelease({
+    ...(promptCandidateCreated ? [promptRelease({
       id: PROMPT_CANDIDATE_RELEASE_ID,
       version: 2,
       status: promptCandidateStatus,
       stateVersion: promptCandidateStateVersion,
       evidenceRef: promptCandidateEvidenceRef
-    }),
+    })] : []),
     promptRelease({
       id: PROMPT_BASE_RELEASE_ID,
       version: 1,
-      status: "approved",
-      stateVersion: 3,
+      status: "frozen",
+      stateVersion: 4,
       evidenceRef: `approval:${PROMPT_EVIDENCE_ID}:${"d".repeat(64)}`
     })
   ];
+}
+
+function initialPromptDraft() {
+  return {
+    project_id: PROJECT_ID,
+    program_id: PROMPT_PROGRAM_ID,
+    display_name: "候选测评生成",
+    system_template: "You write concise Australian English reviews for {{channel}}. Use only the supplied evidence.",
+    user_template: "Create four candidates for {{subject_id}} in this scenario: {{scenario}}.",
+    revision: 1,
+    draft_hash: "6".repeat(64),
+    base_release_id: PROMPT_BASE_RELEASE_ID,
+    candidate_release_id: null,
+    updated_by: ACTOR_ID,
+    updated_at: NOW
+  };
+}
+
+function promptReleaseDetail(release) {
+  if (!release) return null;
+  return {
+    ...release,
+    system_template: release.id === PROMPT_BASE_RELEASE_ID
+      ? "You write concise Australian English reviews for {{channel}}. Use only the supplied evidence."
+      : promptDraft.system_template,
+    user_template: release.id === PROMPT_BASE_RELEASE_ID
+      ? "Create four candidates for {{subject_id}} in this scenario: {{scenario}}."
+      : promptDraft.user_template
+  };
+}
+
+function promptFlows() {
+  const configured = {
+    flow_key: "synthetic_lab.generation",
+    purpose: "synthetic_lab.generation",
+    program_kind: "generation",
+    group: "synthetic_lab",
+    display_name: promptDraft.display_name,
+    description: "为测评 Case 生成四个澳洲英文候选。",
+    configurable: true,
+    context_slots: [
+      { key: "subject_id", label: "目标主体", description: "当前任务冻结的产品或品牌主体。", insertion: "{{subject_id}}", source: "runtime_task" },
+      { key: "channel", label: "渠道", description: "测评对应的平台渠道。", insertion: "{{channel}}", source: "runtime_task" },
+      { key: "scenario", label: "测评场景", description: "当前 Case 的消费场景。", insertion: "{{scenario}}", source: "runtime_task" },
+      { key: "approved_facts", label: "批准 Fact", description: "当前主体已批准的 Fact。", insertion: "{{approved_facts}}", source: "runtime_task" },
+      { key: "request_json", label: "请求数据", description: "当前任务冻结的完整 JSON 输入。", insertion: "{{request_json}}", source: "runtime_task" }
+    ],
+    program: promptWorkspaceInitialized ? promptProgram() : null,
+    draft: promptWorkspaceInitialized ? promptDraft : null,
+    latest_release_version: promptWorkspaceInitialized ? (promptCandidateCreated ? 2 : 1) : null,
+    current_release_id: promptWorkspaceInitialized ? promptCurrentReleaseId : null,
+    current_release_version: promptWorkspaceInitialized ? promptCurrentReleaseVersion : null,
+    candidate_status: promptWorkspaceInitialized && promptDraft.candidate_release_id ? promptCandidateStatus : null,
+    latest_test_job_id: promptWorkspaceTestRuns[0]?.job_id || null,
+    latest_test_status: promptWorkspaceTestRuns[0]?.status || null,
+    latest_test_score: promptWorkspaceTestRuns[0]?.score || null
+  };
+  const questionAndContent = [
+    ["knowledge.question_generation", "测试问题生成", "从冻结维度、Fact 和实体生成 GEO 测试问题。", "question_generation"],
+    ["knowledge.rag_grounding", "RAG 问题约束", "根据检索证据约束问题与事实边界。", "rag_grounding"],
+    ["placements.generation", "投放内容生成", "根据 Brief、证据和落地页策略生成内容草稿。", "placement_generation"],
+    ["placements.simulation", "投放 Prompt 仿真", "在发布前检查投放 Prompt 的拼接与输出预览。", "placement_simulation"]
+  ].map(([flowKey, displayName, description, programKind]) => ({
+    flow_key: flowKey,
+    purpose: flowKey,
+    program_kind: programKind,
+    group: "question_and_content",
+    display_name: displayName,
+    description,
+    configurable: true,
+    context_slots: [
+      { key: "request_json", label: "请求数据", description: "当前任务冻结的完整 JSON 输入。", insertion: "{{request_json}}", source: "runtime_task" },
+      { key: "facts", label: "事实摘要", description: "允许引用的冻结 Fact 摘要。", insertion: "{{facts}}", source: "runtime_task" },
+      { key: "evidence", label: "证据", description: "当前任务冻结的 Fact、来源和证据引用。", insertion: "{{evidence}}", source: "runtime_task" }
+    ],
+    // The browser fixture intentionally shares the single deterministic
+    // editable Draft endpoint. Production gives each flow its own Program;
+    // the fixture's responsibility is to verify that all four flows are
+    // presented as editable/testable instead of unavailable placeholders.
+    program: promptWorkspaceInitialized ? { ...promptProgram(), program_kind: programKind, purpose: flowKey } : null,
+    draft: promptWorkspaceInitialized ? { ...promptDraft, display_name: displayName } : null,
+    latest_release_version: promptWorkspaceInitialized ? (promptCandidateCreated ? 2 : 1) : null,
+    current_release_id: promptWorkspaceInitialized ? promptCurrentReleaseId : null,
+    current_release_version: promptWorkspaceInitialized ? promptCurrentReleaseVersion : null,
+    candidate_status: promptWorkspaceInitialized && promptDraft.candidate_release_id ? promptCandidateStatus : null,
+    latest_test_job_id: promptWorkspaceTestRuns[0]?.job_id || null,
+    latest_test_status: promptWorkspaceTestRuns[0]?.status || null,
+    latest_test_score: promptWorkspaceTestRuns[0]?.score || null
+  }));
+  return [configured, ...questionAndContent];
+}
+
+function difyWorkflowRuntimes() {
+  const purposes = [
+    "knowledge.question_generation",
+    "knowledge.rag_grounding",
+    "placements.generation",
+    "placements.simulation"
+  ];
+  return purposes.map((purpose, index) => {
+    const labels = ["测试问题生成", "知识依据生成", "投放内容生成", "投放内容仿真"];
+    return {
+      purpose,
+      backend: "dify",
+      activation_status: "active",
+      release_id: `00000000-0000-4000-8000-${String(700 + index).padStart(12, "0")}`,
+      release_version: 1,
+      release_hash: "a".repeat(64),
+      prompt_program_id: PROMPT_PROGRAM_ID,
+      prompt_release_id: PROMPT_BASE_RELEASE_ID,
+      prompt_release_hash: "b".repeat(64),
+      prompt_system_template: null,
+      prompt_user_template: null,
+      dify_app_id: `fixture-app-${index}`,
+      dify_workflow_id: `fixture-workflow-${index}`,
+      dsl_hash: "c".repeat(64),
+      configured_model: "deepseek-chat",
+      model_provider: "langgenius/deepseek/deepseek",
+      binding_version: 1,
+      activated_at: NOW,
+      last_attempt_status: "succeeded",
+      last_attempt_kind: "canary",
+      last_attempt_at: NOW,
+      last_error_code: null,
+      last_error_message: null,
+      console_url: `http://127.0.0.1:15000/app/fixture-app-${index}/workflow`,
+      published_workflow_hash: "d".repeat(64),
+      published_snapshot_hash: "e".repeat(64),
+      published_prompt_nodes: [{
+        node_id: `llm-${index}`,
+        title: labels[index],
+        model_provider: "langgenius/deepseek/deepseek",
+        model_name: "deepseek-chat",
+        model_mode: "chat",
+        completion_params: { temperature: 0.1 },
+        messages: [
+          { role: "system", text: `Dify 托管的 ${labels[index]} System Prompt。` },
+          { role: "user", text: "请使用 {{#geo_start.geo_context_json#}} 完成任务。" }
+        ]
+      }],
+      published_input_variables: [{
+        name: "geo_context_json", label: "业务上下文 JSON", type: "paragraph",
+        required: true, description: "当前任务的结构化业务数据。"
+      }],
+      published_graph_nodes: [
+        { node_id: "start", type: "start", title: "输入" },
+        { node_id: `llm-${index}`, type: "llm", title: labels[index] }
+      ],
+      published_at: NOW,
+      observed_at: NOW,
+      sync_status: "current",
+      sync_error: null
+    };
+  });
 }
 
 function packageVersion() {
@@ -1025,6 +1185,10 @@ const server = createServer(async (request, response) => {
   const url = new URL(request.url || "/", `http://${request.headers.host || "127.0.0.1"}`);
   const path = url.pathname;
   if (path === "/health") return send(response, { status: "ok" });
+  if (path === "/__prompt-workspace" && request.method === "DELETE") {
+    promptWorkspaceInitialized = false;
+    return send(response, { initialized: false });
+  }
   if (path === "/__requests") {
     if (request.method === "DELETE") {
       requests.length = 0;
@@ -1052,6 +1216,12 @@ const server = createServer(async (request, response) => {
       promptCandidateStatus = "draft";
       promptCandidateStateVersion = 1;
       promptCandidateEvidenceRef = null;
+      promptCandidateCreated = false;
+      promptWorkspaceInitialized = true;
+      promptCurrentReleaseId = PROMPT_BASE_RELEASE_ID;
+      promptCurrentReleaseVersion = 1;
+      promptDraft = initialPromptDraft();
+      promptWorkspaceTestRuns.length = 0;
       promptNextReleaseVersion = 3;
       additionalPromptReleases.length = 0;
       secretActorId = ACTOR_ID;
@@ -1181,6 +1351,9 @@ const server = createServer(async (request, response) => {
     response,
     send
   })) return;
+  if (path.endsWith("/prompt-bootstrap/drafts") && request.method === "POST") {
+    promptWorkspaceInitialized = true;
+  }
   if (handlePromptBootstrapFixture({
     actorId: secretActorId,
     now: NOW,
@@ -1312,6 +1485,144 @@ const server = createServer(async (request, response) => {
     appendSecretAudit(version, "version_revoked");
     return send(response, secretVersionView(version));
   }
+  if (path === `${base}/prompt-flows` && request.method === "GET") {
+    const items = promptFlows();
+    return send(response, { items, total: items.length });
+  }
+  if (path === `${base}/dify-workflows` && request.method === "GET") {
+    const items = difyWorkflowRuntimes();
+    return send(response, { runtime_backend: "dify", items, total: items.length });
+  }
+  if (path === `${base}/prompt-programs/${PROMPT_PROGRAM_ID}/draft`) {
+    if (request.method === "PUT") {
+      if (payload.expected_revision !== promptDraft.revision) {
+        return send(response, { detail: "Prompt working draft changed after it was read" }, 409);
+      }
+      promptDraft = {
+        ...promptDraft,
+        display_name: payload.display_name,
+        system_template: payload.system_template,
+        user_template: payload.user_template,
+        revision: promptDraft.revision + 1,
+        draft_hash: "7".repeat(64),
+        candidate_release_id: null,
+        updated_at: new Date().toISOString()
+      };
+      return send(response, promptDraft);
+    }
+    return send(response, promptDraft);
+  }
+  if (path === `${base}/prompt-programs/${PROMPT_PROGRAM_ID}/render-preview` && request.method === "POST") {
+    return send(response, {
+      fixture_id: payload.fixture_id || "generation-autonomous-au",
+      fixture_label: "澳洲自主测评场景",
+      input_value: { subject_id: "fixture-product", channel: "reddit", scenario: "weekend garden care" },
+      draft: {
+        system_prompt: promptDraft.system_template.replace("{{channel}}", "reddit"),
+        user_prompt: promptDraft.user_template
+          .replaceAll("{{subject_id}}", "fixture-product")
+          .replace("{{scenario}}", "weekend garden care"),
+        system_prompt_hash: "1".repeat(64),
+        user_prompt_hash: "2".repeat(64)
+      },
+      current: {
+        system_prompt: "You write concise Australian English reviews for reddit. Use only the supplied evidence.",
+        user_prompt: "Create four candidates for fixture-product in this scenario: weekend garden care.",
+        system_prompt_hash: "3".repeat(64),
+        user_prompt_hash: "4".repeat(64)
+      },
+      current_release_version: promptCurrentReleaseVersion
+    });
+  }
+  if (path === `${base}/prompt-programs/${PROMPT_PROGRAM_ID}/suite-runs` && request.method === "POST") {
+    if (payload.expected_revision !== promptDraft.revision) {
+      return send(response, { detail: "Prompt working draft changed before testing" }, 409);
+    }
+    promptCandidateCreated = true;
+    promptCandidateStatus = "draft";
+    promptCandidateStateVersion = 1;
+    promptDraft = { ...promptDraft, candidate_release_id: PROMPT_CANDIDATE_RELEASE_ID };
+    const run = {
+      job_id: "00000000-0000-4000-8000-000000000509",
+      project_id: PROJECT_ID,
+      program_id: PROMPT_PROGRAM_ID,
+      release_id: PROMPT_CANDIDATE_RELEASE_ID,
+      release_version: 2,
+      status: "queued",
+      requested_at: new Date().toISOString(),
+      finished_at: null,
+      passed: null,
+      score: null,
+      result_ref: null,
+      error_code: null
+    };
+    promptWorkspaceTestRuns.unshift(run);
+    const candidate = promptReleases().find((item) => item.id === PROMPT_CANDIDATE_RELEASE_ID);
+    return send(response, {
+      draft: promptDraft,
+      candidate_release: candidate,
+      job: {
+        job_id: run.job_id,
+        project_id: PROJECT_ID,
+        release_id: PROMPT_CANDIDATE_RELEASE_ID,
+        release_hash: candidate.release_hash,
+        test_set_id: candidate.test_set_id,
+        test_set_version: candidate.test_set_version,
+        test_set_hash: candidate.test_set_hash,
+        input_hash: "8".repeat(64),
+        status: "queued",
+        replayed: false
+      }
+    }, 202);
+  }
+  if (path === `${base}/prompt-programs/${PROMPT_PROGRAM_ID}/test-runs` && request.method === "GET") {
+    const queued = promptWorkspaceTestRuns.find((item) => item.status === "queued");
+    if (queued) {
+      queued.status = "succeeded";
+      queued.finished_at = new Date().toISOString();
+      queued.passed = true;
+      queued.score = 100;
+      queued.result_ref = "s3://fixture/prompt-tests/passed.json";
+      promptCandidateStatus = "tested";
+      promptCandidateStateVersion = 2;
+      promptCandidateEvidenceRef = `prompt-test:${PROMPT_EVIDENCE_ID}:${"d".repeat(64)}`;
+    }
+    return send(response, { items: promptWorkspaceTestRuns, total: promptWorkspaceTestRuns.length });
+  }
+  if (path === `${base}/prompt-programs/${PROMPT_PROGRAM_ID}/publish` && request.method === "POST") {
+    if (payload.expected_revision !== promptDraft.revision || promptCandidateStatus !== "tested") {
+      return send(response, { detail: "Publishing requires the exact current draft to pass its fixed suite" }, 409);
+    }
+    promptCandidateStatus = "frozen";
+    promptCandidateStateVersion = 4;
+    promptCurrentReleaseId = PROMPT_CANDIDATE_RELEASE_ID;
+    promptCurrentReleaseVersion = 2;
+    promptDraft = {
+      ...promptDraft,
+      base_release_id: PROMPT_CANDIDATE_RELEASE_ID,
+      candidate_release_id: null,
+      updated_at: new Date().toISOString()
+    };
+    const release = promptReleases().find((item) => item.id === PROMPT_CANDIDATE_RELEASE_ID);
+    return send(response, {
+      draft: promptDraft,
+      release,
+      binding: {
+        id: PROMPT_BINDING_ID,
+        project_id: PROJECT_ID,
+        purpose: "synthetic_lab.generation",
+        program_kind: "generation",
+        program_id: PROMPT_PROGRAM_ID,
+        release_id: PROMPT_CANDIDATE_RELEASE_ID,
+        release_version: 2,
+        release_hash: release.release_hash,
+        frozen_state_id: release.state.id,
+        binding_version: 2,
+        bound_by: ACTOR_ID,
+        bound_at: new Date().toISOString()
+      }
+    });
+  }
   if (path === `${base}/prompt-programs`) {
     if (request.method === "POST") {
       const program = {
@@ -1379,7 +1690,7 @@ const server = createServer(async (request, response) => {
   const promptReleaseRead = path.match(new RegExp(`^${base}/prompt-programs/${PROMPT_PROGRAM_ID}/releases/([^/]+)$`));
   if (promptReleaseRead) {
     const release = promptReleases().find((item) => item.id === promptReleaseRead[1]);
-    return send(response, release || { detail: "Prompt Release not found" }, release ? 200 : 404);
+    return send(response, promptReleaseDetail(release) || { detail: "Prompt Release not found" }, release ? 200 : 404);
   }
   const promptCommand = path.match(new RegExp(`^${base}/prompt-programs/${PROMPT_PROGRAM_ID}/releases/([^/]+)/(tests|approve|freeze|retire|diff)$`));
   if (promptCommand && request.method === "POST") {

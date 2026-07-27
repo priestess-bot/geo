@@ -29,8 +29,9 @@
     ".next-playwright/types/**/*.ts",
     ".next-workflow-c-playwright/types/**/*.ts",
     ".next/types/**/*.ts",
+    "/tmp/geo-next-playwright-api-contract/types/**/*.ts",
     "next-env.d.ts",
-    "/tmp/geo-next-playwright-api-contract/types/**/*.ts"
+    ".next-playwright-f013/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"

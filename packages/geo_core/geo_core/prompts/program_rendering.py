@@ -38,22 +38,25 @@ def render_program_release(
     *, release: PromptProgramRelease, variables: Mapping[str, object]
 ) -> CompiledProgramPrompt:
     frozen_variables = _freeze_json_object(variables, field_name="Prompt Program variables")
+    render_variables = _variables_for_compiler(release, frozen_variables)
     required = set(_schema_string_sequence(release.schemas.variable_schema, "required"))
-    missing = sorted(required - set(frozen_variables))
+    missing = sorted(required - set(render_variables))
     if missing:
         raise PromptProgramRuleViolation(f"missing Prompt Program variables: {', '.join(missing)}")
     properties = release.schemas.variable_schema.get("properties", {})
     if not isinstance(properties, Mapping):
         raise PromptProgramRuleViolation("variable_schema.properties must be an object")
     if release.schemas.variable_schema.get("additionalProperties") is False:
-        unknown = sorted(set(frozen_variables) - set(properties))
+        unknown = sorted(set(render_variables) - set(properties))
         if unknown:
             raise PromptProgramRuleViolation(
                 f"unknown Prompt Program variables: {', '.join(unknown)}"
             )
 
-    render_variables = _variables_for_compiler(release, frozen_variables)
     compiled_system = _render_template(release.system_template, render_variables)
+    compiled_system = _with_output_schema_contract(
+        compiled_system, release.schemas.application_output_schema
+    )
     compiled_user = _render_template(release.user_template, render_variables)
     return CompiledProgramPrompt(
         release_id=release.id,
@@ -145,6 +148,26 @@ def _render_template(template: str, variables: Mapping[str, object]) -> str:
     )
 
 
+def _with_output_schema_contract(
+    compiled_system: str, application_output_schema: Mapping[str, object]
+) -> str:
+    """Expose the frozen contract to JSON-mode providers and the Admin preview."""
+
+    schema = json.dumps(
+        _canonical_value(application_output_schema),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+    return (
+        f"{compiled_system}\n\n"
+        "Return a JSON object that satisfies this exact output contract. Do not add "
+        "fields, prose, Markdown, or code fences.\n"
+        f"<output_json_schema>\n{schema}\n</output_json_schema>"
+    )
+
+
 def _render_value(value: object) -> str:
     if isinstance(value, str):
         return value
@@ -165,13 +188,38 @@ def _variables_for_compiler(
     if release.compiler_version == LEGACY_BOOTSTRAP_COMPILER_VERSION:
         return variables
     if release.compiler_version == BOOTSTRAP_COMPILER_VERSION:
-        return _normalize_render_variables(variables)
+        properties = release.schemas.variable_schema.get("properties", {})
+        strict_properties = (
+            frozenset(str(key) for key in properties)
+            if release.schemas.variable_schema.get("additionalProperties") is False
+            and isinstance(properties, Mapping)
+            else None
+        )
+        normalized = _normalize_render_variables(
+            variables, expanded_keys=strict_properties
+        )
+        if (
+            strict_properties is not None
+        ):
+            return _freeze_json_object(
+                {
+                    key: value
+                    for key, value in normalized.items()
+                    if key in strict_properties
+                },
+                field_name="Prompt Program render variables",
+            )
+        return normalized
     raise PromptProgramRuleViolation(
         "request_json requires a supported versioned Prompt compiler"
     )
 
 
-def _normalize_render_variables(variables: Mapping[str, object]) -> Mapping[str, object]:
+def _normalize_render_variables(
+    variables: Mapping[str, object],
+    *,
+    expanded_keys: frozenset[str] | None,
+) -> Mapping[str, object]:
     """Normalize the v2 bootstrap JSON envelope under deterministic budgets."""
 
     request_json = variables["request_json"]
@@ -206,7 +254,18 @@ def _normalize_render_variables(variables: Mapping[str, object]) -> Mapping[str,
     )
     normalized = dict(variables)
     normalized["request_json"] = safe
+    if isinstance(parsed, Mapping):
+        for key, value in parsed.items():
+            name = str(key)
+            if expanded_keys is None or name in expanded_keys:
+                normalized.setdefault(name, _slot_render_value(value))
     return _freeze_json_object(normalized, field_name="Prompt Program render variables")
+
+
+def _slot_render_value(value: object) -> object:
+    """Keep strings natural and all other context slots as exact JSON fragments."""
+
+    return value if isinstance(value, str) else _canonical_json(value)
 
 
 def _reject_json_constant(token: str) -> object:

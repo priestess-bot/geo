@@ -5,17 +5,24 @@ from __future__ import annotations
 from typing import cast
 
 from geo_api.prompt_program_contracts import (
+    CompiledPromptResponse,
     CreatedPromptProgramResponse,
     ProgramKindValue,
     PromptProgramBindingOptionResponse,
     PromptProgramBindingResponse,
     PromptProgramDiffResponse,
     PromptProgramReleaseResponse,
+    PromptProgramReleaseDetailResponse,
     PromptProgramSummaryResponse,
+    PromptContextSlotResponse,
+    PromptFlowResponse,
+    PromptRenderPreviewResponse,
     PromptReleaseStateResponse,
     PromptTestEvidenceResponse,
     PromptTestJobResponse,
     PromptTestRuntimeOptionResponse,
+    PromptTestRunResponse,
+    PromptWorkingDraftResponse,
     ReleaseStatusValue,
     TestedPromptProgramResponse,
     TransitionedPromptProgramResponse,
@@ -27,7 +34,9 @@ from geo_core.prompts.application import (
     TestedPromptProgram,
     TransitionedPromptProgram,
 )
+from geo_core.prompts.bootstrap_contracts import thaw_mapping
 from geo_core.prompts.program import (
+    CompiledProgramPrompt,
     ProgramBinding,
     ProgramReleaseDiff,
     ProgramReleaseState,
@@ -38,6 +47,12 @@ from geo_core.prompts.program import (
 from geo_core.prompts.test_execution_contracts import (
     PromptTestJobReceipt,
     PromptTestRuntimeOption,
+)
+from geo_core.prompts.workspace import (
+    PromptFlowWorkspaceItem,
+    PromptRenderPreview,
+    PromptTestRunSummary,
+    PromptWorkingDraft,
 )
 
 
@@ -92,6 +107,106 @@ def present_release(
         test_set_hash=item.test_set_hash,
         compiler_version=item.compiler_version,
         state=present_state(state),
+    )
+
+
+def present_release_detail(
+    item: PromptProgramRelease, state: ProgramReleaseState
+) -> PromptProgramReleaseDetailResponse:
+    summary = present_release(item, state)
+    return PromptProgramReleaseDetailResponse(
+        **summary.model_dump(),
+        system_template=item.system_template,
+        user_template=item.user_template,
+    )
+
+
+def present_working_draft(item: PromptWorkingDraft) -> PromptWorkingDraftResponse:
+    return PromptWorkingDraftResponse(
+        project_id=item.project_id,
+        program_id=item.program_id,
+        display_name=item.display_name,
+        system_template=item.system_template,
+        user_template=item.user_template,
+        revision=item.revision,
+        draft_hash=item.draft_hash,
+        base_release_id=item.base_release_id,
+        candidate_release_id=item.candidate_release_id,
+        updated_by=item.updated_by,
+        updated_at=item.updated_at,
+    )
+
+
+def present_flow(item: PromptFlowWorkspaceItem) -> PromptFlowResponse:
+    definition = item.definition
+    return PromptFlowResponse(
+        flow_key=definition.flow_key,
+        purpose=definition.purpose,
+        program_kind=cast(ProgramKindValue, definition.program_kind.value),
+        group=definition.group,
+        display_name=item.draft.display_name if item.draft else definition.display_name,
+        description=definition.description,
+        configurable=definition.configurable,
+        context_slots=[
+            PromptContextSlotResponse(
+                key=slot.key,
+                label=slot.label,
+                description=slot.description,
+                insertion=slot.insertion,
+                source="runtime_task",
+            )
+            for slot in definition.context_slots
+        ],
+        program=present_program(item.program) if item.program else None,
+        draft=present_working_draft(item.draft) if item.draft else None,
+        latest_release_version=(
+            item.latest_release.version if item.latest_release else None
+        ),
+        current_release_id=item.current_release_id,
+        current_release_version=item.current_release_version,
+        candidate_status=cast(ReleaseStatusValue | None, item.candidate_status),
+        latest_test_job_id=item.latest_test_job_id,
+        latest_test_status=item.latest_test_status,
+        latest_test_score=item.latest_test_score,
+    )
+
+
+def present_render_preview(item: PromptRenderPreview) -> PromptRenderPreviewResponse:
+    def compiled(prompt: CompiledProgramPrompt) -> CompiledPromptResponse:
+        return CompiledPromptResponse(
+            system_prompt=getattr(prompt, "compiled_system"),
+            user_prompt=getattr(prompt, "compiled_user"),
+            system_prompt_hash=getattr(prompt, "compiled_system_hash"),
+            user_prompt_hash=getattr(prompt, "compiled_user_hash"),
+        )
+
+    return PromptRenderPreviewResponse(
+        fixture_id=item.fixture_id,
+        fixture_label=item.fixture_label,
+        # Fixture inputs are recursively frozen MappingProxyType objects.
+        # Pydantic preserves nested values declared as ``object``, so a
+        # shallow dict() leaves a non-JSON value in the HTTP response.
+        input_value=thaw_mapping(item.input_value),
+        draft=compiled(item.draft),
+        current=compiled(item.current) if item.current else None,
+        current_release_version=item.current_release_version,
+    )
+
+
+def present_test_run(item: PromptTestRunSummary) -> PromptTestRunResponse:
+    return PromptTestRunResponse(
+        job_id=item.job_id,
+        project_id=item.project_id,
+        program_id=item.program_id,
+        release_id=item.release_id,
+        release_version=item.release_version,
+        status=item.status,
+        requested_at=item.requested_at,
+        finished_at=item.finished_at,
+        passed=item.passed,
+        score=item.score,
+        result_ref=item.result_ref,
+        error_code=item.error_code,
     )
 
 
@@ -238,12 +353,17 @@ __all__ = [
     "present_binding_option",
     "present_created",
     "present_diff",
+    "present_flow",
     "present_program",
     "present_release",
+    "present_release_detail",
+    "present_render_preview",
     "present_state",
     "present_test_evidence",
     "present_test_job",
     "present_test_runtime",
+    "present_test_run",
     "present_tested",
     "present_transitioned",
+    "present_working_draft",
 ]

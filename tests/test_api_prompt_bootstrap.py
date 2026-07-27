@@ -79,7 +79,7 @@ def test_admin_can_preview_all_frozen_specs_without_persistence_or_model_calls()
     assert body["automatic_transitions"] is False
     assert body["batch_atomicity"] == "per_item"
     assert body["action_boundary"] == "draft_only_manual_test"
-    assert len(body["items"]) == 10
+    assert len(body["items"]) == 14
     assert [item["program_kind"] for item in body["items"]] == [
         spec.program_kind.value for spec in default_prompt_bootstrap_specs()
     ]
@@ -161,14 +161,14 @@ def test_create_ten_drafts_is_item_idempotent_and_never_transitions_them() -> No
     created = first.json()
     replayed = second.json()
     assert created["completion_status"] == "completed"
-    assert created["created_count"] == 10
+    assert created["created_count"] == 14
     assert created["replayed_count"] == created["failed_count"] == 0
     assert replayed["completion_status"] == "completed"
-    assert replayed["replayed_count"] == 10
+    assert replayed["replayed_count"] == 14
     assert replayed["created_count"] == replayed["failed_count"] == 0
     assert created["atomic"] is False and created["safe_to_retry"] is True
     assert created["action_boundary"] == "draft_only_no_approval_freeze_binding"
-    assert len({item["idempotency_key_hash"] for item in created["items"]}) == 10
+    assert len({item["idempotency_key_hash"] for item in created["items"]}) == 14
     assert [item["idempotency_key_hash"] for item in created["items"]] == [
         item["idempotency_key_hash"] for item in replayed["items"]
     ]
@@ -180,7 +180,7 @@ def test_create_ten_drafts_is_item_idempotent_and_never_transitions_them() -> No
     stored = repository.list_programs(
         project_id=principal.project_ids[0], limit=200, offset=0
     )
-    assert stored.total == 10
+    assert stored.total == 14
 
 
 def test_partial_batch_reports_per_item_failure_and_retries_without_duplicates() -> None:
@@ -199,7 +199,7 @@ def test_partial_batch_reports_per_item_failure_and_retries_without_duplicates()
     first_body = first.json()
     second_body = second.json()
     assert first_body["completion_status"] == "partial_failure"
-    assert first_body["created_count"] == 9 and first_body["failed_count"] == 1
+    assert first_body["created_count"] == 13 and first_body["failed_count"] == 1
     failure = next(item for item in first_body["items"] if item["status"] == "failed")
     assert failure["program_kind"] == "conflict_check"
     assert failure["failure"] == {
@@ -209,11 +209,11 @@ def test_partial_batch_reports_per_item_failure_and_retries_without_duplicates()
     }
     assert second_body["completion_status"] == "completed"
     assert second_body["created_count"] == 1
-    assert second_body["replayed_count"] == 9
+    assert second_body["replayed_count"] == 13
     assert second_body["failed_count"] == 0
     assert repository.list_programs(
         project_id=principal.project_ids[0], limit=200, offset=0
-    ).total == 10
+    ).total == 14
 
 
 def test_draft_creation_fails_closed_when_prompt_persistence_is_unavailable() -> None:

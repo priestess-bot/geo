@@ -130,6 +130,7 @@ def dispatcher() -> PlacementWorkerDispatcher:
     repository = PlacementWorkerRepository(store)
     lease_for = timedelta(seconds=max(30, int(os.getenv("GEO_JOB_LEASE_SECONDS", "120"))))
     gateway = LazyDeepSeekGateway()
+    workflow_executor = build_workflow_executor(store=store)
     selection, selection_hash = rag_runtime_selection()
     rag_policy = KnowledgeRagEnqueuePolicy(
         adapter_release=selection.adapter_release,
@@ -145,10 +146,18 @@ def dispatcher() -> PlacementWorkerDispatcher:
         ),
         "evidence_pack.build": EvidencePackHandler(repository),
         "placement.generate": GenerationHandler(
-            store=store, repository=repository, gateway=gateway, lease_for=lease_for
+            store=store,
+            repository=repository,
+            gateway=gateway,
+            lease_for=lease_for,
+            workflow_executor=workflow_executor,
         ),
         "prompt_simulation.generate": PromptSimulationHandler(
-            store=store, repository=repository, gateway=gateway, lease_for=lease_for
+            store=store,
+            repository=repository,
+            gateway=gateway,
+            lease_for=lease_for,
+            workflow_executor=workflow_executor,
         ),
         "publication.verify": PublicationVerificationHandler(
             store=store,
@@ -168,6 +177,7 @@ def dispatcher() -> PlacementWorkerDispatcher:
             selection=selection,
             selection_manifest_hash=selection_hash,
             lease_for=lease_for,
+            workflow_executor=workflow_executor,
         ),
         "knowledge.question.generate": KnowledgeQuestionGenerateHandler(
             store=store,
@@ -177,6 +187,7 @@ def dispatcher() -> PlacementWorkerDispatcher:
             selection=selection,
             selection_manifest_hash=selection_hash,
             lease_for=lease_for,
+            workflow_executor=workflow_executor,
         ),
         "project.export": ProjectExportHandler(
             store=store,
@@ -196,6 +207,49 @@ def dispatcher() -> PlacementWorkerDispatcher:
     worker_id = _worker_id()
     return PlacementWorkerDispatcher(
         store=store, handlers=handlers, worker_id=worker_id, lease_for=lease_for
+    )
+
+
+def build_workflow_executor(*, store: PostgresDurableJobStore):
+    """Build the explicit native-or-Dify business runtime selection.
+
+    ``native`` is an operator-visible rollback mode. Under ``dify`` an active
+    binding is fail-closed: the executor never falls back after a Dify error.
+    """
+
+    backend = os.getenv("GEO_WORKFLOW_RUNTIME_BACKEND", "native").strip().lower()
+    if backend == "native":
+        return None
+    if backend != "dify":
+        raise RuntimeError("GEO_WORKFLOW_RUNTIME_BACKEND must be native or dify")
+
+    from geo_core.model_gateway import build_secret_store_credential_resolver
+    from geo_core.workflow_runtime import (
+        DifyPublishedWorkflowReader,
+        DifyWorkflowExecutor,
+        PostgresWorkflowRuntimeRepository,
+    )
+
+    database_url = secret_setting("GEO_DATABASE_URL")
+    return DifyWorkflowExecutor(
+        repository=PostgresWorkflowRuntimeRepository(store),
+        credential_resolver=build_secret_store_credential_resolver(
+            database_url=database_url,
+            master_keyring_path=_required_file_setting(
+                "GEO_SECRET_STORE_MASTER_KEYRING_FILE"
+            ),
+            request_hash_key_path=_required_file_setting(
+                "GEO_SECRET_STORE_REQUEST_HASH_KEY_FILE"
+            ),
+            worker_actor_id=require_model_gateway_worker_identity(database_url=database_url),
+        ),
+        base_url=os.getenv("GEO_DIFY_API_URL", "http://dify-api:5001"),
+        timeout_seconds=float(os.getenv("GEO_DIFY_TIMEOUT_SECONDS", "180")),
+        published_reader=DifyPublishedWorkflowReader(
+            base_url=os.getenv("GEO_DIFY_CONSOLE_URL", "http://dify-api:5001"),
+            state_file=_required_file_setting("GEO_DIFY_STATE_FILE"),
+        ),
+        require_active=True,
     )
 
 

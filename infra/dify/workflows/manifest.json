@@ -1,0 +1,36 @@
+{
+  "dify_version": "1.16.0",
+  "dsl_version": "0.5.0",
+  "format": "geo-dify-workflow-manifest-v1",
+  "plugin": "langgenius/deepseek:0.0.19@5b68617c637b62d31e7f33a9f5677b76e88f81868fb04a728e208588564b72ea",
+  "workflows": [
+    {
+      "configured_model": "deepseek-chat",
+      "file": "geo-question-generation.yml",
+      "model_provider": "langgenius/deepseek/deepseek",
+      "purpose": "knowledge.question_generation",
+      "sha256": "9990fd49dc04993880f7b7999fec780712e6137a4a69bb0419d667da8e0d8735"
+    },
+    {
+      "configured_model": "deepseek-chat",
+      "file": "geo-rag-grounding.yml",
+      "model_provider": "langgenius/deepseek/deepseek",
+      "purpose": "knowledge.rag_grounding",
+      "sha256": "1855777994a64f1c4ac84863477d0c16278c9ec90ad3c4f6c1570726d73f3447"
+    },
+    {
+      "configured_model": "deepseek-chat",
+      "file": "geo-placement-generation.yml",
+      "model_provider": "langgenius/deepseek/deepseek",
+      "purpose": "placements.generation",
+      "sha256": "d707e5e6622606411ad519f30b9b55c6ae157d566fdc2f6b1b5efd709193ce5b"
+    },
+    {
+      "configured_model": "deepseek-chat",
+      "file": "geo-placement-simulation.yml",
+      "model_provider": "langgenius/deepseek/deepseek",
+      "purpose": "placements.simulation",
+      "sha256": "cb4a9c9271082e67d35ea743dc9c21b3eabe56f7569628847d3a517a02267922"
+    }
+  ]
+}

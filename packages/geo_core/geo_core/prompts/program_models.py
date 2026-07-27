@@ -9,7 +9,7 @@ from uuid import UUID
 
 from geo_core.prompts.program_contracts import (
     BOOTSTRAP_COMPILER_VERSION,
-    FIRST_PHASE_PROGRAM_KINDS,
+    WORKSPACE_FLOW_PROGRAM_KINDS,
     ModelPolicySnapshot,
     ProgramKind,
     ProgramReleaseStatus,
@@ -40,9 +40,9 @@ class PromptProgram:
             program_kind = ProgramKind(self.program_kind)
         except ValueError as exc:
             raise PromptProgramRuleViolation("unknown Prompt Program kind") from exc
-        if program_kind not in FIRST_PHASE_PROGRAM_KINDS:
+        if program_kind not in WORKSPACE_FLOW_PROGRAM_KINDS:
             raise PromptProgramRuleViolation(
-                "reference_translation is reserved and is not deliverable in the first phase"
+                "reference_translation is reserved and this Program kind is not deliverable"
             )
         object.__setattr__(self, "program_kind", program_kind)
         object.__setattr__(self, "purpose", _normalize_purpose(self.purpose))
@@ -82,7 +82,7 @@ class PromptProgramRelease:
             program_kind = ProgramKind(self.program_kind)
         except ValueError as exc:
             raise PromptProgramRuleViolation("unknown Prompt Program kind") from exc
-        if program_kind not in FIRST_PHASE_PROGRAM_KINDS:
+        if program_kind not in WORKSPACE_FLOW_PROGRAM_KINDS:
             raise PromptProgramRuleViolation("reserved Program kinds cannot be released")
         if not isinstance(self.schemas, ProgramSchemaContract):
             raise PromptProgramRuleViolation("a structured schema contract is required")
@@ -349,7 +349,7 @@ class ProgramBinding:
             program_kind = ProgramKind(self.program_kind)
         except ValueError as exc:
             raise PromptProgramRuleViolation("unknown bound Prompt Program kind") from exc
-        if program_kind not in FIRST_PHASE_PROGRAM_KINDS:
+        if program_kind not in WORKSPACE_FLOW_PROGRAM_KINDS:
             raise PromptProgramRuleViolation("reserved Program kinds cannot be bound")
         object.__setattr__(self, "purpose", _normalize_purpose(self.purpose))
         object.__setattr__(self, "program_kind", program_kind)

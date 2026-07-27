@@ -12,6 +12,10 @@ from geo_core.placements.generation_worker import parse_generated_placement
 from geo_core.placements.ports import GenerationClaim
 from geo_core.placements.worker_composition import GenerationHandler
 from geo_core.placements.worker_models import ModelCallReservation
+from geo_core.workflow_runtime import (
+    RetryableWorkflowExecutionError,
+    WorkflowExecutionResult,
+)
 
 
 class FakeStore:
@@ -33,9 +37,11 @@ class FakeRepository:
         self.claim = claim
         self.finalized = None
         self.success_log = None
+        self.reserve_calls = 0
 
     def reserve_model_call(self, lease, claim, *, provider, request_hash):
         del lease, claim
+        self.reserve_calls += 1
         return ModelCallReservation(1, request_hash, provider)
 
     def record_model_call_success(self, lease, claim, reservation, result):
@@ -110,7 +116,57 @@ class FakeGateway:
         )
 
 
-def test_generation_handler_calls_gateway_outside_transaction_and_preserves_budget() -> None:
+class FakeWorkflowExecutor:
+    def __init__(self, output=None, error: Exception | None = None) -> None:
+        self.output = output
+        self.error = error
+        self.requests = []
+
+    def execute_optional(self, lease, request):
+        del lease
+        self.requests.append(request)
+        if self.error is not None:
+            raise self.error
+        assert self.output is not None
+        return WorkflowExecutionResult(
+            output=self.output,
+            attempt_id=uuid4(),
+            runtime_release_id=uuid4(),
+            runtime_release_hash="d" * 64,
+            dify_task_id="task-1",
+            dify_run_id="run-1",
+            configured_model="deepseek-chat",
+            provider_reported_model="deepseek-chat",
+            prompt_tokens=10,
+            completion_tokens=20,
+            total_steps=3,
+            elapsed_seconds=Decimal("0.5"),
+            response_hash="e" * 64,
+        )
+
+
+def _valid_output(evidence_id):
+    return {
+        "content_json": {
+            "title": "Robot vacuum review",
+            "required_disclosures": [],
+            "expected_links": [],
+        },
+        "rendered_text": "Robot vacuum review",
+        "claims": [
+            {
+                "text": "Daily cleaning was observed.",
+                "kind": "factual",
+                "support_status": "supported",
+                "evidence_item_ids": [str(evidence_id)],
+            }
+        ],
+        "internal_evidence_refs": [str(evidence_id)],
+        "public_citation_refs": [str(evidence_id)],
+    }
+
+
+def _generation_fixture():
     evidence_id, project_id, job_id = uuid4(), uuid4(), uuid4()
     lease = WorkerLease(job_id, project_id, "placement.generate", "worker", uuid4(), 2, 1, 3)
     claim = GenerationClaim(
@@ -131,6 +187,11 @@ def test_generation_handler_calls_gateway_outside_transaction_and_preserves_budg
         public_citation_item_ids=(evidence_id,),
         output_schema={"type": "object", "required": ["content_json", "claims"]},
     )
+    return evidence_id, lease, claim
+
+
+def test_generation_handler_calls_gateway_outside_transaction_and_preserves_budget() -> None:
+    evidence_id, lease, claim = _generation_fixture()
     store = FakeStore()
     repository = FakeRepository(claim)
     gateway = FakeGateway(store, evidence_id)
@@ -156,6 +217,53 @@ def test_generation_handler_calls_gateway_outside_transaction_and_preserves_budg
     assert repository.finalized[2].claims[0].evidence_item_ids == (evidence_id,)
     assert repository.success_log[2].provider == "deepseek"
     assert store.failed is None
+
+
+def test_generation_uses_bound_dify_workflow_without_native_model_call() -> None:
+    evidence_id, lease, claim = _generation_fixture()
+    store = FakeStore()
+    repository = FakeRepository(claim)
+    gateway = FakeGateway(store, evidence_id)
+    workflow = FakeWorkflowExecutor(_valid_output(evidence_id))
+
+    result = GenerationHandler(
+        store=store,
+        repository=repository,
+        gateway=gateway,
+        lease_for=timedelta(minutes=2),
+        workflow_executor=workflow,
+    ).handle(lease)
+
+    assert result["status"] == "succeeded"
+    assert workflow.requests[0].purpose == "placements.generation"
+    assert gateway.request is None
+    assert repository.reserve_calls == 0
+    assert repository.success_log is None
+    assert repository.finalized[3].provider == "dify"
+
+
+def test_generation_dify_failure_never_falls_back_to_native_gateway() -> None:
+    evidence_id, lease, claim = _generation_fixture()
+    store = FakeStore()
+    repository = FakeRepository(claim)
+    gateway = FakeGateway(store, evidence_id)
+    workflow = FakeWorkflowExecutor(
+        error=RetryableWorkflowExecutionError("Dify is temporarily unavailable")
+    )
+
+    result = GenerationHandler(
+        store=store,
+        repository=repository,
+        gateway=gateway,
+        lease_for=timedelta(minutes=2),
+        workflow_executor=workflow,
+    ).handle(lease)
+
+    assert result["status"] == "retry_wait"
+    assert store.failed["retry_delay"] == timedelta(seconds=30)
+    assert gateway.request is None
+    assert repository.reserve_calls == 0
+    assert repository.finalized is None
 
 
 def test_internal_evidence_cannot_be_promoted_to_public_citation() -> None:

@@ -19,17 +19,12 @@ def test_prompt_program_tab_loads_only_its_minimal_workspace_projection() -> Non
     assert 'activeTab === "prompts" ? loadPromptWorkspace(projectId, query)' in page
     assert "await Promise.all([" in page
     assert "PromptProgramWorkspace" in shell
-    assert 'id: "prompts", label: "Prompt 程序"' in tabs
-    assert "limit: PROGRAM_PAGE_SIZE, offset" in data
-    assert "const [programResponse, response] = await Promise.all([" in data
-    assert "programsProblem" in data and "releasesProblem" in data
-    assert (
-        "let [programsResponse, bootstrapResponse, runtimesResponse, bindingsResponse] = await Promise.all"
-        in data
-    )
-    assert "/prompt-program-test-options`" in data
-    assert "/prompt-bootstrap`" in data
-    assert "isPromptBootstrapCatalog" in data
+    assert 'id: "prompts", label: "Dify 工作流"' in tabs
+    assert "/dify-workflows" in data
+    assert "/prompt-flows" not in data
+    assert "/draft`" not in data
+    assert "/releases" not in data
+    assert "/prompt-program-test-options`" not in data
 
 
 def test_prompt_bootstrap_catalog_is_strict_draft_only_and_idempotently_retryable() -> None:
@@ -58,16 +53,13 @@ def test_prompt_bootstrap_catalog_is_strict_draft_only_and_idempotently_retryabl
 
 def test_prompt_bootstrap_browser_covers_partial_failure_long_error_empty_and_mobile() -> None:
     browser = source(ROOT / "tests/browser/admin-prompt-bootstrap.spec.ts")
-    fixture = source(ROOT / "tests/browser/fixtures/prompt-bootstrap-fixture.mjs")
 
-    assert "尚无本次创建结果" in browser
-    assert "partial_failure" in browser
-    assert "Fixture persistence was interrupted" in browser
-    assert 'width: 390' in browser
-    assert "document.documentElement.scrollWidth" in browser
-    assert "lastIdempotencyKey" in fixture
-    assert 'status: "draft"' in fixture
-    assert "LONG_FAILURE" in fixture
+    assert "legacy Prompt deep links stay on the read-only Dify board" in browser
+    assert "测试问题生成" in browser
+    assert "投放内容仿真" in browser
+    assert 'name: "Dify 工作流"' in browser
+    assert 'name: "在 Dify 中编辑"' in browser
+    assert "运行固定测试集" in browser
 
 
 def test_every_prompt_server_action_reauthorizes_project_actor_and_uses_guards() -> None:
@@ -154,6 +146,9 @@ def test_prompt_controls_cover_release_lifecycle_and_do_not_derive_state_in_effe
 def test_prompt_read_models_and_lists_never_include_raw_templates_or_fixed_input() -> None:
     types = source(PROMPT / "promptProgramTypes.ts")
     workspace = source(PROMPT / "PromptProgramWorkspace.tsx")
+    editor = source(PROMPT / "PromptEditorWorkspace.tsx")
+    editor_panels = source(PROMPT / "PromptEditorPanels.tsx")
+    data = source(PROMPT / "promptProgramData.ts")
     release_contract = types.split("export type PromptProgramRelease", 1)[1].split(">;", 1)[0]
 
     assert "system_template:" not in release_contract
@@ -161,8 +156,9 @@ def test_prompt_read_models_and_lists_never_include_raw_templates_or_fixed_input
     assert "system_template_hash:" in release_contract
     assert "user_template_hash:" in release_contract
     assert "fixed_variables" not in workspace
-    assert "release.release_hash" in workspace
-    assert "release.state.evidence_ref" in workspace
+    assert "fixed_variables" not in data
+    assert "PromptProgramReleaseDetail" in editor
+    assert "selected.system_template" in editor_panels
 
 
 def test_prompt_layout_contains_explicit_overflow_and_mobile_guards() -> None:

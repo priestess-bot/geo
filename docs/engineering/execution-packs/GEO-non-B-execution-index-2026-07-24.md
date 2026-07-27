@@ -21,6 +21,6 @@ This index converts the non-B scope in `GEO-next-phase-six-month-roadmap-2026-07
 | 05 | 8h | Consumer-surface artifact parsers | LOCAL_COMPLETE / BOARD_B_LIVE_CAPTURE_EXCLUDED | Versioned parsers validate fixture/manual artifacts without claiming live capture |
 | 06 | 10h | Prompt and recommendation closure | LOCAL_COMPLETE / BLOCKED_EXTERNAL | Maker-checker Prompt Releases and evidence-bound Recommendation drafts work end to end; real model, B attribution and live approval remain external |
 | 07 | 10h | Migration and operational hardening | LOCAL_COMPLETE / BLOCKED_EXTERNAL_FINAL_GATES | Upgrade, dual-write cutover, authenticated restore, historical keyrings, runtime faults and frozen performance contracts are verified |
-| 08 | 8h | Full review, usability and evidence closure | LOCAL_COMPLETE / BLOCKED_EXTERNAL_REVIEW | Exact 312-ID register has zero local gaps; security/usability repairs and final source-bound gates pass; live evidence and independent signatures remain external |
+| 08 | 8h | Full review, usability and evidence closure | LOCAL_COMPLETE / BLOCKED_EXTERNAL_REVIEW | Exact 314-ID register has zero local gaps; security/usability repairs and final source-bound gates pass; live evidence and independent signatures remain external |
 
 Each pack has a dedicated checklist in this directory. The main roadmap remains the source of product acceptance IDs; these files are execution evidence maps, not substitute acceptance criteria.

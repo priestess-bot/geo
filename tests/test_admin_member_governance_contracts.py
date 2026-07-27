@@ -45,6 +45,14 @@ def test_member_mutations_are_server_only_typed_and_idempotent() -> None:
     assert 'kind: "idle" | "success" | "error"' in types
 
 
+def test_member_response_validator_accepts_non_login_service_identities() -> None:
+    types = source("memberTypes.ts")
+
+    assert 'typeof value.email === "string"' in types
+    assert "Service identities are valid project principals" in types
+    assert "系统身份（无登录邮箱）" in source("MemberRow.tsx")
+
+
 def test_member_ui_covers_permissions_and_operational_states() -> None:
     panel = source("MemberGovernancePanel.tsx")
     row = source("MemberRow.tsx")

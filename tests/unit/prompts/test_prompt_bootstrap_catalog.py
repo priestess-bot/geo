@@ -33,6 +33,7 @@ from geo_core.prompts.program import (
     AUXILIARY_PROGRAM_KINDS,
     CORE_FIRST_PHASE_PROGRAM_KINDS,
     FIRST_PHASE_PROGRAM_KINDS,
+    WORKSPACE_FLOW_PROGRAM_KINDS,
     ProgramKind,
     ProgramReleaseStatus,
 )
@@ -46,11 +47,11 @@ from tests.unit.prompts.prompt_bootstrap_catalog_test_support import (
 )
 
 
-def test_catalog_delivers_eight_core_and_two_auxiliary_first_phase_drafts() -> None:
+def test_catalog_delivers_first_phase_and_independent_workspace_flow_drafts() -> None:
     specs = default_prompt_bootstrap_specs()
 
-    assert tuple(spec.program_kind for spec in specs) == FIRST_PHASE_PROGRAM_KINDS
-    assert len(specs) == 10
+    assert tuple(spec.program_kind for spec in specs) == WORKSPACE_FLOW_PROGRAM_KINDS
+    assert len(specs) == 14
     assert CORE_FIRST_PHASE_PROGRAM_KINDS == FIRST_PHASE_PROGRAM_KINDS[:8]
     assert AUXILIARY_PROGRAM_KINDS == FIRST_PHASE_PROGRAM_KINDS[8:]
     assert ProgramKind.REFERENCE_TRANSLATION not in {spec.program_kind for spec in specs}
@@ -61,7 +62,7 @@ def test_catalog_delivers_eight_core_and_two_auxiliary_first_phase_drafts() -> N
         default_prompt_bootstrap_spec(ProgramKind.REFERENCE_TRANSLATION)
 
 
-def test_first_phase_business_purposes_are_exact_and_reference_translation_is_reserved() -> None:
+def test_workspace_business_purposes_are_exact_and_reference_translation_is_reserved() -> None:
     assert {
         spec.program_kind: spec.purpose for spec in default_prompt_bootstrap_specs()
     } == {
@@ -75,6 +76,10 @@ def test_first_phase_business_purposes_are_exact_and_reference_translation_is_re
         ProgramKind.RECOMMENDATION: "recommendations.recommendation",
         ProgramKind.STYLE_PROFILE: "synthetic_lab.style_profile",
         ProgramKind.OFFLINE_ANSWER: "synthetic_lab.offline_answer",
+        ProgramKind.QUESTION_GENERATION: "knowledge.question_generation",
+        ProgramKind.RAG_GROUNDING: "knowledge.rag_grounding",
+        ProgramKind.PLACEMENT_GENERATION: "placements.generation",
+        ProgramKind.PLACEMENT_SIMULATION: "placements.simulation",
     }
 
 
@@ -92,7 +97,7 @@ def test_catalog_and_spec_hashes_are_stable_across_rebuilds() -> None:
     assert all(len({fixture.fixture_hash for fixture in spec.fixtures}) == 5 for spec in second)
 
 
-@pytest.mark.parametrize("kind", FIRST_PHASE_PROGRAM_KINDS)
+@pytest.mark.parametrize("kind", WORKSPACE_FLOW_PROGRAM_KINDS)
 def test_each_spec_compiles_an_existing_prompt_program_draft_only(kind: ProgramKind) -> None:
     spec = default_prompt_bootstrap_spec(kind)
 

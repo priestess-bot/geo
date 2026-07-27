@@ -13,6 +13,10 @@ import { loadSecretWorkspace } from "./features/secret-store/secretStoreData";
 import { loadSyntheticLabWorkspace } from "./features/synthetic-lab/syntheticLabData";
 import { loadWorkflowCWorkspace } from "./features/workflow-c/workflowCData";
 
+// Project workspaces contain per-request identity and membership state.
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 type SearchParams = { [key: string]: string | string[] | undefined };
 
 export default async function ProjectDetailPage({

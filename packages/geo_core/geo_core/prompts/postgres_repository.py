@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from typing import Any, cast
+from typing import Any
 from uuid import UUID
 
 import psycopg
-from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from geo_core.prompts.ports import (
@@ -19,11 +17,13 @@ from geo_core.prompts.ports import (
     StoredPromptCommand,
 )
 from geo_core.prompts.postgres_read import PromptProgramReadMixin
+from geo_core.prompts.postgres_connection import PromptPostgresConnectionMixin
 from geo_core.prompts.postgres_read_models import state_from_row
 from geo_core.prompts.postgres_serialization import plain_json, serialize_result
 from geo_core.prompts.postgres_worker_transition import (
     store_worker_test_transition as _store_worker_test_transition,
 )
+from geo_core.prompts.postgres_workspace import PromptWorkspacePersistenceMixin
 from geo_core.prompts.program import (
     ProgramBinding,
     ProgramReleaseDiff,
@@ -34,9 +34,14 @@ from geo_core.prompts.program import (
     PromptProgramRelease,
     PromptProgramRuleViolation,
 )
+from geo_core.prompts.workspace import draft_hash, prompt_flow_for_purpose
 
 
-class PsycopgPromptProgramRepository(PromptProgramReadMixin):
+class PsycopgPromptProgramRepository(
+    PromptPostgresConnectionMixin,
+    PromptWorkspacePersistenceMixin,
+    PromptProgramReadMixin,
+):
     """Append-only persistence with project scope, idempotency and CAS."""
 
     def __init__(self, connection: Any) -> None:
@@ -96,6 +101,32 @@ class PsycopgPromptProgramRepository(PromptProgramReadMixin):
             )
             self._insert_release(release)
             self._insert_state(project_id=project_id, state=state)
+            definition = prompt_flow_for_purpose(program.purpose)
+            display_name = (
+                definition.display_name if definition is not None else program.purpose
+            )
+            self._execute(
+                """INSERT INTO prompt_program_working_drafts
+                     (project_id, program_id, display_name, system_template,
+                      user_template, revision, draft_hash, base_release_id,
+                      candidate_release_id, updated_by, updated_at)
+                   VALUES (%s, %s, %s, %s, %s, 1, %s, %s, NULL, %s, %s)""",
+                (
+                    project_id,
+                    program.id,
+                    display_name,
+                    release.system_template,
+                    release.user_template,
+                    draft_hash(
+                        display_name=display_name,
+                        system_template=release.system_template,
+                        user_template=release.user_template,
+                    ),
+                    release.id,
+                    program.owner_id,
+                    state.acted_at,
+                ),
+            )
             self._insert_command(command)
         except psycopg.errors.UniqueViolation as error:
             raise PromptProgramVersionConflict(
@@ -560,40 +591,5 @@ class PsycopgPromptProgramRepository(PromptProgramReadMixin):
             raise PromptProgramRuleViolation(
                 "Prompt Program test evidence lineage does not match"
             )
-
-    def _advisory_lock(self, key: str) -> None:
-        self._execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))", (key,))
-
-    def _execute(self, query: str, parameters: tuple[object, ...] = ()) -> None:
-        with self._connection.cursor() as cursor:
-            cursor.execute(query, parameters)
-
-    def _optional(
-        self, query: str, parameters: tuple[object, ...]
-    ) -> Mapping[str, Any] | None:
-        try:
-            with self._connection.cursor(row_factory=dict_row) as cursor:
-                cursor.execute(query, parameters)
-                return cast(Mapping[str, Any] | None, cursor.fetchone())
-        except psycopg.Error as error:
-            raise self._database_error("read Prompt Program state", error) from error
-
-    def _many(
-        self, query: str, parameters: tuple[object, ...]
-    ) -> tuple[Mapping[str, Any], ...]:
-        try:
-            with self._connection.cursor(row_factory=dict_row) as cursor:
-                cursor.execute(query, parameters)
-                return tuple(cast(list[Mapping[str, Any]], cursor.fetchall()))
-        except psycopg.Error as error:
-            raise self._database_error("list Prompt Program state", error) from error
-
-    @staticmethod
-    def _database_error(
-        operation: str, error: psycopg.Error
-    ) -> PromptProgramPersistenceError:
-        del error
-        return PromptProgramPersistenceError(f"PostgreSQL could not {operation}")
-
 
 __all__ = ["PsycopgPromptProgramRepository"]

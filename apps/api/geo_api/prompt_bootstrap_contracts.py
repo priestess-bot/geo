@@ -24,6 +24,10 @@ BootstrapKindValue = Literal[
     "recommendation",
     "style_profile",
     "offline_answer",
+    "question_generation",
+    "rag_grounding",
+    "placement_generation",
+    "placement_simulation",
 ]
 
 
@@ -81,7 +85,7 @@ class BootstrapKindPreviewResponse(PromptBootstrapContract):
 class BootstrapCatalogPreviewResponse(PromptBootstrapContract):
     catalog_version: str
     catalog_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
-    items: list[BootstrapKindPreviewResponse] = Field(min_length=10, max_length=10)
+    items: list[BootstrapKindPreviewResponse] = Field(min_length=14, max_length=14)
     external_model_calls: Literal[0] = 0
     automatic_transitions: Literal[False] = False
     batch_atomicity: Literal["per_item"] = "per_item"
@@ -161,10 +165,10 @@ class BootstrapDraftItemResponse(PromptBootstrapContract):
 class BootstrapCreateDraftsResponse(PromptBootstrapContract):
     catalog_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     completion_status: Literal["completed", "partial_failure", "failed"]
-    items: list[BootstrapDraftItemResponse] = Field(min_length=10, max_length=10)
-    created_count: int = Field(ge=0, le=10)
-    replayed_count: int = Field(ge=0, le=10)
-    failed_count: int = Field(ge=0, le=10)
+    items: list[BootstrapDraftItemResponse] = Field(min_length=14, max_length=14)
+    created_count: int = Field(ge=0, le=14)
+    replayed_count: int = Field(ge=0, le=14)
+    failed_count: int = Field(ge=0, le=14)
     atomic: Literal[False] = False
     safe_to_retry: Literal[True] = True
     action_boundary: Literal[

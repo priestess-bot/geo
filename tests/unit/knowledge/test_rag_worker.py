@@ -15,6 +15,10 @@ from geo_core.knowledge.rag_domain import (
 from geo_core.knowledge.rag_worker import KnowledgeRagExtractHandler
 from geo_core.model_gateway import ModelGatewayResult
 from geo_core.rag import RagSelection
+from geo_core.workflow_runtime import (
+    RetryableWorkflowExecutionError,
+    WorkflowExecutionResult,
+)
 
 
 class FakeStore:
@@ -84,26 +88,7 @@ class FakeGateway:
         budget.consume()
         self.requests.append(request)
         return ModelGatewayResult(
-            output={
-                "facts": [
-                    {
-                        "text": "A1 的流量为每分钟 2 升。",
-                        "source_quote": "A1 的流量为每分钟 2 升。",
-                    }
-                ],
-                "entities": [
-                    {"entity_type": "Product", "name": "A1", "source_quote": "A1"},
-                    {"entity_type": "Brand", "name": "星澜", "source_quote": "星澜"},
-                ],
-                "relations": [
-                    {
-                        "subject": "A1",
-                        "predicate": "belongs_to",
-                        "object": "星澜",
-                        "source_quote": "A1 belongs_to 星澜",
-                    }
-                ],
-            },
+            output=_rag_output(),
             call_log_id=uuid4(),
             provider_request_id="provider-1",
             configured_model=request.configured_model,
@@ -114,6 +99,58 @@ class FakeGateway:
             finish_reason="stop",
             response_hash="c" * 64,
         )
+
+
+class FakeWorkflowExecutor:
+    def __init__(self, output=None, error: Exception | None = None) -> None:
+        self.output = output
+        self.error = error
+        self.requests = []
+
+    def execute_optional(self, lease, request):
+        del lease
+        self.requests.append(request)
+        if self.error is not None:
+            raise self.error
+        assert self.output is not None
+        return WorkflowExecutionResult(
+            output=self.output,
+            attempt_id=uuid4(),
+            runtime_release_id=uuid4(),
+            runtime_release_hash="e" * 64,
+            dify_task_id="rag-task",
+            dify_run_id="rag-run",
+            configured_model="deepseek-chat",
+            provider_reported_model="deepseek-chat",
+            prompt_tokens=10,
+            completion_tokens=20,
+            total_steps=3,
+            elapsed_seconds=Decimal("0.5"),
+            response_hash="f" * 64,
+        )
+
+
+def _rag_output():
+    return {
+        "facts": [
+            {
+                "text": "A1 的流量为每分钟 2 升。",
+                "source_quote": "A1 的流量为每分钟 2 升。",
+            }
+        ],
+        "entities": [
+            {"entity_type": "Product", "name": "A1", "source_quote": "A1"},
+            {"entity_type": "Brand", "name": "星澜", "source_quote": "星澜"},
+        ],
+        "relations": [
+            {
+                "subject": "A1",
+                "predicate": "belongs_to",
+                "object": "星澜",
+                "source_quote": "A1 belongs_to 星澜",
+            }
+        ],
+    }
 
 
 @dataclass(frozen=True)
@@ -215,3 +252,63 @@ def test_rag_worker_fails_closed_before_model_call_when_selection_changed() -> N
     assert store.failures[0]["error_code"] == "KnowledgeRagContractError"
     assert store.failures[0]["retry_delay"] is None
     assert not gateway.requests
+
+
+def test_rag_worker_uses_bound_dify_workflow_without_native_model_call() -> None:
+    claim = _claim()
+    store = FakeStore()
+    repository = FakeRepository(claim)
+    gateway = FakeGateway()
+    workflow = FakeWorkflowExecutor(_rag_output())
+    handler = KnowledgeRagExtractHandler(
+        store=store,
+        repository=repository,
+        gateway=gateway,
+        object_store=FakeObjectStore(),
+        selection=_selection(),
+        selection_manifest_hash="b" * 64,
+        lease_for=timedelta(minutes=2),
+        workflow_executor=workflow,
+    )
+
+    result = handler.handle(_lease(claim))
+
+    assert result["status"] == "succeeded"
+    assert workflow.requests[0].purpose == "knowledge.rag_grounding"
+    assert workflow.requests[0].output_schema["required"] == [
+        "facts",
+        "entities",
+        "relations",
+    ]
+    assert not gateway.requests
+    assert not repository.reservations
+    assert not repository.successes
+    assert repository.finalized is not None
+
+
+def test_rag_worker_dify_failure_never_falls_back_to_native_gateway() -> None:
+    claim = _claim()
+    store = FakeStore()
+    repository = FakeRepository(claim)
+    gateway = FakeGateway()
+    workflow = FakeWorkflowExecutor(
+        error=RetryableWorkflowExecutionError("Dify is temporarily unavailable")
+    )
+    handler = KnowledgeRagExtractHandler(
+        store=store,
+        repository=repository,
+        gateway=gateway,
+        object_store=FakeObjectStore(),
+        selection=_selection(),
+        selection_manifest_hash="b" * 64,
+        lease_for=timedelta(minutes=2),
+        workflow_executor=workflow,
+    )
+
+    result = handler.handle(_lease(claim))
+
+    assert result["status"] == "retry_wait"
+    assert store.failures[0]["retry_delay"] == timedelta(seconds=30)
+    assert not gateway.requests
+    assert not repository.reservations
+    assert repository.finalized is None

@@ -249,7 +249,7 @@ def test_prompt_simulation_is_an_internal_test_only_surface() -> None:
         encoding="utf-8"
     )
 
-    assert "TEST ONLY" in panel
+    assert "仅限测试" in panel
     assert "publication_eligible=false" in panel
     assert 'name="authenticity_mode"' in panel
     assert 'value="synthetic_testimonial"' in panel

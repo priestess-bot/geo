@@ -41,6 +41,56 @@ from geo_core.model_gateway.contracts import (
 )
 from geo_core.object_store import ObjectStoreError
 from geo_core.rag import RagSelection
+from geo_core.workflow_runtime import (
+    RetryableWorkflowExecutionError,
+    WorkflowExecutionError,
+    WorkflowExecutionRequest,
+    WorkflowExecutor,
+)
+
+
+QUESTION_GENERATION_OUTPUT_SCHEMA: Mapping[str, object] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["questions"],
+    "properties": {
+        "questions": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "candidate_id",
+                    "dimension_key",
+                    "variant_index",
+                    "text",
+                    "semantic_fingerprint",
+                    "supported_fact_ids",
+                    "supported_entity_ids",
+                    "parent_candidate_id",
+                ],
+                "properties": {
+                    "candidate_id": {"type": "string", "minLength": 1},
+                    "dimension_key": {"type": "string", "minLength": 1},
+                    "variant_index": {"type": "integer", "minimum": 1, "maximum": 3},
+                    "text": {"type": "string", "minLength": 1},
+                    "semantic_fingerprint": {"type": "string", "minLength": 1},
+                    "supported_fact_ids": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {"type": "string"},
+                    },
+                    "supported_entity_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                    },
+                    "parent_candidate_id": {"type": ["string", "null"]},
+                },
+            },
+        }
+    },
+}
 
 
 _SYSTEM_PROMPT = """Generate grounded GEO test questions for the supplied frozen dimensions.
@@ -125,6 +175,7 @@ class KnowledgeQuestionGenerateHandler:
         selection: RagSelection,
         selection_manifest_hash: str,
         lease_for: timedelta,
+        workflow_executor: WorkflowExecutor | None = None,
     ) -> None:
         self._store = store
         self._repository = repository
@@ -133,6 +184,7 @@ class KnowledgeQuestionGenerateHandler:
         self._selection = selection
         self._selection_manifest_hash = selection_manifest_hash
         self._lease_for = lease_for
+        self._workflow_executor = workflow_executor
 
     def handle(self, lease: WorkerLease) -> Mapping[str, object]:
         try:
@@ -232,6 +284,23 @@ class KnowledgeQuestionGenerateHandler:
             ],
             "parent_candidates": parents,
         }
+        if self._workflow_executor is not None:
+            workflow_result = self._workflow_executor.execute_optional(
+                lease,
+                WorkflowExecutionRequest(
+                    project_id=lease.project_id,
+                    purpose="knowledge.question_generation",
+                    context=payload,
+                    input_hash=request_hash_for_payload(payload),
+                    output_schema=QUESTION_GENERATION_OUTPUT_SCHEMA,
+                    system_prompt=_SYSTEM_PROMPT,
+                    user_prompt=json.dumps(
+                        payload, ensure_ascii=False, sort_keys=True, default=str
+                    ),
+                ),
+            )
+            if workflow_result is not None:
+                return workflow_result.output
         messages = (
             {"role": "system", "content": _SYSTEM_PROMPT},
             {
@@ -274,7 +343,10 @@ class KnowledgeQuestionGenerateHandler:
         return result.output
 
     def _fail(self, lease: WorkerLease, error: Exception) -> Mapping[str, object]:
-        retryable = isinstance(error, (RetryableModelGatewayError, ObjectStoreError))
+        retryable = isinstance(
+            error,
+            (RetryableModelGatewayError, RetryableWorkflowExecutionError, ObjectStoreError),
+        )
         status = self._store.fail(
             lease,
             error_code=type(error).__name__,
@@ -301,6 +373,8 @@ def _batches_by_turn(
 
 
 def _error_classification(error: Exception) -> str:
+    if isinstance(error, WorkflowExecutionError):
+        return error.classification
     if isinstance(error, RetryableModelGatewayError):
         return "retryable"
     if isinstance(error, ProviderPolicyViolation):
@@ -314,3 +388,15 @@ def _error_classification(error: Exception) -> str:
     if isinstance(error, ObjectStoreError):
         return "retryable"
     return "unknown"
+
+
+def request_hash_for_payload(payload: Mapping[str, object]) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()

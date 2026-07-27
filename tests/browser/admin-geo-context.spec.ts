@@ -87,7 +87,7 @@ test("F019-WEB-01: Admin completes governed QuestionSet binding and a non-publis
   await expect(generationPanel.getByRole("status")).toContainText("测试问题生成任务已排队");
   await expect(page.getByTestId("question-generation-job")).toHaveCount(1);
   await expect(page.getByText("1 个维度", { exact: true })).toBeVisible();
-  await expect(page.getByText("Fact · Fixture product specification", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("事实 · Fixture product specification", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("可能重复", { exact: true })).toBeVisible();
   await expect(page.getByText("最近相似度 94.7%", { exact: true })).toBeVisible();
 
@@ -100,18 +100,18 @@ test("F019-WEB-01: Admin completes governed QuestionSet binding and a non-publis
   await expect(candidateRow).toContainText("已批准");
 
   const setPanel = page.locator("details").filter({
-    has: page.getByText("创建 QuestionSet 草稿", { exact: true })
+    has: page.getByText("创建问题集草稿", { exact: true })
   });
   await setPanel.locator(":scope > summary").click();
-  await setPanel.getByRole("textbox", { name: "QuestionSet 名称" })
+  await setPanel.getByRole("textbox", { name: "问题集名称" })
     .fill("AU robotic mower evaluation");
   await setPanel.locator('select[name="candidate_ids"]').selectOption(QUESTION_CANDIDATE_ID);
   await setPanel.getByRole("button", { name: "创建不可变问题清单" }).click();
   let setRow = page.locator("article").filter({ hasText: "AU robotic mower evaluation · v1" });
   await expect(setRow).toContainText("100%");
-  await setRow.getByRole("button", { name: "批准 QuestionSet" }).click();
+  await setRow.getByRole("button", { name: "批准问题集" }).click();
   setRow = page.locator("article").filter({ hasText: "AU robotic mower evaluation · v1" });
-  await setRow.getByRole("button", { name: "冻结 QuestionSet" }).click();
+  await setRow.getByRole("button", { name: "冻结问题集" }).click();
   setRow = page.locator("article").filter({ hasText: "AU robotic mower evaluation · v1" });
   await expect(setRow).toContainText("已冻结");
   await setRow.locator('select[name="protocol_id"]').selectOption(PROTOCOL_DRAFT_ID);
@@ -121,7 +121,7 @@ test("F019-WEB-01: Admin completes governed QuestionSet binding and a non-publis
   await setRow.getByRole("link", { name: "进入内部 GEO 仿真" }).click();
 
   const simulationPanel = page.getByTestId("prompt-simulation-panel");
-  await expect(simulationPanel.getByText("TEST ONLY", { exact: true }).first()).toBeVisible();
+  await expect(simulationPanel.getByText("仅限测试", { exact: true }).first()).toBeVisible();
   await simulationPanel.locator('select[name="simulation_purpose"]')
     .selectOption("geo_question_test");
   const bindingOption = simulationPanel.locator('select[name="question_binding"] option')
@@ -134,12 +134,12 @@ test("F019-WEB-01: Admin completes governed QuestionSet binding and a non-publis
   await simulationPanel.locator('select[name="product_entity_id"]')
     .selectOption("00000000-0000-4000-8000-000000000011");
   await simulationPanel.locator('select[name="evidence_item_ids"]').selectOption(EVIDENCE_ID);
-  await simulationPanel.getByRole("button", { name: "运行 TEST ONLY 预览" }).click();
+  await simulationPanel.getByRole("button", { name: "运行仅测试预览" }).click();
   const simulationStatus = simulationPanel.getByRole("status")
     .filter({ hasText: "内部 GEO 问题仿真任务已排队" });
   await expect(simulationStatus).toBeVisible();
   await simulationStatus.getByRole("link", { name: "打开结果" }).click();
-  await expect(page.getByText("NON-PUBLISHABLE", { exact: true })).toBeVisible();
+  await expect(page.getByText("不可发布", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("test_only=true · publication_eligible=false", { exact: true }))
     .toBeVisible();
   await expect(page.getByText("geo_question_test", { exact: true })).toBeVisible();
@@ -147,7 +147,7 @@ test("F019-WEB-01: Admin completes governed QuestionSet binding and a non-publis
     .toBeVisible();
   await expect(page.getByTestId("prompt-simulation-panel").getByRole("button", { name: /发布/ }))
     .toHaveCount(0);
-  const currentArtifactLink = page.getByRole("link", { name: "下载 TEST ONLY 工件" });
+  const currentArtifactLink = page.getByRole("link", { name: "下载仅测试工件" });
   await expect(currentArtifactLink).toHaveAttribute("href", new RegExp(
     `simulation-download/[^?]+\\?campaign_id=${CAMPAIGN_A_ID}$`
   ));
@@ -198,7 +198,7 @@ test("F019-WEB-01: Admin completes governed QuestionSet binding and a non-publis
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
   await expect(page.locator('input[name="idempotency_key"]').first()).not.toHaveValue("");
-  await expect(page.getByText("NON-PUBLISHABLE", { exact: true })).toBeVisible();
+  await expect(page.getByText("不可发布", { exact: true }).first()).toBeVisible();
   const width = await page.evaluate(() => ({
     document: document.documentElement.scrollWidth,
     viewport: window.innerWidth
@@ -217,10 +217,10 @@ test("Legacy Prompt Simulation remains project-visible, read-only, and downloada
   await expect(panel.getByTestId("legacy-simulation-readonly")).toContainText("不能作为新建、审核、导出或发布输入");
   await expect(panel.getByText("Migrated legacy simulation remains available for audit and download.", { exact: true }))
     .toBeVisible();
-  await expect(panel.getByRole("button", { name: "运行 TEST ONLY 预览" })).toHaveCount(0);
+  await expect(panel.getByRole("button", { name: "运行仅测试预览" })).toHaveCount(0);
   await expect(panel.getByRole("button", { name: /发布/ })).toHaveCount(0);
 
-  const artifactLink = panel.getByRole("link", { name: "下载 TEST ONLY 工件" });
+  const artifactLink = panel.getByRole("link", { name: "下载仅测试工件" });
   await expect(artifactLink).toHaveAttribute(
     "href",
     `/projects/${PROJECT_ID}/simulation-download/${LEGACY_SIMULATION_ID}`
@@ -277,8 +277,8 @@ test("F012: Campaign switch clears every descendant context and invalid deep lin
   const runtimeErrors = collectRuntimeErrors(page);
   await page.goto(`/projects/${PROJECT_ID}?tab=geo&geo_section=placement&campaign_id=${CAMPAIGN_A_ID}&protocol_id=${PROTOCOL_A_ID}&destination_id=00000000-0000-4000-8000-000000000021&opportunity_id=${OPPORTUNITY_A_ID}&placement_stage=generation&measurement_window=t56`);
 
-  await expect(page.getByLabel("当前 Campaign")).toHaveValue(CAMPAIGN_A_ID);
-  await page.getByLabel("当前 Campaign").selectOption(CAMPAIGN_B_ID);
+  await expect(page.getByLabel("当前活动")).toHaveValue(CAMPAIGN_A_ID);
+  await page.getByLabel("当前活动").selectOption(CAMPAIGN_B_ID);
   await expect(page).toHaveURL(new RegExp(`campaign_id=${CAMPAIGN_B_ID}`));
   const switched = new URL(page.url());
   for (const key of ["protocol_id", "destination_id", "opportunity_id", "brief_version_id", "attempt_id", "skill_id", "bundle_id", "job_id", "version_id", "publication_id", "submission_id", "simulation_id", "question_generation_job_id"]) {
@@ -286,7 +286,7 @@ test("F012: Campaign switch clears every descendant context and invalid deep lin
   }
   expect(switched.searchParams.get("placement_stage")).toBe("brief");
   expect(switched.searchParams.get("measurement_window")).toBe("baseline");
-  await expect(page.getByLabel("当前 Campaign")).toHaveValue(CAMPAIGN_B_ID);
+  await expect(page.getByLabel("当前活动")).toHaveValue(CAMPAIGN_B_ID);
   await expect(page.getByText("当前 Campaign 没有渠道任务", { exact: true })).toBeVisible();
   await expect(page.getByText("请选择一个渠道任务。", { exact: true })).toBeVisible();
   await page.screenshot({ path: path.join(os.tmpdir(), "geo-admin-campaign-context.png"), fullPage: true });
@@ -298,7 +298,7 @@ test("F012: Campaign switch clears every descendant context and invalid deep lin
 
   await page.goto(`/projects/${PROJECT_ID}?tab=geo&geo_section=placement&skill_id=${SKILL_ID}`);
   await expect(page).toHaveURL((url) => !url.searchParams.has("skill_id"));
-  await expect(page.getByText("未选择 Campaign。", { exact: true })).toBeVisible();
+  await expect(page.getByText("未选择活动。", { exact: true })).toBeVisible();
   expect(runtimeErrors).toEqual([]);
 });
 
@@ -449,11 +449,11 @@ test("F021: frozen protocol strata can compute an auditable insufficient-evidenc
   await expect(metric).toContainText("混杂因素");
   await expect(metric).toContainText("最弱问题");
   await metric.getByText("逐问题分母与区间", { exact: true }).click();
-  await expect(metric).toContainText("0 sampled · 0 valid · 0 invalid · 3 missing");
+  await expect(metric).toContainText("0 已采样 · 0 有效 · 0 无效 · 3 缺失");
   await metric.getByText("指标审计信息", { exact: true }).click();
-  await expect(metric).toContainText(`Result ${"9".repeat(64)}`);
-  await expect(metric).toContainText(`Observations ${"a1".repeat(32)}`);
-  await expect(metric).toContainText("metric-observation-membership-v1 · 0 observations");
+  await expect(metric).toContainText(`结果 ${"9".repeat(64)}`);
+  await expect(metric).toContainText(`观察记录 ${"a1".repeat(32)}`);
+  await expect(metric).toContainText("metric-observation-membership-v1 · 0 条观察记录");
   await expect(metric).not.toContainText(/improved|declined|stable|改善|下降|稳定/i);
 
   const logged = await (await request.get(`${FIXTURE_API}/__requests`)).json() as Array<{ method: string; path: string; body: Record<string, any> }>;
@@ -501,7 +501,7 @@ test("F011: a failed public URL check is retried explicitly after external conte
   await page.getByRole("button", { name: "重新验证" }).click();
   await expect(page.getByText("最近验证 · 第 1 次执行", { exact: true })).toBeVisible();
   await expect(page.getByText("approved_content_missing", { exact: true })).toHaveCount(0);
-  const passedResult = page.getByText(`Result ${"e".repeat(64)}`, { exact: true });
+  const passedResult = page.getByText(`结果 ${"e".repeat(64)}`, { exact: true });
   if (!await passedResult.isVisible()) {
     const summary = page.getByText("验证规则与证据哈希", { exact: true });
     if (await summary.locator("..").getAttribute("open") === null) await summary.click();
@@ -509,7 +509,7 @@ test("F011: a failed public URL check is retried explicitly after external conte
   }
   await expect(passedResult).toBeVisible();
   const failedHistory = page.getByText(new RegExp(`第 1 次 · failed · ${"d".repeat(64)}`));
-  const historySummary = page.getByText("历史验证 Attempt", { exact: true });
+  const historySummary = page.getByText("历史验证尝试", { exact: true });
   await historySummary.click();
   await expect(historySummary.locator("..")).toHaveAttribute("open", "");
   await expect(failedHistory).toBeVisible();
@@ -535,22 +535,24 @@ test("F013: approved Fact becomes governed Evidence and remains traceable inside
   await expect(page.getByText("Fixture Mower supports medium Australian lawns with governed boundary wire guidance.", { exact: true })).toBeVisible();
   await page.getByRole("textbox", { name: "审核说明" }).fill("Approved against the source revision and chunk hashes");
   await page.getByRole("button", { name: "保存审核" }).click();
-  const traceLink = page.getByRole("link", { name: "Evidence 与追溯链" });
+  const traceLink = page.getByRole("link", { name: "证据与追溯链" });
   await expect(traceLink).toBeVisible();
   await traceLink.click();
 
-  await expect(page.getByRole("heading", { name: "正式 Evidence 提升" })).toBeVisible();
-  await expect(page.getByText("Source", { exact: true })).toBeVisible();
-  await expect(page.getByText("Document", { exact: true })).toBeVisible();
-  await expect(page.getByText("Approved Fact", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "提升为正式 Evidence" }).click();
+  const promotionPanel = page.getByRole("heading", { name: "正式证据提升" })
+    .locator("xpath=ancestor::section[1]");
+  await expect(promotionPanel).toBeVisible();
+  await expect(promotionPanel.getByText("来源", { exact: true })).toBeVisible();
+  await expect(promotionPanel.getByText("文档", { exact: true })).toBeVisible();
+  await expect(promotionPanel.getByText("已批准事实", { exact: true })).toBeVisible();
+  await promotionPanel.getByRole("button", { name: "提升为正式 Evidence" }).click();
   await expect(page.getByText(EVIDENCE_ID, { exact: true })).toBeVisible();
   await expect(page.getByText("knowledge-fact-evidence-v1", { exact: true })).toBeVisible();
   await expect(page.getByText("5".repeat(64), { exact: true })).toBeVisible();
   await expect(page.getByText("6".repeat(64), { exact: true })).toBeVisible();
 
-  await page.getByRole("link", { name: "进入 Evidence Pack" }).click();
-  const campaignSelect = page.getByLabel("当前 Campaign");
+  await page.getByRole("link", { name: "进入证据包" }).click();
+  const campaignSelect = page.getByLabel("当前活动");
   await expect(campaignSelect).toBeEnabled();
   await expect(campaignSelect).toHaveValue("");
   await expect(campaignSelect.locator(`option[value="${CAMPAIGN_A_ID}"]`))
@@ -601,10 +603,10 @@ test("F014: Opportunity binding and Bundle creation freeze the approved Prompt R
   const runtimeErrors = collectRuntimeErrors(page);
   await page.goto(`/projects/${PROJECT_ID}?tab=geo&geo_section=placement&placement_stage=evidence&campaign_id=${CAMPAIGN_A_ID}&opportunity_id=${OPPORTUNITY_A_ID}&brief_version_id=${BRIEF_ID}&attempt_id=${ATTEMPT_ID}&skill_id=${SKILL_ID}`);
 
-  await expect(page.getByText("尚未绑定已批准 Prompt Release。", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("尚未绑定已批准 Prompt 发布版本。", { exact: true }).first()).toBeVisible();
   const administration = page.locator("details").filter({ has: page.getByText("高级：Prompt 规则与版本管理", { exact: true }) });
   await administration.locator(":scope > summary").click();
-  await expect(administration.getByRole("button", { name: "撤销 Release" })).toBeVisible();
+  await expect(administration.getByRole("button", { name: "撤销发布版本" })).toBeVisible();
   await administration.locator('select[name="template_release_id"]').selectOption(RELEASE_ID);
   await administration.getByRole("textbox", { name: "变更原因" }).fill("Pin approved release for this Opportunity");
   await administration.getByRole("button", { name: "确认并追加绑定" }).click();

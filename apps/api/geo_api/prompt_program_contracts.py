@@ -21,6 +21,10 @@ ProgramKindValue = Literal[
     "style_profile",
     "offline_answer",
     "reference_translation",
+    "question_generation",
+    "rag_grounding",
+    "placement_generation",
+    "placement_simulation",
 ]
 ReleaseStatusValue = Literal["draft", "tested", "approved", "frozen", "retired"]
 
@@ -160,6 +164,11 @@ class PromptProgramReleaseResponse(PromptProgramContract):
     state: PromptReleaseStateResponse
 
 
+class PromptProgramReleaseDetailResponse(PromptProgramReleaseResponse):
+    system_template: str
+    user_template: str
+
+
 class CreatedPromptProgramResponse(PromptProgramContract):
     program: PromptProgramSummaryResponse
     release: PromptProgramReleaseResponse
@@ -282,3 +291,122 @@ class PromptProgramBindingOptionPage(PromptProgramContract):
     total: int = Field(ge=0)
     limit: int = Field(ge=1)
     offset: int = Field(ge=0)
+
+
+class PromptContextSlotResponse(PromptProgramContract):
+    key: str
+    label: str
+    description: str
+    insertion: str
+    source: Literal["runtime_task"]
+
+
+class PromptWorkingDraftResponse(PromptProgramContract):
+    project_id: UUID
+    program_id: UUID
+    display_name: str
+    system_template: str
+    user_template: str
+    revision: int = Field(ge=1)
+    draft_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    base_release_id: UUID
+    candidate_release_id: UUID | None
+    updated_by: UUID
+    updated_at: datetime
+
+
+class PromptFlowResponse(PromptProgramContract):
+    flow_key: str
+    purpose: str
+    program_kind: ProgramKindValue
+    group: Literal[
+        "synthetic_lab",
+        "question_and_content",
+        "measurement_and_recommendation",
+    ]
+    display_name: str
+    description: str
+    configurable: bool
+    context_slots: list[PromptContextSlotResponse]
+    program: PromptProgramSummaryResponse | None
+    draft: PromptWorkingDraftResponse | None
+    latest_release_version: int | None
+    current_release_id: UUID | None
+    current_release_version: int | None
+    candidate_status: ReleaseStatusValue | None
+    latest_test_job_id: UUID | None
+    latest_test_status: str | None
+    latest_test_score: int | None
+
+
+class PromptFlowPage(PromptProgramContract):
+    items: list[PromptFlowResponse]
+    total: int = Field(ge=0)
+
+
+class SavePromptWorkingDraftRequest(PromptProgramContract):
+    display_name: str = Field(min_length=1, max_length=120)
+    system_template: str = Field(min_length=1, max_length=100_000)
+    user_template: str = Field(min_length=1, max_length=100_000)
+    expected_revision: int = Field(ge=1)
+
+
+class PromptRenderPreviewRequest(PromptProgramContract):
+    fixture_id: str | None = Field(default=None, max_length=200)
+
+
+class CompiledPromptResponse(PromptProgramContract):
+    system_prompt: str
+    user_prompt: str
+    system_prompt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    user_prompt_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class PromptRenderPreviewResponse(PromptProgramContract):
+    fixture_id: str
+    fixture_label: str
+    input_value: dict[str, object]
+    draft: CompiledPromptResponse
+    current: CompiledPromptResponse | None
+    current_release_version: int | None
+
+
+class RunPromptWorkingDraftSuiteRequest(PromptProgramContract):
+    runtime_selection_id: UUID
+    expected_revision: int = Field(ge=1)
+
+
+class PromptWorkingDraftSuiteResponse(PromptProgramContract):
+    draft: PromptWorkingDraftResponse
+    candidate_release: PromptProgramReleaseResponse
+    job: PromptTestJobResponse
+
+
+class PromptTestRunResponse(PromptProgramContract):
+    job_id: UUID
+    project_id: UUID
+    program_id: UUID
+    release_id: UUID
+    release_version: int = Field(ge=1)
+    status: str
+    requested_at: datetime
+    finished_at: datetime | None
+    passed: bool | None
+    score: int | None
+    result_ref: str | None
+    error_code: str | None
+
+
+class PromptTestRunPage(PromptProgramContract):
+    items: list[PromptTestRunResponse]
+    total: int = Field(ge=0)
+
+
+class PublishPromptWorkingDraftRequest(PromptProgramContract):
+    expected_revision: int = Field(ge=1)
+
+
+class PublishedPromptWorkingDraftResponse(PromptProgramContract):
+    draft: PromptWorkingDraftResponse
+    release: PromptProgramReleaseResponse
+    binding: PromptProgramBindingOptionResponse

@@ -58,6 +58,12 @@ lint:
 		scripts/roadmap_performance_api_load.py \
 		scripts/run_non_b_fault_contracts.py \
 		scripts/roadmap_performance_result.py \
+		scripts/bootstrap_deepseek_prompt_runtime.py \
+		scripts/bootstrap_prompt_workspace_flows.py \
+		scripts/configure_dify_runtime.py \
+		scripts/enroll_dify_workflows.py \
+		scripts/manage_dify_workflows.py \
+		scripts/render_dify_workflow_dsls.py \
 		infra/db/alembic/checksums.py
 
 python-typecheck:
@@ -89,7 +95,13 @@ python-typecheck:
 		scripts/run_roadmap_api_load.py \
 		scripts/roadmap_performance_api_load.py \
 		scripts/run_non_b_fault_contracts.py \
-		scripts/roadmap_performance_result.py
+		scripts/roadmap_performance_result.py \
+		scripts/bootstrap_deepseek_prompt_runtime.py \
+		scripts/bootstrap_prompt_workspace_flows.py \
+		scripts/configure_dify_runtime.py \
+		scripts/enroll_dify_workflows.py \
+		scripts/manage_dify_workflows.py \
+		scripts/render_dify_workflow_dsls.py
 
 web-typecheck:
 	corepack pnpm typecheck

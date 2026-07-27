@@ -33,9 +33,10 @@ The implementation does not lower or reinterpret any frozen threshold. In partic
 | Prompt and Recommendation lifecycle | `SHARED-PROMPT-01`, `D-CONTRACT-*`, `REC-*` | Adds maker-checker/freeze/retire and stale/expired draft blocking; Attribution remains explicit `unavailable` |
 | Migration, restore, fault and performance contracts | `SHARED-COMPAT-01`, `M6-MIG/FAIL/RESTORE/PERF-*`, `REPO-GATE-02/03/07`, `PERF-*` | Adds local deterministic receipts and frozen load contract; real legacy/staging/production evidence remains external |
 | Structural module split | `REPO-GATE-01` | Restores the 600-line product/800-line test architecture budget without behavior, schema or OpenAPI changes |
-| Exact 312-ID acceptance register and consolidated external needs | `FND-EVIDENCE-01`, `FND-CHANGE-01`, `M0-EVD-01`, `M6-EVD-01` | Makes exclusions, mixed atomic IDs, source hashes and blockers explicit; does not create owner/verifier signatures |
+| Exact 314-ID acceptance register and consolidated external needs | `FND-EVIDENCE-01`, `FND-CHANGE-01`, `M0-EVD-01`, `M6-EVD-01` | Makes exclusions, mixed atomic IDs, source hashes and blockers explicit; does not create owner/verifier signatures |
 | Adversarial Prompt, report and governance repair | `SHARED-PROMPT-01`, `C-CONTRACT-04/06`, `D-CONTRACT-01/04`, `M5-CUST-01` | Adds secure compiler versioning, bounded structured input, injection/confusable checks, positive Customer projection, exact decimals and neutral maker-checker defaults without changing frozen thresholds |
 | Admin/Customer completion paths | `C-CONTRACT-04/05/06`, `M4-*`, `M5-CUST-01` | Adds durable Protocol/analysis/report controls and approved Customer report rendering; legacy synchronous compute is an explicit `410`, never an in-memory success |
+| Dify-managed Prompt execution | `SHARED-PROMPT-01`, Prompt portions of `SYN-CONTRACT-*` and `D-CONTRACT-*` | Migrates four existing generation paths to independently frozen Dify Workflow Releases and Secret references; preserves exact business contracts, Durable Job lineage and explicit retryable failure without native fallback |
 
 ## Compatibility and rollback
 
@@ -54,10 +55,10 @@ The implementation does not lower or reinterpret any frozen threshold. In partic
 
 Evidence is indexed by `GEO-non-B-execution-index-2026-07-24.md`, Pack 01--07 evidence files,
 `pack-08-final-review-evidence.md`, the final evidence manifest and the exact Pack 08 machine register.
-The clean final gates are `2317/2317` required non-live, `117/117` PostgreSQL/MinIO/Valkey integration,
+The clean final gates are `2376/2376` required non-live, `119/119` PostgreSQL/MinIO/Valkey integration,
 `46/46` Chromium, `71/71` infrastructure contracts, `7/7` disposable runtime and `148/148` fault
 recovery, all with zero skip. OpenAPI contracts, both Web production builds, quality and authenticated
-restore through `0087` also pass. The register binds the dirty working-tree fingerprint; it does not
+restore through `0094_dify_published_snapshot` also pass. The register binds the dirty working-tree fingerprint; it does not
 claim these uncommitted changes are already in `HEAD`.
 
 Required decision roles: Product owner, engineering owner, Migration owner, QA, Security, DevOps,

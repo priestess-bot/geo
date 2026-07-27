@@ -63,3 +63,4 @@ htmlcov/
 
 # Runtime acceptance output stays local or moves to the controlled artifact store.
 artifacts/
+.runtime/

@@ -4,7 +4,7 @@ import ast
 from pathlib import Path
 
 from geo_core.prompts import (
-    FIRST_PHASE_PROGRAM_KINDS,
+    WORKSPACE_FLOW_PROGRAM_KINDS,
     ProgramKind,
     default_prompt_bootstrap_specs,
 )
@@ -71,7 +71,7 @@ def test_bootstrap_reuses_prompt_release_and_fail_closed_schema_validators() -> 
 def test_bootstrap_catalog_excludes_reserved_reference_translation() -> None:
     specs = default_prompt_bootstrap_specs()
 
-    assert tuple(spec.program_kind for spec in specs) == FIRST_PHASE_PROGRAM_KINDS
+    assert tuple(spec.program_kind for spec in specs) == WORKSPACE_FLOW_PROGRAM_KINDS
     assert ProgramKind.REFERENCE_TRANSLATION not in {
         spec.program_kind for spec in specs
     }

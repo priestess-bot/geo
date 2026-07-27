@@ -40,6 +40,11 @@ from geo_core.placements.worker_models import (
     ModelCallReservation,
     PromptSimulationClaim,
 )
+from geo_core.workflow_runtime import (
+    WorkflowExecutionError,
+    WorkflowExecutionRequest,
+    WorkflowExecutor,
+)
 
 
 class PromptSimulationWorkerRepository(Protocol):
@@ -89,11 +94,13 @@ class PromptSimulationHandler:
         repository: PromptSimulationWorkerRepository,
         gateway: ModelGateway,
         lease_for: timedelta,
+        workflow_executor: WorkflowExecutor | None = None,
     ) -> None:
         self._store = store
         self._repository = repository
         self._gateway = gateway
         self._lease_for = lease_for
+        self._workflow_executor = workflow_executor
 
     def handle(self, lease: WorkerLease) -> Mapping[str, object]:
         try:
@@ -111,6 +118,63 @@ class PromptSimulationHandler:
                 "max_output_tokens": request.max_output_tokens,
             }
         )
+        if self._workflow_executor is not None:
+            try:
+                with LeaseHeartbeat(
+                    self._store,
+                    lease,
+                    lease_for=self._lease_for,
+                    interval=min(self._lease_for / 3, timedelta(seconds=30)),
+                ) as heartbeat:
+                    workflow_result = self._workflow_executor.execute_optional(
+                        lease,
+                        WorkflowExecutionRequest(
+                            project_id=claim.project_id,
+                            purpose="placements.simulation",
+                            context={
+                                "simulation_id": str(claim.simulation_id),
+                                "authenticity_mode": claim.authenticity_mode.value,
+                                "campaign_id": (
+                                    str(claim.campaign_id) if claim.campaign_id else None
+                                ),
+                                "opportunity_id": (
+                                    str(claim.opportunity_id) if claim.opportunity_id else None
+                                ),
+                                "destination_id": (
+                                    str(claim.destination_id) if claim.destination_id else None
+                                ),
+                                "evidence_item_ids": [
+                                    str(value) for value in claim.evidence_item_ids
+                                ],
+                                "public_citation_item_ids": [
+                                    str(value) for value in claim.public_citation_item_ids
+                                ],
+                                "rendered_prompt": claim.rendered_prompt,
+                            },
+                            input_hash=request_hash,
+                            output_schema=claim.output_schema,
+                            system_prompt="\n\n".join(
+                                str(item["content"])
+                                for item in request.messages
+                                if item["role"] == "system"
+                            ),
+                            user_prompt=claim.rendered_prompt,
+                        ),
+                    )
+                    heartbeat.raise_if_stopped()
+            except (JobCancellationRequested, LostJobLease):
+                raise
+            except WorkflowExecutionError as exc:
+                return self._fail(
+                    lease,
+                    exc,
+                    retry=exc.retryable,
+                    classification=exc.classification,
+                )
+            if workflow_result is not None:
+                return self._finalize_result(
+                    lease, claim, workflow_result.as_model_gateway_result()
+                )
         provider = str(getattr(self._gateway, "provider", "unknown"))
         try:
             reservation = self._repository.reserve_model_call(
@@ -149,6 +213,9 @@ class PromptSimulationHandler:
                 classification=classification,
             )
         self._repository.record_model_call_success(lease, claim, reservation, result)
+        return self._finalize_result(lease, claim, result)
+
+    def _finalize_result(self, lease, claim, result):
         try:
             validate_output_schema(result.output, claim.output_schema)
             placement = parse_generated_placement(result.output, claim=claim)
@@ -201,6 +268,8 @@ def build_prompt_simulation_request(claim: PromptSimulationClaim) -> ModelGatewa
 
 
 def _model_error_classification(error: Exception) -> str:
+    if isinstance(error, WorkflowExecutionError):
+        return error.classification
     if isinstance(error, RetryableModelGatewayError):
         return "retryable"
     if isinstance(error, ProviderPolicyViolation):

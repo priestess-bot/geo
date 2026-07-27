@@ -6,7 +6,7 @@ from geo_core.prompts.bootstrap_contracts import thaw_mapping
 def test_every_bootstrap_spec_matches_the_existing_admin_create_contract() -> None:
     specs = default_prompt_bootstrap_specs()
 
-    assert len(specs) == 10
+    assert len(specs) == 14
     for spec in specs:
         request = CreatePromptProgramRequest.model_validate(
             thaw_mapping(spec.admin_draft_payload())

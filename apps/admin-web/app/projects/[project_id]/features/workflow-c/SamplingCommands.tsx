@@ -108,7 +108,11 @@ function CommandIdentity({ commandKey, projectId }: { commandKey: string; projec
 }
 
 function RunSelector({ disabled, name, runs, selectedRunId }: { disabled: boolean; name: string; runs: SamplingRun[]; selectedRunId: string }) {
-  return <label><span>采样运行</span><select defaultValue={selectedRunId} disabled={disabled} name={name} required><option value="">选择运行</option>{runs.map((run) => <option key={run.id} value={run.id}>{run.status} · {shortId(run.id)} · {run.reserved_task_count} 项任务</option>)}</select></label>;
+  return <label><span>采样运行</span><select defaultValue={selectedRunId} disabled={disabled} name={name} required><option value="">选择运行</option>{runs.map((run) => <option key={run.id} value={run.id}>{runStatusLabel(run.status)} · {shortId(run.id)} · {run.reserved_task_count} 项任务</option>)}</select></label>;
+}
+
+function runStatusLabel(value: SamplingRun["status"]): string {
+  return { planned: "已规划", running: "运行中", completed: "已完成" }[value];
 }
 
 function shortId(value: string): string {

@@ -65,16 +65,16 @@ export function customerInvitationUrl(invitationId: string, _inviteToken?: strin
 }
 
 export async function actorHeaders(extra?: HeadersInit): Promise<HeadersInit> {
-  const authorization = (await headers()).get("authorization") || "";
-  if (authorization) {
-    return { Authorization: authorization, ...(extra || {}) };
-  }
   if (process.env.GEO_AUTH_MODE === "development") {
     return {
       "X-GEO-Actor-ID": adminActorId(),
       "X-GEO-Tenant-ID": process.env.GEO_ADMIN_TENANT_ID || "",
       ...(extra || {})
     };
+  }
+  const authorization = (await headers()).get("authorization") || "";
+  if (authorization) {
+    return { Authorization: authorization, ...(extra || {}) };
   }
   return { ...(extra || {}) };
 }

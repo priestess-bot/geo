@@ -41,7 +41,7 @@ def test_knowledge_workspace_keeps_all_enterprise_preprocessing_views() -> None:
     for label in (
         "导入企业知识",
         "处理任务",
-        "Chunk 可视化",
+        "文本分块可视化",
         "知识检索",
         "知识库看板",
         "质检发现",

@@ -122,7 +122,7 @@ function ReportMetricRow({ disabled, index }: { disabled: boolean; index: number
         <span>指标 {index}</span>
         <select disabled={disabled} name="metric_key" onChange={(event) => setMetricKey(event.target.value)} value={metricKey}>
           <option value="">未设置</option>
-          {workflowCReportMetricKeys.map((key) => <option key={key} value={key}>{key.replaceAll("_", " ")}</option>)}
+          {workflowCReportMetricKeys.map((key) => <option key={key} value={key}>{reportMetricLabel(key)}</option>)}
         </select>
       </label>
       <label>
@@ -173,7 +173,7 @@ function ReportLifecycle({
       <div>
         <strong>{report.approved_safe_payload.headline}</strong>
         <code>{report.report_id}</code>
-        <span>{report.status} · v{report.version}</span>
+        <span>{reportStatusLabel(report.status)} · v{report.version}</span>
       </div>
       {operations.map((operation) => {
         const makerBlocked = operation === "approve" && currentIdentityId === report.actor_id;
@@ -203,6 +203,42 @@ function reportOperationLabel(operation: "submit" | "approve" | "stale" | "revok
   if (operation === "approve") return "批准报告";
   if (operation === "stale") return "标记失效";
   return "撤销报告";
+}
+
+function reportMetricLabel(value: (typeof workflowCReportMetricKeys)[number]): string {
+  return {
+    brand_mention: "品牌提及",
+    product_mention: "产品提及",
+    recommendation: "推荐",
+    recommendation_strength: "推荐强度",
+    competitor_mention: "竞品提及",
+    competitor_relative_position: "竞品相对位置",
+    sentiment: "情感倾向",
+    fact_accuracy: "事实准确性",
+    explicit_conflict: "明确冲突",
+    subject_mixup: "主体混用",
+    key_fact_omission: "关键事实遗漏",
+    citation_entailment: "引用蕴含度",
+    citation_position: "引用位置",
+    citation_order: "引用顺序",
+    verified_url_hit: "已验证 URL 命中",
+    source_domain_diversity: "来源域名多样性",
+    source_type_diversity: "来源类型多样性",
+    approved_corpus_absorption: "已批准语料吸收度",
+    mention: "提及",
+    recommendation_rate: "推荐率"
+  }[value];
+}
+
+function reportStatusLabel(value: WorkflowCReport["status"]): string {
+  return {
+    draft: "草稿",
+    in_review: "复核中",
+    approved: "已批准",
+    stale: "已失效",
+    superseded: "已替代",
+    revoked: "已撤销"
+  }[value];
 }
 
 function short(value: string): string {

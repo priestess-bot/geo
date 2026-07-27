@@ -2115,8 +2115,8 @@
             "items": {
               "$ref": "#/components/schemas/BootstrapKindPreviewResponse"
             },
-            "maxItems": 10,
-            "minItems": 10,
+            "maxItems": 14,
+            "minItems": 14,
             "title": "Items",
             "type": "array"
           }
@@ -2174,13 +2174,13 @@
             "type": "string"
           },
           "created_count": {
-            "maximum": 10.0,
+            "maximum": 14.0,
             "minimum": 0.0,
             "title": "Created Count",
             "type": "integer"
           },
           "failed_count": {
-            "maximum": 10.0,
+            "maximum": 14.0,
             "minimum": 0.0,
             "title": "Failed Count",
             "type": "integer"
@@ -2189,13 +2189,13 @@
             "items": {
               "$ref": "#/components/schemas/BootstrapDraftItemResponse"
             },
-            "maxItems": 10,
-            "minItems": 10,
+            "maxItems": 14,
+            "minItems": 14,
             "title": "Items",
             "type": "array"
           },
           "replayed_count": {
-            "maximum": 10.0,
+            "maximum": 14.0,
             "minimum": 0.0,
             "title": "Replayed Count",
             "type": "integer"
@@ -2290,7 +2290,11 @@
               "metric_judge",
               "recommendation",
               "style_profile",
-              "offline_answer"
+              "offline_answer",
+              "question_generation",
+              "rag_grounding",
+              "placement_generation",
+              "placement_simulation"
             ],
             "title": "Program Kind",
             "type": "string"
@@ -2367,7 +2371,11 @@
               "metric_judge",
               "recommendation",
               "style_profile",
-              "offline_answer"
+              "offline_answer",
+              "question_generation",
+              "rag_grounding",
+              "placement_generation",
+              "placement_simulation"
             ],
             "title": "Program Kind",
             "type": "string"
@@ -2443,7 +2451,11 @@
               "metric_judge",
               "recommendation",
               "style_profile",
-              "offline_answer"
+              "offline_answer",
+              "question_generation",
+              "rag_grounding",
+              "placement_generation",
+              "placement_simulation"
             ],
             "title": "Program Kind",
             "type": "string"
@@ -2622,7 +2634,11 @@
               "metric_judge",
               "recommendation",
               "style_profile",
-              "offline_answer"
+              "offline_answer",
+              "question_generation",
+              "rag_grounding",
+              "placement_generation",
+              "placement_simulation"
             ],
             "title": "Program Kind",
             "type": "string"
@@ -3629,6 +3645,37 @@
         "title": "ComparisonResultResponse",
         "type": "object"
       },
+      "CompiledPromptResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "system_prompt": {
+            "title": "System Prompt",
+            "type": "string"
+          },
+          "system_prompt_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "System Prompt Hash",
+            "type": "string"
+          },
+          "user_prompt": {
+            "title": "User Prompt",
+            "type": "string"
+          },
+          "user_prompt_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "User Prompt Hash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "system_prompt",
+          "user_prompt",
+          "system_prompt_hash",
+          "user_prompt_hash"
+        ],
+        "title": "CompiledPromptResponse",
+        "type": "object"
+      },
       "ComputeDriftRequest": {
         "additionalProperties": false,
         "properties": {
@@ -4630,7 +4677,11 @@
               "recommendation",
               "style_profile",
               "offline_answer",
-              "reference_translation"
+              "reference_translation",
+              "question_generation",
+              "rag_grounding",
+              "placement_generation",
+              "placement_simulation"
             ],
             "title": "Program Kind",
             "type": "string"
@@ -15470,6 +15521,253 @@
         "title": "PromptBundleView",
         "type": "object"
       },
+      "PromptContextSlotResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "insertion": {
+            "title": "Insertion",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "source": {
+            "const": "runtime_task",
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "description",
+          "insertion",
+          "source"
+        ],
+        "title": "PromptContextSlotResponse",
+        "type": "object"
+      },
+      "PromptFlowPage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PromptFlowResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "PromptFlowPage",
+        "type": "object"
+      },
+      "PromptFlowResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "candidate_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "draft",
+                  "tested",
+                  "approved",
+                  "frozen",
+                  "retired"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Status"
+          },
+          "configurable": {
+            "title": "Configurable",
+            "type": "boolean"
+          },
+          "context_slots": {
+            "items": {
+              "$ref": "#/components/schemas/PromptContextSlotResponse"
+            },
+            "title": "Context Slots",
+            "type": "array"
+          },
+          "current_release_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Release Id"
+          },
+          "current_release_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Release Version"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "draft": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PromptWorkingDraftResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "flow_key": {
+            "title": "Flow Key",
+            "type": "string"
+          },
+          "group": {
+            "enum": [
+              "synthetic_lab",
+              "question_and_content",
+              "measurement_and_recommendation"
+            ],
+            "title": "Group",
+            "type": "string"
+          },
+          "latest_release_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Release Version"
+          },
+          "latest_test_job_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Test Job Id"
+          },
+          "latest_test_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Test Score"
+          },
+          "latest_test_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Test Status"
+          },
+          "program": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PromptProgramSummaryResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "program_kind": {
+            "enum": [
+              "generation",
+              "claim_extraction",
+              "conflict_check",
+              "revision",
+              "style_judge",
+              "arbiter",
+              "metric_judge",
+              "recommendation",
+              "style_profile",
+              "offline_answer",
+              "reference_translation",
+              "question_generation",
+              "rag_grounding",
+              "placement_generation",
+              "placement_simulation"
+            ],
+            "title": "Program Kind",
+            "type": "string"
+          },
+          "purpose": {
+            "title": "Purpose",
+            "type": "string"
+          }
+        },
+        "required": [
+          "flow_key",
+          "purpose",
+          "program_kind",
+          "group",
+          "display_name",
+          "description",
+          "configurable",
+          "context_slots",
+          "program",
+          "draft",
+          "latest_release_version",
+          "current_release_id",
+          "current_release_version",
+          "candidate_status",
+          "latest_test_job_id",
+          "latest_test_status",
+          "latest_test_score"
+        ],
+        "title": "PromptFlowResponse",
+        "type": "object"
+      },
       "PromptProgramBindingOptionPage": {
         "additionalProperties": false,
         "properties": {
@@ -15550,7 +15848,11 @@
               "recommendation",
               "style_profile",
               "offline_answer",
-              "reference_translation"
+              "reference_translation",
+              "question_generation",
+              "rag_grounding",
+              "placement_generation",
+              "placement_simulation"
             ],
             "title": "Program Kind",
             "type": "string"
@@ -15641,7 +15943,11 @@
               "recommendation",
               "style_profile",
               "offline_answer",
-              "reference_translation"
+              "reference_translation",
+              "question_generation",
+              "rag_grounding",
+              "placement_generation",
+              "placement_simulation"
             ],
             "title": "Program Kind",
             "type": "string"
@@ -15803,6 +16109,168 @@
         "title": "PromptProgramPage",
         "type": "object"
       },
+      "PromptProgramReleaseDetailResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "application_output_schema_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Application Output Schema Hash",
+            "type": "string"
+          },
+          "application_output_schema_version": {
+            "title": "Application Output Schema Version",
+            "type": "string"
+          },
+          "compiler_version": {
+            "title": "Compiler Version",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "input_schema_version": {
+            "title": "Input Schema Version",
+            "type": "string"
+          },
+          "model_policy_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Model Policy Hash",
+            "type": "string"
+          },
+          "model_policy_version": {
+            "title": "Model Policy Version",
+            "type": "string"
+          },
+          "output_schema_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Output Schema Hash",
+            "type": "string"
+          },
+          "output_schema_version": {
+            "title": "Output Schema Version",
+            "type": "string"
+          },
+          "owner_id": {
+            "format": "uuid",
+            "title": "Owner Id",
+            "type": "string"
+          },
+          "program_id": {
+            "format": "uuid",
+            "title": "Program Id",
+            "type": "string"
+          },
+          "program_kind": {
+            "enum": [
+              "generation",
+              "claim_extraction",
+              "conflict_check",
+              "revision",
+              "style_judge",
+              "arbiter",
+              "metric_judge",
+              "recommendation",
+              "style_profile",
+              "offline_answer",
+              "reference_translation",
+              "question_generation",
+              "rag_grounding",
+              "placement_generation",
+              "placement_simulation"
+            ],
+            "title": "Program Kind",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "purpose": {
+            "title": "Purpose",
+            "type": "string"
+          },
+          "release_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Release Hash",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/PromptReleaseStateResponse"
+          },
+          "system_template": {
+            "title": "System Template",
+            "type": "string"
+          },
+          "system_template_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "System Template Hash",
+            "type": "string"
+          },
+          "test_set_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Test Set Hash",
+            "type": "string"
+          },
+          "test_set_id": {
+            "format": "uuid",
+            "title": "Test Set Id",
+            "type": "string"
+          },
+          "test_set_version": {
+            "title": "Test Set Version",
+            "type": "integer"
+          },
+          "user_template": {
+            "title": "User Template",
+            "type": "string"
+          },
+          "user_template_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "User Template Hash",
+            "type": "string"
+          },
+          "variable_schema_version": {
+            "title": "Variable Schema Version",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "program_id",
+          "program_kind",
+          "purpose",
+          "version",
+          "owner_id",
+          "release_hash",
+          "system_template_hash",
+          "user_template_hash",
+          "variable_schema_version",
+          "input_schema_version",
+          "output_schema_version",
+          "output_schema_hash",
+          "application_output_schema_version",
+          "application_output_schema_hash",
+          "model_policy_version",
+          "model_policy_hash",
+          "test_set_id",
+          "test_set_version",
+          "test_set_hash",
+          "compiler_version",
+          "state",
+          "system_template",
+          "user_template"
+        ],
+        "title": "PromptProgramReleaseDetailResponse",
+        "type": "object"
+      },
       "PromptProgramReleasePage": {
         "additionalProperties": false,
         "properties": {
@@ -15903,7 +16371,11 @@
               "recommendation",
               "style_profile",
               "offline_answer",
-              "reference_translation"
+              "reference_translation",
+              "question_generation",
+              "rag_grounding",
+              "placement_generation",
+              "placement_simulation"
             ],
             "title": "Program Kind",
             "type": "string"
@@ -16011,7 +16483,11 @@
               "recommendation",
               "style_profile",
               "offline_answer",
-              "reference_translation"
+              "reference_translation",
+              "question_generation",
+              "rag_grounding",
+              "placement_generation",
+              "placement_simulation"
             ],
             "title": "Program Kind",
             "type": "string"
@@ -16378,6 +16854,77 @@
           "state_reason"
         ],
         "title": "PromptReleaseView",
+        "type": "object"
+      },
+      "PromptRenderPreviewRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "fixture_id": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fixture Id"
+          }
+        },
+        "title": "PromptRenderPreviewRequest",
+        "type": "object"
+      },
+      "PromptRenderPreviewResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "current": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CompiledPromptResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "current_release_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Release Version"
+          },
+          "draft": {
+            "$ref": "#/components/schemas/CompiledPromptResponse"
+          },
+          "fixture_id": {
+            "title": "Fixture Id",
+            "type": "string"
+          },
+          "fixture_label": {
+            "title": "Fixture Label",
+            "type": "string"
+          },
+          "input_value": {
+            "additionalProperties": true,
+            "title": "Input Value",
+            "type": "object"
+          }
+        },
+        "required": [
+          "fixture_id",
+          "fixture_label",
+          "input_value",
+          "draft",
+          "current",
+          "current_release_version"
+        ],
+        "title": "PromptRenderPreviewResponse",
         "type": "object"
       },
       "PromptSimulationAuthenticityMode": {
@@ -17067,6 +17614,140 @@
         "title": "PromptTestJobResponse",
         "type": "object"
       },
+      "PromptTestRunPage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PromptTestRunResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "PromptTestRunPage",
+        "type": "object"
+      },
+      "PromptTestRunResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "job_id": {
+            "format": "uuid",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "passed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Passed"
+          },
+          "program_id": {
+            "format": "uuid",
+            "title": "Program Id",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "release_id": {
+            "format": "uuid",
+            "title": "Release Id",
+            "type": "string"
+          },
+          "release_version": {
+            "minimum": 1.0,
+            "title": "Release Version",
+            "type": "integer"
+          },
+          "requested_at": {
+            "format": "date-time",
+            "title": "Requested At",
+            "type": "string"
+          },
+          "result_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Ref"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "project_id",
+          "program_id",
+          "release_id",
+          "release_version",
+          "status",
+          "requested_at",
+          "finished_at",
+          "passed",
+          "score",
+          "result_ref",
+          "error_code"
+        ],
+        "title": "PromptTestRunResponse",
+        "type": "object"
+      },
       "PromptTestRuntimeOptionPage": {
         "additionalProperties": false,
         "properties": {
@@ -17174,6 +17855,106 @@
           "policy_version_hash"
         ],
         "title": "PromptTestRuntimeOptionResponse",
+        "type": "object"
+      },
+      "PromptWorkingDraftResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "base_release_id": {
+            "format": "uuid",
+            "title": "Base Release Id",
+            "type": "string"
+          },
+          "candidate_release_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Release Id"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "draft_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Draft Hash",
+            "type": "string"
+          },
+          "program_id": {
+            "format": "uuid",
+            "title": "Program Id",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 1.0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "system_template": {
+            "title": "System Template",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "updated_by": {
+            "format": "uuid",
+            "title": "Updated By",
+            "type": "string"
+          },
+          "user_template": {
+            "title": "User Template",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_id",
+          "program_id",
+          "display_name",
+          "system_template",
+          "user_template",
+          "revision",
+          "draft_hash",
+          "base_release_id",
+          "candidate_release_id",
+          "updated_by",
+          "updated_at"
+        ],
+        "title": "PromptWorkingDraftResponse",
+        "type": "object"
+      },
+      "PromptWorkingDraftSuiteResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "candidate_release": {
+            "$ref": "#/components/schemas/PromptProgramReleaseResponse"
+          },
+          "draft": {
+            "$ref": "#/components/schemas/PromptWorkingDraftResponse"
+          },
+          "job": {
+            "$ref": "#/components/schemas/PromptTestJobResponse"
+          }
+        },
+        "required": [
+          "draft",
+          "candidate_release",
+          "job"
+        ],
+        "title": "PromptWorkingDraftSuiteResponse",
         "type": "object"
       },
       "ProtocolQueryResponse": {
@@ -17797,6 +18578,42 @@
           "status"
         ],
         "title": "PublicationView",
+        "type": "object"
+      },
+      "PublishPromptWorkingDraftRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_revision"
+        ],
+        "title": "PublishPromptWorkingDraftRequest",
+        "type": "object"
+      },
+      "PublishedPromptWorkingDraftResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "binding": {
+            "$ref": "#/components/schemas/PromptProgramBindingOptionResponse"
+          },
+          "draft": {
+            "$ref": "#/components/schemas/PromptWorkingDraftResponse"
+          },
+          "release": {
+            "$ref": "#/components/schemas/PromptProgramReleaseResponse"
+          }
+        },
+        "required": [
+          "draft",
+          "release",
+          "binding"
+        ],
+        "title": "PublishedPromptWorkingDraftResponse",
         "type": "object"
       },
       "QueryMetricResultResponse": {
@@ -20064,6 +20881,27 @@
         "title": "RuleRefContract",
         "type": "object"
       },
+      "RunPromptWorkingDraftSuiteRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "runtime_selection_id": {
+            "format": "uuid",
+            "title": "Runtime Selection Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "runtime_selection_id",
+          "expected_revision"
+        ],
+        "title": "RunPromptWorkingDraftSuiteRequest",
+        "type": "object"
+      },
       "SamplingActualLocationResponse": {
         "additionalProperties": false,
         "properties": {
@@ -21284,6 +22122,42 @@
           "version"
         ],
         "title": "SamplingTaskResponse",
+        "type": "object"
+      },
+      "SavePromptWorkingDraftRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "display_name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Display Name",
+            "type": "string"
+          },
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "system_template": {
+            "maxLength": 100000,
+            "minLength": 1,
+            "title": "System Template",
+            "type": "string"
+          },
+          "user_template": {
+            "maxLength": 100000,
+            "minLength": 1,
+            "title": "User Template",
+            "type": "string"
+          }
+        },
+        "required": [
+          "display_name",
+          "system_template",
+          "user_template",
+          "expected_revision"
+        ],
+        "title": "SavePromptWorkingDraftRequest",
         "type": "object"
       },
       "ScopeContract": {
@@ -24922,6 +25796,406 @@
           "occurred_at"
         ],
         "title": "WorkflowCReportVersionResponse",
+        "type": "object"
+      },
+      "WorkflowRuntimeCardResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "activated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Activated At"
+          },
+          "activation_status": {
+            "enum": [
+              "not_configured",
+              "active",
+              "blocked_secret",
+              "blocked_prompt_retired",
+              "stale_prompt"
+            ],
+            "title": "Activation Status",
+            "type": "string"
+          },
+          "backend": {
+            "enum": [
+              "native",
+              "dify"
+            ],
+            "title": "Backend",
+            "type": "string"
+          },
+          "binding_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Binding Version"
+          },
+          "configured_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Configured Model"
+          },
+          "console_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Console Url"
+          },
+          "dify_app_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dify App Id"
+          },
+          "dify_workflow_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dify Workflow Id"
+          },
+          "dsl_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dsl Hash"
+          },
+          "last_attempt_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Attempt At"
+          },
+          "last_attempt_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Attempt Kind"
+          },
+          "last_attempt_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Attempt Status"
+          },
+          "last_error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error Code"
+          },
+          "last_error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error Message"
+          },
+          "model_provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Provider"
+          },
+          "observed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed At"
+          },
+          "prompt_program_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Program Id"
+          },
+          "prompt_release_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Release Hash"
+          },
+          "prompt_release_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Release Id"
+          },
+          "prompt_system_template": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt System Template"
+          },
+          "prompt_user_template": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt User Template"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "published_graph_nodes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Published Graph Nodes",
+            "type": "array"
+          },
+          "published_input_variables": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Published Input Variables",
+            "type": "array"
+          },
+          "published_prompt_nodes": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Published Prompt Nodes",
+            "type": "array"
+          },
+          "published_snapshot_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published Snapshot Hash"
+          },
+          "published_workflow_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published Workflow Hash"
+          },
+          "purpose": {
+            "enum": [
+              "knowledge.question_generation",
+              "knowledge.rag_grounding",
+              "placements.generation",
+              "placements.simulation"
+            ],
+            "title": "Purpose",
+            "type": "string"
+          },
+          "release_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Hash"
+          },
+          "release_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Id"
+          },
+          "release_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Version"
+          },
+          "sync_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sync Error"
+          },
+          "sync_status": {
+            "enum": [
+              "not_observed",
+              "cached",
+              "current",
+              "unreachable"
+            ],
+            "title": "Sync Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "purpose",
+          "backend",
+          "activation_status",
+          "sync_status"
+        ],
+        "title": "WorkflowRuntimeCardResponse",
+        "type": "object"
+      },
+      "WorkflowRuntimePageResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowRuntimeCardResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "runtime_backend": {
+            "enum": [
+              "native",
+              "dify"
+            ],
+            "title": "Runtime Backend",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "runtime_backend",
+          "items",
+          "total"
+        ],
+        "title": "WorkflowRuntimePageResponse",
         "type": "object"
       }
     }
@@ -35010,6 +36284,160 @@
         "summary": "Submit Statistical Protocol",
         "tags": [
           "workflow C analysis"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/dify-workflows": {
+      "get": {
+        "operationId": "listWorkflowRuntimes",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowRuntimePageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "List Workflow Runtimes",
+        "tags": [
+          "workflow runtimes"
         ]
       }
     },
@@ -60035,6 +61463,160 @@
         ]
       }
     },
+    "/v1/projects/{project_id}/prompt-flows": {
+      "get": {
+        "operationId": "listPromptFlows",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromptFlowPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "List Prompt Flows",
+        "tags": [
+          "prompt programs"
+        ]
+      }
+    },
     "/v1/projects/{project_id}/prompt-program-bindings": {
       "get": {
         "operationId": "listPromptProgramBindings",
@@ -60067,7 +61649,11 @@
                     "recommendation",
                     "style_profile",
                     "offline_answer",
-                    "reference_translation"
+                    "reference_translation",
+                    "question_generation",
+                    "rag_grounding",
+                    "placement_generation",
+                    "placement_simulation"
                   ],
                   "type": "string"
                 },
@@ -61082,6 +62668,527 @@
         ]
       }
     },
+    "/v1/projects/{project_id}/prompt-programs/{program_id}/draft": {
+      "get": {
+        "operationId": "getPromptWorkingDraft",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "program_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Program Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromptWorkingDraftResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Get Working Draft",
+        "tags": [
+          "prompt programs"
+        ]
+      },
+      "put": {
+        "operationId": "savePromptWorkingDraft",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "program_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Program Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavePromptWorkingDraftRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromptWorkingDraftResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Save Working Draft",
+        "tags": [
+          "prompt programs"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/prompt-programs/{program_id}/publish": {
+      "post": {
+        "operationId": "publishPromptWorkingDraft",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "program_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Program Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishPromptWorkingDraftRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublishedPromptWorkingDraftResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Publish Working Draft",
+        "tags": [
+          "prompt programs"
+        ]
+      }
+    },
     "/v1/projects/{project_id}/prompt-programs/{program_id}/releases": {
       "get": {
         "operationId": "listPromptProgramReleases",
@@ -61508,7 +63615,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PromptProgramReleaseResponse"
+                  "$ref": "#/components/schemas/PromptProgramReleaseDetailResponse"
                 }
               }
             },
@@ -62596,6 +64703,541 @@
           }
         },
         "summary": "Test Release",
+        "tags": [
+          "prompt programs"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/prompt-programs/{program_id}/render-preview": {
+      "post": {
+        "operationId": "renderPromptWorkingDraft",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "program_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Program Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PromptRenderPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromptRenderPreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Render Working Draft",
+        "tags": [
+          "prompt programs"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/prompt-programs/{program_id}/suite-runs": {
+      "post": {
+        "operationId": "runPromptWorkingDraftSuite",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "program_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Program Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunPromptWorkingDraftSuiteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromptWorkingDraftSuiteResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Run Working Draft Suite",
+        "tags": [
+          "prompt programs"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/prompt-programs/{program_id}/test-runs": {
+      "get": {
+        "operationId": "listPromptWorkingDraftTests",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "program_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Program Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PromptTestRunPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "List Working Draft Tests",
         "tags": [
           "prompt programs"
         ]

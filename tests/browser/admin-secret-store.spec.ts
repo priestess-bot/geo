@@ -40,21 +40,21 @@ test("M1-SECRET-WEB-01: Admin completes write-only two-person rotation lifecycle
   await page.goto(`/projects/${PROJECT_ID}?tab=secrets`);
 
   await expect(page.getByRole("heading", { level: 2, name: "密钥库" })).toBeVisible();
-  await expect(page.getByText("暂无 Secret Reference", { exact: true })).toBeVisible();
+  await expect(page.getByText("暂无密钥引用", { exact: true })).toBeVisible();
   const createPanel = page.locator("details").filter({
-    has: page.getByText("新建 Secret Reference", { exact: true })
+    has: page.getByText("新建密钥引用", { exact: true })
   });
   await createPanel.locator(":scope > summary").click();
-  const createSecret = createPanel.getByLabel("SecretValue · write-only · max 64 KiB");
+  const createSecret = createPanel.getByLabel("密钥值 · 仅写入 · 最大 64 KiB");
   await expect(createSecret).toHaveAttribute("required", "");
   await expect(createSecret).toHaveAttribute("maxlength", "65536");
-  await expect(createPanel.getByLabel("Reference ID")).toHaveCount(0);
+  await expect(createPanel.locator('input[name="reference_id"]')).toHaveCount(0);
   await createPanel.getByLabel("用途").selectOption("model_provider.openai");
   await createSecret.fill(SECRET_A);
-  await createPanel.getByRole("button", { name: "创建 Reference" }).click();
+  await createPanel.getByRole("button", { name: "创建引用" }).click();
   await expect(createPanel.getByRole("status")).toContainText("Secret Reference 已创建");
-  await expect(createPanel.getByLabel("SecretValue · write-only · max 64 KiB")).toHaveValue("");
-  await expect(page.getByRole("heading", { level: 3, name: "Secret Reference" })).toBeVisible();
+  await expect(createPanel.getByLabel("密钥值 · 仅写入 · 最大 64 KiB")).toHaveValue("");
+  await expect(page.locator("#secret-detail-heading")).toHaveText("密钥引用");
   await expect(page.locator("body")).not.toContainText(SECRET_A);
 
   let verifyBand = innermostSection(page, "Canary 验证与双人激活");
@@ -72,13 +72,13 @@ test("M1-SECRET-WEB-01: Admin completes write-only two-person rotation lifecycle
   await verifyBand.getByRole("button", { name: "第二人激活" }).click();
   await expect(verifyBand.getByRole("status")).toContainText("第二位操作人已激活");
 
-  const rotationBand = innermostSection(page, "Stage Rotation");
-  const rotationSecret = rotationBand.getByLabel("SecretValue · write-only · max 64 KiB");
+  const rotationBand = innermostSection(page, "暂存轮换版本");
+  const rotationSecret = rotationBand.getByLabel("密钥值 · 仅写入 · 最大 64 KiB");
   await expect(rotationSecret).toBeEnabled();
   await rotationSecret.fill(SECRET_B);
   await rotationBand.getByRole("button", { name: "暂存新版本" }).click();
   await expect(rotationBand.getByRole("status")).toContainText("Rotation v2 已暂存");
-  await expect(rotationBand.getByLabel("SecretValue · write-only · max 64 KiB")).toHaveValue("");
+  await expect(rotationBand.getByLabel("密钥值 · 仅写入 · 最大 64 KiB")).toHaveValue("");
   await expect(page.locator("body")).not.toContainText(SECRET_B);
 
   verifyBand = innermostSection(page, "Canary 验证与双人激活");
@@ -90,18 +90,18 @@ test("M1-SECRET-WEB-01: Admin completes write-only two-person rotation lifecycle
   await verifyBand.getByRole("button", { name: "第二人激活" }).click();
   await expect(verifyBand.getByRole("status")).toContainText("第二位操作人已激活");
 
-  const revokeBand = innermostSection(page, "Revoke Version");
-  await revokeBand.getByLabel("Secret version").fill("1");
+  const revokeBand = innermostSection(page, "撤销版本");
+  await revokeBand.getByLabel("密钥版本").fill("1");
   await revokeBand.getByRole("button", { name: "撤销版本" }).click();
   await expect(revokeBand.getByRole("status")).toContainText("Secret Version 已撤销");
-  await revokeBand.getByLabel("Secret version").fill("1");
+  await revokeBand.getByLabel("密钥版本").fill("1");
   await revokeBand.getByRole("button", { name: "撤销版本" }).click();
   await expect(revokeBand.getByRole("alert")).toContainText("409");
   await expect(revokeBand.getByRole("alert")).toContainText("状态冲突");
 
-  const audit = innermostSection(page, "Audit 与版本状态");
-  await expect(audit).toContainText("version activated");
-  await expect(audit).toContainText("version revoked");
+  const audit = innermostSection(page, "审计与版本状态");
+  await expect(audit).toContainText("已激活版本");
+  await expect(audit).toContainText("已撤销版本");
   await expect(audit).toContainText("v8");
   const loggedText = await (await request.get(`${FIXTURE_API}/__requests`)).text();
   expect(loggedText).not.toContain(SECRET_A);
@@ -124,20 +124,20 @@ test("M1-SECRET-WEB-02: Secret Store fails closed for unavailable runtime and an
   const unavailable = page.getByRole("alert").filter({ hasText: "所有写入保持关闭" });
   await expect(unavailable).toContainText("密钥库暂不可用");
   const createPanel = page.locator("details").filter({
-    has: page.getByText("新建 Secret Reference", { exact: true })
+    has: page.getByText("新建密钥引用", { exact: true })
   });
   await createPanel.locator(":scope > summary").click();
-  await expect(createPanel.getByRole("button", { name: "创建 Reference" })).toBeDisabled();
-  await expect(page.getByText("暂无 Secret Reference", { exact: true })).toHaveCount(0);
+  await expect(createPanel.getByRole("button", { name: "创建引用" })).toBeDisabled();
+  await expect(page.getByText("暂无密钥引用", { exact: true })).toHaveCount(0);
 
   await setSecretMode(request, { unavailable: false, role: "analyst" });
   await page.reload();
   await expect(page.getByText("分析师", { exact: true }).first()).toBeVisible();
   await expect(page.getByRole("alert").filter({ hasText: "403" }).first()).toBeVisible();
   const analystCreate = page.locator("details").filter({
-    has: page.getByText("新建 Secret Reference", { exact: true })
+    has: page.getByText("新建密钥引用", { exact: true })
   });
   await analystCreate.locator(":scope > summary").click();
-  await expect(analystCreate.getByRole("button", { name: "创建 Reference" })).toBeDisabled();
+  await expect(analystCreate.getByRole("button", { name: "创建引用" })).toBeDisabled();
   expect(runtimeErrors).toEqual([]);
 });

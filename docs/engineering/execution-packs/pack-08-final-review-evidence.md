@@ -18,19 +18,19 @@ controlled acceptance run or manual artifact is represented as live external evi
 
 | Gate | Final result |
 |---|---|
-| Exact roadmap reconciliation | `scripts/non_b_roadmap_acceptance.py` covers all 312 stable IDs: 252 included non-B, 47 excluded B and 13 DoR/DoD templates. The final self-hashed register is `pack-08-acceptance-register.json`; it is exported only after this ledger and all source edits are frozen so its dirty-tree fingerprint remains verifiable. |
-| Required non-live suite | `2317 passed, 0 failed, 0 skipped`; 121 live/integration/browser tests deselected by the declared gate. |
-| Python/Web/architecture quality | Ruff passed; MyPy passed 741 source files; six Web workspaces typechecked; repository secret scan passed 1,995 files; architecture `42/42`. Backup scan disclosed only the two pre-existing 2026-07-16 plaintext backup directories, which remain an explicit residual risk. |
+| Exact roadmap reconciliation | `scripts/non_b_roadmap_acceptance.py` covers all 316 stable IDs: 256 included non-B, 47 excluded B and 13 DoR/DoD templates. The final self-hashed register is `pack-08-acceptance-register.json`; it is exported only after this ledger and all source edits are frozen so its dirty-tree fingerprint remains verifiable. |
+| Required non-live suite | `2376 passed, 0 failed, 0 skipped`; 123 live/integration/browser tests deselected by the declared gate. |
+| Python/Web/architecture quality | Ruff passed; MyPy passed 764 source files; six Web workspaces typechecked; repository secret scan passed 2,076 files; architecture `43/43`. Backup scan disclosed only the two pre-existing 2026-07-16 plaintext backup directories, which remain an explicit residual risk. |
 | Stable API and Web contracts | Two OpenAPI surfaces re-exported; stable OpenAPI `7/7`; Web API/BFF contracts passed; Admin and Customer production builds passed. |
-| Required Chromium | Admin `28/28`, Customer `12/12`, Workflow C `6/6`; total `46 passed`, `0 skipped`, `0 flaky`. Manual 320px and desktop screenshot review found no overlap or horizontal overflow after the Workflow C label-size repair. |
-| Real dependency integration | Fresh PostgreSQL 16 database migrated `base -> 0087`; restricted App/Worker roles, real MinIO and real Valkey: `117 passed, 0 failed, 0 skipped`. Controlled inline acceptance passed in `inline_isolated` mode; result SHA-256 `d82c546b4faa7913822dfaa7aa3fa2123d42faf08d8d1c16198b54fe3e1ed80f`. |
+| Required Chromium | Admin `28/28`, Customer `12/12`, Workflow C `6/6`; total `46 passed`, `0 skipped`, `0 flaky`. The full ordered Admin run includes the native Server Action fallback regression, Dify read-only workflow board, Synthetic Lab and Recommendation flows; 320px and desktop review found no overlap or horizontal overflow. |
+| Real dependency integration | Fresh PostgreSQL 16 database migrated `base -> 0094`; restricted App/Worker roles, real MinIO and dynamically isolated real Valkey: `119 passed, 0 failed, 0 skipped` in 797.47 seconds. An initial diagnostic run exposed the optional legacy-path snapshot default and omitted the migration-rehearsal URL; both were corrected, and the complete Gate was rerun with zero skips. Controlled inline acceptance remains accepted in `inline_isolated` mode; result SHA-256 `d82c546b4faa7913822dfaa7aa3fa2123d42faf08d8d1c16198b54fe3e1ed80f`. |
 | Infrastructure/runtime | Infrastructure contracts `71/71`; production network isolation `2/2`; disposable F018 Docker runtime `7/7`, all temporary resources removed. |
 | Migration | Dual-write/catch-up/cutover/rollback receipt remains accepted; canonical hash `8b293086e540a93fd52d3f76e7467ea9b4741f820c9b1d466ef4af836f583857`. |
 | Fault recovery | Dedicated empty database; 8 scenarios/21 hashed targets; `148 passed, 0 failed, 0 skipped`; verified receipt hash `0587318d710e3386c911d2e797a9fca28fd22a25e50116025c50f1461ecffc1d`. |
-| Empty-environment restore | Restored through `0087_wfc_report_receipts`: 234 tables, 109 non-B relations, 12 objects in five buckets, 87 migration checksums, ACL/RLS and historical Secret/Provider/Synthetic/Recommendation/Workflow C keyrings. Receipt file SHA-256 `e25deddf96b97adcd19e0cdc8e947ea4d82114867a58b457307bba86553286c5`. |
+| Empty-environment restore | Restored through `0094_dify_published_snapshot`: 239 tables, 110 non-B relations, 12 objects in five buckets, 94 migration checksums, ACL/RLS and historical Secret/Provider/Synthetic/Recommendation/Workflow C keyrings. Receipt file SHA-256 `7ace2d57d36ad57c274a277676b5dd082e7d15b8a47f57184af7da7232392659`; bundle manifest SHA-256 `6a3258afd15943e72b891a60181f2fdda9b0273419162b68820213935ea1db13`; all evidence files are `0600` and isolated Compose cleanup completed. |
 
 Diagnostic runs that exposed a stale Prompt compiler fixture, missing object-store bucket, missing
-database isolation marker and a reused fault database are intentionally excluded from acceptance
+database isolation/migration-rehearsal markers and a reused fault database are intentionally excluded from acceptance
 counts. Each was corrected at the fixture/environment boundary, reproduced in isolation and followed
 by the clean final run above.
 
@@ -51,6 +51,17 @@ by the clean final run above.
 - Recommendation evidence resolves only from producer-owned immutable Workflow C lineage. Directly
   seeded/orphan statistical projections remain RLS-readable for diagnostics but cannot become
   Recommendation evidence.
+- Four legacy generation flows now execute through independently frozen Dify Workflow Releases and
+  Secret Store app-key references. Four real DeepSeek canaries and four Durable business Jobs passed;
+  a real Dify outage produced retryable `502`, recovery reused the same Release, and no active binding
+  silently fell back to the native runtime.
+- Dify is now the sole editable source for Prompt, model and workflow variables in the four migrated
+  flows. GEO persists an immutable published-graph snapshot for each attempt, exposes it read-only in
+  Admin, fails closed while Dify is unavailable, and keeps Dify task/run/workflow lineage when malformed
+  model JSON enters Durable retry.
+- Admin uses `Referrer-Policy: same-origin`, which retains a verifiable same-origin Origin for native
+  Server Action fallback while suppressing cross-origin Referer disclosure. The formerly sequence-
+  dependent F011/F013 path and the complete 31-test Admin run pass.
 
 ## Machine evidence and decision
 

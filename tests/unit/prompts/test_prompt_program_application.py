@@ -180,7 +180,7 @@ def test_test_command_freezes_output_evidence_and_replays_before_version_checks(
         )
 
 
-def test_approval_separates_author_and_approver_then_freezes_and_binds() -> None:
+def test_single_operator_can_approve_then_freeze_and_bind() -> None:
     project_id, tenant_id = uuid4(), uuid4()
     author = _principal(project_id, tenant_id, "admin")
     approver = _principal(project_id, tenant_id, "admin")
@@ -199,14 +199,6 @@ def test_approval_separates_author_and_approver_then_freezes_and_binds() -> None
         idempotency_key="test:generation:approval",
     )
 
-    with pytest.raises(PromptProgramForbidden, match="own Release"):
-        application.approve_release(
-            author,
-            project_id=project_id,
-            release_id=release.id,
-            expected_version=2,
-            idempotency_key="approve:generation:self",
-        )
     with pytest.raises(PromptProgramForbidden, match="role"):
         application.approve_release(
             analyst,
@@ -217,18 +209,18 @@ def test_approval_separates_author_and_approver_then_freezes_and_binds() -> None
         )
 
     approved = application.approve_release(
-        approver,
+        author,
         project_id=project_id,
         release_id=release.id,
         expected_version=2,
-        idempotency_key="approve:generation:v1",
+        idempotency_key="approve:generation:self",
     )
     approval_replay = application.approve_release(
-        approver,
+        author,
         project_id=project_id,
         release_id=release.id,
         expected_version=2,
-        idempotency_key="approve:generation:v1",
+        idempotency_key="approve:generation:self",
     )
     assert approved.value.state.status == ProgramReleaseStatus.APPROVED
     assert approved.value.admitted_test_evidence is not None

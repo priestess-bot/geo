@@ -319,6 +319,24 @@ def _kind_input(kind: ProgramKind) -> dict[str, object]:
             "corpus_hash": OFFLINE_CORPUS_HASH,
             "corpus_context": "Frozen synthetic context for the approved comparison.",
         }
+    if kind is ProgramKind.QUESTION_GENERATION:
+        return {
+            "dimensions": ["recommendation", "fact_accuracy"],
+            "facts": ["The placeholder subject has one approved synthetic attribute."],
+            "entities": [PRIMARY_SUBJECT],
+            "parent_candidates": [],
+        }
+    if kind is ProgramKind.RAG_GROUNDING:
+        return {
+            "question": "Which placeholder option is supported by the approved attribute?",
+            "facts": ["The placeholder subject has one approved synthetic attribute."],
+            "entities": [PRIMARY_SUBJECT],
+        }
+    if kind in {ProgramKind.PLACEMENT_GENERATION, ProgramKind.PLACEMENT_SIMULATION}:
+        return {
+            "brief": "Draft Australian-English content for the approved placeholder subject.",
+            "destination_policy": "Use only the verified placeholder destination; do not publish.",
+        }
     raise ValueError(f"unsupported bootstrap Program kind: {kind.value}")
 
 
@@ -489,6 +507,34 @@ def _kind_output(kind: ProgramKind) -> dict[str, object]:
             "answer_text": "The frozen synthetic context supports the measured option.",
             "metric_value": 1.0,
         }
+    if kind is ProgramKind.QUESTION_GENERATION:
+        return {
+            "questions": [
+                {
+                    "question_id": "question-001",
+                    "text": "Which placeholder option has the approved synthetic attribute?",
+                    "evidence_refs": [FACT_REF],
+                }
+            ]
+        }
+    if kind is ProgramKind.RAG_GROUNDING:
+        return {
+            "grounded_question": "Which placeholder option has the approved synthetic attribute?",
+            "supporting_fact_refs": [FACT_REF],
+            "unsupported_premises": [],
+        }
+    if kind is ProgramKind.PLACEMENT_GENERATION:
+        return {
+            "content": "Draft placeholder content using the approved synthetic attribute.",
+            "destination_policy_applied": True,
+            "destination_summary": "Verified placeholder destination only; no publication requested.",
+        }
+    if kind is ProgramKind.PLACEMENT_SIMULATION:
+        return {
+            "rendered_prompt": "Render the frozen placeholder placement Prompt.",
+            "output_preview": "A bounded draft-only preview for the placeholder subject.",
+            "warning_codes": [],
+        }
     raise ValueError(f"unsupported bootstrap Program kind: {kind.value}")
 
 
@@ -504,4 +550,8 @@ def _negative_missing_field(kind: ProgramKind) -> str:
         ProgramKind.RECOMMENDATION: "recommendation_type",
         ProgramKind.STYLE_PROFILE: "voice_traits",
         ProgramKind.OFFLINE_ANSWER: "answer_text",
+        ProgramKind.QUESTION_GENERATION: "questions",
+        ProgramKind.RAG_GROUNDING: "grounded_question",
+        ProgramKind.PLACEMENT_GENERATION: "content",
+        ProgramKind.PLACEMENT_SIMULATION: "rendered_prompt",
     }[kind]

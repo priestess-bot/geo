@@ -1,7 +1,7 @@
 export const workbenchTabs = [
   { id: "basic", label: "基础配置" },
   { id: "entry", label: "用户入口" },
-  { id: "prompts", label: "Prompt 程序" },
+  { id: "prompts", label: "Dify 工作流" },
   { id: "secrets", label: "密钥库" },
   { id: "synthetic-lab", label: "合成测评实验室" },
   { id: "recommendations", label: "建议" },

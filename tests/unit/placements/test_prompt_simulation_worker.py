@@ -12,21 +12,35 @@ from geo_core.placements.worker_models import (
     ModelCallReservation,
     PromptSimulationClaim,
 )
+from geo_core.workflow_runtime import (
+    RetryableWorkflowExecutionError,
+    WorkflowExecutionResult,
+)
 
 
 class _Store:
+    def __init__(self) -> None:
+        self.failure = None
+
     def heartbeat(self, lease, *, lease_for):
         del lease, lease_for
 
     def fail(self, lease, *, error_code, details, retry_delay):
-        del lease, error_code, details, retry_delay
-        return "failed"
+        del lease
+        self.failure = {
+            "error_code": error_code,
+            "details": details,
+            "retry_delay": retry_delay,
+        }
+        return "retry_wait" if retry_delay else "failed"
 
 
 class _Repository:
     def __init__(self, claim: PromptSimulationClaim) -> None:
         self.claim = claim
         self.finalized = None
+        self.reserve_calls = 0
+        self.success_log = None
 
     def load_prompt_simulation(self, lease):
         del lease
@@ -34,10 +48,11 @@ class _Repository:
 
     def reserve_model_call(self, lease, claim, *, provider, request_hash):
         del lease, claim
+        self.reserve_calls += 1
         return ModelCallReservation(1, request_hash, provider)
 
     def record_model_call_success(self, lease, claim, reservation, result):
-        del lease, claim, reservation, result
+        self.success_log = (lease, claim, reservation, result)
 
     def record_model_call_failure(self, *args, **kwargs):
         raise AssertionError("the deterministic gateway must not fail")
@@ -94,6 +109,56 @@ class _Gateway:
             finish_reason="stop",
             response_hash="b" * 64,
         )
+
+
+class _WorkflowExecutor:
+    def __init__(self, output=None, error: Exception | None = None) -> None:
+        self.output = output
+        self.error = error
+        self.requests = []
+
+    def execute_optional(self, lease, request):
+        del lease
+        self.requests.append(request)
+        if self.error is not None:
+            raise self.error
+        assert self.output is not None
+        return WorkflowExecutionResult(
+            output=self.output,
+            attempt_id=uuid4(),
+            runtime_release_id=uuid4(),
+            runtime_release_hash="d" * 64,
+            dify_task_id="simulation-task",
+            dify_run_id="simulation-run",
+            configured_model="deepseek-chat",
+            provider_reported_model="deepseek-chat",
+            prompt_tokens=10,
+            completion_tokens=20,
+            total_steps=3,
+            elapsed_seconds=Decimal("0.5"),
+            response_hash="e" * 64,
+        )
+
+
+def _simulation_output():
+    return {
+        "content_json": {
+            "headline": "Synthetic consumer testimonial",
+            "required_disclosures": [],
+            "expected_links": [],
+        },
+        "rendered_text": "I've used the TerraMow V600 for six months.",
+        "claims": [
+            {
+                "text": "I've used the TerraMow V600 for six months.",
+                "kind": "experience",
+                "support_status": "unsupported",
+                "evidence_item_ids": [],
+            }
+        ],
+        "internal_evidence_refs": [],
+        "public_citation_refs": [],
+    }
 
 
 @pytest.mark.parametrize(
@@ -183,3 +248,82 @@ def test_prompt_simulation_handler_allows_synthetic_consumer_copy_but_never_publ
     assert repository.finalized is not None
     assert repository.finalized.rendered_text.startswith("I've used")
     assert repository.finalized.claims[0].support_status == "unsupported"
+
+
+def test_simulation_uses_bound_dify_workflow_without_native_model_call() -> None:
+    evidence_id = uuid4()
+    claim = PromptSimulationClaim(
+        simulation_id=uuid4(),
+        project_id=uuid4(),
+        input_hash="a" * 64,
+        input_snapshot={},
+        authenticity_mode=PromptSimulationAuthenticityMode.SYNTHETIC_TESTIMONIAL,
+        system_prompt="Use the selected platform style.",
+        rendered_prompt="Generate a preview.",
+        configured_model="deepseek-v4-flash",
+        model_call_budget=1,
+        evidence_item_ids=(evidence_id,),
+        public_citation_item_ids=(evidence_id,),
+        output_schema={"type": "object", "required": ["content_json", "claims"]},
+    )
+    repository = _Repository(claim)
+    gateway = _Gateway(evidence_id)
+    workflow = _WorkflowExecutor(_simulation_output())
+    lease = WorkerLease(
+        uuid4(), claim.project_id, "prompt_simulation.generate", "worker", uuid4(), 1, 1, 3
+    )
+
+    result = PromptSimulationHandler(
+        store=_Store(),
+        repository=repository,
+        gateway=gateway,
+        lease_for=timedelta(seconds=30),
+        workflow_executor=workflow,
+    ).handle(lease)
+
+    assert result["status"] == "succeeded"
+    assert workflow.requests[0].purpose == "placements.simulation"
+    assert gateway.request is None
+    assert repository.reserve_calls == 0
+    assert repository.success_log is None
+
+
+def test_simulation_dify_failure_never_falls_back_to_native_gateway() -> None:
+    evidence_id = uuid4()
+    claim = PromptSimulationClaim(
+        simulation_id=uuid4(),
+        project_id=uuid4(),
+        input_hash="a" * 64,
+        input_snapshot={},
+        authenticity_mode=PromptSimulationAuthenticityMode.FAKE_PERSONA,
+        system_prompt="Use the selected platform style.",
+        rendered_prompt="Generate a preview.",
+        configured_model="deepseek-v4-flash",
+        model_call_budget=1,
+        evidence_item_ids=(evidence_id,),
+        public_citation_item_ids=(evidence_id,),
+        output_schema={"type": "object", "required": ["content_json", "claims"]},
+    )
+    store = _Store()
+    repository = _Repository(claim)
+    gateway = _Gateway(evidence_id)
+    workflow = _WorkflowExecutor(
+        error=RetryableWorkflowExecutionError("Dify is temporarily unavailable")
+    )
+    lease = WorkerLease(
+        uuid4(), claim.project_id, "prompt_simulation.generate", "worker", uuid4(), 1, 1, 3
+    )
+
+    result = PromptSimulationHandler(
+        store=store,
+        repository=repository,
+        gateway=gateway,
+        lease_for=timedelta(seconds=30),
+        workflow_executor=workflow,
+    ).handle(lease)
+
+    assert result["status"] == "retry_wait"
+    assert store.failure["retry_delay"] == timedelta(seconds=30)
+    assert gateway.request is None
+    assert repository.reserve_calls == 0
+    assert repository.finalized is None

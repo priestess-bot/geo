@@ -12,7 +12,7 @@ from geo_core.rag.contracts import (
     RagAdapterError,
     RagSourceDocument,
 )
-from geo_core.rag.native import ProjectNativeRagAdapterV1
+from geo_core.rag.native import ProjectNativeRagAdapterV1, RAG_EXTRACTION_OUTPUT_SCHEMA
 from geo_core.rag.selection import RagSelection, load_rag_selection
 from geo_core.rag.runtime import SelectedRagAdapter, selected_rag_adapter
 
@@ -25,6 +25,7 @@ __all__ = [
     "CandidateValidationFinding",
     "JsonModelInvoker",
     "ProjectNativeRagAdapterV1",
+    "RAG_EXTRACTION_OUTPUT_SCHEMA",
     "QuestionPlan",
     "RagAdapterError",
     "RagSelection",

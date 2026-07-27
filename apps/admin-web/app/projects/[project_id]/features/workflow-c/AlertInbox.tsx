@@ -144,8 +144,8 @@ function DispositionHistory({ alert }: { alert: AlertRecord }) {
             <thead><tr><th>处置</th><th>状态转换</th><th>操作人 / 时间</th><th>原因</th><th>命令溯源</th></tr></thead>
             <tbody>{alert.dispositions.map((item) => (
               <tr key={item.command_hash}>
-                <td><strong>{item.disposition}</strong><small>结果 v{item.resulting_version}</small></td>
-                <td>{item.from_status} → {item.to_status}<small>{formatTime(item.suppressed_until)}</small></td>
+                <td><strong>{dispositionLabel(item.disposition)}</strong><small>结果 v{item.resulting_version}</small></td>
+                <td>{statusLabel(item.from_status)} → {statusLabel(item.to_status)}<small>{formatTime(item.suppressed_until)}</small></td>
                 <td><code>{item.actor_id}</code><small>{formatTime(item.occurred_at)}</small></td>
                 <td>{item.reason}</td>
                 <td><code>{item.command_key}</code><small>{item.command_hash}</small></td>
@@ -196,6 +196,15 @@ function Status({ value }: { value: string }) {
 
 function statusLabel(value: string): string {
   return { open: "打开", acknowledged: "已确认", suppressed: "已抑制", resolved: "已解决" }[value] || value.replaceAll("_", " ");
+}
+
+function dispositionLabel(value: string): string {
+  return {
+    acknowledge: "确认",
+    suppress: "抑制",
+    unsuppress: "解除抑制",
+    resolve: "解决"
+  }[value] || value.replaceAll("_", " ");
 }
 
 function channelLabel(value: NotificationProjection["channel"]): string {

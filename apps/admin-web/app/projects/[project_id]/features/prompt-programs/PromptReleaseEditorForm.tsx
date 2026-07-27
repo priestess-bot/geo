@@ -13,6 +13,7 @@ import {
   initialPromptActionState,
   primaryPromptProgramKinds,
   promptProgramKinds,
+  workflowPromptProgramKinds,
   type PromptProgramKind,
   type PromptProgramSummary
 } from "./promptProgramTypes";
@@ -108,6 +109,11 @@ export function PromptReleaseEditorForm({
                 </optgroup>
                 <optgroup label="内部辅助（系统工作流）">
                   {auxiliaryPromptProgramKinds.map((kind) => (
+                    <option key={kind} value={kind}>{kindLabel(kind)}</option>
+                  ))}
+                </optgroup>
+                <optgroup label="问题与内容生成">
+                  {workflowPromptProgramKinds.map((kind) => (
                     <option key={kind} value={kind}>{kindLabel(kind)}</option>
                   ))}
                 </optgroup>
@@ -223,7 +229,11 @@ function kindLabel(kind: PromptProgramKind): string {
     metric_judge: "指标评审",
     recommendation: "建议生成",
     style_profile: "风格画像",
-    offline_answer: "离线实验回答"
+    offline_answer: "离线实验回答",
+    question_generation: "测试问题生成",
+    rag_grounding: "RAG 问题约束",
+    placement_generation: "投放内容生成",
+    placement_simulation: "投放 Prompt 仿真"
   };
   return `${labels[kind]} · ${kind}`;
 }

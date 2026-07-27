@@ -15,15 +15,12 @@ from geo_core.prompts.application import (
     CreatedPromptProgram,
     CreatedPromptRelease,
     PromptProgramApplication,
-    PromptProgramForbidden,
-    PromptProgramNotFound,
     PromptProgramRuntimeBlocked,
     TransitionedPromptProgram,
 )
 from geo_core.prompts.ports import (
     PromptBindingPageRead,
     PromptProgramPageRead,
-    PromptProgramRepository,
     PromptReleasePageRead,
     PromptReleaseRead,
 )
@@ -31,6 +28,12 @@ from geo_core.prompts.postgres_uow import (
     PsycopgPromptProgramUnitOfWork,
     prompt_program_uow_factory,
 )
+from geo_core.prompts.postgres_api_support import (
+    required_program as _required_program,
+    required_release as _required_release,
+    require_read_role as _require_read_role,
+)
+from geo_core.prompts.postgres_workspace_api import PromptWorkspaceApiMixin
 from geo_core.prompts.program import (
     ModelPolicySnapshot,
     ProgramKind,
@@ -53,11 +56,10 @@ from geo_core.prompts.test_execution_contracts import (
 from geo_core.prompts.test_execution_postgres import prompt_test_uow_factory
 
 
-_READ_ROLES = frozenset({"owner", "admin", "analyst"})
 _ResultT = TypeVar("_ResultT")
 
 
-class PsycopgPromptProgramApi:
+class PsycopgPromptProgramApi(PromptWorkspaceApiMixin):
     """Transport-neutral facade enforcing path identity before each command."""
 
     def __init__(
@@ -467,52 +469,6 @@ def build_prompt_program_api(
         test_runtime_selector=runtime_selector,
         test_evidence_verifier=verifier,
     )
-
-
-def _required_program(
-    repository: PromptProgramRepository,
-    project_id: UUID,
-    program_id: UUID,
-) -> PromptProgram:
-    program = repository.get_program(project_id=project_id, program_id=program_id)
-    if program is None:
-        raise PromptProgramNotFound("The Prompt Program does not exist.")
-    return program
-
-
-def _required_release(
-    repository: PromptProgramRepository,
-    *,
-    project_id: UUID,
-    program_id: UUID,
-    release_id: UUID,
-) -> PromptReleaseRead:
-    release = repository.get_release(project_id=project_id, release_id=release_id)
-    state = repository.get_current_release_state(
-        project_id=project_id, release_id=release_id
-    )
-    if release is None or state is None or release.program_id != program_id:
-        raise PromptProgramNotFound("The Prompt Program Release does not exist.")
-    return PromptReleaseRead(release, state)
-
-
-def _require_read_role(principal: AccessPrincipal, project_id: UUID) -> None:
-    membership = next(
-        (
-            item
-            for item in principal.memberships
-            if item.project_id == project_id and item.tenant_id == principal.tenant_id
-        ),
-        None,
-    )
-    if membership is None:
-        raise PromptProgramNotFound(
-            "The project does not exist in the authenticated Prompt Program scope."
-        )
-    if membership.role not in _READ_ROLES:
-        raise PromptProgramForbidden(
-            "The project role cannot read this Prompt Program resource."
-        )
 
 
 __all__ = ["PsycopgPromptProgramApi", "build_prompt_program_api"]

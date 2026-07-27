@@ -1,0 +1,20 @@
+services:
+  api:
+    networks:
+      default: {}
+      ssrf_proxy_network: {}
+      geo_dify_runtime:
+        aliases:
+          - dify-api
+
+  nginx:
+    ports: !override
+      - "${GEO_DIFY_BIND_HOST:-127.0.0.1}:${GEO_DIFY_HOST_PORT:-15000}:80"
+
+  plugin_daemon:
+    ports: !override []
+
+networks:
+  geo_dify_runtime:
+    name: geo-dify-runtime
+    external: true

@@ -13,7 +13,7 @@ from geo_core.prompts.compiler_versions import (
     BOOTSTRAP_COMPILER_VERSION as _BOOTSTRAP_COMPILER_VERSION,
 )
 from geo_core.prompts.program_contracts import (
-    FIRST_PHASE_PROGRAM_KINDS,
+    WORKSPACE_FLOW_PROGRAM_KINDS,
     ModelPolicySnapshot,
     ProgramKind,
     ProgramReleaseStatus,
@@ -169,9 +169,9 @@ class PromptBootstrapSpec:
             kind = ProgramKind(self.program_kind)
         except ValueError as exc:
             raise PromptBootstrapRuleViolation("unknown bootstrap Program kind") from exc
-        if kind not in FIRST_PHASE_PROGRAM_KINDS:
+        if kind not in WORKSPACE_FLOW_PROGRAM_KINDS:
             raise PromptBootstrapRuleViolation(
-                "reference_translation is reserved and has no bootstrap draft"
+                "Prompt Program kind has no workspace bootstrap draft"
             )
         catalog_version = _normalize_version(
             self.catalog_version, field_name="bootstrap catalog version"

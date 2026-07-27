@@ -56,6 +56,8 @@ from geo_api.workflow_c_routes import mount_workflow_c_internal
 from geo_api.workflow_c_runtime import WorkflowCApi, build_workflow_c_api
 from geo_api.workflow_c_customer_routes import workflow_c_customer_router
 from geo_api.workflow_c_customer_runtime import build_workflow_c_customer_reader
+from geo_api.workflow_runtime_api import build_workflow_runtime_api
+from geo_api.workflow_runtime_routes import workflow_runtime_router
 from geo_api.placement_campaign_routes import campaign_router
 from geo_api.job_control_routes import job_control_router
 from geo_api.knowledge_routes import knowledge_router
@@ -132,6 +134,7 @@ def create_api_app(
     workflow_c_api: WorkflowCApi | None = None,
     workflow_c_customer_reader: WorkflowCCustomerReportReader | None = None,
     model_gateway_runtime_api: object | None = None,
+    workflow_runtime_api: object | None = None,
 ) -> FastAPI:
     """Build one API surface without importing the legacy application module."""
 
@@ -215,6 +218,9 @@ def create_api_app(
     app.state.secret_store_application = non_b_runtimes.secret_store.value
     app.state.synthetic_lab_api = non_b_runtimes.synthetic_lab.value
     app.state.model_gateway_runtime_api = non_b_runtimes.model_gateway.value
+    app.state.workflow_runtime_api = workflow_runtime_api or (
+        build_workflow_runtime_api() if surface == "internal" else None
+    )
     install_problem_handlers(app)
     _install_request_metadata_middleware(app, surface=surface)
 
@@ -245,6 +251,7 @@ def create_api_app(
         app.include_router(prompt_bootstrap_router())
         app.include_router(prompt_program_router())
         app.include_router(model_gateway_runtime_router())
+        app.include_router(workflow_runtime_router())
         app.include_router(recommendation_router())
         app.include_router(secret_store_router())
         app.include_router(synthetic_lab_router())

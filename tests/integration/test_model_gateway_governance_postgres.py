@@ -142,6 +142,13 @@ def test_model_gateway_governance_round_trip_rls_and_direct_write_guards() -> No
         with psycopg.connect(test_admin_url) as admin:
             assert admin.execute(
                 """SELECT has_table_privilege(
+                           'geo_worker',
+                           'model_gateway_job_admissions',
+                           'INSERT'
+                       )"""
+            ).fetchone()[0] is True
+            assert admin.execute(
+                """SELECT has_table_privilege(
                            'geo_readonly',
                            'model_gateway_terminal_events',
                            'SELECT'

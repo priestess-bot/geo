@@ -1,0 +1,12 @@
+DROP TRIGGER IF EXISTS dify_workflow_attempt_delete_guard ON dify_workflow_execution_attempts;
+DROP TRIGGER IF EXISTS dify_workflow_attempt_transition_guard ON dify_workflow_execution_attempts;
+DROP TRIGGER IF EXISTS dify_workflow_binding_append_guard ON dify_workflow_bindings;
+DROP TRIGGER IF EXISTS dify_workflow_bindings_immutable ON dify_workflow_bindings;
+DROP TRIGGER IF EXISTS dify_workflow_releases_immutable ON dify_workflow_releases;
+DROP FUNCTION IF EXISTS geo_reject_dify_attempt_delete();
+DROP FUNCTION IF EXISTS geo_assert_dify_attempt_transition();
+DROP FUNCTION IF EXISTS geo_assert_dify_binding_append();
+DROP FUNCTION IF EXISTS geo_reject_dify_runtime_mutation();
+DROP TABLE IF EXISTS dify_workflow_execution_attempts;
+DROP TABLE IF EXISTS dify_workflow_bindings;
+DROP TABLE IF EXISTS dify_workflow_releases;

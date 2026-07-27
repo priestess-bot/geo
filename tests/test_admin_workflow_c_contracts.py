@@ -32,12 +32,12 @@ def test_workflow_c_uses_an_independent_internal_admin_route() -> None:
     assert 'activeTab === "measurement" ? loadWorkflowCWorkspace(projectId, query)' in project_page
     assert 'workflowCData?.alerts.problem?.status === 401' in project_page
     assert "WorkflowCPanel" in project_shell
-    assert 'id: "measurement", label: "Measurement & Alerts"' in project_tabs
+    assert 'id: "measurement", label: "测量与告警"' in project_tabs
     assert "export function WorkflowCPanel" in workspace
     assert "export type WorkflowCPanelProps" in workspace
     assert '<main className={styles.shell}>' in workspace
     assert "!data.alerts.problem" in workspace
-    assert 'label="Workflow C control plane"' in workspace
+    assert 'label="Workflow C 控制平面"' in workspace
     assert "Promise.all" in data
     for projection in [
         "/sampling/runs/",
@@ -56,7 +56,7 @@ def test_sampling_keeps_a_fixed_denominator_and_supported_capture_methods() -> N
     types = source(FEATURE / "workflowCTypes.ts")
     guards = source(FEATURE / "workflowCTypeGuards.ts")
 
-    for label in ["Planned", "Valid", "Invalid", "Missing", "Valid completion"]:
+    for label in ["已规划", "有效", "无效", "缺失", "有效完成度"]:
         assert f'label="{label}"' in panel
     assert "denominator_hash" in panel
     assert '"provider_api" | "proxy_grounded_api" | "manual_ui"' in types
@@ -79,7 +79,7 @@ def test_manual_consumer_surface_parsers_stay_non_live_and_text_free() -> None:
     assert "/sampling/surface-parser-releases" in data
     assert 'name="surface_parser_release_id"' in commands
     assert "releaseMatchesSource" in commands
-    assert "Non-live evidence · no Australian egress proof" in commands
+    assert "非实时证据 · 不具备澳大利亚出口证明" in commands
     assert "answer_character_count" in commands
     assert "citation_count" in commands
     assert "summary_hash" in commands
@@ -97,7 +97,7 @@ def test_sampling_run_purpose_is_resolved_from_the_governed_inventory() -> None:
     actions = source(FEATURE / "samplingActions.ts")
 
     assert 'name="purpose"' not in commands
-    assert "由 Suite 的已批准 Admission Policy 冻结" in commands
+    assert "由采样套件的已批准准入策略冻结" in commands
     assert "isSamplingSuitePage" in actions
     assert "isAdmissionPolicyPage" in actions
     assert 'item.status === "approved"' in actions
@@ -145,7 +145,7 @@ def test_report_diversity_metrics_require_integer_counts_across_admin_boundaries
     assert "fractionalPartIsZero" in guards
     assert "const nonNegative = !negative || decimalIsZero" in guards
     assert "magnitudeAtMostOne" in guards
-    assert 'step: "1", label: "Nonnegative integer count"' in commands
+    assert 'step: "1", label: "非负整数计数"' in commands
 
 
 def test_alert_actions_reauthorize_membership_and_cover_lifecycle() -> None:
@@ -176,17 +176,17 @@ def test_alert_inbox_exposes_evidence_dispositions_and_safe_notifications() -> N
     guards = source(FEATURE / "workflowCTypeGuards.ts")
 
     for label in [
-        "Immutable lineage",
+        "不可变溯源",
         "处置历史",
-        "Outbox projection",
-        "Admin inbox",
-        "Local SMTP",
-        "Internal Webhook",
+        "Outbox 投影",
+        "管理端收件箱",
+        "本地 SMTP",
+        "内部 Webhook",
     ]:
         assert label in inbox
     assert "payload_hash" in inbox
     assert "command_hash" in inbox
-    assert "Safe summary" in inbox
+    assert "安全摘要" in inbox
     assert "admin_inbox" in guards
     assert "local_smtp" in guards
     assert "internal_webhook" in guards
@@ -245,9 +245,9 @@ def test_protocol_job_and_report_controls_use_internal_guarded_contracts() -> No
     assert "countMetricKeys.has(key)" in guards
     assert "signedMetricKeys.has(key)" in guards
     assert "magnitudeAtMostOne" in guards
-    assert "Nonnegative integer count" in report_commands
-    assert "Signed score · -1 to 1" in report_commands
-    assert "Rate / score · 0 to 1" in report_commands
+    assert "非负整数计数" in report_commands
+    assert "有符号评分 · -1 至 1" in report_commands
+    assert "比例 / 评分 · 0 至 1" in report_commands
 
 
 def test_protocol_and_report_maker_checker_buttons_are_identity_aware() -> None:

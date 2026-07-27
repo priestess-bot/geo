@@ -146,6 +146,8 @@ class AuthWebContractTests(unittest.TestCase):
         self.assertIn('"X-GEO-Tenant-ID"', runtime)
         self.assertNotIn("GEO_SESSION_COOKIE", runtime)
         self.assertNotIn("GEO_RUNTIME_AUTH_MODE", middleware)
+        self.assertIn('Referrer-Policy", "same-origin"', middleware)
+        self.assertNotIn('Referrer-Policy", "no-referrer"', middleware)
 
     def test_raw_invitation_token_never_moves_to_url_or_browser_storage(self) -> None:
         paths = (

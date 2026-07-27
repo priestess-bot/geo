@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+import scripts.non_b_roadmap_acceptance as acceptance
 from scripts.non_b_roadmap_acceptance import (
     AcceptanceRegisterError,
     DEFAULT_OUTPUT,
@@ -22,13 +23,13 @@ def test_classification_resolves_every_roadmap_id_without_local_gaps() -> None:
     register = build_register(policy_path=DEFAULT_POLICY, output=DEFAULT_OUTPUT)
 
     assert register["summary"] == {
-        "all": 312,
+        "all": 316,
         "templates": 13,
         "excluded_b": 47,
         "mixed_atomic": 68,
-        "included_non_b": 252,
+        "included_non_b": 256,
         "local_gap": 0,
-        "ready_for_review": 76,
+        "ready_for_review": 80,
         "blocked_external": 176,
     }
     checks = {item["check_id"]: item for item in register["checks"]}
@@ -49,8 +50,31 @@ def test_exported_register_is_source_and_hash_bound(tmp_path: Path) -> None:
     verified = verify_register(policy_path=DEFAULT_POLICY, register_path=output)
 
     assert verified["register_hash"] == written["register_hash"]
-    assert verified["check_count"] == 312
+    assert verified["check_count"] == 316
     assert len(written["source_identity"]["tree_fingerprint"]) == 64
+
+
+def test_source_fingerprint_excludes_a_tracked_register(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    def check_output(command: list[str], **kwargs: object) -> str | bytes:
+        calls.append(command)
+        return f"{'a' * 40}\n" if kwargs.get("text") else b""
+
+    monkeypatch.setattr(acceptance.subprocess, "check_output", check_output)
+
+    identity = acceptance._source_identity(output=DEFAULT_OUTPUT)
+
+    exclusion = ":(exclude)docs/engineering/execution-packs/pack-08-acceptance-register.json"
+    assert calls[0] == ["git", "rev-parse", "HEAD"]
+    assert all(call[-3:] == ["--", ".", exclusion] for call in calls[1:])
+    assert identity == {
+        "head_commit": "a" * 40,
+        "tree_state": "clean",
+        "tree_fingerprint": acceptance.hashlib.sha256(b"").hexdigest(),
+    }
 
 
 def test_unknown_classification_id_fails_closed(tmp_path: Path) -> None:

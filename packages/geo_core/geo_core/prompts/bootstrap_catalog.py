@@ -25,7 +25,7 @@ from geo_core.prompts.bootstrap_validation import (
     assert_bootstrap_spec,
 )
 from geo_core.prompts.program_contracts import (
-    FIRST_PHASE_PROGRAM_KINDS,
+    WORKSPACE_FLOW_PROGRAM_KINDS,
     ModelPolicySnapshot,
     ProgramKind,
     _canonical_hash,
@@ -60,8 +60,8 @@ DEFAULT_BOOTSTRAP_MODEL_POLICY = ModelPolicySnapshot(
 
 @lru_cache(maxsize=1)
 def default_prompt_bootstrap_specs() -> tuple[PromptBootstrapSpec, ...]:
-    specs = tuple(_build_spec(kind) for kind in FIRST_PHASE_PROGRAM_KINDS)
-    if tuple(spec.program_kind for spec in specs) != FIRST_PHASE_PROGRAM_KINDS:
+    specs = tuple(_build_spec(kind) for kind in WORKSPACE_FLOW_PROGRAM_KINDS)
+    if tuple(spec.program_kind for spec in specs) != WORKSPACE_FLOW_PROGRAM_KINDS:
         raise PromptBootstrapRuleViolation("bootstrap catalog kind order changed")
     if len({spec.purpose for spec in specs}) != len(specs):
         raise PromptBootstrapRuleViolation("bootstrap catalog purposes must be unique")
@@ -79,7 +79,7 @@ def default_prompt_bootstrap_spec(kind: ProgramKind | str) -> PromptBootstrapSpe
         if spec.program_kind is normalized:
             return spec
     raise PromptBootstrapRuleViolation(
-        f"{normalized.value} is reserved and has no first-phase bootstrap spec"
+        f"{normalized.value} is reserved and has no workspace bootstrap spec"
     )
 
 
@@ -157,6 +157,18 @@ def _rubric(kind: ProgramKind) -> tuple[PromptRubricCriterion, ...]:
         ),
         ProgramKind.OFFLINE_ANSWER: (
             "Offline answer retains slot identity and uses exactly the frozen Corpus evidence."
+        ),
+        ProgramKind.QUESTION_GENERATION: (
+            "Question IDs are unique and every generated question cites only frozen evidence."
+        ),
+        ProgramKind.RAG_GROUNDING: (
+            "Grounded questions retain their frozen scope and list only supplied supporting Facts."
+        ),
+        ProgramKind.PLACEMENT_GENERATION: (
+            "Placement content is draft-only and confirms the frozen destination policy."
+        ),
+        ProgramKind.PLACEMENT_SIMULATION: (
+            "Simulation returns only the frozen Prompt rendering and preview, never a live-surface claim."
         ),
     }[kind]
     return (

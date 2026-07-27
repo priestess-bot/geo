@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
+import json
+from types import MappingProxyType
 from uuid import uuid4
 
 import pytest
@@ -8,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from geo_api import prompt_program_runtime
 from geo_api.app_factory import create_api_app
+from geo_api.prompt_program_presenters import present_render_preview
 from geo_api.prompt_program_runtime import (
     PromptProgramPageRead,
     PromptReleasePageRead,
@@ -31,6 +35,7 @@ from geo_core.prompts.ports import (
     PromptProgramVersionConflict,
 )
 from geo_core.prompts.program import (
+    CompiledProgramPrompt,
     ProgramKind,
     ProgramReleaseState,
     ProgramTestEvidence,
@@ -47,11 +52,51 @@ from geo_core.prompts.test_execution_contracts import (
     PromptTestJobReceipt,
     PromptTestRuntimeOption,
 )
+from geo_core.prompts.workspace import (
+    PromptFlowWorkspaceItem,
+    PromptRenderPreview,
+    PromptWorkingDraft,
+    default_prompt_flow_definitions,
+    draft_hash,
+)
 from geo_core.model_gateway.contracts import ModelCaptureMethod
 
 
 NOW = datetime(2026, 7, 23, 10, 0, tzinfo=UTC)
 RUNTIME_SELECTION_ID = uuid4()
+
+
+def test_render_preview_response_deeply_thaws_frozen_fixture_values() -> None:
+    compiled = CompiledProgramPrompt(
+        release_id=uuid4(),
+        release_hash="a" * 64,
+        variable_input_hash="b" * 64,
+        compiled_system="system",
+        compiled_system_hash="c" * 64,
+        compiled_user="user",
+        compiled_user_hash="d" * 64,
+        output_schema_version="test-output-v1",
+        model_policy_version="test-policy-v1",
+        model_policy_hash="e" * 64,
+    )
+    preview = PromptRenderPreview(
+        fixture_id="question-generation.positive.v1",
+        fixture_label="nested frozen fixture",
+        input_value=MappingProxyType({
+            "evidence": (MappingProxyType({"ref": "fact:au-1"}),),
+            "dimensions": MappingProxyType({"market": "AU", "language": "en"}),
+        }),
+        draft=compiled,
+        current=None,
+        current_release_version=1,
+    )
+
+    body = json.loads(json.dumps(present_render_preview(preview).model_dump(mode="json")))
+
+    assert body["input_value"] == {
+        "dimensions": {"language": "en", "market": "AU"},
+        "evidence": [{"ref": "fact:au-1"}],
+    }
 
 
 class PrincipalServices:
@@ -72,6 +117,7 @@ class PromptApiStub:
         self.last_call: dict[str, object] = {}
         self.last_test_call: dict[str, object] = {}
         self.binding = None
+        self.draft: PromptWorkingDraft | None = None
 
     def list_test_runtimes(self, principal: AccessPrincipal, **values: object):
         del principal, values
@@ -121,7 +167,72 @@ class PromptApiStub:
         self.program = program
         self.releases[release.id] = release
         self.states[release.id] = state
+        self.draft = PromptWorkingDraft(
+            project_id=program.project_id,
+            program_id=program.id,
+            display_name="候选测评生成",
+            system_template=release.system_template,
+            user_template=release.user_template,
+            revision=1,
+            draft_hash=draft_hash(
+                display_name="候选测评生成",
+                system_template=release.system_template,
+                user_template=release.user_template,
+            ),
+            base_release_id=release.id,
+            candidate_release_id=None,
+            updated_by=principal.identity_id,
+            updated_at=NOW,
+        )
         return CommandReceipt(CreatedPromptProgram(program, release, state), replayed=False)
+
+    def list_flow_workspace(self, principal: AccessPrincipal, **values: object):
+        del principal, values
+        items = []
+        latest = max(self.releases.values(), key=lambda item: item.version, default=None)
+        for definition in default_prompt_flow_definitions():
+            configured = self.program is not None and self.program.purpose == definition.purpose
+            items.append(
+                PromptFlowWorkspaceItem(
+                    definition=definition,
+                    program=self.program if configured else None,
+                    draft=self.draft if configured else None,
+                    latest_release=latest if configured else None,
+                    current_release_id=(self.draft.base_release_id if configured and self.draft else None),
+                    current_release_version=(latest.version if configured and latest else None),
+                    candidate_status=None,
+                    latest_test_job_id=None,
+                    latest_test_status=None,
+                    latest_test_score=None,
+                )
+            )
+        return tuple(items)
+
+    def get_working_draft(self, principal: AccessPrincipal, **values: object):
+        del principal, values
+        assert self.draft is not None
+        return self.draft
+
+    def save_working_draft(self, principal: AccessPrincipal, **values: object):
+        assert self.draft is not None
+        assert values["expected_revision"] == self.draft.revision
+        name = str(values["display_name"])
+        system = str(values["system_template"])
+        user = str(values["user_template"])
+        self.draft = replace(
+            self.draft,
+            display_name=name,
+            system_template=system,
+            user_template=user,
+            revision=self.draft.revision + 1,
+            draft_hash=draft_hash(
+                display_name=name,
+                system_template=system,
+                user_template=user,
+            ),
+            updated_by=principal.identity_id,
+        )
+        return self.draft
 
     def list_programs(self, principal: AccessPrincipal, **values: object):
         del principal, values
@@ -502,7 +613,8 @@ def test_create_and_test_responses_expose_hash_lineage_without_raw_content() -> 
     route = stub.last_test_call["route"]
     assert getattr(route, "runtime_selection_id") == RUNTIME_SELECTION_ID
     assert listed.status_code == 200 and listed.json()["total"] == 1
-    assert "system_template" not in fetched_release.json()
+    assert fetched_release.json()["system_template"] == create_payload["system_template"]
+    assert fetched_release.json()["user_template"] == create_payload["user_template"]
     assert approved.status_code == 200
     assert created_v2.status_code == 201
     assert created_v2.json()["release"]["version"] == 2
@@ -518,6 +630,65 @@ def test_create_and_test_responses_expose_hash_lineage_without_raw_content() -> 
     assert bound.status_code == 200
     assert bindings.status_code == 200
     assert bindings.json()["items"][0]["id"] == bound.json()["id"]
+
+
+def test_prompt_workspace_exposes_editable_content_without_leaking_it_in_lists() -> None:
+    stub = PromptApiStub()
+    app, principal = _app(stub)
+    project_id = principal.project_ids[0]
+    payload = _create_payload()
+    with TestClient(app) as client:
+        created = client.post(
+            f"/v1/projects/{project_id}/prompt-programs",
+            headers={"Idempotency-Key": "workspace:create"},
+            json=payload,
+        )
+        program_id = created.json()["program"]["id"]
+        flows = client.get(f"/v1/projects/{project_id}/prompt-flows")
+        draft = client.get(
+            f"/v1/projects/{project_id}/prompt-programs/{program_id}/draft"
+        )
+        saved = client.put(
+            f"/v1/projects/{project_id}/prompt-programs/{program_id}/draft",
+            json={
+                "display_name": "澳洲测评候选生成",
+                "system_template": "Use approved evidence for {{channel}}.",
+                "user_template": "Write the {{scenario}} candidates.",
+                "expected_revision": 1,
+            },
+        )
+        listed = client.get(
+            f"/v1/projects/{project_id}/prompt-programs/{program_id}/releases"
+        )
+
+    assert created.status_code == 201
+    assert flows.status_code == 200
+    configured = next(
+        item for item in flows.json()["items"] if item["program"] is not None
+    )
+    assert configured["display_name"] == "候选测评生成"
+    assert configured["draft"]["system_template"] == payload["system_template"]
+    assert draft.status_code == 200
+    assert draft.json()["user_template"] == payload["user_template"]
+    assert saved.status_code == 200
+    assert saved.json()["revision"] == 2
+    assert saved.json()["display_name"] == "澳洲测评候选生成"
+    assert listed.status_code == 200
+    assert "system_template" not in listed.json()["items"][0]
+
+
+def test_prompt_workspace_slots_insert_only_template_variables() -> None:
+    slots = {
+        slot.key: slot
+        for definition in default_prompt_flow_definitions()
+        for slot in definition.context_slots
+    }
+
+    assert slots["request_json"].insertion == "{{request_json}}"
+    assert all(
+        slot.insertion == f"{{{{{slot.key}}}}}"
+        for slot in slots.values()
+    )
 
 
 @pytest.mark.parametrize(

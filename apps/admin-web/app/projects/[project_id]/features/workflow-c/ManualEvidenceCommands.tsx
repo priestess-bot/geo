@@ -90,7 +90,7 @@ export function ManualEvidenceCommands({
             <div className={styles.commandGrid}>
               <form action={approveAction} className={styles.commandForm}>
                 <ReviewIdentity commandKey={`${commandKey}-approve-${item.id}`} item={item} projectId={projectId} />
-                <strong>{item.evidence_kind} · {item.locale}</strong>
+                <strong>{evidenceKindLabel(item.evidence_kind)} · {item.locale}</strong>
                 <code>{item.artifact_manifest_hash}</code>
                 <label><span>批准原因</span><input disabled={reviewDisabled || approvePending} maxLength={1000} name="reason" required /></label>
                 <button disabled={reviewDisabled || approvePending} type="submit">批准并入队</button>
@@ -117,9 +117,9 @@ function ParseSummary({ summary }: { summary: SurfaceParseSummary }) {
     <div className={styles.parseSummary}>
       <div className={styles.badgeRow}>
         <span>{surfaceLabel(summary.surface)}</span>
-        <span>{summary.capture_kind}</span>
+        <span>{captureKindLabel(summary.capture_kind)}</span>
         <span>非实时</span>
-        <span data-status={summary.content_eligible ? "eligible" : "blocked"}>{summary.outcome}</span>
+        <span data-status={summary.content_eligible ? "eligible" : "blocked"}>{outcomeLabel(summary.outcome)}</span>
       </div>
       <dl>
         <div><dt>回答字符数</dt><dd>{summary.answer_character_count}</dd></div>
@@ -153,6 +153,32 @@ function surfaceLabel(surface: SurfaceParserRelease["surface"]): string {
     google_ai_mode: "Google AI Mode",
     bing_copilot: "Bing Copilot"
   }[surface];
+}
+
+function captureKindLabel(value: SurfaceParseSummary["capture_kind"]): string {
+  return { manual_ui: "人工界面" }[value];
+}
+
+function outcomeLabel(value: SurfaceParseSummary["outcome"]): string {
+  return {
+    captured: "已采集",
+    surface_not_present: "界面未出现",
+    consent_required: "需要同意",
+    login_required: "需要登录",
+    access_blocked: "访问受阻",
+    geo_mismatch: "地域不匹配",
+    egress_changed: "出口已变化",
+    parser_failed: "解析失败",
+    timeout: "超时"
+  }[value];
+}
+
+function evidenceKindLabel(value: ManualEvidenceImport["evidence_kind"]): string {
+  return {
+    screenshot: "截图",
+    html_export: "HTML 导出",
+    transcript_export: "文本记录导出"
+  }[value];
 }
 
 function ReviewIdentity({ commandKey, item, projectId }: { commandKey: string; item: ManualEvidenceImport; projectId: string }) {

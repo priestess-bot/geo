@@ -453,10 +453,6 @@ class PromptProgramApplication(PromptProgramReleaseOperationsMixin):
         _require_expected_version(current, expected_version)
         admitted_evidence: ProgramTestEvidence | None = None
         if operation == PromptCommandOperation.APPROVE:
-            if principal.identity_id == release.owner_id:
-                raise PromptProgramForbidden(
-                    "Prompt Program owners cannot approve their own Release."
-                )
             admitted_evidence = self._repository.get_latest_passed_test_evidence(
                 project_id=project_id,
                 release_id=release.id,

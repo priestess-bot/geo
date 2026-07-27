@@ -3,7 +3,7 @@
   "roadmap_id": "GEO-next-phase-six-month-roadmap-2026-07-21",
   "stage": "PACK-08-NONB-LOCAL-CLOSURE",
   "environment_fingerprint": "4c21e6730087b2a56152b5b3833c0628cad79f03b64a3a16a7d558f718eb9bc1",
-  "generated_at": "2026-07-25T12:22:44+08:00",
+  "generated_at": "2026-07-27T14:27:06+08:00",
   "git_commit": "6b37e49a533600b5d7bb6b2ef798dbcb0274506d",
   "included_workstreams": [
     "A.synthetic_and_knowledge",
@@ -26,20 +26,20 @@
         "has_customer_surface": true,
         "handles_sensitive_data": true,
         "has_runtime_operation": true,
-        "calls_external_service": false,
+        "calls_external_service": true,
         "requires_live_evidence": true
       },
       "status": "BLOCKED_EXTERNAL",
       "owner": "codex-autonomous-agent",
       "verifier": "unassigned-independent-verifier",
       "started_at": "2026-07-24T00:00:00+08:00",
-      "ended_at": "2026-07-25T12:22:44+08:00",
+      "ended_at": "2026-07-26T20:05:00+08:00",
       "scope": {
         "environment": "local-isolated-test",
         "project_id": "e9e7f256-1b0b-4ef7-a0ff-99b415bfffea",
         "campaign_id": "aae576d2-e15a-4dd4-ad06-a88d26dae048",
         "account_reference": "controlled-no-live-account",
-        "connection_scope": "postgresql16-minio-valkey-isolated"
+        "connection_scope": "postgresql16-minio-valkey-isolated-and-dify-live-staging"
       },
       "clauses": [
         {
@@ -56,7 +56,7 @@
           "evidence": [
             {
               "uri": "docs/engineering/execution-packs/pack-08-final-review-evidence.md",
-              "sha256": "4ab895c30375ca228b00212f051d9075bfbad5bcafa9f6311b13135f10ea37be"
+              "sha256": "cf4173a5903d94f92ec8c3528cd1e815e5744d235476e257a147285a95669e85"
             }
           ],
           "not_applicable": null
@@ -80,7 +80,7 @@
           "evidence": [
             {
               "uri": "contracts/openapi/stable/manifest.json",
-              "sha256": "8714e6a8f3f45dcc5fde45d199e16c0c214eee9efdff17a71aa6de5174930508"
+              "sha256": "7a8e0edabc42da3253492474fce561e47921d371f463cd2093124ba802f3339a"
             },
             {
               "uri": "artifacts/migration-cutover/20260725T000608Z/receipt.json",
@@ -96,7 +96,7 @@
           "evidence": [
             {
               "uri": "docs/engineering/execution-packs/pack-08-change-record.md",
-              "sha256": "66683bcbf35c2b1dba3b0e3b0ed40cd46f4499d8a7cc142fe51b45e8b0eea132"
+              "sha256": "7ce0225c297bd68b3cb445c08ab3cc3cbff1c4518a1f4dc6d25519ee070e6ade"
             }
           ],
           "not_applicable": null
@@ -107,8 +107,8 @@
           "outcome": "passed",
           "evidence": [
             {
-              "uri": "artifacts/backup-restore-smoke-authenticated/20260725T035704Z-619020/receipt.json",
-              "sha256": "e25deddf96b97adcd19e0cdc8e947ea4d82114867a58b457307bba86553286c5"
+              "uri": "artifacts/backup-restore-smoke-authenticated/20260727T055722Z-116976/receipt.json",
+              "sha256": "7ace2d57d36ad57c274a277676b5dd082e7d15b8a47f57184af7da7232392659"
             }
           ],
           "not_applicable": null
@@ -136,7 +136,7 @@
           "evidence": [
             {
               "uri": "docs/engineering/execution-packs/pack-08-final-review-evidence.md",
-              "sha256": "4ab895c30375ca228b00212f051d9075bfbad5bcafa9f6311b13135f10ea37be"
+              "sha256": "cf4173a5903d94f92ec8c3528cd1e815e5744d235476e257a147285a95669e85"
             }
           ],
           "not_applicable": null
@@ -151,8 +151,8 @@
               "sha256": "4d27684617749ff60611a8133b1e4c2013de680338266e42c2f63ae155dd0e67"
             },
             {
-              "uri": "artifacts/backup-restore-smoke-authenticated/20260725T035704Z-619020/receipt.json",
-              "sha256": "e25deddf96b97adcd19e0cdc8e947ea4d82114867a58b457307bba86553286c5"
+              "uri": "artifacts/backup-restore-smoke-authenticated/20260727T055722Z-116976/receipt.json",
+              "sha256": "7ace2d57d36ad57c274a277676b5dd082e7d15b8a47f57184af7da7232392659"
             }
           ],
           "not_applicable": null
@@ -164,7 +164,7 @@
           "evidence": [
             {
               "uri": "contracts/openapi/stable/manifest.json",
-              "sha256": "8714e6a8f3f45dcc5fde45d199e16c0c214eee9efdff17a71aa6de5174930508"
+              "sha256": "7a8e0edabc42da3253492474fce561e47921d371f463cd2093124ba802f3339a"
             }
           ],
           "not_applicable": null
@@ -206,23 +206,23 @@
       "evidence": [
         {
           "uri": "docs/engineering/execution-packs/pack-08-final-review-evidence.md",
-          "sha256": "4ab895c30375ca228b00212f051d9075bfbad5bcafa9f6311b13135f10ea37be"
+          "sha256": "cf4173a5903d94f92ec8c3528cd1e815e5744d235476e257a147285a95669e85"
         },
         {
           "uri": "docs/engineering/execution-packs/pack-08-change-record.md",
-          "sha256": "66683bcbf35c2b1dba3b0e3b0ed40cd46f4499d8a7cc142fe51b45e8b0eea132"
+          "sha256": "7ce0225c297bd68b3cb445c08ab3cc3cbff1c4518a1f4dc6d25519ee070e6ade"
         },
         {
           "uri": "docs/engineering/execution-packs/pack-08-external-needs-register.md",
-          "sha256": "f6a38204aece8ae93cd3c8d63af7603a47f2de5b7bda263d78a8ede0b9cc9747"
+          "sha256": "1ae62b59ac9ac63a853b55ce437c03d6423e013fa9dfe9b7ab4d5cd9fde84daf"
         },
         {
           "uri": "artifacts/geo-acceptance/pack-08-final-result.json",
           "sha256": "d82c546b4faa7913822dfaa7aa3fa2123d42faf08d8d1c16198b54fe3e1ed80f"
         },
         {
-          "uri": "artifacts/backup-restore-smoke-authenticated/20260725T035704Z-619020/receipt.json",
-          "sha256": "e25deddf96b97adcd19e0cdc8e947ea4d82114867a58b457307bba86553286c5"
+          "uri": "artifacts/backup-restore-smoke-authenticated/20260727T055722Z-116976/receipt.json",
+          "sha256": "7ace2d57d36ad57c274a277676b5dd082e7d15b8a47f57184af7da7232392659"
         },
         {
           "uri": "artifacts/non-b-fault/20260725T040225Z/receipt.json",
@@ -234,7 +234,7 @@
         },
         {
           "uri": "contracts/openapi/stable/manifest.json",
-          "sha256": "8714e6a8f3f45dcc5fde45d199e16c0c214eee9efdff17a71aa6de5174930508"
+          "sha256": "7a8e0edabc42da3253492474fce561e47921d371f463cd2093124ba802f3339a"
         },
         {
           "uri": "benchmarks/roadmap/performance-profile-v1-non-b.json",
@@ -260,7 +260,14 @@
         "0084_recommendation_stale",
         "0085_recommendation_worker_res",
         "0086_recommendation_summaries",
-        "0087_wfc_report_receipts"
+        "0087_wfc_report_receipts",
+        "0088_worker_keyring_sync",
+        "0089_recommendation_keyring",
+        "0090_prompt_workspace",
+        "0091_mgw_worker_admit",
+        "0092_prompt_workspace_kinds",
+        "0093_dify_workflow_runtime",
+        "0094_dify_published_snapshot"
       ],
       "openapi_contracts": [
         "contracts/openapi/stable/internal.openapi.json",
@@ -277,20 +284,29 @@
         "bing-copilot-surface-parser-release-local-v1"
       ],
       "test_run_ids": [
-        "required-non-live:2317-passed-0-failed-0-skipped",
-        "real-dependency-integration:117-passed-0-failed-0-skipped",
+        "required-non-live:2376-passed-0-failed-0-skipped",
+        "real-dependency-integration:119-passed-0-failed-0-skipped",
         "chromium:46-passed-0-skipped-0-flaky",
-        "architecture:42-passed",
+        "architecture:43-passed",
         "infra-contracts:71-passed",
         "production-network:2-passed",
         "infra-runtime:7-passed",
         "fault-matrix:148-passed-0-failed-0-skipped",
         "geo-inline-20260725035543-611250"
       ],
-      "live_run_ids": [],
-      "result": "All locally controllable non-B implementation, regression, security and usability review gates passed; external live evidence and independent acceptance remain pending.",
+      "live_run_ids": [
+        "knowledge.question.generate:d84a8958-cba3-54b1-ab59-b485bd76feb0",
+        "knowledge.rag.extract:241731bf-d35b-5f82-8e3d-0c706173067d",
+        "placement.generate:2086bf7f-71ae-4745-8c7b-d804aacecf0b",
+        "prompt_simulation.generate:9cd0e8c0-9daf-5e54-bf40-2d5ebeeedd98",
+        "dify-canary:002d5e5c-7937-45f4-b9b2-1c06465d88ff",
+        "dify-canary:2ecc573f-2abc-48ea-84af-43f60e264764",
+        "dify-canary:0d399412-b418-474f-b74a-f8d92c5217c9",
+        "dify-canary:e8e0f09d-ff38-4002-81d3-765529a659bd"
+      ],
+      "result": "All locally controllable non-B implementation, regression, security and usability review gates passed through 0094; four snapshot-bound Dify/DeepSeek business runs, final canaries and outage recovery passed, while external account evidence and independent acceptance remain pending.",
       "deviation": "The implementation is present in a dirty working tree and is not claimed to be contained by the recorded HEAD commit; the final acceptance register binds the exact tree fingerprint. Board B is excluded. Two pre-existing 2026-07-16 plaintext backup directories remain a disclosed residual risk."
     }
   ],
-  "manifest_hash": "d5c662724554099fead2a1a2dc92c07778f9d0b8fb8e87dfca6f11eb114c30ab"
+  "manifest_hash": "78e6ede3dba969dbfed1b81788590bb15687cde3a63d6ba71f2fe3f1e1e65d9f"
 }

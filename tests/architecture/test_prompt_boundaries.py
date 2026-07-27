@@ -25,10 +25,13 @@ PRODUCT_FILES = (
     "memory.py",
     "postgres.py",
     "postgres_api.py",
+    "postgres_api_support.py",
+    "postgres_connection.py",
     "postgres_read.py",
     "postgres_repository.py",
     "postgres_serialization.py",
     "postgres_uow.py",
+    "postgres_workspace_api.py",
 )
 
 
@@ -58,6 +61,7 @@ def test_prompt_postgres_adapter_is_an_explicit_infrastructure_boundary() -> Non
     adapter_files = (
         "postgres.py",
         "postgres_api.py",
+        "postgres_connection.py",
         "postgres_repository.py",
         "postgres_uow.py",
     )
@@ -70,6 +74,16 @@ def test_prompt_postgres_adapter_is_an_explicit_infrastructure_boundary() -> Non
     for name in DOMAIN_FILES:
         top_level = {value.split(".")[0] for value in _imports(PROMPTS / name)}
         assert "psycopg" not in top_level, name
+
+
+def test_prompt_repository_uses_concrete_connection_helpers_before_mixins() -> None:
+    from geo_core.prompts.postgres_connection import PromptPostgresConnectionMixin
+    from geo_core.prompts.postgres_repository import PsycopgPromptProgramRepository
+
+    assert (
+        PsycopgPromptProgramRepository._optional
+        is PromptPostgresConnectionMixin._optional
+    )
 
 
 def test_prompt_program_domain_dependencies_point_inward() -> None:

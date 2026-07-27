@@ -37,6 +37,14 @@ from geo_core.prompts.test_execution_contracts import (
 from geo_core.prompts.test_runtime_selector import (
     ApprovedCatalogPromptTestRuntimeSelector,
 )
+from geo_core.prompts.workspace import (
+    PromptFlowWorkspaceItem,
+    PromptRenderPreview,
+    PromptSuiteRunReceipt,
+    PromptTestRunSummary,
+    PromptWorkingDraft,
+    PublishedPromptDraft,
+)
 
 
 @dataclass(frozen=True)
@@ -58,6 +66,72 @@ class PromptProgramPageRead:
 
 
 class PromptProgramApi(Protocol):
+    def list_flow_workspace(
+        self,
+        principal: AccessPrincipal,
+        *,
+        project_id: UUID,
+    ) -> tuple[PromptFlowWorkspaceItem, ...]: ...
+
+    def get_working_draft(
+        self,
+        principal: AccessPrincipal,
+        *,
+        project_id: UUID,
+        program_id: UUID,
+    ) -> PromptWorkingDraft: ...
+
+    def save_working_draft(
+        self,
+        principal: AccessPrincipal,
+        *,
+        project_id: UUID,
+        program_id: UUID,
+        display_name: str,
+        system_template: str,
+        user_template: str,
+        expected_revision: int,
+    ) -> PromptWorkingDraft: ...
+
+    def render_working_draft(
+        self,
+        principal: AccessPrincipal,
+        *,
+        project_id: UUID,
+        program_id: UUID,
+        fixture_id: str | None,
+    ) -> PromptRenderPreview: ...
+
+    def enqueue_working_draft_suite(
+        self,
+        principal: AccessPrincipal,
+        *,
+        project_id: UUID,
+        program_id: UUID,
+        runtime_selection_id: UUID,
+        expected_revision: int,
+        idempotency_key: str,
+    ) -> PromptSuiteRunReceipt: ...
+
+    def list_working_draft_tests(
+        self,
+        principal: AccessPrincipal,
+        *,
+        project_id: UUID,
+        program_id: UUID,
+        limit: int,
+    ) -> tuple[PromptTestRunSummary, ...]: ...
+
+    def publish_working_draft(
+        self,
+        principal: AccessPrincipal,
+        *,
+        project_id: UUID,
+        program_id: UUID,
+        expected_revision: int,
+        idempotency_key: str,
+    ) -> PublishedPromptDraft: ...
+
     def list_test_runtimes(
         self,
         principal: AccessPrincipal,

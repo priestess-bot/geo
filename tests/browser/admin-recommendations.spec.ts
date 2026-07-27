@@ -36,8 +36,8 @@ test("M5-REC-WEB-01: approval creates only an unstarted draft and remains respon
 
   const approvalResult = page.getByRole("status").filter({ hasText: "已批准并仅创建未启动草稿" });
   await expect(approvalResult).toContainText("仅创建未启动草稿");
-  await expect(page.getByRole("heading", { level: 3, name: "Recommendation v3" })).toBeVisible();
-  await expect(page.getByText("queued: false · executed: false · published: false", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 3, name: "建议 v3" })).toBeVisible();
+  await expect(page.getByText("已排队：false · 已执行：false · 已发布：false", { exact: true })).toBeVisible();
   const logged = await (await request.get(`${FIXTURE_API}/__requests`)).json() as Array<{ path: string }>;
   expect(logged.some((entry) => entry.path.endsWith(`/${RECOMMENDATION_ID}/approve`))).toBe(true);
   expect(logged.some((entry) => /\/(execute|publish)$/.test(entry.path))).toBe(false);
@@ -54,11 +54,11 @@ test("M5-REC-WEB-02: partial 503 keeps selected evidence readable but disables c
   await setMode(request, "partial-unavailable");
   await page.goto(`/projects/${PROJECT_ID}?tab=recommendations&recommendation_id=${RECOMMENDATION_ID}`);
 
-  await expect(page.getByRole("alert").filter({ hasText: "Recommendation 列表加载失败" })).toContainText("503");
-  await expect(page.getByRole("heading", { level: 3, name: "Recommendation v2" })).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: "建议列表加载失败" })).toContainText("503");
+  await expect(page.getByRole("heading", { level: 3, name: "建议 v2" })).toBeVisible();
   await expect(page.getByRole("button", { name: "批准并创建草稿" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "记录当前证据审核" })).toBeDisabled();
-  await expect(page.getByRole("button", { name: "拒绝 Recommendation" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "拒绝建议" })).toBeDisabled();
 });
 
 test("M5-REC-WEB-03: analyst cannot perform approval commands", async ({ page, request }) => {
@@ -68,7 +68,7 @@ test("M5-REC-WEB-03: analyst cannot perform approval commands", async ({ page, r
   await expect(page.getByText("分析师 当前角色", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "批准并创建草稿" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "记录当前证据审核" })).toBeDisabled();
-  await expect(page.getByRole("button", { name: "拒绝 Recommendation" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "拒绝建议" })).toBeDisabled();
 });
 
 test("M5-REC-WEB-04: generation uses approved Prompt and runtime catalogs", async ({ page, request }, testInfo) => {
@@ -76,7 +76,7 @@ test("M5-REC-WEB-04: generation uses approved Prompt and runtime catalogs", asyn
   await page.goto(`/projects/${PROJECT_ID}?tab=recommendations&recommendation_id=${RECOMMENDATION_ID}`);
 
   await expect(page.getByRole("heading", { level: 3, name: "重新生成建议" })).toBeVisible();
-  await expect(page.getByLabel("Recommendation Prompt")).toHaveValue(
+  await expect(page.getByLabel("建议 Prompt")).toHaveValue(
     "00000000-0000-4000-8000-000000000811"
   );
   await expect(page.getByLabel("批准的模型运行时")).toHaveValue(

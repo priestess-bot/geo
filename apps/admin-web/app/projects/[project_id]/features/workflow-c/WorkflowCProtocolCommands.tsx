@@ -206,7 +206,7 @@ function CreateHidden({ commandKey, projectId }: { commandKey: string; projectId
 
 function SupersedesSelect({ disabled, items }: { disabled: boolean; items: Array<MetricProtocol | StatisticalProtocol> }) {
   return (
-    <label><span>替代版本</span><select disabled={disabled} name="supersedes_protocol_id"><option value="">新系列</option>{items.filter((item) => item.status === "approved" || item.status === "retired").map((item) => <option key={item.id} value={item.id}>v{item.version} · {item.status} · {shortId(item.id)}</option>)}</select></label>
+    <label><span>替代版本</span><select disabled={disabled} name="supersedes_protocol_id"><option value="">新系列</option>{items.filter((item) => item.status === "approved" || item.status === "retired").map((item) => <option key={item.id} value={item.id}>v{item.version} · {protocolStatusLabel(item.status)} · {shortId(item.id)}</option>)}</select></label>
   );
 }
 
@@ -246,7 +246,7 @@ function ProtocolLifecycle({
       <div>
         <strong>{label} · v{protocol.version}</strong>
         <code>{protocol.id}</code>
-        <span>{protocol.status}</span>
+        <span>{protocolStatusLabel(protocol.status)}</span>
       </div>
       {operations.map((operation) => {
         const makerBlocked = operation === "approve" && protocol.created_by === actorId;
@@ -278,6 +278,15 @@ function operationLabel(operation: "submit" | "approve" | "retire"): string {
   if (operation === "submit") return "提交复核";
   if (operation === "approve") return "批准协议";
   return "退役协议";
+}
+
+function protocolStatusLabel(value: MetricProtocol["status"] | StatisticalProtocol["status"]): string {
+  return {
+    draft: "草稿",
+    in_review: "复核中",
+    approved: "已批准",
+    retired: "已退役"
+  }[value];
 }
 
 function shortId(value: string): string {

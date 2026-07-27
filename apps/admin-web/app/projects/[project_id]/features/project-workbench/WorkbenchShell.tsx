@@ -125,7 +125,7 @@ export function WorkbenchShell({
             currentRole={members.currentRole}
             data={promptData}
             projectId={project.id}
-          /> : <EmptyState text="正在准备 Prompt 程序工作台。" />
+          /> : <EmptyState text="正在准备 Dify 工作流看板。" />
         ) : null}
         {activeTab === "secrets" ? (
           secretData ? <SecretStoreWorkspace

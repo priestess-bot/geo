@@ -64,27 +64,27 @@ test("M1-SYNTH-WEB-01: Admin admits a server-owned Style Collection job and obse
   await expect(page.getByText("synthetic = true", { exact: true })).toBeVisible();
   await expect(page.getByText("test_only = true", { exact: true })).toBeVisible();
   await expect(page.getByText("publication_eligible = false", { exact: true })).toBeVisible();
-  const warnings = page.getByRole("region", { name: "Warning 数量、占比与分层" });
+  const warnings = page.getByRole("region", { name: "警告数量、占比与分层" });
   await expect(warnings).toContainText("2");
   await expect(warnings).toContainText("5");
   await expect(warnings).toContainText("40%");
   await expect(warnings).toContainText("derived_or_unknown");
   await expect(warnings.getByText("guided_scenario", { exact: true })).toBeVisible();
-  await expect(page.getByRole("cell", { name: "yes", exact: true })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "是", exact: true })).toBeVisible();
 
   const admissionSection = page.locator("details").filter({
-    has: page.getByText("排队自动 Style Collection", { exact: true })
+    has: page.getByText("排队自动风格采集", { exact: true })
   });
   await admissionSection.locator("summary").click();
   const admissionForm = admissionSection.locator("form");
-  await expect(admissionForm.getByLabel("Style Source")).toHaveValue(SOURCE_REVISION_ID);
-  await expect(admissionForm.getByLabel("Approved adapter")).toBeEnabled();
-  await expect(admissionForm.getByLabel("Login Secret Reference")).toHaveValue("");
+  await expect(admissionForm.getByLabel("风格来源")).toHaveValue(SOURCE_REVISION_ID);
+  await expect(admissionForm.getByLabel("已批准适配器")).toBeEnabled();
+  await expect(admissionForm.getByLabel("登录密钥引用")).toHaveValue("");
   await expect(admissionForm.locator('input[name="job_id"]')).toHaveCount(0);
   await expect(admissionForm.locator('input[name="resource_id"]')).toHaveCount(0);
   await admissionForm.getByRole("button", { name: "批准并排队采集" }).click();
   await expect(admissionForm.getByRole("status")).toContainText("Style Collection 已通过授权与 live canary 门禁并排队。");
-  const resultLink = admissionForm.getByRole("link", { name: "打开 Job" });
+  const resultLink = admissionForm.getByRole("link", { name: "打开任务" });
   const resultHref = await resultLink.getAttribute("href");
   const admittedJobId = new URL(resultHref || "", "http://fixture.invalid")
     .searchParams.get("synthetic_job_id");
@@ -97,7 +97,7 @@ test("M1-SYNTH-WEB-01: Admin admits a server-owned Style Collection job and obse
   await resultLink.click();
   await expect(page).toHaveURL(new RegExp(`synthetic_job_id=${admittedJobId}`));
   await expect(page.getByText("style_collection", { exact: true })).toBeVisible();
-  await expect(page.getByText("queued", { exact: true })).toBeVisible();
+  await expect(page.getByText("排队中", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "取消任务" }).click();
   await expect(page.getByRole("status").last()).toContainText("任务取消已记录");
@@ -126,14 +126,14 @@ test("M1-SYNTH-WEB-01: Admin admits a server-owned Style Collection job and obse
 test("M1-SYNTH-WEB-02: empty and unavailable projections fail closed", async ({ page, request }) => {
   await setMode(request, "empty");
   await page.goto(`/projects/${PROJECT_ID}?tab=synthetic-lab`);
-  await expect(page.getByText("暂无 Style Source。", { exact: true })).toBeVisible();
+  await expect(page.getByText("暂无风格来源。", { exact: true })).toBeVisible();
   await expect(page.getByText("暂无可分层 warning evidence；不会将缺失证据记为 0。", { exact: true })).toBeVisible();
 
   await setMode(request, "unavailable");
   await page.reload();
   await expect(page.getByRole("alert").filter({ hasText: "合成测评实验室暂不可用" }).first()).toBeVisible();
   const admissionSection = page.locator("details").filter({
-    has: page.getByText("排队自动 Style Collection", { exact: true })
+    has: page.getByText("排队自动风格采集", { exact: true })
   });
   await admissionSection.locator("summary").click();
   await expect(admissionSection.getByRole("button", { name: "批准并排队采集" })).toBeDisabled();
@@ -157,7 +157,7 @@ test("M3-SYNTH-WEB-01: Corpus approval and three-arm jobs use selector-only admi
   const candidate = page.getByRole("group", {
     name: "从通过或 Warning 的 Review 结果冻结候选 Corpus"
   });
-  await candidate.getByLabel("Completed Review Jobs").selectOption([
+  await candidate.getByLabel("已完成测评任务").selectOption([
     COMPLETED_REVIEW_JOB_A_ID,
     COMPLETED_REVIEW_JOB_B_ID
   ]);
@@ -167,7 +167,7 @@ test("M3-SYNTH-WEB-01: Corpus approval and three-arm jobs use selector-only admi
   );
 
   const approval = page.getByRole("group", { name: "批准候选 Corpus" });
-  await expect(approval.getByLabel("Candidate Corpus")).toHaveValue(CANDIDATE_CORPUS_JOB_ID);
+  await expect(approval.getByLabel("候选语料")).toHaveValue(CANDIDATE_CORPUS_JOB_ID);
   await approval.getByRole("button", { name: "批准并冻结" }).click();
   await expect(approval.locator("..").getByRole("status")).toContainText(
     "Corpus 人工批准已排队"
@@ -176,14 +176,14 @@ test("M3-SYNTH-WEB-01: Corpus approval and three-arm jobs use selector-only admi
   const experiment = page.getByRole("group", {
     name: "运行 baseline / current / candidate 三臂配对实验"
   });
-  await expect(experiment.getByLabel("Question Set")).toHaveValue(QUESTION_SET_ID);
-  await expect(experiment.getByLabel("Current approved Corpus")).toHaveValue(
+  await expect(experiment.getByLabel("问题集")).toHaveValue(QUESTION_SET_ID);
+  await expect(experiment.getByLabel("当前已批准语料")).toHaveValue(
     APPROVED_CORPUS_JOB_ID
   );
-  await expect(experiment.getByLabel("Candidate Corpus")).toHaveValue(
+  await expect(experiment.getByLabel("候选语料")).toHaveValue(
     CANDIDATE_CORPUS_JOB_ID
   );
-  await expect(experiment.getByLabel("Minimum valid pair ratio")).toHaveValue("0.8");
+  await expect(experiment.getByLabel("最小有效配对比例")).toHaveValue("0.8");
   await experiment.getByRole("button", { name: "运行三臂实验" }).click();
   await expect(experiment.locator("..").getByRole("status")).toContainText(
     "三臂配对 Offline Experiment 已冻结并排队。"
@@ -231,7 +231,7 @@ test("M1-SYNTH-GOV-UX-01: governance forms start neutral and approvals require c
     has: page.getByText("决策、撤销与重评", { exact: true })
   });
   await authorizationCommands.locator("summary").click();
-  const authorizationDecision = authorizationCommands.getByLabel("Authorization 决策");
+  const authorizationDecision = authorizationCommands.getByLabel("授权决定");
   const authorizationSubmit = authorizationCommands.getByRole("button", {
     name: "记录授权决策"
   });
@@ -245,10 +245,10 @@ test("M1-SYNTH-GOV-UX-01: governance forms start neutral and approvals require c
   for (const label of [
     "证据引用",
     "自动风格采集",
-    "Requests / period",
-    "Period seconds",
-    "Max concurrency",
-    "Expires at"
+    "每周期请求数",
+    "周期秒数",
+    "最大并发",
+    "失效时间"
   ]) {
     await expect(authorizationCommands.getByLabel(label)).toHaveAttribute("required", "");
   }
@@ -257,7 +257,7 @@ test("M1-SYNTH-GOV-UX-01: governance forms start neutral and approvals require c
   expect((await requestLog(request)).some((entry) => entry.path.endsWith("/decision"))).toBe(false);
   await page.screenshot({ path: testInfo.outputPath("synthetic-governance-neutral.png"), fullPage: false });
 
-  const profileDecision = page.getByLabel("Profile 审批决定");
+  const profileDecision = page.getByLabel("风格画像审批决定");
   await expect(profileDecision).toHaveValue("");
   await expect(page.getByRole("button", { name: "记录决定" })).toBeDisabled();
 
@@ -276,8 +276,8 @@ test("M1-SYNTH-GOV-UX-01: governance forms start neutral and approvals require c
     has: page.getByText("决策、撤销与重评", { exact: true })
   });
   await analystAuthorization.locator("summary").click();
-  await expect(analystAuthorization.getByLabel("Authorization 决策")).toBeDisabled();
-  await expect(page.getByLabel("Profile 审批决定")).toBeDisabled();
+  await expect(analystAuthorization.getByLabel("授权决定")).toBeDisabled();
+  await expect(page.getByLabel("风格画像审批决定")).toBeDisabled();
   await expect(page.getByRole("button", { name: "记录决定" })).toBeDisabled();
   expect(runtimeErrors).toEqual([]);
 });
