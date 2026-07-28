@@ -78,12 +78,22 @@ class GenerationApiStub:
             idempotency_key_hash=idempotency_hash("generation:api"),
         )
         self.selection = None
+        self.recovery_of_attempt_id = None
+        self.dify_reconciliation_token = None
 
     def enqueue_generation_job(
-        self, principal: AccessPrincipal, *, selection, idempotency_key: str
+        self,
+        principal: AccessPrincipal,
+        *,
+        selection,
+        idempotency_key: str,
+        recovery_of_attempt_id: UUID | None = None,
+        dify_reconciliation_token: str | None = None,
     ) -> GenerationExecution:
         del principal, idempotency_key
         self.selection = selection
+        self.recovery_of_attempt_id = recovery_of_attempt_id
+        self.dify_reconciliation_token = dify_reconciliation_token
         return GenerationExecution(self.job, None)
 
 
@@ -223,6 +233,26 @@ def test_generation_enqueue_accepts_only_selectors_and_returns_frozen_lineage() 
     assert api.selection is not None
     assert api.selection.project_id == PROJECT_ID
 
+    recovery_attempt_id = uuid4()
+    recovery = deepcopy(payload)
+    recovery["recovery_of_attempt_id"] = str(recovery_attempt_id)
+    recovery["dify_reconciliation_token"] = "a" * 64
+    with TestClient(app) as client:
+        recovered = client.post(
+            f"/v1/projects/{PROJECT_ID}/recommendations/generation-jobs",
+            headers={"Idempotency-Key": "generation:api:recovery"},
+            json=recovery,
+        )
+        missing_token = client.post(
+            f"/v1/projects/{PROJECT_ID}/recommendations/generation-jobs",
+            headers={"Idempotency-Key": "generation:api:missing-token"},
+            json={**payload, "recovery_of_attempt_id": str(recovery_attempt_id)},
+        )
+    assert recovered.status_code == 202
+    assert api.recovery_of_attempt_id == recovery_attempt_id
+    assert api.dify_reconciliation_token == "a" * 64
+    assert missing_token.status_code == 422
+
     forged = deepcopy(payload)
     forged["evidence_selectors"][0]["valid"] = True
     with TestClient(app) as client:
@@ -232,6 +262,18 @@ def test_generation_enqueue_accepts_only_selectors_and_returns_frozen_lineage() 
             json=forged,
         )
     assert rejected.status_code == 422
+
+    oversized = deepcopy(payload)
+    oversized["evidence_selectors"] = [
+        {"kind": "observation", "resource_id": f"observation:{index}"} for index in range(101)
+    ]
+    with TestClient(app) as client:
+        oversized_rejected = client.post(
+            f"/v1/projects/{PROJECT_ID}/recommendations/generation-jobs",
+            headers={"Idempotency-Key": "generation:too-many-selectors"},
+            json=oversized,
+        )
+    assert oversized_rejected.status_code == 422
 
     raw_model = deepcopy(payload)
     raw_model["model"] = {

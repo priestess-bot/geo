@@ -25,6 +25,7 @@ from geo_core.model_gateway.runtime_catalog import (
     NewModelCallJobSelection,
 )
 from geo_core.prompts.test_execution_contracts import (
+    PROMPT_TEST_MAXIMUM_PAID_CALLS,
     PromptTestExecutionError,
     PromptTestRouteRequest,
 )
@@ -159,7 +160,7 @@ def _selection() -> NewModelCallJobSelection:
         allowed_providers=frozenset({"openai"}),
         allowed_adapter_release_ids=frozenset({adapter.adapter_release_id}),
         policy_version_id=uuid4(),
-        maximum_paid_calls=5,
+        maximum_paid_calls=PROMPT_TEST_MAXIMUM_PAID_CALLS,
         maximum_concurrent_calls=1,
     )
     return NewModelCallJobSelection(

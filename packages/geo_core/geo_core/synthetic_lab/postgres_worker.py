@@ -49,6 +49,8 @@ from geo_core.synthetic_lab.model_result_recovery import (
     ProviderArtifactSyntheticRecoveryAdapter,
 )
 from geo_core.model_gateway.artifact_recovery import ProviderArtifactRecoveryPort
+from geo_core.workflow_runtime import PostgresWorkflowRuntimeRepository, WorkflowExecutor
+from geo_core.synthetic_lab.dify_execution import HybridSyntheticModelCallExecutor
 
 
 class SyntheticJobHandler(Protocol):
@@ -108,6 +110,7 @@ def build_governed_synthetic_worker_handlers(
     child_repository: SyntheticChildExecutionRepository,
     model_runtime: SyntheticModelRuntimePort,
     result_recovery: ProviderArtifactRecoveryPort,
+    workflow_executor: WorkflowExecutor | None = None,
     lease_for: timedelta,
 ) -> Mapping[str, SyntheticJobHandler]:
     """Build production handlers with claim-time Model Gateway admission only."""
@@ -120,9 +123,12 @@ def build_governed_synthetic_worker_handlers(
         child_calls=child_calls,
         child_lifecycle=child_lifecycle,
         child_repository=child_repository,
-        child_model_gateway=GovernedSyntheticModelCallExecutor(
-            runtime=model_runtime,
-            result_recovery=result_recovery,
+        child_model_gateway=HybridSyntheticModelCallExecutor(
+            native=GovernedSyntheticModelCallExecutor(
+                runtime=model_runtime,
+                result_recovery=result_recovery,
+            ),
+            workflows=workflow_executor,
         ),
         lease_for=lease_for,
     )
@@ -137,6 +143,7 @@ def build_synthetic_production_worker_handlers(
     object_store: ChildTaskObjectStore,
     synthetic_artifact_keyring_path: str,
     lease_for: timedelta,
+    workflow_executor: WorkflowExecutor | None = None,
 ) -> Mapping[str, SyntheticJobHandler]:
     """Compose every real dependency required by non-browser Synthetic jobs."""
 
@@ -168,11 +175,19 @@ def build_synthetic_production_worker_handlers(
         connection_factory=connect,
         runtime_inputs=PostgresSyntheticRuntimeInputPort(connect),
         prompts=prompts,
-        child_calls=SyntheticChildModelCallCoordinator(children),
+        child_calls=SyntheticChildModelCallCoordinator(
+            children,
+            workflow_releases=(
+                PostgresWorkflowRuntimeRepository(store)
+                if workflow_executor is not None
+                else None
+            ),
+        ),
         child_lifecycle=children,
         child_repository=children,
         model_runtime=model_runtime,
         result_recovery=provider_result_recovery,
+        workflow_executor=workflow_executor,
         lease_for=lease_for,
     )
 

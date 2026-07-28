@@ -19,6 +19,17 @@
   justify-content: space-between;
 }
 
+.difyHeader > div,
+.difyFlowHeader > div,
+.difyTitleLine h3 {
+  min-width: 0;
+}
+
+.difyTitleLine {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
 .difyHeader p {
   color: #17657a;
   font-size: 11px;
@@ -63,6 +74,14 @@
   margin: 5px 0 0;
 }
 
+.staticWorkflowNote {
+  color: #607481;
+  display: block;
+  font-size: 11px;
+  line-height: 1.5;
+  margin-top: 8px;
+}
+
 .difyFlowHeader a,
 .refreshLink {
   border: 1px solid #9fb4bf;
@@ -73,6 +92,133 @@
   font-weight: 800;
   padding: 7px 10px;
   text-decoration: none;
+}
+
+.unboundDify {
+  color: #6c7880;
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 8px 0;
+}
+
+.workflowBadges {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.runtimeBadge,
+.syncBadge {
+  border: 1px solid #c8d3d9;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.3;
+  padding: 3px 7px;
+  width: fit-content;
+}
+
+.workflowContract {
+  border-block: 1px solid #e2e8ec;
+  display: grid;
+  gap: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
+.workflowContract > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 12px;
+}
+
+.workflowContract > div + div {
+  border-left: 1px solid #e2e8ec;
+}
+
+.workflowContract dt {
+  color: #607481;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.workflowContract dd {
+  color: #263a46;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.runtimeGuidance {
+  background: var(--guidance-background);
+  border-left: 3px solid var(--guidance-border);
+  color: var(--guidance-color);
+  display: grid;
+  font-size: 12px;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.runtimeGuidance > div,
+.runtimeGuidance p {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+}
+
+.runtimeGuidance span {
+  line-height: 1.5;
+}
+
+.runtimeGuidance small {
+  border-top: 1px solid color-mix(in srgb, var(--guidance-border) 38%, transparent);
+  overflow-wrap: anywhere;
+  padding-top: 7px;
+}
+
+.runtimeGuidance_ready {
+  --guidance-background: #eff8f3;
+  --guidance-border: #4a9a69;
+  --guidance-color: #245d3b;
+}
+
+.runtimeGuidance_warning {
+  --guidance-background: #fff8e8;
+  --guidance-border: #b2862f;
+  --guidance-color: #684f1b;
+}
+
+.runtimeGuidance_blocked {
+  --guidance-background: #fff0ed;
+  --guidance-border: #b94a3d;
+  --guidance-color: #7f2c24;
+}
+
+.runtimeGuidance_migration {
+  --guidance-background: #f3f0f8;
+  --guidance-border: #8067a1;
+  --guidance-color: #57436f;
+}
+
+.runtimeGuidance_idle {
+  --guidance-background: #eef3f6;
+  --guidance-border: #78909c;
+  --guidance-color: #526674;
+}
+
+.runtimeBadge.runtimeGuidance_ready,
+.runtimeBadge.runtimeGuidance_warning,
+.runtimeBadge.runtimeGuidance_blocked,
+.runtimeBadge.runtimeGuidance_migration,
+.runtimeBadge.runtimeGuidance_idle {
+  background: var(--guidance-background);
+  border-color: var(--guidance-border);
+  color: var(--guidance-color);
 }
 
 .difyPromptNode {
@@ -129,14 +275,6 @@
   word-break: break-word;
 }
 
-.syncBadge {
-  border: 1px solid #c8d3d9;
-  border-radius: 999px;
-  font-size: 10px;
-  font-weight: 800;
-  padding: 3px 7px;
-}
-
 .sync_current {
   background: #eff8f3;
   border-color: #b9dfc9;
@@ -149,13 +287,18 @@
   color: #6d5116;
 }
 
+.sync_drifted {
+  background: #fff0ed;
+  border-color: #e5a89e;
+  color: #8b2f24;
+}
+
 .sync_cached,
 .sync_not_observed {
   background: #eef3f6;
   color: #526674;
 }
 
-.syncWarning,
 .emptyPrompt {
   border-left: 3px solid #b2862f;
   color: #684f1b;
@@ -165,18 +308,10 @@
   padding: 9px 11px;
 }
 
-.syncWarning {
-  background: #fff8e8;
-}
-
 .emptyPrompt {
   background: #f7fafc;
   border-color: #78909c;
   color: #526674;
-}
-
-.syncWarning small {
-  overflow-wrap: anywhere;
 }
 
 .difyDetails {
@@ -226,15 +361,38 @@
 
 @media (max-width: 720px) {
   .difyHeader,
-  .difyFlowHeader {
+  .difyFlowHeader,
+  .difyTitleLine {
     align-items: flex-start;
     flex-direction: column;
   }
 
+  .difyFlowHeader > div,
+  .difyOpenLink,
+  .workflowBadges {
+    max-width: 100%;
+    width: 100%;
+  }
+
+  .difyOpenLink {
+    box-sizing: border-box;
+    text-align: center;
+  }
+
+  .workflowBadges {
+    justify-content: flex-start;
+  }
+
   .promptMessages,
   .variableGrid,
-  .snapshotMeta {
+  .snapshotMeta,
+  .workflowContract {
     grid-template-columns: 1fr;
+  }
+
+  .workflowContract > div + div {
+    border-left: 0;
+    border-top: 1px solid #e2e8ec;
   }
 
   .promptMessages pre {

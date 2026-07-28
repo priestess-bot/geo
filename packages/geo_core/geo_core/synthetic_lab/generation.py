@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import TypeAlias
 from uuid import UUID
 
 from geo_core.synthetic_lab.domain import (
@@ -102,6 +103,89 @@ class FrozenCallLineage(SyntheticOnly):
 
 
 @dataclass(frozen=True, kw_only=True)
+class FrozenWorkflowCallLineage(SyntheticOnly):
+    """Inputs and Dify identities frozen for one completed workflow call."""
+
+    project_id: UUID
+    review_run_id: UUID
+    review_suite_version_id: UUID
+    review_suite_hash: str
+    review_case_id: UUID
+    review_case_hash: str
+    program_kind: str
+    prompt_release_id: UUID
+    prompt_release_hash: str
+    profile_version_id: UUID
+    profile_hash: str
+    fact_snapshot_id: UUID
+    fact_snapshot_hash: str
+    model_policy_hash: str
+    workflow_attempt_id: UUID
+    workflow_release_id: UUID
+    workflow_release_hash: str
+    provider: str
+    configured_model: str
+    reported_model: str
+    model_identity_hash: str
+    request_hash: str
+    response_hash: str
+    published_snapshot_id: UUID | None = None
+    published_snapshot_hash: str | None = None
+
+    def __post_init__(self) -> None:
+        for uuid_value, label in (
+            (self.project_id, "call Project ID"),
+            (self.review_run_id, "call Review Run ID"),
+            (self.review_suite_version_id, "call Review Suite version ID"),
+            (self.review_case_id, "call Review Case ID"),
+            (self.prompt_release_id, "call Prompt Release ID"),
+            (self.profile_version_id, "call Style Profile version ID"),
+            (self.fact_snapshot_id, "call Fact snapshot ID"),
+            (self.workflow_attempt_id, "workflow attempt ID"),
+            (self.workflow_release_id, "Workflow Release ID"),
+        ):
+            _require_uuid(uuid_value, label)
+        for hash_value, label in (
+            (self.review_suite_hash, "Review Suite hash"),
+            (self.review_case_hash, "Review Case hash"),
+            (self.prompt_release_hash, "Prompt Release hash"),
+            (self.profile_hash, "Style Profile hash"),
+            (self.fact_snapshot_hash, "Fact snapshot hash"),
+            (self.model_policy_hash, "model policy hash"),
+            (self.workflow_release_hash, "Workflow Release hash"),
+            (self.model_identity_hash, "model identity hash"),
+            (self.request_hash, "workflow request hash"),
+            (self.response_hash, "workflow response hash"),
+        ):
+            _require_hash(hash_value, label)
+        if self.program_kind not in LAB_PROGRAM_KINDS:
+            raise SyntheticLabContractError(
+                f"unsupported synthetic-lab Prompt program: {self.program_kind!r}"
+            )
+        for text_value, label in (
+            (self.provider, "workflow provider"),
+            (self.configured_model, "configured model"),
+            (self.reported_model, "reported model"),
+        ):
+            _require_text(text_value, label)
+        if self.provider != "dify":
+            raise SyntheticLabContractError("workflow call lineage provider must be Dify")
+        if (self.published_snapshot_id is None) != (self.published_snapshot_hash is None):
+            raise SyntheticLabContractError(
+                "Dify published snapshot requires both identity and hash"
+            )
+        if self.published_snapshot_id is not None:
+            _require_uuid(self.published_snapshot_id, "Dify published snapshot")
+            _require_hash(
+                self.published_snapshot_hash or "",
+                "Dify published snapshot",
+            )
+
+
+FrozenExecutionLineage: TypeAlias = FrozenCallLineage | FrozenWorkflowCallLineage
+
+
+@dataclass(frozen=True, kw_only=True)
 class GeneratedCandidate(SyntheticOnly):
     id: UUID
     project_id: UUID
@@ -140,7 +224,7 @@ class GenerationBatch(SyntheticOnly):
     kind: GenerationBatchKind
     scenario_mode: ScenarioMode
     creative_reference: str | None
-    call_lineage: FrozenCallLineage
+    call_lineage: FrozenExecutionLineage
     candidates: tuple[GeneratedCandidate, ...]
 
     def __post_init__(self) -> None:
@@ -221,7 +305,9 @@ _FROZEN_CONTEXT_FIELDS = (
 )
 
 
-def assert_same_frozen_context(*lineages: FrozenCallLineage) -> FrozenCallLineage:
+def assert_same_frozen_context(
+    *lineages: FrozenExecutionLineage,
+) -> FrozenExecutionLineage:
     if not lineages:
         raise SyntheticLabContractError("frozen context check requires model-call lineage")
     first = lineages[0]
@@ -235,7 +321,7 @@ def assert_same_frozen_context(*lineages: FrozenCallLineage) -> FrozenCallLineag
     return first
 
 
-def assert_call_lineage_for_case(case: ReviewCase, lineage: FrozenCallLineage) -> None:
+def assert_call_lineage_for_case(case: ReviewCase, lineage: FrozenExecutionLineage) -> None:
     assert_same_project(case, lineage)
     assert_synthetic_boundary(case, lineage)
     if (
@@ -285,7 +371,7 @@ def assert_generation_history(
 
 
 def assert_fact_snapshot_current(
-    lineage: FrozenCallLineage,
+    lineage: FrozenExecutionLineage,
     *,
     current_snapshot_id: UUID,
     current_snapshot_hash: str,
@@ -307,6 +393,8 @@ __all__ = [
     "DEFAULT_CANDIDATE_COUNT",
     "MAX_REGENERATION_BATCHES",
     "FrozenCallLineage",
+    "FrozenExecutionLineage",
+    "FrozenWorkflowCallLineage",
     "GeneratedCandidate",
     "GenerationBatch",
     "GenerationBatchKind",

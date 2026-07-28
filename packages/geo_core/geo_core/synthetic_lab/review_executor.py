@@ -20,15 +20,18 @@ from geo_core.synthetic_lab.execution_contracts import (
     ReviewCaseRunOutput,
     ReviewCaseRunTask,
     SyntheticExecutionError,
+    SyntheticExecutionResult,
     SyntheticModelCallPort,
     SyntheticModelInvocation,
     SyntheticModelResult,
     SyntheticPromptResolverPort,
+    SyntheticWorkflowResult,
 )
 from geo_core.synthetic_lab.generation import GeneratedCandidate, GenerationBatch, GenerationBatchKind
 from geo_core.synthetic_lab.review_execution_support import (
     claim_assessments as _claim_assessments,
     common_review_input as _common_input,
+    conflict_check_claims as _conflict_check_claims,
     conflict_issue_codes as _conflict_issue_codes,
     evidence_refs as _evidence_refs,
     frozen_call_lineage as _lineage,
@@ -72,7 +75,7 @@ class ReviewCaseExecutor:
         task: ReviewCaseRunTask,
         checkpoint: ExecutionCheckpoint,
     ) -> ReviewCaseRunOutput:
-        model_calls: list[UUID] = []
+        model_calls: list[SyntheticExecutionResult] = []
         evaluations: list[CandidateEvaluation] = []
         revisions: list[CandidateRevision] = []
         initial_batch, initial_text = self._generate_batch(
@@ -190,7 +193,7 @@ class ReviewCaseExecutor:
         task: ReviewCaseRunTask,
         batch_number: int,
         checkpoint: ExecutionCheckpoint,
-        model_calls: list[UUID],
+        model_calls: list[SyntheticExecutionResult],
     ) -> tuple[GenerationBatch, dict[UUID, str]]:
         kind = GenerationBatchKind.INITIAL if batch_number == 1 else GenerationBatchKind.REGENERATED
         scenario = "; ".join((task.case.persona, task.case.use_case, task.case.subject))
@@ -213,7 +216,7 @@ class ReviewCaseExecutor:
             step_key=f"generation:batch:{batch_number}",
             checkpoint=checkpoint,
         )
-        model_calls.append(result.model_call_id)
+        model_calls.append(result)
         candidates_output = _mapping_items(result.output.get("candidates"), "generation candidates")
         batch_id = _id(lease, f"batch:{task.case.id}:{batch_number}")
         candidates: list[GeneratedCandidate] = []
@@ -232,7 +235,7 @@ class ReviewCaseExecutor:
                 ordinal=ordinal,
                 output_hash=output_hash,
                 artifact_hash=canonical_hash(
-                    {"model_call_id": result.model_call_id, "ordinal": ordinal, "output": item}
+                    {**_call_identity(result), "ordinal": ordinal, "output": item}
                 ),
             )
             candidates.append(candidate)
@@ -259,7 +262,7 @@ class ReviewCaseExecutor:
         batch: GenerationBatch,
         texts: Mapping[UUID, str],
         checkpoint: ExecutionCheckpoint,
-        model_calls: list[UUID],
+        model_calls: list[SyntheticExecutionResult],
     ) -> tuple[_CandidateWork, ...]:
         return tuple(
             _CandidateWork(
@@ -289,7 +292,7 @@ class ReviewCaseExecutor:
         work: _CandidateWork,
         round_number: int,
         checkpoint: ExecutionCheckpoint,
-        model_calls: list[UUID],
+        model_calls: list[SyntheticExecutionResult],
     ) -> _CandidateWork:
         issues = work.evaluation.correctable_issue_codes
         if not issues:
@@ -309,7 +312,7 @@ class ReviewCaseExecutor:
             step_key=f"revision:c{work.initial.ordinal}:r{round_number}:{work.current.output_hash}",
             checkpoint=checkpoint,
         )
-        model_calls.append(result.model_call_id)
+        model_calls.append(result)
         text = _string(result.output.get("revised_text"), "revised Candidate text")
         revision_id = _id(lease, f"revision:{work.initial.id}:{round_number}")
         revised_id = _id(lease, f"revised-candidate:{revision_id}:{canonical_hash(text)}")
@@ -369,7 +372,7 @@ class ReviewCaseExecutor:
         text: str,
         label: str,
         checkpoint: ExecutionCheckpoint,
-        model_calls: list[UUID],
+        model_calls: list[SyntheticExecutionResult],
     ) -> CandidateEvaluation:
         common = _common_input(task)
         claims = self._call(
@@ -385,7 +388,7 @@ class ReviewCaseExecutor:
             lease=lease,
             task=task,
             kind=ProgramKind.CONFLICT_CHECK,
-            structured_input={**common, "claims": claim_values},
+            structured_input={**common, "claims": _conflict_check_claims(claim_values)},
             step_key=f"evaluate:{label}:conflicts:{candidate.output_hash}",
             checkpoint=checkpoint,
         )
@@ -412,15 +415,17 @@ class ReviewCaseExecutor:
             kind=ProgramKind.ARBITER,
             structured_input={
                 **common,
-                "candidate_id": str(candidate.id),
+                "candidate_ids": [str(candidate.id)],
                 "evaluator_results": [
                     {
+                        "candidate_id": str(candidate.id),
                         "evaluator": "conflict_check",
                         "disposition": conflict_disposition,
                         "issue_codes": list(conflict_issues),
                         "evidence_refs": _evidence_refs(conflict.output),
                     },
                     {
+                        "candidate_id": str(candidate.id),
                         "evaluator": "style_judge",
                         "disposition": style_disposition,
                         "issue_codes": list(style_issues),
@@ -431,9 +436,7 @@ class ReviewCaseExecutor:
             step_key=f"evaluate:{label}:arbiter:{candidate.output_hash}",
             checkpoint=checkpoint,
         )
-        model_calls.extend(
-            (claims.model_call_id, conflict.model_call_id, style.model_call_id, arbiter.model_call_id)
-        )
+        model_calls.extend((claims, conflict, style, arbiter))
         disposition = _string(arbiter.output.get("disposition"), "arbiter disposition")
         hard_revision = conflict_disposition == "revise" or style_disposition == "revise"
         if hard_revision and disposition != "revise":
@@ -480,7 +483,7 @@ class ReviewCaseExecutor:
         structured_input: Mapping[str, object],
         step_key: str,
         checkpoint: ExecutionCheckpoint,
-    ) -> SyntheticModelResult:
+    ) -> SyntheticExecutionResult:
         checkpoint()
         spec = default_prompt_bootstrap_spec(kind)
         output_schema = spec.schemas.output_schema
@@ -554,9 +557,24 @@ def _output(
         revisions=tuple(revisions),
         evaluations=tuple(evaluations),
         resolution=resolution,
-        model_call_ids=tuple(model_calls),
+        model_call_ids=tuple(
+            result.model_call_id
+            for result in model_calls
+            if isinstance(result, SyntheticModelResult)
+        ),
+        workflow_attempt_ids=tuple(
+            result.workflow_attempt_id
+            for result in model_calls
+            if isinstance(result, SyntheticWorkflowResult)
+        ),
         resolved_candidate_text=resolved_candidate_text,
     )
+
+
+def _call_identity(result: SyntheticExecutionResult) -> dict[str, UUID]:
+    if isinstance(result, SyntheticModelResult):
+        return {"model_call_id": result.model_call_id}
+    return {"workflow_attempt_id": result.workflow_attempt_id}
 
 
 def _id(lease: WorkerLease, name: str) -> UUID:

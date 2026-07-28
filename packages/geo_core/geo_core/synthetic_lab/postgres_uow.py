@@ -15,11 +15,16 @@ from geo_core.synthetic_lab.ports import (
     SyntheticAggregateRepository,
     SyntheticAuthorizationRepository,
     SyntheticCommandRepository,
+    SyntheticDifyReconciliationPort,
     SyntheticImportRepository,
+    SyntheticLabIdempotencyConflict,
     SyntheticJobRepository,
     SyntheticLabPersistenceError,
-    SyntheticLabUnitOfWork,
     SyntheticOutboxRepository,
+)
+from geo_core.workflow_runtime.reconciliation import (
+    DifyRecoveryBindingError,
+    bind_dify_resubmission,
 )
 from geo_core.synthetic_lab.execution_contracts import SyntheticExecutionTaskStagingPort
 from geo_core.synthetic_lab.collection_execution_contracts import (
@@ -30,6 +35,12 @@ from geo_core.synthetic_lab.postgres_execution import (
 )
 from geo_core.synthetic_lab.postgres_import_repository import (
     PostgresSyntheticImportRepository,
+)
+from geo_core.synthetic_lab.postgres_profile_build_binding import (
+    PostgresStyleProfileBuildBindingRepository,
+)
+from geo_core.synthetic_lab.profile_build_binding import (
+    StyleProfileBuildBindingRepository,
 )
 from geo_core.synthetic_lab.postgres_style_collection import (
     PostgresStyleCollectionTaskRepository,
@@ -44,6 +55,37 @@ from geo_core.synthetic_lab.postgres_repository import (
 
 
 ConnectionFactory = Callable[[], Any]
+
+
+class _PostgresSyntheticDifyReconciliation:
+    def __init__(self, connection: Any, project_id: UUID) -> None:
+        self._connection = connection
+        self._project_id = project_id
+
+    def bind_resubmission(
+        self,
+        *,
+        project_id: UUID,
+        new_parent_job_id: UUID,
+        actor_id: UUID,
+        recovery_of_attempt_id: UUID | None,
+        token: str | None,
+    ) -> UUID | None:
+        if project_id != self._project_id:
+            raise SyntheticLabPersistenceError(
+                "Dify reconciliation Project scope mismatch"
+            )
+        try:
+            return bind_dify_resubmission(
+                self._connection,
+                project_id=project_id,
+                new_parent_job_id=new_parent_job_id,
+                actor_id=actor_id,
+                recovery_of_attempt_id=recovery_of_attempt_id,
+                token=token,
+            )
+        except DifyRecoveryBindingError as error:
+            raise SyntheticLabIdempotencyConflict(str(error)) from error
 
 
 class PostgresSyntheticLabUnitOfWork:
@@ -86,6 +128,12 @@ class PostgresSyntheticLabUnitOfWork:
         self.style_collection_tasks: StyleCollectionTaskStagingPort = (
             PostgresStyleCollectionTaskRepository(connection, self.project_id)
         )
+        self.profile_build_bindings: StyleProfileBuildBindingRepository = (
+            PostgresStyleProfileBuildBindingRepository(connection, self.project_id)
+        )
+        self.dify_reconciliation: SyntheticDifyReconciliationPort = (
+            _PostgresSyntheticDifyReconciliation(connection, self.project_id)
+        )
         return self
 
     def __exit__(
@@ -117,7 +165,7 @@ class PostgresSyntheticLabUnitOfWorkFactory:
     def __init__(self, connection_factory: ConnectionFactory) -> None:
         self._connection_factory = connection_factory
 
-    def __call__(self, *, project_id: UUID) -> SyntheticLabUnitOfWork:
+    def __call__(self, *, project_id: UUID) -> PostgresSyntheticLabUnitOfWork:
         return PostgresSyntheticLabUnitOfWork(
             self._connection_factory,
             project_id=project_id,

@@ -331,6 +331,7 @@ def build_synthetic_lab_worker_handlers(
         synthetic_artifact_keyring_path=_required_file_setting(
             "GEO_SYNTHETIC_ARTIFACT_KEYRING_FILE"
         ),
+        workflow_executor=build_workflow_executor(store=store),
         lease_for=lease_for,
     )
 
@@ -417,6 +418,7 @@ def build_recommendation_generation_worker_handlers(
         ),
         model_job_admitter=runtime.model_calls,
         model_runtime_loader=runtime.model_calls,
+        workflow_executor=build_workflow_executor(store=store),
         lease_for=lease_for,
     )
 

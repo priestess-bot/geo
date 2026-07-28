@@ -19,6 +19,13 @@ def test_production_backup_streams_both_sources_into_authenticated_envelopes() -
     assert source.count("backup_envelope.py\" encrypt") == 2
     assert "backup_manifest.py\" create" in source
     assert "backup_manifest.py\" verify" in source
+    assert '--source-environment "$source_environment"' in source
+    assert '--source-system-identifier "$source_system_identifier"' in source
+    assert '--source-project-ids-json "$project_ids"' in source
+    assert (
+        '--database-checksum-ledger-rows-json "$database_checksum_ledger_rows"'
+        in source
+    )
     assert "pg_export_snapshot()" in source
     assert '--snapshot="$1"' in source
     assert "--no-privileges" not in source
@@ -222,6 +229,13 @@ def test_development_smoke_persists_only_encrypted_bundle_and_truthful_receipt()
     assert "GEO_DEVELOPMENT_WORKFLOW_C_BACKUP_SOURCE_BUCKET" in source
     assert "GEO_DEVELOPMENT_SYNTHETIC_RAW_BACKUP_SOURCE_BUCKET" in source
     assert "GEO_DEVELOPMENT_SYNTHETIC_DERIVED_BACKUP_SOURCE_BUCKET" in source
+    assert '--source-environment development' in source
+    assert '--source-database-name "$source_database"' in source
+    assert '--source-project-ids-json "$source_project_ids"' in source
+    assert (
+        '--database-checksum-ledger-rows-json '
+        '"$source_database_checksum_ledger_rows"' in source
+    )
     assert 'GEO_DEVELOPMENT_BACKUP_SOURCE_DATABASE:-}' in source
     assert 'GEO_DEVELOPMENT_BACKUP_SOURCE_BUCKET:-}' in source
     assert "stat -f -c '%T'" in source

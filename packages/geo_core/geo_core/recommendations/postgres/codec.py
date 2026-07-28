@@ -41,6 +41,10 @@ from geo_core.recommendations.models import (
     RecommendationType,
     RecommendationWorkflow,
 )
+from geo_core.recommendations.evidence_graph import (
+    EVIDENCE_GRAPH_CONTRACT_V1,
+    EVIDENCE_GRAPH_CONTRACT_V2,
+)
 from geo_core.recommendations.ports import (
     CreatedDownstreamDraft,
     PreparedDraftAction,
@@ -110,6 +114,12 @@ def workflow_from_payload(value: object) -> RecommendationWorkflow:
 
 def evidence_graph_from_payload(value: object) -> RecommendationEvidenceGraph:
     root = _mapping(value, "evidence")
+    contract_version = _text(root, "contract_version")
+    if contract_version not in {
+        EVIDENCE_GRAPH_CONTRACT_V1,
+        EVIDENCE_GRAPH_CONTRACT_V2,
+    }:
+        raise ValueError("unsupported Recommendation evidence graph contract")
     scope_value = _mapping(root.get("scope"), "evidence scope")
     decision_value = _mapping(root.get("decision"), "evidence decision")
     scope = RecommendationScope(
@@ -154,6 +164,7 @@ def evidence_graph_from_payload(value: object) -> RecommendationEvidenceGraph:
         attributions=tuple(
             item for item in references if isinstance(item, AttributionRef)
         ),
+        contract_version=contract_version,
     )
 
 

@@ -8,12 +8,12 @@ from uuid import UUID, uuid4
 
 from psycopg.types.json import Jsonb
 
-from geo_core.jobs.postgres import PostgresDurableJobStore, WorkerLease
+from geo_core.jobs.postgres import LostJobLease, PostgresDurableJobStore, WorkerLease
 from geo_core.secrets import SecretVersionHandle
 
-from .contracts import WorkflowRuntimeRelease
+from .contracts import WorkflowExecutionResult, WorkflowRuntimeRelease, canonical_json_hash
 from .errors import WorkflowConfigurationError
-from .published import PublishedWorkflowSnapshot
+from .published import PublishedWorkflowSnapshot, PublishedWorkflowSnapshotPin
 
 
 class PostgresWorkflowRuntimeRepository:
@@ -77,6 +77,16 @@ class PostgresWorkflowRuntimeRepository:
             raise WorkflowConfigurationError(
                 "Dify API credential is no longer active; rotate and activate a new workflow release",
                 code="dify_secret_inactive",
+            )
+        if row["current_prompt_release_id"] != row["prompt_release_id"]:
+            raise WorkflowConfigurationError(
+                "active Dify Workflow Release no longer matches the current Prompt Release",
+                code="dify_prompt_binding_stale",
+            )
+        if row["prompt_release_status"] != "frozen":
+            raise WorkflowConfigurationError(
+                "active Dify Workflow Release Prompt is no longer frozen",
+                code="dify_prompt_release_not_frozen",
             )
         return _release(row)
 
@@ -152,10 +162,165 @@ class PostgresWorkflowRuntimeRepository:
     def finish_business_attempt(
         self, lease: WorkerLease, *, attempt_id: UUID, values: Mapping[str, object]
     ) -> None:
-        with self._store.fenced_transaction(lease) as connection:
-            self._finish(
-                connection, project_id=lease.project_id, attempt_id=attempt_id, values=values
+        connection = self._store.open_project(lease.project_id)
+        try:
+            connection.execute(
+                "SELECT geo_finish_dify_business_attempt(%s, %s, %s, %s, %s, %s)",
+                (
+                    lease.project_id,
+                    lease.job_id,
+                    lease.lease_token,
+                    lease.fencing_generation,
+                    attempt_id,
+                    Jsonb(dict(values)),
+                ),
             )
+            connection.commit()
+        except BaseException as error:
+            connection.rollback()
+            primary_message = getattr(getattr(error, "diag", None), "message_primary", None)
+            if (
+                getattr(error, "sqlstate", None) == "23514"
+                and primary_message == "Dify business attempt is already finalized"
+            ):
+                raise WorkflowConfigurationError(
+                    primary_message,
+                    code="dify_attempt_already_finalized",
+                ) from error
+            if getattr(error, "sqlstate", None) == "40001":
+                raise LostJobLease("Dify business attempt finish was fenced") from error
+            raise
+        finally:
+            connection.close()
+
+    def load_published_snapshot_pin(
+        self,
+        *,
+        release: WorkflowRuntimeRelease,
+    ) -> PublishedWorkflowSnapshotPin | None:
+        connection = self._store.open_project(release.project_id)
+        try:
+            row = _one(
+                connection.execute(
+                    """SELECT project_id, release_id, published_snapshot_id,
+                              dify_workflow_id, workflow_hash, snapshot_hash, pin_source
+                       FROM dify_workflow_release_snapshot_pins
+                       WHERE project_id = %s AND release_id = %s""",
+                    (release.project_id, release.id),
+                )
+            )
+            connection.rollback()
+        finally:
+            connection.close()
+        if row is None:
+            return None
+        return PublishedWorkflowSnapshotPin(
+            project_id=row["project_id"],
+            release_id=row["release_id"],
+            published_snapshot_id=row["published_snapshot_id"],
+            workflow_id=str(row["dify_workflow_id"]),
+            workflow_hash=str(row["workflow_hash"]),
+            snapshot_hash=str(row["snapshot_hash"]),
+            pin_source=str(row["pin_source"]),
+        )
+
+    def find_unresolved_business_attempt(
+        self,
+        lease: WorkerLease,
+        *,
+        release: WorkflowRuntimeRelease,
+        context_hash: str,
+        request_hash: str,
+    ) -> UUID | None:
+        connection = self._store.open_project(lease.project_id)
+        try:
+            row = _one(
+                connection.execute(
+                    """SELECT id FROM dify_workflow_execution_attempts
+                       WHERE project_id = %s AND job_id = %s AND release_id = %s
+                         AND execution_kind = 'business'
+                         AND (
+                              status = 'running'
+                              OR (status = 'failed'
+                                  AND error_classification = 'unknown_outcome')
+                         )
+                         AND context_hash = %s AND request_hash = %s
+                       ORDER BY attempt_number DESC LIMIT 1""",
+                    (
+                        lease.project_id,
+                        lease.job_id,
+                        release.id,
+                        context_hash,
+                        request_hash,
+                    ),
+                )
+            )
+            connection.rollback()
+        finally:
+            connection.close()
+        return row["id"] if row is not None else None
+
+    def load_successful_business_result(
+        self,
+        lease: WorkerLease,
+        *,
+        release: WorkflowRuntimeRelease,
+        context_hash: str,
+        request_hash: str,
+    ) -> WorkflowExecutionResult | None:
+        connection = self._store.open_project(lease.project_id)
+        try:
+            row = _one(
+                connection.execute(
+                    """SELECT attempt.id, attempt.release_id, attempt.dify_task_id,
+                              attempt.dify_run_id, attempt.prompt_tokens,
+                              attempt.completion_tokens, attempt.total_steps,
+                              attempt.elapsed_seconds, result.output,
+                              result.response_hash, result.configured_model,
+                              result.provider_reported_model,
+                              attempt.published_snapshot_id, attempt.request_hash,
+                              snapshot.dify_workflow_id AS published_workflow_id,
+                              snapshot.snapshot_hash AS published_snapshot_hash
+                       FROM dify_workflow_execution_attempts attempt
+                       JOIN dify_workflow_execution_results result
+                         ON result.attempt_id = attempt.id
+                        AND result.project_id = attempt.project_id
+                        AND result.job_id = attempt.job_id
+                       LEFT JOIN dify_workflow_published_snapshots snapshot
+                         ON snapshot.id = attempt.published_snapshot_id
+                        AND snapshot.project_id = attempt.project_id
+                        AND snapshot.release_id = attempt.release_id
+                       WHERE attempt.project_id = %s AND attempt.job_id = %s
+                         AND attempt.release_id = %s AND attempt.execution_kind = 'business'
+                         AND attempt.status = 'succeeded'
+                         AND attempt.context_hash = %s
+                         AND (
+                              attempt.request_hash = %s
+                              OR EXISTS (
+                                  SELECT 1 FROM dify_workflow_release_snapshot_pins pin
+                                  WHERE pin.project_id = attempt.project_id
+                                    AND pin.release_id = attempt.release_id
+                                    AND pin.pin_source = 'migration_backfill'
+                              )
+                         )
+                       ORDER BY (attempt.request_hash = %s) DESC,
+                                attempt.attempt_number DESC LIMIT 1""",
+                    (
+                        lease.project_id,
+                        lease.job_id,
+                        release.id,
+                        context_hash,
+                        request_hash,
+                        request_hash,
+                    ),
+                )
+            )
+            connection.rollback()
+        finally:
+            connection.close()
+        if row is None:
+            return None
+        return _business_result(row, release)
 
     def begin_canary_attempt(
         self,
@@ -281,7 +446,10 @@ class PostgresWorkflowRuntimeRepository:
     ) -> None:
         connection = self._store.open_project(project_id)
         try:
-            self._finish(connection, project_id=project_id, attempt_id=attempt_id, values=values)
+            connection.execute(
+                "SELECT geo_finish_dify_canary_attempt(%s, %s, %s)",
+                (project_id, attempt_id, Jsonb(dict(values))),
+            )
             connection.commit()
         except BaseException:
             connection.rollback()
@@ -289,68 +457,18 @@ class PostgresWorkflowRuntimeRepository:
         finally:
             connection.close()
 
-    @staticmethod
-    def _finish(
-        connection: Any,
-        *,
-        project_id: UUID,
-        attempt_id: UUID,
-        values: Mapping[str, object],
-    ) -> None:
-        status = str(values["status"])
-        if status == "succeeded":
-            changed = connection.execute(
-                """UPDATE dify_workflow_execution_attempts
-                   SET status = 'succeeded', dify_task_id = %s, dify_run_id = %s,
-                       reported_workflow_id = %s, output_hash = %s,
-                       prompt_tokens = %s, completion_tokens = %s, total_steps = %s,
-                       elapsed_seconds = %s, http_status = %s, retryable = false,
-                       finished_at = clock_timestamp()
-                   WHERE id = %s AND project_id = %s AND status = 'running'""",
-                (
-                    values.get("dify_task_id"),
-                    values.get("dify_run_id"),
-                    values.get("reported_workflow_id"),
-                    values.get("output_hash"),
-                    values.get("prompt_tokens"),
-                    values.get("completion_tokens"),
-                    values.get("total_steps"),
-                    values.get("elapsed_seconds"),
-                    values.get("http_status"),
-                    attempt_id,
-                    project_id,
-                ),
-            ).rowcount
-        else:
-            changed = connection.execute(
-                """UPDATE dify_workflow_execution_attempts
-                   SET status = 'failed', dify_task_id = %s, dify_run_id = %s,
-                       reported_workflow_id = %s, http_status = %s,
-                       error_classification = %s, error_code = %s,
-                       error_message = %s, retryable = %s,
-                       finished_at = clock_timestamp()
-                   WHERE id = %s AND project_id = %s AND status = 'running'""",
-                (
-                    values.get("dify_task_id"),
-                    values.get("dify_run_id"),
-                    values.get("reported_workflow_id"),
-                    values.get("http_status"),
-                    values.get("error_classification"),
-                    values.get("error_code"),
-                    str(values.get("error_message", ""))[:2000],
-                    bool(values.get("retryable", False)),
-                    attempt_id,
-                    project_id,
-                ),
-            ).rowcount
-        if changed != 1:
-            raise WorkflowConfigurationError(
-                "Dify execution attempt was already finalized or disappeared",
-                code="dify_attempt_transition_conflict",
-            )
-
 
 def _release(row: Mapping[str, Any]) -> WorkflowRuntimeRelease:
+    if (
+        row.get("registered_workflow_hash") is None
+        or row.get("registered_snapshot_hash") is None
+        or row.get("registered_identity_source") is None
+    ):
+        raise WorkflowConfigurationError(
+            "legacy Dify release has no trusted published graph identity; "
+            "re-enroll it before canary or execution",
+            code="dify_release_requires_reenrollment",
+        )
     return WorkflowRuntimeRelease(
         id=row["id"],
         project_id=row["project_id"],
@@ -364,6 +482,9 @@ def _release(row: Mapping[str, Any]) -> WorkflowRuntimeRelease:
         dify_app_id=str(row["dify_app_id"]),
         dify_workflow_id=str(row["dify_workflow_id"]),
         dsl_hash=str(row["dsl_hash"]),
+        registered_workflow_hash=str(row["registered_workflow_hash"]),
+        registered_snapshot_hash=str(row["registered_snapshot_hash"]),
+        registered_identity_source=str(row["registered_identity_source"]),
         context_contract_version=str(row["context_contract_version"]),
         input_schema=_json_object(row["input_schema"]),
         input_schema_hash=str(row["input_schema_hash"]),
@@ -379,6 +500,46 @@ def _release(row: Mapping[str, Any]) -> WorkflowRuntimeRelease:
         ),
         release_hash=str(row["release_hash"]),
         binding_version=int(row["binding_version"]),
+    )
+
+
+def _business_result(
+    row: Mapping[str, Any], release: WorkflowRuntimeRelease
+) -> WorkflowExecutionResult:
+    output = _json_object(row["output"])
+    response_hash = str(row["response_hash"])
+    if canonical_json_hash(output) != response_hash:
+        raise WorkflowConfigurationError(
+            "stored Dify result hash changed", code="dify_result_hash_mismatch"
+        )
+    return WorkflowExecutionResult(
+        output=output,
+        attempt_id=row["id"],
+        runtime_release_id=row["release_id"],
+        runtime_release_hash=release.release_hash,
+        dify_task_id=(str(row["dify_task_id"]) if row["dify_task_id"] else None),
+        dify_run_id=str(row["dify_run_id"]),
+        configured_model=str(row["configured_model"]),
+        provider_reported_model=(
+            str(row["provider_reported_model"]) if row["provider_reported_model"] else None
+        ),
+        prompt_tokens=row["prompt_tokens"],
+        completion_tokens=row["completion_tokens"],
+        total_steps=row["total_steps"],
+        elapsed_seconds=row["elapsed_seconds"],
+        response_hash=response_hash,
+        published_snapshot_id=row.get("published_snapshot_id"),
+        published_snapshot_hash=(
+            str(row["published_snapshot_hash"])
+            if row.get("published_snapshot_hash") is not None
+            else None
+        ),
+        published_workflow_id=(
+            str(row["published_workflow_id"])
+            if row.get("published_workflow_id") is not None
+            else None
+        ),
+        request_hash=(str(row["request_hash"]) if row.get("request_hash") is not None else None),
     )
 
 

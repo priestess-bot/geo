@@ -27,6 +27,10 @@ from geo_core.recommendations.generation_hashing import (
 )
 
 
+GENERATION_EVIDENCE_CONTRACT_V1 = "recommendation-generation-evidence-v1"
+GENERATION_EVIDENCE_CONTRACT_V2 = "recommendation-generation-evidence-v2"
+
+
 @dataclass(frozen=True)
 class EvidenceSummary:
     ref_kind: str
@@ -81,8 +85,16 @@ class FrozenGenerationEvidence:
     summaries: tuple[EvidenceSummary, ...]
     scope_locators: tuple[ScopeLocator, ...]
     attributions: tuple[AttributionRef, ...] = ()
+    contract_version: str = GENERATION_EVIDENCE_CONTRACT_V2
 
     def __post_init__(self) -> None:
+        if self.contract_version not in {
+            GENERATION_EVIDENCE_CONTRACT_V1,
+            GENERATION_EVIDENCE_CONTRACT_V2,
+        }:
+            raise RecommendationRuleViolation(
+                "generation evidence contract is unsupported"
+            )
         typed_fields = (
             ("observations", ObservationRef),
             ("metric_comparisons", MetricComparisonRef),
@@ -156,7 +168,7 @@ class FrozenGenerationEvidence:
     def canonical_value(self) -> Mapping[str, object]:
         return {
             "scope": self.scope.canonical_value(),
-            "refs": [item.canonical_value() for item in self.all_refs],
+            "refs": self.canonical_ref_values(),
             "summaries": [
                 {
                     "kind": item.ref_kind,
@@ -175,6 +187,11 @@ class FrozenGenerationEvidence:
                 for item in self.scope_locators
             ],
         }
+
+    def canonical_ref_values(self) -> list[dict[str, object]]:
+        if self.contract_version == GENERATION_EVIDENCE_CONTRACT_V1:
+            return [item.legacy_canonical_value() for item in self.all_refs]
+        return [item.canonical_value() for item in self.all_refs]
 
     def insufficiency_reasons(self, *, minimum_real_observations: int) -> tuple[str, ...]:
         real = {
@@ -207,4 +224,10 @@ class FrozenGenerationEvidence:
         return tuple(reasons)
 
 
-__all__ = ["EvidenceSummary", "FrozenGenerationEvidence", "ScopeLocator"]
+__all__ = [
+    "EvidenceSummary",
+    "FrozenGenerationEvidence",
+    "GENERATION_EVIDENCE_CONTRACT_V1",
+    "GENERATION_EVIDENCE_CONTRACT_V2",
+    "ScopeLocator",
+]

@@ -6,6 +6,8 @@ from pathlib import Path
 
 import yaml
 
+from geo_core.workflow_runtime import DIFY_WORKFLOW_PURPOSES
+
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = ROOT / "infra" / "dify" / "workflows"
@@ -14,6 +16,12 @@ EXPECTED_PURPOSES = {
     "knowledge.rag_grounding",
     "placements.generation",
     "placements.simulation",
+    "synthetic_lab.generation",
+    "synthetic_lab.claim_extraction",
+    "synthetic_lab.conflict_check",
+    "synthetic_lab.revision",
+    "synthetic_lab.style_profile",
+    "recommendations.recommendation",
 }
 EXPECTED_INPUTS = {
     "geo_context_json",
@@ -29,6 +37,7 @@ def test_dify_workflow_manifest_and_dsl_contracts_are_frozen() -> None:
     assert manifest["format"] == "geo-dify-workflow-manifest-v1"
     assert manifest["dify_version"] == "1.16.0"
     assert {item["purpose"] for item in manifest["workflows"]} == EXPECTED_PURPOSES
+    assert DIFY_WORKFLOW_PURPOSES == EXPECTED_PURPOSES
 
     for item in manifest["workflows"]:
         path = WORKFLOWS / item["file"]
@@ -49,6 +58,12 @@ def test_dify_workflow_manifest_and_dsl_contracts_are_frozen() -> None:
         assert llm["data"]["model"]["provider"] == "langgenius/deepseek/deepseek"
         assert llm["data"]["model"]["name"] == "deepseek-chat"
         assert llm["data"]["model"]["completion_params"]["response_format"] == "json_object"
+        if item["purpose"] == "recommendations.recommendation":
+            prompt_text = "\n".join(
+                str(prompt["text"]) for prompt in llm["data"]["prompt_template"]
+            )
+            assert "copied verbatim from the selected evidence summaries" in prompt_text
+            assert "never invent or estimate percentages" in prompt_text
         end = next(node for node in nodes if node["data"]["type"] == "end")
         assert end["data"]["outputs"][0]["variable"] == "result"
 

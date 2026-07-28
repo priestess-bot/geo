@@ -6,12 +6,15 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 import re
+from types import MappingProxyType
+from collections.abc import Mapping
 from uuid import UUID
 
 from geo_core.model_gateway.contracts import ModelGatewayResult
 from geo_core.recommendations.generation_contracts import (
     RecommendationGenerationSpec,
     ResolvedGenerationPrompt,
+    canonical_hash,
 )
 
 
@@ -38,6 +41,11 @@ class RecommendationModelRole(StrEnum):
             RecommendationModelRole.PRIMARY: RECOMMENDATION_PRIMARY_MODEL_JOB_KIND,
             RecommendationModelRole.ARBITER: RECOMMENDATION_ARBITER_MODEL_JOB_KIND,
         }[self]
+
+
+class RecommendationExecutionBackend(StrEnum):
+    MODEL_GATEWAY = "model_gateway"
+    DIFY = "dify"
 
 
 class RecommendationChildStatus(StrEnum):
@@ -85,6 +93,41 @@ class RecommendationModelResultRef:
 
 
 @dataclass(frozen=True)
+class RecommendationDifyResultRef:
+    attempt_id: UUID
+    response_hash: str
+
+    def __post_init__(self) -> None:
+        if self.attempt_id.int == 0:
+            raise ValueError("Recommendation Dify attempt identity cannot be zero")
+        if _SHA256.fullmatch(self.response_hash) is None:
+            raise ValueError("Recommendation Dify result lineage must be SHA-256")
+
+
+@dataclass(frozen=True)
+class RecommendationDifyExecutionResult:
+    output: Mapping[str, object]
+    workflow_attempt_id: UUID
+    workflow_release_id: UUID
+    workflow_release_hash: str
+    configured_model: str
+    provider_reported_model: str | None
+    response_hash: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "output", MappingProxyType(dict(self.output)))
+        if self.workflow_attempt_id.int == 0 or self.workflow_release_id.int == 0:
+            raise ValueError("Recommendation Dify execution identities cannot be zero")
+        if (
+            _SHA256.fullmatch(self.workflow_release_hash) is None
+            or _SHA256.fullmatch(self.response_hash) is None
+        ):
+            raise ValueError("Recommendation Dify execution lineage must be SHA-256")
+        if not self.configured_model.strip():
+            raise ValueError("Recommendation Dify execution needs a configured model")
+
+
+@dataclass(frozen=True)
 class RecommendationModelTask:
     child_job_id: UUID
     parent_job_id: UUID
@@ -99,9 +142,25 @@ class RecommendationModelTask:
     prompt: ResolvedGenerationPrompt
     admitted_by: UUID
     artifact_expires_at: datetime
+    execution_backend: RecommendationExecutionBackend = (
+        RecommendationExecutionBackend.MODEL_GATEWAY
+    )
+    structured_input: Mapping[str, object] = MappingProxyType({})
+    workflow_release_id: UUID | None = None
+    workflow_release_hash: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "role", RecommendationModelRole(self.role))
+        object.__setattr__(
+            self,
+            "execution_backend",
+            RecommendationExecutionBackend(self.execution_backend),
+        )
+        object.__setattr__(
+            self,
+            "structured_input",
+            MappingProxyType(dict(self.structured_input)),
+        )
         if (
             self.child_job_id.int == 0
             or self.parent_job_id.int == 0
@@ -138,6 +197,26 @@ class RecommendationModelTask:
             raise ValueError("Recommendation model role differs from Prompt kind")
         if self.prompt.binding.purpose != expected_purpose:
             raise ValueError("Recommendation model role differs from exact Prompt purpose")
+        if (
+            self.execution_backend is RecommendationExecutionBackend.DIFY
+            and self.role is not RecommendationModelRole.PRIMARY
+        ):
+            raise ValueError("Recommendation arbiter must remain on the native Model Gateway")
+        if self.structured_input:
+            if canonical_hash(self.structured_input) != self.prompt.structured_input_hash:
+                raise ValueError("Recommendation structured input differs from frozen Prompt")
+        elif self.execution_backend is RecommendationExecutionBackend.DIFY:
+            raise ValueError("Recommendation Dify task requires frozen structured input")
+        if self.execution_backend is RecommendationExecutionBackend.DIFY:
+            if (
+                self.workflow_release_id is None
+                or self.workflow_release_id.int == 0
+                or self.workflow_release_hash is None
+                or _SHA256.fullmatch(self.workflow_release_hash) is None
+            ):
+                raise ValueError("Recommendation Dify task requires a frozen Workflow Release")
+        elif self.workflow_release_id is not None or self.workflow_release_hash is not None:
+            raise ValueError("native Recommendation task cannot carry Dify release lineage")
 
 
 @dataclass(frozen=True)
@@ -145,7 +224,7 @@ class RecommendationModelOutcome:
     child_job_id: UUID
     role: RecommendationModelRole
     status: RecommendationChildStatus
-    result: ModelGatewayResult | None = None
+    result: ModelGatewayResult | RecommendationDifyExecutionResult | None = None
     error_code: str | None = None
 
     def __post_init__(self) -> None:
@@ -184,6 +263,9 @@ __all__ = [
     "RECOMMENDATION_PRIMARY_MODEL_JOB_KIND",
     "RECOMMENDATION_REQUIRED_JOB_KINDS",
     "RecommendationChildStatus",
+    "RecommendationDifyResultRef",
+    "RecommendationDifyExecutionResult",
+    "RecommendationExecutionBackend",
     "RecommendationModelOutcome",
     "RecommendationModelResultRef",
     "RecommendationModelRole",

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import cast
+from typing import TypedDict, cast
 from uuid import UUID
 
 from geo_core.prompts.program_contracts import ProgramKind
@@ -12,9 +12,38 @@ from geo_core.synthetic_lab.evaluation import ClaimAssessment, FactStatus
 from geo_core.synthetic_lab.execution_contracts import (
     ReviewCaseRunTask,
     SyntheticExecutionError,
+    SyntheticExecutionResult,
     SyntheticModelResult,
+    SyntheticWorkflowResult,
 )
-from geo_core.synthetic_lab.generation import FrozenCallLineage
+from geo_core.synthetic_lab.generation import (
+    FrozenCallLineage,
+    FrozenExecutionLineage,
+    FrozenWorkflowCallLineage,
+)
+
+
+class _FrozenLineageValues(TypedDict):
+    project_id: UUID
+    review_run_id: UUID
+    review_suite_version_id: UUID
+    review_suite_hash: str
+    review_case_id: UUID
+    review_case_hash: str
+    program_kind: str
+    prompt_release_id: UUID
+    prompt_release_hash: str
+    profile_version_id: UUID
+    profile_hash: str
+    fact_snapshot_id: UUID
+    fact_snapshot_hash: str
+    model_policy_hash: str
+    provider: str
+    configured_model: str
+    reported_model: str
+    model_identity_hash: str
+    request_hash: str
+    response_hash: str
 
 
 def common_review_input(task: ReviewCaseRunTask) -> dict[str, object]:
@@ -45,11 +74,11 @@ def common_review_input(task: ReviewCaseRunTask) -> dict[str, object]:
 
 def frozen_call_lineage(
     task: ReviewCaseRunTask,
-    result: SyntheticModelResult,
+    result: SyntheticExecutionResult,
     kind: ProgramKind,
-) -> FrozenCallLineage:
+) -> FrozenExecutionLineage:
     prompt = task.prompts[kind]
-    return FrozenCallLineage(
+    common: _FrozenLineageValues = dict(
         project_id=task.project_id,
         review_run_id=task.review_run_id,
         review_suite_version_id=task.case.review_suite_version_id,
@@ -64,7 +93,6 @@ def frozen_call_lineage(
         fact_snapshot_id=task.runtime_inputs.fact_snapshot_id,
         fact_snapshot_hash=task.runtime_inputs.fact_snapshot_hash,
         model_policy_hash=prompt.model_policy_hash,
-        model_call_id=result.model_call_id,
         provider=result.provider,
         configured_model=result.configured_model,
         reported_model=result.reported_model,
@@ -72,6 +100,21 @@ def frozen_call_lineage(
         request_hash=result.request_hash,
         response_hash=result.response_hash,
     )
+    if isinstance(result, SyntheticModelResult):
+        return FrozenCallLineage(
+            **common,
+            model_call_id=result.model_call_id,
+        )
+    if isinstance(result, SyntheticWorkflowResult):
+        return FrozenWorkflowCallLineage(
+            **common,
+            workflow_attempt_id=result.workflow_attempt_id,
+            workflow_release_id=result.workflow_release_id,
+            workflow_release_hash=result.workflow_release_hash,
+            published_snapshot_id=result.published_snapshot_id,
+            published_snapshot_hash=result.published_snapshot_hash,
+        )
+    raise SyntheticExecutionError("Synthetic result backend is unsupported")
 
 
 def claim_assessments(
@@ -115,8 +158,16 @@ def claim_assessments(
         fact = facts.get(fact_ref)
         if status in {FactStatus.CURRENT_APPROVED, FactStatus.EXPLICIT_CONFLICT} and fact is None:
             raise SyntheticExecutionError("Fact-bound assessment references unknown frozen evidence")
-        expected_subject = optional_uuid(item.get("expected_subject_id"))
-        observed_subject = optional_uuid(item.get("observed_subject_id"))
+        expected_subject = (
+            optional_uuid(item.get("expected_subject_id"))
+            if status is FactStatus.SUBJECT_MIXUP
+            else None
+        )
+        observed_subject = (
+            optional_uuid(item.get("observed_subject_id"))
+            if status is FactStatus.SUBJECT_MIXUP
+            else None
+        )
         if status is FactStatus.SUBJECT_MIXUP and (
             expected_subject != task.subject_id or observed_subject not in subject_inventory
         ):
@@ -137,6 +188,22 @@ def claim_assessments(
             )
         )
     return tuple(assessments)
+
+
+def conflict_check_claims(
+    claims: tuple[Mapping[str, object], ...],
+) -> tuple[dict[str, object], ...]:
+    """Project claim-extraction output onto the strict conflict-check input contract."""
+
+    return tuple(
+        {
+            "claim_id": required_string(claim.get("claim_id"), "claim ID"),
+            "text": required_string(claim.get("text"), "claim text"),
+            "subject_id": required_string(claim.get("subject_id"), "claim subject ID"),
+            "evidence_refs": list(string_tuple(claim.get("evidence_refs"), "claim evidence refs")),
+        }
+        for claim in claims
+    )
 
 
 def conflict_issue_codes(output: Mapping[str, object]) -> tuple[str, ...]:
@@ -185,6 +252,7 @@ def optional_uuid(value: object) -> UUID | None:
 
 __all__ = [
     "claim_assessments",
+    "conflict_check_claims",
     "common_review_input",
     "conflict_issue_codes",
     "evidence_refs",

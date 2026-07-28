@@ -33,6 +33,7 @@ from geo_core.prompts.test_artifacts import (
 from geo_core.prompts.test_execution_application import PromptTestApplication
 from geo_core.prompts.test_execution_contracts import (
     PROMPT_TEST_JOB_KIND,
+    PROMPT_TEST_MAXIMUM_PAID_CALLS,
     PromptTestArtifactReceipt,
     PromptTestCaseModelResult,
     PromptTestExecutionError,
@@ -667,7 +668,7 @@ def _selection(project_id: UUID) -> PromptTestModelSelection:
         allowed_providers=frozenset({"openai"}),
         allowed_adapter_release_ids=frozenset({"openai-adapter-v1"}),
         policy_version_id=policy_version_id,
-        maximum_paid_calls=5,
+        maximum_paid_calls=PROMPT_TEST_MAXIMUM_PAID_CALLS,
         maximum_concurrent_calls=1,
     )
     assert policy.policy_version_hash is not None

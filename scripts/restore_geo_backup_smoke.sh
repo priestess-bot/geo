@@ -205,6 +205,7 @@ restore_relation_hash() {
 restored_projects="$(restore_scalar 'SELECT count(*) FROM projects')"
 restored_tables="$(restore_scalar "SELECT count(*) FROM pg_catalog.pg_tables WHERE schemaname = 'public'")"
 restored_migration="$(restore_scalar 'SELECT version_num FROM alembic_version ORDER BY version_num DESC LIMIT 1')"
+restored_database_checksum_ledger_rows="$(restore_scalar "SELECT coalesce(json_agg(json_build_object('revision', revision, 'upgrade_sha256', upgrade_sha256, 'downgrade_sha256', downgrade_sha256) ORDER BY revision), '[]'::json)::text FROM alembic_sql_checksum_ledger")"
 restored_non_b_business_consistency="$(restore_business_consistency)"
 restored_migration_ledger="$(
   uv run python "$repo_root/scripts/alembic_sql_ledger.py" verify \
@@ -341,6 +342,7 @@ uv run python "$repo_root/scripts/write_backup_restore_receipt.py" \
   --restored-table-count "$restored_tables" \
   --restored-migration-revision "$restored_migration" \
   --restored-alembic-sql-checksum-ledger-json "$restored_migration_ledger" \
+  --restored-database-checksum-ledger-rows-json "$restored_database_checksum_ledger_rows" \
   --restored-critical-relation-counts-json "$restored_critical_relation_counts" \
   --restored-critical-relation-hashes-json "$restored_critical_relation_hashes" \
   --restored-non-b-business-consistency-json "$restored_non_b_business_consistency" \

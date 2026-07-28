@@ -20,9 +20,16 @@ from geo_core.model_gateway.artifact_recovery import (
     RecoveredProviderArtifact,
 )
 from geo_core.model_gateway.identity import canonical_json_hash
+from geo_core.model_gateway.schema_validation import validate_structured_output
 from geo_core.recommendations.generation_worker_contracts import (
+    RecommendationDifyExecutionResult,
+    RecommendationExecutionBackend,
     RecommendationModelResultRef,
     RecommendationModelTask,
+)
+from geo_core.workflow_runtime.contracts import (
+    WorkflowExecutionResult,
+    canonical_json_hash as workflow_output_hash,
 )
 
 
@@ -171,6 +178,43 @@ class GovernedRecommendationModelResultLoader:
             usage_audience=ModelAudience.INTERNAL_WORKER,
             capture_method=task.prompt.capture_method,
             search_mode=task.prompt.search_mode,
+        )
+
+    def load_dify(
+        self,
+        *,
+        parent_lease: WorkerLease,
+        task: RecommendationModelTask,
+        result: WorkflowExecutionResult,
+    ) -> RecommendationDifyExecutionResult:
+        if (
+            parent_lease.project_id != task.project_id
+            or parent_lease.job_id != task.parent_job_id
+        ):
+            raise ValueError("Recommendation Dify recovery crosses parent Job scope")
+        if task.execution_backend is not RecommendationExecutionBackend.DIFY:
+            raise ValueError("Recommendation Dify result differs from frozen backend")
+        if (
+            result.runtime_release_id != task.workflow_release_id
+            or result.runtime_release_hash != task.workflow_release_hash
+        ):
+            raise ValueError("Recommendation Dify Workflow Release changed")
+        if result.configured_model != task.prompt.configured_model:
+            raise ValueError("Recommendation Dify configured model changed")
+        if workflow_output_hash(result.output) != result.response_hash:
+            raise ValueError("Recommendation Dify output hash changed")
+        validate_structured_output(
+            result.output,
+            task.prompt.application_output_schema,
+        )
+        return RecommendationDifyExecutionResult(
+            output=result.output,
+            workflow_attempt_id=result.attempt_id,
+            workflow_release_id=result.runtime_release_id,
+            workflow_release_hash=result.runtime_release_hash,
+            configured_model=result.configured_model,
+            provider_reported_model=result.provider_reported_model,
+            response_hash=result.response_hash,
         )
 
 

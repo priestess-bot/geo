@@ -11,3 +11,8 @@ docs/research_sources/**/raw_pages/*.html -text
 # Unified diff context lines carry a required leading marker; validate the
 # applied source with git apply --check instead of treating the patch as source.
 infra/dify/patches/*.patch -whitespace
+
+# Applied migration bytes are checksum-ledger evidence, including their final blank line.
+infra/db/alembic/sql/0093_dify_workflow_runtime.sql whitespace=-blank-at-eof
+infra/db/alembic/sql/0094_dify_published_snapshot.sql whitespace=-blank-at-eof
+infra/db/alembic/sql/0094_dify_published_snapshot.down.sql whitespace=-blank-at-eof

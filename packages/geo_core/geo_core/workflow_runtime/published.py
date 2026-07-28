@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 from types import MappingProxyType
 from typing import Mapping
+from uuid import UUID
 
 import httpx
 
@@ -67,6 +68,29 @@ class PublishedWorkflowSnapshot:
         )
 
 
+@dataclass(frozen=True)
+class PublishedWorkflowSnapshotPin:
+    project_id: UUID
+    release_id: UUID
+    published_snapshot_id: UUID
+    workflow_id: str
+    workflow_hash: str
+    snapshot_hash: str
+    pin_source: str = "runtime_canary"
+
+    def __post_init__(self) -> None:
+        if not self.workflow_id.strip():
+            raise WorkflowContractError("pinned Dify workflow ID is required")
+        if self.pin_source not in {"migration_backfill", "runtime_canary"}:
+            raise WorkflowContractError("Dify snapshot pin source is invalid")
+        for label, value in (
+            ("pinned Dify workflow hash", self.workflow_hash),
+            ("pinned Dify snapshot hash", self.snapshot_hash),
+        ):
+            if len(value) != 64 or any(char not in "0123456789abcdef" for char in value):
+                raise WorkflowContractError(f"{label} must be lowercase SHA-256")
+
+
 class DifyPublishedWorkflowReader:
     """Use the pinned Dify console read API from a server-side private state file."""
 
@@ -101,9 +125,15 @@ class DifyPublishedWorkflowReader:
         )
         close = self._client is None
         try:
-            _login(client, state)
-            response = client.get(f"/console/api/apps/{app_id}/workflows/publish")
-            body = _response(response, action="read the published Dify workflow")
+            try:
+                _login(client, state)
+                response = client.get(f"/console/api/apps/{app_id}/workflows/publish")
+                body = _response(response, action="read the published Dify workflow")
+            except (httpx.TimeoutException, httpx.NetworkError) as exc:
+                raise RetryableWorkflowExecutionError(
+                    "Dify published workflow reader is unreachable; retry the same GEO Job",
+                    code="dify_reader_transport_unavailable",
+                ) from exc
         finally:
             if close:
                 client.close()
@@ -168,9 +198,7 @@ def _snapshot(
     )
 
 
-def _prompt_node(
-    *, node_id: str, title: str, data: Mapping[str, object]
-) -> Mapping[str, object]:
+def _prompt_node(*, node_id: str, title: str, data: Mapping[str, object]) -> Mapping[str, object]:
     templates = data.get("prompt_template")
     if not isinstance(templates, list):
         raise WorkflowContractError("published Dify LLM node has no Prompt messages")
@@ -334,4 +362,8 @@ def _base_url(value: str) -> str:
     return result
 
 
-__all__ = ["DifyPublishedWorkflowReader", "PublishedWorkflowSnapshot"]
+__all__ = [
+    "DifyPublishedWorkflowReader",
+    "PublishedWorkflowSnapshot",
+    "PublishedWorkflowSnapshotPin",
+]

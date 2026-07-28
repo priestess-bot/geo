@@ -105,7 +105,7 @@ packages/
   geo_core/
     geo_core/         Domain、Application Service、Port、PostgreSQL/MinIO Adapter
   web/                双 Web 共享的 auth、API client、types 与 UI
-prompt/               尚未迁移的十类 Prompt、九渠道目录、默认输出合同及历史 Prompt Bundle
+prompt/               九渠道文件式投放 Prompt、默认输出合同与运行时边界
 infra/
   db/alembic/         唯一数据库基线、版本与 checksum
   docker-compose.yml  完整开发栈
@@ -123,8 +123,8 @@ docs/                 当前架构、ADR、操作手册、工程治理和两份�
 
 - 每个选中渠道都创建持久投放任务；政策未审核或证据不足时任务保持可见并显示阻断原因。
 - `owned_site`、`amazon`、`youtube`、`tiktok`、`instagram`、`productreview`、`reddit`、`ozbargain`、`quora` 是九个标准渠道。
-- 已迁移的四条生成链只在 Dify 编辑并发布 Prompt、模型和工作流变量；GEO 运行时只保存已发布版本的不可变快照/hash，不保留第二份可编辑 Prompt。
-- [`prompt/`](prompt/README.md) 继续承载尚未迁移的十类 Prompt 与历史 Prompt Bundle；它们不得覆盖 Dify 已托管的四条工作流。
+- Dify 目录中的十条工作流只在 Dify 编辑：十条均已完成冻结发布图登记、真实 DeepSeek Canary 和 staging 激活；`style_profile` 与 `recommendation` 的真实业务 Job 仍必须分别使用已批准样本和真实证据验收。Recommendation 的可选 Arbiter 仍由 GEO 原生执行。
+- `style_judge`、`arbiter`、`metric_judge`、`offline_answer` 四类继续由 GEO Prompt Program 和原生运行时执行；[`prompt/`](prompt/README.md) 只保留九渠道文件式投放 Prompt，不得覆盖 Dify 托管的十条工作流。`reference_translation` 仍为不可执行的预留类型。
 - Evidence Pack 重试创建新 Attempt，旧 Attempt 永不原地重建。
 - Package Version 不可变；人工编辑创建新版本并重新执行 Claim QA 和审核。
 - `submitted_for_review_by` 与 `reviewer_id` 必须不同，批准分数不得低于 85。
@@ -137,11 +137,11 @@ docs/                 当前架构、ADR、操作手册、工程治理和两份�
 以下能力已明确列为当前效果优先原型之后的必做目标，不因本阶段采用人工流程而取消：
 
 1. **完整连接器平台（F-006）**：建立统一的连接定义、项目级授权、secret reference、同步游标、限流重试、原始工件、schema/version、freshness 和运行状态；优先交付 GSC、GA4 与官方 Google/Bing AI 报告文件导入，再按价值扩展 Bing Webmaster、Clarity、CRM、CMS 和 warehouse。
-2. **完整跨引擎观测平台（F-009）**：建设 Sampling Suite/Run/Task、官方 API adapter、官方报告导入、受控人工 UI 抽样、运行进度和不可变原始工件；严格区分 official report、manual UI、provider API、proxy grounded API 和 synthetic。没有公开合规 API 的消费者 AI surface 不以 UI 抓取补齐。
+2. **完整跨引擎观测平台（F-009）**：建设 Sampling Suite/Run/Task、官方 API adapter、官方报告导入、受控人工 UI 抽样、运行进度和不可变原始工件；严格区分 official report、manual UI、provider API、proxy grounded API、automated browser capture 和 synthetic。对没有公开合规 API 的 Google AI Overviews/AI Mode、Bing Copilot 等消费者 Surface，在逐 Surface 授权通过后使用澳洲 sticky egress、同一代理租约的 pre/target/post 地域证明和受控 Browser Capture Connector；未通过授权的 Surface 只允许合规人工导入，且绝不与自动采样合并分母。
 3. **完整实验统计与告警平台（F-021）**：实现自动重复采样、按 engine/model/source/locale/region/query cluster 分层、区间、胜平负、最差结果、跨查询负收益、模型/来源漂移、阈值与基线告警及处置记录；样本不足不得形成稳定结论，不同来源不得合并分母。
 4. **业务结果与 AI referral 归因（F-007）**：串联 AI referrer/UTM、landing page、session、conversion/key event、qualified lead、CRM stage 和 revenue，并回溯到 Campaign、问题、内容、engine/source mode 与版本；明确 last-click、assisted attribution、零点击影响和非因果边界。
 5. **可解释建议与不修改机制（F-020）**：用问题、证据等级、影响链、页面/问题簇、风险、工作量、业务价值、置信度和验证计划形成可回溯建议；支持 blocker、gap、experiment、optional、`no_change` 和 `insufficient_evidence`，并保留人工审批。
-6. **Dify 工作流与知识生成运行层（F-022，四条核心链已托管）**：自托管并固定到 Dify `1.16.0` 的问题生成、RAG 依据生成、投放内容生成和投放内容仿真 Workflow 是这四条链的唯一 Prompt/模型/流程变量编辑源。Admin 的“Dify 工作流”页只读取当前发布内容和上次快照，所有项目暂时共享同一组工作流；任务执行前读取当前发布版本并把 snapshot hash 绑定到 Attempt，Dify 不可达时业务任务明确失败且不回退本地 Prompt。Dify Test Run 会从其自身运行历史自动选择最新 `geo-job:` 业务输入，只注入五个 `geo_*` 字段，并允许在 Dify 内切换历史记录或显式解锁编辑；canary、失败和 `sys.*` 输入不会混入。2026-07-27 live staging 的四条真实 DeepSeek canary、发布快照、断开/恢复及缓存只读展示均已通过。GEO 继续拥有 Fact、Evidence、项目权限、Job、工件和业务结果，当前不迁移 GEO 知识库到 Dify。后续依次迁移其余十类 Prompt，并增加工作流模板、项目级模板选择和多国家/locale 版本；这些项是明确 backlog，不伪装成当前能力。部署、恢复和服务器迁移见 [Dify 运行手册](infra/dify/README.md)。在确认 [Dify Open Source License](https://github.com/langgenius/dify/blob/main/LICENSE) 的多租户适用性前，仍只允许单一运营 workspace。
+6. **Dify 工作流与知识生成运行层（F-022）**：自托管 Dify `1.16.0` 的目录现包含十个 GEO Workflow，十条均已进入相同的 fail-closed 路由、冻结发布图、结构化结果持久化/重放、只读 Admin 展示，并在 fresh staging 完成真实 DeepSeek Canary 与激活。`style_profile` 和 `recommendation` 的技术迁移完成不替代真实 Profile build/Recommendation 业务 Job 验收。Recommendation 的可选 Arbiter，以及 `style_judge`、`metric_judge`、`offline_answer`，继续作为 GEO 内置评审，不迁移到 Dify。Dify Test Run 仍只注入五个后台 `geo_*` 字段，GEO 继续保留 Fact、Evidence、Job 和业务结果。部署、激活与恢复见 [Dify 运行手册](infra/dify/README.md)。
 
 具体范围、调研结论和验收边界见 [GEO 效果优先整改决策记录](docs/audits/GEO-effect-first-remediation-decisions-2026-07-18.md)。
 

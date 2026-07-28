@@ -32,6 +32,13 @@ from geo_core.recommendations import (
     RuleRef,
     SurfaceRef,
 )
+from geo_core.recommendations.evidence_graph import EVIDENCE_GRAPH_CONTRACT_V1
+from geo_core.recommendations.resolution import (
+    RecommendationEvidenceKind,
+    RecommendationEvidenceSelector,
+    freeze_evidence_selectors,
+    resolve_current_graph,
+)
 
 
 NOW = datetime(2026, 7, 23, 2, 0, tzinfo=UTC)
@@ -125,6 +132,19 @@ def test_graph_hash_is_canonical_and_detects_decision_tampering() -> None:
     assert changed.graph_hash != graph.graph_hash
     with pytest.raises(RecommendationEvidenceTampered, match="canonical content"):
         changed.verify_hash(graph.graph_hash)
+
+
+def test_current_resolution_preserves_legacy_graph_hash_contract() -> None:
+    legacy = replace(_graph(), contract_version=EVIDENCE_GRAPH_CONTRACT_V1)
+
+    class Resolver:
+        def resolve_current(self, **_: object) -> tuple[object, ...]:
+            return legacy.all_refs
+
+    current = resolve_current_graph(cast(Any, Resolver()), legacy)
+
+    assert current.contract_version == EVIDENCE_GRAPH_CONTRACT_V1
+    assert current.graph_hash == legacy.graph_hash
 
 
 @pytest.mark.parametrize(
@@ -237,6 +257,19 @@ def test_incomplete_evidence_is_only_storable_as_a_sampling_recommendation() -> 
     assert recommendation.proposed_draft_kind == DownstreamDraftKind.SAMPLING_PLAN
     with pytest.raises(RecommendationRuleViolation, match="use insufficient_evidence"):
         _recommendation(empty, RecommendationType.HARD_BLOCKER)
+
+
+def test_evidence_selector_boundary_is_bounded_before_resolution() -> None:
+    selectors = tuple(
+        RecommendationEvidenceSelector(
+            RecommendationEvidenceKind.FACT,
+            f"fact:{index}",
+        )
+        for index in range(101)
+    )
+
+    with pytest.raises(RecommendationRuleViolation, match="at most 100"):
+        freeze_evidence_selectors(selectors)
 
 
 def _recommendation(

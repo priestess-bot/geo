@@ -35,6 +35,7 @@ from geo_core.synthetic_lab.ports import (
     SyntheticJob,
     VersionedAggregate,
 )
+from geo_core.synthetic_lab.profile_build_binding import StyleProfileBuildBinding
 from geo_core.synthetic_lab.review_application import (
     REVIEW_SUITE_KIND,
     STYLE_PROFILE_KIND,
@@ -229,6 +230,95 @@ def test_profile_creation_atomically_persists_the_original_sample_manifest() -> 
         kind="style_profile_sample_manifest",
         resource_id=profile.id,
     ) is None
+
+
+def test_profile_submission_atomically_freezes_the_exact_build_result() -> None:
+    project_id = uuid4()
+    operator = _principal(project_id, LabRole.OPERATOR)
+    samples = _samples(project_id)
+    draft = replace(
+        _profile(project_id, samples),
+        status=StyleProfileStatus.DRAFT,
+        reviewed_by=None,
+        reviewed_at=None,
+    )
+    binding = StyleProfileBuildBinding(
+        project_id=project_id,
+        profile_version_id=draft.id,
+        profile_hash=draft.profile_hash,
+        execution_job_id=uuid4(),
+        execution_result_id=uuid4(),
+        result_hash=_hash("style-build-result"),
+        result_payload_hash=_hash("style-build-result-payload"),
+        artifact_hash=_hash("style-build-artifact"),
+        bound_by=operator.actor_id,
+    )
+    store = InMemorySyntheticLabStore()
+    store.seed_aggregate(
+        VersionedAggregate(
+            project_id=project_id,
+            kind=STYLE_PROFILE_KIND,
+            resource_id=draft.id,
+            version=1,
+            submitted_by=operator.actor_id,
+            payload=draft,
+        )
+    )
+    app = ReviewApplication(InMemorySyntheticLabUnitOfWorkFactory(store))
+
+    submitted = app.submit_profile(
+        principal=operator,
+        profile=draft,
+        build_binding=binding,
+        expected_version=1,
+        idempotency_key="submit-profile-with-build-result",
+    )
+
+    assert submitted.result.status is StyleProfileStatus.IN_REVIEW
+    assert store.get_profile_build_binding(
+        project_id=project_id, profile_version_id=draft.id
+    ) == binding
+    assert app.submit_profile(
+        principal=operator,
+        profile=draft,
+        build_binding=binding,
+        expected_version=1,
+        idempotency_key="submit-profile-with-build-result",
+    ).replayed
+    with InMemorySyntheticLabUnitOfWorkFactory(store)(project_id=project_id) as uow:
+        with pytest.raises(SyntheticLabVersionConflict, match="another build result"):
+            uow.profile_build_bindings.stage(
+                replace(binding, execution_result_id=uuid4())
+            )
+
+    failing_store = InMemorySyntheticLabStore()
+    failing_store.seed_aggregate(
+        VersionedAggregate(
+            project_id=project_id,
+            kind=STYLE_PROFILE_KIND,
+            resource_id=draft.id,
+            version=1,
+            submitted_by=operator.actor_id,
+            payload=draft,
+        )
+    )
+    failing_store.fail_next_commit()
+    failing_app = ReviewApplication(InMemorySyntheticLabUnitOfWorkFactory(failing_store))
+    with pytest.raises(SyntheticLabPersistenceError):
+        failing_app.submit_profile(
+            principal=operator,
+            profile=draft,
+            build_binding=binding,
+            expected_version=1,
+            idempotency_key="failed-submit-profile-with-build-result",
+        )
+    assert failing_store.get_profile_build_binding(
+        project_id=project_id, profile_version_id=draft.id
+    ) is None
+    current = failing_store.get_aggregate(
+        project_id=project_id, kind=STYLE_PROFILE_KIND, resource_id=draft.id
+    )
+    assert current is not None and current.payload == draft
 
 
 def test_profile_and_suite_freeze_require_independent_reviewer_and_cas() -> None:

@@ -242,8 +242,18 @@ def main(argv: list[str] | None = None) -> int:
             sqlstate = getattr(error, "sqlstate", None)
             constraint = getattr(diagnostic, "constraint_name", None)
             frames = traceback.extract_tb(error.__traceback__)
+            application_frames = []
+            for frame in frames:
+                try:
+                    relative_path = Path(frame.filename).resolve().relative_to(ROOT)
+                except ValueError:
+                    continue
+                if relative_path.parts and relative_path.parts[0] != ".venv":
+                    application_frames.append(frame)
+            diagnostic_frames = application_frames[-12:] or frames[-8:]
             locations = ",".join(
-                f"{Path(frame.filename).name}:{frame.lineno}:{frame.name}" for frame in frames[-8:]
+                f"{Path(frame.filename).name}:{frame.lineno}:{frame.name}"
+                for frame in diagnostic_frames
             )
             suffix = (
                 f" sqlstate={sqlstate or '-'} constraint={constraint or '-'}"

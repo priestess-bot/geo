@@ -2,14 +2,14 @@
   "schema_version": "non-b-acceptance-classification-v1",
   "roadmap": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
   "expected_counts": {
-    "all": 316,
+    "all": 319,
     "templates": 13,
     "acceptance": 218,
-    "implementation_ledger": 85,
-    "roadmap_checked": 91,
+    "implementation_ledger": 88,
+    "roadmap_checked": 94,
     "excluded_b": 47,
     "mixed_atomic": 68,
-    "included_non_b": 256
+    "included_non_b": 259
   },
   "excluded_b_ids": [
     "B-CONTRACT-01",
@@ -137,6 +137,14 @@
     "IMPL-SYNTHETIC-RETENTION-PROJECT-SCOPE-2026-07-23"
   ],
   "evidence_groups": [
+    {
+      "prefixes": [
+        "IMPL-DIFY-STYLE-PROFILE-RECOMMENDATION-2026-07-28"
+      ],
+      "paths": [
+        "docs/engineering/execution-packs/pack-09-dify-style-recommendation-evidence.md"
+      ]
+    },
     {
       "prefixes": ["SYN-", "LAB-"],
       "paths": [

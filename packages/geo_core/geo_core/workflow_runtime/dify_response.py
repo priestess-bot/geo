@@ -36,8 +36,13 @@ def parse_result(
             f"Dify workflow ended as {status or 'failed'}: {message[:500]}",
             code="dify_workflow_failed",
         )
-    reported_workflow = data.get("workflow_id")
-    if reported_workflow is not None and str(reported_workflow) != expected_workflow_id:
+    reported_workflow = _optional_text(data.get("workflow_id"))
+    if reported_workflow is None:
+        raise WorkflowConfigurationError(
+            "Dify succeeded without reporting the exact published workflow identity",
+            code="dify_workflow_identity_missing",
+        )
+    if reported_workflow != expected_workflow_id:
         raise WorkflowConfigurationError(
             "Dify response came from a different workflow release",
             code="dify_workflow_identity_mismatch",

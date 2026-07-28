@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from dataclasses import replace
 from datetime import timedelta
+from decimal import Decimal
 from types import SimpleNamespace
 import inspect
 from typing import Any, cast
@@ -27,11 +28,14 @@ from geo_core.recommendations.generation_artifacts import RecommendationTaskArti
 from geo_core.recommendations.generation_ports import (
     RECOMMENDATION_APPLICATION_OUTPUT_SCHEMA,
     RECOMMENDATION_OUTPUT_SCHEMA,
+    structured_generation_input,
 )
 from geo_core.recommendations.generation_worker_contracts import (
     RECOMMENDATION_PARENT_JOB_KIND,
     RECOMMENDATION_PRIMARY_MODEL_JOB_KIND,
     RecommendationChildStatus,
+    RecommendationDifyResultRef,
+    RecommendationExecutionBackend,
     RecommendationModelOutcome,
     RecommendationModelRole,
     RecommendationModelResultRef,
@@ -43,6 +47,8 @@ from geo_core.recommendations.postgres.generation_worker import (
     RecommendationModelChildHandler,
     RecommendationParentHandler,
 )
+from geo_core.workflow_runtime import WorkflowExecutionResult
+from geo_core.workflow_runtime.contracts import canonical_json_hash as workflow_hash
 
 from .generation_test_support import (
     NOW,
@@ -150,11 +156,11 @@ class _Repository:
         self.staged: list[RecommendationModelTask] = []
         self.artifacts: list[RecommendationTaskArtifactRef] = []
         self.finalized: list[object] = []
-        self.successes: list[
-            tuple[RecommendationModelTask, RecommendationModelResultRef]
-        ] = []
+        self.successes: list[tuple[RecommendationModelTask, RecommendationModelResultRef]] = []
         self.model_failures: list[tuple[RecommendationModelTask, str, str]] = []
         self.woken: list[UUID] = []
+        self.workflow_release_id = uuid4()
+        self.workflow_release_hash = "7" * 64
 
     def load_parent(self, lease: WorkerLease) -> RecommendationParentClaim:
         assert lease.job_id != UUID(int=0)
@@ -177,18 +183,20 @@ class _Repository:
         return self.prompts.resolve(
             binding=spec.prompt_binding if primary else spec.arbiter_binding,
             route=spec.route if primary else spec.arbiter_route,
-            configured_model=(
-                spec.configured_model if primary else spec.arbiter_configured_model
-            ),
+            configured_model=(spec.configured_model if primary else spec.arbiter_configured_model),
             model_policy=spec.model_policy if primary else spec.arbiter_model_policy,
-            capture_method=(
-                spec.capture_method if primary else spec.arbiter_capture_method
-            ),
+            capture_method=(spec.capture_method if primary else spec.arbiter_capture_method),
             search_mode=spec.search_mode if primary else spec.arbiter_search_mode,
             structured_input=structured_input,
             output_schema=output_schema,
             application_output_schema=application_output_schema,
         )
+
+    def resolve_workflow_release(self, *, task_role, prompt):
+        assert prompt.binding.project_id == PROJECT_ID
+        if task_role is RecommendationModelRole.ARBITER:
+            return None
+        return self.workflow_release_id, self.workflow_release_hash
 
     def prepare_model_task(self, task) -> RecommendationTaskArtifactRef:
         artifact = RecommendationTaskArtifactRef(
@@ -268,6 +276,32 @@ class _Application:
         )
 
 
+class _WorkflowExecutor:
+    def __init__(self, action: WorkflowExecutionResult | BaseException) -> None:
+        self.action = action
+        self.frozen_calls: list[tuple[UUID, str, object]] = []
+
+    def execute_optional(self, *args, **kwargs):
+        raise AssertionError("Recommendation Dify child must not resolve the active binding")
+
+    def execute_frozen(
+        self,
+        lease,
+        request,
+        *,
+        release_id,
+        release_hash,
+        validate_output=None,
+    ):
+        del lease
+        self.frozen_calls.append((release_id, release_hash, request))
+        if isinstance(self.action, BaseException):
+            raise self.action
+        if validate_output is not None:
+            validate_output(self.action.output)
+        return self.action
+
+
 def test_parent_stages_only_primary_child_and_defers_without_consuming_it() -> None:
     store, repository, handler, parent = _parent_runtime(generation_spec())
 
@@ -282,6 +316,9 @@ def test_parent_stages_only_primary_child_and_defers_without_consuming_it() -> N
     assert task.parent_job_id == parent.job_id
     assert task.child_job_id != parent.job_id
     assert task.runtime_selection_id == task.runtime_option_id
+    assert task.execution_backend is RecommendationExecutionBackend.DIFY
+    assert task.workflow_release_id == repository.workflow_release_id
+    assert task.structured_input
     assert store.deferred[0][0] == "waiting_primary"
 
 
@@ -292,14 +329,12 @@ def test_worker_repository_persists_only_artifact_and_result_references() -> Non
     activate = inspect.signature(
         RecommendationGenerationWorkerRepository.activate_model_task
     ).parameters
-    hints = get_type_hints(
-        RecommendationGenerationWorkerRepository.record_model_success
-    )
+    hints = get_type_hints(RecommendationGenerationWorkerRepository.record_model_success)
 
     assert "artifact" not in stage
     assert "artifact" in activate
     assert "result" not in activate and "execution" not in activate
-    assert hints["reference"] is RecommendationModelResultRef
+    assert hints["reference"] == RecommendationModelResultRef | RecommendationDifyResultRef
 
 
 def test_parent_finalizes_successful_primary_result_without_an_arbiter() -> None:
@@ -326,7 +361,10 @@ def test_parent_stages_arbiter_after_primary_and_finalizes_two_call_lineage() ->
     spec = generation_spec(with_arbiter=True)
     primary_result = model_result(spec, model_output())
     primary = RecommendationModelOutcome(
-        uuid4(), RecommendationModelRole.PRIMARY, RecommendationChildStatus.SUCCEEDED, primary_result
+        uuid4(),
+        RecommendationModelRole.PRIMARY,
+        RecommendationChildStatus.SUCCEEDED,
+        primary_result,
     )
     store, repository, handler, parent = _parent_runtime(
         spec, claim=RecommendationParentClaim(spec, primary=primary)
@@ -337,6 +375,8 @@ def test_parent_stages_arbiter_after_primary_and_finalizes_two_call_lineage() ->
     assert first["status"] == "retry_wait"
     arbiter_task = repository.staged[0]
     assert arbiter_task.role is RecommendationModelRole.ARBITER
+    assert arbiter_task.execution_backend is RecommendationExecutionBackend.MODEL_GATEWAY
+    assert arbiter_task.workflow_release_id is None
     assert arbiter_task.prompt.binding.purpose == "synthetic_lab.arbiter"
     repository.claim = RecommendationParentClaim(
         spec,
@@ -368,8 +408,10 @@ def test_parent_handles_pending_failed_and_insufficient_children_without_model_i
     assert store.deferred[0][0] == "waiting_primary"
 
     failed = RecommendationModelOutcome(
-        uuid4(), RecommendationModelRole.PRIMARY, RecommendationChildStatus.FAILED,
-        error_code="model_contract_failed"
+        uuid4(),
+        RecommendationModelRole.PRIMARY,
+        RecommendationChildStatus.FAILED,
+        error_code="model_contract_failed",
     )
     failed_store, _, failed_handler, failed_parent = _parent_runtime(
         spec, claim=RecommendationParentClaim(spec, primary=failed)
@@ -450,9 +492,7 @@ def test_child_refuses_database_fallback_when_governed_result_artifact_is_missin
     outcome = runtime.handler.handle(runtime.lease)
 
     assert outcome["status"] == "failed"
-    assert runtime.store.transaction_failures[0][1] == (
-        "RecommendationGenerationOutputError"
-    )
+    assert runtime.store.transaction_failures[0][1] == ("RecommendationGenerationOutputError")
     assert not runtime.repository.successes
     assert runtime.repository.woken == [runtime.task.parent_job_id]
 
@@ -575,9 +615,7 @@ def _child_runtime(*, action=None, lineage_tampered: bool = False) -> _ChildRunt
         purpose=task.prompt.binding.purpose,
         prompt_bundle_hash=task.prompt.prompt_bundle_hash,
         output_schema_hash=canonical_json_hash(task.prompt.output_schema),
-        application_output_schema_hash=canonical_json_hash(
-            task.prompt.application_output_schema
-        ),
+        application_output_schema_hash=canonical_json_hash(task.prompt.application_output_schema),
         policy_version_id=task.prompt.policy.policy_version_id,
         policy_version_hash=task.prompt.policy.policy_version_hash,
         provider_secret_handle=None,
@@ -605,4 +643,88 @@ def _child_runtime(*, action=None, lineage_tampered: bool = False) -> _ChildRunt
         admitter=admitter,
         loader=loader,
         handler=handler,
+    )
+
+
+def _dify_child_runtime(
+    *,
+    action: BaseException | None = None,
+    output: dict[str, object] | None = None,
+) -> tuple[_ChildRuntime, _WorkflowExecutor]:
+    spec = generation_spec()
+    parent = worker_lease(RECOMMENDATION_PARENT_JOB_KIND)
+    repository = _Repository(RecommendationParentClaim(spec))
+    structured_input = structured_generation_input(spec.evidence)
+    prompt = repository.resolve_prompt(
+        spec=spec,
+        role=RecommendationModelRole.PRIMARY,
+        structured_input=structured_input,
+        output_schema=RECOMMENDATION_OUTPUT_SCHEMA,
+        application_output_schema=RECOMMENDATION_APPLICATION_OUTPUT_SCHEMA,
+    )
+    release_id = uuid4()
+    release_hash = "7" * 64
+    task = RecommendationModelTask(
+        child_job_id=uuid4(),
+        parent_job_id=parent.job_id,
+        project_id=PROJECT_ID,
+        parent_input_hash=spec.input_hash,
+        role=RecommendationModelRole.PRIMARY,
+        runtime_selection_id=spec.runtime_selection_id,
+        runtime_manifest_id=spec.runtime_manifest_id,
+        runtime_manifest_hash=spec.runtime_manifest_hash,
+        runtime_option_id=spec.runtime_option_id,
+        runtime_option_hash=spec.runtime_option_hash,
+        prompt=prompt,
+        admitted_by=uuid4(),
+        artifact_expires_at=spec.valid_until,
+        execution_backend=RecommendationExecutionBackend.DIFY,
+        structured_input=structured_input,
+        workflow_release_id=release_id,
+        workflow_release_hash=release_hash,
+    )
+    repository.staged.append(task)
+    lease = worker_lease(RECOMMENDATION_PRIMARY_MODEL_JOB_KIND, job_id=task.child_job_id)
+    result_output = output or model_output()
+    result = WorkflowExecutionResult(
+        output=result_output,
+        attempt_id=uuid4(),
+        runtime_release_id=release_id,
+        runtime_release_hash=release_hash,
+        dify_task_id="dify-task",
+        dify_run_id="dify-run",
+        configured_model=task.prompt.configured_model,
+        provider_reported_model=task.prompt.configured_model,
+        prompt_tokens=10,
+        completion_tokens=20,
+        total_steps=3,
+        elapsed_seconds=Decimal("1.2"),
+        response_hash=workflow_hash(result_output),
+    )
+    workflows = _WorkflowExecutor(action or result)
+    application = _Application(model_result(spec, model_output()))
+    store = _Store()
+    admitter = _Admitter(object())
+    loader = _Loader(object(), application, spec.model_policy)
+    handler = RecommendationModelChildHandler(
+        store=cast(Any, store),
+        repository=cast(RecommendationGenerationWorkerRepository, repository),
+        model_job_admitter=cast(ModelCallJobAdmitter, admitter),
+        model_runtime_loader=cast(ModelCallRuntimeLoader, loader),
+        workflow_executor=workflows,
+        lease_for=timedelta(seconds=30),
+        clock=lambda: NOW,
+    )
+    return (
+        _ChildRuntime(
+            store=store,
+            repository=repository,
+            task=task,
+            lease=lease,
+            application=application,
+            admitter=admitter,
+            loader=loader,
+            handler=handler,
+        ),
+        workflows,
     )

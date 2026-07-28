@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from enum import StrEnum
+from typing import TypeAlias
 from uuid import UUID
 
 from geo_core.jobs.postgres import WorkerLease
@@ -20,6 +22,22 @@ from geo_core.synthetic_lab.domain import (
 )
 from geo_core.synthetic_lab.execution_json import freeze_execution_mapping as _freeze_mapping
 from geo_core.synthetic_lab.ports import RuntimeInputSnapshot
+
+
+DIFY_SYNTHETIC_PROGRAM_KINDS = frozenset(
+    {
+        ProgramKind.STYLE_PROFILE,
+        ProgramKind.GENERATION,
+        ProgramKind.CLAIM_EXTRACTION,
+        ProgramKind.CONFLICT_CHECK,
+        ProgramKind.REVISION,
+    }
+)
+
+
+class SyntheticExecutionBackend(StrEnum):
+    MODEL_GATEWAY = "model_gateway"
+    DIFY = "dify"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -135,6 +153,9 @@ class SyntheticModelInvocation:
     structured_input: Mapping[str, object]
     deterministic_seed: int | None = None
     max_output_tokens: int = 4096
+    execution_backend: SyntheticExecutionBackend = SyntheticExecutionBackend.MODEL_GATEWAY
+    workflow_release_id: UUID | None = None
+    workflow_release_hash: str | None = None
 
     def __post_init__(self) -> None:
         if self.expected_job_version < 1:
@@ -149,10 +170,23 @@ class SyntheticModelInvocation:
         _require_hash(self.parent_task_input_hash, "parent Synthetic task input")
         _require_text(self.step_key, "deterministic model step key")
         object.__setattr__(self, "structured_input", _freeze_mapping(self.structured_input))
+        object.__setattr__(
+            self,
+            "execution_backend",
+            SyntheticExecutionBackend(self.execution_backend),
+        )
         if self.deterministic_seed is not None and not 0 <= self.deterministic_seed < 2**64:
             raise SyntheticLabContractError("deterministic model seed is out of range")
         if self.max_output_tokens < 1:
             raise SyntheticLabContractError("model output token limit must be positive")
+        if self.execution_backend is SyntheticExecutionBackend.DIFY:
+            if self.prompt.frozen.program_kind not in DIFY_SYNTHETIC_PROGRAM_KINDS:
+                raise SyntheticLabContractError("native-only Synthetic Prompt cannot use Dify")
+            if self.workflow_release_id is None or self.workflow_release_id.int == 0:
+                raise SyntheticLabContractError("Dify invocation requires a Workflow Release")
+            _require_hash(self.workflow_release_hash or "", "Dify Workflow Release")
+        elif self.workflow_release_id is not None or self.workflow_release_hash is not None:
+            raise SyntheticLabContractError("native model invocation cannot carry Dify lineage")
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -185,19 +219,74 @@ class SyntheticModelResult:
             _require_hash(value, label)
 
 
+@dataclass(frozen=True, kw_only=True)
+class SyntheticWorkflowResult:
+    workflow_attempt_id: UUID
+    workflow_release_id: UUID
+    workflow_release_hash: str
+    output: Mapping[str, object]
+    configured_model: str
+    reported_model: str
+    model_identity_hash: str
+    request_hash: str
+    response_hash: str
+    published_snapshot_id: UUID | None = None
+    published_snapshot_hash: str | None = None
+    provider: str = "dify"
+
+    def __post_init__(self) -> None:
+        _require_uuid(self.workflow_attempt_id, "workflow attempt")
+        _require_uuid(self.workflow_release_id, "Workflow Release")
+        object.__setattr__(self, "output", _freeze_mapping(self.output))
+        for value, label in (
+            (self.provider, "workflow provider"),
+            (self.configured_model, "configured model"),
+            (self.reported_model, "reported model"),
+        ):
+            _require_text(value, label)
+        if self.provider != "dify":
+            raise SyntheticLabContractError("Synthetic workflow result provider must be Dify")
+        for value, label in (
+            (self.workflow_release_hash, "Workflow Release"),
+            (self.model_identity_hash, "workflow model identity"),
+            (self.request_hash, "workflow request"),
+            (self.response_hash, "workflow response"),
+        ):
+            _require_hash(value, label)
+        if (self.published_snapshot_id is None) != (self.published_snapshot_hash is None):
+            raise SyntheticLabContractError(
+                "Dify published snapshot requires both identity and hash"
+            )
+        if self.published_snapshot_id is not None:
+            _require_uuid(self.published_snapshot_id, "Dify published snapshot")
+            _require_hash(
+                self.published_snapshot_hash or "",
+                "Dify published snapshot",
+            )
+
+
+SyntheticExecutionResult: TypeAlias = SyntheticModelResult | SyntheticWorkflowResult
+
+
 _PUBLIC_MODULE = "geo_core.synthetic_lab.execution_contracts"
+SyntheticExecutionBackend.__module__ = _PUBLIC_MODULE
 for _contract_type in (
     FrozenPromptRef,
     ResolvedSyntheticPrompt,
     SyntheticModelInvocation,
     SyntheticModelResult,
+    SyntheticWorkflowResult,
 ):
     _contract_type.__module__ = _PUBLIC_MODULE
 
 
 __all__ = [
+    "DIFY_SYNTHETIC_PROGRAM_KINDS",
     "FrozenPromptRef",
     "ResolvedSyntheticPrompt",
+    "SyntheticExecutionBackend",
+    "SyntheticExecutionResult",
     "SyntheticModelInvocation",
     "SyntheticModelResult",
+    "SyntheticWorkflowResult",
 ]

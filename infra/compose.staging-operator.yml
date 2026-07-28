@@ -6,6 +6,7 @@ services:
     user: "${GEO_DEV_HOST_UID:-1000}:${GEO_DEV_HOST_GID:-1000}"
     environment:
       GEO_WORKFLOW_C_ARTIFACT_KEYRING_FILE: /run/geo-staging-secrets/workflow-c-artifact-keyring.json
+      GEO_MODEL_GATEWAY_WORKER_SERVICE_IDENTITY_ID: ${GEO_MODEL_GATEWAY_WORKER_SERVICE_IDENTITY_ID:?set the staging Model Gateway worker identity}
     command:
       - /bin/sh
       - -c

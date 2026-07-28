@@ -19,9 +19,14 @@ from geo_core.model_gateway.identity import canonical_json_hash
 from geo_core.synthetic_lab.application_support import canonical_hash
 from geo_core.synthetic_lab.child_model_calls import SyntheticChildModelCallTask
 from geo_core.synthetic_lab.execution_contracts import (
+    SyntheticExecutionBackend,
     SyntheticExecutionError,
     SyntheticModelResult,
+    SyntheticWorkflowResult,
 )
+from geo_core.prompts.bootstrap_catalog import default_prompt_bootstrap_spec
+from geo_core.prompts.bootstrap_validation import validate_bootstrap_output
+from geo_core.workflow_runtime.contracts import canonical_json_hash as workflow_output_hash
 
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -183,6 +188,80 @@ class GovernedSyntheticChildResultLoader:
             model_identity_hash=identity_hash,
             request_hash=request_hash,
             response_hash=response_hash,
+        )
+
+    def load_dify(
+        self,
+        *,
+        parent_lease: WorkerLease,
+        task: SyntheticChildModelCallTask,
+        attempt_id: UUID,
+        output: Mapping[str, object],
+        output_hash: str,
+        configured_model: str,
+        reported_model: str | None,
+        runtime_release_id: UUID,
+        runtime_release_hash: str,
+        published_snapshot_id: UUID | None = None,
+        published_snapshot_hash: str | None = None,
+    ) -> SyntheticWorkflowResult:
+        if (
+            parent_lease.project_id != task.project_id
+            or parent_lease.job_id != task.parent_job_id
+            or parent_lease.kind != task.parent_job_kind
+        ):
+            raise SyntheticExecutionError("Synthetic Dify recovery crosses parent lease")
+        if configured_model != task.prompt.frozen.configured_model:
+            raise SyntheticExecutionError("Synthetic Dify configured model changed")
+        if task.execution_backend is not SyntheticExecutionBackend.DIFY:
+            raise SyntheticExecutionError("Synthetic Dify result changed the frozen backend")
+        if (
+            runtime_release_id != task.workflow_release_id
+            or runtime_release_hash != task.workflow_release_hash
+        ):
+            raise SyntheticExecutionError("Synthetic Dify Workflow Release changed")
+        # Dify persists UTF-8 canonical JSON. Synthetic's general hash escapes
+        # non-ASCII and therefore differs for ordinary punctuation such as curly quotes.
+        if workflow_output_hash(output) != output_hash:
+            raise SyntheticExecutionError("Synthetic Dify output hash changed")
+        try:
+            validate_bootstrap_output(
+                default_prompt_bootstrap_spec(task.prompt.frozen.program_kind),
+                input_value=task.structured_input,
+                output=output,
+            )
+        except Exception as exc:
+            raise SyntheticExecutionError(
+                "recovered Synthetic Dify result failed its frozen contract"
+            ) from exc
+        effective_reported = reported_model or configured_model
+        return SyntheticWorkflowResult(
+            workflow_attempt_id=attempt_id,
+            workflow_release_id=runtime_release_id,
+            workflow_release_hash=runtime_release_hash,
+            output=output,
+            configured_model=configured_model,
+            reported_model=effective_reported,
+            model_identity_hash=canonical_hash(
+                {
+                    "provider": "dify",
+                    "runtime_release_id": runtime_release_id,
+                    "runtime_release_hash": runtime_release_hash,
+                    "configured_model": configured_model,
+                    "reported_model": effective_reported,
+                }
+            ),
+            request_hash=canonical_hash(
+                {
+                    "parent_task_input_hash": task.parent_task_input_hash,
+                    "step_key": task.step_key,
+                    "prompt_bundle_hash": task.prompt.prompt_bundle_hash,
+                    "structured_input_hash": task.prompt.structured_input_hash,
+                }
+            ),
+            response_hash=output_hash,
+            published_snapshot_id=published_snapshot_id,
+            published_snapshot_hash=published_snapshot_hash,
         )
 
 

@@ -18,13 +18,19 @@ from geo_core.jobs.postgres import PostgresDurableJobStore
 from geo_core.knowledge.question_worker import QUESTION_GENERATION_OUTPUT_SCHEMA
 from geo_core.model_gateway import build_secret_store_credential_resolver
 from geo_core.placements.default_prompts import default_output_schema
+from geo_core.prompts.bootstrap_catalog import default_prompt_bootstrap_spec
+from geo_core.prompts.bootstrap_contracts import thaw_mapping
+from geo_core.prompts.bootstrap_validation import validate_bootstrap_output
+from geo_core.prompts.program_contracts import ProgramKind
 from geo_core.rag import RAG_EXTRACTION_OUTPUT_SCHEMA
 from geo_core.secrets import SecretVersionHandle
 from geo_core.workflow_runtime import (
     DIFY_WORKFLOW_PURPOSES,
+    DifyPublishedWorkflowReader,
     DifyWorkflowExecutor,
     PostgresWorkflowRuntimeCatalog,
     PostgresWorkflowRuntimeRepository,
+    WorkflowConfigurationError,
     WorkflowContractError,
     WorkflowExecutionError,
     WorkflowExecutionRequest,
@@ -33,6 +39,15 @@ from geo_core.workflow_runtime.contracts import canonical_json_hash
 
 
 Validator = Callable[[Mapping[str, object]], None]
+
+BOOTSTRAP_CANARY_KINDS = {
+    "synthetic_lab.generation": ProgramKind.GENERATION,
+    "synthetic_lab.claim_extraction": ProgramKind.CLAIM_EXTRACTION,
+    "synthetic_lab.conflict_check": ProgramKind.CONFLICT_CHECK,
+    "synthetic_lab.revision": ProgramKind.REVISION,
+    "synthetic_lab.style_profile": ProgramKind.STYLE_PROFILE,
+    "recommendations.recommendation": ProgramKind.RECOMMENDATION,
+}
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -44,7 +59,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     commands = parser.add_subparsers(dest="command", required=True)
 
-    listing = commands.add_parser("list", help="show all four runtime cards")
+    listing = commands.add_parser("list", help="show all supported runtime cards")
     listing.add_argument("--project-id", required=True)
 
     register = commands.add_parser("register", help="register one immutable release")
@@ -60,6 +75,10 @@ def _parser() -> argparse.ArgumentParser:
     register.add_argument("--created-by", required=True)
     register.add_argument("--configured-model", default="deepseek-chat")
     register.add_argument("--model-provider", default="langgenius/deepseek/deepseek")
+    register.add_argument("--dify-console-url", default="http://127.0.0.1:15000")
+    register.add_argument(
+        "--dify-state-file", default=".runtime/geo-dify-state.json"
+    )
 
     canary = commands.add_parser(
         "canary", help="run one real provider call and persist its semantic result"
@@ -83,6 +102,29 @@ def _parser() -> argparse.ArgumentParser:
     activate.add_argument("--release-id", required=True)
     activate.add_argument("--activated-by", required=True)
     activate.add_argument("--reason", required=True)
+
+    reconcile = commands.add_parser(
+        "reconcile-new-parent",
+        help="record Dify run verification and authorize only a new parent Job",
+    )
+    reconcile.add_argument("--project-id", required=True)
+    reconcile.add_argument("--attempt-id", required=True)
+    reconcile.add_argument("--authorized-by", required=True)
+    reconcile.add_argument(
+        "--provider-outcome",
+        required=True,
+        choices=(
+            "not_found",
+            "failed_without_output",
+            "succeeded_output_unrecoverable",
+        ),
+    )
+    reconcile.add_argument(
+        "--provider-run-id",
+        help="required unless --provider-outcome=not_found",
+    )
+    reconcile.add_argument("--evidence-reference", required=True)
+    reconcile.add_argument("--reason", required=True)
     return parser
 
 
@@ -107,6 +149,16 @@ def main() -> int:
             body = dsl_path.read_bytes()
             if not body:
                 raise WorkflowContractError("Dify DSL file cannot be empty")
+            snapshot = DifyPublishedWorkflowReader(
+                base_url=args.dify_console_url,
+                state_file=args.dify_state_file,
+            ).read(purpose=args.purpose, app_id=args.app_id)
+            if snapshot.workflow_id != args.workflow_id:
+                raise WorkflowConfigurationError(
+                    "published Dify Workflow ID differs from --workflow-id; "
+                    "refresh the private state before registration",
+                    code="dify_published_workflow_id_mismatch",
+                )
             release_id = PostgresWorkflowRuntimeCatalog(database_url).register_release(
                 project_id=project_id,
                 purpose=args.purpose,
@@ -115,6 +167,8 @@ def main() -> int:
                 dify_app_id=args.app_id,
                 dify_workflow_id=args.workflow_id,
                 dsl_hash=hashlib.sha256(body).hexdigest(),
+                registered_workflow_hash=snapshot.workflow_hash,
+                registered_snapshot_hash=snapshot.snapshot_hash,
                 configured_model=args.configured_model,
                 model_provider=args.model_provider,
                 api_secret_handle=SecretVersionHandle(
@@ -133,8 +187,6 @@ def main() -> int:
             repository = PostgresWorkflowRuntimeRepository(store)
             release = repository.get_release(project_id=project_id, release_id=release_id)
             request, validator = canary_contract(project_id, release.purpose)
-            from geo_core.workflow_runtime import DifyPublishedWorkflowReader
-
             result = DifyWorkflowExecutor(
                 repository=repository,
                 credential_resolver=build_secret_store_credential_resolver(
@@ -173,6 +225,32 @@ def main() -> int:
                 reason=args.reason,
             )
             _print({"status": "activated", "binding_id": str(binding_id)})
+            return 0
+        if args.command == "reconcile-new-parent":
+            attempt_id = _uuid(args.attempt_id, "attempt")
+            token = PostgresWorkflowRuntimeCatalog(
+                database_url
+            ).authorize_new_parent_after_unknown_outcome(
+                project_id=project_id,
+                attempt_id=attempt_id,
+                authorized_by=_uuid(args.authorized_by, "authorizer"),
+                provider_outcome=args.provider_outcome,
+                provider_run_id=args.provider_run_id,
+                evidence_reference=args.evidence_reference,
+                reason=args.reason,
+            )
+            _print(
+                {
+                    "status": "new_parent_authorized",
+                    "attempt_id": str(attempt_id),
+                    "dify_reconciliation_token": token,
+                    "old_job_reusable": False,
+                    "next_action": (
+                        "Submit a new parent Job with a new idempotency/replay identity and "
+                        "this one-time token. Never retry or reopen the old Job."
+                    ),
+                }
+            )
             return 0
         raise AssertionError("unreachable command")
     except (OSError, ValueError, psycopg.Error, WorkflowExecutionError) as exc:
@@ -243,6 +321,83 @@ def canary_contract(project_id: UUID, purpose: str) -> tuple[WorkflowExecutionRe
         )
         validator = _validate_placement_canary
         output_schema = default_output_schema()
+    elif purpose in BOOTSTRAP_CANARY_KINDS:
+        kind = BOOTSTRAP_CANARY_KINDS[purpose]
+        spec = default_prompt_bootstrap_spec(kind)
+        fixture = next(item for item in spec.fixtures if item.expected_valid)
+        context = dict(thaw_mapping(fixture.input_value))
+        validation_context = context
+        expected = dict(thaw_mapping(fixture.expected_output))
+        if kind is ProgramKind.CONFLICT_CHECK:
+            claim = _first_mutable_object(context.get("claims"), field="claims")
+            claim["text"] = "The placeholder subject does not have the approved synthetic attribute."
+            assessment = _first_mutable_object(
+                expected.get("assessments"), field="assessments"
+            )
+            assessment["status"] = "explicit_conflict"
+            expected["requires_revision"] = True
+        elif kind is ProgramKind.REVISION:
+            context["candidate_text"] = (
+                "The placeholder subject does not have the approved synthetic attribute."
+            )
+            context["issue_codes"] = ["explicit_conflict"]
+            expected["resolved_issue_codes"] = ["explicit_conflict"]
+            expected["revised_text"] = (
+                "The placeholder subject has the approved synthetic attribute."
+            )
+        system = (
+            "Return exactly this deterministic JSON object after checking it against the supplied "
+            f"context: {json.dumps(expected, ensure_ascii=False, sort_keys=True)}"
+        )
+
+        def validator(output: Mapping[str, object]) -> None:
+            try:
+                validate_bootstrap_output(
+                    spec, input_value=validation_context, output=output
+                )
+            except Exception as exc:
+                raise WorkflowContractError(
+                    f"{purpose} canary failed its frozen semantics: {exc}",
+                    code="dify_canary_semantic_invalid",
+                ) from exc
+            if kind is ProgramKind.CONFLICT_CHECK:
+                assessment = _first_object(output.get("assessments"))
+                if (
+                    output.get("requires_revision") is not True
+                    or assessment is None
+                    or assessment.get("status") != "explicit_conflict"
+                ):
+                    raise WorkflowContractError(
+                        "conflict canary did not require revision",
+                        code="dify_canary_semantic_invalid",
+                    )
+            if kind is ProgramKind.REVISION and (
+                output.get("resolved_issue_codes") != ["explicit_conflict"]
+                or "has the approved synthetic attribute" not in str(output.get("revised_text"))
+            ):
+                raise WorkflowContractError(
+                    "revision canary did not resolve the frozen conflict",
+                    code="dify_canary_semantic_invalid",
+                )
+            if kind is ProgramKind.STYLE_PROFILE and (
+                output.get("sample_manifest_hash") != context.get("sample_manifest_hash")
+                or output.get("evidence_refs") != ["evidence-style-sample-001"]
+            ):
+                raise WorkflowContractError(
+                    "Style Profile canary did not preserve its approved sample lineage",
+                    code="dify_canary_semantic_invalid",
+                )
+            if kind is ProgramKind.RECOMMENDATION and (
+                output.get("recommendation_type") != "experiment"
+                or output.get("selected_evidence") != expected.get("selected_evidence")
+                or output.get("scope") != context.get("scope")
+            ):
+                raise WorkflowContractError(
+                    "recommendation canary escaped its frozen evidence or scope",
+                    code="dify_canary_semantic_invalid",
+                )
+
+        output_schema = thaw_mapping(spec.schemas.application_output_schema)
     else:
         raise WorkflowContractError("unsupported Dify canary purpose")
     context = {**context, "task_contract": system}
@@ -264,6 +419,21 @@ def canary_contract(project_id: UUID, purpose: str) -> tuple[WorkflowExecutionRe
         ),
         validator,
     )
+
+
+def _first_object(value: object) -> Mapping[str, object] | None:
+    if not isinstance(value, list) or not value or not isinstance(value[0], Mapping):
+        return None
+    return value[0]
+
+
+def _first_mutable_object(value: object, *, field: str) -> dict[str, object]:
+    if not isinstance(value, list) or not value or not isinstance(value[0], dict):
+        raise WorkflowContractError(
+            f"synthetic canary fixture has invalid {field}",
+            code="dify_canary_fixture_invalid",
+        )
+    return value[0]
 
 
 def _validate_question_canary(output: Mapping[str, object]) -> None:

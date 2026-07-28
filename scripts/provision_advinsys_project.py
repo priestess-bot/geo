@@ -21,6 +21,16 @@ STANDARD_CHANNELS = {
     "ozbargain", "tiktok", "instagram", "quora",
 }
 
+ENTITY_FIELDS = ("canonical_name", "canonical_url", "attributes")
+
+
+def entity_request(item: dict[str, Any], *, entity_type: str) -> dict[str, object]:
+    """Keep manifest-only fields such as monitoring queries out of Catalog requests."""
+    return {
+        "entity_type": entity_type,
+        **{name: item[name] for name in ENTITY_FIELDS if name in item},
+    }
+
 
 def load_manifest(path: Path) -> dict[str, Any]:
     manifest = json.loads(path.read_text(encoding="utf-8"))
@@ -92,10 +102,7 @@ def provision(api: Api, manifest: dict[str, Any], repository_root: Path) -> dict
     brand = by_name.get(brand_config["canonical_name"]) or api.request(
         "POST",
         f"/v1/projects/{project_id}/entities",
-        {
-            "entity_type": "brand",
-            **brand_config,
-        },
+        entity_request(brand_config, entity_type="brand"),
     )
     product_rows: list[dict[str, Any]] = []
     for product in products:
@@ -104,7 +111,7 @@ def provision(api: Api, manifest: dict[str, Any], repository_root: Path) -> dict
             row = api.request(
                 "POST",
                 f"/v1/projects/{project_id}/entities",
-                {"entity_type": "product", **product},
+                entity_request(product, entity_type="product"),
             )
         product_rows.append(row)
 
@@ -332,7 +339,7 @@ def _wait_for_official_sources(
     raise RuntimeError("official knowledge sources did not become ready within 60 seconds")
 
 
-def expected_summary(manifest: dict[str, Any]) -> dict[str, object]:
+def expected_summary(manifest: dict[str, Any]) -> dict[str, Any]:
     return {
         "project_name": manifest["project"]["name"],
         "product_count": len(manifest["products"]),

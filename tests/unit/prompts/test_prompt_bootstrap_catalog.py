@@ -63,9 +63,7 @@ def test_catalog_delivers_first_phase_and_independent_workspace_flow_drafts() ->
 
 
 def test_workspace_business_purposes_are_exact_and_reference_translation_is_reserved() -> None:
-    assert {
-        spec.program_kind: spec.purpose for spec in default_prompt_bootstrap_specs()
-    } == {
+    assert {spec.program_kind: spec.purpose for spec in default_prompt_bootstrap_specs()} == {
         ProgramKind.GENERATION: "synthetic_lab.generation",
         ProgramKind.CLAIM_EXTRACTION: "synthetic_lab.claim_extraction",
         ProgramKind.CONFLICT_CHECK: "synthetic_lab.conflict_check",
@@ -195,9 +193,7 @@ def test_output_schemas_use_the_portable_strict_cross_provider_subset() -> None:
 def test_application_schema_retains_constraints_removed_from_provider_schema() -> None:
     spec = default_prompt_bootstrap_spec(ProgramKind.STYLE_JUDGE)
     provider_schema = json.dumps(thaw_mapping(spec.schemas.output_schema), sort_keys=True)
-    application_schema = json.dumps(
-        thaw_mapping(spec.application_output_schema), sort_keys=True
-    )
+    application_schema = json.dumps(thaw_mapping(spec.application_output_schema), sort_keys=True)
 
     for assertion in (
         "minLength",
@@ -235,6 +231,19 @@ def test_style_profile_freezes_manifest_and_noncontradictory_patterns() -> None:
         validate_bootstrap_output(spec, input_value=fixture.input_value, output=output)
     assert contradiction.value.code == "semantic_rule_failed"
 
+    output = thaw_mapping(fixture.expected_output)
+    for field, marker in (
+        ("voice_traits", "v"),
+        ("lexical_patterns", "l"),
+        ("structure_patterns", "s"),
+        ("avoid_patterns", "a"),
+    ):
+        output[field] = [("\u6fb3" * 190) + marker + str(index) for index in range(12)]
+    with pytest.raises(PromptOutputRuleViolation) as oversized:
+        validate_bootstrap_output(spec, input_value=fixture.input_value, output=output)
+    assert oversized.value.code == "semantic_rule_failed"
+    assert "16KB" in str(oversized.value)
+
 
 def test_offline_answer_requires_exact_corpus_evidence_and_bounded_metric() -> None:
     spec = default_prompt_bootstrap_spec(ProgramKind.OFFLINE_ANSWER)
@@ -258,9 +267,7 @@ def test_offline_answer_requires_exact_corpus_evidence_and_bounded_metric() -> N
     (
         (
             ProgramKind.RECOMMENDATION,
-            lambda output: output.update(
-                {"evidence_refs": [output["evidence_refs"][0]] * 2}
-            ),
+            lambda output: output.update({"evidence_refs": [output["evidence_refs"][0]] * 2}),
         ),
         (
             ProgramKind.RECOMMENDATION,
@@ -328,6 +335,20 @@ def test_recommendation_input_allows_only_the_six_frozen_types() -> None:
         )
 
     assert captured.value.code == "input_schema_invalid"
+
+
+def test_recommendation_type_admission_json_must_match_the_single_allowed_type() -> None:
+    spec = default_prompt_bootstrap_spec(ProgramKind.RECOMMENDATION)
+    fixture = _fixture(spec.fixtures, EvalScenario.POSITIVE)
+    input_value = thaw_mapping(fixture.input_value)
+    input_value["type_admission_json"] = '{"resolved_type":"gap"}'
+
+    with pytest.raises(PromptOutputRuleViolation, match="deterministic evidence admission"):
+        validate_bootstrap_output(
+            spec,
+            input_value=input_value,
+            output=fixture.expected_output,
+        )
 
 
 @pytest.mark.parametrize(
@@ -498,6 +519,16 @@ def test_recommendation_cannot_escape_input_evidence_or_authorise_execution() ->
     with pytest.raises(PromptOutputRuleViolation) as evidence:
         validate_bootstrap_output(spec, input_value=input_value, output=output)
     assert evidence.value.code == "unknown_evidence_ref"
+
+
+def test_recommendation_prompt_explains_reference_splitting_and_numeric_grounding() -> None:
+    spec = default_prompt_bootstrap_spec(ProgramKind.RECOMMENDATION)
+
+    assert "split each frozen ref at its first colon" in spec.system_template
+    assert "resource_id is only the suffix" in spec.system_template
+    assert "repeat evidence IDs in decision prose" in spec.system_template
+    assert "must contain no quantities at all" in spec.system_template
+    assert "does not apply to the required\nnumeric confidence field" in spec.system_template
 
 
 def test_kind_specific_outputs_cannot_expand_frozen_fact_issue_or_type_scope() -> None:
@@ -693,9 +724,7 @@ def test_rubrics_are_complete_blocking_and_total_one_hundred() -> None:
 
 def test_rubric_evaluator_maps_failures_and_freezes_a_test_set_receipt() -> None:
     spec = default_prompt_bootstrap_spec(ProgramKind.RECOMMENDATION)
-    positive_output = thaw_mapping(
-        _fixture(spec.fixtures, EvalScenario.POSITIVE).expected_output
-    )
+    positive_output = thaw_mapping(_fixture(spec.fixtures, EvalScenario.POSITIVE).expected_output)
     valid_outputs = {
         fixture.fixture_id: (
             thaw_mapping(fixture.expected_output)

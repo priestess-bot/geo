@@ -15,13 +15,20 @@ from geo_core.jobs.postgres import (
 )
 from geo_core.model_gateway.application_support import ModelCallUnknownOutcome
 from geo_core.model_gateway.contracts import ModelGatewayError, RetryableModelGatewayError
+from geo_core.workflow_runtime.errors import (
+    RetryableWorkflowExecutionError,
+    UnknownWorkflowOutcomeError,
+    WorkflowExecutionError,
+)
 from geo_core.synthetic_lab.application_support import assert_runtime_current
 from geo_core.synthetic_lab.child_model_calls import SyntheticChildModelCallTask
 from geo_core.synthetic_lab.execution_contracts import (
     SyntheticExecutionError,
     SyntheticExecutionStale,
     SyntheticModelCallPort,
+    SyntheticModelResult,
     SyntheticPromptResolverPort,
+    SyntheticWorkflowResult,
 )
 from geo_core.synthetic_lab.ports import RuntimeInputPort, SyntheticLabStaleInput
 
@@ -69,18 +76,33 @@ class SyntheticChildModelCallHandler:
                 self._store.complete_in_transaction(
                     connection,
                     lease,
-                    result_ref=f"model-gateway://attempt/{result.model_attempt_id}",
+                    result_ref=(
+                        f"dify-workflow://attempt/{result.workflow_attempt_id}"
+                        if isinstance(result, SyntheticWorkflowResult)
+                        else f"model-gateway://attempt/{result.model_attempt_id}"
+                    ),
                     details={
-                        "model_attempt_id": str(result.model_attempt_id),
+                        **(
+                            {
+                                "workflow_attempt_id": str(result.workflow_attempt_id),
+                                "workflow_release_id": str(result.workflow_release_id),
+                            }
+                            if isinstance(result, SyntheticWorkflowResult)
+                            else {"model_attempt_id": str(result.model_attempt_id)}
+                        ),
                         "response_hash": result.response_hash,
                         "task_input_hash": task.input_hash,
                     },
                 )
-            return {
+            response = {
                 "status": "succeeded",
                 "job_id": str(lease.job_id),
-                "model_attempt_id": str(result.model_attempt_id),
             }
+            if isinstance(result, SyntheticModelResult):
+                response["model_attempt_id"] = str(result.model_attempt_id)
+            else:
+                response["workflow_attempt_id"] = str(result.workflow_attempt_id)
+            return response
         except (JobCancellationRequested, LostJobLease):
             raise
         except (SyntheticExecutionStale, SyntheticLabStaleInput):
@@ -93,9 +115,31 @@ class SyntheticChildModelCallHandler:
                 lease,
                 f"synthetic_model_{error.code.value}",
                 timedelta(seconds=min(300.0, max(1.0, retry_after))),
+                reason=str(error),
             )
+        except RetryableWorkflowExecutionError as error:
+            return self._fail(
+                lease,
+                f"synthetic_dify_{error.code}",
+                timedelta(seconds=30),
+            )
+        except UnknownWorkflowOutcomeError as error:
+            return self._fail(
+                lease,
+                "dify_unknown_outcome",
+                None,
+                classification=error.classification,
+                reason=str(error),
+            )
+        except WorkflowExecutionError as error:
+            return self._fail(lease, f"synthetic_dify_{error.code}", None)
         except ModelGatewayError as error:
-            return self._fail(lease, f"synthetic_model_{error.code.value}", None)
+            return self._fail(
+                lease,
+                f"synthetic_model_{error.code.value}",
+                None,
+                reason=str(error),
+            )
         except SyntheticExecutionError:
             return self._fail(lease, "synthetic_child_contract", None)
         except Exception as error:
@@ -129,12 +173,16 @@ class SyntheticChildModelCallHandler:
         retry_delay: timedelta | None,
         *,
         classification: str | None = None,
+        reason: str | None = None,
     ) -> Mapping[str, object]:
         self._store.heartbeat(lease, lease_for=self._lease_for)
         status = self._store.fail(
             lease,
             error_code=error_code,
-            details={"classification": classification or error_code},
+            details={
+                "classification": classification or error_code,
+                **({"reason": reason[:500]} if reason else {}),
+            },
             retry_delay=retry_delay,
         )
         return {"status": status, "job_id": str(lease.job_id)}

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
-from typing import Any, Protocol
 from uuid import uuid5
 
 from geo_core.jobs.postgres import (
@@ -32,26 +31,30 @@ from geo_core.model_gateway.runtime_execution import (
     ModelCallJobAdmitter,
     ModelCallRuntimeLoader,
 )
+from geo_core.prompts.bootstrap_catalog import default_prompt_bootstrap_spec
+from geo_core.prompts.bootstrap_validation import validate_bootstrap_output
+from geo_core.prompts.program_contracts import ProgramKind
 from geo_core.recommendations.errors import RecommendationRuleViolation
 from geo_core.recommendations.generation_contracts import (
     RecommendationGenerationOutputError,
-    RecommendationGenerationResult,
-    RecommendationGenerationSpec,
     RecommendationGenerationStale,
-    ResolvedGenerationPrompt,
     canonical_hash,
 )
-from geo_core.recommendations.generation_artifacts import RecommendationTaskArtifactRef
 from geo_core.recommendations.generation_ports import (
     ARBITER_APPLICATION_OUTPUT_SCHEMA,
     ARBITER_OUTPUT_SCHEMA,
     RECOMMENDATION_APPLICATION_OUTPUT_SCHEMA,
     RECOMMENDATION_OUTPUT_SCHEMA,
     parse_recommendation_output,
+    recommendation_context_size_bytes,
+    RECOMMENDATION_DIFY_CONTEXT_MAX_BYTES,
     require_arbiter_acceptance,
     structured_arbiter_input,
     structured_generation_input,
     validated_recommendation_evidence_refs,
+)
+from geo_core.recommendations.generation_evidence import (
+    GENERATION_EVIDENCE_CONTRACT_V1,
 )
 from geo_core.recommendations.generation_results import (
     build_insufficient_result,
@@ -59,10 +62,21 @@ from geo_core.recommendations.generation_results import (
 )
 from geo_core.recommendations.generation_worker_contracts import (
     RecommendationChildStatus,
+    RecommendationDifyResultRef,
+    RecommendationExecutionBackend,
     RecommendationModelRole,
-    RecommendationModelResultRef,
     RecommendationModelTask,
-    RecommendationParentClaim,
+)
+from geo_core.recommendations.postgres.generation_worker_interfaces import (
+    RecommendationGenerationWorkerRepository as RecommendationGenerationWorkerRepository,
+)
+from geo_core.workflow_runtime import WorkflowExecutionRequest, WorkflowExecutor
+from geo_core.workflow_runtime.errors import (
+    RetryableWorkflowExecutionError,
+    UnknownWorkflowOutcomeError,
+    WorkflowConfigurationError,
+    WorkflowContractError,
+    WorkflowExecutionError,
 )
 from geo_core.recommendations.postgres.generation_worker_support import (
     assert_admitted_lineage as _assert_admitted_lineage,
@@ -70,80 +84,6 @@ from geo_core.recommendations.postgres.generation_worker_support import (
     model_task as _model_task,
     recoverable_result_ref as _recoverable_result_ref,
 )
-
-
-class RecommendationGenerationWorkerRepository(Protocol):
-    def load_parent(self, lease: WorkerLease) -> RecommendationParentClaim: ...
-
-    def assert_current_inputs(self, spec: RecommendationGenerationSpec) -> None: ...
-
-    def resolve_prompt(
-        self,
-        *,
-        spec: RecommendationGenerationSpec,
-        role: RecommendationModelRole,
-        structured_input: Mapping[str, object],
-        output_schema: Mapping[str, object],
-        application_output_schema: Mapping[str, object],
-    ) -> ResolvedGenerationPrompt: ...
-
-    def reserve_model_task(
-        self,
-        *,
-        connection: Any,
-        lease: WorkerLease,
-        task: RecommendationModelTask,
-    ) -> None: ...
-
-    def prepare_model_task(
-        self, task: RecommendationModelTask
-    ) -> RecommendationTaskArtifactRef: ...
-
-    def activate_model_task(
-        self,
-        *,
-        connection: Any,
-        lease: WorkerLease,
-        task: RecommendationModelTask,
-        artifact: RecommendationTaskArtifactRef,
-    ) -> None: ...
-
-    def load_model_task(self, lease: WorkerLease) -> RecommendationModelTask: ...
-
-    def record_model_success(
-        self,
-        *,
-        connection: Any,
-        lease: WorkerLease,
-        task: RecommendationModelTask,
-        reference: RecommendationModelResultRef,
-    ) -> None: ...
-
-    def record_model_failure(
-        self,
-        *,
-        connection: Any,
-        lease: WorkerLease,
-        task: RecommendationModelTask,
-        status: str,
-        error_code: str,
-    ) -> None: ...
-
-    def wake_parent(
-        self,
-        *,
-        connection: Any,
-        lease: WorkerLease,
-        task: RecommendationModelTask,
-    ) -> None: ...
-
-    def finalize_parent(
-        self,
-        *,
-        connection: Any,
-        lease: WorkerLease,
-        result: RecommendationGenerationResult,
-    ) -> None: ...
 
 
 class RecommendationParentHandler:
@@ -167,7 +107,10 @@ class RecommendationParentHandler:
             if spec.valid_until <= self._clock():
                 return self._fail(lease, "expired_spec")
             self._repository.assert_current_inputs(spec)
-            structured_input = structured_generation_input(spec.evidence)
+            structured_input = structured_generation_input(
+                spec.evidence,
+                minimum_real_observations=spec.minimum_real_observations,
+            )
             primary_prompt = self._repository.resolve_prompt(
                 spec=spec,
                 role=RecommendationModelRole.PRIMARY,
@@ -187,7 +130,13 @@ class RecommendationParentHandler:
                 )
                 return self._finalize(lease, result)
             if claim.primary is None:
-                return self._stage(lease, spec, RecommendationModelRole.PRIMARY, primary_prompt)
+                return self._stage(
+                    lease,
+                    spec,
+                    RecommendationModelRole.PRIMARY,
+                    primary_prompt,
+                    structured_input,
+                )
             waiting = self._waiting_or_failed(lease, claim.primary)
             if waiting is not None:
                 return waiting
@@ -195,6 +144,7 @@ class RecommendationParentHandler:
             parsed = parse_recommendation_output(
                 claim.primary.result.output,
                 evidence=spec.evidence,
+                minimum_real_observations=spec.minimum_real_observations,
             )
             calls = [claim.primary.result]
             prompts = [primary_prompt.binding]
@@ -202,6 +152,7 @@ class RecommendationParentHandler:
                 arbiter_input = structured_arbiter_input(
                     claim.primary.result.output,
                     evidence=spec.evidence,
+                    minimum_real_observations=spec.minimum_real_observations,
                 )
                 arbiter_prompt = self._repository.resolve_prompt(
                     spec=spec,
@@ -216,6 +167,7 @@ class RecommendationParentHandler:
                         spec,
                         RecommendationModelRole.ARBITER,
                         arbiter_prompt,
+                        arbiter_input,
                     )
                 waiting = self._waiting_or_failed(lease, claim.arbiter)
                 if waiting is not None:
@@ -260,8 +212,24 @@ class RecommendationParentHandler:
         except Exception as error:
             return self._fail(lease, type(error).__name__, retry_delay=timedelta(seconds=30))
 
-    def _stage(self, lease, spec, role, prompt) -> Mapping[str, object]:
-        task = _model_task(lease, spec, role, prompt)
+    def _stage(self, lease, spec, role, prompt, structured_input) -> Mapping[str, object]:
+        workflow_release = (
+            None
+            if spec.evidence.contract_version == GENERATION_EVIDENCE_CONTRACT_V1
+            else self._repository.resolve_workflow_release(
+                task_role=role,
+                prompt=prompt,
+            )
+        )
+        task = _model_task(
+            lease,
+            spec,
+            role,
+            prompt,
+            structured_input,
+            workflow_release_id=(workflow_release[0] if workflow_release else None),
+            workflow_release_hash=(workflow_release[1] if workflow_release else None),
+        )
         with self._store.fenced_transaction(lease) as connection:
             self._repository.reserve_model_task(
                 connection=connection,
@@ -337,6 +305,7 @@ class RecommendationModelChildHandler:
         repository: RecommendationGenerationWorkerRepository,
         model_job_admitter: ModelCallJobAdmitter,
         model_runtime_loader: ModelCallRuntimeLoader,
+        workflow_executor: WorkflowExecutor | None = None,
         lease_for: timedelta,
         clock=lambda: datetime.now(UTC),
     ) -> None:
@@ -344,6 +313,7 @@ class RecommendationModelChildHandler:
         self._repository = repository
         self._model_job_admitter = model_job_admitter
         self._model_runtime_loader = model_runtime_loader
+        self._workflow_executor = workflow_executor
         self._lease_for = lease_for
         self._clock = clock
 
@@ -352,11 +322,11 @@ class RecommendationModelChildHandler:
         try:
             task = self._repository.load_model_task(lease)
             _assert_task_lease(task, lease)
+            if task.execution_backend is RecommendationExecutionBackend.DIFY:
+                return self._execute_dify(lease, task)
             prompt = task.prompt
             output_schema_hash = canonical_json_hash(prompt.output_schema)
-            application_output_schema_hash = canonical_json_hash(
-                prompt.application_output_schema
-            )
+            application_output_schema_hash = canonical_json_hash(prompt.application_output_schema)
             prompt_admission = PromptReleaseAdmission(
                 project_id=task.project_id,
                 admission_mode=ModelCallAdmissionMode.RUNTIME_FROZEN,
@@ -471,6 +441,17 @@ class RecommendationModelChildHandler:
             return self._fail(lease, task, type(error).__name__, retry_delay=delay)
         except ModelCallUnknownOutcome as error:
             return self._fail(lease, task, type(error).__name__)
+        except UnknownWorkflowOutcomeError:
+            return self._fail(lease, task, "dify_unknown_outcome")
+        except RetryableWorkflowExecutionError as error:
+            return self._fail(
+                lease,
+                task,
+                f"recommendation_dify_{error.code}",
+                retry_delay=timedelta(seconds=30),
+            )
+        except WorkflowExecutionError as error:
+            return self._fail(lease, task, f"recommendation_dify_{error.code}")
         except (ModelGatewayError, RecommendationGenerationOutputError) as error:
             return self._fail(lease, task, type(error).__name__)
         except Exception as error:
@@ -480,6 +461,100 @@ class RecommendationModelChildHandler:
                 type(error).__name__,
                 retry_delay=timedelta(seconds=30),
             )
+
+    def _execute_dify(
+        self, lease: WorkerLease, task: RecommendationModelTask
+    ) -> Mapping[str, object]:
+        if self._workflow_executor is None:
+            raise WorkflowConfigurationError(
+                "Dify is required for Recommendation primary generation",
+                code="dify_workflow_not_configured",
+            )
+        context_size = recommendation_context_size_bytes(task.structured_input)
+        if context_size > RECOMMENDATION_DIFY_CONTEXT_MAX_BYTES:
+            raise WorkflowContractError(
+                "Recommendation Dify context exceeds the 100KB admission limit",
+                code="dify_recommendation_context_too_large",
+            )
+        prompt = task.prompt
+        request = WorkflowExecutionRequest(
+            project_id=task.project_id,
+            purpose=prompt.binding.purpose,
+            context=task.structured_input,
+            input_hash=canonical_json_hash(
+                {
+                    "parent_input_hash": task.parent_input_hash,
+                    "role": task.role.value,
+                    "prompt_bundle_hash": prompt.prompt_bundle_hash,
+                    "structured_input_hash": prompt.structured_input_hash,
+                }
+            ),
+            output_schema=prompt.application_output_schema,
+        )
+
+        def validate(output: Mapping[str, object]) -> None:
+            try:
+                validate_bootstrap_output(
+                    default_prompt_bootstrap_spec(ProgramKind.RECOMMENDATION),
+                    input_value=task.structured_input,
+                    output=output,
+                )
+            except Exception as error:
+                raise WorkflowContractError(
+                    f"Dify Recommendation output failed its frozen contract: {error}",
+                    code="dify_recommendation_contract_invalid",
+                ) from error
+
+        with LeaseHeartbeat(
+            self._store,
+            lease,
+            lease_for=self._lease_for,
+            interval=min(self._lease_for / 3, timedelta(seconds=30)),
+        ) as heartbeat:
+            assert task.workflow_release_id is not None
+            assert task.workflow_release_hash is not None
+            result = self._workflow_executor.execute_frozen(
+                lease,
+                request,
+                release_id=task.workflow_release_id,
+                release_hash=task.workflow_release_hash,
+                validate_output=validate,
+            )
+            heartbeat.raise_if_stopped()
+        if result.configured_model != prompt.configured_model:
+            raise RecommendationGenerationOutputError(
+                "Dify changed the frozen Recommendation configured model"
+            )
+        reference = RecommendationDifyResultRef(
+            attempt_id=result.attempt_id,
+            response_hash=result.response_hash,
+        )
+        with self._store.fenced_transaction(lease) as connection:
+            self._repository.record_model_success(
+                connection=connection,
+                lease=lease,
+                task=task,
+                reference=reference,
+            )
+            self._store.complete_in_transaction(
+                connection,
+                lease,
+                result_ref=f"dify-workflow://attempt/{result.attempt_id}",
+                details={
+                    "workflow_attempt_id": str(result.attempt_id),
+                    "runtime_release_id": str(result.runtime_release_id),
+                },
+            )
+            self._repository.wake_parent(
+                connection=connection,
+                lease=lease,
+                task=task,
+            )
+        return {
+            "status": "succeeded",
+            "job_id": str(lease.job_id),
+            "workflow_attempt_id": str(result.attempt_id),
+        }
 
     def _fail(self, lease, task, error_code, retry_delay=None) -> Mapping[str, object]:
         with self._store.fenced_transaction(lease) as connection:

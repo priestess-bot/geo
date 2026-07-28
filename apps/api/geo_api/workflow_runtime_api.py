@@ -9,6 +9,7 @@ from uuid import UUID
 
 from geo_core.workflow_runtime import (
     DifyPublishedWorkflowReader,
+    DifyUnresolvedAttempt,
     PostgresWorkflowRuntimeCatalog,
     WorkflowRuntimeCard,
 )
@@ -18,6 +19,22 @@ class WorkflowRuntimeApi(Protocol):
     persistence: str
 
     def list_cards(self, *, project_id: UUID) -> tuple[WorkflowRuntimeCard, ...]: ...
+
+    def list_unresolved_attempts(
+        self, *, project_id: UUID
+    ) -> tuple[DifyUnresolvedAttempt, ...]: ...
+
+    def authorize_new_parent_after_unknown_outcome(
+        self,
+        *,
+        project_id: UUID,
+        attempt_id: UUID,
+        authorized_by: UUID,
+        provider_outcome: str,
+        provider_run_id: str | None,
+        evidence_reference: str,
+        reason: str,
+    ) -> str: ...
 
 
 def build_workflow_runtime_api() -> WorkflowRuntimeApi | None:
@@ -67,6 +84,21 @@ class RefreshingWorkflowRuntimeApi:
                     release_id=card.release_id,
                     snapshot=snapshot,
                 )
+                if (
+                    snapshot.workflow_hash != card.published_workflow_hash
+                    or snapshot.snapshot_hash != card.published_snapshot_hash
+                ):
+                    refreshed.append(
+                        replace(
+                            card,
+                            sync_status="drifted",
+                            sync_error=(
+                                "Dify 已发布工作流与冻结快照不一致；业务执行已阻断。"
+                                "请注册并验证新的 Workflow Release，不要覆盖当前 Release。"
+                            ),
+                        )
+                    )
+                    continue
                 model = snapshot.prompt_nodes[0] if snapshot.prompt_nodes else {}
                 refreshed.append(
                     replace(
@@ -94,6 +126,32 @@ class RefreshingWorkflowRuntimeApi:
                     )
                 )
         return tuple(refreshed)
+
+    def list_unresolved_attempts(
+        self, *, project_id: UUID
+    ) -> tuple[DifyUnresolvedAttempt, ...]:
+        return self._catalog.list_unresolved_attempts(project_id=project_id)
+
+    def authorize_new_parent_after_unknown_outcome(
+        self,
+        *,
+        project_id: UUID,
+        attempt_id: UUID,
+        authorized_by: UUID,
+        provider_outcome: str,
+        provider_run_id: str | None,
+        evidence_reference: str,
+        reason: str,
+    ) -> str:
+        return self._catalog.authorize_new_parent_after_unknown_outcome(
+            project_id=project_id,
+            attempt_id=attempt_id,
+            authorized_by=authorized_by,
+            provider_outcome=provider_outcome,
+            provider_run_id=provider_run_id,
+            evidence_reference=evidence_reference,
+            reason=reason,
+        )
 
 
 def _safe_sync_error(error: Exception) -> str:

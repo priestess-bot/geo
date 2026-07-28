@@ -25,6 +25,7 @@ from geo_core.recommendations.generation_contracts import (
     canonical_hash,
 )
 from geo_core.recommendations.generation_worker_contracts import (
+    RecommendationExecutionBackend,
     RecommendationModelRole,
     RecommendationModelTask,
 )
@@ -32,12 +33,18 @@ from geo_core.recommendations.generation_worker_contracts import (
 
 def model_task_payload(task: RecommendationModelTask) -> dict[str, object]:
     return {
-        "contract_version": "recommendation-model-task-v2",
+        "contract_version": "recommendation-model-task-v3",
         "child_job_id": str(task.child_job_id),
         "parent_job_id": str(task.parent_job_id),
         "project_id": str(task.project_id),
         "parent_input_hash": task.parent_input_hash,
         "role": task.role.value,
+        "execution_backend": task.execution_backend.value,
+        "structured_input": dict(task.structured_input),
+        "workflow_release_id": (
+            str(task.workflow_release_id) if task.workflow_release_id is not None else None
+        ),
+        "workflow_release_hash": task.workflow_release_hash,
         "runtime_selection_id": str(task.runtime_selection_id),
         "runtime_manifest_id": str(task.runtime_manifest_id),
         "runtime_manifest_hash": task.runtime_manifest_hash,
@@ -51,13 +58,35 @@ def model_task_payload(task: RecommendationModelTask) -> dict[str, object]:
 
 def model_task_from_payload(value: object) -> RecommendationModelTask:
     root = _mapping(value, "Recommendation model task")
-    _contract(root, "recommendation-model-task-v2")
+    contract_version = root.get("contract_version")
+    if contract_version not in {
+        "recommendation-model-task-v2",
+        "recommendation-model-task-v3",
+    }:
+        raise ValueError("unsupported Recommendation payload contract: recommendation-model-task-v3")
+    legacy = contract_version == "recommendation-model-task-v2"
     return RecommendationModelTask(
         child_job_id=_uuid(root, "child_job_id"),
         parent_job_id=_uuid(root, "parent_job_id"),
         project_id=_uuid(root, "project_id"),
         parent_input_hash=_text(root, "parent_input_hash"),
         role=RecommendationModelRole(_text(root, "role")),
+        execution_backend=(
+            RecommendationExecutionBackend.MODEL_GATEWAY
+            if legacy
+            else RecommendationExecutionBackend(_text(root, "execution_backend"))
+        ),
+        structured_input=(
+            {}
+            if legacy
+            else dict(_mapping(root.get("structured_input"), "structured input"))
+        ),
+        workflow_release_id=(
+            None if legacy else _optional_uuid(root.get("workflow_release_id"))
+        ),
+        workflow_release_hash=(
+            None if legacy else _optional_text(root.get("workflow_release_hash"))
+        ),
         runtime_selection_id=_uuid(root, "runtime_selection_id"),
         runtime_manifest_id=_uuid(root, "runtime_manifest_id"),
         runtime_manifest_hash=_text(root, "runtime_manifest_hash"),

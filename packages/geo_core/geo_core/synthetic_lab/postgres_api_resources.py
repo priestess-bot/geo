@@ -148,7 +148,13 @@ class PostgresSyntheticResourceApiMixin:
         )
 
     def list_profiles(self, principal: AccessPrincipal, **values: object):
-        return self._aggregate_page(principal, values, "style_profile")
+        project_id = project(values)
+        domain_principal(principal, project_id)
+        return self._reads.profiles(
+            project_id,
+            limit=int_value(values["limit"]),
+            offset=int_value(values["offset"]),
+        )
 
     def create_profile(self, principal: AccessPrincipal, **values: object):
         project_id = project(values)
@@ -201,18 +207,21 @@ class PostgresSyntheticResourceApiMixin:
         project_id = project(values)
         request = payload(values)
         profile = self._profile(project_id, uuid_value(values["profile_version_id"]))
-        build = self._reads.profile_build_output(
+        actor = domain_principal(principal, project_id)
+        build = self._reads.profile_build_candidate(
             project_id,
             profile_version_id=profile.id,
             profile_hash=profile.profile_hash,
+            bound_by=actor.actor_id,
         )
-        if build is None or not build.profile_summary:
+        if build is None or not build.output.profile_summary:
             raise SyntheticLabPersistenceError(
                 "Style Profile requires a completed governed build before review"
             )
         return self._review.submit_profile(
-            principal=domain_principal(principal, project_id),
+            principal=actor,
             profile=profile,
+            build_binding=build.binding,
             expected_version=int(request["expected_version"]),
             idempotency_key=str(values["idempotency_key"]),
         )

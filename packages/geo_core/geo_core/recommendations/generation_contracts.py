@@ -349,10 +349,13 @@ class RecommendationGenerationResult:
     recommendation: Recommendation
     model_call_ids: tuple[UUID, ...]
     insufficient_reasons: tuple[str, ...] = ()
+    workflow_attempt_ids: tuple[UUID, ...] = ()
 
     def __post_init__(self) -> None:
         if self.recommendation.status.value != "draft":
             raise RecommendationRuleViolation("generation may only create Recommendation drafts")
+        if any(value.int == 0 for value in (*self.model_call_ids, *self.workflow_attempt_ids)):
+            raise RecommendationRuleViolation("generation execution identities cannot be zero")
 
 
 @dataclass(frozen=True)

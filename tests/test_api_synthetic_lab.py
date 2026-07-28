@@ -675,6 +675,13 @@ def test_openapi_is_internal_only_strict_redacted_and_stable() -> None:
                         "fact_snapshot_id",
                         "runtime_selection_id",
                     }
+                    assert {
+                        "recovery_of_attempt_id",
+                        "dify_reconciliation_token",
+                    } <= set(request_schema["properties"])
+                    assert request_schema["properties"][
+                        "dify_reconciliation_token"
+                    ]["anyOf"][0]["pattern"] == "^[0-9a-f]{64}$"
                     assert not {"job_id", "outbox_id", "resource_hash"}.intersection(
                         request_schema["properties"]
                     )

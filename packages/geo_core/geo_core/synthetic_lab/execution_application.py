@@ -47,8 +47,20 @@ class SyntheticExecutionApplication:
         runtime_inputs: RuntimeInputPort,
         prompts: SyntheticPromptResolverPort,
         idempotency_key: str,
+        recovery_of_attempt_id: UUID | None = None,
+        dify_reconciliation_token: str | None = None,
     ) -> CommandReceipt:
         require_roles(principal, task.project_id, LabRole.OPERATOR, LabRole.REVIEWER)
+        if (recovery_of_attempt_id is None) != (dify_reconciliation_token is None):
+            raise SyntheticExecutionError(
+                "Dify recovery requires both the old attempt ID and reconciliation token"
+            )
+        if recovery_of_attempt_id is not None and not isinstance(
+            task, StyleProfileBuildTask
+        ):
+            raise SyntheticExecutionError(
+                "Dify recovery is supported only for Style Profile build tasks"
+            )
         if task.requested_by != principal.actor_id:
             raise SyntheticExecutionError(
                 "Synthetic execution task requester must match the admitting principal"
@@ -61,19 +73,31 @@ class SyntheticExecutionApplication:
         for prompt in prompt_refs(task):
             prompts.assert_current(prompt)
         kind, event_type = _task_kind(task)
+        request: dict[str, object] = {
+            "task_type": type(task).__name__,
+            "task_input_hash": task.input_hash,
+            "outbox_id": outbox_id,
+        }
+        if recovery_of_attempt_id is not None:
+            request["recovery_of_attempt_id"] = recovery_of_attempt_id
         identity = command_identity(
             project_id=task.project_id,
             idempotency_key=idempotency_key,
             operation=SyntheticCommandOperation.ENQUEUE_EXECUTION,
-            request={
-                "task_type": type(task).__name__,
-                "task_input_hash": task.input_hash,
-                "outbox_id": outbox_id,
-            },
+            request=request,
         )
         with self._uow_factory(project_id=task.project_id) as uow:
             replay = recover_command(uow, identity, SyntheticJob)
             if replay is not None:
+                if isinstance(task, StyleProfileBuildTask):
+                    uow.dify_reconciliation.bind_resubmission(
+                        project_id=task.project_id,
+                        new_parent_job_id=task.job_id,
+                        actor_id=principal.actor_id,
+                        recovery_of_attempt_id=recovery_of_attempt_id,
+                        token=dify_reconciliation_token,
+                    )
+                    uow.commit()
                 return replay
             job = new_synthetic_job(
                 job_id=task.job_id,
@@ -96,6 +120,14 @@ class SyntheticExecutionApplication:
                     event_type=event_type,
                 )
             )
+            if isinstance(task, StyleProfileBuildTask):
+                uow.dify_reconciliation.bind_resubmission(
+                    project_id=task.project_id,
+                    new_parent_job_id=task.job_id,
+                    actor_id=principal.actor_id,
+                    recovery_of_attempt_id=recovery_of_attempt_id,
+                    token=dify_reconciliation_token,
+                )
             return stage_command(uow, identity, job)
 
 

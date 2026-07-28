@@ -9,10 +9,14 @@ from geo_core.recommendations import (
     AttributionRef,
     FactRef,
     MetricComparisonRef,
+    MetricComparisonConclusion,
     PromptReleaseRef,
     RecommendationEvidenceKind,
     RecommendationEvidenceSelector,
     RecommendationPersistenceError,
+    RecommendationRuleKind,
+    RecommendationRuleSeverity,
+    RecommendationRuleTriggerStatus,
     RecommendationSourceStale,
     RuleRef,
 )
@@ -144,12 +148,20 @@ def test_postgres_evidence_resolver_fails_closed_for_missing_tampered_or_cross_p
                 "method_version": "paired-bootstrap-v1",
                 "method_sha256": _digest("method"),
                 "sufficient_evidence": True,
+                "conclusion": "inconclusive",
             },
             MetricComparisonRef,
         ),
         (
             RecommendationEvidenceKind.RULE,
-            {**_common("rule:1"), "kind": "rule", "active": True},
+            {
+                **_common("rule:1"),
+                "kind": "rule",
+                "active": True,
+                "rule_kind": "negative_question",
+                "severity": "warning",
+                "trigger_status": "acknowledged",
+            },
             RuleRef,
         ),
         (
@@ -194,3 +206,57 @@ def test_postgres_evidence_resolver_preserves_typed_and_explicitly_unavailable_s
     if isinstance(resolved[0], AttributionRef):
         assert not resolved[0].available
         assert not resolved[0].current_and_valid
+    if isinstance(resolved[0], MetricComparisonRef):
+        assert resolved[0].conclusion is MetricComparisonConclusion.INCONCLUSIVE
+    if isinstance(resolved[0], RuleRef):
+        assert resolved[0].kind is RecommendationRuleKind.NEGATIVE_QUESTION
+        assert resolved[0].severity is RecommendationRuleSeverity.WARNING
+        assert resolved[0].trigger_status is RecommendationRuleTriggerStatus.ACKNOWLEDGED
+        assert resolved[0].triggered
+
+
+def test_postgres_evidence_parser_keeps_pre_admission_payloads_conservative() -> None:
+    legacy_metric = {
+        **_common("metric:legacy"),
+        "kind": "metric_comparison",
+        "observation_resource_ids": ["observation:1"],
+        "method_version": "paired-bootstrap-v1",
+        "method_sha256": _digest("method"),
+        "sufficient_evidence": True,
+    }
+    legacy_rule = {
+        **_common("rule:legacy"),
+        "kind": "rule",
+        "active": True,
+    }
+
+    metric = PostgresRecommendationEvidenceResolver(
+        ConnectionStub(legacy_metric), PROJECT_ID
+    ).resolve_current(
+        project_id=PROJECT_ID,
+        selectors=(
+            RecommendationEvidenceSelector(
+                RecommendationEvidenceKind.METRIC_COMPARISON,
+                "metric:legacy",
+            ),
+        ),
+    )[0]
+    rule = PostgresRecommendationEvidenceResolver(
+        ConnectionStub(legacy_rule), PROJECT_ID
+    ).resolve_current(
+        project_id=PROJECT_ID,
+        selectors=(
+            RecommendationEvidenceSelector(
+                RecommendationEvidenceKind.RULE,
+                "rule:legacy",
+            ),
+        ),
+    )[0]
+
+    assert isinstance(metric, MetricComparisonRef)
+    assert metric.conclusion is MetricComparisonConclusion.INCONCLUSIVE
+    assert isinstance(rule, RuleRef)
+    assert rule.kind is RecommendationRuleKind.THRESHOLD
+    assert rule.severity is RecommendationRuleSeverity.INFO
+    assert rule.trigger_status is RecommendationRuleTriggerStatus.NOT_TRIGGERED
+    assert not rule.triggered

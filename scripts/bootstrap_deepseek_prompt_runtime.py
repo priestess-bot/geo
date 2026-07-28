@@ -3,14 +3,15 @@
 
 This is an operator bootstrap for the existing ``GEO_DEEPSEEK_API_KEY_FILE``.
 It never serializes or prints the key.  The resulting runtime is deliberately
-limited to ``prompt_release_test`` with non-search JSON responses.
+limited to non-search JSON responses and serves ``prompt_release_test`` plus,
+when explicitly enabled, the native Synthetic Review steps.
 """
 
 from __future__ import annotations
 
 import argparse
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 import hashlib
 import json
@@ -21,13 +22,16 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 
 import psycopg
 
-from geo_core.access.models import AccessPrincipal, MembershipRecord
+from geo_core.access.models import AccessError, AccessPrincipal
+from geo_core.access.postgres import PsycopgAccessUnitOfWorkFactory
+from geo_core.access.service import AccessApplicationService
 from geo_core.model_gateway.postgres_runtime_catalog import PostgresRuntimeCatalog
 from geo_core.model_gateway.runtime_catalog import register_runtime_manifest
 from geo_core.model_gateway.runtime_manifest import parse_runtime_manifest
 from geo_core.object_store import S3CompatibleObjectStore
 from geo_core.object_store_config import build_object_store
 from geo_core.project_scope import set_project_scope
+from geo_core.prompts.test_execution_contracts import PROMPT_TEST_MAXIMUM_PAID_CALLS
 from geo_core.prompts.test_runtime_selector import (
     PROMPT_TEST_MODEL_PURPOSE,
     PROMPT_TEST_SEARCH_MODE,
@@ -39,10 +43,22 @@ from geo_core.secrets.postgres import build_secret_store_api
 PROVIDER = "deepseek"
 DEFAULT_MODEL = "deepseek-v4-flash"
 ADAPTER_RELEASE_ID = "deepseek-chat-completions-v1"
+SYNTHETIC_REVIEW_ADAPTER_RELEASE_ID = "deepseek-chat-completions-synthetic-review-v2"
+PROMPT_TEST_RUNTIME_SCOPE = "prompt-test-v2"
+SYNTHETIC_REVIEW_RUNTIME_SCOPE = "synthetic-review-v3"
+SYNTHETIC_REVIEW_PURPOSES = frozenset(
+    {
+        "synthetic_lab.generation",
+        "synthetic_lab.claim_extraction",
+        "synthetic_lab.conflict_check",
+        "synthetic_lab.revision",
+        "synthetic_lab.style_judge",
+        "synthetic_lab.arbiter",
+    }
+)
 _CAPABILITY_SOURCE = "https://api-docs.deepseek.com/api/create-chat-completion/"
 _TERMS_SOURCE = (
-    "https://cdn.deepseek.com/policies/en-US/"
-    "deepseek-open-platform-terms-of-service.html"
+    "https://cdn.deepseek.com/policies/en-US/" "deepseek-open-platform-terms-of-service.html"
 )
 _MAX_SOURCE_BYTES = 2_000_000
 
@@ -63,21 +79,57 @@ def main() -> int:
     if approver_id == preparer_id:
         raise SystemExit("--prepared-by and --approved-by must be distinct identities")
     database_url = _required_text(os.getenv(args.database_url_env), args.database_url_env)
+    preparer_principal = _project_operator(
+        database_url=database_url,
+        identity_id=preparer_id,
+        project_id=project_id,
+        tenant_id=tenant_id,
+        auth_method="operator-bootstrap-preparation",
+        label="--prepared-by",
+    )
+    approver_principal = _project_operator(
+        database_url=database_url,
+        identity_id=approver_id,
+        project_id=project_id,
+        tenant_id=tenant_id,
+        auth_method="operator-bootstrap-approval",
+        label="--approved-by",
+    )
     configured_model = args.configured_model.strip()
     if not configured_model:
         raise SystemExit("--configured-model cannot be empty")
+    reported_model = args.reported_model.strip() or configured_model
 
     catalog = PostgresRuntimeCatalog(database_url)
     existing = catalog.list_approved_runtime_options(project_id=project_id)
+    required_purposes = frozenset({PROMPT_TEST_MODEL_PURPOSE})
+    required_search_modes: frozenset[str | None] = frozenset({PROMPT_TEST_SEARCH_MODE})
+    if args.enable_synthetic_review:
+        required_purposes |= SYNTHETIC_REVIEW_PURPOSES
+        required_search_modes |= {None}
     matching = [
         item
         for item in existing.items
         if item.provider == PROVIDER
         and item.configured_model == configured_model
-        and PROMPT_TEST_MODEL_PURPOSE in item.allowed_purposes
-        and PROMPT_TEST_SEARCH_MODE in item.allowed_search_modes
+        and required_purposes.issubset(item.allowed_purposes)
+        and required_search_modes.issubset(item.allowed_search_modes)
     ]
-    if matching:
+    matching = [
+        item
+        for item in matching
+        if (
+            catalog.resolve_approved_runtime(
+                project_id=project_id,
+                runtime_selection_id=item.selection_id,
+                required_purpose=PROMPT_TEST_MODEL_PURPOSE,
+                search_mode=PROMPT_TEST_SEARCH_MODE,
+            ).policy.maximum_paid_calls
+            or 0
+        )
+        >= PROMPT_TEST_MAXIMUM_PAID_CALLS
+    ]
+    if matching and reported_model == configured_model:
         _print_result(
             status="already_configured",
             project_id=project_id,
@@ -86,31 +138,13 @@ def main() -> int:
             secret_reference_id=None,
         )
         return 0
-    if existing.items:
+    if existing.items and not args.enable_synthetic_review:
         raise SystemExit(
             "the project already has an approved runtime manifest; "
             "replace it through the runtime change procedure before adding DeepSeek"
         )
 
-    approver_principal = _operator_principal(
-        identity_id=approver_id,
-        project_id=project_id,
-        tenant_id=tenant_id,
-        auth_method="operator-bootstrap-approval",
-    )
-    # This is a local operator bootstrap, not a transport-level Admin API
-    # request. The preparer is the registered worker identity that will use
-    # the credential. Its distinct audit actor gives the first secret version
-    # a real creator/approver split without inventing a second human account.
-    preparer_principal = _operator_principal(
-        identity_id=preparer_id,
-        project_id=project_id,
-        tenant_id=tenant_id,
-        auth_method="operator-bootstrap-preparation",
-    )
-    secret_reference_id = uuid5(
-        NAMESPACE_URL, f"geo:{project_id}:model-provider:{PROVIDER}"
-    )
+    secret_reference_id = uuid5(NAMESPACE_URL, f"geo:{project_id}:model-provider:{PROVIDER}")
     secret_api = build_secret_store_api(
         database_url=database_url,
         master_keyring_path=args.master_keyring_file,
@@ -134,6 +168,11 @@ def main() -> int:
         project_id=project_id,
         configured_model=configured_model,
         prefix=args.evidence_prefix,
+        purposes=required_purposes,
+    )
+    previous_policy_id, policy_version = _current_policy_lineage(
+        database_url=database_url,
+        project_id=project_id,
     )
     manifest = _manifest(
         project_id=project_id,
@@ -141,7 +180,12 @@ def main() -> int:
         approved_by=approver_id,
         provider_secret=handle,
         configured_model=configured_model,
+        reported_model=reported_model,
         evidence=evidence,
+        purposes=required_purposes,
+        previous_policy_id=previous_policy_id,
+        policy_version=policy_version,
+        synthetic_review=args.enable_synthetic_review,
     )
     handles = register_runtime_manifest(catalog, manifest)
     if handles != (handle,):
@@ -165,12 +209,27 @@ def _arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project-id", required=True)
     parser.add_argument("--tenant-id", required=True)
-    parser.add_argument("--approved-by", required=True)
     parser.add_argument(
         "--prepared-by",
-        default=os.getenv("GEO_MODEL_GATEWAY_WORKER_SERVICE_IDENTITY_ID", ""),
+        required=True,
+        help="active project owner/admin identity that prepares the provider secret",
+    )
+    parser.add_argument(
+        "--approved-by",
+        required=True,
+        help="distinct active project owner/admin identity that approves the provider secret",
     )
     parser.add_argument("--configured-model", default=DEFAULT_MODEL)
+    parser.add_argument(
+        "--reported-model",
+        default="",
+        help="freeze a provider-reported identity when it differs from the configured alias",
+    )
+    parser.add_argument(
+        "--enable-synthetic-review",
+        action="store_true",
+        help="publish a replacement runtime that permits the six Synthetic Review purposes",
+    )
     parser.add_argument("--api-key-file", default="/run/secrets/deepseek_api_key")
     parser.add_argument(
         "--master-keyring-file",
@@ -181,9 +240,7 @@ def _arguments() -> argparse.Namespace:
         default=os.getenv("GEO_SECRET_STORE_REQUEST_HASH_KEY_FILE", ""),
     )
     parser.add_argument("--database-url-env", default="GEO_DATABASE_URL")
-    parser.add_argument(
-        "--evidence-prefix", default="model-gateway/deepseek-prompt-runtime-v1"
-    )
+    parser.add_argument("--evidence-prefix", default="model-gateway/deepseek-prompt-runtime-v1")
     return parser.parse_args()
 
 
@@ -290,22 +347,31 @@ def _active_secret_handle(
     )
 
 
-def _operator_principal(
+def _project_operator(
     *,
+    database_url: str,
     identity_id: UUID,
     project_id: UUID,
     tenant_id: UUID,
     auth_method: str,
+    label: str,
 ) -> AccessPrincipal:
-    """Build the explicit actor assertion for this local operator command."""
-
-    return AccessPrincipal(
-        identity_id=identity_id,
-        actor_id=str(identity_id),
-        tenant_id=tenant_id,
-        memberships=(MembershipRecord(project_id, tenant_id, "owner"),),
-        auth_method=auth_method,
-    )
+    access = AccessApplicationService(PsycopgAccessUnitOfWorkFactory(database_url))
+    try:
+        principal = access.authenticate_development(
+            identity_id=identity_id,
+            tenant_id=tenant_id,
+        )
+        access.require_project_role(
+            principal,
+            project_id=project_id,
+            allowed_roles=frozenset({"owner", "admin"}),
+        )
+    except AccessError as exc:
+        raise SystemExit(
+            f"{label} must reference an active owner/admin membership for this project"
+        ) from exc
+    return replace(principal, auth_method=auth_method)
 
 
 def _pending_secret_state(
@@ -346,6 +412,7 @@ def _store_evidence(
     project_id: UUID,
     configured_model: str,
     prefix: str,
+    purposes: frozenset[str],
 ) -> Mapping[str, str]:
     normalized_prefix = prefix.strip().strip("/")
     if not normalized_prefix:
@@ -385,16 +452,14 @@ def _store_evidence(
     capability_stored = _store_json(
         object_store, f"{normalized_prefix}/{project_id}/capabilities.json", capability
     )
-    terms_stored = _store_json(
-        object_store, f"{normalized_prefix}/{project_id}/terms.json", terms
-    )
+    terms_stored = _store_json(object_store, f"{normalized_prefix}/{project_id}/terms.json", terms)
     approval = {
         "schema_version": 1,
         "kind": "prompt_runtime_bootstrap",
         "project_id": str(project_id),
         "provider": PROVIDER,
         "configured_model": configured_model,
-        "purpose": PROMPT_TEST_MODEL_PURPOSE,
+        "purposes": sorted(purposes),
         "search_mode": PROMPT_TEST_SEARCH_MODE,
         "capability_evidence": {
             "uri": capability_stored.uri,
@@ -422,16 +487,34 @@ def _manifest(
     approved_by: UUID,
     provider_secret: SecretVersionHandle,
     configured_model: str,
+    reported_model: str,
     evidence: Mapping[str, str],
+    purposes: frozenset[str],
+    previous_policy_id: UUID | None,
+    policy_version: int,
+    synthetic_review: bool,
 ):
-    model_release_id = f"{configured_model}-prompt-test-v1"
+    identity_suffix = "" if reported_model == configured_model else f"-reported-{reported_model}"
+    scope = (
+        SYNTHETIC_REVIEW_RUNTIME_SCOPE if synthetic_review else PROMPT_TEST_RUNTIME_SCOPE
+    ) + identity_suffix
+    adapter_release_id = (
+        (
+            SYNTHETIC_REVIEW_ADAPTER_RELEASE_ID
+            if configured_model == DEFAULT_MODEL
+            else f"deepseek-chat-completions-synthetic-review-{configured_model}-v1"
+        )
+        if synthetic_review
+        else ADAPTER_RELEASE_ID
+    )
+    model_release_id = f"{configured_model}-{scope}"
     policy_id = uuid5(
         NAMESPACE_URL,
-        f"geo:{project_id}:model-policy:{PROVIDER}:{configured_model}:prompt-test-v1",
+        f"geo:{project_id}:model-policy:{PROVIDER}:{configured_model}:{scope}",
     )
     manifest_id = uuid5(
         NAMESPACE_URL,
-        f"geo:{project_id}:runtime-manifest:{PROVIDER}:{configured_model}:prompt-test-v1",
+        f"geo:{project_id}:runtime-manifest:{PROVIDER}:{configured_model}:{scope}",
     )
     now = datetime.now(UTC)
     return parse_runtime_manifest(
@@ -448,9 +531,13 @@ def _manifest(
             "provider_runtimes": [
                 {
                     "provider": PROVIDER,
-                    "adapter_release_id": ADAPTER_RELEASE_ID,
-                    "allowed_purposes": [PROMPT_TEST_MODEL_PURPOSE],
-                    "allowed_search_modes": [PROMPT_TEST_SEARCH_MODE],
+                    "adapter_release_id": adapter_release_id,
+                    "allowed_purposes": sorted(purposes),
+                    "allowed_search_modes": (
+                        [PROMPT_TEST_SEARCH_MODE, None]
+                        if synthetic_review
+                        else [PROMPT_TEST_SEARCH_MODE]
+                    ),
                     "secret_reference_id": str(provider_secret.reference_id),
                     "expected_capture_method": "provider_api",
                     "interface_contract_version": "geo-model-gateway-v1",
@@ -483,26 +570,46 @@ def _manifest(
             "model_releases": [
                 {
                     "provider": PROVIDER,
-                    "adapter_release_id": ADAPTER_RELEASE_ID,
+                    "adapter_release_id": adapter_release_id,
                     "model_release_id": model_release_id,
                     "configured_model": configured_model,
-                    "reported_model_policy": "exact",
-                    "allowed_reported_models": [configured_model],
+                    "reported_model_policy": (
+                        "exact" if reported_model == configured_model else "allowlist"
+                    ),
+                    "allowed_reported_models": [reported_model],
                 }
             ],
             "project_policy": {
                 "policy_version_id": str(policy_id),
-                "version": 1,
-                "previous_version_id": None,
+                "version": policy_version,
+                "previous_version_id": (
+                    str(previous_policy_id) if previous_policy_id is not None else None
+                ),
                 "external_training_allowed": False,
                 "structured_output_required": True,
                 "allowed_providers": [PROVIDER],
-                "allowed_adapter_release_ids": [ADAPTER_RELEASE_ID],
-                "maximum_paid_calls": 5,
+                "allowed_adapter_release_ids": [adapter_release_id],
+                "maximum_paid_calls": PROMPT_TEST_MAXIMUM_PAID_CALLS,
                 "maximum_concurrent_calls": 1,
             },
         }
     )
+
+
+def _current_policy_lineage(*, database_url: str, project_id: UUID) -> tuple[UUID | None, int]:
+    try:
+        with psycopg.connect(database_url) as connection:
+            set_project_scope(connection, project_id)
+            row = connection.execute(
+                """SELECT id, version FROM model_gateway_project_policy_versions
+                   WHERE project_id = %s ORDER BY version DESC LIMIT 1""",
+                (project_id,),
+            ).fetchone()
+    except psycopg.Error as exc:
+        raise SystemExit("current Model Gateway policy lineage cannot be read") from exc
+    if row is None:
+        return None, 1
+    return UUID(str(row[0])), int(row[1]) + 1
 
 
 def _source_fingerprint(url: str) -> Mapping[str, object]:
@@ -518,9 +625,7 @@ def _source_fingerprint(url: str) -> Mapping[str, object]:
     }
 
 
-def _store_json(
-    object_store: S3CompatibleObjectStore, key: str, document: Mapping[str, object]
-):
+def _store_json(object_store: S3CompatibleObjectStore, key: str, document: Mapping[str, object]):
     content = json.dumps(document, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
     return object_store.put_object(
         key=key,

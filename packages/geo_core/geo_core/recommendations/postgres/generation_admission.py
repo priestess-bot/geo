@@ -37,6 +37,11 @@ from geo_core.recommendations.generation_contracts import (
     RecommendationGenerationSpec,
     ScopeLocator,
 )
+from geo_core.recommendations.generation_ports import (
+    RECOMMENDATION_DIFY_CONTEXT_MAX_BYTES,
+    recommendation_context_size_bytes,
+    structured_generation_input,
+)
 from geo_core.recommendations.postgres.evidence import (
     PostgresRecommendationEvidenceResolver,
 )
@@ -74,6 +79,18 @@ class PostgresRecommendationGenerationAdmission:
                 "generation Prompt and model lineage must use catalog selectors"
             )
         evidence = self._frozen_evidence(selection)
+        context_size = recommendation_context_size_bytes(
+            structured_generation_input(
+                evidence,
+                minimum_real_observations=selection.minimum_real_observations,
+            )
+        )
+        if context_size > RECOMMENDATION_DIFY_CONTEXT_MAX_BYTES:
+            raise RecommendationRuleViolation(
+                "Recommendation Dify context is "
+                f"{context_size} bytes and exceeds the 100KB admission limit; "
+                "select fewer or shorter evidence summaries and retry"
+            )
         prompt = self._prompt(selection.prompt_binding_id, ProgramKind.RECOMMENDATION)
         model = self._model(selection.model, purpose=prompt.purpose)
         arbiter_prompt = (
@@ -105,9 +122,7 @@ class PostgresRecommendationGenerationAdmission:
             minimum_real_observations=selection.minimum_real_observations,
             arbiter_binding=arbiter_prompt,
             arbiter_runtime_selection_id=(
-                selection.arbiter_model.runtime_selection_id
-                if selection.arbiter_model
-                else None
+                selection.arbiter_model.runtime_selection_id if selection.arbiter_model else None
             ),
             arbiter_runtime_manifest_id=(
                 arbiter_model.runtime_manifest_id if arbiter_model else None
@@ -115,21 +130,15 @@ class PostgresRecommendationGenerationAdmission:
             arbiter_runtime_manifest_hash=(
                 arbiter_model.runtime_manifest_hash if arbiter_model else None
             ),
-            arbiter_runtime_option_id=(
-                arbiter_model.runtime_option_id if arbiter_model else None
-            ),
+            arbiter_runtime_option_id=(arbiter_model.runtime_option_id if arbiter_model else None),
             arbiter_runtime_option_hash=(
                 arbiter_model.runtime_option_hash if arbiter_model else None
             ),
             arbiter_route=arbiter_model.route if arbiter_model else None,
-            arbiter_configured_model=(
-                arbiter_model.configured_model if arbiter_model else None
-            ),
+            arbiter_configured_model=(arbiter_model.configured_model if arbiter_model else None),
             arbiter_model_policy=arbiter_model.policy if arbiter_model else None,
             arbiter_capture_method=(
-                arbiter_model.adapter_release.expected_capture_method
-                if arbiter_model
-                else None
+                arbiter_model.adapter_release.expected_capture_method if arbiter_model else None
             ),
             arbiter_search_mode=(
                 selection.arbiter_model.search_mode if selection.arbiter_model else None
@@ -258,9 +267,7 @@ class PostgresRecommendationGenerationAdmission:
                 "generation Prompt binding could not be resolved"
             ) from error
         if row is None:
-            raise RecommendationRuleViolation(
-                "generation requires a current frozen Prompt binding"
-            )
+            raise RecommendationRuleViolation("generation requires a current frozen Prompt binding")
         return FrozenPromptBinding(
             project_id=row["project_id"],
             binding_id=row["id"],
@@ -290,9 +297,7 @@ class PostgresRecommendationGenerationAdmission:
 
     def _require_scope(self, project_id: UUID) -> None:
         if project_id != self._project_id:
-            raise RecommendationRuleViolation(
-                "generation admission Project scope mismatch"
-            )
+            raise RecommendationRuleViolation("generation admission Project scope mismatch")
 
 
 def _required_summary(value: str | None, kind: str) -> str:
@@ -306,9 +311,7 @@ def _required_summary(value: str | None, kind: str) -> str:
 _EvidenceT = TypeVar("_EvidenceT", bound=EvidenceRef)
 
 
-def _typed(
-    values: tuple[EvidenceRef, ...], expected: type[_EvidenceT]
-) -> tuple[_EvidenceT, ...]:
+def _typed(values: tuple[EvidenceRef, ...], expected: type[_EvidenceT]) -> tuple[_EvidenceT, ...]:
     return tuple(value for value in values if isinstance(value, expected))
 
 

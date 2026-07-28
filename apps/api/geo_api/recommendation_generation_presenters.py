@@ -124,6 +124,9 @@ def generation_job_response(
         ),
         result=_result_response(execution.result),
         model_call_ids=list(execution.result.model_call_ids) if execution.result else [],
+        workflow_attempt_ids=(
+            list(execution.result.workflow_attempt_ids) if execution.result else []
+        ),
         insufficient_reasons=(
             list(execution.result.insufficient_reasons) if execution.result else []
         ),

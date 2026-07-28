@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from scripts.geo_acceptance.contracts import AcceptanceConfig, CHANNELS
-from scripts.provision_advinsys_project import expected_summary, load_manifest
+from scripts.provision_advinsys_project import entity_request, expected_summary, load_manifest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -35,6 +35,21 @@ def test_advinsys_manifest_is_the_complete_nine_channel_source_of_truth() -> Non
     facebook = manifest["optional_destinations"][0]
     assert facebook["publication_channel"] == "other"
     assert facebook["included_in_standard_kpi"] is False
+
+
+def test_catalog_entity_request_excludes_manifest_only_query_configuration() -> None:
+    manifest = load_manifest(MANIFEST)
+    product = manifest["products"][0]
+
+    request = entity_request(product, entity_type="product")
+
+    assert request == {
+        "entity_type": "product",
+        "canonical_name": product["canonical_name"],
+        "canonical_url": product["canonical_url"],
+        "attributes": product["attributes"],
+    }
+    assert "queries" not in request
 
 
 def test_controlled_acceptance_cannot_claim_a_real_public_url_or_run_in_production() -> None:

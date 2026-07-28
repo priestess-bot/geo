@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Protocol
 from uuid import UUID
 
 from psycopg.types.json import Jsonb
@@ -26,12 +26,17 @@ from geo_core.recommendations.generation_contracts import (
 from geo_core.recommendations.generation_ports import (
     RecommendationPromptResolverPort,
 )
+from geo_core.recommendations.generation_evidence import (
+    GENERATION_EVIDENCE_CONTRACT_V1,
+)
 from geo_core.recommendations.generation_result_recovery import (
     GovernedRecommendationModelResultLoader,
 )
 from geo_core.recommendations.generation_worker_contracts import (
     RECOMMENDATION_PARENT_JOB_KIND,
     RecommendationChildStatus,
+    RecommendationDifyResultRef,
+    RecommendationExecutionBackend,
     RecommendationModelOutcome,
     RecommendationModelResultRef,
     RecommendationModelRole,
@@ -46,8 +51,16 @@ from geo_core.recommendations.postgres.generation_worker_support import (
     enqueue_outbox as _enqueue_outbox,
     require_parent_kind as _require_kind,
 )
+from geo_core.recommendations.postgres.generation_worker_sql import (
+    CHILD_TASK_SELECT,
+    PARENT_CHILDREN_SELECT,
+    PARENT_SPEC_SELECT,
+    reservation_values,
+)
+from geo_core.recommendations.postgres.generation_worker_rows import row_uuid
 from geo_core.recommendations.postgres.rows import (
     assert_model_task_row,
+    dify_result_from_row,
     generation_spec_record_from_row,
     model_result_ref_from_row,
     task_artifact_from_row,
@@ -59,6 +72,13 @@ from geo_core.recommendations.resolution import (
     RecommendationEvidenceKind,
     RecommendationEvidenceSelector,
 )
+from geo_core.workflow_runtime import WorkflowRuntimeRelease
+
+
+class RecommendationWorkflowReleaseResolver(Protocol):
+    def resolve_active(
+        self, *, project_id: UUID, purpose: str
+    ) -> WorkflowRuntimeRelease | None: ...
 
 
 class PostgresRecommendationGenerationWorkerRepository:
@@ -71,11 +91,13 @@ class PostgresRecommendationGenerationWorkerRepository:
         prompts: RecommendationPromptResolverPort,
         artifacts: RecommendationTaskArtifactStore,
         model_results: GovernedRecommendationModelResultLoader,
+        workflow_releases: RecommendationWorkflowReleaseResolver | None = None,
     ) -> None:
         self._connect = connection_factory
         self._prompts = prompts
         self._artifacts = artifacts
         self._model_results = model_results
+        self._workflow_releases = workflow_releases
 
     def load_parent(self, lease: WorkerLease) -> RecommendationParentClaim:
         _require_kind(lease, RECOMMENDATION_PARENT_JOB_KIND)
@@ -83,7 +105,7 @@ class PostgresRecommendationGenerationWorkerRepository:
         try:
             _assert_lease(connection, lease)
             row = connection.execute(
-                _PARENT_SPEC_SELECT,
+                PARENT_SPEC_SELECT,
                 (lease.project_id, lease.job_id),
             ).fetchone()
             if row is None:
@@ -93,7 +115,7 @@ class PostgresRecommendationGenerationWorkerRepository:
             record = generation_spec_record_from_row(row)
             tasks = tuple(
                 connection.execute(
-                    _PARENT_CHILDREN_SELECT,
+                    PARENT_CHILDREN_SELECT,
                     (lease.project_id, lease.job_id),
                 ).fetchall()
             )
@@ -133,8 +155,14 @@ class PostgresRecommendationGenerationWorkerRepository:
                 project_id=spec.project_id,
                 selectors=selectors,
             )
-            expected = tuple(item.canonical_value() for item in spec.evidence.all_refs)
-            observed = tuple(item.canonical_value() for item in current)
+            legacy = (
+                spec.evidence.contract_version == GENERATION_EVIDENCE_CONTRACT_V1
+            )
+            expected = tuple(spec.evidence.canonical_ref_values())
+            observed = tuple(
+                item.legacy_canonical_value() if legacy else item.canonical_value()
+                for item in current
+            )
             if observed != expected:
                 raise RecommendationGenerationStale(
                     "Recommendation evidence identity or validity changed"
@@ -208,6 +236,36 @@ class PostgresRecommendationGenerationWorkerRepository:
     ) -> RecommendationTaskArtifactRef:
         return self._artifacts.put(task)
 
+    def resolve_workflow_release(
+        self,
+        *,
+        task_role: RecommendationModelRole,
+        prompt: ResolvedGenerationPrompt,
+    ) -> tuple[UUID, str] | None:
+        if task_role is RecommendationModelRole.ARBITER:
+            return None
+        if self._workflow_releases is None:
+            raise RecommendationGenerationStale(
+                "Recommendation Dify release resolver is unavailable"
+            )
+        release = self._workflow_releases.resolve_active(
+            project_id=prompt.binding.project_id,
+            purpose=prompt.binding.purpose,
+        )
+        if release is None:
+            raise RecommendationGenerationStale(
+                "Recommendation Dify workflow has no active release"
+            )
+        if (
+            release.prompt_release_id != prompt.binding.release_id
+            or release.prompt_release_hash != prompt.binding.release_hash
+            or release.configured_model != prompt.configured_model
+        ):
+            raise RecommendationGenerationStale(
+                "Recommendation Dify release differs from frozen Prompt lineage"
+            )
+        return release.id, release.release_hash
+
     def reserve_model_task(
         self,
         *,
@@ -217,8 +275,8 @@ class PostgresRecommendationGenerationWorkerRepository:
     ) -> None:
         self._assert_parent_task(connection, lease, task)
         connection.execute(
-            "SELECT geo_reserve_recommendation_model_task(" + ", ".join(["%s"] * 35) + ")",
-            _reservation_values(lease, task),
+            "SELECT geo_reserve_recommendation_model_task(" + ", ".join(["%s"] * 38) + ")",
+            reservation_values(lease, task),
         )
 
     def activate_model_task(
@@ -231,13 +289,14 @@ class PostgresRecommendationGenerationWorkerRepository:
     ) -> None:
         self._assert_parent_task(connection, lease, task)
         connection.execute(
-            "SELECT geo_activate_recommendation_model_task(" + ", ".join(["%s"] * 12) + ")",
+            "SELECT geo_activate_recommendation_model_task(" + ", ".join(["%s"] * 13) + ")",
             (
                 task.project_id,
                 task.parent_job_id,
                 lease.lease_token,
                 lease.fencing_generation,
                 task.child_job_id,
+                task.execution_backend.value,
                 artifact.uri,
                 artifact.manifest_hash,
                 artifact.payload_uri,
@@ -260,7 +319,7 @@ class PostgresRecommendationGenerationWorkerRepository:
         try:
             _assert_lease(connection, lease)
             row = connection.execute(
-                _CHILD_TASK_SELECT,
+                CHILD_TASK_SELECT,
                 (lease.project_id, lease.job_id),
             ).fetchone()
             if row is None or row["task_artifact_status"] != "active":
@@ -291,9 +350,40 @@ class PostgresRecommendationGenerationWorkerRepository:
         connection: Any,
         lease: WorkerLease,
         task: RecommendationModelTask,
-        reference: RecommendationModelResultRef,
+        reference: RecommendationModelResultRef | RecommendationDifyResultRef,
     ) -> None:
         self._assert_child(connection, lease, task)
+        if isinstance(reference, RecommendationDifyResultRef):
+            if task.execution_backend is not RecommendationExecutionBackend.DIFY:
+                raise RecommendationGenerationStale(
+                    "Recommendation Dify result differs from frozen backend"
+                )
+            changed = connection.execute(
+                """UPDATE recommendation_model_call_lineage
+                   SET status = 'succeeded', dify_attempt_id = %s,
+                       response_hash = %s, output_hash = %s, error_code = NULL,
+                       updated_at = clock_timestamp()
+                   WHERE project_id = %s AND child_job_id = %s
+                     AND role = %s AND execution_backend = 'dify'
+                     AND status IN ('queued', 'running', 'retry_wait')""",
+                (
+                    reference.attempt_id,
+                    reference.response_hash,
+                    reference.response_hash,
+                    task.project_id,
+                    task.child_job_id,
+                    task.role.value,
+                ),
+            ).rowcount
+            if changed != 1:
+                raise LostJobLease(
+                    "Recommendation Dify success was fenced or replay changed"
+                )
+            return
+        if task.execution_backend is not RecommendationExecutionBackend.MODEL_GATEWAY:
+            raise RecommendationGenerationStale(
+                "Recommendation Model Gateway result differs from frozen backend"
+            )
         changed = connection.execute(
             """UPDATE recommendation_model_call_lineage
                SET status = 'succeeded', model_attempt_id = %s, model_call_log_id = %s,
@@ -303,7 +393,8 @@ class PostgresRecommendationGenerationWorkerRepository:
                    derived_artifact_content_hash = %s, error_code = NULL,
                    updated_at = clock_timestamp()
                WHERE project_id = %s AND child_job_id = %s
-                 AND role = %s AND status IN ('queued', 'running', 'retry_wait')""",
+                 AND role = %s AND execution_backend = 'model_gateway'
+                 AND status IN ('queued', 'running', 'retry_wait')""",
             (
                 reference.model_attempt_id,
                 reference.model_call_log_id,
@@ -419,7 +510,7 @@ class PostgresRecommendationGenerationWorkerRepository:
             raise RecommendationGenerationStale("Recommendation child durable status differs from lineage")
         if status is not RecommendationChildStatus.SUCCEEDED:
             return RecommendationModelOutcome(
-                child_job_id=_uuid(row, "child_job_id"),
+                child_job_id=row_uuid(row, "child_job_id"),
                 role=role,
                 status=status,
                 error_code=(str(row["error_code"]) if row["error_code"] is not None else None),
@@ -427,24 +518,42 @@ class PostgresRecommendationGenerationWorkerRepository:
         if row["task_artifact_status"] != "active":
             raise RecommendationGenerationStale("Recommendation result artifact is unavailable")
         task = self._task_from_row(row)
+        backend = RecommendationExecutionBackend(str(row["lineage_execution_backend"]))
+        if task.execution_backend is not backend:
+            raise RecommendationGenerationStale(
+                "Recommendation result backend differs from encrypted task"
+            )
+        if backend is RecommendationExecutionBackend.DIFY:
+            dify_result = self._model_results.load_dify(
+                parent_lease=parent_lease,
+                task=task,
+                result=dify_result_from_row(row),
+            )
+            return RecommendationModelOutcome(
+                child_job_id=task.child_job_id,
+                role=role,
+                status=status,
+                result=dify_result,
+            )
         reference = model_result_ref_from_row(row)
+        native_result = self._model_results.load(
+            parent_lease=parent_lease,
+            task=task,
+            reference=reference,
+        )
         return RecommendationModelOutcome(
             child_job_id=task.child_job_id,
             role=role,
             status=status,
-            result=self._model_results.load(
-                parent_lease=parent_lease,
-                task=task,
-                reference=reference,
-            ),
+            result=native_result,
         )
 
     def _task_from_row(self, row: Mapping[str, Any]) -> RecommendationModelTask:
         artifact = task_artifact_from_row(row)
         task = self._artifacts.load(
             artifact,
-            project_id=_uuid(row, "project_id"),
-            child_job_id=_uuid(row, "child_job_id"),
+            project_id=row_uuid(row, "project_id"),
+            child_job_id=row_uuid(row, "child_job_id"),
             expected_parent_input_hash=str(row["parent_input_hash"]),
         )
         assert_model_task_row(row, task)
@@ -486,86 +595,4 @@ class PostgresRecommendationGenerationWorkerRepository:
         connection = self._connect()
         set_project_scope(connection, project_id)
         return connection
-def _reservation_values(
-    lease: WorkerLease, task: RecommendationModelTask
-) -> tuple[object, ...]:
-    prompt = task.prompt
-    route = prompt.route
-    return (
-        task.project_id,
-        task.parent_job_id,
-        lease.lease_token,
-        lease.fencing_generation,
-        task.child_job_id,
-        task.parent_input_hash,
-        task.role.value,
-        task.runtime_selection_id,
-        task.runtime_manifest_id,
-        task.runtime_manifest_hash,
-        task.runtime_option_id,
-        task.runtime_option_hash,
-        prompt.binding.binding_id,
-        prompt.binding.binding_version,
-        prompt.binding.frozen_state_id,
-        prompt.binding.frozen_state_version,
-        prompt.binding.release_id,
-        prompt.binding.release_version,
-        prompt.binding.release_hash,
-        prompt.binding.purpose,
-        route.provider,
-        route.adapter_release_id,
-        route.adapter_release_hash,
-        route.model_release_id,
-        route.model_release_hash,
-        prompt.configured_model,
-        prompt.capture_method.value,
-        prompt.search_mode,
-        prompt.prompt_bundle_hash,
-        prompt.structured_input_hash,
-        canonical_hash(prompt.output_schema),
-        canonical_hash(prompt.application_output_schema),
-        task.artifact_expires_at,
-        task.admitted_by,
-        datetime.now(UTC),
-    )
-
-
-def _uuid(row: Mapping[str, Any], key: str) -> UUID:
-    value = row.get(key)
-    try:
-        return value if isinstance(value, UUID) else UUID(str(value))
-    except (TypeError, ValueError) as error:
-        raise RecommendationGenerationStale(
-            f"Recommendation row {key} is not a UUID"
-        ) from error
-
-
-_PARENT_SPEC_SELECT = """
-SELECT spec.job_id, spec.project_id, spec.api_version, spec.spec_payload,
-       spec.spec_payload_hash, spec.input_hash, spec.idempotency_key_hash,
-       spec.valid_until, spec.created_by, spec.created_at
-FROM recommendation_generation_specs AS spec
-WHERE spec.project_id = %s AND spec.job_id = %s
-"""
-
-_PARENT_CHILDREN_SELECT = """
-SELECT task.*, child.status AS child_status, lineage.status AS lineage_status,
-       lineage.error_code, lineage.model_attempt_id, lineage.model_call_log_id,
-       lineage.response_hash, lineage.output_hash, lineage.derived_artifact_uri,
-       lineage.derived_artifact_manifest_hash, lineage.derived_artifact_content_hash
-FROM recommendation_model_tasks AS task
-JOIN durable_jobs AS child
-  ON child.id = task.child_job_id AND child.project_id = task.project_id
-JOIN recommendation_model_call_lineage AS lineage
-  ON lineage.project_id = task.project_id AND lineage.child_job_id = task.child_job_id
-WHERE task.project_id = %s AND task.parent_job_id = %s
-ORDER BY task.role
-"""
-
-_CHILD_TASK_SELECT = """
-SELECT task.* FROM recommendation_model_tasks AS task
-WHERE task.project_id = %s AND task.child_job_id = %s
-"""
-
-
 __all__ = ["PostgresRecommendationGenerationWorkerRepository"]

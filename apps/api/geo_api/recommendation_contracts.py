@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 RecommendationTypeValue = Literal[
@@ -46,6 +46,22 @@ ChangeReasonValue = Literal[
     "input_added_or_removed",
 ]
 EvidenceClassValue = Literal["real_observation", "official_projection", "synthetic"]
+MetricComparisonConclusionValue = Literal[
+    "win", "equivalent", "loss", "inconclusive", "insufficient_evidence"
+]
+RecommendationRuleKindValue = Literal[
+    "threshold",
+    "baseline_delta",
+    "negative_question",
+    "completion_freshness",
+    "model_drift",
+    "source_drift",
+    "connector_failure",
+]
+RecommendationRuleSeverityValue = Literal["info", "warning", "critical"]
+RecommendationRuleTriggerStatusValue = Literal[
+    "not_triggered", "open", "acknowledged", "suppressed", "resolved"
+]
 EvidenceSelectorKindValue = Literal[
     "observation",
     "metric_comparison",
@@ -124,6 +140,7 @@ class MetricComparisonRefContract(VersionedRefContract):
     method_version: str = Field(min_length=1, max_length=200)
     method_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     sufficient_evidence: bool
+    conclusion: MetricComparisonConclusionValue = "inconclusive"
 
 
 class FactRefContract(VersionedRefContract):
@@ -133,6 +150,9 @@ class FactRefContract(VersionedRefContract):
 
 class RuleRefContract(VersionedRefContract):
     active: bool
+    rule_kind: RecommendationRuleKindValue = "threshold"
+    severity: RecommendationRuleSeverityValue = "info"
+    trigger_status: RecommendationRuleTriggerStatusValue = "not_triggered"
 
 
 class PromptReleaseRefContract(VersionedRefContract):
@@ -194,9 +214,7 @@ class CreateRecommendationRequest(RecommendationContract):
     recommendation_type: RecommendationTypeValue
     scope: ScopeSelectionContract
     decision: DecisionContract
-    evidence_selectors: list[EvidenceSelectorContract] = Field(
-        min_length=1, max_length=100_000
-    )
+    evidence_selectors: list[EvidenceSelectorContract] = Field(min_length=1, max_length=100)
     proposed_draft_kind: DraftKindValue | None
     valid_until: datetime
     expected_version: int = Field(ge=0)
@@ -233,15 +251,23 @@ class GenerationModelSelectorContract(RecommendationContract):
 
 class EnqueueRecommendationGenerationRequest(RecommendationContract):
     scope: ScopeSelectionContract
-    evidence_selectors: list[EvidenceSelectorContract] = Field(
-        min_length=1, max_length=100_000
-    )
+    evidence_selectors: list[EvidenceSelectorContract] = Field(min_length=1, max_length=100)
     prompt_binding_id: UUID
     model: GenerationModelSelectorContract
     valid_until: datetime
     minimum_real_observations: int = Field(default=3, ge=1, le=1000)
     arbiter_prompt_binding_id: UUID | None = None
     arbiter_model: GenerationModelSelectorContract | None = None
+    recovery_of_attempt_id: UUID | None = None
+    dify_reconciliation_token: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+
+    @model_validator(mode="after")
+    def validate_dify_recovery_pair(self) -> EnqueueRecommendationGenerationRequest:
+        if (self.recovery_of_attempt_id is None) != (self.dify_reconciliation_token is None):
+            raise ValueError(
+                "recovery_of_attempt_id and dify_reconciliation_token must be supplied together"
+            )
+        return self
 
 
 class CancelRecommendationGenerationRequest(RecommendationContract):
@@ -297,6 +323,7 @@ class RecommendationGenerationJobResponse(RecommendationContract):
     result: RecommendationResponse | None
     model_call_ids: list[UUID]
     insufficient_reasons: list[str]
+    workflow_attempt_ids: list[UUID] = Field(default_factory=list)
     replayed: bool = False
 
 

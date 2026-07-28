@@ -319,7 +319,7 @@ class GovernedSyntheticModelCallExecutor:
                 prompt_release_hash=invocation.prompt.frozen.release_hash,
                 request=request,
                 attempt_kind=ModelCallAttemptKind.INITIAL,
-                attempt_idempotency_key=request.idempotency_key or "",
+                attempt_idempotency_key=_local_attempt_idempotency_key(invocation),
             ),
             policy=loaded.policy,
         )
@@ -391,8 +391,9 @@ class GovernedSyntheticModelCallExecutor:
             application_output_schema=invocation.prompt.application_output_schema,
             seed=invocation.deterministic_seed,
             idempotency_key=(
-                f"synthetic:{invocation.lease.job_id}:{invocation.step_key}:"
-                f"{invocation.prompt.structured_input_hash}"
+                _local_attempt_idempotency_key(invocation)
+                if _supports_provider_idempotency(loaded)
+                else None
             ),
             capture_method=capture_method,
             provider_secret_handle=loaded.job.provider_secret_handle,
@@ -502,6 +503,24 @@ def _capture_method(loaded: LoadedModelCallRuntime) -> ModelCaptureMethod:
             "Model Gateway runtime lacks the admitted adapter capture method"
         )
     return capture_method
+
+
+def _supports_provider_idempotency(loaded: LoadedModelCallRuntime) -> bool:
+    job = loaded.job
+    adapter = loaded.composition.adapters.get(
+        (job.route.provider, job.route.adapter_release_id)
+    )
+    runtime = getattr(adapter, "runtime", None)
+    release = getattr(runtime, "adapter_release", None)
+    capabilities = getattr(release, "capabilities", None)
+    return getattr(capabilities, "supports_idempotency", False) is True
+
+
+def _local_attempt_idempotency_key(invocation: SyntheticModelInvocation) -> str:
+    return (
+        f"synthetic:{invocation.lease.job_id}:{invocation.step_key}:"
+        f"{invocation.prompt.structured_input_hash}"
+    )
 
 
 def _model_result(

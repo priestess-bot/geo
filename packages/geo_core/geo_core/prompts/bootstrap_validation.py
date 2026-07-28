@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
+import json
 from typing import NoReturn
 
 from geo_core.model_gateway.contracts import StructuredOutputValidationError
@@ -21,6 +22,8 @@ from geo_core.prompts.bootstrap_evidence_validation import (
     input_evidence as _input_evidence,
 )
 from geo_core.prompts.bootstrap_metric_validation import validate_metric_judge
+from geo_core.prompts.bootstrap_limits import STYLE_PROFILE_SUMMARY_MAX_CHARACTERS
+from geo_core.prompts.recommendation_numeric_grounding import invented_recommendation_numeric_literals
 from geo_core.prompts.bootstrap_validation_errors import (
     PromptOutputRuleViolation,
 )
@@ -72,6 +75,7 @@ KIND_APPLICATION_RULES: Mapping[ProgramKind, tuple[str, ...]] = {
     ProgramKind.STYLE_PROFILE: (
         "style_profile.sample_manifest_exact",
         "style_profile.pattern_sets_distinct",
+        "style_profile.summary_size_bounded",
     ),
     ProgramKind.OFFLINE_ANSWER: (
         "offline_answer.slot_identity_frozen",
@@ -182,10 +186,7 @@ def _validate_common_rules(
             continue
         if "subject_id" in candidate and (
             candidate["subject_id"] not in allowed_subjects
-            or (
-                kind is ProgramKind.GENERATION
-                and candidate["subject_id"] != subject_id
-            )
+            or (kind is ProgramKind.GENERATION and candidate["subject_id"] != subject_id)
         ):
             raise PromptOutputRuleViolation(
                 "subject_mismatch", "nested output subject is outside the frozen allowlist"
@@ -229,9 +230,10 @@ def _validate_common_rules(
                     "evidence_subject_mismatch",
                     "output uses evidence outside its explicit subject scope",
                 )
-    if output.get("output_locale") != input_value.get("output_locale") or output.get(
-        "output_locale"
-    ) != "en-AU":
+    if (
+        output.get("output_locale") != input_value.get("output_locale")
+        or output.get("output_locale") != "en-AU"
+    ):
         raise PromptOutputRuleViolation(
             "locale_mismatch", "textual output must retain the frozen en-AU locale"
         )
@@ -258,9 +260,7 @@ def _validate_kind_rules(
 ) -> None:
     if kind is ProgramKind.GENERATION:
         _require_guided_boundary(input_value, output)
-        primary_subject = _string(
-            input_value.get("subject_id"), code="input_subject_invalid"
-        )
+        primary_subject = _string(input_value.get("subject_id"), code="input_subject_invalid")
         candidates = _mapping_items(output.get("candidates"))
         if len(candidates) != 4:
             _semantic_error("generation requires exactly four candidates")
@@ -277,14 +277,13 @@ def _validate_kind_rules(
         claim_ids = [_required_member(claim, "claim_id") for claim in claims]
         if len(claim_ids) != len(set(claim_ids)):
             _semantic_error("claim extraction claim IDs must be unique")
-        evidence_by_ref = {
-            item["ref"]: item for item in _input_evidence(input_value)
-        }
+        evidence_by_ref = {item["ref"]: item for item in _input_evidence(input_value)}
         for claim in claims:
             _required_member(claim, "text")
-            if claim.get("classification") == "derived_or_unknown" and claim.get(
-                "evidence_refs"
-            ) != []:
+            if (
+                claim.get("classification") == "derived_or_unknown"
+                and claim.get("evidence_refs") != []
+            ):
                 _semantic_error("derived_or_unknown claims cannot bind evidence")
             if claim.get("classification") != "derived_or_unknown":
                 claim_subject = _required_member(claim, "subject_id")
@@ -296,18 +295,12 @@ def _validate_kind_rules(
                         )
     elif kind is ProgramKind.CONFLICT_CHECK:
         input_claims = _mapping_items(input_value.get("claims"))
-        input_claim_ids = [
-            _required_member(claim, "claim_id") for claim in input_claims
-        ]
+        input_claim_ids = [_required_member(claim, "claim_id") for claim in input_claims]
         if len(input_claim_ids) != len(set(input_claim_ids)):
             _semantic_error("conflict-check input claim IDs must be unique")
-        claims_by_id = {
-            _required_member(claim, "claim_id"): claim for claim in input_claims
-        }
+        claims_by_id = {_required_member(claim, "claim_id"): claim for claim in input_claims}
         allowed_subjects = _allowed_subject_ids(input_value)
-        evidence_by_ref = {
-            item["ref"]: item for item in _input_evidence(input_value)
-        }
+        evidence_by_ref = {item["ref"]: item for item in _input_evidence(input_value)}
         for claim in input_claims:
             claim_subject = _required_member(claim, "subject_id")
             if claim_subject not in allowed_subjects:
@@ -315,22 +308,17 @@ def _validate_kind_rules(
             for reference in _string_items(claim.get("evidence_refs")):
                 evidence = evidence_by_ref.get(reference)
                 if evidence is None or evidence.get("subject_id") != claim_subject:
-                    _semantic_error(
-                        "conflict-check claim evidence must match the claim subject"
-                    )
+                    _semantic_error("conflict-check claim evidence must match the claim subject")
         assessments = _mapping_items(output.get("assessments"))
         if not assessments:
             _semantic_error("conflict check requires at least one assessment")
         assessment_claim_ids = [
             _required_member(assessment, "claim_id") for assessment in assessments
         ]
-        if (
-            len(assessment_claim_ids) != len(set(assessment_claim_ids))
-            or set(assessment_claim_ids) != set(input_claim_ids)
-        ):
-            _semantic_error(
-                "conflict check must assess every frozen claim exactly once"
-            )
+        if len(assessment_claim_ids) != len(set(assessment_claim_ids)) or set(
+            assessment_claim_ids
+        ) != set(input_claim_ids):
+            _semantic_error("conflict check must assess every frozen claim exactly once")
         allowed_refs = {item["ref"] for item in _input_evidence(input_value)}
         for assessment in assessments:
             status = assessment.get("status")
@@ -385,9 +373,7 @@ def _validate_kind_rules(
         if resolved.intersection(remaining):
             _semantic_error("revision issue codes cannot be both resolved and remaining")
         if resolved.union(remaining) != allowed_issues:
-            _semantic_error(
-                "revision must resolve or retain every frozen issue exactly once"
-            )
+            _semantic_error("revision must resolve or retain every frozen issue exactly once")
     elif kind is ProgramKind.STYLE_JUDGE:
         score = output.get("score")
         threshold = input_value.get("pass_threshold")
@@ -405,37 +391,41 @@ def _validate_kind_rules(
         if output.get("selected_candidate_id") not in arbiter_candidate_ids:
             _semantic_error("arbiter selected a candidate outside its frozen scope")
         evaluator_results = _mapping_items(input_value.get("evaluator_results"))
-        if any(
-            item.get("candidate_id") not in arbiter_candidate_ids
-            for item in evaluator_results
-        ):
+        if any(item.get("candidate_id") not in arbiter_candidate_ids for item in evaluator_results):
             _semantic_error("arbiter evaluator references an unknown candidate")
-        expected_evaluators = [
-            _required_member(item, "evaluator") for item in evaluator_results
-        ]
+        expected_evaluators = [_required_member(item, "evaluator") for item in evaluator_results]
         considered_evaluators = _string_items(output.get("considered_evaluators"))
         if (
             len(expected_evaluators) != len(set(expected_evaluators))
             or len(considered_evaluators) != len(set(considered_evaluators))
             or set(considered_evaluators) != set(expected_evaluators)
         ):
-            _semantic_error(
-                "arbiter must consider every frozen evaluator exactly once"
-            )
+            _semantic_error("arbiter must consider every frozen evaluator exactly once")
         _required_member(output, "rationale")
     elif kind is ProgramKind.METRIC_JUDGE:
         validate_metric_judge(input_value, output)
     elif kind is ProgramKind.RECOMMENDATION:
-        allowed_types = set(
-            _string_items(input_value.get("allowed_recommendation_types"))
-        )
-        if output.get("recommendation_type") not in allowed_types:
+        allowed_type_items = _string_items(input_value.get("allowed_recommendation_types"))
+        if len(allowed_type_items) != 1:
+            _semantic_error("recommendation requires exactly one deterministically admitted type")
+        admitted_type = allowed_type_items[0]
+        raw_admission = input_value.get("type_admission_json")
+        if not isinstance(raw_admission, str):
+            _semantic_error("recommendation type admission must be canonical JSON text")
+        try:
+            type_admission = json.loads(raw_admission)
+        except json.JSONDecodeError:
+            _semantic_error("recommendation type admission JSON is invalid")
+        if (
+            not isinstance(type_admission, Mapping)
+            or type_admission.get("resolved_type") != admitted_type
+        ):
+            _semantic_error("recommendation type differs from deterministic evidence admission")
+        if output.get("recommendation_type") != admitted_type:
             _semantic_error("recommendation type is outside the frozen input allowlist")
         _validate_recommendation_output(input_value, output)
     elif kind is ProgramKind.STYLE_PROFILE:
-        if output.get("sample_manifest_hash") != input_value.get(
-            "sample_manifest_hash"
-        ):
+        if output.get("sample_manifest_hash") != input_value.get("sample_manifest_hash"):
             _semantic_error("Style Profile changed the frozen sample manifest")
         positive_patterns: set[str] = set()
         for name in ("voice_traits", "lexical_patterns", "structure_patterns"):
@@ -443,28 +433,27 @@ def _validate_kind_rules(
             if not values:
                 _semantic_error(f"Style Profile {name} cannot be empty")
             positive_patterns.update(value.casefold() for value in values)
-        avoid_patterns = {
-            value.casefold() for value in _string_items(output.get("avoid_patterns"))
-        }
+        avoid_patterns = {value.casefold() for value in _string_items(output.get("avoid_patterns"))}
         if positive_patterns.intersection(avoid_patterns):
-            _semantic_error(
-                "Style Profile cannot both require and avoid the same pattern"
-            )
+            _semantic_error("Style Profile cannot both require and avoid the same pattern")
+        profile_summary = json.dumps(
+            dict(output),
+            ensure_ascii=True,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        if len(profile_summary) > STYLE_PROFILE_SUMMARY_MAX_CHARACTERS:
+            _semantic_error("Style Profile summary exceeds the 16KB runtime limit")
     elif kind is ProgramKind.OFFLINE_ANSWER:
         if input_value.get("subject_id") != input_value.get("question_cluster_key"):
-            _semantic_error(
-                "offline answer subject must equal the frozen Question cluster"
-            )
+            _semantic_error("offline answer subject must equal the frozen Question cluster")
         expected_ref = (
-            f"corpus:{input_value.get('corpus_version_id')}:"
-            f"{input_value.get('corpus_hash')}"
+            f"corpus:{input_value.get('corpus_version_id')}:" f"{input_value.get('corpus_hash')}"
         )
         input_refs = {item["ref"] for item in _input_evidence(input_value)}
         output_refs = set(_string_items(output.get("evidence_refs")))
         if expected_ref not in input_refs or output_refs != {expected_ref}:
-            _semantic_error(
-                "offline answer must use exactly the frozen Corpus evidence"
-            )
+            _semantic_error("offline answer must use exactly the frozen Corpus evidence")
         _required_member(output, "answer_text")
     elif kind is ProgramKind.QUESTION_GENERATION:
         questions = _mapping_items(output.get("questions"))
@@ -519,6 +508,27 @@ def _validate_recommendation_output(
     for name in ("impact_chain", "validation_plan", "stale_conditions"):
         if not _string_items(decision.get(name)):
             _semantic_error(f"recommendation decision {name} cannot be empty")
+    selected_summaries = {
+        str(item["summary"])
+        for item in _input_evidence(input_value)
+        if item["ref"] in selected_tokens and isinstance(item.get("summary"), str)
+    }
+    decision_text = [
+        *_string_items(decision.get("impact_chain")),
+        *_string_items(decision.get("counterevidence")),
+        *_string_items(decision.get("validation_plan")),
+        *_string_items(decision.get("stale_conditions")),
+    ]
+    for name in ("risk", "effort", "business_value"):
+        decision_text.append(_required_member(decision, name))
+    invented = invented_recommendation_numeric_literals(
+        evidence_texts=selected_summaries,
+        decision_texts=decision_text,
+    )
+    if invented:
+        _semantic_error(
+            "recommendation numeric values must be copied verbatim from selected evidence"
+        )
 
 
 def _require_guided_boundary(

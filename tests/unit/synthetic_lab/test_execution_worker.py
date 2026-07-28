@@ -17,13 +17,16 @@ from geo_core.synthetic_lab.execution_contracts import (
     FrozenPromptRef,
     StyleProfileBuildOutput,
     StyleProfileBuildTask,
+    SyntheticExecutionError,
     SyntheticExecutionStale,
+    SyntheticManualReconciliationRequired,
 )
 from geo_core.synthetic_lab.execution_application import SyntheticExecutionApplication
 from geo_core.synthetic_lab.execution_worker import SyntheticExecutionHandler
 from geo_core.synthetic_lab.postgres_worker import build_synthetic_worker_handlers
 from geo_core.synthetic_lab.memory import (
     InMemorySyntheticLabStore,
+    InMemorySyntheticLabUnitOfWork,
     InMemorySyntheticLabUnitOfWorkFactory,
 )
 from geo_core.synthetic_lab.ports import (
@@ -130,6 +133,31 @@ class FakeExecutor:
         return self.output
 
 
+class _RecordingDifyReconciliation:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, object]] = []
+
+    def bind_resubmission(self, **values: object) -> UUID | None:
+        self.calls.append(values)
+        attempt_id = values["recovery_of_attempt_id"]
+        return attempt_id if isinstance(attempt_id, UUID) else None
+
+
+class _RecordingReconciliationUowFactory:
+    def __init__(
+        self,
+        store: InMemorySyntheticLabStore,
+        reconciliation: _RecordingDifyReconciliation,
+    ) -> None:
+        self._store = store
+        self._reconciliation = reconciliation
+
+    def __call__(self, *, project_id: UUID) -> InMemorySyntheticLabUnitOfWork:
+        uow = InMemorySyntheticLabUnitOfWork(self._store, project_id=project_id)
+        uow.dify_reconciliation = self._reconciliation  # type: ignore[assignment]
+        return uow
+
+
 def test_worker_checkpoints_and_atomically_finalizes_under_fence() -> None:
     runtime = _runtime()
 
@@ -207,6 +235,35 @@ def test_worker_never_persists_unknown_exception_message() -> None:
     assert "secret@example.test" not in repr(runtime.store.failures)
 
 
+def test_worker_marks_unknown_child_outcome_for_manual_reconciliation_without_retry() -> None:
+    runtime = _runtime()
+    child_job_id = uuid4()
+    runtime.executor.error = SyntheticManualReconciliationRequired(
+        "provider response may contain sensitive details",
+        child_job_id=child_job_id,
+        failure_code="dify_unknown_outcome",
+    )
+
+    result = runtime.handler.handle(runtime.lease)
+
+    assert result["status"] == "failed"
+    assert runtime.store.failures == [
+        (
+            "synthetic_manual_reconciliation_required",
+            {
+                "classification": "manual_reconciliation_required",
+                "child_job_id": str(child_job_id),
+                "child_failure_code": "dify_unknown_outcome",
+                "reconciliation_action": (
+                    "inspect_child_attempt_then_submit_new_parent_replay"
+                ),
+            },
+            None,
+        )
+    ]
+    assert "sensitive" not in repr(runtime.store.failures)
+
+
 def test_legacy_revision_job_cannot_run_the_whole_review_case_executor() -> None:
     runtime = _runtime(kind="candidate_revision")
 
@@ -220,7 +277,10 @@ def test_legacy_revision_job_cannot_run_the_whole_review_case_executor() -> None
 def test_execution_enqueue_atomically_stages_job_exact_task_outbox_and_receipt() -> None:
     task = _task()
     store = InMemorySyntheticLabStore()
-    app = SyntheticExecutionApplication(InMemorySyntheticLabUnitOfWorkFactory(store))
+    reconciliation = _RecordingDifyReconciliation()
+    app = SyntheticExecutionApplication(
+        _RecordingReconciliationUowFactory(store, reconciliation)
+    )
     prompts = FakePrompts()
     principal = LabPrincipal(
         project_id=PROJECT_ID,
@@ -253,6 +313,22 @@ def test_execution_enqueue_atomically_stages_job_exact_task_outbox_and_receipt()
     assert store.outbox_count(PROJECT_ID) == 1
     assert store.command_count(PROJECT_ID) == 1
     assert store.get_execution_task(project_id=PROJECT_ID, job_id=task.job_id) == task
+    assert reconciliation.calls == [
+        {
+            "project_id": PROJECT_ID,
+            "new_parent_job_id": task.job_id,
+            "actor_id": task.requested_by,
+            "recovery_of_attempt_id": None,
+            "token": None,
+        },
+        {
+            "project_id": PROJECT_ID,
+            "new_parent_job_id": task.job_id,
+            "actor_id": task.requested_by,
+            "recovery_of_attempt_id": None,
+            "token": None,
+        },
+    ]
 
 
 def test_execution_enqueue_commit_failure_leaves_no_runnable_or_unstaged_job() -> None:
@@ -279,6 +355,90 @@ def test_execution_enqueue_commit_failure_leaves_no_runnable_or_unstaged_job() -
     assert store.job_count(PROJECT_ID) == 0
     assert store.outbox_count(PROJECT_ID) == 0
     assert store.get_execution_task(project_id=PROJECT_ID, job_id=task.job_id) is None
+
+
+def test_style_recovery_consumes_token_atomically_and_replay_creates_no_new_job() -> None:
+    task = _task()
+    store = InMemorySyntheticLabStore()
+    reconciliation = _RecordingDifyReconciliation()
+    app = SyntheticExecutionApplication(
+        _RecordingReconciliationUowFactory(store, reconciliation)
+    )
+    principal = LabPrincipal(
+        project_id=PROJECT_ID,
+        actor_id=task.requested_by,
+        roles=frozenset({LabRole.OPERATOR}),
+    )
+    attempt_id = uuid4()
+    token = "a" * 64
+    values = {
+        "principal": principal,
+        "task": task,
+        "outbox_id": uuid4(),
+        "runtime_inputs": StaticRuntimeInputPort(task.runtime_inputs),
+        "prompts": FakePrompts(),
+        "idempotency_key": "style-profile-explicit-recovery",
+        "recovery_of_attempt_id": attempt_id,
+        "dify_reconciliation_token": token,
+    }
+
+    first = app.enqueue(**values)  # type: ignore[arg-type]
+    replay = app.enqueue(**values)  # type: ignore[arg-type]
+
+    assert first.replayed is False
+    assert replay.replayed is True
+    assert store.job_count(PROJECT_ID) == 1
+    assert store.outbox_count(PROJECT_ID) == 1
+    assert store.command_count(PROJECT_ID) == 1
+    assert reconciliation.calls == [
+        {
+            "project_id": PROJECT_ID,
+            "new_parent_job_id": task.job_id,
+            "actor_id": task.requested_by,
+            "recovery_of_attempt_id": attempt_id,
+            "token": token,
+        },
+        {
+            "project_id": PROJECT_ID,
+            "new_parent_job_id": task.job_id,
+            "actor_id": task.requested_by,
+            "recovery_of_attempt_id": attempt_id,
+            "token": token,
+        },
+    ]
+    assert token not in repr(store._commands)
+
+
+@pytest.mark.parametrize(
+    ("attempt_id", "token"),
+    ((uuid4(), None), (None, "b" * 64)),
+)
+def test_style_recovery_requires_attempt_and_token_together(
+    attempt_id: UUID | None, token: str | None
+) -> None:
+    task = _task()
+    store = InMemorySyntheticLabStore()
+    app = SyntheticExecutionApplication(InMemorySyntheticLabUnitOfWorkFactory(store))
+    principal = LabPrincipal(
+        project_id=PROJECT_ID,
+        actor_id=task.requested_by,
+        roles=frozenset({LabRole.OPERATOR}),
+    )
+
+    with pytest.raises(SyntheticExecutionError, match="requires both"):
+        app.enqueue(
+            principal=principal,
+            task=task,
+            outbox_id=uuid4(),
+            runtime_inputs=StaticRuntimeInputPort(task.runtime_inputs),
+            prompts=FakePrompts(),  # type: ignore[arg-type]
+            idempotency_key="style-profile-incomplete-recovery",
+            recovery_of_attempt_id=attempt_id,
+            dify_reconciliation_token=token,
+        )
+
+    assert store.job_count(PROJECT_ID) == 0
+    assert store.outbox_count(PROJECT_ID) == 0
 
 
 @dataclass(frozen=True)

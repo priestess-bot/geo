@@ -131,6 +131,8 @@ def recommendation_router() -> APIRouter:
                 _principal(request, authorization),
                 selection=generation_selection(project_id, payload),
                 idempotency_key=idempotency_key,
+                recovery_of_attempt_id=payload.recovery_of_attempt_id,
+                dify_reconciliation_token=payload.dify_reconciliation_token,
             )
         )
         return generation_job_response(result)

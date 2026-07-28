@@ -10,6 +10,7 @@ from uuid import UUID
 
 from geo_core.jobs.postgres import WorkerLease
 from geo_core.prompts.program_contracts import ProgramKind
+from geo_core.prompts.bootstrap_limits import STYLE_PROFILE_SUMMARY_MAX_CHARACTERS
 from geo_core.synthetic_lab.application_support import canonical_hash
 from geo_core.synthetic_lab.corpus import CorpusCandidateEntry, CorpusRole
 from geo_core.synthetic_lab.domain import (
@@ -30,10 +31,14 @@ from geo_core.synthetic_lab.execution_evidence_validation import (
     validate_review_subject_inventory,
 )
 from geo_core.synthetic_lab.execution_model_contracts import (
+    DIFY_SYNTHETIC_PROGRAM_KINDS,
     FrozenPromptRef,
     ResolvedSyntheticPrompt,
+    SyntheticExecutionBackend,
+    SyntheticExecutionResult,
     SyntheticModelInvocation,
     SyntheticModelResult,
+    SyntheticWorkflowResult,
 )
 from geo_core.synthetic_lab.execution_outputs import (
     CorpusFinalizeOutput,
@@ -55,6 +60,21 @@ class SyntheticExecutionError(RuntimeError):
 
 class SyntheticExecutionStale(SyntheticExecutionError):
     """A Fact, Profile, Prompt binding or immutable task changed."""
+
+
+class SyntheticManualReconciliationRequired(SyntheticExecutionError):
+    """A provider outcome is terminal until an operator reconciles it."""
+
+    def __init__(
+        self,
+        message: str = "a child workflow outcome requires manual reconciliation",
+        *,
+        child_job_id: UUID | None = None,
+        failure_code: str = "unknown_outcome",
+    ) -> None:
+        super().__init__(message)
+        self.child_job_id = child_job_id
+        self.failure_code = failure_code
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -153,6 +173,10 @@ class ReviewCaseRunTask:
         _require_hash(self.review_suite_hash, "Review Suite")
         _require_uuid(self.subject_id, "Review Case subject identity")
         _require_text(self.style_profile_summary, "Style Profile summary")
+        if len(self.style_profile_summary) > STYLE_PROFILE_SUMMARY_MAX_CHARACTERS:
+            raise SyntheticLabContractError(
+                "Style Profile summary exceeds the 16KB runtime limit"
+            )
         if not 0 <= self.style_pass_threshold <= 5:
             raise SyntheticLabContractError("style pass threshold must be between 0 and 5")
         evidence = tuple(self.evidence)
@@ -350,7 +374,7 @@ class SyntheticPromptResolverPort(Protocol):
 
 
 class SyntheticModelCallPort(Protocol):
-    def execute(self, invocation: SyntheticModelInvocation) -> SyntheticModelResult: ...
+    def execute(self, invocation: SyntheticModelInvocation) -> SyntheticExecutionResult: ...
 
 
 class SyntheticExecutionRepositoryPort(Protocol):
@@ -417,6 +441,7 @@ __all__ = [
     "CorpusFinalizeOutput",
     "CorpusFinalizeTask",
     "ExecutionCheckpoint",
+    "DIFY_SYNTHETIC_PROGRAM_KINDS",
     "FrozenEvidence",
     "FrozenPromptRef",
     "OfflineExperimentRunOutput",
@@ -427,14 +452,18 @@ __all__ = [
     "StyleProfileBuildOutput",
     "StyleProfileBuildTask",
     "SyntheticExecutionError",
+    "SyntheticExecutionBackend",
+    "SyntheticExecutionResult",
     "SyntheticExecutionOutput",
     "SyntheticExecutionRepositoryPort",
     "SyntheticExecutionTaskStagingPort",
     "SyntheticExecutionStale",
+    "SyntheticManualReconciliationRequired",
     "SyntheticExecutionTask",
     "SyntheticModelCallPort",
     "SyntheticModelInvocation",
     "SyntheticModelResult",
+    "SyntheticWorkflowResult",
     "SyntheticPromptResolverPort",
     "prompt_refs",
 ]

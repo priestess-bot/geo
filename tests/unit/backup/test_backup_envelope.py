@@ -80,6 +80,18 @@ MIGRATION_LEDGER = build_ledger(
     ROOT / "infra" / "db" / "alembic" / "sql",
     head_revision="0028_secret_store",
 )
+DATABASE_LEDGER_ROWS = [
+    {
+        "downgrade_sha256": entry["downgrade_sha256"],
+        "revision": entry["revision"],
+        "upgrade_sha256": entry["upgrade_sha256"],
+    }
+    for entry in MIGRATION_LEDGER["entries"]
+]
+PROJECT_IDS = [
+    "10000000-0000-4000-8000-000000000001",
+    "20000000-0000-4000-8000-000000000002",
+]
 
 
 def test_streaming_envelope_and_signed_manifest_round_trip(tmp_path: Path) -> None:
@@ -129,6 +141,24 @@ def test_streaming_envelope_and_signed_manifest_round_trip(tmp_path: Path) -> No
         "recommendation_artifacts": RECOMMENDATION_SOURCE,
         "postgres": {
             "alembic_sql_checksum_ledger": MIGRATION_LEDGER,
+            "database_checksum_ledger": {
+                "entries": DATABASE_LEDGER_ROWS,
+                "head_revision": "0028_secret_store",
+                "ledger_sha256": hashlib.sha256(
+                    json.dumps(
+                        {
+                            "entries": DATABASE_LEDGER_ROWS,
+                            "head_revision": "0028_secret_store",
+                        },
+                        separators=(",", ":"),
+                        sort_keys=True,
+                    ).encode("ascii")
+                ).hexdigest(),
+                "schema_version": "geo-database-alembic-checksum-ledger-v1",
+            },
+            "database_name": "geo",
+            "database_user": "geo_installer",
+            "environment": "staging",
             "critical_relation_counts": {
                 "evidence_items": 5,
                 "monitoring_reports": 3,
@@ -138,6 +168,8 @@ def test_streaming_envelope_and_signed_manifest_round_trip(tmp_path: Path) -> No
             "migration_revision": "0028_secret_store",
             "non_b_business_consistency": BUSINESS_CONSISTENCY,
             "project_count": 2,
+            "project_ids": PROJECT_IDS,
+            "system_identifier": "1234567890123456789",
             "table_count": 42,
         },
         "secret_store": {
@@ -343,6 +375,12 @@ def test_uncommitted_extra_and_inconsistent_probe_sets_are_rejected(tmp_path: Pa
             created_at="2026-07-23T03:00:00Z",
             migration_revision="0028_secret_store",
             alembic_sql_checksum_ledger=MIGRATION_LEDGER,
+            database_checksum_ledger_rows=DATABASE_LEDGER_ROWS,
+            source_database_name="geo",
+            source_database_user="geo_installer",
+            source_environment="staging",
+            source_system_identifier="1234567890123456789",
+            source_project_ids=[],
             postgres_project_count=0,
             postgres_table_count=1,
             critical_relation_counts={
@@ -394,6 +432,12 @@ def test_uncommitted_extra_and_inconsistent_probe_sets_are_rejected(tmp_path: Pa
             created_at="2026-07-23T03:00:00Z",
             migration_revision="0028_secret_store",
             alembic_sql_checksum_ledger=MIGRATION_LEDGER,
+            database_checksum_ledger_rows=DATABASE_LEDGER_ROWS,
+            source_database_name="geo",
+            source_database_user="geo_installer",
+            source_environment="staging",
+            source_system_identifier="1234567890123456789",
+            source_project_ids=[],
             postgres_project_count=0,
             postgres_table_count=1,
             critical_relation_counts={
@@ -468,6 +512,12 @@ def _backup_set(
         created_at="2026-07-23T03:00:00Z",
         migration_revision="0028_secret_store",
         alembic_sql_checksum_ledger=MIGRATION_LEDGER,
+        database_checksum_ledger_rows=DATABASE_LEDGER_ROWS,
+        source_database_name="geo",
+        source_database_user="geo_installer",
+        source_environment="staging",
+        source_system_identifier="1234567890123456789",
+        source_project_ids=PROJECT_IDS,
         postgres_project_count=2,
         postgres_table_count=42,
         critical_relation_counts={

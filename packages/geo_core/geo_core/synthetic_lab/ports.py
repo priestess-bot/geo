@@ -19,6 +19,9 @@ if TYPE_CHECKING:
         StyleCollectionTaskStagingPort,
     )
     from geo_core.synthetic_lab.execution_contracts import SyntheticExecutionTaskStagingPort
+    from geo_core.synthetic_lab.profile_build_binding import (
+        StyleProfileBuildBindingRepository,
+    )
 
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -305,6 +308,18 @@ class SyntheticOutboxRepository(Protocol):
     def stage(self, message: SyntheticOutboxMessage) -> None: ...
 
 
+class SyntheticDifyReconciliationPort(Protocol):
+    def bind_resubmission(
+        self,
+        *,
+        project_id: UUID,
+        new_parent_job_id: UUID,
+        actor_id: UUID,
+        recovery_of_attempt_id: UUID | None,
+        token: str | None,
+    ) -> UUID | None: ...
+
+
 class SyntheticLabUnitOfWork(Protocol):
     commands: SyntheticCommandRepository
     aggregates: SyntheticAggregateRepository
@@ -314,6 +329,8 @@ class SyntheticLabUnitOfWork(Protocol):
     outbox: SyntheticOutboxRepository
     execution_tasks: "SyntheticExecutionTaskStagingPort"
     style_collection_tasks: "StyleCollectionTaskStagingPort"
+    profile_build_bindings: "StyleProfileBuildBindingRepository"
+    dify_reconciliation: SyntheticDifyReconciliationPort
 
     def __enter__(self) -> "SyntheticLabUnitOfWork": ...
 
@@ -405,6 +422,7 @@ __all__ = [
     "SyntheticCommandOperation",
     "SyntheticCommandRecord",
     "SyntheticCustomerProjectionDenied",
+    "SyntheticDifyReconciliationPort",
     "SyntheticLabIdempotencyConflict",
     "SyntheticLabJobOwnershipLost",
     "SyntheticLabNotFound",

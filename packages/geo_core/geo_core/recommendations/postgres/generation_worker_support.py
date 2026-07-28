@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from typing import Any
 from uuid import UUID, uuid5
 
@@ -20,6 +21,7 @@ from geo_core.recommendations.generation_contracts import (
     ResolvedGenerationPrompt,
 )
 from geo_core.recommendations.generation_worker_contracts import (
+    RecommendationExecutionBackend,
     RecommendationModelResultRef,
     RecommendationModelRole,
     RecommendationModelTask,
@@ -31,6 +33,9 @@ def model_task(
     spec: RecommendationGenerationSpec,
     role: RecommendationModelRole,
     prompt: ResolvedGenerationPrompt,
+    structured_input: Mapping[str, object],
+    workflow_release_id: UUID | None = None,
+    workflow_release_hash: str | None = None,
 ) -> RecommendationModelTask:
     primary = role is RecommendationModelRole.PRIMARY
     return RecommendationModelTask(
@@ -39,6 +44,14 @@ def model_task(
         project_id=lease.project_id,
         parent_input_hash=spec.input_hash,
         role=role,
+        execution_backend=(
+            RecommendationExecutionBackend.DIFY
+            if primary and workflow_release_id is not None
+            else RecommendationExecutionBackend.MODEL_GATEWAY
+        ),
+        structured_input=structured_input,
+        workflow_release_id=workflow_release_id,
+        workflow_release_hash=workflow_release_hash,
         runtime_selection_id=(
             spec.runtime_selection_id
             if primary

@@ -3,44 +3,48 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
-from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
+import json
 import re
 from types import MappingProxyType
-from typing import Protocol
-from uuid import UUID
-
-from geo_core.model_gateway.application import ModelCallExecution
-from geo_core.model_gateway.application_support import ExecuteModelCall
-from geo_core.model_gateway.contracts import ModelCaptureMethod, ModelPolicy
-from geo_core.model_gateway.releases import ModelRoute
 from geo_core.recommendations.decision import RecommendationDecision
-from geo_core.recommendations.evidence import FactRef
+from geo_core.recommendations.evidence import RecommendationScope
 from geo_core.recommendations.generation_contracts import (
     EvidenceSummary,
     FrozenGenerationEvidence,
-    FrozenPromptBinding,
-    GenerationJobOwnership,
-    GenerationJobStatus,
-    RecommendationGenerationJob,
     RecommendationGenerationOutputError,
-    RecommendationGenerationResult,
-    RecommendationGenerationSpec,
-    ResolvedGenerationPrompt,
     canonical_hash,
 )
+from geo_core.recommendations.generation_evidence import (
+    GENERATION_EVIDENCE_CONTRACT_V1,
+)
+from geo_core.recommendations.generation_interfaces import (
+    ModelGatewayApplicationPort as ModelGatewayApplicationPort,
+    ParsedRecommendationOutput,
+    RecommendationFactResolverPort as RecommendationFactResolverPort,
+    RecommendationGenerationRepositoryPort as RecommendationGenerationRepositoryPort,
+    RecommendationPromptResolverPort as RecommendationPromptResolverPort,
+    SelectedRecommendationRef,
+)
 from geo_core.recommendations.models import RecommendationType
-from geo_core.recommendations.evidence import RecommendationScope
+from geo_core.recommendations.type_admission import resolve_recommendation_type
+from geo_core.workflow_runtime.contracts import canonical_json_value
+from geo_core.prompts.bootstrap_catalog import default_prompt_bootstrap_spec
 from geo_core.prompts.bootstrap_schemas import (
     bootstrap_application_output_schema,
     provider_portable_output_schema,
 )
+from geo_core.prompts.bootstrap_validation import validate_bootstrap_output
+from geo_core.prompts.recommendation_numeric_grounding import (
+    invented_recommendation_numeric_literals,
+)
+from geo_core.prompts.bootstrap_validation_errors import PromptOutputRuleViolation
 from geo_core.prompts.program_contracts import ProgramKind
 
 
-_NUMERIC_CLAIM = re.compile(r"(?<![A-Za-z])\d")
 _CORE_KINDS = frozenset({"observation", "metric_comparison", "fact", "rule"})
+_LEGACY_NUMERIC_CLAIM = re.compile(r"(?<![A-Za-z])\d")
+RECOMMENDATION_DIFY_CONTEXT_MAX_BYTES = 100_000
 _GOVERNANCE_OUTPUT_FIELDS = frozenset(
     {
         "subject_id",
@@ -52,126 +56,6 @@ _GOVERNANCE_OUTPUT_FIELDS = frozenset(
         "untrusted_instruction_followed",
     }
 )
-
-
-@dataclass(frozen=True)
-class SelectedRecommendationRef:
-    kind: str
-    resource_id: str
-
-
-@dataclass(frozen=True)
-class ParsedRecommendationOutput:
-    recommendation_type: RecommendationType
-    scope: RecommendationScope
-    selected_refs: tuple[SelectedRecommendationRef, ...]
-    decision: RecommendationDecision
-
-
-class RecommendationPromptResolverPort(Protocol):
-    """Render one exact current binding; stale bindings must fail closed."""
-
-    def resolve(
-        self,
-        *,
-        binding: FrozenPromptBinding,
-        route: ModelRoute,
-        configured_model: str,
-        model_policy: ModelPolicy,
-        capture_method: ModelCaptureMethod,
-        search_mode: str | None,
-        structured_input: Mapping[str, object],
-        output_schema: Mapping[str, object],
-        application_output_schema: Mapping[str, object],
-    ) -> ResolvedGenerationPrompt: ...
-
-
-class RecommendationFactResolverPort(Protocol):
-    def current_facts(
-        self,
-        *,
-        project_id: UUID,
-        frozen_facts: tuple[FactRef, ...],
-    ) -> tuple[FactRef, ...]: ...
-
-
-class ModelGatewayApplicationPort(Protocol):
-    """Structural match for ModelCallApplication; no raw provider adapter is accepted."""
-
-    def execute(
-        self,
-        command: ExecuteModelCall,
-        *,
-        policy: ModelPolicy,
-    ) -> ModelCallExecution: ...
-
-
-class RecommendationGenerationRepositoryPort(Protocol):
-    def create_job(
-        self,
-        *,
-        job_id: UUID,
-        spec: RecommendationGenerationSpec,
-        idempotency_key_hash: str,
-    ) -> tuple[RecommendationGenerationJob, bool]: ...
-
-    def claim_job(
-        self,
-        *,
-        project_id: UUID,
-        job_id: UUID,
-        worker_id: str,
-        now: datetime,
-        lease_for: timedelta,
-    ) -> RecommendationGenerationJob: ...
-
-    def get_job(
-        self, *, project_id: UUID, job_id: UUID
-    ) -> RecommendationGenerationJob: ...
-
-    def request_cancel(
-        self,
-        *,
-        project_id: UUID,
-        job_id: UUID,
-        expected_version: int | None = None,
-        idempotency_key_hash: str | None = None,
-    ) -> RecommendationGenerationJob: ...
-
-    def require_owned(
-        self,
-        *,
-        project_id: UUID,
-        job_id: UUID,
-        ownership: GenerationJobOwnership,
-        now: datetime,
-    ) -> RecommendationGenerationJob: ...
-
-    def reserve_model_call(
-        self,
-        *,
-        project_id: UUID,
-        job_id: UUID,
-        ownership: GenerationJobOwnership,
-        now: datetime,
-    ) -> RecommendationGenerationJob: ...
-
-    def finish_job(
-        self,
-        *,
-        project_id: UUID,
-        job_id: UUID,
-        ownership: GenerationJobOwnership,
-        now: datetime,
-        status: GenerationJobStatus,
-        expected_input_hash: str,
-        result: RecommendationGenerationResult | None,
-        error_code: str | None,
-    ) -> RecommendationGenerationJob: ...
-
-    def result(
-        self, *, project_id: UUID, job_id: UUID
-    ) -> RecommendationGenerationResult | None: ...
 
 
 RECOMMENDATION_APPLICATION_OUTPUT_SCHEMA: Mapping[str, object] = MappingProxyType(
@@ -188,7 +72,11 @@ ARBITER_OUTPUT_SCHEMA: Mapping[str, object] = MappingProxyType(
 )
 
 
-def structured_generation_input(evidence: FrozenGenerationEvidence) -> Mapping[str, object]:
+def structured_generation_input(
+    evidence: FrozenGenerationEvidence,
+    *,
+    minimum_real_observations: int = 3,
+) -> Mapping[str, object]:
     summaries = {item.identity: item for item in evidence.summaries}
     core = tuple(
         _common_evidence(ref, summary=summaries[ref.identity], evidence=evidence)
@@ -200,10 +88,10 @@ def structured_generation_input(evidence: FrozenGenerationEvidence) -> Mapping[s
         )
     )
     context = tuple(
-        _context_ref(ref)
-        for ref in (*evidence.questions, *evidence.surfaces, *evidence.contents)
+        _context_ref(ref) for ref in (*evidence.questions, *evidence.surfaces, *evidence.contents)
     )
-    return {
+    legacy = evidence.contract_version == GENERATION_EVIDENCE_CONTRACT_V1
+    payload: dict[str, object] = {
         "subject_id": _subject_id(evidence),
         "allowed_subject_ids": [_subject_id(evidence)],
         "evidence": list(core),
@@ -212,15 +100,67 @@ def structured_generation_input(evidence: FrozenGenerationEvidence) -> Mapping[s
         "prompt_injection_present": False,
         "scope": evidence.scope.canonical_value(),
         "context_refs": list(context),
-        "allowed_recommendation_types": [item.value for item in RecommendationType],
+        "allowed_recommendation_types": (
+            [item.value for item in RecommendationType]
+            if legacy
+            else [
+                resolve_recommendation_type(
+                    evidence,
+                    minimum_real_observations=minimum_real_observations,
+                ).resolved_type.value
+            ]
+        ),
     }
+    if not legacy:
+        type_admission = resolve_recommendation_type(
+            evidence,
+            minimum_real_observations=minimum_real_observations,
+        )
+        payload["type_admission_json"] = _canonical_json(
+            type_admission.canonical_value()
+        )
+    return payload
+
+
+def recommendation_context_size_bytes(context: Mapping[str, object]) -> int:
+    """Return the bytes sent in Dify's geo_context_json variable."""
+
+    try:
+        rendered = json.dumps(
+            canonical_json_value(context),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+    except (TypeError, ValueError) as error:
+        raise RecommendationGenerationOutputError(
+            "Recommendation context is not valid JSON"
+        ) from error
+    return len(rendered.encode("utf-8"))
 
 
 def parse_recommendation_output(
     output: Mapping[str, object],
     *,
     evidence: FrozenGenerationEvidence,
+    minimum_real_observations: int = 3,
 ) -> ParsedRecommendationOutput:
+    legacy = evidence.contract_version == GENERATION_EVIDENCE_CONTRACT_V1
+    if not legacy:
+        try:
+            validate_bootstrap_output(
+                default_prompt_bootstrap_spec(ProgramKind.RECOMMENDATION),
+                input_value=structured_generation_input(
+                    evidence,
+                    minimum_real_observations=minimum_real_observations,
+                ),
+                output=output,
+            )
+        except PromptOutputRuleViolation as error:
+            raise RecommendationGenerationOutputError(
+                f"Recommendation output failed its frozen semantic contract: {error}"
+            ) from error
     _exact_keys(
         output,
         {
@@ -240,17 +180,38 @@ def parse_recommendation_output(
         recommendation_type = RecommendationType(raw_type)
     except (KeyError, ValueError, TypeError) as error:
         raise RecommendationGenerationOutputError("unknown recommendation type") from error
+    if not legacy:
+        type_admission = resolve_recommendation_type(
+            evidence,
+            minimum_real_observations=minimum_real_observations,
+        )
+        if recommendation_type is not type_admission.resolved_type:
+            raise RecommendationGenerationOutputError(
+                "recommendation type differs from deterministic evidence admission"
+            )
     selected = _parse_refs(output.get("selected_evidence"), evidence)
     selected_tokens = tuple(_selected_token(item) for item in selected)
     if selected_tokens != evidence_refs:
         raise RecommendationGenerationOutputError(
             "selected evidence differs from common evidence_refs"
         )
+    selected_identities = {(item.kind, item.resource_id) for item in selected}
+    grounded_numeric_summaries = tuple(
+        item.summary
+        for item in evidence.summaries
+        if item.identity in selected_identities
+    )
     return ParsedRecommendationOutput(
         recommendation_type,
         _parse_scope(output.get("scope"), evidence),
         selected,
-        _parse_decision(output.get("decision")),
+        _parse_decision(
+            output.get("decision"),
+            reject_all_numeric=legacy,
+            grounded_numeric_summaries=(
+                None if legacy else grounded_numeric_summaries
+            ),
+        ),
     )
 
 
@@ -258,9 +219,27 @@ def structured_arbiter_input(
     candidate: Mapping[str, object],
     *,
     evidence: FrozenGenerationEvidence,
+    minimum_real_observations: int = 3,
 ) -> Mapping[str, object]:
+    parse_recommendation_output(
+        candidate,
+        evidence=evidence,
+        minimum_real_observations=minimum_real_observations,
+    )
     selected = _output_evidence_refs(candidate, evidence=evidence)
-    evaluators = ("recommendation_schema_validator", "recommendation_evidence_validator")
+    legacy = evidence.contract_version == GENERATION_EVIDENCE_CONTRACT_V1
+    evaluators = (
+        (
+            "recommendation_schema_validator",
+            "recommendation_evidence_validator",
+        )
+        if legacy
+        else (
+            "recommendation_schema_validator",
+            "recommendation_evidence_validator",
+            "recommendation_type_validator",
+        )
+    )
     summaries = {item.identity: item for item in evidence.summaries}
     by_token = {
         _evidence_token(item.ref_kind, item.resource_id): item
@@ -272,7 +251,7 @@ def structured_arbiter_input(
         )
     }
     candidate_id = canonical_hash(candidate)
-    return {
+    payload: dict[str, object] = {
         "subject_id": _subject_id(evidence),
         "allowed_subject_ids": [_subject_id(evidence)],
         "evidence": [
@@ -298,6 +277,21 @@ def structured_arbiter_input(
             for evaluator in evaluators
         ],
     }
+    if not legacy:
+        type_admission = resolve_recommendation_type(
+            evidence,
+            minimum_real_observations=minimum_real_observations,
+        )
+        payload["candidate_payloads"] = [
+            {
+                "candidate_id": candidate_id,
+                "payload_json": _canonical_json(candidate),
+            }
+        ]
+        payload["arbiter_context_json"] = _canonical_json(
+            type_admission.canonical_value()
+        )
+    return payload
 
 
 def validated_recommendation_evidence_refs(
@@ -339,10 +333,26 @@ def require_arbiter_acceptance(
         "considered evaluators",
         required=True,
     )
-    if considered != (
-        "recommendation_schema_validator",
-        "recommendation_evidence_validator",
-    ):
+    legacy = evidence.contract_version == GENERATION_EVIDENCE_CONTRACT_V1
+    expected_evaluators = (
+        (
+            "recommendation_schema_validator",
+            "recommendation_evidence_validator",
+        )
+        if legacy
+        else (
+            "recommendation_schema_validator",
+            "recommendation_evidence_validator",
+            "recommendation_type_validator",
+        )
+    )
+    coverage_changed = (
+        considered != expected_evaluators
+        if legacy
+        else len(considered) != len(expected_evaluators)
+        or set(considered) != set(expected_evaluators)
+    )
+    if coverage_changed:
         raise RecommendationGenerationOutputError("arbiter evaluator coverage changed")
     _strings(output.get("issue_codes"), "arbiter issue codes")
     _string(output.get("rationale"), "arbiter rationale")
@@ -393,7 +403,12 @@ def _parse_refs(
     return result
 
 
-def _parse_decision(value: object) -> RecommendationDecision:
+def _parse_decision(
+    value: object,
+    *,
+    reject_all_numeric: bool = False,
+    grounded_numeric_summaries: tuple[str, ...] | None = None,
+) -> RecommendationDecision:
     if not isinstance(value, Mapping):
         raise RecommendationGenerationOutputError("model decision must be an object")
     fields = {
@@ -414,10 +429,24 @@ def _parse_decision(value: object) -> RecommendationDecision:
         "stale_conditions": _strings(value["stale_conditions"], "stale_conditions", required=True),
     }
     scalar = {name: _string(value[name], name) for name in ("risk", "effort", "business_value")}
-    for item in (*texts.values(), *scalar.values()):
-        values = item if isinstance(item, tuple) else (item,)
-        if any(_NUMERIC_CLAIM.search(text) for text in values):
-            raise RecommendationGenerationOutputError("model invented a numeric claim")
+    if reject_all_numeric:
+        for item in (*texts.values(), *scalar.values()):
+            values = item if isinstance(item, tuple) else (item,)
+            if any(_LEGACY_NUMERIC_CLAIM.search(text) for text in values):
+                raise RecommendationGenerationOutputError("model invented a numeric claim")
+    elif grounded_numeric_summaries is not None:
+        decision_texts = tuple(
+            text
+            for item in (*texts.values(), *scalar.values())
+            for text in (item if isinstance(item, tuple) else (item,))
+        )
+        if invented_recommendation_numeric_literals(
+            evidence_texts=grounded_numeric_summaries,
+            decision_texts=decision_texts,
+        ):
+            raise RecommendationGenerationOutputError(
+                "recommendation numeric values must be copied verbatim from selected evidence"
+            )
     try:
         if isinstance(value["confidence"], bool):
             raise InvalidOperation
@@ -522,6 +551,21 @@ def _evidence_token(kind: str, resource_id: str) -> str:
 
 def _subject_id(evidence: FrozenGenerationEvidence) -> str:
     return f"recommendation-scope:{evidence.input_hash}"
+
+
+def _canonical_json(value: object) -> str:
+    try:
+        return json.dumps(
+            value,
+            ensure_ascii=True,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+    except (TypeError, ValueError) as error:
+        raise RecommendationGenerationOutputError(
+            "Recommendation payload is not canonical JSON"
+        ) from error
 
 
 def _exact_keys(value: Mapping[str, object], expected: set[str], label: str) -> None:

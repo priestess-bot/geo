@@ -40,6 +40,38 @@ class ObservationEvidenceClass(StrEnum):
     SYNTHETIC = "synthetic"
 
 
+class MetricComparisonConclusion(StrEnum):
+    WIN = "win"
+    EQUIVALENT = "equivalent"
+    LOSS = "loss"
+    INCONCLUSIVE = "inconclusive"
+    INSUFFICIENT_EVIDENCE = "insufficient_evidence"
+
+
+class RecommendationRuleKind(StrEnum):
+    THRESHOLD = "threshold"
+    BASELINE_DELTA = "baseline_delta"
+    NEGATIVE_QUESTION = "negative_question"
+    COMPLETION_FRESHNESS = "completion_freshness"
+    MODEL_DRIFT = "model_drift"
+    SOURCE_DRIFT = "source_drift"
+    CONNECTOR_FAILURE = "connector_failure"
+
+
+class RecommendationRuleSeverity(StrEnum):
+    INFO = "info"
+    WARNING = "warning"
+    CRITICAL = "critical"
+
+
+class RecommendationRuleTriggerStatus(StrEnum):
+    NOT_TRIGGERED = "not_triggered"
+    OPEN = "open"
+    ACKNOWLEDGED = "acknowledged"
+    SUPPRESSED = "suppressed"
+    RESOLVED = "resolved"
+
+
 @dataclass(frozen=True, order=True)
 class RecommendationInputVersion:
     kind: RecommendationInputKind
@@ -152,8 +184,25 @@ class VersionedEvidenceRef:
             **self.detail_value(),
         }
 
+    def legacy_canonical_value(self) -> dict[str, object]:
+        """Canonical value used by persisted v1 graphs and generation specs."""
+
+        return {
+            "kind": self.ref_kind,
+            "project_id": str(self.project_id),
+            "resource_id": self.resource_id,
+            "version": self.version,
+            "sha256": self.sha256,
+            "locator": dict(self.locator),
+            "valid": self.valid,
+            **self.legacy_detail_value(),
+        }
+
     def detail_value(self) -> dict[str, object]:
         return {}
+
+    def legacy_detail_value(self) -> dict[str, object]:
+        return self.detail_value()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -204,6 +253,7 @@ class MetricComparisonRef(VersionedEvidenceRef):
     method_version: str
     method_sha256: str
     sufficient_evidence: bool
+    conclusion: MetricComparisonConclusion | None = None
 
     ref_kind: ClassVar[str] = "metric_comparison"
     input_kind: ClassVar[RecommendationInputKind] = RecommendationInputKind.COMPARISON
@@ -215,8 +265,25 @@ class MetricComparisonRef(VersionedEvidenceRef):
         )
         method_version = _required_text(self.method_version, "metric method version")
         _require_hash(self.method_sha256, "metric method hash")
+        conclusion = self.conclusion
+        if conclusion is None:
+            # Frozen jobs written before the conclusion field existed stay conservative.
+            conclusion = (
+                MetricComparisonConclusion.INCONCLUSIVE
+                if self.sufficient_evidence
+                else MetricComparisonConclusion.INSUFFICIENT_EVIDENCE
+            )
+        else:
+            conclusion = MetricComparisonConclusion(conclusion)
+        if self.sufficient_evidence is not (
+            conclusion is not MetricComparisonConclusion.INSUFFICIENT_EVIDENCE
+        ):
+            raise RecommendationRuleViolation(
+                "metric comparison sufficiency and conclusion are inconsistent"
+            )
         object.__setattr__(self, "observation_resource_ids", observations)
         object.__setattr__(self, "method_version", method_version)
+        object.__setattr__(self, "conclusion", conclusion)
 
     @property
     def current_and_valid(self) -> bool:
@@ -234,6 +301,18 @@ class MetricComparisonRef(VersionedEvidenceRef):
         )
 
     def detail_value(self) -> dict[str, object]:
+        conclusion = self.conclusion
+        if conclusion is None:  # Normalized in __post_init__; keeps the type invariant explicit.
+            raise RecommendationRuleViolation("metric comparison conclusion is missing")
+        return {
+            "observation_resource_ids": list(self.observation_resource_ids),
+            "method_version": self.method_version,
+            "method_sha256": self.method_sha256,
+            "sufficient_evidence": self.sufficient_evidence,
+            "conclusion": conclusion.value,
+        }
+
+    def legacy_detail_value(self) -> dict[str, object]:
         return {
             "observation_resource_ids": list(self.observation_resource_ids),
             "method_version": self.method_version,
@@ -261,15 +340,45 @@ class FactRef(VersionedEvidenceRef):
 @dataclass(frozen=True, kw_only=True)
 class RuleRef(VersionedEvidenceRef):
     active: bool
+    kind: RecommendationRuleKind = RecommendationRuleKind.THRESHOLD
+    severity: RecommendationRuleSeverity = RecommendationRuleSeverity.INFO
+    trigger_status: RecommendationRuleTriggerStatus = (
+        RecommendationRuleTriggerStatus.NOT_TRIGGERED
+    )
 
     ref_kind: ClassVar[str] = "rule"
     input_kind: ClassVar[RecommendationInputKind] = RecommendationInputKind.RULE_VERSION
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        object.__setattr__(self, "kind", RecommendationRuleKind(self.kind))
+        object.__setattr__(self, "severity", RecommendationRuleSeverity(self.severity))
+        object.__setattr__(
+            self,
+            "trigger_status",
+            RecommendationRuleTriggerStatus(self.trigger_status),
+        )
 
     @property
     def current_and_valid(self) -> bool:
         return self.valid and self.active
 
+    @property
+    def triggered(self) -> bool:
+        return self.current_and_valid and self.trigger_status in {
+            RecommendationRuleTriggerStatus.OPEN,
+            RecommendationRuleTriggerStatus.ACKNOWLEDGED,
+        }
+
     def detail_value(self) -> dict[str, object]:
+        return {
+            "active": self.active,
+            "rule_kind": self.kind.value,
+            "severity": self.severity.value,
+            "trigger_status": self.trigger_status.value,
+        }
+
+    def legacy_detail_value(self) -> dict[str, object]:
         return {"active": self.active}
 
 

@@ -27,12 +27,14 @@ from geo_core.synthetic_lab.execution_contracts import (
     StyleProfileBuildOutput,
     StyleProfileBuildTask,
     SyntheticExecutionError,
+    SyntheticExecutionResult,
     SyntheticExecutionOutput,
     SyntheticExecutionTask,
     SyntheticModelCallPort,
     SyntheticModelInvocation,
     SyntheticModelResult,
     SyntheticPromptResolverPort,
+    SyntheticWorkflowResult,
 )
 from geo_core.synthetic_lab.corpus import FinalizationGuard, freeze_corpus_version
 from geo_core.synthetic_lab.offline_experiment import (
@@ -186,7 +188,16 @@ class SyntheticTaskExecutor:
             profile_version_id=task.profile_version_id,
             profile_hash=task.runtime_inputs.profile_hash,
             artifact_hash=canonical_hash(result.output),
-            model_call_ids=(result.model_call_id,),
+            model_call_ids=(
+                (result.model_call_id,)
+                if isinstance(result, SyntheticModelResult)
+                else ()
+            ),
+            workflow_attempt_ids=(
+                (result.workflow_attempt_id,)
+                if isinstance(result, SyntheticWorkflowResult)
+                else ()
+            ),
             profile_summary=profile_summary,
         )
 
@@ -323,7 +334,7 @@ class SyntheticTaskExecutor:
             "corpus_hash": slot.corpus_hash,
             "corpus_context": context,
         }
-        return self._invoke(
+        result = self._invoke(
             lease=lease,
             task=task,
             prompt=task.prompt,
@@ -333,6 +344,9 @@ class SyntheticTaskExecutor:
             checkpoint=checkpoint,
             seed=slot.deterministic_seed,
         )
+        if not isinstance(result, SyntheticModelResult):
+            raise SyntheticExecutionError("Offline Answer must remain on the native Model Gateway")
+        return result
 
     def _invoke(
         self,
@@ -345,7 +359,7 @@ class SyntheticTaskExecutor:
         step_key: str,
         checkpoint: ExecutionCheckpoint,
         seed: int | None = None,
-    ) -> SyntheticModelResult:
+    ) -> SyntheticExecutionResult:
         checkpoint()
         spec = default_prompt_bootstrap_spec(kind)
         validate_bootstrap_input(spec, structured_input)

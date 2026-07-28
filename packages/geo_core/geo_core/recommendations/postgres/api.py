@@ -36,6 +36,8 @@ class RecommendationGenerationApiPort(Protocol):
         *,
         selection: RecommendationGenerationSelection,
         idempotency_key: str,
+        recovery_of_attempt_id: UUID | None = None,
+        dify_reconciliation_token: str | None = None,
     ) -> GenerationExecution: ...
 
     def get(
@@ -90,11 +92,15 @@ class PsycopgRecommendationApi:
         *,
         selection: RecommendationGenerationSelection,
         idempotency_key: str,
+        recovery_of_attempt_id: UUID | None = None,
+        dify_reconciliation_token: str | None = None,
     ) -> GenerationExecution:
         return self._generation.enqueue(
             principal,
             selection=selection,
             idempotency_key=idempotency_key,
+            recovery_of_attempt_id=recovery_of_attempt_id,
+            dify_reconciliation_token=dify_reconciliation_token,
         )
 
     def get_generation_job(

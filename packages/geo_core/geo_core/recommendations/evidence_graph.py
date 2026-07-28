@@ -28,6 +28,10 @@ from geo_core.recommendations.evidence import (
 )
 
 
+EVIDENCE_GRAPH_CONTRACT_V1 = "geo-recommendation-evidence-v1"
+EVIDENCE_GRAPH_CONTRACT_V2 = "geo-recommendation-evidence-v2"
+
+
 @dataclass(frozen=True)
 class RecommendationEvidenceGraph:
     scope: RecommendationScope
@@ -42,8 +46,16 @@ class RecommendationEvidenceGraph:
     questions: tuple[QuestionRef, ...] = ()
     surfaces: tuple[SurfaceRef, ...] = ()
     attributions: tuple[AttributionRef, ...] = ()
+    contract_version: str = EVIDENCE_GRAPH_CONTRACT_V2
 
     def __post_init__(self) -> None:
+        if self.contract_version not in {
+            EVIDENCE_GRAPH_CONTRACT_V1,
+            EVIDENCE_GRAPH_CONTRACT_V2,
+        }:
+            raise RecommendationRuleViolation(
+                "Recommendation evidence graph contract is unsupported"
+            )
         fields = (
             ("observations", ObservationRef),
             ("metric_comparisons", MetricComparisonRef),
@@ -100,11 +112,16 @@ class RecommendationEvidenceGraph:
         return _canonical_hash(self.canonical_value())
 
     def canonical_value(self) -> dict[str, object]:
+        references = (
+            [reference.legacy_canonical_value() for reference in self.all_refs]
+            if self.contract_version == EVIDENCE_GRAPH_CONTRACT_V1
+            else [reference.canonical_value() for reference in self.all_refs]
+        )
         return {
-            "contract_version": "geo-recommendation-evidence-v1",
+            "contract_version": self.contract_version,
             "scope": self.scope.canonical_value(),
             "decision": self.decision.canonical_value(),
-            "references": [reference.canonical_value() for reference in self.all_refs],
+            "references": references,
         }
 
     def verify_hash(self, expected_hash: str) -> None:
@@ -184,6 +201,8 @@ def input_fingerprint(values: tuple[RecommendationInputVersion, ...]) -> str:
 
 
 __all__ = [
+    "EVIDENCE_GRAPH_CONTRACT_V1",
+    "EVIDENCE_GRAPH_CONTRACT_V2",
     "RecommendationEvidenceGraph",
     "freeze_input_versions",
     "input_fingerprint",

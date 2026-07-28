@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from uuid import UUID
 
+from geo_core.prompts.bootstrap_limits import STYLE_PROFILE_SUMMARY_MAX_CHARACTERS
 from geo_core.synthetic_lab.application_support import canonical_hash
 from geo_core.synthetic_lab.corpus import CorpusVersion
 from geo_core.synthetic_lab.domain import (
@@ -30,6 +31,7 @@ class StyleProfileBuildOutput:
     artifact_hash: str
     model_call_ids: tuple[UUID, ...]
     profile_summary: str | None = None
+    workflow_attempt_ids: tuple[UUID, ...] = ()
     result_hash: str = field(init=False)
 
     def __post_init__(self) -> None:
@@ -39,23 +41,28 @@ class StyleProfileBuildOutput:
         _require_hash(self.artifact_hash, "Profile artifact")
         if self.profile_summary is not None:
             _require_text(self.profile_summary, "Profile result summary")
-            if len(self.profile_summary) > 16_000:
+            if len(self.profile_summary) > STYLE_PROFILE_SUMMARY_MAX_CHARACTERS:
                 raise SyntheticLabContractError("Profile result summary is too large")
-        if len(self.model_call_ids) != 1:
-            raise SyntheticLabContractError("Profile build requires exactly one model call")
+        if len(self.model_call_ids) + len(self.workflow_attempt_ids) != 1:
+            raise SyntheticLabContractError(
+                "Profile build requires exactly one model or workflow call"
+            )
+        for value in (*self.model_call_ids, *self.workflow_attempt_ids):
+            _require_uuid(value, "Profile execution call")
+        hash_value: dict[str, object] = {
+            "project_id": self.project_id,
+            "profile_version_id": self.profile_version_id,
+            "profile_hash": self.profile_hash,
+            "artifact_hash": self.artifact_hash,
+            "model_call_ids": self.model_call_ids,
+            "profile_summary": self.profile_summary,
+        }
+        if self.workflow_attempt_ids:
+            hash_value["workflow_attempt_ids"] = self.workflow_attempt_ids
         object.__setattr__(
             self,
             "result_hash",
-            canonical_hash(
-                {
-                    "project_id": self.project_id,
-                    "profile_version_id": self.profile_version_id,
-                    "profile_hash": self.profile_hash,
-                    "artifact_hash": self.artifact_hash,
-                    "model_call_ids": self.model_call_ids,
-                    "profile_summary": self.profile_summary,
-                }
-            ),
+            canonical_hash(hash_value),
         )
 
 
@@ -70,6 +77,7 @@ class ReviewCaseRunOutput:
     resolution: CandidateResolution
     model_call_ids: tuple[UUID, ...]
     resolved_candidate_text: str | None = None
+    workflow_attempt_ids: tuple[UUID, ...] = ()
     result_hash: str = field(init=False)
 
     def __post_init__(self) -> None:
@@ -79,8 +87,14 @@ class ReviewCaseRunOutput:
             (self.review_case_id, "Review result Case"),
         ):
             _require_uuid(value, label)
-        if not self.batches or not self.evaluations or not self.model_call_ids:
+        if (
+            not self.batches
+            or not self.evaluations
+            or not (self.model_call_ids or self.workflow_attempt_ids)
+        ):
             raise SyntheticLabContractError("Review result is missing execution evidence")
+        for value in (*self.model_call_ids, *self.workflow_attempt_ids):
+            _require_uuid(value, "Review execution call")
         if self.resolution.review_case_id != self.review_case_id:
             raise SyntheticLabContractError("Review result resolution belongs to another Case")
         if self.resolved_candidate_text is not None:
@@ -104,6 +118,8 @@ class ReviewCaseRunOutput:
         }
         if self.resolved_candidate_text is not None:
             hash_value["resolved_candidate_text"] = self.resolved_candidate_text
+        if self.workflow_attempt_ids:
+            hash_value["workflow_attempt_ids"] = self.workflow_attempt_ids
         object.__setattr__(
             self,
             "result_hash",

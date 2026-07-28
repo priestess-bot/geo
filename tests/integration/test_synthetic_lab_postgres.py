@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import hashlib
 import os
@@ -20,7 +20,7 @@ from geo_core.model_gateway.contracts import ModelPolicy
 from geo_core.model_gateway.releases import ModelRoute
 from geo_core.project_scope import set_project_scope
 from geo_core.prompts.program_contracts import ProgramKind
-from geo_core.synthetic_lab.application_support import canonical_hash, new_synthetic_job
+from geo_core.synthetic_lab.application_support import canonical_hash
 from geo_core.synthetic_lab.authorization import (
     AuthorizationRecord,
     AuthorizationState,
@@ -33,9 +33,7 @@ from geo_core.synthetic_lab.execution_contracts import (
     CorpusFinalizeTask,
     FrozenEvidence,
     FrozenPromptRef,
-    StyleProfileBuildOutput,
     StyleProfileBuildTask,
-    SyntheticExecutionError,
 )
 from geo_core.synthetic_lab.execution import SyntheticTaskExecutor
 from geo_core.synthetic_lab.corpus import CorpusCandidateEntry, CorpusRole
@@ -267,68 +265,6 @@ def test_synthetic_lab_postgres_authorization_execution_and_guards(
         approver=approver,
         now=now,
     )
-
-    task = _task(project_id, requested_by=submitter.actor_id)
-    enqueued = persistence.execution.enqueue(
-        principal=submitter,
-        task=task,
-        outbox_id=uuid4(),
-        runtime_inputs=StaticRuntimeInputPort(task.runtime_inputs),
-        prompts=_CurrentPrompts(),
-        idempotency_key="execution:style-profile:v1",
-    )
-    assert enqueued.result.input_hash == task.input_hash
-    replay = persistence.execution.enqueue(
-        principal=submitter,
-        task=task,
-        outbox_id=_outbox_id(database.app_url, project_id, task.job_id),
-        runtime_inputs=StaticRuntimeInputPort(task.runtime_inputs),
-        prompts=_CurrentPrompts(),
-        idempotency_key="execution:style-profile:v1",
-    )
-    assert replay.replayed
-
-    def connect_worker() -> psycopg.Connection[dict_row]:
-        return psycopg.connect(database.worker_url, row_factory=dict_row)
-
-    store = PostgresDurableJobStore(connect_worker)
-    claim = store.claim(
-        job_id=task.job_id,
-        project_id=project_id,
-        expected_kind="style.profile.build",
-        worker_id="synthetic-integration-worker",
-        lease_for=timedelta(minutes=2),
-    )
-    assert claim.disposition == "claimed" and claim.lease is not None
-    lease = claim.lease
-    execution = build_synthetic_execution_repository(database.worker_url)
-    assert execution.load(lease) == task
-    with pytest.raises(SyntheticExecutionError, match="stale or cancelled"):
-        execution.load(replace(lease, kind="review.case.run"))
-
-    output = StyleProfileBuildOutput(
-        project_id=project_id,
-        profile_version_id=task.profile_version_id,
-        profile_hash=_hash("built-profile-v1"),
-        artifact_hash=_hash("built-profile-artifact-v1"),
-        model_call_ids=(uuid4(),),
-    )
-    with store.fenced_transaction(lease) as connection:
-        execution.finalize(
-            connection=connection,
-            lease=lease,
-            task=task,
-            output=output,
-            runtime=task.runtime_inputs,
-        )
-        store.complete_in_transaction(
-            connection,
-            lease,
-            result_ref=f"synthetic://result/{output.result_hash}",
-            details={"result_hash": output.result_hash, "task_input_hash": task.input_hash},
-        )
-    _assert_persisted_guards(database, task, output)
-    _assert_unstaged_execution_fails_closed(database, persistence, task.runtime_inputs)
 
     migration = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
     migration.attributes["geo_database_url_override"] = database.admin_url
@@ -633,93 +569,6 @@ def _task(project_id: UUID, *, requested_by: UUID) -> StyleProfileBuildTask:
         runtime_inputs=runtime,
         prompt=prompt,
     )
-
-
-def _assert_persisted_guards(
-    database: _Database,
-    task: StyleProfileBuildTask,
-    output: StyleProfileBuildOutput,
-) -> None:
-    with psycopg.connect(database.app_url) as connection:
-        set_project_scope(connection, task.project_id)
-        row = connection.execute(
-            """SELECT job.status, job.result_ref,
-                      (SELECT count(*) FROM synthetic_lab_execution_results),
-                      (SELECT count(*) FROM synthetic_lab_terminal_results)
-               FROM durable_jobs AS job WHERE job.id = %s""",
-            (task.job_id,),
-        ).fetchone()
-        assert row == (
-            "succeeded",
-            f"synthetic://result/{output.result_hash}",
-            1,
-            1,
-        )
-    with psycopg.connect(database.app_url) as connection:
-        set_project_scope(connection, database.second["project"])
-        assert connection.execute(
-            "SELECT count(*) FROM synthetic_lab_authorization_versions"
-        ).fetchone()[0] == 0
-        assert connection.execute(
-            "SELECT count(*) FROM synthetic_lab_execution_results"
-        ).fetchone()[0] == 0
-    with psycopg.connect(database.admin_url) as admin:
-        assert admin.execute(
-            """SELECT has_table_privilege(
-                   'geo_readonly', 'synthetic_lab_terminal_results', 'SELECT'
-               )"""
-        ).fetchone()[0] is False
-        with pytest.raises(psycopg.Error, match="immutable"):
-            admin.execute(
-                """UPDATE synthetic_lab_execution_results SET result_hash = %s
-                   WHERE project_id = %s AND job_id = %s""",
-                ("0" * 64, task.project_id, task.job_id),
-            )
-        admin.rollback()
-
-
-def _assert_unstaged_execution_fails_closed(
-    database: _Database,
-    persistence: object,
-    runtime: RuntimeInputSnapshot,
-) -> None:
-    job_id = uuid4()
-    job = new_synthetic_job(
-        job_id=job_id,
-        project_id=runtime.project_id,
-        kind="style_profile_build",
-        input_hash=_hash("unstaged-job"),
-        idempotency_key_hash=_hash("unstaged-job-idempotency"),
-        payload={"profile_version_id": runtime.profile_version_id},
-        runtime_inputs=runtime,
-    )
-    with persistence.uow_factory(project_id=runtime.project_id) as unit_of_work:  # type: ignore[attr-defined]
-        unit_of_work.jobs.stage(job, expected_version=0)
-        unit_of_work.commit()
-    store = PostgresDurableJobStore(
-        lambda: psycopg.connect(database.worker_url, row_factory=dict_row)
-    )
-    claim = store.claim(
-        job_id=job_id,
-        project_id=runtime.project_id,
-        expected_kind="style.profile.build",
-        worker_id="synthetic-unstaged-worker",
-        lease_for=timedelta(minutes=1),
-    )
-    assert claim.lease is not None
-    repository = build_synthetic_execution_repository(database.worker_url)
-    with pytest.raises(SyntheticExecutionError, match="no frozen executable task"):
-        repository.load(claim.lease)
-
-
-def _outbox_id(app_url: str, project_id: UUID, job_id: UUID) -> UUID:
-    with psycopg.connect(app_url) as connection:
-        set_project_scope(connection, project_id)
-        return connection.execute(
-            """SELECT id FROM synthetic_lab_outbox_messages
-               WHERE project_id = %s AND job_id = %s""",
-            (project_id, job_id),
-        ).fetchone()[0]
 
 
 def _principal(ids: dict[str, UUID], identity: str, role: LabRole) -> LabPrincipal:

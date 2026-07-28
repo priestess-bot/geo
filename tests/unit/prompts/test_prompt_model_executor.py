@@ -57,7 +57,7 @@ from geo_core.secrets.models import SecretVersionHandle
 NOW = datetime(2026, 7, 23, 13, 0, tzinfo=UTC)
 
 
-def test_five_cases_share_one_exact_five_call_job_budget() -> None:
+def test_five_cases_share_one_retry_capable_job_budget() -> None:
     task, lease = _task_and_lease()
     outputs = [thaw_mapping(item.expected_output) for item in task.test_spec.fixtures]
     application = _Application(outputs)
@@ -99,6 +99,7 @@ def test_five_cases_share_one_exact_five_call_job_budget() -> None:
         )
 
     assert len(results) == 5
+    assert PROMPT_TEST_MAXIMUM_PAID_CALLS == len(task.test_spec.fixtures) * 3
     assert len(application.commands) == 5
     assert len({item.prompt_test_case_id for item in application.commands}) == 5
     assert {item.job_id for item in application.commands} == {task.job_id}
@@ -295,7 +296,7 @@ def _task_and_lease() -> tuple[PromptTestRunTask, WorkerLease]:
         allowed_providers=frozenset({"openai"}),
         allowed_adapter_release_ids=frozenset({"openai-adapter-v1"}),
         policy_version_id=policy_id,
-        maximum_paid_calls=5,
+        maximum_paid_calls=PROMPT_TEST_MAXIMUM_PAID_CALLS,
         maximum_concurrent_calls=1,
     )
     assert policy.policy_version_hash is not None
@@ -382,7 +383,7 @@ def _job(task: PromptTestRunTask, lease: WorkerLease) -> ModelCallJobAdmission:
         ),
         policy_version_id=task.model.policy_version_id,
         policy_version_hash=task.model.policy_version_hash,
-        maximum_paid_calls=5,
+        maximum_paid_calls=PROMPT_TEST_MAXIMUM_PAID_CALLS,
         maximum_concurrent_calls=1,
         raw_artifact_policy_hash="6" * 64,
         raw_artifact_storage_decision="allowed",

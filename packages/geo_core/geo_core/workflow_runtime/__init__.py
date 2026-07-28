@@ -9,25 +9,36 @@ from .contracts import (
     WorkflowRuntimeRelease,
 )
 from .dify import DifyWorkflowExecutor
-from .catalog import PostgresWorkflowRuntimeCatalog, WorkflowRuntimeCard
+from .catalog import (
+    DifyUnresolvedAttempt,
+    PostgresWorkflowRuntimeCatalog,
+    WorkflowRuntimeCard,
+)
 from .errors import (
     RetryableWorkflowExecutionError,
+    UnknownWorkflowOutcomeError,
     WorkflowAuthenticationError,
     WorkflowConfigurationError,
     WorkflowContractError,
     WorkflowExecutionError,
 )
 from .postgres import PostgresWorkflowRuntimeRepository
-from .published import DifyPublishedWorkflowReader, PublishedWorkflowSnapshot
+from .published import (
+    DifyPublishedWorkflowReader,
+    PublishedWorkflowSnapshot,
+    PublishedWorkflowSnapshotPin,
+)
 
 __all__ = [
     "DIFY_WORKFLOW_PURPOSES",
     "DYNAMIC_JSON_OUTPUT_SCHEMA",
+    "DifyUnresolvedAttempt",
     "DifyWorkflowExecutor",
     "DifyPublishedWorkflowReader",
     "PostgresWorkflowRuntimeRepository",
     "PostgresWorkflowRuntimeCatalog",
     "RetryableWorkflowExecutionError",
+    "UnknownWorkflowOutcomeError",
     "WorkflowAuthenticationError",
     "WorkflowConfigurationError",
     "WorkflowContractError",
@@ -38,4 +49,5 @@ __all__ = [
     "WorkflowRuntimeRelease",
     "WorkflowRuntimeCard",
     "PublishedWorkflowSnapshot",
+    "PublishedWorkflowSnapshotPin",
 ]

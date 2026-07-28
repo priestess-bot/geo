@@ -60,7 +60,7 @@ export function handleSyntheticLabFixture({
 }) {
   if (path === "/__synthetic_mode" && request.method === "POST") {
     mode = [
-      "normal", "governance", "manual_approval_rejected", "empty", "unavailable", "conflict"
+      "normal", "governance", "legacy_profile", "manual_approval_rejected", "empty", "unavailable", "conflict"
     ].includes(payload?.mode)
       ? payload.mode
       : "normal";
@@ -150,8 +150,12 @@ export function handleSyntheticLabFixture({
       question_sets: [
         resourceOption(QUESTION_SET_ID, "Frozen AU buyer questions", "question_set", "frozen")
       ],
-      fact_snapshots: [],
-      profiles: [],
+      fact_snapshots: [
+        resourceOption(FACT_SNAPSHOT_ID, "Approved Fact snapshot", "fact_snapshot", "ready")
+      ],
+      profiles: mode === "legacy_profile" ? [] : [
+        resourceOption(PROFILE_VERSION_ID, "Reddit profile v1", "profile", "frozen", "reddit")
+      ],
       review_jobs: [
         resourceOption(
           COMPLETED_REVIEW_JOB_A_ID,
@@ -219,6 +223,8 @@ export function handleSyntheticLabFixture({
       prompt_release_hash: payload.prompt_release_hash,
       approved_sample_count: payload.approved_sample_ids.length,
       status: "draft",
+      build_verification_status: null,
+      rebuild_required: false,
       replayed: false
     }, 201);
     return true;
@@ -505,6 +511,10 @@ function profile(projectId) {
     prompt_release_hash: "e".repeat(64),
     approved_sample_count: 240,
     status: profileStatus,
+    build_verification_status: mode === "governance"
+      ? null
+      : mode === "legacy_profile" ? "legacy_unverified" : "verified",
+    rebuild_required: mode === "legacy_profile",
     replayed: false
   };
 }

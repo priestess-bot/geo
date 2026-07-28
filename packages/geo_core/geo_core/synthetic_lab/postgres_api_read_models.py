@@ -25,6 +25,14 @@ class SyntheticAggregateView:
 
 
 @dataclass(frozen=True)
+class StyleProfileAggregateView:
+    payload: object
+    state_version: int
+    build_verification_status: str | None
+    rebuild_required: bool
+
+
+@dataclass(frozen=True)
 class SyntheticJobView:
     job: SyntheticJob
     warning_summary: Mapping[str, object] | None
@@ -81,8 +89,18 @@ def _merge_warning_counts(
     return merged
 
 
-for _view_type in (SyntheticApiPage, SyntheticAggregateView, SyntheticJobView):
+for _view_type in (
+    SyntheticApiPage,
+    SyntheticAggregateView,
+    StyleProfileAggregateView,
+    SyntheticJobView,
+):
     _view_type.__module__ = "geo_core.synthetic_lab.postgres_api_reads"
 
 
-__all__ = ["SyntheticAggregateView", "SyntheticApiPage", "SyntheticJobView"]
+__all__ = [
+    "StyleProfileAggregateView",
+    "SyntheticAggregateView",
+    "SyntheticApiPage",
+    "SyntheticJobView",
+]

@@ -20,6 +20,7 @@ from geo_core.recommendations.generation_worker_contracts import (
     RecommendationModelRole,
     RecommendationModelTask,
 )
+from geo_core.workflow_runtime import WorkflowExecutionResult
 from geo_core.recommendations.models import RecommendationWorkflow
 from geo_core.recommendations.ports import (
     RecommendationCommandIdentity,
@@ -212,6 +213,9 @@ def assert_model_task_row(row: Row, task: RecommendationModelTask) -> None:
         _uuid(row, "parent_job_id"),
         _uuid(row, "child_job_id"),
         RecommendationModelRole(_text(row, "role")),
+        _text(row, "execution_backend"),
+        row.get("workflow_release_id"),
+        row.get("workflow_release_hash"),
         _text(row, "parent_input_hash"),
         _uuid(row, "runtime_selection_id"),
         _uuid(row, "runtime_manifest_id"),
@@ -246,6 +250,9 @@ def assert_model_task_row(row: Row, task: RecommendationModelTask) -> None:
         task.parent_job_id,
         task.child_job_id,
         task.role,
+        task.execution_backend.value,
+        task.workflow_release_id,
+        task.workflow_release_hash,
         task.parent_input_hash,
         task.runtime_selection_id,
         task.runtime_manifest_id,
@@ -288,6 +295,31 @@ def model_result_ref_from_row(row: Row) -> RecommendationModelResultRef:
         artifact_uri=_text(row, "derived_artifact_uri"),
         artifact_manifest_hash=_text(row, "derived_artifact_manifest_hash"),
         artifact_content_hash=_text(row, "derived_artifact_content_hash"),
+    )
+
+
+def dify_result_from_row(row: Row) -> WorkflowExecutionResult:
+    output = _mapping(row.get("dify_output"), "Recommendation Dify output")
+    return WorkflowExecutionResult(
+        output=dict(output),
+        attempt_id=_uuid(row, "dify_attempt_id"),
+        runtime_release_id=_uuid(row, "dify_release_id"),
+        runtime_release_hash=_text(row, "dify_release_hash"),
+        dify_task_id=(
+            str(row["dify_task_id"]) if row.get("dify_task_id") is not None else None
+        ),
+        dify_run_id=_text(row, "dify_run_id"),
+        configured_model=_text(row, "dify_configured_model"),
+        provider_reported_model=(
+            str(row["dify_reported_model"])
+            if row.get("dify_reported_model") is not None
+            else None
+        ),
+        prompt_tokens=row.get("dify_prompt_tokens"),
+        completion_tokens=row.get("dify_completion_tokens"),
+        total_steps=row.get("dify_total_steps"),
+        elapsed_seconds=row.get("dify_elapsed_seconds"),
+        response_hash=_text(row, "dify_response_hash"),
     )
 
 

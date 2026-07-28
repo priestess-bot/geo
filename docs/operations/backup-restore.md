@@ -85,11 +85,14 @@ COMMITTED
 
 PostgreSQL gzip 流和 MinIO tar 流分别使用随机 256-bit DEK 做 AES-256-GCM 流式加密。DEK
 由当前备份 key 通过 HKDF 派生的 KEK 包装；envelope header 作为 AAD。`manifest.json` 是
-canonical JSON，记录密文 SHA-256/size、source project/table/object 数、project membership、
-evidence、monitoring report 三组关键关系计数、migration revision，以及截至该 revision 的
-全部 Alembic upgrade/down SQL 确定性校验账本。账本逐文件保存路径和 SHA-256，并对 canonical
-账本再计算总 SHA-256；恢复端必须用目标服务器上的仓库重新生成完全相同的账本，不能只凭
-`alembic_version` 名称相同即通过。
+canonical JSON。当前 v6 除记录密文 SHA-256/size、source project/table/object 数、project
+membership、evidence、monitoring report 三组关键关系计数、migration revision，以及截至该
+revision 的全部 Alembic upgrade/down SQL 确定性校验账本外，还认证冻结 source environment、
+database/user、PostgreSQL system identifier、完整排序 Project ID 集合，以及数据库内实际
+`alembic_sql_checksum_ledger`。repository ledger 与 database ledger 分开保存和计算摘要，允许
+恢复端识别“源码已合法更新、数据库账本尚待受控修复”的状态，不能让其中一方冒充另一方。
+源码账本逐文件保存路径和 SHA-256，并对 canonical 账本再计算总 SHA-256；恢复端必须用目标
+服务器上的仓库重新生成完全相同的账本，不能只凭 `alembic_version` 名称相同即通过。
 Secret Store key/secret/distinct-version probe 计数、Provider master-key/active-DEK/
 committed-recoverable-artifact 计数、Synthetic master-key/active-DEK/未删除工件/tier-key 工件
 计数与两类代表 probe 目标、Recommendation master-key/lineage/代表 probe 计数和来源收据摘要、
@@ -112,6 +115,18 @@ trap 会在成功或失败后删除；宿主 staging 只接收加密流和非敏
 make production-preflight PROD_ENV=infra/production.env
 make backup PROD_ENV=infra/production.env
 ```
+
+环境身份必须显式传给备份入口。默认值是 `production`；受控 staging 备份必须使用
+production-equivalent Compose 与同一套 preflight/恢复合同，并执行：
+
+```bash
+BACKUP_SOURCE_ENVIRONMENT=staging make backup \
+  PROD_ENV=/secure/path/staging-production-equivalent.env
+```
+
+不得对 development Compose 栈使用这个标签，也不得事后修改 manifest 中的 environment、
+database identity、Project ID 或 database ledger。v5 备份仍可用于其原有恢复流程，但不能作为
+staging checksum remediation 的输入；该操作只接受带完整源身份的 v6 备份。
 
 脚本启用 `bash` pipefail 和 `umask 077`。任一 `pg_dump`、gzip、MinIO mirror/tar、加密、
 hash、签名或权限步骤失败时，整个 pending 目录会删除，不会出现 `COMMITTED`。成功后脚本
@@ -222,7 +237,7 @@ make backup-restore-dev-smoke
 逐对象恢复五个 MinIO bucket。随机备份 key 只存在于本次临时目录；恢复后用五份真实应用
 keyring 完成联合 probe，并分别用同版本随机错误或缺失的 Secret Store、Provider、Synthetic、
 Recommendation 与 Workflow C keyring 证明 fail-closed。恢复副本、明文和 key 删除成功后才写
-development receipt；其 `production_equivalent_restore_receipt` 必须已满足同一份 v5 manifest
+development receipt；其 `production_equivalent_restore_receipt` 必须已满足同一份 v6 manifest
 的全部生产门槛。
 Gate 只有在 source/restore database、五个 source/restore bucket 和 tmpfs keyring 全部确认消失后
 才成功；磁盘只保留 `artifacts/backup-restore-smoke-authenticated/<run-id>/` 下的认证密文 bundle

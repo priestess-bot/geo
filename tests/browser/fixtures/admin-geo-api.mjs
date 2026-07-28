@@ -117,6 +117,7 @@ let secretAggregateVersion = 0;
 let secretCurrentVersion = null;
 const secretVersions = [];
 const secretAudits = [];
+let difyRuntimeScenario = "default";
 
 function secretReferenceView() {
   if (!secretReference) return null;
@@ -328,15 +329,20 @@ function promptFlows() {
 }
 
 function difyWorkflowRuntimes() {
-  const purposes = [
-    "knowledge.question_generation",
-    "knowledge.rag_grounding",
-    "placements.generation",
-    "placements.simulation"
+  const workflows = [
+    ["knowledge.question_generation", "测试问题生成"],
+    ["knowledge.rag_grounding", "知识依据生成"],
+    ["placements.generation", "投放内容生成"],
+    ["placements.simulation", "投放内容仿真"],
+    ["synthetic_lab.generation", "合成候选生成"],
+    ["synthetic_lab.claim_extraction", "Claim 提取"],
+    ["synthetic_lab.conflict_check", "知识冲突检查"],
+    ["synthetic_lab.revision", "候选修订"],
+    ["synthetic_lab.style_profile", "风格画像生成"],
+    ["recommendations.recommendation", "证据建议生成"]
   ];
-  return purposes.map((purpose, index) => {
-    const labels = ["测试问题生成", "知识依据生成", "投放内容生成", "投放内容仿真"];
-    return {
+  return workflows.map(([purpose, label], index) => {
+    const runtime = {
       purpose,
       backend: "dify",
       activation_status: "active",
@@ -360,18 +366,18 @@ function difyWorkflowRuntimes() {
       last_attempt_at: NOW,
       last_error_code: null,
       last_error_message: null,
-      console_url: `http://127.0.0.1:15000/app/fixture-app-${index}/workflow`,
+      console_url: `http://localhost:15000/app/fixture-app-${index}/workflow`,
       published_workflow_hash: "d".repeat(64),
       published_snapshot_hash: "e".repeat(64),
       published_prompt_nodes: [{
         node_id: `llm-${index}`,
-        title: labels[index],
+        title: label,
         model_provider: "langgenius/deepseek/deepseek",
         model_name: "deepseek-chat",
         model_mode: "chat",
         completion_params: { temperature: 0.1 },
         messages: [
-          { role: "system", text: `Dify 托管的 ${labels[index]} System Prompt。` },
+          { role: "system", text: `Dify 托管的 ${label} System Prompt。` },
           { role: "user", text: "请使用 {{#geo_start.geo_context_json#}} 完成任务。" }
         ]
       }],
@@ -381,13 +387,64 @@ function difyWorkflowRuntimes() {
       }],
       published_graph_nodes: [
         { node_id: "start", type: "start", title: "输入" },
-        { node_id: `llm-${index}`, type: "llm", title: labels[index] }
+        { node_id: `llm-${index}`, type: "llm", title: label }
       ],
       published_at: NOW,
       observed_at: NOW,
       sync_status: "current",
       sync_error: null
     };
+    if (difyRuntimeScenario === "style-drifted" && purpose === "synthetic_lab.style_profile") {
+      return {
+        ...runtime,
+        sync_status: "drifted",
+        sync_error: "Dify 已发布工作流与冻结快照不一致。"
+      };
+    }
+    if (difyRuntimeScenario === "recommendation-blocked" && purpose === "recommendations.recommendation") {
+      return {
+        ...runtime,
+        activation_status: "blocked_secret",
+        sync_error: "冻结的 Dify API 凭据已撤销。"
+      };
+    }
+    if (difyRuntimeScenario === "migration-pending" && [
+      "synthetic_lab.style_profile",
+      "recommendations.recommendation"
+    ].includes(purpose)) {
+      return {
+        ...runtime,
+        backend: "native",
+        activation_status: "not_configured",
+        release_id: null,
+        release_version: null,
+        release_hash: null,
+        prompt_program_id: null,
+        prompt_release_id: null,
+        prompt_release_hash: null,
+        dify_app_id: null,
+        dify_workflow_id: null,
+        dsl_hash: null,
+        configured_model: null,
+        model_provider: null,
+        binding_version: null,
+        activated_at: null,
+        last_attempt_status: null,
+        last_attempt_kind: null,
+        last_attempt_at: null,
+        console_url: null,
+        published_workflow_hash: null,
+        published_snapshot_hash: null,
+        published_prompt_nodes: [],
+        published_input_variables: [],
+        published_graph_nodes: [],
+        published_at: null,
+        observed_at: null,
+        sync_status: "not_observed",
+        sync_error: null
+      };
+    }
+    return runtime;
   });
 }
 
@@ -1232,6 +1289,7 @@ const server = createServer(async (request, response) => {
       secretCurrentVersion = null;
       secretVersions.length = 0;
       secretAudits.length = 0;
+      difyRuntimeScenario = "default";
       resetSyntheticLabFixture();
       resetRecommendationFixture();
       resetPromptBootstrapFixture();
@@ -1276,6 +1334,14 @@ const server = createServer(async (request, response) => {
   if (path === "/__verification_semantics" && request.method === "POST") {
     verificationShouldPass = payload?.approved_content === true;
     return send(response, { approved_content: verificationShouldPass });
+  }
+  if (path === "/__dify_runtime_scenario" && request.method === "POST") {
+    const scenario = String(payload?.scenario || "");
+    if (!["default", "style-drifted", "recommendation-blocked", "migration-pending"].includes(scenario)) {
+      return send(response, { detail: "unsupported Dify runtime scenario" }, 422);
+    }
+    difyRuntimeScenario = scenario;
+    return send(response, { scenario });
   }
   if (path === "/__project_export_status" && request.method === "POST") {
     projectExportJobStatus = payload?.status || "succeeded";

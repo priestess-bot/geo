@@ -224,6 +224,8 @@ def resource_inventory_response(item: object) -> SyntheticResourceInventoryRespo
 def profile_response(item: object) -> StyleProfileResponse:
     value, replayed = _unwrap(item)
     state_version = _field(value, "state_version", None)
+    build_verification_status = _field(value, "build_verification_status", None)
+    rebuild_required = bool(_field(value, "rebuild_required", False))
     value = _field(value, "payload", value)
     return StyleProfileResponse(
         id=_field(value, "id"),
@@ -239,6 +241,8 @@ def profile_response(item: object) -> StyleProfileResponse:
         prompt_release_hash=_field(value, "prompt_release_hash"),
         approved_sample_count=_field(value, "approved_sample_count"),
         status=_enum_value(_field(value, "status")),
+        build_verification_status=build_verification_status,
+        rebuild_required=rebuild_required,
         replayed=replayed,
     )
 

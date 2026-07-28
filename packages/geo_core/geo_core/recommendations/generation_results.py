@@ -19,6 +19,16 @@ from geo_core.recommendations.generation_contracts import (
     RecommendationGenerationResult,
     RecommendationGenerationSpec,
 )
+from geo_core.recommendations.evidence_graph import (
+    EVIDENCE_GRAPH_CONTRACT_V1,
+    EVIDENCE_GRAPH_CONTRACT_V2,
+)
+from geo_core.recommendations.generation_evidence import (
+    GENERATION_EVIDENCE_CONTRACT_V1,
+)
+from geo_core.recommendations.generation_worker_contracts import (
+    RecommendationDifyExecutionResult,
+)
 from geo_core.recommendations.generation_ports import (
     ParsedRecommendationOutput,
     SelectedRecommendationRef,
@@ -30,13 +40,18 @@ from geo_core.recommendations.models import (
 )
 
 
+type RecommendationExecutionResult = (
+    ModelGatewayResult | RecommendationDifyExecutionResult
+)
+
+
 def build_evidence_graph(
     spec: RecommendationGenerationSpec,
     *,
     scope: RecommendationScope,
     decision: RecommendationDecision,
     selected: tuple[SelectedRecommendationRef, ...] | None,
-    calls: tuple[ModelGatewayResult, ...],
+    calls: tuple[RecommendationExecutionResult, ...],
     prompt_bindings: tuple[FrozenPromptBinding, ...],
 ) -> RecommendationEvidenceGraph:
     selected_ids = (
@@ -61,6 +76,11 @@ def build_evidence_graph(
         questions=evidence.questions,
         surfaces=evidence.surfaces,
         attributions=evidence.attributions,
+        contract_version=(
+            EVIDENCE_GRAPH_CONTRACT_V1
+            if evidence.contract_version == GENERATION_EVIDENCE_CONTRACT_V1
+            else EVIDENCE_GRAPH_CONTRACT_V2
+        ),
     )
 
 
@@ -131,7 +151,7 @@ def build_insufficient_result(
 def build_model_result(
     spec: RecommendationGenerationSpec,
     parsed: ParsedRecommendationOutput,
-    calls: tuple[ModelGatewayResult, ...],
+    calls: tuple[RecommendationExecutionResult, ...],
     prompt_bindings: tuple[FrozenPromptBinding, ...],
     *,
     recommendation_id: UUID,
@@ -154,7 +174,16 @@ def build_model_result(
     )
     return RecommendationGenerationResult(
         recommendation,
-        tuple(call.call_log_id for call in calls),
+        tuple(
+            call.call_log_id
+            for call in calls
+            if isinstance(call, ModelGatewayResult)
+        ),
+        workflow_attempt_ids=tuple(
+            call.workflow_attempt_id
+            for call in calls
+            if isinstance(call, RecommendationDifyExecutionResult)
+        ),
     )
 
 
@@ -173,24 +202,40 @@ def _prompt_ref(binding: FrozenPromptBinding) -> PromptReleaseRef:
 
 def _model_call_ref(
     project_id: UUID,
-    result: ModelGatewayResult,
+    result: RecommendationExecutionResult,
     prompt: PromptReleaseRef,
 ) -> ModelCallRef:
-    identity = "/".join(
-        value or "missing"
-        for value in (
-            result.provider,
-            result.adapter_release_id,
-            result.model_release_id,
-            result.configured_model,
+    if isinstance(result, RecommendationDifyExecutionResult):
+        resource_id = str(result.workflow_attempt_id)
+        version = str(result.workflow_release_id)
+        locator = {"dify_workflow_attempt_id": resource_id}
+        identity = "/".join(
+            (
+                "dify",
+                "dify-workflow-api-v1",
+                str(result.workflow_release_id),
+                result.configured_model,
+            )
         )
-    )
+    else:
+        resource_id = str(result.call_log_id)
+        version = result.model_release_id or result.configured_model
+        locator = {"call_log_id": resource_id}
+        identity = "/".join(
+            value or "missing"
+            for value in (
+                result.provider,
+                result.adapter_release_id,
+                result.model_release_id,
+                result.configured_model,
+            )
+        )
     return ModelCallRef(
         project_id=project_id,
-        resource_id=str(result.call_log_id),
-        version=result.model_release_id or result.configured_model,
+        resource_id=resource_id,
+        version=version,
         sha256=result.response_hash,
-        locator={"call_log_id": str(result.call_log_id)},
+        locator=locator,
         valid=True,
         prompt_release_resource_id=prompt.resource_id,
         model_identity=identity,

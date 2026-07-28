@@ -31,6 +31,7 @@ from geo_core.synthetic_lab.execution_contracts import (
     SyntheticExecutionRepositoryPort,
     SyntheticExecutionStale,
     SyntheticExecutionTask,
+    SyntheticManualReconciliationRequired,
     SyntheticPromptResolverPort,
     prompt_refs,
 )
@@ -104,6 +105,24 @@ class SyntheticExecutionHandler:
             raise
         except SyntheticChildModelCallPending as pending:
             return self._defer_for_child(lease, pending.child_job_id)
+        except SyntheticManualReconciliationRequired as error:
+            return self._fail(
+                lease,
+                error_code="synthetic_manual_reconciliation_required",
+                classification="manual_reconciliation_required",
+                retry_delay=None,
+                details={
+                    **(
+                        {"child_job_id": str(error.child_job_id)}
+                        if error.child_job_id is not None
+                        else {}
+                    ),
+                    "child_failure_code": error.failure_code,
+                    "reconciliation_action": (
+                        "inspect_child_attempt_then_submit_new_parent_replay"
+                    ),
+                },
+            )
         except (SyntheticExecutionStale, SyntheticLabStaleInput):
             return self._fail(
                 lease,
@@ -195,13 +214,14 @@ class SyntheticExecutionHandler:
         error_code: str,
         classification: str,
         retry_delay: timedelta | None,
+        details: Mapping[str, object] | None = None,
     ) -> Mapping[str, object]:
         self._block_children(lease, error_code)
         self._store.heartbeat(lease, lease_for=self._lease_for)
         status = self._store.fail(
             lease,
             error_code=error_code,
-            details={"classification": classification},
+            details={"classification": classification, **dict(details or {})},
             retry_delay=retry_delay,
         )
         return {"status": status, "job_id": str(lease.job_id)}

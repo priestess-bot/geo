@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime
 from typing import Any, Mapping
 from uuid import UUID, uuid4
 
@@ -22,43 +20,13 @@ from .contracts import (
     canonical_json_value,
 )
 from .errors import WorkflowConfigurationError, WorkflowContractError
+from .catalog_models import (
+    DifyUnresolvedAttempt,
+    WorkflowRuntimeCard,
+    workflow_runtime_card,
+)
+from .catalog_published import record_published_snapshot
 from .published import PublishedWorkflowSnapshot
-
-
-@dataclass(frozen=True)
-class WorkflowRuntimeCard:
-    purpose: str
-    backend: str
-    activation_status: str
-    release_id: UUID | None = None
-    release_version: int | None = None
-    release_hash: str | None = None
-    prompt_program_id: UUID | None = None
-    prompt_release_id: UUID | None = None
-    prompt_release_hash: str | None = None
-    prompt_system_template: str | None = None
-    prompt_user_template: str | None = None
-    dify_app_id: str | None = None
-    dify_workflow_id: str | None = None
-    dsl_hash: str | None = None
-    configured_model: str | None = None
-    model_provider: str | None = None
-    binding_version: int | None = None
-    activated_at: datetime | None = None
-    last_attempt_status: str | None = None
-    last_attempt_kind: str | None = None
-    last_attempt_at: datetime | None = None
-    last_error_code: str | None = None
-    last_error_message: str | None = None
-    published_workflow_hash: str | None = None
-    published_snapshot_hash: str | None = None
-    published_prompt_nodes: tuple[Mapping[str, object], ...] = ()
-    published_input_variables: tuple[Mapping[str, object], ...] = ()
-    published_graph_nodes: tuple[Mapping[str, object], ...] = ()
-    published_at: datetime | None = None
-    observed_at: datetime | None = None
-    sync_status: str = "not_observed"
-    sync_error: str | None = None
 
 
 class PostgresWorkflowRuntimeCatalog:
@@ -120,14 +88,13 @@ class PostgresWorkflowRuntimeCatalog:
                            ORDER BY item.started_at DESC
                            LIMIT 1
                        ) attempt ON true
-                       LEFT JOIN LATERAL (
-                           SELECT item.*
-                           FROM dify_workflow_published_snapshots item
-                           WHERE item.project_id = release.project_id
-                             AND item.release_id = release.id
-                           ORDER BY item.observed_at DESC
-                           LIMIT 1
-                       ) snapshot ON true
+                       LEFT JOIN dify_workflow_release_snapshot_pins pin
+                         ON pin.project_id = release.project_id
+                        AND pin.release_id = release.id
+                       LEFT JOIN dify_workflow_published_snapshots snapshot
+                         ON snapshot.id = pin.published_snapshot_id
+                        AND snapshot.project_id = pin.project_id
+                        AND snapshot.release_id = pin.release_id
                        LEFT JOIN LATERAL (
                            SELECT item.release_id
                            FROM prompt_program_bindings item
@@ -151,8 +118,92 @@ class PostgresWorkflowRuntimeCatalog:
             connection.rollback()
         by_purpose = {str(row["purpose"]): row for row in rows}
         return tuple(
-            self._card(purpose, by_purpose.get(purpose))
+            workflow_runtime_card(purpose, by_purpose.get(purpose))
             for purpose in sorted(DIFY_WORKFLOW_PURPOSES)
+        )
+
+    def list_unresolved_attempts(self, *, project_id: UUID) -> tuple[DifyUnresolvedAttempt, ...]:
+        with self._connect(project_id) as connection:
+            rows = _many(
+                connection.execute(
+                    """SELECT attempt.id AS attempt_id,
+                              parent.id AS parent_job_id,
+                              child.id AS child_job_id,
+                              CASE parent.kind
+                                  WHEN 'style.profile.build' THEN 'style_profile'
+                                  WHEN 'recommendation.generate' THEN 'recommendation'
+                              END AS flow_kind,
+                              release.purpose, attempt.status,
+                              child.status AS child_job_status,
+                              CASE
+                                  WHEN child.status IN ('running', 'finalizing')
+                                       AND child.lease_expires_at > clock_timestamp()
+                                      THEN 'active'
+                                  WHEN child.status IN ('running', 'finalizing')
+                                      THEN 'lease_expired'
+                                  WHEN child.status IN (
+                                      'succeeded', 'failed', 'dead_lettered', 'cancelled'
+                                  ) THEN 'terminal'
+                                  ELSE 'not_leased'
+                              END AS lease_state,
+                              CASE
+                                  WHEN child.status IN ('running', 'finalizing')
+                                       AND child.lease_expires_at > clock_timestamp()
+                                      THEN 'wait_for_lease_expiry'
+                                  ELSE 'verify_provider_then_issue_new_parent_token'
+                              END AS required_action,
+                              attempt.dify_run_id,
+                              attempt.error_code, attempt.error_message,
+                              attempt.started_at
+                       FROM dify_workflow_execution_attempts attempt
+                       JOIN dify_workflow_releases release
+                         ON release.id = attempt.release_id
+                        AND release.project_id = attempt.project_id
+                       JOIN durable_jobs child
+                         ON child.id = attempt.job_id
+                        AND child.project_id = attempt.project_id
+                       JOIN durable_jobs parent
+                         ON parent.id = coalesce(child.parent_job_id, child.id)
+                        AND parent.project_id = attempt.project_id
+                       LEFT JOIN dify_workflow_reconciliation_consumptions consumed
+                         ON consumed.project_id = attempt.project_id
+                        AND consumed.attempt_id = attempt.id
+                       WHERE attempt.project_id = %s
+                         AND attempt.execution_kind = 'business'
+                         AND (
+                              attempt.status = 'running'
+                              OR (attempt.status = 'failed'
+                                  AND attempt.error_classification = 'unknown_outcome')
+                         )
+                         AND consumed.attempt_id IS NULL
+                         AND (
+                              (parent.kind = 'style.profile.build'
+                               AND release.purpose = 'synthetic_lab.style_profile')
+                              OR (parent.kind = 'recommendation.generate'
+                                  AND release.purpose = 'recommendations.recommendation')
+                         )
+                       ORDER BY attempt.started_at, attempt.id""",
+                    (project_id,),
+                )
+            )
+            connection.rollback()
+        return tuple(
+            DifyUnresolvedAttempt(
+                attempt_id=row["attempt_id"],
+                parent_job_id=row["parent_job_id"],
+                child_job_id=row["child_job_id"],
+                flow_kind=str(row["flow_kind"]),
+                purpose=str(row["purpose"]),
+                status=str(row["status"]),
+                child_job_status=str(row["child_job_status"]),
+                lease_state=str(row["lease_state"]),
+                required_action=str(row["required_action"]),
+                provider_run_id=(str(row["dify_run_id"]) if row["dify_run_id"] else None),
+                error_code=(str(row["error_code"]) if row["error_code"] else None),
+                error_message=(str(row["error_message"]) if row["error_message"] else None),
+                started_at=row["started_at"],
+            )
+            for row in rows
         )
 
     def record_published_snapshot(
@@ -163,75 +214,12 @@ class PostgresWorkflowRuntimeCatalog:
         snapshot: PublishedWorkflowSnapshot,
     ) -> UUID:
         with self._connect(project_id) as connection:
-            try:
-                release = _one(
-                    connection.execute(
-                        """SELECT purpose, dify_app_id FROM dify_workflow_releases
-                           WHERE id = %s AND project_id = %s""",
-                        (release_id, project_id),
-                    )
-                )
-                if release is None:
-                    raise WorkflowConfigurationError("Dify release was not found")
-                if (
-                    release["purpose"] != snapshot.purpose
-                    or release["dify_app_id"] != snapshot.app_id
-                ):
-                    raise WorkflowConfigurationError(
-                        "published Dify snapshot does not match its runtime release"
-                    )
-                snapshot_id = uuid4()
-                inserted = _one(
-                    connection.execute(
-                        """INSERT INTO dify_workflow_published_snapshots (
-                           id, project_id, release_id, purpose, dify_app_id,
-                           dify_workflow_id, workflow_hash, snapshot_hash,
-                           prompt_nodes, input_variables, graph_nodes,
-                           published_at, observed_at
-                       ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s,
-                           %s, %s, %s, %s, %s)
-                       ON CONFLICT (project_id, release_id, purpose,
-                                    dify_workflow_id, snapshot_hash) DO NOTHING
-                       RETURNING id""",
-                        (
-                            snapshot_id,
-                            project_id,
-                            release_id,
-                            snapshot.purpose,
-                            snapshot.app_id,
-                            snapshot.workflow_id,
-                            snapshot.workflow_hash,
-                            snapshot.snapshot_hash,
-                            Jsonb(list(snapshot.prompt_nodes)),
-                            Jsonb(list(snapshot.input_variables)),
-                            Jsonb(list(snapshot.graph_nodes)),
-                            snapshot.published_at,
-                            snapshot.observed_at,
-                        ),
-                    )
-                )
-                if inserted is None:
-                    inserted = _one(
-                        connection.execute(
-                            """SELECT id FROM dify_workflow_published_snapshots
-                           WHERE project_id = %s AND release_id = %s AND purpose = %s
-                             AND dify_workflow_id = %s AND snapshot_hash = %s""",
-                            (
-                                project_id,
-                                release_id,
-                                snapshot.purpose,
-                                snapshot.workflow_id,
-                                snapshot.snapshot_hash,
-                            ),
-                        )
-                    )
-                if inserted is None:
-                    raise WorkflowConfigurationError("Dify snapshot could not be persisted")
-                connection.commit()
-                return inserted["id"]
-            except BaseException:
-                connection.rollback()
-                raise
+            return record_published_snapshot(
+                connection,
+                project_id=project_id,
+                release_id=release_id,
+                snapshot=snapshot,
+            )
 
     def register_release(
         self,
@@ -243,6 +231,8 @@ class PostgresWorkflowRuntimeCatalog:
         dify_app_id: str,
         dify_workflow_id: str,
         dsl_hash: str,
+        registered_workflow_hash: str,
+        registered_snapshot_hash: str,
         configured_model: str,
         model_provider: str,
         api_secret_handle: SecretVersionHandle,
@@ -265,8 +255,13 @@ class PostgresWorkflowRuntimeCatalog:
         ):
             if not value.strip():
                 raise WorkflowContractError(f"{label} is required")
-        if len(dsl_hash) != 64 or any(char not in "0123456789abcdef" for char in dsl_hash):
-            raise WorkflowContractError("Dify DSL hash must be lowercase SHA-256")
+        for label, value in (
+            ("Dify DSL hash", dsl_hash),
+            ("registered Dify workflow hash", registered_workflow_hash),
+            ("registered Dify snapshot hash", registered_snapshot_hash),
+        ):
+            if len(value) != 64 or any(char not in "0123456789abcdef" for char in value):
+                raise WorkflowContractError(f"{label} must be lowercase SHA-256")
         frozen_input = dict(
             input_schema
             or {
@@ -342,6 +337,8 @@ class PostgresWorkflowRuntimeCatalog:
                     "dify_app_id": dify_app_id.strip(),
                     "dify_workflow_id": dify_workflow_id.strip(),
                     "dsl_hash": dsl_hash,
+                    "registered_workflow_hash": registered_workflow_hash,
+                    "registered_snapshot_hash": registered_snapshot_hash,
                     "context_contract_version": CONTEXT_CONTRACT_VERSION,
                     "input_schema": canonical_json_value(frozen_input),
                     "output_schema": canonical_json_value(frozen_output),
@@ -374,13 +371,16 @@ class PostgresWorkflowRuntimeCatalog:
                     """INSERT INTO dify_workflow_releases (
                            id, project_id, purpose, version, prompt_program_id,
                            prompt_release_id, prompt_release_hash, dify_app_id,
-                           dify_workflow_id, dsl_hash, context_contract_version,
+                           dify_workflow_id, dsl_hash, registered_workflow_hash,
+                           registered_snapshot_hash, registered_identity_source,
+                           context_contract_version,
                            input_schema, input_schema_hash, output_schema, output_schema_hash,
                            configured_model, model_provider, api_secret_reference_id,
                            api_secret_purpose, api_secret_version, release_hash, created_by
                        ) VALUES (
                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                           %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                           %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                           %s, %s, %s
                        )""",
                     (
                         release_id,
@@ -393,6 +393,9 @@ class PostgresWorkflowRuntimeCatalog:
                         dify_app_id.strip(),
                         dify_workflow_id.strip(),
                         dsl_hash,
+                        registered_workflow_hash,
+                        registered_snapshot_hash,
+                        "runtime_enrollment",
                         CONTEXT_CONTRACT_VERSION,
                         Jsonb(frozen_input),
                         input_hash,
@@ -475,46 +478,49 @@ class PostgresWorkflowRuntimeCatalog:
                 connection.rollback()
                 raise
 
-    @staticmethod
-    def _card(purpose: str, row: Mapping[str, Any] | None) -> WorkflowRuntimeCard:
-        if row is None:
-            return WorkflowRuntimeCard(purpose, "native", "not_configured")
-        status = "active"
-        if row["secret_status"] != "active":
-            status = "blocked_secret"
-        return WorkflowRuntimeCard(
-            purpose=purpose,
-            backend="dify",
-            activation_status=status,
-            release_id=row["id"],
-            release_version=int(row["version"]),
-            release_hash=str(row["release_hash"]),
-            prompt_program_id=row["prompt_program_id"],
-            prompt_release_id=row["prompt_release_id"],
-            prompt_release_hash=str(row["prompt_release_hash"]),
-            prompt_system_template=None,
-            prompt_user_template=None,
-            dify_app_id=str(row["dify_app_id"]),
-            dify_workflow_id=str(row["dify_workflow_id"]),
-            dsl_hash=str(row["dsl_hash"]),
-            configured_model=str(row["configured_model"]),
-            model_provider=str(row["model_provider"]),
-            binding_version=int(row["binding_version"]),
-            activated_at=row["activated_at"],
-            last_attempt_status=row["last_attempt_status"],
-            last_attempt_kind=row["last_attempt_kind"],
-            last_attempt_at=row["last_attempt_at"],
-            last_error_code=row["last_error_code"],
-            last_error_message=row["last_error_message"],
-            published_workflow_hash=row["published_workflow_hash"],
-            published_snapshot_hash=row["published_snapshot_hash"],
-            published_prompt_nodes=tuple(row["published_prompt_nodes"] or ()),
-            published_input_variables=tuple(row["published_input_variables"] or ()),
-            published_graph_nodes=tuple(row["published_graph_nodes"] or ()),
-            published_at=row["published_at"],
-            observed_at=row["observed_at"],
-            sync_status="cached" if row["published_snapshot_hash"] else "not_observed",
-        )
+    def authorize_new_parent_after_unknown_outcome(
+        self,
+        *,
+        project_id: UUID,
+        attempt_id: UUID,
+        authorized_by: UUID,
+        provider_outcome: str,
+        provider_run_id: str | None,
+        evidence_reference: str,
+        reason: str,
+    ) -> str:
+        """Issue a one-time new-parent token without reopening the old Job."""
+        with self._connect(project_id) as connection:
+            try:
+                connection.execute(
+                    "SELECT set_config('geo.identity_id', %s, true)",
+                    (str(authorized_by),),
+                )
+                row = _one(
+                    connection.execute(
+                        """SELECT geo_issue_dify_resubmission_token(
+                               %s, %s, %s, %s, %s, %s, %s
+                           ) AS resubmission_token""",
+                        (
+                            project_id,
+                            attempt_id,
+                            authorized_by,
+                            provider_outcome,
+                            provider_run_id,
+                            evidence_reference,
+                            reason,
+                        ),
+                    )
+                )
+                if row is None or not row["resubmission_token"]:
+                    raise WorkflowConfigurationError(
+                        "Dify reconciliation did not issue a resubmission token"
+                    )
+                connection.commit()
+                return str(row["resubmission_token"])
+            except BaseException:
+                connection.rollback()
+                raise
 
     def _connect(self, project_id: UUID):
         connection = psycopg.connect(

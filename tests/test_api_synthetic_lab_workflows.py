@@ -227,6 +227,18 @@ def test_memory_api_profile_suite_case_and_all_job_routes() -> None:
         )
         assert profile_build.status_code == 202, profile_build.text
         assert profile_build.json()["kind"] == "style_profile_build"
+        incomplete_recovery = client.post(
+            f"{prefix}/jobs/profile-build",
+            headers={"Idempotency-Key": "synthetic:profile:incomplete-recovery"},
+            json={
+                "profile_version_id": profile_id,
+                "fact_snapshot_id": str(uuid4()),
+                "approved_sample_ids": sample_ids,
+                "runtime_selection_id": runtime_selection_id,
+                "recovery_of_attempt_id": str(uuid4()),
+            },
+        )
+        assert incomplete_recovery.status_code == 422
         submitted = client.post(
             f"{prefix}/style-profiles/{profile_id}/submit",
             headers={"Idempotency-Key": "synthetic:profile:submit"},

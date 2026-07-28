@@ -330,6 +330,8 @@ class PostgresSyntheticLabApi(PostgresSyntheticResourceApiMixin):
             fact_snapshot_id=request["fact_snapshot_id"],
             approved_sample_ids=tuple(request["approved_sample_ids"]),
             runtime_selection_id=request["runtime_selection_id"],
+            recovery_of_attempt_id=request["recovery_of_attempt_id"],
+            dify_reconciliation_token=request["dify_reconciliation_token"],
             idempotency_key=str(values["idempotency_key"]),
         )
 

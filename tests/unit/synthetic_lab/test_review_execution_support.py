@@ -4,7 +4,11 @@ from uuid import uuid4
 import pytest
 
 from geo_core.synthetic_lab.execution_contracts import FrozenEvidence, SyntheticExecutionError
-from geo_core.synthetic_lab.review_execution_support import claim_assessments, common_review_input
+from geo_core.synthetic_lab.review_execution_support import (
+    claim_assessments,
+    common_review_input,
+    conflict_check_claims,
+)
 
 
 def _task(*, creative_reference: str | None = None):
@@ -24,6 +28,29 @@ def _claims(task):
     return (
         {"claim_id": "c1", "text": "First", "subject_id": str(task.subject_id)},
         {"claim_id": "c2", "text": "Second", "subject_id": str(task.subject_id)},
+    )
+
+
+def test_conflict_check_claims_projects_away_extraction_only_fields() -> None:
+    projected = conflict_check_claims(
+        (
+            {
+                "claim_id": "claim-1",
+                "text": "Support is available on business days.",
+                "subject_id": "20000000-0000-4000-8000-000000000113",
+                "evidence_refs": ["fact:support-hours"],
+                "classification": "fact",
+            },
+        )
+    )
+
+    assert projected == (
+        {
+            "claim_id": "claim-1",
+            "text": "Support is available on business days.",
+            "subject_id": "20000000-0000-4000-8000-000000000113",
+            "evidence_refs": ["fact:support-hours"],
+        },
     )
 
 
@@ -86,6 +113,29 @@ def test_subject_mixup_cannot_invent_expected_or_observed_subject() -> None:
     result = claim_assessments(task, claims, output)
     assert result[0].expected_subject_id == task.subject_id
     assert str(result[0].observed_subject_id) == task.evidence[1].subject_id
+
+
+def test_non_mixup_assessment_ignores_non_semantic_subject_fields() -> None:
+    task = _task()
+    claims = (_claims(task)[0],)
+    result = claim_assessments(
+        task,
+        claims,
+        {
+            "assessments": [
+                {
+                    "claim_id": "c1",
+                    "status": "derived_or_unknown",
+                    "fact_ref": "",
+                    "expected_subject_id": str(task.subject_id),
+                    "observed_subject_id": str(task.subject_id),
+                }
+            ]
+        },
+    )
+
+    assert result[0].expected_subject_id is None
+    assert result[0].observed_subject_id is None
 
 
 def test_guided_reference_is_always_untrusted_injection_evidence() -> None:

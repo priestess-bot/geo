@@ -263,14 +263,13 @@ def _kind_input(kind: ProgramKind) -> dict[str, object]:
                 "applicable_version": "scope-v1",
             },
             "context_refs": [],
-            "allowed_recommendation_types": [
-                "hard_blocker",
-                "gap",
-                "experiment",
-                "optional",
-                "no_change",
-                "insufficient_evidence",
-            ],
+            "allowed_recommendation_types": ["experiment"],
+            "type_admission_json": (
+                '{"comparison_conclusions":["inconclusive"],'
+                '"contract_version":"recommendation-type-admission-v1",'
+                '"reason_codes":["comparison_inconclusive"],'
+                '"resolved_type":"experiment","triggered_rule_refs":[]}'
+            ),
         }
     if kind is ProgramKind.STYLE_PROFILE:
         return {

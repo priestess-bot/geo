@@ -23,13 +23,13 @@ def test_classification_resolves_every_roadmap_id_without_local_gaps() -> None:
     register = build_register(policy_path=DEFAULT_POLICY, output=DEFAULT_OUTPUT)
 
     assert register["summary"] == {
-        "all": 316,
+        "all": 319,
         "templates": 13,
         "excluded_b": 47,
         "mixed_atomic": 68,
-        "included_non_b": 256,
+        "included_non_b": 259,
         "local_gap": 0,
-        "ready_for_review": 80,
+        "ready_for_review": 83,
         "blocked_external": 176,
     }
     checks = {item["check_id"]: item for item in register["checks"]}
@@ -41,6 +41,12 @@ def test_classification_resolves_every_roadmap_id_without_local_gaps() -> None:
     assert checks["IMPL-WORKFLOW-C-SAMPLING-WORKER-2026-07-23"][
         "acceptance_status"
     ] == "BLOCKED_EXTERNAL"
+    migrated = checks["IMPL-DIFY-STYLE-PROFILE-RECOMMENDATION-2026-07-28"]
+    assert migrated["acceptance_status"] == "READY_FOR_REVIEW"
+    assert any(
+        item["path"].endswith("pack-09-dify-style-recommendation-evidence.md")
+        for item in migrated["evidence_refs"]
+    )
     assert all(item["fixture_is_not_live"] is True for item in checks.values())
 
 
@@ -50,7 +56,7 @@ def test_exported_register_is_source_and_hash_bound(tmp_path: Path) -> None:
     verified = verify_register(policy_path=DEFAULT_POLICY, register_path=output)
 
     assert verified["register_hash"] == written["register_hash"]
-    assert verified["check_count"] == 316
+    assert verified["check_count"] == 319
     assert len(written["source_identity"]["tree_fingerprint"]) == 64
 
 

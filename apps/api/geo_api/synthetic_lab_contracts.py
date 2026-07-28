@@ -277,6 +277,8 @@ class EnqueueStyleProfileBuildRequest(SyntheticContract):
     fact_snapshot_id: UUID
     approved_sample_ids: list[UUID] = Field(default_factory=list, max_length=10_000)
     runtime_selection_id: UUID
+    recovery_of_attempt_id: UUID | None = None
+    dify_reconciliation_token: Sha256 | None = None
 
     @field_validator("approved_sample_ids")
     @classmethod
@@ -286,6 +288,16 @@ class EnqueueStyleProfileBuildRequest(SyntheticContract):
         if len(values) != len(set(values)):
             raise ValueError("approved Style Profile sample IDs must be unique")
         return values
+
+    @model_validator(mode="after")
+    def complete_dify_recovery_identity(self) -> "EnqueueStyleProfileBuildRequest":
+        if (self.recovery_of_attempt_id is None) != (
+            self.dify_reconciliation_token is None
+        ):
+            raise ValueError(
+                "Dify recovery requires both the old attempt ID and reconciliation token"
+            )
+        return self
 
 
 class EnqueueReviewCaseRunRequest(SyntheticContract):
@@ -460,6 +472,8 @@ class StyleProfileResponse(SyntheticMutationResponse):
     prompt_release_hash: Sha256
     approved_sample_count: int = Field(ge=0)
     status: Literal["draft", "in_review", "approved", "frozen", "rejected", "superseded"]
+    build_verification_status: Literal["verified", "legacy_unverified"] | None = None
+    rebuild_required: bool = False
 
 
 class ReviewSuiteResponse(SyntheticMutationResponse):

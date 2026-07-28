@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Encrypt Dify app keys and register all four GEO Workflow releases."""
+"""Encrypt Dify app keys and register every GEO Workflow release."""
 
 from __future__ import annotations
 
 import argparse
 from collections.abc import Mapping
+from dataclasses import replace
 import hashlib
 import json
 import os
@@ -16,11 +17,18 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 import psycopg
 from psycopg.rows import dict_row
 
-from geo_core.access.models import AccessPrincipal, MembershipRecord
+from geo_core.access.models import AccessError, AccessPrincipal
+from geo_core.access.postgres import PsycopgAccessUnitOfWorkFactory
+from geo_core.access.service import AccessApplicationService
 from geo_core.project_scope import set_project_scope
 from geo_core.secrets import SecretNotFound, SecretValue, SecretVersionHandle
 from geo_core.secrets.postgres import build_secret_store_api
-from geo_core.workflow_runtime import PostgresWorkflowRuntimeCatalog
+from geo_core.workflow_runtime import (
+    DifyPublishedWorkflowReader,
+    PostgresWorkflowRuntimeCatalog,
+    PublishedWorkflowSnapshot,
+    WorkflowExecutionError,
+)
 
 
 SECRET_PURPOSE = "workflow_runtime.dify"
@@ -34,14 +42,21 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--project-id", required=True)
     parser.add_argument("--tenant-id", required=True)
-    parser.add_argument("--prepared-by", required=True)
-    parser.add_argument("--approved-by", required=True)
-    parser.add_argument("--state-file", type=Path, default=Path(".runtime/geo-dify-state.json"))
     parser.add_argument(
-        "--manifest", type=Path, default=Path("infra/dify/workflows/manifest.json")
+        "--prepared-by",
+        required=True,
+        help="active project owner/admin identity that prepares the Dify secrets",
     )
+    parser.add_argument(
+        "--approved-by",
+        required=True,
+        help="distinct active project owner/admin identity that activates the Dify secrets",
+    )
+    parser.add_argument("--state-file", type=Path, default=Path(".runtime/geo-dify-state.json"))
+    parser.add_argument("--manifest", type=Path, default=Path("infra/dify/workflows/manifest.json"))
     parser.add_argument("--master-keyring-file", type=Path, required=True)
     parser.add_argument("--request-hash-key-file", type=Path, required=True)
+    parser.add_argument("--dify-console-url", default="http://127.0.0.1:15000")
     parser.add_argument("--database-url-env", default="GEO_DATABASE_URL")
     return parser
 
@@ -72,6 +87,10 @@ def main() -> int:
             manifest_dir=manifest_path.parent,
             master_keyring_file=args.master_keyring_file.resolve(),
             request_hash_key_file=args.request_hash_key_file.resolve(),
+            published_reader=DifyPublishedWorkflowReader(
+                base_url=args.dify_console_url,
+                state_file=state_file,
+            ),
         )
         print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
         return 0
@@ -93,9 +112,26 @@ def enroll_workflows(
     manifest_dir: Path,
     master_keyring_file: Path,
     request_hash_key_file: Path,
+    published_reader: DifyPublishedWorkflowReader | None = None,
 ) -> Mapping[str, object]:
-    preparer = _principal(preparer_id, project_id, tenant_id, "dify-enrollment-preparer")
-    approver = _principal(approver_id, project_id, tenant_id, "dify-enrollment-approver")
+    if preparer_id == approver_id:
+        raise EnrollmentError("preparer and approver must be distinct identities")
+    preparer = _project_operator(
+        database_url=database_url,
+        identity_id=preparer_id,
+        project_id=project_id,
+        tenant_id=tenant_id,
+        auth_method="dify-enrollment-preparer",
+        label="preparer",
+    )
+    approver = _project_operator(
+        database_url=database_url,
+        identity_id=approver_id,
+        project_id=project_id,
+        tenant_id=tenant_id,
+        auth_method="dify-enrollment-approver",
+        label="approver",
+    )
     secret_api = build_secret_store_api(
         database_url=database_url,
         master_keyring_path=master_keyring_file,
@@ -113,6 +149,11 @@ def enroll_workflows(
         item = workflows.get(purpose)
         if not isinstance(item, dict):
             raise EnrollmentError(f"Dify state is missing configured Workflow {purpose}")
+        snapshot = _verified_published_snapshot(
+            published_reader=published_reader,
+            purpose=purpose,
+            item=item,
+        )
         token = _required_string(item.get("api_token"), f"{purpose} API token")
         token_hash = hashlib.sha256(token.encode()).hexdigest()
         handle = _active_secret(
@@ -145,10 +186,10 @@ def enroll_workflows(
             prompt_program_id=prompt_program_id,
             prompt_release_id=prompt_release_id,
             dify_app_id=_required_string(item.get("app_id"), f"{purpose} app ID"),
-            dify_workflow_id=_required_string(
-                item.get("workflow_id"), f"{purpose} Workflow ID"
-            ),
+            dify_workflow_id=_required_string(item.get("workflow_id"), f"{purpose} Workflow ID"),
             dsl_hash=dsl_hash,
+            registered_workflow_hash=snapshot.workflow_hash,
+            registered_snapshot_hash=snapshot.snapshot_hash,
             configured_model=_required_string(
                 manifest_item.get("configured_model"), f"{purpose} model"
             ),
@@ -159,6 +200,7 @@ def enroll_workflows(
             created_by=preparer_id,
         )
         item["geo_release_id"] = str(release_id)
+        item["published_snapshot_hash"] = snapshot.snapshot_hash
         _write_private_json(state_file, state)
         registered.append(
             {
@@ -166,9 +208,44 @@ def enroll_workflows(
                 "release_id": str(release_id),
                 "secret_reference_id": str(handle.reference_id),
                 "secret_version": handle.version,
+                "registered_workflow_hash": snapshot.workflow_hash,
+                "registered_snapshot_hash": snapshot.snapshot_hash,
             }
         )
     return {"status": "registered", "project_id": str(project_id), "items": registered}
+
+
+def _verified_published_snapshot(
+    *,
+    published_reader: DifyPublishedWorkflowReader | None,
+    purpose: str,
+    item: Mapping[str, object],
+) -> PublishedWorkflowSnapshot:
+    if published_reader is None:
+        raise EnrollmentError(
+            "Dify console verification is required; configure a published workflow reader"
+        )
+    app_id = _required_string(item.get("app_id"), f"{purpose} app ID")
+    workflow_id = _required_string(item.get("workflow_id"), f"{purpose} Workflow ID")
+    state_workflow_hash = _required_sha(
+        item.get("workflow_hash"), f"{purpose} state Workflow hash"
+    )
+    try:
+        snapshot = published_reader.read(purpose=purpose, app_id=app_id)
+    except WorkflowExecutionError as exc:
+        raise EnrollmentError(
+            f"{purpose} published Workflow could not be verified: {exc}"
+        ) from exc
+    if snapshot.workflow_id != workflow_id:
+        raise EnrollmentError(
+            f"{purpose} published Workflow ID differs from private state; run configure again"
+        )
+    if snapshot.workflow_hash != state_workflow_hash:
+        raise EnrollmentError(
+            f"{purpose} published Workflow hash differs from private state; "
+            "run configure again before enrollment"
+        )
+    return snapshot
 
 
 def _active_secret(
@@ -184,9 +261,7 @@ def _active_secret(
 ) -> SecretVersionHandle:
     reference_id = uuid5(NAMESPACE_URL, f"geo:{project_id}:dify:{purpose}")
     try:
-        reference = api.get_reference(
-            preparer, project_id=project_id, reference_id=reference_id
-        )
+        reference = api.get_reference(preparer, project_id=project_id, reference_id=reference_id)
     except SecretNotFound:
         created = api.create(
             preparer,
@@ -314,16 +389,31 @@ def _current_prompt_binding(
     return row["program_id"], row["release_id"]
 
 
-def _principal(
-    identity_id: UUID, project_id: UUID, tenant_id: UUID, auth_method: str
+def _project_operator(
+    *,
+    database_url: str,
+    identity_id: UUID,
+    project_id: UUID,
+    tenant_id: UUID,
+    auth_method: str,
+    label: str,
 ) -> AccessPrincipal:
-    return AccessPrincipal(
-        identity_id=identity_id,
-        actor_id=str(identity_id),
-        tenant_id=tenant_id,
-        memberships=(MembershipRecord(project_id, tenant_id, "owner"),),
-        auth_method=auth_method,
-    )
+    access = AccessApplicationService(PsycopgAccessUnitOfWorkFactory(database_url))
+    try:
+        principal = access.authenticate_development(
+            identity_id=identity_id,
+            tenant_id=tenant_id,
+        )
+        access.require_project_role(
+            principal,
+            project_id=project_id,
+            allowed_roles=frozenset({"owner", "admin"}),
+        )
+    except AccessError as exc:
+        raise EnrollmentError(
+            f"{label} must reference an active owner/admin membership for this project"
+        ) from exc
+    return replace(principal, auth_method=auth_method)
 
 
 def _private_state(path: Path) -> dict[str, Any]:
@@ -361,8 +451,13 @@ def _manifest(path: Path) -> Mapping[str, Any]:
 
 def _manifest_rows(manifest: Mapping[str, Any]) -> tuple[Mapping[str, str], ...]:
     rows = manifest.get("workflows")
-    if not isinstance(rows, list) or len(rows) != 4:
-        raise EnrollmentError("Dify manifest must contain exactly four workflows")
+    from geo_core.workflow_runtime import DIFY_WORKFLOW_PURPOSES
+
+    if not isinstance(rows, list):
+        raise EnrollmentError("Dify manifest workflows must be an array")
+    purposes = [str(item.get("purpose")) for item in rows if isinstance(item, Mapping)]
+    if len(purposes) != len(rows) or set(purposes) != set(DIFY_WORKFLOW_PURPOSES):
+        raise EnrollmentError("Dify manifest must contain every supported purpose exactly once")
     values: list[Mapping[str, str]] = []
     for row in rows:
         if not isinstance(row, Mapping):
@@ -385,6 +480,13 @@ def _required_string(value: object, label: str) -> str:
     result = str(value or "").strip()
     if not result:
         raise EnrollmentError(f"{label} is required")
+    return result
+
+
+def _required_sha(value: object, label: str) -> str:
+    result = _required_string(value, label)
+    if len(result) != 64 or any(char not in "0123456789abcdef" for char in result):
+        raise EnrollmentError(f"{label} must be lowercase SHA-256")
     return result
 
 

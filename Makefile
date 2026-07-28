@@ -2,6 +2,7 @@ SHELL := /bin/bash
 
 DEV_COMPOSE := docker compose -f infra/docker-compose.yml
 PROD_ENV ?= infra/production.env
+BACKUP_SOURCE_ENVIRONMENT ?= production
 PROD_COMPOSE := docker compose --env-file $(PROD_ENV) -f infra/compose.prod.yml -f infra/compose.style-collection.yml
 
 .PHONY: bootstrap install lint python-typecheck web-typecheck typecheck quality test test-migrated test-integration test-integration-required \
@@ -64,6 +65,7 @@ lint:
 		scripts/enroll_dify_workflows.py \
 		scripts/manage_dify_workflows.py \
 		scripts/render_dify_workflow_dsls.py \
+		scripts/remediate_staging_alembic_checksums.py \
 		infra/db/alembic/checksums.py
 
 python-typecheck:
@@ -101,7 +103,8 @@ python-typecheck:
 		scripts/configure_dify_runtime.py \
 		scripts/enroll_dify_workflows.py \
 		scripts/manage_dify_workflows.py \
-		scripts/render_dify_workflow_dsls.py
+		scripts/render_dify_workflow_dsls.py \
+		scripts/remediate_staging_alembic_checksums.py
 
 web-typecheck:
 	corepack pnpm typecheck
@@ -236,6 +239,7 @@ test-integration-required:
 		GEO_ACCESS_TEST_ADMIN_DATABASE_URL GEO_ACCESS_TEST_DATABASE_URL \
 		GEO_ACCEPTANCE_TEST_ADMIN_DATABASE_URL GEO_ACCEPTANCE_TEST_APP_DATABASE_URL \
 		GEO_ACCEPTANCE_TEST_ISOLATION_MARKER GEO_ACCEPTANCE_TEST_WORKER_DATABASE_URL \
+		GEO_MIGRATION_REHEARSAL_DATABASE_URL \
 		GEO_PLACEMENT_TEST_ADMIN_URL \
 		GEO_F019_TEST_MINIO_ENDPOINT \
 		GEO_TEST_DATABASE_URL; do \
@@ -357,7 +361,7 @@ customer-image:
 images: api-image admin-image customer-image
 
 backup: production-preflight
-	scripts/backup_geo_data.sh $(PROD_ENV)
+	scripts/backup_geo_data.sh $(PROD_ENV) $(BACKUP_SOURCE_ENVIRONMENT)
 
 restore-smoke: production-preflight
 	@test -n "$${BACKUP_DIR:-$${BACKUP_FILE:-}}" || \

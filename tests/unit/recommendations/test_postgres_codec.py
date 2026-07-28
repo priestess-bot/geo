@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from copy import deepcopy
+from dataclasses import replace
 from decimal import Decimal
 from uuid import uuid4
 
@@ -24,18 +26,24 @@ from geo_core.recommendations import (
 from geo_core.recommendations.downstream_service import concrete_draft_from_approval
 from geo_core.recommendations.models import DownstreamDraftKind
 from geo_core.recommendations.generation_contracts import canonical_hash
+from geo_core.recommendations.evidence_graph import EVIDENCE_GRAPH_CONTRACT_V1
+from geo_core.recommendations.generation_evidence import (
+    GENERATION_EVIDENCE_CONTRACT_V1,
+)
 from geo_core.recommendations.generation_ports import (
     RECOMMENDATION_APPLICATION_OUTPUT_SCHEMA,
     RECOMMENDATION_OUTPUT_SCHEMA,
     structured_generation_input,
 )
 from geo_core.recommendations.generation_worker_contracts import (
+    RecommendationExecutionBackend,
     RecommendationModelRole,
     RecommendationModelTask,
 )
 from geo_core.recommendations.postgres.codec import (
     command_result_from_payload,
     command_result_payload,
+    evidence_graph_from_payload,
     workflow_from_payload,
     workflow_payload,
 )
@@ -88,6 +96,40 @@ def test_workflow_json_codec_round_trips_exact_evidence_and_approval() -> None:
     assert loaded.recommendation.evidence.graph_hash == workflow.recommendation.evidence.graph_hash
 
 
+def test_workflow_codec_preserves_legacy_graph_hash_and_approval_lineage() -> None:
+    application, _ = _application()
+    payload = deepcopy(workflow_payload(_approved_workflow(application)))
+    recommendation = payload["recommendation"]
+    assert isinstance(recommendation, dict)
+    evidence = recommendation["evidence"]
+    assert isinstance(evidence, dict)
+    evidence["contract_version"] = EVIDENCE_GRAPH_CONTRACT_V1
+    references = evidence["references"]
+    assert isinstance(references, list)
+    for reference in references:
+        assert isinstance(reference, dict)
+        if reference.get("kind") == "metric_comparison":
+            reference.pop("conclusion")
+        if reference.get("kind") == "rule":
+            for name in ("rule_kind", "severity", "trigger_status"):
+                reference.pop(name)
+    legacy_graph = evidence_graph_from_payload(evidence)
+    approval = recommendation["approval"]
+    assert isinstance(approval, dict)
+    approval["frozen_evidence_graph_hash"] = legacy_graph.graph_hash
+    drafts = payload["drafts"]
+    assert isinstance(drafts, list)
+    for draft in drafts:
+        assert isinstance(draft, dict)
+        draft["frozen_evidence_graph_hash"] = legacy_graph.graph_hash
+
+    loaded = workflow_from_payload(payload)
+
+    assert loaded.recommendation.evidence.contract_version == EVIDENCE_GRAPH_CONTRACT_V1
+    assert loaded.recommendation.evidence.graph_hash == legacy_graph.graph_hash
+    assert workflow_payload(loaded) == payload
+
+
 def test_command_result_codec_preserves_each_replay_result_shape() -> None:
     application, _ = _application()
     review = _create_submit_review(
@@ -133,6 +175,29 @@ def test_generation_spec_codec_preserves_primary_and_arbiter_lineage() -> None:
     assert loaded.input_hash == spec.input_hash
 
 
+def test_generation_spec_codec_preserves_v3_input_hash_without_new_type_signals() -> None:
+    payload = deepcopy(generation_spec_payload(generation_spec(with_arbiter=True)))
+    payload["contract_version"] = "recommendation-generation-spec-v3"
+    evidence = payload["evidence"]
+    assert isinstance(evidence, dict)
+    evidence.pop("contract_version")
+    references = evidence["refs"]
+    assert isinstance(references, list)
+    for reference in references:
+        assert isinstance(reference, dict)
+        if reference.get("kind") == "metric_comparison":
+            reference.pop("conclusion")
+        if reference.get("kind") == "rule":
+            for name in ("rule_kind", "severity", "trigger_status"):
+                reference.pop(name)
+
+    loaded = generation_spec_from_payload(payload)
+
+    assert loaded.evidence.contract_version == GENERATION_EVIDENCE_CONTRACT_V1
+    assert generation_spec_payload(loaded) == payload
+    assert generation_spec_from_payload(payload).input_hash == loaded.input_hash
+
+
 def test_generation_model_task_codec_preserves_exact_prompt_and_runtime_lineage() -> None:
     spec = generation_spec()
     prompt = PromptResolverStub().resolve(
@@ -160,6 +225,7 @@ def test_generation_model_task_codec_preserves_exact_prompt_and_runtime_lineage(
         prompt=prompt,
         admitted_by=uuid4(),
         artifact_expires_at=spec.valid_until,
+        structured_input=structured_generation_input(spec.evidence),
     )
 
     payload = model_task_payload(task)
@@ -168,6 +234,29 @@ def test_generation_model_task_codec_preserves_exact_prompt_and_runtime_lineage(
     assert "secret" not in repr(payload).lower()
     with pytest.raises(ValueError, match="unsupported Recommendation payload"):
         model_task_from_payload({**payload, "contract_version": "changed"})
+
+    legacy = dict(payload)
+    legacy["contract_version"] = "recommendation-model-task-v2"
+    for key in (
+        "execution_backend",
+        "structured_input",
+        "workflow_release_id",
+        "workflow_release_hash",
+    ):
+        legacy.pop(key)
+    assert model_task_from_payload(legacy) == replace(
+        task,
+        execution_backend=RecommendationExecutionBackend.MODEL_GATEWAY,
+        structured_input={},
+        workflow_release_id=None,
+        workflow_release_hash=None,
+    )
+
+    for key in ("execution_backend", "structured_input"):
+        changed = dict(payload)
+        changed.pop(key)
+        with pytest.raises(ValueError):
+            model_task_from_payload(changed)
 
 
 def test_generation_model_result_codec_preserves_audited_provider_lineage() -> None:
@@ -325,6 +414,9 @@ def test_command_and_model_child_rows_reject_changed_lineage() -> None:
         "parent_job_id": task.parent_job_id,
         "child_job_id": task.child_job_id,
         "role": task.role.value,
+        "execution_backend": task.execution_backend.value,
+        "workflow_release_id": task.workflow_release_id,
+        "workflow_release_hash": task.workflow_release_hash,
         "parent_input_hash": task.parent_input_hash,
         "runtime_selection_id": task.runtime_selection_id,
         "runtime_manifest_id": task.runtime_manifest_id,

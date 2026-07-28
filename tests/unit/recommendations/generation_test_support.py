@@ -21,11 +21,15 @@ from geo_core.prompts.program_contracts import ProgramKind
 from geo_core.recommendations.evidence import (
     ContentRef,
     FactRef,
+    MetricComparisonConclusion,
     MetricComparisonRef,
     ObservationEvidenceClass,
     ObservationRef,
     QuestionRef,
     RecommendationScope,
+    RecommendationRuleKind,
+    RecommendationRuleSeverity,
+    RecommendationRuleTriggerStatus,
     RuleRef,
     SurfaceRef,
 )
@@ -38,6 +42,7 @@ from geo_core.recommendations.generation_contracts import (
     ScopeLocator,
     canonical_hash,
 )
+from geo_core.recommendations.models import RecommendationType
 
 
 NOW = datetime(2026, 7, 23, 10, 0, tzinfo=UTC)
@@ -168,6 +173,7 @@ def generation_spec(
     *,
     real_observations: int = 3,
     minimum_real_observations: int = 3,
+    recommendation_type: RecommendationType | str = RecommendationType.GAP,
     with_arbiter: bool = False,
     same_arbiter_model: bool = False,
 ) -> RecommendationGenerationSpec:
@@ -182,7 +188,10 @@ def generation_spec(
     )
     return RecommendationGenerationSpec(
         project_id=PROJECT_ID,
-        evidence=frozen_evidence(real_observations=real_observations),
+        evidence=frozen_evidence(
+            real_observations=real_observations,
+            recommendation_type=recommendation_type,
+        ),
         prompt_binding=prompt_binding(ProgramKind.RECOMMENDATION, "recommendation"),
         runtime_selection_id=UUID("90000000-0000-0000-0000-000000000012"),
         runtime_manifest_id=UUID("90000000-0000-0000-0000-000000000011"),
@@ -243,7 +252,44 @@ def _policy(name: str, provider: str) -> ModelPolicy:
     )
 
 
-def frozen_evidence(*, real_observations: int = 3) -> FrozenGenerationEvidence:
+def frozen_evidence(
+    *,
+    real_observations: int = 3,
+    recommendation_type: RecommendationType | str = RecommendationType.GAP,
+) -> FrozenGenerationEvidence:
+    resolved_type = RecommendationType(recommendation_type)
+    comparison_conclusion, rule_severity, trigger_status = {
+        RecommendationType.HARD_BLOCKER: (
+            MetricComparisonConclusion.LOSS,
+            RecommendationRuleSeverity.CRITICAL,
+            RecommendationRuleTriggerStatus.OPEN,
+        ),
+        RecommendationType.GAP: (
+            MetricComparisonConclusion.LOSS,
+            RecommendationRuleSeverity.WARNING,
+            RecommendationRuleTriggerStatus.OPEN,
+        ),
+        RecommendationType.EXPERIMENT: (
+            MetricComparisonConclusion.INCONCLUSIVE,
+            RecommendationRuleSeverity.INFO,
+            RecommendationRuleTriggerStatus.NOT_TRIGGERED,
+        ),
+        RecommendationType.OPTIONAL: (
+            MetricComparisonConclusion.WIN,
+            RecommendationRuleSeverity.INFO,
+            RecommendationRuleTriggerStatus.OPEN,
+        ),
+        RecommendationType.NO_CHANGE: (
+            MetricComparisonConclusion.EQUIVALENT,
+            RecommendationRuleSeverity.INFO,
+            RecommendationRuleTriggerStatus.NOT_TRIGGERED,
+        ),
+        RecommendationType.INSUFFICIENT_EVIDENCE: (
+            MetricComparisonConclusion.INSUFFICIENT_EVIDENCE,
+            RecommendationRuleSeverity.INFO,
+            RecommendationRuleTriggerStatus.NOT_TRIGGERED,
+        ),
+    }[resolved_type]
     question = QuestionRef(**_base("question:1"), active=True)
     surface = SurfaceRef(**_base("surface:google-aio:r1"), active=True)
     observations = tuple(
@@ -262,10 +308,20 @@ def frozen_evidence(*, real_observations: int = 3) -> FrozenGenerationEvidence:
         observation_resource_ids=tuple(item.resource_id for item in observations),
         method_version="comparison-method-v1",
         method_sha256=_digest("comparison-method-v1"),
-        sufficient_evidence=True,
+        sufficient_evidence=(
+            comparison_conclusion
+            is not MetricComparisonConclusion.INSUFFICIENT_EVIDENCE
+        ),
+        conclusion=comparison_conclusion,
     )
     fact = FactRef(**_base("fact:1"), approved=True, retired=False)
-    rule = RuleRef(**_base("rule:1"), active=True)
+    rule = RuleRef(
+        **_base("rule:1"),
+        active=True,
+        kind=RecommendationRuleKind.NEGATIVE_QUESTION,
+        severity=rule_severity,
+        trigger_status=trigger_status,
+    )
     core = (*observations, metric, fact, rule)
     return FrozenGenerationEvidence(
         scope=RecommendationScope(
@@ -306,8 +362,12 @@ def frozen_evidence(*, real_observations: int = 3) -> FrozenGenerationEvidence:
     )
 
 
-def model_output(recommendation_type: str = "gap") -> dict[str, object]:
-    evidence = frozen_evidence()
+def model_output(
+    recommendation_type: str = "gap",
+    *,
+    evidence: FrozenGenerationEvidence | None = None,
+) -> dict[str, object]:
+    evidence = evidence or frozen_evidence(recommendation_type=recommendation_type)
     selected = [
         {"kind": item.ref_kind, "resource_id": item.resource_id}
         for item in (
@@ -360,6 +420,7 @@ def arbiter_output(candidate: Mapping[str, object]) -> dict[str, object]:
         "considered_evaluators": [
             "recommendation_schema_validator",
             "recommendation_evidence_validator",
+            "recommendation_type_validator",
         ],
         "issue_codes": [],
         "rationale": "The frozen schema and evidence checks passed.",

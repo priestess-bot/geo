@@ -41,7 +41,7 @@ def manifest(
     payload_hash: str,
 ) -> dict[str, object]:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "classification": "internal_confidential",
         "project_id": str(task.project_id),
         "child_job_id": str(task.child_job_id),
@@ -97,7 +97,7 @@ def assert_manifest_lineage(
     child_job_id: UUID,
     expected_parent_input_hash: str,
 ) -> None:
-    if manifest_document.get("schema_version") != 1:
+    if manifest_document.get("schema_version") not in {1, 2}:
         raise RecommendationTaskArtifactError(
             "Recommendation task artifact schema changed"
         )

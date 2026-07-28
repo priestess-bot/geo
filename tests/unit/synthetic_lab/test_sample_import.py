@@ -217,6 +217,26 @@ def test_long_high_overlap_or_reproduction_risk_sample_is_kept_but_never_a_short
 
 
 @pytest.mark.parametrize(
+    ("text_length", "eligible"),
+    ((240, True), (241, False)),
+)
+def test_short_example_character_boundary_is_exact(
+    text_length: int, eligible: bool
+) -> None:
+    manifest = build_manual_import_manifest(
+        _request((_row(1, text_length=text_length),)),
+        manifest_id=uuid4(),
+        preview_id=uuid4(),
+    )
+
+    sample = manifest.accepted_samples[0]
+    assert sample.short_example_eligible is eligible
+    assert ("too_long_for_short_example" in sample.short_example_exclusion_codes) is (
+        not eligible
+    )
+
+
+@pytest.mark.parametrize(
     "field_name",
     [
         "cookie",

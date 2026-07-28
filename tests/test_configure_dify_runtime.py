@@ -15,6 +15,12 @@ PURPOSES = (
     "knowledge.rag_grounding",
     "placements.generation",
     "placements.simulation",
+    "synthetic_lab.generation",
+    "synthetic_lab.claim_extraction",
+    "synthetic_lab.conflict_check",
+    "synthetic_lab.revision",
+    "synthetic_lab.style_profile",
+    "recommendations.recommendation",
 )
 
 
@@ -81,7 +87,7 @@ class DifyConsoleStub:
             if method == "POST":
                 self.mutations.append(f"publish:{app['purpose']}")
                 return self._json(200, {"result": "success", "created_at": 1})
-            return self._json(200, {"id": app["workflow_id"]})
+            return self._json(200, {"id": app["workflow_id"], "hash": "a" * 64})
         if app_id and path.endswith("/api-keys"):
             app = self.apps[app_id]
             if method == "GET":
@@ -134,14 +140,14 @@ def test_configure_runtime_is_private_complete_and_idempotent(tmp_path: Path) ->
         )
 
     assert result["status"] == "configured"
-    assert len(result["workflows"]) == 4
+    assert len(result["workflows"]) == 10
     assert state_path.stat().st_mode & 0o777 == 0o600
     persisted = json.loads(state_path.read_text(encoding="utf-8"))
     assert set(persisted["workflows"]) == set(PURPOSES)
     assert all(item["api_token"].startswith("app-token-") for item in persisted["workflows"].values())
-    assert len([item for item in stub.mutations if item.startswith("import:")]) == 4
-    assert len([item for item in stub.mutations if item.startswith("publish:")]) == 4
-    assert len([item for item in stub.mutations if item.startswith("key:")]) == 4
+    assert len([item for item in stub.mutations if item.startswith("import:")]) == 10
+    assert len([item for item in stub.mutations if item.startswith("publish:")]) == 10
+    assert len([item for item in stub.mutations if item.startswith("key:")]) == 10
 
     for row in persisted["workflows"].values():
         row["geo_secret"] = {
@@ -169,6 +175,70 @@ def test_configure_runtime_is_private_complete_and_idempotent(tmp_path: Path) ->
     rerun = json.loads(state_path.read_text(encoding="utf-8"))
     assert all("geo_secret" in item for item in rerun["workflows"].values())
     assert all("geo_release_id" in item for item in rerun["workflows"].values())
+
+
+def test_configure_runtime_adds_only_the_ninth_and_tenth_apps(
+    tmp_path: Path,
+) -> None:
+    password = "private-password-1"
+    manifest, manifest_dir = _manifest(tmp_path)
+    stub = DifyConsoleStub(password=password)
+    stub.setup_finished = True
+    stub.credentials_configured = True
+    state: dict[str, object] = {
+        "schema_version": 1,
+        "admin_email": "geo@example.test",
+        "admin_password": password,
+        "workflows": {},
+    }
+    workflows = state["workflows"]
+    assert isinstance(workflows, dict)
+    manifest_rows = manifest["workflows"]
+    assert isinstance(manifest_rows, list)
+    for index, purpose in enumerate(PURPOSES[:8], 1):
+        app_id = f"app-{index}"
+        token = f"app-token-{app_id}"
+        stub.apps[app_id] = {
+            "purpose": purpose,
+            "workflow_id": f"workflow-{index}",
+            "token": token,
+        }
+        manifest_row = manifest_rows[index - 1]
+        assert isinstance(manifest_row, dict)
+        workflows[purpose] = {
+            "purpose": purpose,
+            "app_id": app_id,
+            "workflow_id": f"workflow-{index}",
+            "dsl_hash": manifest_row["sha256"],
+            "api_token": token,
+            "prompt_source": "dify",
+        }
+    state_path = tmp_path / "state.json"
+
+    with httpx.Client(
+        base_url="http://dify.test",
+        transport=httpx.MockTransport(stub),
+    ) as client:
+        result = configure_runtime(
+            client,
+            state=state,
+            state_file=state_path,
+            manifest=manifest,
+            manifest_dir=manifest_dir,
+            deepseek_api_key="sk-live",
+            readiness_seconds=1,
+        )
+
+    assert len(result["workflows"]) == 10
+    assert [item for item in stub.mutations if item.startswith("import:")] == [
+        "import:synthetic_lab.style_profile",
+        "import:recommendations.recommendation",
+    ]
+    persisted = json.loads(state_path.read_text(encoding="utf-8"))
+    for index, purpose in enumerate(PURPOSES[:8], 1):
+        assert persisted["workflows"][purpose]["app_id"] == f"app-{index}"
+        assert persisted["workflows"][purpose]["api_token"] == f"app-token-app-{index}"
+    assert set(persisted["workflows"]) == set(PURPOSES)
 
 
 def _manifest(root: Path) -> tuple[dict[str, object], Path]:

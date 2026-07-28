@@ -15,6 +15,7 @@ import re
 import stat
 import sys
 from typing import BinaryIO
+from uuid import UUID
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -38,9 +39,11 @@ from scripts.non_b_business_consistency import (  # noqa: E402
 )
 
 
-MANIFEST_SCHEMA = "geo-authenticated-backup-manifest-v5"
+MANIFEST_SCHEMA = "geo-authenticated-backup-manifest-v6"
+LEGACY_MANIFEST_SCHEMA = "geo-authenticated-backup-manifest-v5"
 SIGNATURE_SCHEMA = "geo-backup-manifest-signature-v1"
 COMMIT_SCHEMA = "geo-backup-commit-v1"
+DATABASE_LEDGER_SCHEMA = "geo-database-alembic-checksum-ledger-v1"
 ARTIFACT_FILES = {
     "postgres": "postgres.sql.gz.enc",
     "minio": "minio.tar.enc",
@@ -48,6 +51,8 @@ ARTIFACT_FILES = {
 CONTROL_FILES = frozenset({"manifest.json", "manifest.sig", "COMMITTED"})
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _REVISION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+_SYSTEM_IDENTIFIER = re.compile(r"^[0-9]{1,20}$")
+_ENVIRONMENT = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
 CRITICAL_RELATIONS = frozenset(
     {"evidence_items", "monitoring_reports", "project_memberships"}
 )
@@ -73,6 +78,12 @@ def create_backup_set_manifest(
     created_at: str,
     migration_revision: str,
     alembic_sql_checksum_ledger: object,
+    database_checksum_ledger_rows: object,
+    source_database_name: str,
+    source_database_user: str,
+    source_environment: str,
+    source_system_identifier: str,
+    source_project_ids: object,
     postgres_project_count: int,
     postgres_table_count: int,
     critical_relation_counts: Mapping[str, int],
@@ -197,6 +208,18 @@ def create_backup_set_manifest(
     migration_ledger = validate_ledger(alembic_sql_checksum_ledger)
     if migration_ledger["head_revision"] != migration_revision:
         raise BackupSecurityError("backup migration ledger does not match the database")
+    project_ids = _project_ids(source_project_ids)
+    if len(project_ids) != postgres_project_count:
+        raise BackupSecurityError("backup project identities do not match project count")
+    database_ledger = _build_database_checksum_ledger(
+        database_checksum_ledger_rows,
+        expected_head=migration_revision,
+        expected_revisions=_repository_ledger_revisions(migration_ledger),
+    )
+    database_name = _database_identity_value(source_database_name, "database name")
+    database_user = _database_identity_value(source_database_user, "database user")
+    environment = _environment_value(source_environment)
+    system_identifier = _system_identifier_value(source_system_identifier)
     business_consistency = validate_business_consistency_manifest(
         non_b_business_consistency,
         expected_revision=migration_revision,
@@ -237,8 +260,14 @@ def create_backup_set_manifest(
             },
             "postgres": {
                 "alembic_sql_checksum_ledger": migration_ledger,
+                "database_checksum_ledger": database_ledger,
+                "database_name": database_name,
+                "database_user": database_user,
+                "environment": environment,
                 "migration_revision": migration_revision,
                 "project_count": postgres_project_count,
+                "project_ids": project_ids,
+                "system_identifier": system_identifier,
                 "table_count": postgres_table_count,
                 "critical_relation_counts": relation_counts,
                 "critical_relation_hashes": relation_hashes,
@@ -361,7 +390,10 @@ def verify_backup_set(
         raise BackupSecurityError("backup commit format is unsupported")
     if signature["schema_version"] != SIGNATURE_SCHEMA:
         raise BackupSecurityError("backup signature format is unsupported")
-    if manifest["schema_version"] != MANIFEST_SCHEMA or manifest["algorithm"] != ALGORITHM:
+    if (
+        manifest["schema_version"] not in {MANIFEST_SCHEMA, LEGACY_MANIFEST_SCHEMA}
+        or manifest["algorithm"] != ALGORITHM
+    ):
         raise BackupSecurityError("backup manifest format is unsupported")
 
     manifest_bytes = manifest_path.read_bytes()
@@ -456,17 +488,27 @@ def _verify_manifest_shape(manifest: dict[str, object]) -> None:
         raise BackupSecurityError("backup source manifest is invalid")
     if not isinstance(artifacts, dict) or set(artifacts) != set(ARTIFACT_FILES):
         raise BackupSecurityError("backup artifact manifest is invalid")
+    postgres_fields = {
+        "alembic_sql_checksum_ledger",
+        "critical_relation_counts",
+        "critical_relation_hashes",
+        "migration_revision",
+        "non_b_business_consistency",
+        "project_count",
+        "table_count",
+    }
+    if manifest["schema_version"] == MANIFEST_SCHEMA:
+        postgres_fields |= {
+            "database_checksum_ledger",
+            "database_name",
+            "database_user",
+            "environment",
+            "project_ids",
+            "system_identifier",
+        }
     expected_sources = {
         "minio": {"bucket_object_counts", "object_count"},
-        "postgres": {
-            "alembic_sql_checksum_ledger",
-            "critical_relation_counts",
-            "critical_relation_hashes",
-            "migration_revision",
-            "non_b_business_consistency",
-            "project_count",
-            "table_count",
-        },
+        "postgres": postgres_fields,
         "secret_store": {
             "encrypted_secret_version_count",
             "master_key_version_count",
@@ -507,11 +549,17 @@ def _verify_manifest_shape(manifest: dict[str, object]) -> None:
         for field, value in entry.items():
             if field not in {
                 "alembic_sql_checksum_ledger",
+                "database_checksum_ledger",
+                "database_name",
+                "database_user",
+                "environment",
                 "critical_relation_counts",
                 "critical_relation_hashes",
                 "migration_revision",
                 "non_b_business_consistency",
+                "project_ids",
                 "source_verification_receipt_hash",
+                "system_identifier",
                 "bucket_object_counts",
             }:
                 _nonnegative_int(value, f"{name} {field}")
@@ -537,6 +585,19 @@ def _verify_manifest_shape(manifest: dict[str, object]) -> None:
     migration_ledger = validate_ledger(postgres["alembic_sql_checksum_ledger"])
     if migration_ledger["head_revision"] != migration:
         raise BackupSecurityError("postgres migration ledger does not match revision")
+    if manifest["schema_version"] == MANIFEST_SCHEMA:
+        project_ids = _project_ids(postgres["project_ids"])
+        if len(project_ids) != postgres["project_count"]:
+            raise BackupSecurityError("postgres project identities are inconsistent")
+        _database_identity_value(postgres["database_name"], "database name")
+        _database_identity_value(postgres["database_user"], "database user")
+        _environment_value(postgres["environment"])
+        _system_identifier_value(postgres["system_identifier"])
+        _validate_database_checksum_ledger(
+            postgres["database_checksum_ledger"],
+            expected_head=migration,
+            expected_revisions=_repository_ledger_revisions(migration_ledger),
+        )
     relation_counts = postgres["critical_relation_counts"]
     if not isinstance(relation_counts, dict):
         raise BackupSecurityError("postgres critical relation counts are invalid")
@@ -630,6 +691,142 @@ def _verify_manifest_shape(manifest: dict[str, object]) -> None:
             raise BackupSecurityError("backup artifact manifest is invalid")
         _positive_int(entry["encrypted_size"], "artifact size")
         _positive_int(entry["key_version"], "artifact key version")
+
+
+def _repository_ledger_revisions(ledger: Mapping[str, object]) -> tuple[str, ...]:
+    entries = ledger.get("entries")
+    if not isinstance(entries, list):
+        raise BackupSecurityError("repository Alembic ledger entries are invalid")
+    revisions: list[str] = []
+    for entry in entries:
+        if not isinstance(entry, Mapping):
+            raise BackupSecurityError("repository Alembic ledger entry is invalid")
+        revision = entry.get("revision")
+        if not isinstance(revision, str):
+            raise BackupSecurityError("repository Alembic ledger revision is invalid")
+        revisions.append(revision)
+    return tuple(revisions)
+
+
+def _build_database_checksum_ledger(
+    rows: object,
+    *,
+    expected_head: str,
+    expected_revisions: tuple[str, ...],
+) -> dict[str, object]:
+    entries = _database_checksum_entries(rows, expected_revisions=expected_revisions)
+    payload = {"entries": entries, "head_revision": expected_head}
+    return {
+        **payload,
+        "ledger_sha256": hashlib.sha256(canonical_json(payload)).hexdigest(),
+        "schema_version": DATABASE_LEDGER_SCHEMA,
+    }
+
+
+def _validate_database_checksum_ledger(
+    value: object,
+    *,
+    expected_head: str,
+    expected_revisions: tuple[str, ...],
+) -> dict[str, object]:
+    if not isinstance(value, Mapping) or set(value) != {
+        "entries",
+        "head_revision",
+        "ledger_sha256",
+        "schema_version",
+    }:
+        raise BackupSecurityError("database Alembic checksum ledger is invalid")
+    if value["schema_version"] != DATABASE_LEDGER_SCHEMA:
+        raise BackupSecurityError("database Alembic checksum ledger is unsupported")
+    if value["head_revision"] != expected_head:
+        raise BackupSecurityError("database Alembic checksum ledger head is invalid")
+    entries = _database_checksum_entries(
+        value["entries"], expected_revisions=expected_revisions
+    )
+    payload = {"entries": entries, "head_revision": expected_head}
+    digest = hashlib.sha256(canonical_json(payload)).hexdigest()
+    if value["ledger_sha256"] != digest:
+        raise BackupSecurityError("database Alembic checksum ledger digest is invalid")
+    return {
+        **payload,
+        "ledger_sha256": digest,
+        "schema_version": DATABASE_LEDGER_SCHEMA,
+    }
+
+
+def _database_checksum_entries(
+    value: object, *, expected_revisions: tuple[str, ...]
+) -> list[dict[str, str]]:
+    if not isinstance(value, list) or len(value) != len(expected_revisions):
+        raise BackupSecurityError("database Alembic checksum ledger is incomplete")
+    entries: list[dict[str, str]] = []
+    for expected_revision, raw in zip(expected_revisions, value, strict=True):
+        if not isinstance(raw, Mapping) or set(raw) != {
+            "downgrade_sha256",
+            "revision",
+            "upgrade_sha256",
+        }:
+            raise BackupSecurityError("database Alembic checksum ledger entry is invalid")
+        if raw["revision"] != expected_revision:
+            raise BackupSecurityError("database Alembic checksum ledger order is invalid")
+        upgrade = raw["upgrade_sha256"]
+        downgrade = raw["downgrade_sha256"]
+        if (
+            not isinstance(upgrade, str)
+            or _SHA256.fullmatch(upgrade) is None
+            or not isinstance(downgrade, str)
+            or _SHA256.fullmatch(downgrade) is None
+        ):
+            raise BackupSecurityError("database Alembic checksum is invalid")
+        entries.append(
+            {
+                "downgrade_sha256": downgrade,
+                "revision": expected_revision,
+                "upgrade_sha256": upgrade,
+            }
+        )
+    return entries
+
+
+def _project_ids(value: object) -> list[str]:
+    if not isinstance(value, list):
+        raise BackupSecurityError("backup project identities are invalid")
+    normalized: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            raise BackupSecurityError("backup project identity is invalid")
+        try:
+            canonical = str(UUID(item))
+        except ValueError:
+            raise BackupSecurityError("backup project identity is invalid") from None
+        if canonical != item:
+            raise BackupSecurityError("backup project identity is not canonical")
+        normalized.append(canonical)
+    if normalized != sorted(set(normalized)):
+        raise BackupSecurityError("backup project identities are not unique and sorted")
+    return normalized
+
+
+def _database_identity_value(value: object, label: str) -> str:
+    if (
+        not isinstance(value, str)
+        or _REVISION.fullmatch(value) is None
+        or len(value) > 63
+    ):
+        raise BackupSecurityError(f"backup {label} is invalid")
+    return value
+
+
+def _environment_value(value: object) -> str:
+    if not isinstance(value, str) or _ENVIRONMENT.fullmatch(value) is None:
+        raise BackupSecurityError("backup source environment is invalid")
+    return value
+
+
+def _system_identifier_value(value: object) -> str:
+    if not isinstance(value, str) or _SYSTEM_IDENTIFIER.fullmatch(value) is None:
+        raise BackupSecurityError("backup source system identifier is invalid")
+    return value
 
 
 def _require_exact_fields(value: Mapping[str, object], fields: set[str], label: str) -> None:
@@ -864,6 +1061,12 @@ def _parser() -> argparse.ArgumentParser:
     create.add_argument("--created-at", required=True)
     create.add_argument("--migration-revision", required=True)
     create.add_argument("--alembic-sql-checksum-ledger-json", required=True)
+    create.add_argument("--database-checksum-ledger-rows-json", required=True)
+    create.add_argument("--source-database-name", required=True)
+    create.add_argument("--source-database-user", required=True)
+    create.add_argument("--source-environment", required=True)
+    create.add_argument("--source-system-identifier", required=True)
+    create.add_argument("--source-project-ids-json", required=True)
     create.add_argument("--postgres-project-count", type=int, required=True)
     create.add_argument("--postgres-table-count", type=int, required=True)
     create.add_argument("--critical-relation-counts-json", required=True)
@@ -924,6 +1127,18 @@ def main(argv: list[str] | None = None) -> int:
                 alembic_sql_checksum_ledger=_json_value(
                     args.alembic_sql_checksum_ledger_json,
                     "Alembic SQL checksum ledger",
+                ),
+                database_checksum_ledger_rows=_json_value(
+                    args.database_checksum_ledger_rows_json,
+                    "database Alembic checksum ledger rows",
+                ),
+                source_database_name=args.source_database_name,
+                source_database_user=args.source_database_user,
+                source_environment=args.source_environment,
+                source_system_identifier=args.source_system_identifier,
+                source_project_ids=_json_value(
+                    args.source_project_ids_json,
+                    "source project identities",
                 ),
                 postgres_project_count=args.postgres_project_count,
                 postgres_table_count=args.postgres_table_count,

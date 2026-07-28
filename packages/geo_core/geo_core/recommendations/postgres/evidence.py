@@ -16,12 +16,16 @@ from geo_core.recommendations.evidence import (
     EvidenceRef,
     FactRef,
     MetricComparisonRef,
+    MetricComparisonConclusion,
     ModelCallRef,
     ObservationEvidenceClass,
     ObservationRef,
     PromptReleaseRef,
     QuestionRef,
     RuleRef,
+    RecommendationRuleKind,
+    RecommendationRuleSeverity,
+    RecommendationRuleTriggerStatus,
     SurfaceRef,
 )
 from geo_core.recommendations.errors import (
@@ -133,12 +137,18 @@ def evidence_ref_from_payload(value: Mapping[str, object]) -> EvidenceRef:
             eligible=_bool(value, "eligible"),
         )
     if kind == "metric_comparison":
+        raw_conclusion = value.get("conclusion")
         return MetricComparisonRef(
             **common,
             observation_resource_ids=_strings(value, "observation_resource_ids"),
             method_version=_text(value, "method_version"),
             method_sha256=_text(value, "method_sha256"),
             sufficient_evidence=_bool(value, "sufficient_evidence"),
+            conclusion=(
+                MetricComparisonConclusion(_text(value, "conclusion"))
+                if raw_conclusion is not None
+                else None
+            ),
         )
     if kind == "fact":
         return FactRef(
@@ -147,7 +157,20 @@ def evidence_ref_from_payload(value: Mapping[str, object]) -> EvidenceRef:
             retired=_bool(value, "retired"),
         )
     if kind == "rule":
-        return RuleRef(**common, active=_bool(value, "active"))
+        return RuleRef(
+            **common,
+            active=_bool(value, "active"),
+            kind=RecommendationRuleKind(
+                _optional_text(value, "rule_kind") or RecommendationRuleKind.THRESHOLD
+            ),
+            severity=RecommendationRuleSeverity(
+                _optional_text(value, "severity") or RecommendationRuleSeverity.INFO
+            ),
+            trigger_status=RecommendationRuleTriggerStatus(
+                _optional_text(value, "trigger_status")
+                or RecommendationRuleTriggerStatus.NOT_TRIGGERED
+            ),
+        )
     if kind == "prompt_release":
         return PromptReleaseRef(
             **common,
@@ -198,6 +221,17 @@ def _text(value: Mapping[str, object], key: str) -> str:
     if not isinstance(item, str) or not item.strip():
         raise RecommendationSourceStale(
             f"Recommendation evidence field {key} is missing"
+        )
+    return item.strip()
+
+
+def _optional_text(value: Mapping[str, object], key: str) -> str | None:
+    item = value.get(key)
+    if item is None:
+        return None
+    if not isinstance(item, str) or not item.strip():
+        raise RecommendationSourceStale(
+            f"Recommendation evidence field {key} is not text"
         )
     return item.strip()
 

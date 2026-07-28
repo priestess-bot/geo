@@ -141,16 +141,26 @@ export function SyntheticLabWorkspace({
         {data.profiles.items.length ? (
           <div className={styles.tableWrap}>
             <table className={styles.table}>
-              <thead><tr><th>渠道 / 风格画像</th><th>状态</th><th>样本</th><th>溯源哈希</th><th>操作</th></tr></thead>
+              <thead><tr><th>渠道 / 风格画像</th><th>状态</th><th>构建验证</th><th>样本</th><th>溯源哈希</th><th>操作</th></tr></thead>
               <tbody>{data.profiles.items.map((profile) => (
                 <tr key={profile.id}>
                   <td><strong>{profile.channel} · v{profile.version_number}</strong><code>{profile.id}</code></td>
                   <td><Status value={profile.status} /></td>
+                  <td><ProfileBuildVerification profile={profile} /></td>
                   <td>{profile.approved_sample_count}</td>
                   <td><code>{profile.corpus_hash}</code><code>{profile.profile_hash}</code><code>{profile.prompt_release_hash}</code></td>
                   <td>
-                    <ProfileCommands canApprove={canApprove} canContribute={canContribute} commandKeys={{ decision: key("profile-decision"), freeze: key("profile-freeze"), submit: key("profile-submit") }} profile={profile} projectId={projectId} />
-                    {profile.status === "draft" ? <StyleProfileBuildForm canContribute={canContribute && !data.runtimeOptionsProblem} commandKey={key("profile-build")} inventory={data.inventory} profile={profile} projectId={projectId} runtimes={data.runtimeOptions.items} /> : null}
+                    {profileNeedsRebuild(profile) ? (
+                      <div className={styles.profileRebuildAction} role="status">
+                        <strong>仅保留历史查看</strong>
+                        <span>此版本不能用于新任务，也不能原地重建。请从“创建风格画像草稿”新建版本并重新构建。</span>
+                      </div>
+                    ) : (
+                      <>
+                        <ProfileCommands canApprove={canApprove} canContribute={canContribute} commandKeys={{ decision: key("profile-decision"), freeze: key("profile-freeze"), submit: key("profile-submit") }} profile={profile} projectId={projectId} />
+                        {profile.status === "draft" ? <StyleProfileBuildForm canContribute={canContribute && !data.runtimeOptionsProblem} commandKey={key("profile-build")} inventory={data.inventory} profile={profile} projectId={projectId} runtimes={data.runtimeOptions.items} /> : null}
+                      </>
+                    )}
                   </td>
                 </tr>
               ))}</tbody>
@@ -252,6 +262,36 @@ function CaseTable({ items }: { items: ReviewCase[] }) {
 
 function Status({ value }: { value: string }) {
   return <span className={`${styles.statusPill} ${styles[`status_${value}`] || ""}`}>{statusLabel(value)}</span>;
+}
+
+function ProfileBuildVerification({ profile }: { profile: StyleProfile }) {
+  if (profileNeedsRebuild(profile)) {
+    return (
+      <span className={`${styles.profileVerification} ${styles.profileVerificationRebuild}`}>
+        <strong>需新建版本并重建</strong>
+        <small>不能用于新任务</small>
+      </span>
+    );
+  }
+  if (profile.build_verification_status === "verified") {
+    return (
+      <span className={`${styles.profileVerification} ${styles.profileVerificationReady}`}>
+        <strong>已验证</strong>
+        <small>可用于新任务</small>
+      </span>
+    );
+  }
+  return (
+    <span className={`${styles.profileVerification} ${styles.profileVerificationPending}`}>
+      <strong>待构建验证</strong>
+      <small>完成构建后再使用</small>
+    </span>
+  );
+}
+
+function profileNeedsRebuild(profile: StyleProfile): boolean {
+  return profile.rebuild_required
+    || profile.build_verification_status === "legacy_unverified";
 }
 
 function statusLabel(value: string): string {

@@ -67,7 +67,9 @@ class PostgresRecommendationGenerationReads:
                       (SELECT count(*) FROM recommendation_model_call_lineage AS call
                        WHERE call.project_id = spec.project_id
                          AND call.parent_job_id = spec.job_id
-                         AND call.model_attempt_id IS NOT NULL) AS consumed_model_calls
+                         AND call.status = 'succeeded'
+                         AND (call.model_attempt_id IS NOT NULL
+                              OR call.dify_attempt_id IS NOT NULL)) AS consumed_model_calls
                FROM recommendation_generation_specs AS spec
                JOIN durable_jobs AS job
                  ON job.id = spec.job_id AND job.project_id = spec.project_id

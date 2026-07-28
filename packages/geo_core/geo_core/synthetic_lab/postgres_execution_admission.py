@@ -93,6 +93,8 @@ class PostgresSyntheticExecutionAdmission(_PostgresSyntheticExecutionAdmissionTa
         fact_snapshot_id: UUID,
         approved_sample_ids: tuple[UUID, ...],
         runtime_selection_id: UUID,
+        recovery_of_attempt_id: UUID | None = None,
+        dify_reconciliation_token: str | None = None,
         idempotency_key: str,
     ) -> CommandReceipt | SyntheticJob:
         project_id = principal.project_id
@@ -107,7 +109,18 @@ class PostgresSyntheticExecutionAdmission(_PostgresSyntheticExecutionAdmissionTa
                 raise SyntheticLabIdempotencyConflict(
                     "Style Profile build Idempotency-Key was reused"
                 )
-            return self._reads.job(project_id, job_id)
+            return self._application.enqueue(
+                principal=principal,
+                task=existing,
+                outbox_id=stable_id(
+                    project_id, idempotency_key, "style-profile-build-outbox"
+                ),
+                runtime_inputs=self._runtime_inputs,
+                prompts=self._prompt_resolver,
+                idempotency_key=idempotency_key,
+                recovery_of_attempt_id=recovery_of_attempt_id,
+                dify_reconciliation_token=dify_reconciliation_token,
+            )
 
         profile = self._profile(project_id, profile_version_id)
         if profile.status is not StyleProfileStatus.DRAFT:
@@ -194,6 +207,8 @@ class PostgresSyntheticExecutionAdmission(_PostgresSyntheticExecutionAdmissionTa
             runtime_inputs=self._runtime_inputs,
             prompts=self._prompt_resolver,
             idempotency_key=idempotency_key,
+            recovery_of_attempt_id=recovery_of_attempt_id,
+            dify_reconciliation_token=dify_reconciliation_token,
         )
 
     def enqueue_review_case(

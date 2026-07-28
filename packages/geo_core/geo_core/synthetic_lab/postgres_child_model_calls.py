@@ -19,14 +19,20 @@ from geo_core.synthetic_lab.child_model_calls import (
     SyntheticChildCallState,
     SyntheticChildCallStatus,
     SyntheticChildModelCallTask,
+    child_model_call_id,
+    child_task_from_invocation,
 )
 from geo_core.synthetic_lab.child_task_artifacts import (
     SyntheticChildTaskArtifactRef,
     SyntheticChildTaskArtifactStore,
 )
 from geo_core.synthetic_lab.execution_contracts import (
+    SyntheticExecutionBackend,
     SyntheticExecutionError,
+    SyntheticExecutionResult,
+    SyntheticModelInvocation,
     SyntheticModelResult,
+    SyntheticWorkflowResult,
 )
 
 
@@ -47,6 +53,22 @@ class SyntheticChildResultLoader(Protocol):
         reported_model: str | None,
     ) -> SyntheticModelResult: ...
 
+    def load_dify(
+        self,
+        *,
+        parent_lease: WorkerLease,
+        task: SyntheticChildModelCallTask,
+        attempt_id: UUID,
+        output: Mapping[str, object],
+        output_hash: str,
+        configured_model: str,
+        reported_model: str | None,
+        runtime_release_id: UUID,
+        runtime_release_hash: str,
+        published_snapshot_id: UUID | None = None,
+        published_snapshot_hash: str | None = None,
+    ) -> SyntheticWorkflowResult: ...
+
 
 class PostgresSyntheticChildCallRepository:
     def __init__(
@@ -59,6 +81,34 @@ class PostgresSyntheticChildCallRepository:
         self._connection_factory = connection_factory
         self._artifacts = artifacts
         self._results = results
+
+    def load_existing(
+        self,
+        invocation: SyntheticModelInvocation,
+    ) -> SyntheticChildCallState | None:
+        child_job_id = child_model_call_id(
+            parent_job_id=invocation.lease.job_id,
+            step_key=invocation.step_key,
+        )
+        row = self._state_row(invocation.lease.project_id, child_job_id)
+        if row is None:
+            return None
+        stored = self._artifacts.load(
+            SyntheticChildTaskArtifactRef(
+                uri=row["task_artifact_uri"],
+                artifact_hash=row["task_artifact_hash"],
+            ),
+            project_id=invocation.lease.project_id,
+            child_job_id=child_job_id,
+            expected_input_hash=row["child_input_hash"],
+        )
+        expected = child_task_from_invocation(
+            invocation,
+            execution_backend=stored.execution_backend,
+            workflow_release_id=stored.workflow_release_id,
+            workflow_release_hash=stored.workflow_release_hash,
+        )
+        return self._state(expected, row, parent_lease=invocation.lease)
 
     def resolve_or_stage(
         self,
@@ -83,7 +133,7 @@ class PostgresSyntheticChildCallRepository:
                        %s, %s, %s, %s, %s, %s, %s, %s, %s,
                        %s, %s, %s, %s, %s, %s, %s, %s, %s,
                        %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                       %s
+                       %s, %s, %s, %s
                    )""",
                 (
                     task.project_id,
@@ -118,6 +168,9 @@ class PostgresSyntheticChildCallRepository:
                     route.model_release_id,
                     route.model_release_hash,
                     frozen.configured_model,
+                    task.execution_backend.value,
+                    task.workflow_release_id,
+                    task.workflow_release_hash,
                     frozen.runtime_manifest_id,
                     frozen.runtime_manifest_hash,
                     frozen.runtime_option_id,
@@ -159,6 +212,12 @@ class PostgresSyntheticChildCallRepository:
                 """SELECT child.task_artifact_uri, child.task_artifact_hash,
                           child.child_input_hash, child.parent_job_id,
                           child.prompt_state_version, child.admitted_by,
+                          child.execution_backend, child.workflow_release_id,
+                          child.workflow_release_hash,
+                          workflow.prompt_release_id AS workflow_prompt_release_id,
+                          workflow.prompt_release_hash AS workflow_prompt_release_hash,
+                          workflow.configured_model AS workflow_configured_model,
+                          workflow.purpose AS workflow_purpose,
                           durable.status, durable.lease_owner, durable.lease_token,
                           durable.lease_expires_at, durable.fencing_generation,
                           durable.cancel_requested_at, parent.status AS parent_status,
@@ -171,6 +230,10 @@ class PostgresSyntheticChildCallRepository:
                    JOIN durable_jobs AS parent
                      ON parent.id = child.parent_job_id
                     AND parent.project_id = child.project_id
+                   LEFT JOIN dify_workflow_releases AS workflow
+                     ON workflow.id = child.workflow_release_id
+                    AND workflow.project_id = child.project_id
+                    AND workflow.release_hash = child.workflow_release_hash
                    WHERE child.project_id = %s AND child.child_job_id = %s""",
                 (lease.project_id, lease.job_id),
             ).fetchone()
@@ -263,33 +326,66 @@ class PostgresSyntheticChildCallRepository:
                 failure_code="immutable_input_changed",
             )
         status = SyntheticChildCallStatus(row["status"])
-        result = None
+        result: SyntheticExecutionResult | None = None
         if status is SyntheticChildCallStatus.SUCCEEDED:
-            attempt_id = row["model_attempt_id"]
-            model_call_id = row["gateway_call_log_id"]
             output_hash = row["output_hash"]
             response_hash = row["response_hash"]
             configured_model = row["model_configured_model"]
             reported_model = row["model_reported_model"]
+            backend = SyntheticExecutionBackend(
+                str(row.get("execution_backend") or "model_gateway")
+            )
             if (
-                not isinstance(attempt_id, UUID)
-                or not isinstance(model_call_id, UUID)
-                or not isinstance(output_hash, str)
+                not isinstance(output_hash, str)
                 or not isinstance(response_hash, str)
                 or not isinstance(configured_model, str)
                 or (reported_model is not None and not isinstance(reported_model, str))
             ):
                 raise SyntheticExecutionError("successful child lacks governed result lineage")
-            result = self._results.load(
-                parent_lease=parent_lease,
-                task=task,
-                model_attempt_id=attempt_id,
-                model_call_id=model_call_id,
-                output_hash=output_hash,
-                response_hash=response_hash,
-                configured_model=configured_model,
-                reported_model=reported_model,
-            )
+            if backend is not task.execution_backend:
+                raise SyntheticExecutionError("successful child changed its frozen backend")
+            if backend is SyntheticExecutionBackend.DIFY:
+                attempt_id = row.get("workflow_attempt_id")
+                output = row.get("dify_output")
+                release_id = row.get("dify_release_id")
+                release_hash = row.get("dify_release_hash")
+                if (
+                    not isinstance(attempt_id, UUID)
+                    or not isinstance(output, Mapping)
+                    or not isinstance(release_id, UUID)
+                    or not isinstance(release_hash, str)
+                ):
+                    raise SyntheticExecutionError("successful Dify child lacks result lineage")
+                result = self._results.load_dify(
+                    parent_lease=parent_lease,
+                    task=task,
+                    attempt_id=attempt_id,
+                    output=output,
+                    output_hash=output_hash,
+                    configured_model=configured_model,
+                    reported_model=reported_model,
+                    runtime_release_id=release_id,
+                    runtime_release_hash=release_hash,
+                    published_snapshot_id=row.get("published_snapshot_id"),
+                    published_snapshot_hash=row.get("published_snapshot_hash"),
+                )
+            else:
+                attempt_id = row.get("model_attempt_id")
+                model_call_id = row.get("gateway_call_log_id")
+                if not isinstance(attempt_id, UUID) or not isinstance(model_call_id, UUID):
+                    raise SyntheticExecutionError(
+                        "successful native child lacks Model Gateway lineage"
+                    )
+                result = self._results.load(
+                    parent_lease=parent_lease,
+                    task=task,
+                    model_attempt_id=attempt_id,
+                    model_call_id=model_call_id,
+                    output_hash=output_hash,
+                    response_hash=response_hash,
+                    configured_model=configured_model,
+                    reported_model=reported_model,
+                )
         return SyntheticChildCallState(
             task=task,
             status=status,
@@ -378,9 +474,25 @@ def _assert_child_task_row_lineage(
     task: SyntheticChildModelCallTask,
     row: Mapping[str, Any],
 ) -> None:
+    frozen = task.prompt.frozen
     if (
-        row.get("prompt_state_version") != task.prompt.frozen.frozen_state_version
+        row.get("prompt_state_version") != frozen.frozen_state_version
         or row.get("admitted_by") != task.admitted_by
+        or SyntheticExecutionBackend(
+            str(row.get("execution_backend") or "model_gateway")
+        )
+        is not task.execution_backend
+        or row.get("workflow_release_id") != task.workflow_release_id
+        or row.get("workflow_release_hash") != task.workflow_release_hash
+        or (
+            task.execution_backend is SyntheticExecutionBackend.DIFY
+            and (
+                row.get("workflow_prompt_release_id") != frozen.release_id
+                or row.get("workflow_prompt_release_hash") != frozen.release_hash
+                or row.get("workflow_configured_model") != frozen.configured_model
+                or row.get("workflow_purpose") != frozen.purpose
+            )
+        )
     ):
         raise SyntheticExecutionError(
             "child task artifact differs from frozen Prompt state or admission actor"

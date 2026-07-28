@@ -33,7 +33,10 @@ from geo_core.recommendations.generation_artifact_serialization import (
     task_from_bytes,
     wipe,
 )
-from geo_core.recommendations.generation_worker_contracts import RecommendationModelTask
+from geo_core.recommendations.generation_worker_contracts import (
+    RecommendationExecutionBackend,
+    RecommendationModelTask,
+)
 from geo_core.secrets import (
     EnvelopeCipher,
     SecretReference,
@@ -272,6 +275,13 @@ class EncryptedRecommendationTaskArtifactStore:
             task = task_from_bytes(bytes(plaintext))
         finally:
             wipe(plaintext)
+        if (
+            artifact_manifest.get("schema_version") == 1
+            and task.execution_backend is not RecommendationExecutionBackend.MODEL_GATEWAY
+        ):
+            raise RecommendationTaskArtifactError(
+                "legacy Recommendation task artifacts must remain on the native backend"
+            )
         if (
             task.project_id != project_id
             or task.child_job_id != child_job_id

@@ -15,6 +15,10 @@ from geo_core.access.postgres import PsycopgAccessUnitOfWorkFactory
 from geo_core.access.service import AccessApplicationService
 from geo_core.catalog.application import CatalogApplication
 from geo_core.catalog.postgres import PsycopgCatalogUnitOfWorkFactory
+from scripts.bootstrap_deepseek_prompt_runtime import (
+    _project_operator as deepseek_project_operator,
+)
+from scripts.enroll_dify_workflows import _project_operator as dify_project_operator
 
 
 APP_URL = os.getenv("GEO_ACCESS_TEST_DATABASE_URL", "").strip()
@@ -141,6 +145,24 @@ def test_oidc_member_management_is_idempotent_governed_and_project_scoped() -> N
             )
             assert second_manager.status_code == 201, second_manager.text
             admin_identity_id = UUID(second_manager.json()["member"]["identity_id"])
+            dify_approver = dify_project_operator(
+                database_url=APP_URL,
+                identity_id=admin_identity_id,
+                project_id=project_id,
+                tenant_id=tenant_id,
+                auth_method="dify-enrollment-approver",
+                label="approver",
+            )
+            deepseek_approver = deepseek_project_operator(
+                database_url=APP_URL,
+                identity_id=admin_identity_id,
+                project_id=project_id,
+                tenant_id=tenant_id,
+                auth_method="operator-bootstrap-approval",
+                label="--approved-by",
+            )
+            assert dify_approver.roles == ("admin",)
+            assert deepseek_approver.roles == ("admin",)
             _seed_customer_membership(
                 tenant_id=tenant_id,
                 project_id=project_id,

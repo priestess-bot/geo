@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from datetime import timedelta
-from decimal import Decimal
+from datetime import UTC, datetime, timedelta
 import os
 from uuid import UUID, uuid4
 
 import psycopg
 from psycopg import sql
+from psycopg.types.json import Jsonb
 import pytest
 
 from geo_core.jobs.postgres import LostJobLease, PostgresDurableJobStore, WorkerLease
@@ -14,8 +14,10 @@ from geo_core.secrets import SecretVersionHandle
 from geo_core.workflow_runtime import (
     PostgresWorkflowRuntimeCatalog,
     PostgresWorkflowRuntimeRepository,
+    PublishedWorkflowSnapshot,
     WorkflowConfigurationError,
 )
+from geo_core.workflow_runtime.contracts import canonical_json_hash, canonical_json_text
 from tests.integration.placement_worker_support import cleanup_projects, login_url, seed_project
 
 
@@ -25,6 +27,37 @@ pytestmark = [
     pytest.mark.integration,
     pytest.mark.skipif(not ADMIN_URL, reason="GEO_PLACEMENT_TEST_ADMIN_URL is required"),
 ]
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        {"x": 1e-6, "y": 1.0, "z": 1e20, "negative_zero": -0.0},
+        {"澳洲": "墨尔本", "a": [True, None, 0.1], "é": "café"},
+        {"z": {"b": 2, "a": 1}, "a": []},
+    ],
+)
+def test_dify_canonical_json_is_identical_in_python_and_postgres(
+    value: dict[str, object],
+) -> None:
+    with psycopg.connect(ADMIN_URL) as connection:
+        row = connection.execute(
+            """SELECT geo_dify_canonical_text(%s::jsonb),
+                      encode(digest(convert_to(geo_dify_canonical_text(%s::jsonb),
+                                               'UTF8'), 'sha256'), 'hex')""",
+            (Jsonb(value), Jsonb(value)),
+        ).fetchone()
+    assert row is not None
+    assert row[0] == canonical_json_text(value)
+    assert row[1] == canonical_json_hash(value)
+
+
+def test_common_decimal_keeps_its_pre_fencing_hash() -> None:
+    value = {"score": 0.1}
+    assert canonical_json_text(value) == '{"score":0.1}'
+    assert canonical_json_hash(value) == (
+        "5ad4ab8d7a53f2ab00f96de87cb7dcbb68034ac77b7720fd6a90e9a37400d883"
+    )
 
 
 def test_dify_runtime_requires_real_canary_and_preserves_project_and_lease_boundaries() -> None:
@@ -65,6 +98,8 @@ def test_dify_runtime_requires_real_canary_and_preserves_project_and_lease_bound
             dify_app_id="integration-app",
             dify_workflow_id="integration-workflow",
             dsl_hash="1" * 64,
+            registered_workflow_hash="a" * 64,
+            registered_snapshot_hash="b" * 64,
             configured_model="deepseek-chat",
             model_provider="langgenius/deepseek/deepseek",
             api_secret_handle=SecretVersionHandle(
@@ -83,6 +118,8 @@ def test_dify_runtime_requires_real_canary_and_preserves_project_and_lease_bound
             dify_app_id="integration-app",
             dify_workflow_id="integration-workflow",
             dsl_hash="1" * 64,
+            registered_workflow_hash="a" * 64,
+            registered_snapshot_hash="b" * 64,
             configured_model="deepseek-chat",
             model_provider="langgenius/deepseek/deepseek",
             api_secret_handle=SecretVersionHandle(
@@ -105,8 +142,36 @@ def test_dify_runtime_requires_real_canary_and_preserves_project_and_lease_bound
         release = repository.get_release(
             project_id=project["project"], release_id=release_id
         )
+        observed_at = datetime.now(UTC)
+        published_snapshot_id = repository.record_published_snapshot(
+            release=release,
+            snapshot=PublishedWorkflowSnapshot(
+                purpose=release.purpose,
+                app_id=release.dify_app_id,
+                workflow_id=release.dify_workflow_id,
+                workflow_hash="a" * 64,
+                snapshot_hash="b" * 64,
+                prompt_nodes=(
+                    {
+                        "node_id": "llm-1",
+                        "model_provider": release.model_provider,
+                        "model_name": release.configured_model,
+                        "messages": [],
+                    },
+                ),
+                input_variables=({"name": "geo_context_json"},),
+                graph_nodes=(
+                    {"node_id": "llm-1", "type": "llm", "title": "Prompt"},
+                ),
+                published_at=observed_at,
+                observed_at=observed_at,
+            ),
+        )
         failed_attempt = repository.begin_canary_attempt(
-            release=release, context_hash="2" * 64, request_hash="3" * 64
+            release=release,
+            published_snapshot_id=published_snapshot_id,
+            context_hash="2" * 64,
+            request_hash="3" * 64,
         )
         repository.finish_canary_attempt(
             project_id=project["project"],
@@ -129,7 +194,10 @@ def test_dify_runtime_requires_real_canary_and_preserves_project_and_lease_bound
             )
 
         successful_attempt = repository.begin_canary_attempt(
-            release=release, context_hash="4" * 64, request_hash="5" * 64
+            release=release,
+            published_snapshot_id=published_snapshot_id,
+            context_hash="4" * 64,
+            request_hash="5" * 64,
         )
         repository.finish_canary_attempt(
             project_id=project["project"],
@@ -143,7 +211,7 @@ def test_dify_runtime_requires_real_canary_and_preserves_project_and_lease_bound
                 "prompt_tokens": 10,
                 "completion_tokens": 20,
                 "total_steps": 3,
-                "elapsed_seconds": Decimal("0.5"),
+                "elapsed_seconds": 0.5,
                 "http_status": 200,
             },
         )
@@ -201,6 +269,7 @@ def test_dify_runtime_requires_real_canary_and_preserves_project_and_lease_bound
         business_attempt = repository.begin_business_attempt(
             claim.lease,
             release=active,
+            published_snapshot_id=published_snapshot_id,
             context_hash="8" * 64,
             request_hash="9" * 64,
         )
@@ -226,6 +295,14 @@ def test_dify_runtime_requires_real_canary_and_preserves_project_and_lease_bound
                     "retryable": False,
                 },
             )
+        business_output = {
+            "questions": [{"text": "What should I compare?"}],
+            # Provider JSON commonly contains floating-point scores. The application
+            # and PostgreSQL finish RPC must hash every valid JSON number identically.
+            "score": 1e-6,
+            "estimated_reach": 1e20,
+        }
+        business_response_hash = canonical_json_hash(business_output)
         repository.finish_business_attempt(
             claim.lease,
             attempt_id=business_attempt,
@@ -234,14 +311,28 @@ def test_dify_runtime_requires_real_canary_and_preserves_project_and_lease_bound
                 "dify_task_id": "business-task",
                 "dify_run_id": f"business-run-{suffix}",
                 "reported_workflow_id": "integration-workflow",
-                "output_hash": "a" * 64,
+                "output_hash": business_response_hash,
+                "output": business_output,
+                "response_hash": business_response_hash,
+                "configured_model": "deepseek-chat",
+                "provider_reported_model": "deepseek-v4-flash",
                 "prompt_tokens": 11,
                 "completion_tokens": 22,
                 "total_steps": 3,
-                "elapsed_seconds": Decimal("0.6"),
+                "elapsed_seconds": 0.6,
                 "http_status": 200,
             },
         )
+        recovered = repository.load_successful_business_result(
+            claim.lease,
+            release=active,
+            context_hash="8" * 64,
+            request_hash="9" * 64,
+        )
+        assert recovered is not None
+        assert recovered.output == business_output
+        assert recovered.response_hash == business_response_hash
+        assert recovered.provider_reported_model == "deepseek-v4-flash"
         with pytest.raises(WorkflowConfigurationError, match="already finalized"):
             repository.finish_business_attempt(
                 claim.lease,
@@ -264,6 +355,107 @@ def test_dify_runtime_requires_real_canary_and_preserves_project_and_lease_bound
                     (release_id,),
                 )
             admin.rollback()
+
+        replacement_id = catalog.register_release(
+            project_id=project["project"],
+            purpose="knowledge.question_generation",
+            prompt_program_id=prompt["program"],
+            prompt_release_id=prompt["release"],
+            dify_app_id="integration-app",
+            dify_workflow_id="integration-workflow",
+            dsl_hash="1" * 64,
+            registered_workflow_hash="c" * 64,
+            registered_snapshot_hash="d" * 64,
+            configured_model="deepseek-chat",
+            model_provider="langgenius/deepseek/deepseek",
+            api_secret_handle=SecretVersionHandle(
+                reference_id=secret,
+                project_id=project["project"],
+                purpose="workflow_runtime.dify",
+                version=1,
+            ),
+            created_by=project["owner"],
+        )
+        assert replacement_id != release_id
+        replacement = repository.get_release(
+            project_id=project["project"], release_id=replacement_id
+        )
+        assert replacement.version == 2
+        assert replacement.release_hash != release.release_hash
+        replacement_snapshot = PublishedWorkflowSnapshot(
+            purpose=replacement.purpose,
+            app_id=replacement.dify_app_id,
+            workflow_id=replacement.dify_workflow_id,
+            workflow_hash="c" * 64,
+            snapshot_hash="d" * 64,
+            prompt_nodes=(
+                {
+                    "node_id": "llm-2",
+                    "model_provider": replacement.model_provider,
+                    "model_name": replacement.configured_model,
+                    "messages": [],
+                },
+            ),
+            input_variables=({"name": "geo_context_json"},),
+            graph_nodes=({"node_id": "llm-2", "type": "llm", "title": "Prompt"},),
+            published_at=observed_at + timedelta(seconds=1),
+            observed_at=observed_at + timedelta(seconds=1),
+        )
+        with pytest.raises(
+            WorkflowConfigurationError,
+            match="differs from its registered GEO Release",
+        ):
+            catalog.record_published_snapshot(
+                project_id=project["project"],
+                release_id=release_id,
+                snapshot=replacement_snapshot,
+            )
+        replacement_snapshot_id = repository.record_published_snapshot(
+            release=replacement,
+            snapshot=replacement_snapshot,
+        )
+        replacement_canary = repository.begin_canary_attempt(
+            release=replacement,
+            published_snapshot_id=replacement_snapshot_id,
+            context_hash="a" * 64,
+            request_hash="b" * 64,
+        )
+        repository.finish_canary_attempt(
+            project_id=project["project"],
+            attempt_id=replacement_canary,
+            values={
+                "status": "succeeded",
+                "dify_task_id": "replacement-task",
+                "dify_run_id": f"replacement-run-{suffix}",
+                "reported_workflow_id": "integration-workflow",
+                "output_hash": "c" * 64,
+                "prompt_tokens": 10,
+                "completion_tokens": 20,
+                "total_steps": 3,
+                "elapsed_seconds": 0.5,
+                "http_status": 200,
+            },
+        )
+        catalog.activate_release(
+            project_id=project["project"],
+            release_id=replacement_id,
+            activated_by=project["owner"],
+            reason="same Dify Workflow ID with a newly enrolled published graph",
+        )
+        assert repository.resolve_active(
+            project_id=project["project"], purpose="knowledge.question_generation"
+        ).id == replacement_id
+        with psycopg.connect(ADMIN_URL) as admin:
+            identities = admin.execute(
+                """SELECT release_id, workflow_hash, snapshot_hash
+                   FROM dify_workflow_release_snapshot_pins
+                   WHERE project_id = %s AND release_id IN (%s, %s)""",
+                (project["project"], release_id, replacement_id),
+            ).fetchall()
+        assert set(identities) == {
+            (release_id, "a" * 64, "b" * 64),
+            (replacement_id, "c" * 64, "d" * 64),
+        }
     finally:
         with psycopg.connect(ADMIN_URL) as admin:
             cleanup_projects(

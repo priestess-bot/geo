@@ -37,6 +37,7 @@ from geo_core.model_gateway.runtime_execution import (
 from geo_core.prompts.program import CompiledProgramPrompt
 from geo_core.prompts.test_execution_contracts import (
     PROMPT_TEST_JOB_KIND,
+    PROMPT_TEST_MAXIMUM_PAID_CALLS,
     PromptTestCaseModelResult,
     PromptTestExecutionError,
     PromptTestRunTask,
@@ -48,7 +49,6 @@ from geo_core.prompts.test_runtime_selector import (
 )
 
 
-PROMPT_TEST_MAXIMUM_PAID_CALLS = 5
 PROMPT_TEST_MAXIMUM_CONCURRENT_CALLS = 1
 
 
@@ -61,7 +61,7 @@ class PromptTestModelRuntime(Protocol):
 
 
 class ModelGatewayPromptTestCaseExecutor:
-    """Execute or recover a test case under one five-call audited Job budget."""
+    """Execute or recover a test case under the suite's audited retry budget."""
 
     def __init__(
         self,

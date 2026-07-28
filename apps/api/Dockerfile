@@ -20,8 +20,9 @@ COPY infra/db/alembic ./infra/db/alembic
 COPY scripts/provision_dev_database.py scripts/provision_initial_owner.py \
      scripts/bootstrap_workflow_c_artifact_keyring.py \
      scripts/bootstrap_deepseek_prompt_runtime.py \
-     scripts/bootstrap_prompt_workspace_flows.py \
-     scripts/manage_dify_workflows.py \
+      scripts/bootstrap_prompt_workspace_flows.py \
+      scripts/run_synthetic_review_canary.py \
+      scripts/manage_dify_workflows.py \
      scripts/render_dify_workflow_dsls.py \
      scripts/staging_alert_smtp_sink.py scripts/staging_alert_webhook_sink.py ./scripts/
 

@@ -11,7 +11,7 @@ import pytest
 from scripts.alembic_sql_ledger import build_ledger
 from scripts.backup_envelope import BackupSecurityError
 from scripts.verify_minio_backup import MinioBackupError, verify_minio_tar
-from scripts.write_backup_restore_receipt import write_receipt
+from scripts.write_backup_restore_receipt import validate_restore_receipt, write_receipt
 
 
 OBJECTS = {
@@ -41,6 +41,27 @@ MIGRATION_LEDGER = build_ledger(
     ROOT / "infra" / "db" / "alembic" / "sql",
     head_revision="0028_secret_store",
 )
+DATABASE_LEDGER_ROWS = [
+    {
+        "downgrade_sha256": entry["downgrade_sha256"],
+        "revision": entry["revision"],
+        "upgrade_sha256": entry["upgrade_sha256"],
+    }
+    for entry in MIGRATION_LEDGER["entries"]
+]
+DRIFTED_DATABASE_LEDGER_ROWS = json.loads(json.dumps(DATABASE_LEDGER_ROWS))
+DRIFTED_DATABASE_LEDGER_ROWS[0]["upgrade_sha256"] = "e" * 64
+
+
+def _database_ledger(rows: list[dict[str, str]]) -> dict[str, object]:
+    payload = {"entries": rows, "head_revision": "0028_secret_store"}
+    return {
+        **payload,
+        "ledger_sha256": hashlib.sha256(
+            json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("ascii")
+        ).hexdigest(),
+        "schema_version": "geo-database-alembic-checksum-ledger-v1",
+    }
 PROVIDER_SOURCE = {
     "active_dek_count": 1,
     "master_key_version_count": 1,
@@ -239,6 +260,9 @@ def test_restore_receipt_requires_real_secret_probe_and_matching_source_counts(
                 },
                 "postgres": {
                     "alembic_sql_checksum_ledger": MIGRATION_LEDGER,
+                    "database_checksum_ledger": _database_ledger(
+                        DRIFTED_DATABASE_LEDGER_ROWS
+                    ),
                     "critical_relation_counts": {
                         "evidence_items": 7,
                         "monitoring_reports": 5,
@@ -285,6 +309,7 @@ def test_restore_receipt_requires_real_secret_probe_and_matching_source_counts(
         restored_table_count=44,
         restored_migration_revision="0028_secret_store",
         restored_alembic_sql_checksum_ledger=MIGRATION_LEDGER,
+        restored_database_checksum_ledger_rows=DRIFTED_DATABASE_LEDGER_ROWS,
         restored_critical_relation_counts={
             "evidence_items": 7,
             "monitoring_reports": 5,
@@ -320,6 +345,20 @@ def test_restore_receipt_requires_real_secret_probe_and_matching_source_counts(
     assert receipt["postgres"]["source_critical_relation_hashes"] == RELATION_HASHES
     assert receipt["postgres"]["restored_critical_relation_hashes"] == RELATION_HASHES
     assert receipt["postgres"]["critical_relation_hashes_verified"] is True
+    assert receipt["postgres"]["database_checksum_ledger"] == {
+        "entry_count": len(DRIFTED_DATABASE_LEDGER_ROWS),
+        "ledger_sha256": hashlib.sha256(
+            json.dumps(
+                {
+                    "entries": DRIFTED_DATABASE_LEDGER_ROWS,
+                    "head_revision": "0028_secret_store",
+                },
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("ascii")
+        ).hexdigest(),
+        "verified_against_manifest": True,
+    }
     assert receipt["postgres"]["non_b_business_consistency"] == {
         "exact_match_verified": True,
         "invariant_check_count": 0,
@@ -333,6 +372,41 @@ def test_restore_receipt_requires_real_secret_probe_and_matching_source_counts(
         "schema_version": "geo-non-b-business-consistency-v1",
     }
     assert output.stat().st_mode & 0o777 == 0o600
+    validated = validate_restore_receipt(
+        output,
+        expected_backup_id="backup-1",
+        expected_manifest_sha256=hashlib.sha256(manifest.read_bytes()).hexdigest(),
+        expected_migration_revision="0028_secret_store",
+        expected_ledger_sha256=MIGRATION_LEDGER["ledger_sha256"],
+        expected_database_ledger_sha256=receipt["postgres"][
+            "database_checksum_ledger"
+        ]["ledger_sha256"],
+        expected_project_count=3,
+    )
+    assert validated == receipt
+
+    mismatched_database_ledger = json.loads(json.dumps(DRIFTED_DATABASE_LEDGER_ROWS))
+    mismatched_database_ledger[0]["upgrade_sha256"] = "f" * 64
+    with pytest.raises(BackupSecurityError):
+        write_receipt(
+            verified_manifest=manifest,
+            application_key_probe=probe,
+            acl_rls_canary=acl_rls,
+            minio_verification=minio,
+            output=output.with_name("database-ledger-mismatch.json"),
+            restored_project_count=3,
+            restored_table_count=44,
+            restored_migration_revision="0028_secret_store",
+            restored_alembic_sql_checksum_ledger=MIGRATION_LEDGER,
+            restored_database_checksum_ledger_rows=mismatched_database_ledger,
+            restored_critical_relation_counts={
+                "evidence_items": 7,
+                "monitoring_reports": 5,
+                "project_memberships": 4,
+            },
+            restored_critical_relation_hashes=RELATION_HASHES,
+            restored_non_b_business_consistency=_business_consistency(),
+        )
 
     _write_json(
         probe,
@@ -349,6 +423,7 @@ def test_restore_receipt_requires_real_secret_probe_and_matching_source_counts(
             restored_table_count=44,
             restored_migration_revision="0028_secret_store",
             restored_alembic_sql_checksum_ledger=MIGRATION_LEDGER,
+            restored_database_checksum_ledger_rows=DRIFTED_DATABASE_LEDGER_ROWS,
             restored_critical_relation_counts={
                 "evidence_items": 7,
                 "monitoring_reports": 5,
@@ -380,6 +455,7 @@ def test_restore_receipt_requires_real_secret_probe_and_matching_source_counts(
             restored_table_count=44,
             restored_migration_revision="0028_secret_store",
             restored_alembic_sql_checksum_ledger=MIGRATION_LEDGER,
+            restored_database_checksum_ledger_rows=DRIFTED_DATABASE_LEDGER_ROWS,
             restored_critical_relation_counts={
                 "evidence_items": 7,
                 "monitoring_reports": 5,
@@ -404,6 +480,7 @@ def test_restore_receipt_requires_real_secret_probe_and_matching_source_counts(
             restored_table_count=44,
             restored_migration_revision="0028_secret_store",
             restored_alembic_sql_checksum_ledger=MIGRATION_LEDGER,
+            restored_database_checksum_ledger_rows=DRIFTED_DATABASE_LEDGER_ROWS,
             restored_critical_relation_counts={
                 "evidence_items": 7,
                 "monitoring_reports": 5,
@@ -488,6 +565,7 @@ def test_restore_receipt_records_zero_representative_secrets_without_false_pass(
         restored_table_count=40,
         restored_migration_revision="0028_secret_store",
         restored_alembic_sql_checksum_ledger=MIGRATION_LEDGER,
+        restored_database_checksum_ledger_rows=DATABASE_LEDGER_ROWS,
         restored_critical_relation_counts={
             "evidence_items": 0,
             "monitoring_reports": 0,
@@ -578,6 +656,7 @@ def test_restore_receipt_accepts_empty_recommendation_and_workflow_c_domains(
         restored_table_count=44,
         restored_migration_revision="0028_secret_store",
         restored_alembic_sql_checksum_ledger=MIGRATION_LEDGER,
+        restored_database_checksum_ledger_rows=DATABASE_LEDGER_ROWS,
         restored_critical_relation_counts={
             "evidence_items": 7,
             "monitoring_reports": 5,

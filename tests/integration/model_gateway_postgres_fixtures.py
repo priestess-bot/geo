@@ -250,6 +250,10 @@ def register_openai_runtime(
     ids: dict[str, UUID],
     provider_secret_handle: SecretVersionHandle,
     approved_at: datetime,
+    allowed_purposes: tuple[str, ...] = ("model_gateway.integration",),
+    allowed_search_modes: tuple[str | None, ...] = (None, "web"),
+    required_purpose: str = "model_gateway.integration",
+    search_mode: str | None = "web",
 ) -> RegisteredRuntimeFixture:
     adapter_id = "openai-integration-adapter-v1"
     model_id = "openai-integration-model-v1"
@@ -302,8 +306,8 @@ def register_openai_runtime(
                         "minio://integration-evidence/model-gateway/openai-capabilities-v1.json"
                     ),
                     "capability_evidence_sha256": "b" * 64,
-                    "allowed_purposes": ["model_gateway.integration"],
-                    "allowed_search_modes": ["web"],
+                    "allowed_purposes": list(allowed_purposes),
+                    "allowed_search_modes": list(allowed_search_modes),
                     "secret_reference_id": str(provider_secret_handle.reference_id),
                     "microsoft": None,
                 }
@@ -339,8 +343,8 @@ def register_openai_runtime(
     selection = catalog.resolve_approved_runtime(
         project_id=ids["project"],
         runtime_selection_id=option.option_id,
-        required_purpose="model_gateway.integration",
-        search_mode="web",
+        required_purpose=required_purpose,
+        search_mode=search_mode,
     )
     model = manifest.model_releases[0]
     return RegisteredRuntimeFixture(

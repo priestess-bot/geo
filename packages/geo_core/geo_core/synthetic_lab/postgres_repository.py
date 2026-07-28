@@ -284,6 +284,11 @@ class PostgresSyntheticJobRepository:
         durable_kind = DOMAIN_TO_DURABLE_KIND.get(domain_kind)
         if durable_kind is None:
             raise SyntheticLabPersistenceError("unsupported Synthetic Lab Job kind")
+        if durable_kind == "style.profile.build":
+            self._connection.execute(
+                "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+                (f"dify-binding:{job.project_id}:synthetic_lab.style_profile",),
+            )
         durable = job.durable
         self._connection.execute(
             """INSERT INTO durable_jobs(

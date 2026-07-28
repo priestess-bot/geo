@@ -361,7 +361,7 @@ function isDifyWorkflowRuntimeCard(value: unknown): value is DifyWorkflowRuntime
     && nullableStrings.every((item) => item === null || typeof item === "string")
     && [value.published_prompt_nodes, value.published_input_variables, value.published_graph_nodes]
       .every(Array.isArray)
-    && ["not_observed", "cached", "current", "unreachable"].includes(
+    && ["not_observed", "cached", "current", "drifted", "unreachable"].includes(
       String(value.sync_status)
     )
     && [value.release_version, value.binding_version].every(

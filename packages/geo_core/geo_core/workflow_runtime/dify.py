@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import json
-import re
-from typing import Callable, Mapping, Protocol
-from urllib.parse import urlsplit
+from dataclasses import replace
+from typing import Callable, Mapping
 from uuid import UUID
 
 import httpx
@@ -13,7 +12,7 @@ import httpx
 from geo_core.jobs.postgres import WorkerLease
 from geo_core.model_gateway.contracts import StructuredOutputValidationError
 from geo_core.model_gateway.schema_validation import validate_structured_output
-from geo_core.secrets import SecretStoreError, SecretValue, SecretVersionHandle
+from geo_core.secrets import SecretStoreError, SecretValue
 
 from .contracts import (
     WorkflowExecutionRequest,
@@ -24,59 +23,25 @@ from .contracts import (
 )
 from .errors import (
     RetryableWorkflowExecutionError,
+    UnknownWorkflowOutcomeError,
     WorkflowAuthenticationError,
     WorkflowConfigurationError,
     WorkflowContractError,
     WorkflowExecutionError,
 )
-from .published import DifyPublishedWorkflowReader, PublishedWorkflowSnapshot
+from .published import (
+    DifyPublishedWorkflowReader,
+    PublishedWorkflowSnapshot,
+    PublishedWorkflowSnapshotPin,
+)
 from .dify_response import parse_result, response_lineage
-
-
-class CredentialResolver(Protocol):
-    def resolve(self, handle: SecretVersionHandle) -> SecretValue: ...
-
-
-class WorkflowRuntimeRepository(Protocol):
-    def resolve_active(
-        self, *, project_id: UUID, purpose: str
-    ) -> WorkflowRuntimeRelease | None: ...
-
-    def get_release(self, *, project_id: UUID, release_id: UUID) -> WorkflowRuntimeRelease: ...
-
-    def begin_business_attempt(
-        self,
-        lease: WorkerLease,
-        *,
-        release: WorkflowRuntimeRelease,
-        published_snapshot_id: UUID | None = None,
-        context_hash: str,
-        request_hash: str,
-    ) -> UUID: ...
-    def finish_business_attempt(
-        self, lease: WorkerLease, *, attempt_id: UUID, values: Mapping[str, object]
-    ) -> None: ...
-    def begin_canary_attempt(
-        self,
-        *,
-        release: WorkflowRuntimeRelease,
-        published_snapshot_id: UUID | None = None,
-        context_hash: str,
-        request_hash: str,
-    ) -> UUID: ...
-    def finish_canary_attempt(
-        self,
-        *,
-        project_id: UUID,
-        attempt_id: UUID,
-        values: Mapping[str, object],
-    ) -> None: ...
-    def record_published_snapshot(
-        self,
-        *,
-        release: WorkflowRuntimeRelease,
-        snapshot: PublishedWorkflowSnapshot,
-    ) -> UUID: ...
+from .dify_ports import CredentialResolver, WorkflowRuntimeRepository
+from .dify_transport import (
+    classified_error,
+    http_error,
+    safe_error_detail,
+    validated_base_url,
+)
 
 
 class DifyWorkflowExecutor:
@@ -102,14 +67,18 @@ class DifyWorkflowExecutor:
     ) -> None:
         self._repository = repository
         self._credentials = credential_resolver
-        self._base_url = _base_url(base_url)
+        self._base_url = validated_base_url(base_url)
         self._timeout = timeout_seconds
         self._client = client
         self._published_reader = published_reader
         self._require_active = require_active
 
     def execute_optional(
-        self, lease: WorkerLease, request: WorkflowExecutionRequest
+        self,
+        lease: WorkerLease,
+        request: WorkflowExecutionRequest,
+        *,
+        validate_output: Callable[[Mapping[str, object]], None] | None = None,
     ) -> WorkflowExecutionResult | None:
         if lease.project_id != request.project_id:
             raise WorkflowContractError("workflow request crossed its Job project boundary")
@@ -123,7 +92,43 @@ class DifyWorkflowExecutor:
                     code="dify_workflow_not_configured",
                 )
             return None
-        return self._execute(release=release, request=request, lease=lease)
+        return self._execute(
+            release=release,
+            request=request,
+            lease=lease,
+            validate_output=validate_output,
+        )
+
+    def execute_frozen(
+        self,
+        lease: WorkerLease,
+        request: WorkflowExecutionRequest,
+        *,
+        release_id: UUID,
+        release_hash: str,
+        validate_output: Callable[[Mapping[str, object]], None] | None = None,
+    ) -> WorkflowExecutionResult:
+        if lease.project_id != request.project_id:
+            raise WorkflowContractError("frozen workflow request crossed its Job project boundary")
+        release = self._repository.get_release(
+            project_id=request.project_id,
+            release_id=release_id,
+        )
+        if (
+            release.release_hash != release_hash
+            or release.project_id != request.project_id
+            or release.purpose != request.purpose
+        ):
+            raise WorkflowConfigurationError(
+                "frozen Dify Workflow Release lineage changed",
+                code="dify_frozen_release_mismatch",
+            )
+        return self._execute(
+            release=release,
+            request=request,
+            lease=lease,
+            validate_output=validate_output,
+        )
 
     def execute_canary(
         self,
@@ -154,15 +159,13 @@ class DifyWorkflowExecutor:
         validate_output: Callable[[Mapping[str, object]], None] | None = None,
     ) -> WorkflowExecutionResult:
         self._validate_release_request(release, request)
-        snapshot = self._read_published_snapshot(release)
-        published_snapshot_id = (
-            self._repository.record_published_snapshot(release=release, snapshot=snapshot)
-            if snapshot is not None
-            else None
-        )
-        expected_workflow_id = (
-            snapshot.workflow_id if snapshot is not None else release.dify_workflow_id
-        )
+        pin = self._repository.load_published_snapshot_pin(release=release)
+        if pin is None and lease is not None:
+            raise WorkflowConfigurationError(
+                "Dify Workflow Release has no successful canary snapshot pin; run the "
+                "canary before business execution",
+                code="dify_release_snapshot_not_pinned",
+            )
         context_json = json.dumps(
             canonical_json_value(request.context),
             ensure_ascii=False,
@@ -181,34 +184,6 @@ class DifyWorkflowExecutor:
             ),
             "geo_purpose": request.purpose,
         }
-        if snapshot is None:
-            program_user_prompt = release.prompt_user_template.replace(
-                "{{request_json}}", context_json
-            )
-            if re.search(r"{{\s*[a-zA-Z0-9_.-]+\s*}}", program_user_prompt):
-                raise WorkflowConfigurationError(
-                    "frozen Dify Prompt contains an unsupported unresolved slot",
-                    code="dify_prompt_slot_unresolved",
-                )
-            inputs.update(
-                {
-                    "geo_prompt_system": "\n\n".join(
-                        filter(
-                            None,
-                            map(
-                                str.strip,
-                                (release.prompt_system_template, request.system_prompt),
-                            ),
-                        )
-                    ),
-                    "geo_prompt_user": "\n\n".join(
-                        filter(
-                            None,
-                            map(str.strip, (program_user_prompt, request.user_prompt)),
-                        )
-                    ),
-                }
-            )
         payload = {
             "inputs": inputs,
             "response_mode": "blocking",
@@ -216,16 +191,72 @@ class DifyWorkflowExecutor:
                 f"geo-job:{lease.job_id}" if lease is not None else f"geo-canary:{release.id}"
             ),
         }
+        snapshot: PublishedWorkflowSnapshot | None = None
+        published_snapshot_id: UUID | None = None
+        if pin is None:
+            snapshot = self._read_published_snapshot(release)
+            self._validate_published_snapshot(release, snapshot)
+            published_snapshot_id = self._repository.record_published_snapshot(
+                release=release, snapshot=snapshot
+            )
+            expected_workflow_id = snapshot.workflow_id
+            expected_snapshot_hash = snapshot.snapshot_hash
+        else:
+            expected_workflow_id = pin.workflow_id
+            expected_snapshot_hash = pin.snapshot_hash
         request_hash = canonical_json_hash(
             {
                 "runtime_release_hash": release.release_hash,
                 "workflow_id": expected_workflow_id,
-                "published_snapshot_hash": (
-                    snapshot.snapshot_hash if snapshot is not None else None
-                ),
+                "published_snapshot_hash": expected_snapshot_hash,
                 "payload": payload,
             }
         )
+        if lease is not None:
+            assert pin is not None
+            replay = self._repository.load_successful_business_result(
+                lease,
+                release=release,
+                context_hash=request.context_hash,
+                request_hash=request_hash,
+            )
+            if replay is not None:
+                if (
+                    replay.published_snapshot_id != pin.published_snapshot_id
+                    or replay.published_snapshot_hash != pin.snapshot_hash
+                ):
+                    self._assert_legacy_migration_replay(
+                        release=release,
+                        replay=replay,
+                        pin=pin,
+                        payload=payload,
+                    )
+                if validate_output is not None:
+                    validate_output(replay.output)
+                return replay
+            unresolved_attempt_id = self._repository.find_unresolved_business_attempt(
+                lease,
+                release=release,
+                context_hash=request.context_hash,
+                request_hash=request_hash,
+            )
+            if unresolved_attempt_id is not None:
+                raise UnknownWorkflowOutcomeError(
+                    "A prior Dify attempt for this exact GEO Job and request is still "
+                    "unresolved. The old Job must never submit this workflow again. Inspect "
+                    f"Dify history, reconcile GEO attempt {unresolved_attempt_id}, then submit "
+                    "a new parent Job with a new replay identity if the operator authorizes it.",
+                    code="dify_unknown_outcome",
+                )
+        if snapshot is None:
+            snapshot = self._read_published_snapshot(release)
+            self._validate_published_snapshot(release, snapshot)
+            published_snapshot_id = self._repository.record_published_snapshot(
+                release=release, snapshot=snapshot
+            )
+            assert pin is not None
+            self._assert_snapshot_pin(release, snapshot, pin)
+        assert published_snapshot_id is not None
         attempt_id = (
             self._repository.begin_business_attempt(
                 lease,
@@ -248,16 +279,30 @@ class DifyWorkflowExecutor:
             "dify_run_id": None,
             "reported_workflow_id": None,
         }
+        reported_workflow_id: str | None = None
         status_code: int | None = None
         try:
             token = self._resolve_token(release)
             body, status_code = self._post(release, payload, token)
             lineage = response_lineage(body)
-            result = parse_result(
+            parsed_result = parse_result(
                 body,
                 release=release,
                 expected_workflow_id=expected_workflow_id,
                 attempt_id=attempt_id,
+            )
+            reported_workflow_id = lineage["reported_workflow_id"]
+            if reported_workflow_id is None:  # Kept inside attempt failure recording.
+                raise WorkflowConfigurationError(
+                    "Dify succeeded without reporting the exact published workflow identity",
+                    code="dify_workflow_identity_missing",
+                )
+            result = replace(
+                parsed_result,
+                published_snapshot_id=published_snapshot_id,
+                published_snapshot_hash=snapshot.snapshot_hash,
+                published_workflow_id=reported_workflow_id,
+                request_hash=request_hash,
             )
             if (
                 request.output_schema.get("x-geo-runtime-contract")
@@ -273,7 +318,7 @@ class DifyWorkflowExecutor:
             if validate_output is not None:
                 validate_output(result.output)
         except Exception as raw_error:
-            error = _classified_error(raw_error)
+            error = classified_error(raw_error)
             values: Mapping[str, object] = {
                 "status": "failed",
                 "dify_task_id": (
@@ -282,9 +327,7 @@ class DifyWorkflowExecutor:
                 "dify_run_id": (
                     result.dify_run_id if result is not None else lineage["dify_run_id"]
                 ),
-                "reported_workflow_id": (
-                    expected_workflow_id if result is not None else lineage["reported_workflow_id"]
-                ),
+                "reported_workflow_id": lineage["reported_workflow_id"],
                 "http_status": status_code or getattr(error, "http_status", None),
                 "error_classification": error.classification,
                 "error_code": error.code,
@@ -293,7 +336,7 @@ class DifyWorkflowExecutor:
             }
             self._finish(lease, release.project_id, attempt_id, values)
             raise error from raw_error if error is not raw_error else None
-        assert result is not None and status_code is not None
+        assert result is not None and status_code is not None and reported_workflow_id is not None
         self._finish(
             lease,
             release.project_id,
@@ -302,26 +345,126 @@ class DifyWorkflowExecutor:
                 "status": "succeeded",
                 "dify_task_id": result.dify_task_id,
                 "dify_run_id": result.dify_run_id,
-                "reported_workflow_id": expected_workflow_id,
+                "reported_workflow_id": reported_workflow_id,
                 "output_hash": result.response_hash,
                 "prompt_tokens": result.prompt_tokens,
                 "completion_tokens": result.completion_tokens,
                 "total_steps": result.total_steps,
-                "elapsed_seconds": result.elapsed_seconds,
+                "elapsed_seconds": (
+                    str(result.elapsed_seconds) if result.elapsed_seconds is not None else None
+                ),
                 "http_status": status_code,
+                "output": result.output,
+                "response_hash": result.response_hash,
+                "configured_model": result.configured_model,
+                "provider_reported_model": result.provider_reported_model,
             },
         )
         return result
 
     def _read_published_snapshot(
         self, release: WorkflowRuntimeRelease
-    ) -> PublishedWorkflowSnapshot | None:
+    ) -> PublishedWorkflowSnapshot:
         if self._published_reader is None:
-            return None
+            raise WorkflowConfigurationError(
+                "Dify published workflow verification is required for execution",
+                code="dify_published_reader_required",
+            )
         return self._published_reader.read(
             purpose=release.purpose,
             app_id=release.dify_app_id,
         )
+
+    @staticmethod
+    def _validate_published_snapshot(
+        release: WorkflowRuntimeRelease,
+        snapshot: PublishedWorkflowSnapshot,
+    ) -> None:
+        if snapshot.purpose != release.purpose or snapshot.app_id != release.dify_app_id:
+            raise WorkflowConfigurationError(
+                "published Dify graph does not match its Workflow Release",
+                code="dify_snapshot_release_mismatch",
+            )
+        if (
+            snapshot.workflow_hash != release.registered_workflow_hash
+            or snapshot.snapshot_hash != release.registered_snapshot_hash
+        ):
+            raise WorkflowConfigurationError(
+                "published Dify graph differs from this registered GEO Workflow Release; "
+                "verify the console state and enroll a new release before canary",
+                code="dify_registered_published_identity_changed",
+            )
+        if not snapshot.prompt_nodes:
+            raise WorkflowConfigurationError(
+                "published Dify graph has no LLM node to verify",
+                code="dify_published_model_missing",
+            )
+        for node in snapshot.prompt_nodes:
+            if (
+                str(node.get("model_provider") or "").strip() != release.model_provider
+                or str(node.get("model_name") or "").strip() != release.configured_model
+            ):
+                raise WorkflowConfigurationError(
+                    "published Dify graph changed its frozen model provider or model name; "
+                    "register and canary a new GEO Workflow Release",
+                    code="dify_published_model_mismatch",
+                )
+
+    @staticmethod
+    def _assert_snapshot_pin(
+        release: WorkflowRuntimeRelease,
+        snapshot: PublishedWorkflowSnapshot,
+        pin: PublishedWorkflowSnapshotPin,
+    ) -> None:
+        if pin.project_id != release.project_id or pin.release_id != release.id:
+            raise WorkflowConfigurationError(
+                "Dify snapshot pin crossed its Workflow Release boundary",
+                code="dify_snapshot_pin_scope_mismatch",
+            )
+        if (
+            snapshot.workflow_id != pin.workflow_id
+            or snapshot.workflow_hash != pin.workflow_hash
+            or snapshot.snapshot_hash != pin.snapshot_hash
+        ):
+            raise WorkflowConfigurationError(
+                "published Dify graph changed after this GEO Workflow Release was canaried; "
+                "register and canary a new release before executing it",
+                code="dify_published_graph_changed",
+            )
+
+    @staticmethod
+    def _assert_legacy_migration_replay(
+        *,
+        release: WorkflowRuntimeRelease,
+        replay: WorkflowExecutionResult,
+        pin: PublishedWorkflowSnapshotPin,
+        payload: Mapping[str, object],
+    ) -> None:
+        if (
+            pin.pin_source != "migration_backfill"
+            or replay.published_snapshot_id is None
+            or replay.published_snapshot_hash is None
+            or replay.published_workflow_id is None
+            or replay.request_hash is None
+            or replay.configured_model != release.configured_model
+        ):
+            raise WorkflowConfigurationError(
+                "stored Dify result does not match its Workflow Release snapshot pin",
+                code="dify_replay_snapshot_mismatch",
+            )
+        expected_request_hash = canonical_json_hash(
+            {
+                "runtime_release_hash": release.release_hash,
+                "workflow_id": replay.published_workflow_id,
+                "published_snapshot_hash": replay.published_snapshot_hash,
+                "payload": payload,
+            }
+        )
+        if replay.request_hash != expected_request_hash:
+            raise WorkflowConfigurationError(
+                "legacy Dify result request lineage does not match this frozen Job",
+                code="dify_legacy_replay_request_mismatch",
+            )
 
     def _finish(
         self,
@@ -369,16 +512,29 @@ class DifyWorkflowExecutor:
                 headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
                 json=payload,
             )
-        except (httpx.TimeoutException, httpx.NetworkError) as exc:
+        except (httpx.ConnectTimeout, httpx.ConnectError, httpx.PoolTimeout) as exc:
             raise RetryableWorkflowExecutionError(
-                "Dify is unreachable or timed out; retry the same GEO Job",
+                "Dify connection was not established; retry the same GEO Job",
                 code="dify_transport_unavailable",
+            ) from exc
+        except (
+            httpx.ReadTimeout,
+            httpx.ReadError,
+            httpx.WriteTimeout,
+            httpx.WriteError,
+            httpx.TransportError,
+        ) as exc:
+            raise UnknownWorkflowOutcomeError(
+                "Dify may have accepted this request, but GEO did not receive a definitive "
+                "response. Do not retry automatically; reconcile the Dify workflow run and "
+                "this GEO attempt before deciding whether to retry.",
+                code="dify_unknown_outcome",
             ) from exc
         finally:
             if close:
                 client.close()
         if response.status_code >= 400:
-            raise _http_error(response.status_code, _safe_error_detail(response))
+            raise http_error(response.status_code, safe_error_detail(response))
         try:
             body = response.json()
         except ValueError as exc:
@@ -416,63 +572,3 @@ class DifyWorkflowExecutor:
                 "business output contract differs from the active Dify release",
                 code="dify_business_schema_stale",
             )
-
-
-def _classified_error(error: Exception) -> WorkflowExecutionError:
-    if isinstance(error, WorkflowExecutionError):
-        return error
-    return WorkflowExecutionError(
-        "Dify execution failed unexpectedly; inspect the workflow attempt",
-        code=type(error).__name__,
-    )
-
-
-def _http_error(status: int, detail: str) -> WorkflowExecutionError:
-    error: WorkflowExecutionError
-    if status in {401, 403}:
-        error = WorkflowAuthenticationError(
-            "Dify rejected the configured API key", code="dify_auth_rejected"
-        )
-    elif status == 429 or status >= 500:
-        error = RetryableWorkflowExecutionError(
-            f"Dify returned HTTP {status}: {detail}", code="dify_http_retryable"
-        )
-    elif status == 404:
-        error = WorkflowConfigurationError(
-            "Dify workflow endpoint or app was not found", code="dify_workflow_not_found"
-        )
-    else:
-        error = WorkflowContractError(
-            f"Dify rejected the workflow input with HTTP {status}: {detail}",
-            code="dify_request_rejected",
-        )
-    error.http_status = status  # type: ignore[attr-defined]
-    return error
-
-
-def _safe_error_detail(response: httpx.Response) -> str:
-    try:
-        value = response.json()
-    except ValueError:
-        return response.text[:500]
-    if isinstance(value, Mapping):
-        return str(value.get("message") or value.get("code") or "request failed")[:500]
-    return "request failed"
-
-
-def _base_url(value: str) -> str:
-    normalized = value.strip().rstrip("/")
-    parsed = urlsplit(normalized)
-    if (
-        parsed.scheme not in {"http", "https"}
-        or not parsed.hostname
-        or parsed.username
-        or parsed.password
-        or parsed.query
-        or parsed.fragment
-        or parsed.path not in {"", "/"}
-    ):
-        raise WorkflowConfigurationError(
-            "GEO_DIFY_API_URL must be one HTTP(S) origin without credentials or a path"
-        )
-    return normalized

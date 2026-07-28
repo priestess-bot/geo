@@ -67,6 +67,28 @@ services:
       timeout: 5s
       retries: 20
 
+  # Readiness probes are deliberately side-effect free. Initialise every
+  # governed artifact bucket before APIs and Workers start so a fresh volume
+  # is ready without requiring an operator to create buckets manually.
+  minio-init:
+    image: minio/minio:RELEASE.2025-01-20T14-49-07Z
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        mc alias set geo http://minio:9000 geo_dev geo_dev_secret >/dev/null
+        for bucket in \
+          geo-artifacts \
+          geo-restricted-recommendation-artifacts \
+          geo-restricted-workflow-c-artifacts \
+          geo-synthetic-style-raw \
+          geo-synthetic-style-derived
+        do
+          mc mb --ignore-existing "geo/$${bucket}" >/dev/null
+        done
+    depends_on:
+      minio:
+        condition: service_healthy
+
   valkey:
     image: valkey/valkey:8.0.2-alpine
     command: ["valkey-server", "--appendonly", "yes"]
@@ -104,8 +126,8 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
-      minio:
-        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
       valkey:
         condition: service_healthy
 
@@ -126,8 +148,8 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
-      minio:
-        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
       valkey:
         condition: service_healthy
 
@@ -150,6 +172,8 @@ services:
       - ${GEO_DEEPSEEK_API_KEY_FILE:-../deepseek_api_key.txt}:/run/secrets/deepseek_api_key:ro
     depends_on:
       migrate:
+        condition: service_completed_successfully
+      minio-init:
         condition: service_completed_successfully
       valkey:
         condition: service_healthy

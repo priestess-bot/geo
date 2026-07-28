@@ -300,12 +300,14 @@ def _ensure_workflow(
         "purpose": purpose,
         "app_id": app_id,
         "workflow_id": workflow_id,
-        "workflow_hash": str(published.get("hash") or "").strip(),
+        "workflow_hash": _required_sha(
+            published.get("hash"), f"published {purpose} Workflow hash"
+        ),
         "dsl_hash": dsl_hash,
         "api_token": api_token,
         "prompt_source": "dify",
     }
-    for key in ("geo_secret", "geo_release_id"):
+    for key in ("geo_secret", "geo_release_id", "published_snapshot_hash"):
         if previous and key in previous:
             record[key] = previous[key]
     return record
@@ -341,9 +343,11 @@ def _verify_existing_workflow(
         "dsl_hash": str(previous["dsl_hash"]),
         "api_token": token,
     }
-    verified["workflow_hash"] = str(published.get("hash") or "").strip()
+    verified["workflow_hash"] = _required_sha(
+        published.get("hash"), f"published {previous.get('purpose')} Workflow hash"
+    )
     verified["prompt_source"] = str(previous.get("prompt_source") or "dify")
-    for key in ("geo_secret", "geo_release_id"):
+    for key in ("geo_secret", "geo_release_id", "published_snapshot_hash"):
         if key in previous:
             verified[key] = previous[key]
     return verified
@@ -410,8 +414,15 @@ def _load_manifest(path: Path) -> Mapping[str, Any]:
 
 def _manifest_workflows(manifest: Mapping[str, Any]) -> tuple[Mapping[str, str], ...]:
     rows = manifest.get("workflows")
-    if not isinstance(rows, list) or len(rows) != 4:
-        raise DifyConfigurationError("Dify Workflow manifest must contain exactly four flows")
+    from geo_core.workflow_runtime import DIFY_WORKFLOW_PURPOSES
+
+    if not isinstance(rows, list):
+        raise DifyConfigurationError("Dify Workflow manifest workflows must be an array")
+    purposes = [str(item.get("purpose")) for item in rows if isinstance(item, Mapping)]
+    if len(purposes) != len(rows) or set(purposes) != set(DIFY_WORKFLOW_PURPOSES):
+        raise DifyConfigurationError(
+            "Dify Workflow manifest must contain every supported purpose exactly once"
+        )
     result: list[Mapping[str, str]] = []
     for row in rows:
         if not isinstance(row, Mapping):
@@ -430,6 +441,13 @@ def _read_secret(path: Path, label: str) -> str:
     if not value:
         raise DifyConfigurationError(f"{label} file is empty: {path}")
     return value
+
+
+def _required_sha(value: object, label: str) -> str:
+    result = str(value or "").strip()
+    if len(result) != 64 or any(char not in "0123456789abcdef" for char in result):
+        raise DifyConfigurationError(f"{label} must be lowercase SHA-256")
+    return result
 
 
 def _write_private_json(path: Path, value: Mapping[str, Any]) -> None:

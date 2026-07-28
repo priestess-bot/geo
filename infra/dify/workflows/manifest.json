@@ -31,6 +31,48 @@
       "model_provider": "langgenius/deepseek/deepseek",
       "purpose": "placements.simulation",
       "sha256": "cb4a9c9271082e67d35ea743dc9c21b3eabe56f7569628847d3a517a02267922"
+    },
+    {
+      "configured_model": "deepseek-chat",
+      "file": "geo-synthetic-generation.yml",
+      "model_provider": "langgenius/deepseek/deepseek",
+      "purpose": "synthetic_lab.generation",
+      "sha256": "4714fd7b8e5831fc2a905467262a10dcbd96c4376cc388180fef83bb559f7010"
+    },
+    {
+      "configured_model": "deepseek-chat",
+      "file": "geo-synthetic-claim-extraction.yml",
+      "model_provider": "langgenius/deepseek/deepseek",
+      "purpose": "synthetic_lab.claim_extraction",
+      "sha256": "99b17938c41a1489ce6206c9ef8cf252711b445993a9f938d210dccc3418f039"
+    },
+    {
+      "configured_model": "deepseek-chat",
+      "file": "geo-synthetic-conflict-check.yml",
+      "model_provider": "langgenius/deepseek/deepseek",
+      "purpose": "synthetic_lab.conflict_check",
+      "sha256": "b21ca48e05a09025fc09b91634f1610f2394904bc1288a7ac0bf0f922afc0f59"
+    },
+    {
+      "configured_model": "deepseek-chat",
+      "file": "geo-synthetic-revision.yml",
+      "model_provider": "langgenius/deepseek/deepseek",
+      "purpose": "synthetic_lab.revision",
+      "sha256": "fbce906214f6813aeb5c0491b8f7dee813da7a177a61c43a3729f7b1fb67822b"
+    },
+    {
+      "configured_model": "deepseek-chat",
+      "file": "geo-synthetic-style-profile.yml",
+      "model_provider": "langgenius/deepseek/deepseek",
+      "purpose": "synthetic_lab.style_profile",
+      "sha256": "4dff1020e8bca4db3527dd1a432f259bc4c5bb3448cd033f826aeee9fce46454"
+    },
+    {
+      "configured_model": "deepseek-chat",
+      "file": "geo-recommendation.yml",
+      "model_provider": "langgenius/deepseek/deepseek",
+      "purpose": "recommendations.recommendation",
+      "sha256": "1cc78caac0ad853b543484e3fc3818596d48a64c5a8275dc32cfd8907c862deb"
     }
   ]
 }

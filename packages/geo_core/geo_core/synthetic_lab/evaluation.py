@@ -19,7 +19,7 @@ from geo_core.synthetic_lab.domain import (
     assert_synthetic_boundary,
 )
 from geo_core.synthetic_lab.generation import (
-    FrozenCallLineage,
+    FrozenExecutionLineage,
     GenerationBatch,
     assert_same_frozen_context,
 )
@@ -121,7 +121,7 @@ class CandidateEvaluation(SyntheticOnly):
     generation_batch_id: UUID
     candidate_id: UUID
     candidate_output_hash: str
-    call_lineage: FrozenCallLineage
+    call_lineage: FrozenExecutionLineage
     evaluator_release: str
     evaluator_hash: str
     evidence_artifact_hash: str

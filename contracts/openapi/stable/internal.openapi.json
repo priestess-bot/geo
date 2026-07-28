@@ -4855,7 +4855,7 @@
             "items": {
               "$ref": "#/components/schemas/EvidenceSelectorContract"
             },
-            "maxItems": 100000,
+            "maxItems": 100,
             "minItems": 1,
             "title": "Evidence Selectors",
             "type": "array"
@@ -6015,6 +6015,179 @@
         "title": "DiffPromptProgramReleaseRequest",
         "type": "object"
       },
+      "DifyResubmissionTokenResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "attempt_id": {
+            "format": "uuid",
+            "title": "Attempt Id",
+            "type": "string"
+          },
+          "dify_reconciliation_token": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Dify Reconciliation Token",
+            "type": "string"
+          },
+          "recovery_of_attempt_id": {
+            "format": "uuid",
+            "title": "Recovery Of Attempt Id",
+            "type": "string"
+          },
+          "required_action": {
+            "const": "enqueue_new_parent_once",
+            "default": "enqueue_new_parent_once",
+            "title": "Required Action",
+            "type": "string"
+          }
+        },
+        "required": [
+          "attempt_id",
+          "recovery_of_attempt_id",
+          "dify_reconciliation_token"
+        ],
+        "title": "DifyResubmissionTokenResponse",
+        "type": "object"
+      },
+      "DifyUnresolvedAttemptPageResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DifyUnresolvedAttemptResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "DifyUnresolvedAttemptPageResponse",
+        "type": "object"
+      },
+      "DifyUnresolvedAttemptResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "attempt_id": {
+            "format": "uuid",
+            "title": "Attempt Id",
+            "type": "string"
+          },
+          "child_job_id": {
+            "format": "uuid",
+            "title": "Child Job Id",
+            "type": "string"
+          },
+          "child_job_status": {
+            "title": "Child Job Status",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "flow_kind": {
+            "enum": [
+              "style_profile",
+              "recommendation"
+            ],
+            "title": "Flow Kind",
+            "type": "string"
+          },
+          "lease_state": {
+            "enum": [
+              "active",
+              "not_leased",
+              "lease_expired",
+              "terminal"
+            ],
+            "title": "Lease State",
+            "type": "string"
+          },
+          "parent_job_id": {
+            "format": "uuid",
+            "title": "Parent Job Id",
+            "type": "string"
+          },
+          "provider_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Run Id"
+          },
+          "purpose": {
+            "enum": [
+              "synthetic_lab.style_profile",
+              "recommendations.recommendation"
+            ],
+            "title": "Purpose",
+            "type": "string"
+          },
+          "required_action": {
+            "enum": [
+              "wait_for_lease_expiry",
+              "verify_provider_then_issue_new_parent_token"
+            ],
+            "title": "Required Action",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "running",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "attempt_id",
+          "parent_job_id",
+          "child_job_id",
+          "flow_kind",
+          "purpose",
+          "status",
+          "child_job_status",
+          "lease_state",
+          "started_at",
+          "required_action"
+        ],
+        "title": "DifyUnresolvedAttemptResponse",
+        "type": "object"
+      },
       "DriftReportPageResponse": {
         "additionalProperties": false,
         "properties": {
@@ -6753,11 +6926,23 @@
             ],
             "title": "Arbiter Prompt Binding Id"
           },
+          "dify_reconciliation_token": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dify Reconciliation Token"
+          },
           "evidence_selectors": {
             "items": {
               "$ref": "#/components/schemas/EvidenceSelectorContract"
             },
-            "maxItems": 100000,
+            "maxItems": 100,
             "minItems": 1,
             "title": "Evidence Selectors",
             "type": "array"
@@ -6776,6 +6961,18 @@
             "format": "uuid",
             "title": "Prompt Binding Id",
             "type": "string"
+          },
+          "recovery_of_attempt_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recovery Of Attempt Id"
           },
           "scope": {
             "$ref": "#/components/schemas/ScopeSelectionContract"
@@ -6925,6 +7122,18 @@
             "title": "Approved Sample Ids",
             "type": "array"
           },
+          "dify_reconciliation_token": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dify Reconciliation Token"
+          },
           "fact_snapshot_id": {
             "format": "uuid",
             "title": "Fact Snapshot Id",
@@ -6934,6 +7143,18 @@
             "format": "uuid",
             "title": "Profile Version Id",
             "type": "string"
+          },
+          "recovery_of_attempt_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recovery Of Attempt Id"
           },
           "runtime_selection_id": {
             "format": "uuid",
@@ -9485,6 +9706,51 @@
         "title": "InvitationSummary",
         "type": "object"
       },
+      "IssueDifyResubmissionTokenRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence_reference": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Evidence Reference",
+            "type": "string"
+          },
+          "provider_outcome": {
+            "enum": [
+              "not_found",
+              "failed_without_output",
+              "succeeded_output_unrecoverable"
+            ],
+            "title": "Provider Outcome",
+            "type": "string"
+          },
+          "provider_run_id": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Run Id"
+          },
+          "reason": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider_outcome",
+          "evidence_reference",
+          "reason"
+        ],
+        "title": "IssueDifyResubmissionTokenRequest",
+        "type": "object"
+      },
       "JobAccepted": {
         "additionalProperties": false,
         "properties": {
@@ -10981,6 +11247,18 @@
       "MetricComparisonRefContract": {
         "additionalProperties": false,
         "properties": {
+          "conclusion": {
+            "default": "inconclusive",
+            "enum": [
+              "win",
+              "equivalent",
+              "loss",
+              "inconclusive",
+              "insufficient_evidence"
+            ],
+            "title": "Conclusion",
+            "type": "string"
+          },
           "locator": {
             "additionalProperties": {
               "type": "string"
@@ -19931,6 +20209,14 @@
           "version": {
             "title": "Version",
             "type": "integer"
+          },
+          "workflow_attempt_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Workflow Attempt Ids",
+            "type": "array"
           }
         },
         "required": [
@@ -20853,9 +21139,45 @@
             "title": "Resource Id",
             "type": "string"
           },
+          "rule_kind": {
+            "default": "threshold",
+            "enum": [
+              "threshold",
+              "baseline_delta",
+              "negative_question",
+              "completion_freshness",
+              "model_drift",
+              "source_drift",
+              "connector_failure"
+            ],
+            "title": "Rule Kind",
+            "type": "string"
+          },
+          "severity": {
+            "default": "info",
+            "enum": [
+              "info",
+              "warning",
+              "critical"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
           "sha256": {
             "pattern": "^[0-9a-f]{64}$",
             "title": "Sha256",
+            "type": "string"
+          },
+          "trigger_status": {
+            "default": "not_triggered",
+            "enum": [
+              "not_triggered",
+              "open",
+              "acknowledged",
+              "suppressed",
+              "resolved"
+            ],
+            "title": "Trigger Status",
             "type": "string"
           },
           "valid": {
@@ -23588,6 +23910,21 @@
             "title": "Approved Sample Count",
             "type": "integer"
           },
+          "build_verification_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "verified",
+                  "legacy_unverified"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Build Verification Status"
+          },
           "channel": {
             "enum": [
               "owned_site",
@@ -23647,6 +23984,11 @@
             "const": false,
             "default": false,
             "title": "Publication Eligible",
+            "type": "boolean"
+          },
+          "rebuild_required": {
+            "default": false,
+            "title": "Rebuild Required",
             "type": "boolean"
           },
           "replayed": {
@@ -26097,7 +26439,13 @@
               "knowledge.question_generation",
               "knowledge.rag_grounding",
               "placements.generation",
-              "placements.simulation"
+              "placements.simulation",
+              "synthetic_lab.generation",
+              "synthetic_lab.claim_extraction",
+              "synthetic_lab.conflict_check",
+              "synthetic_lab.revision",
+              "synthetic_lab.style_profile",
+              "recommendations.recommendation"
             ],
             "title": "Purpose",
             "type": "string"
@@ -26152,6 +26500,7 @@
               "not_observed",
               "cached",
               "current",
+              "drifted",
               "unreachable"
             ],
             "title": "Sync Status",
@@ -36436,6 +36785,334 @@
           }
         },
         "summary": "List Workflow Runtimes",
+        "tags": [
+          "workflow runtimes"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/dify-workflows/unresolved-attempts": {
+      "get": {
+        "operationId": "listUnresolvedDifyWorkflowAttempts",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DifyUnresolvedAttemptPageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "List Unresolved Attempts",
+        "tags": [
+          "workflow runtimes"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/dify-workflows/unresolved-attempts/{attempt_id}/resubmission-token": {
+      "post": {
+        "operationId": "issueDifyWorkflowResubmissionToken",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "attempt_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Attempt Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IssueDifyResubmissionTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DifyResubmissionTokenResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Issue Resubmission Token",
         "tags": [
           "workflow runtimes"
         ]

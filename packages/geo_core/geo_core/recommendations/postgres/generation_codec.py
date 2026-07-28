@@ -30,6 +30,10 @@ from geo_core.recommendations.generation_contracts import (
     RecommendationGenerationSpec,
     ScopeLocator,
 )
+from geo_core.recommendations.generation_evidence import (
+    GENERATION_EVIDENCE_CONTRACT_V1,
+    GENERATION_EVIDENCE_CONTRACT_V2,
+)
 from geo_core.recommendations.models import RecommendationWorkflow
 from geo_core.recommendations.postgres.codec import (
     workflow_from_payload,
@@ -39,12 +43,22 @@ from geo_core.recommendations.postgres.evidence import evidence_ref_from_payload
 
 
 def generation_spec_payload(spec: RecommendationGenerationSpec) -> dict[str, object]:
+    legacy = spec.evidence.contract_version == GENERATION_EVIDENCE_CONTRACT_V1
     return {
-        "contract_version": "recommendation-generation-spec-v3",
+        "contract_version": (
+            "recommendation-generation-spec-v3"
+            if legacy
+            else "recommendation-generation-spec-v4"
+        ),
         "project_id": str(spec.project_id),
         "evidence": {
+            **(
+                {}
+                if legacy
+                else {"contract_version": spec.evidence.contract_version}
+            ),
             "scope": spec.evidence.scope.canonical_value(),
-            "refs": [item.canonical_value() for item in spec.evidence.all_refs],
+            "refs": spec.evidence.canonical_ref_values(),
             "summaries": [
                 {
                     "ref_kind": item.ref_kind,
@@ -116,8 +130,18 @@ def generation_spec_payload(spec: RecommendationGenerationSpec) -> dict[str, obj
 
 def generation_spec_from_payload(value: object) -> RecommendationGenerationSpec:
     root = _mapping(value, "generation spec")
+    contract_version = _text(root, "contract_version")
+    if contract_version not in {
+        "recommendation-generation-spec-v3",
+        "recommendation-generation-spec-v4",
+    }:
+        raise ValueError("unsupported Recommendation generation spec contract")
     project_id = UUID(_text(root, "project_id"))
-    evidence = _evidence_from_payload(root.get("evidence"), project_id=project_id)
+    evidence = _evidence_from_payload(
+        root.get("evidence"),
+        project_id=project_id,
+        spec_contract_version=contract_version,
+    )
     prompt = _prompt_from_payload(root.get("prompt"), project_id=project_id)
     model = _mapping(root.get("model"), "generation model")
     route, configured, policy, capture, search = _model_from_payload(model)
@@ -174,15 +198,22 @@ def generation_result_payload(
     result: RecommendationGenerationResult,
 ) -> dict[str, object]:
     return {
-        "contract_version": "recommendation-generation-result-v1",
+        "contract_version": "recommendation-generation-result-v2",
         "workflow": workflow_payload(RecommendationWorkflow(result.recommendation)),
         "model_call_ids": [str(value) for value in result.model_call_ids],
+        "workflow_attempt_ids": [str(value) for value in result.workflow_attempt_ids],
         "insufficient_reasons": list(result.insufficient_reasons),
     }
 
 
 def generation_result_from_payload(value: object) -> RecommendationGenerationResult:
     root = _mapping(value, "generation result")
+    contract_version = root.get("contract_version")
+    if contract_version not in {
+        "recommendation-generation-result-v1",
+        "recommendation-generation-result-v2",
+    }:
+        raise ValueError("unsupported Recommendation generation result contract")
     workflow = workflow_from_payload(root.get("workflow"))
     return RecommendationGenerationResult(
         recommendation=workflow.recommendation,
@@ -194,13 +225,32 @@ def generation_result_from_payload(value: object) -> RecommendationGenerationRes
             str(item)
             for item in _sequence(root.get("insufficient_reasons"), "insufficient reasons")
         ),
+        workflow_attempt_ids=(
+            ()
+            if contract_version == "recommendation-generation-result-v1"
+            else tuple(
+                UUID(str(item))
+                for item in _sequence(
+                    root.get("workflow_attempt_ids"), "workflow attempt IDs"
+                )
+            )
+        ),
     )
 
 
 def _evidence_from_payload(
-    value: object, *, project_id: UUID
+    value: object,
+    *,
+    project_id: UUID,
+    spec_contract_version: str,
 ) -> FrozenGenerationEvidence:
     root = _mapping(value, "generation evidence")
+    if spec_contract_version == "recommendation-generation-spec-v3":
+        evidence_contract_version = GENERATION_EVIDENCE_CONTRACT_V1
+    else:
+        evidence_contract_version = _text(root, "contract_version")
+        if evidence_contract_version != GENERATION_EVIDENCE_CONTRACT_V2:
+            raise ValueError("unsupported Recommendation generation evidence contract")
     scope_value = _mapping(root.get("scope"), "generation scope")
     scope = RecommendationScope(
         project_id=project_id,
@@ -250,6 +300,7 @@ def _evidence_from_payload(
         summaries=summaries,
         scope_locators=locators,
         attributions=_typed(refs, AttributionRef),
+        contract_version=evidence_contract_version,
     )
 
 

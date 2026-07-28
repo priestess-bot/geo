@@ -12,6 +12,7 @@ const APPROVED_CORPUS_JOB_ID = "00000000-0000-4000-8000-000000000719";
 const QUESTION_SET_ID = "00000000-0000-4000-8000-000000000720";
 const RUNTIME_SELECTION_ID = "00000000-0000-4000-8000-000000000713";
 const MANUAL_PREVIEW_ID = "00000000-0000-4000-8000-000000000723";
+const PROFILE_VERSION_ID = "00000000-0000-4000-8000-000000000705";
 
 function collectRuntimeErrors(page: Page): string[] {
   const errors: string[] = [];
@@ -147,6 +148,38 @@ test("M1-SYNTH-WEB-03: state conflicts are explicit and keep the boundary visibl
   await expect(conflict).toContainText("409");
   await expect(conflict).toContainText("状态冲突");
   await expect(page.getByText("publication_eligible = false", { exact: true })).toBeVisible();
+});
+
+test("M1-SYNTH-PROFILE-UX-01: legacy frozen profiles require a new verified version", async ({ page, request }, testInfo) => {
+  const runtimeErrors = collectRuntimeErrors(page);
+  await page.goto(`/projects/${PROJECT_ID}?tab=synthetic-lab&synthetic_suite_id=${SUITE_ID}`);
+  let profileRow = page.getByRole("row").filter({ hasText: PROFILE_VERSION_ID });
+  await expect(profileRow.getByText("已验证", { exact: true })).toBeVisible();
+  await expect(profileRow.getByText("可用于新任务", { exact: true })).toBeVisible();
+
+  await setMode(request, "legacy_profile");
+  await page.reload();
+  profileRow = page.getByRole("row").filter({ hasText: PROFILE_VERSION_ID });
+  await expect(profileRow.getByText("需新建版本并重建", { exact: true })).toBeVisible();
+  await expect(profileRow.getByText("不能用于新任务", { exact: true })).toBeVisible();
+  await expect(profileRow.getByText("仅保留历史查看", { exact: true })).toBeVisible();
+  await expect(profileRow.getByText(/不能原地重建/)).toBeVisible();
+  await expect(profileRow.getByRole("button")).toHaveCount(0);
+  await expect(profileRow.getByRole("combobox")).toHaveCount(0);
+
+  const caseDetails = page.locator("details").filter({
+    has: page.getByText("新增测评用例", { exact: true })
+  });
+  await caseDetails.locator("summary").click();
+  const profileSelect = caseDetails.getByLabel("风格画像");
+  await expect(profileSelect).toBeDisabled();
+  await expect(profileSelect.locator(`option[value="${PROFILE_VERSION_ID}"]`)).toHaveCount(0);
+  await profileRow.screenshot({ path: testInfo.outputPath("legacy-profile-rebuild-required.png") });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("legacy-profile-mobile.png"), fullPage: true });
+  expect(runtimeErrors).toEqual([]);
 });
 
 test("M3-SYNTH-WEB-01: Corpus approval and three-arm jobs use selector-only admission", async ({ page, request }) => {

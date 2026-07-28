@@ -16,6 +16,7 @@ from geo_core.recommendations.generation_application import (
 )
 from geo_core.recommendations.generation_contracts import (
     GenerationExecution,
+    RecommendationGenerationConflict,
     RecommendationGenerationJob,
     RecommendationGenerationSpec,
 )
@@ -71,11 +72,14 @@ class RecommendationGenerationSelection:
             "evidence_selectors",
             freeze_evidence_selectors(self.evidence_selectors),
         )
+        if len(self.evidence_selectors) > 100:
+            raise RecommendationRuleViolation(
+                "Recommendation generation accepts at most 100 evidence selectors; "
+                "reduce the selection and retry"
+            )
         require_aware(self.valid_until, "generation validity time")
         if not 1 <= self.minimum_real_observations <= 1000:
-            raise RecommendationRuleViolation(
-                "minimum real observation count is out of bounds"
-            )
+            raise RecommendationRuleViolation("minimum real observation count is out of bounds")
         if (self.arbiter_prompt_binding_id is None) != (self.arbiter_model is None):
             raise RecommendationRuleViolation(
                 "arbiter Prompt and model selectors must be supplied together"
@@ -111,12 +115,18 @@ class RecommendationGenerationSubmissionApplication:
         *,
         selection: RecommendationGenerationSelection,
         idempotency_key: str,
+        recovery_of_attempt_id: UUID | None = None,
+        dify_reconciliation_token: str | None = None,
     ) -> GenerationExecution:
         require_project_role(
             principal,
             selection.project_id,
             allowed=_CONTRIBUTOR_ROLES,
         )
+        if recovery_of_attempt_id is not None or dify_reconciliation_token is not None:
+            raise RecommendationGenerationConflict(
+                "Dify unknown-outcome recovery requires PostgreSQL-backed atomic admission"
+            )
         spec = self._admission.resolve(
             selection=selection,
             created_by=str(principal.identity_id),

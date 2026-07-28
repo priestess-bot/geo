@@ -24,12 +24,23 @@ test("DIFY-BOARD-03: legacy Prompt deep links stay on the read-only Dify board",
 
   await expect(page).toHaveTitle(/GEO/i);
   await expect(page.getByRole("heading", { level: 2, name: "Dify 工作流" })).toBeVisible();
-  for (const label of ["测试问题生成", "知识依据生成", "投放内容生成", "投放内容仿真"]) {
+  for (const label of [
+    "测试问题生成",
+    "知识依据生成",
+    "投放内容生成",
+    "投放内容仿真",
+    "合成候选生成",
+    "Claim 提取",
+    "知识冲突检查",
+    "候选修订",
+    "风格画像生成",
+    "证据建议生成"
+  ]) {
     await expect(page.getByRole("heading", { level: 3, name: label })).toBeVisible();
   }
   await expect(page.locator("textarea")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /保存|发布并生效|运行固定测试集/ })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "在 Dify 中编辑" })).toHaveCount(4);
+  await expect(page.getByRole("link", { name: "打开 Dify 工作流" })).toHaveCount(10);
   expect(runtimeErrors).toEqual([]);
   await page.screenshot({ path: testInfo.outputPath("legacy-deep-link-read-only.png"), fullPage: true });
 });

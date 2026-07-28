@@ -26,6 +26,7 @@ def test_synthetic_loader_is_bounded_project_scoped_and_fail_closed() -> None:
     tabs = (FEATURE.parent / "project-workbench/tabs.ts").read_text(encoding="utf-8")
     data = source("syntheticLabData.ts")
     types = source("syntheticLabTypes.ts")
+    primitives = source("syntheticLabTypePrimitives.ts")
 
     assert 'activeTab === "synthetic-lab" ? loadSyntheticLabWorkspace(projectId, query)' in page
     assert "SyntheticLabWorkspace" in shell
@@ -55,7 +56,7 @@ def test_synthetic_loader_is_bounded_project_scoped_and_fail_closed() -> None:
         '"model_response"',
         '"debug_trace"',
     ):
-        assert forbidden in types
+        assert forbidden in primitives
 
 
 def test_every_synthetic_server_action_reauthorizes_membership_and_role() -> None:
@@ -216,6 +217,10 @@ def test_ui_covers_governance_review_generation_and_warning_contracts() -> None:
     assert "构建 Profile" in jobs
     assert "运行用例" in jobs
     assert "runtime_selection_id" in jobs
+    assert "build_verification_status" in workspace
+    assert "rebuild_required" in workspace
+    assert "需新建版本并重建" in workspace
+    assert "不能原地重建" in workspace
     assert "model-gateway/options" in source("syntheticLabData.ts")
     assert "EnqueueSyntheticJobForm" not in jobs
     assert "enqueueSyntheticJobAction" not in jobs

@@ -32,6 +32,7 @@ from geo_core.recommendations.postgres.generation_worker import (
 from geo_core.recommendations.postgres.generation_worker_repository import (
     PostgresRecommendationGenerationWorkerRepository,
 )
+from geo_core.workflow_runtime import PostgresWorkflowRuntimeRepository, WorkflowExecutor
 
 
 def build_recommendation_generation_worker_handlers(
@@ -43,6 +44,7 @@ def build_recommendation_generation_worker_handlers(
     model_results: GovernedRecommendationModelResultLoader,
     model_job_admitter: ModelCallJobAdmitter,
     model_runtime_loader: ModelCallRuntimeLoader,
+    workflow_executor: WorkflowExecutor | None,
     lease_for: timedelta,
     poll_delay: timedelta = timedelta(seconds=5),
 ) -> Mapping[str, object]:
@@ -55,6 +57,7 @@ def build_recommendation_generation_worker_handlers(
         prompts=prompts,
         artifacts=artifacts,
         model_results=model_results,
+        workflow_releases=PostgresWorkflowRuntimeRepository(store),
     )
     parent = RecommendationParentHandler(
         store=store,
@@ -66,6 +69,7 @@ def build_recommendation_generation_worker_handlers(
         repository=repository,
         model_job_admitter=model_job_admitter,
         model_runtime_loader=model_runtime_loader,
+        workflow_executor=workflow_executor,
         lease_for=lease_for,
     )
     return {

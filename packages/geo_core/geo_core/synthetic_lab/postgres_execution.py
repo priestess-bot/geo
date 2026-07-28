@@ -192,6 +192,14 @@ class PostgresSyntheticExecutionRepository:
             or runtime != task.runtime_inputs
         ):
             raise SyntheticExecutionError("execution finalization changed Project or runtime lineage")
+        if isinstance(task, StyleProfileBuildTask) and (
+            not isinstance(output, StyleProfileBuildOutput)
+            or output.profile_version_id != task.profile_version_id
+            or output.profile_hash != task.runtime_inputs.profile_hash
+        ):
+            raise SyntheticExecutionError(
+                "Style Profile output does not match the frozen build target"
+            )
         result_type, result_payload, result_payload_hash = encode_object(output)
         terminal = JobTerminalResult(
             project_id=lease.project_id,

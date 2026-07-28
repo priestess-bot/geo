@@ -472,6 +472,49 @@
   color: #526674;
 }
 
+.profileVerification {
+  border-left: 3px solid;
+  display: grid;
+  gap: 3px;
+  line-height: 1.4;
+  padding: 6px 8px;
+}
+
+.profileVerification strong,
+.profileVerification small {
+  margin: 0;
+}
+
+.profileVerificationReady {
+  background: #eff8f3;
+  border-color: #4a9a69;
+  color: #245d3b;
+}
+
+.profileVerificationPending {
+  background: #fff8e8;
+  border-color: #b2862f;
+  color: #684f1b;
+}
+
+.profileVerificationRebuild,
+.profileRebuildAction {
+  background: #fff0ed;
+  border-color: #b94a3d;
+  color: #7f2c24;
+}
+
+.profileRebuildAction {
+  border-left: 3px solid;
+  display: grid;
+  font-size: 11px;
+  gap: 4px;
+  line-height: 1.5;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  padding: 8px 9px;
+}
+
 .resultLink {
   color: #17657a;
   font-weight: 800;

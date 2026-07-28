@@ -144,7 +144,10 @@ class RecommendationGenerationApplication:
             return self._terminal(job, ownership, GenerationJobStatus.CANCELLED, None, "cancelled")
         if job.spec.valid_until <= now:
             return self._terminal(job, ownership, GenerationJobStatus.FAILED, None, "expired_spec")
-        structured_input = structured_generation_input(job.spec.evidence)
+        structured_input = structured_generation_input(
+            job.spec.evidence,
+            minimum_real_observations=job.spec.minimum_real_observations,
+        )
         insufficiency = job.spec.evidence.insufficiency_reasons(
             minimum_real_observations=job.spec.minimum_real_observations
         )
@@ -175,6 +178,7 @@ class RecommendationGenerationApplication:
             parsed = parse_recommendation_output(
                 primary_call.output,
                 evidence=job.spec.evidence,
+                minimum_real_observations=job.spec.minimum_real_observations,
             )
             call_results = [primary_call]
             prompt_bindings = [primary_prompt.binding]
@@ -186,6 +190,7 @@ class RecommendationGenerationApplication:
                 arbiter_input = structured_arbiter_input(
                     primary_call.output,
                     evidence=job.spec.evidence,
+                    minimum_real_observations=job.spec.minimum_real_observations,
                 )
                 arbiter_prompt = self._resolve_exact(
                     job.spec.arbiter_binding,

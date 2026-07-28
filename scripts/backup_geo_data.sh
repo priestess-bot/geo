@@ -4,11 +4,16 @@ umask 077
 
 repo_root="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
 env_file="${1:-$repo_root/infra/production.env}"
+source_environment="${2:-}"
 compose_file="$repo_root/infra/compose.prod.yml"
 cd "$repo_root"
 
 if [[ ! -f "$env_file" ]]; then
   echo "backup error: production env file is unavailable" >&2
+  exit 2
+fi
+if [[ ! "$source_environment" =~ ^(production|staging)$ ]]; then
+  echo "backup error: explicit source environment must be production or staging" >&2
   exit 2
 fi
 uv run python "$repo_root/scripts/production_preflight.py" --env-file "$env_file" >/dev/null
@@ -224,8 +229,13 @@ if [[ "$restore_secret_canary_ready" != "true" ]]; then
   exit 2
 fi
 project_count="$(pg_scalar_at_snapshot 'SELECT count(*) FROM projects')"
+project_ids="$(pg_scalar_at_snapshot "SELECT coalesce(json_agg(id::text ORDER BY id), '[]'::json)::text FROM projects")"
 table_count="$(pg_scalar_at_snapshot "SELECT count(*) FROM pg_catalog.pg_tables WHERE schemaname = 'public'")"
 migration_revision="$(pg_scalar_at_snapshot 'SELECT version_num FROM alembic_version ORDER BY version_num DESC LIMIT 1')"
+source_database_name="$(pg_scalar_at_snapshot 'SELECT current_database()')"
+source_database_user="$(pg_scalar_at_snapshot 'SELECT current_user')"
+source_system_identifier="$(pg_scalar_at_snapshot 'SELECT system_identifier::text FROM pg_control_system()')"
+database_checksum_ledger_rows="$(pg_scalar_at_snapshot "SELECT coalesce(json_agg(json_build_object('revision', revision, 'upgrade_sha256', upgrade_sha256, 'downgrade_sha256', downgrade_sha256) ORDER BY revision), '[]'::json)::text FROM alembic_sql_checksum_ledger")"
 non_b_business_consistency="$(business_consistency_at_snapshot)"
 alembic_sql_checksum_ledger="$(
   uv run python "$repo_root/scripts/alembic_sql_ledger.py" create \
@@ -377,6 +387,12 @@ uv run python "$repo_root/scripts/backup_manifest.py" create \
   --created-at "$created_at" \
   --migration-revision "$migration_revision" \
   --alembic-sql-checksum-ledger-json "$alembic_sql_checksum_ledger" \
+  --database-checksum-ledger-rows-json "$database_checksum_ledger_rows" \
+  --source-database-name "$source_database_name" \
+  --source-database-user "$source_database_user" \
+  --source-environment "$source_environment" \
+  --source-system-identifier "$source_system_identifier" \
+  --source-project-ids-json "$project_ids" \
   --postgres-project-count "$project_count" \
   --postgres-table-count "$table_count" \
   --critical-relation-counts-json "$critical_relation_counts" \

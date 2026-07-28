@@ -32,6 +32,8 @@ PROMPT_TEST_JOB_KIND = "prompt.test.execute"
 PROMPT_TEST_REQUIRED_JOB_KINDS = frozenset({PROMPT_TEST_JOB_KIND})
 PROMPT_TEST_OUTBOX_TOPIC = "prompt.test.execute.queued"
 PROMPT_TEST_ARTIFACT_SCHEMA = "geo.prompt-test-run.v1"
+# Five fixtures may each consume one call on each of three durable Job attempts.
+PROMPT_TEST_MAXIMUM_PAID_CALLS = 15
 
 
 class PromptTestExecutionError(RuntimeError):
@@ -122,10 +124,10 @@ class PromptTestModelSelection:
             self.policy.policy_version_id != self.policy_version_id
             or self.policy.policy_version_hash != self.policy_version_hash
             or self.policy.maximum_paid_calls is None
-            or self.policy.maximum_paid_calls < 5
+            or self.policy.maximum_paid_calls < PROMPT_TEST_MAXIMUM_PAID_CALLS
         ):
             raise PromptTestExecutionError(
-                "Prompt test Model policy is not the exact frozen five-case policy"
+                "Prompt test Model policy cannot cover the frozen five-case retry budget"
             )
         if self.provider_secret_handle.purpose != f"model_provider.{self.route.provider}":
             raise PromptTestExecutionError(

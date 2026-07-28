@@ -15,6 +15,7 @@ from geo_core.synthetic_lab.ports import (
     SyntheticAuthorizationRepository,
     SyntheticCommandRecord,
     SyntheticCommandRepository,
+    SyntheticDifyReconciliationPort,
     SyntheticImportRepository,
     SyntheticJobRepository,
     SyntheticLabIdempotencyConflict,
@@ -27,6 +28,7 @@ from geo_core.synthetic_lab.ports import (
     VersionedAggregate,
 )
 from geo_core.synthetic_lab.raw_artifact_governance import ArtifactGovernanceDecision
+from geo_core.synthetic_lab.profile_build_binding import StyleProfileBuildBinding
 from geo_core.synthetic_lab.sample_import import ManualSampleImportManifest
 
 
@@ -50,6 +52,9 @@ class InMemorySyntheticLabStore:
         self._terminal_results: dict[tuple[UUID, UUID], JobTerminalResult] = {}
         self._execution_tasks: dict[tuple[UUID, UUID], object] = {}
         self._style_collection_tasks: dict[tuple[UUID, UUID], object] = {}
+        self._profile_build_bindings: dict[
+            tuple[UUID, UUID], StyleProfileBuildBinding
+        ] = {}
         self._fail_next_commit = False
 
     def fail_next_commit(self) -> None:
@@ -116,6 +121,12 @@ class InMemorySyntheticLabStore:
         with self._lock:
             return self._style_collection_tasks.get((project_id, job_id))
 
+    def get_profile_build_binding(
+        self, *, project_id: UUID, profile_version_id: UUID
+    ) -> StyleProfileBuildBinding | None:
+        with self._lock:
+            return self._profile_build_bindings.get((project_id, profile_version_id))
+
 
 class InMemorySyntheticLabUnitOfWorkFactory:
     def __init__(self, store: InMemorySyntheticLabStore) -> None:
@@ -138,6 +149,10 @@ class InMemorySyntheticLabUnitOfWork:
         self.outbox: SyntheticOutboxRepository = _MemoryOutbox(self)
         self.execution_tasks = _MemoryExecutionTasks(self)
         self.style_collection_tasks = _MemoryStyleCollectionTasks(self)
+        self.profile_build_bindings = _MemoryProfileBuildBindings(self)
+        self.dify_reconciliation: SyntheticDifyReconciliationPort = (
+            _MemoryDifyReconciliation(self)
+        )
 
     def __enter__(self) -> "InMemorySyntheticLabUnitOfWork":
         if self._active:
@@ -154,6 +169,7 @@ class InMemorySyntheticLabUnitOfWork:
             self._base_results = dict(self._store._terminal_results)
             self._base_execution_tasks = dict(self._store._execution_tasks)
             self._base_style_collection_tasks = dict(self._store._style_collection_tasks)
+            self._base_profile_build_bindings = dict(self._store._profile_build_bindings)
         self._commands = dict(self._base_commands)
         self._aggregates = dict(self._base_aggregates)
         self._authorizations = dict(self._base_authorizations)
@@ -165,6 +181,7 @@ class InMemorySyntheticLabUnitOfWork:
         self._results = dict(self._base_results)
         self._execution_tasks = dict(self._base_execution_tasks)
         self._style_collection_tasks = dict(self._base_style_collection_tasks)
+        self._profile_build_bindings = dict(self._base_profile_build_bindings)
         self._touched_commands: set[tuple[UUID, str]] = set()
         self._touched_aggregates: set[tuple[UUID, str, UUID]] = set()
         self._touched_authorizations: set[tuple[UUID, str, str]] = set()
@@ -176,6 +193,7 @@ class InMemorySyntheticLabUnitOfWork:
         self._touched_results: set[tuple[UUID, UUID]] = set()
         self._touched_execution_tasks: set[tuple[UUID, UUID]] = set()
         self._touched_style_collection_tasks: set[tuple[UUID, UUID]] = set()
+        self._touched_profile_build_bindings: set[tuple[UUID, UUID]] = set()
         self._active = True
         return self
 
@@ -229,6 +247,11 @@ class InMemorySyntheticLabUnitOfWork:
                 self._base_style_collection_tasks,
                 self._store._style_collection_tasks,
             )
+            self._verify(
+                self._touched_profile_build_bindings,
+                self._base_profile_build_bindings,
+                self._store._profile_build_bindings,
+            )
             _apply(self._store._commands, self._commands, self._touched_commands)
             _apply(self._store._aggregates, self._aggregates, self._touched_aggregates)
             _apply(
@@ -264,6 +287,11 @@ class InMemorySyntheticLabUnitOfWork:
                 self._style_collection_tasks,
                 self._touched_style_collection_tasks,
             )
+            _apply(
+                self._store._profile_build_bindings,
+                self._profile_build_bindings,
+                self._touched_profile_build_bindings,
+            )
 
     def _verify(
         self,
@@ -285,6 +313,28 @@ class InMemorySyntheticLabUnitOfWork:
     def _ensure_active(self) -> None:
         if not self._active:
             raise SyntheticLabPersistenceError("Synthetic Lab UoW is not active")
+
+
+class _MemoryDifyReconciliation:
+    def __init__(self, uow: InMemorySyntheticLabUnitOfWork) -> None:
+        self._uow = uow
+
+    def bind_resubmission(
+        self,
+        *,
+        project_id: UUID,
+        new_parent_job_id: UUID,
+        actor_id: UUID,
+        recovery_of_attempt_id: UUID | None,
+        token: str | None,
+    ) -> UUID | None:
+        del new_parent_job_id, actor_id
+        self._uow._require_scope(project_id)
+        if recovery_of_attempt_id is None and token is None:
+            return None
+        raise SyntheticLabPersistenceError(
+            "in-memory Synthetic Lab cannot consume a Dify reconciliation token"
+        )
 
 
 class _MemoryCommands:
@@ -459,6 +509,28 @@ class _MemoryStyleCollectionTasks:
             raise SyntheticLabVersionConflict("Style Collection task identity already exists")
         self._uow._style_collection_tasks[key] = task
         self._uow._touched_style_collection_tasks.add(key)
+
+
+class _MemoryProfileBuildBindings:
+    def __init__(self, uow: InMemorySyntheticLabUnitOfWork) -> None:
+        self._uow = uow
+
+    def get(
+        self, *, project_id: UUID, profile_version_id: UUID
+    ) -> StyleProfileBuildBinding | None:
+        self._uow._require_scope(project_id)
+        return self._uow._profile_build_bindings.get((project_id, profile_version_id))
+
+    def stage(self, binding: StyleProfileBuildBinding) -> None:
+        self._uow._require_scope(binding.project_id)
+        key = (binding.project_id, binding.profile_version_id)
+        current = self._uow._profile_build_bindings.get(key)
+        if current is not None and current != binding:
+            raise SyntheticLabVersionConflict(
+                "Style Profile version is already bound to another build result"
+            )
+        self._uow._profile_build_bindings[key] = binding
+        self._uow._touched_profile_build_bindings.add(key)
 
 
 class InMemoryCollectionAuthorizationPort:

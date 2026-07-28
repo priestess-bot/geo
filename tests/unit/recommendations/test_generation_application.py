@@ -69,16 +69,17 @@ def test_insufficient_evidence_short_circuits_model_and_creates_sampling_draft()
         ("experiment", DownstreamDraftKind.EXPERIMENT_PLAN),
         ("optional", DownstreamDraftKind.CONTENT_BRIEF),
         ("no_change", None),
-        ("insufficient_evidence", DownstreamDraftKind.SAMPLING_PLAN),
     ),
 )
 def test_model_generation_creates_only_unapproved_recommendation_drafts(
     recommendation_type: str,
     draft_kind: DownstreamDraftKind | None,
 ) -> None:
-    gateway = GatewayApplicationStub(model_output(recommendation_type))
+    spec = generation_spec(recommendation_type=recommendation_type)
+    gateway = GatewayApplicationStub(
+        model_output(recommendation_type, evidence=spec.evidence)
+    )
     app, _, _, _, _ = _application(gateway)
-    spec = generation_spec()
     job, ownership = _enqueue_claim(app, spec)
 
     execution = app.run(project_id=PROJECT_ID, job_id=job.id, ownership=ownership)

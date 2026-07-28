@@ -3,9 +3,12 @@ import { difyWorkflowPurposes, promptProgramKinds } from "./promptProgramKinds";
 
 export {
   auxiliaryPromptProgramKinds,
+  difyManagedPromptProgramKinds,
   difyWorkflowPurposes,
+  nativeReviewPromptProgramKinds,
   primaryPromptProgramKinds,
   promptProgramKinds,
+  reservedPromptProgramKinds,
   workflowPromptProgramKinds
 } from "./promptProgramKinds";
 
@@ -310,7 +313,7 @@ export type DifyWorkflowRuntimeCard = Readonly<{
   }>>;
   published_at: string | null;
   observed_at: string | null;
-  sync_status: "not_observed" | "cached" | "current" | "unreachable";
+  sync_status: "not_observed" | "cached" | "current" | "drifted" | "unreachable";
   sync_error: string | null;
 }>;
 

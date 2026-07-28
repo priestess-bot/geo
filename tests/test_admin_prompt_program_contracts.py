@@ -58,7 +58,7 @@ def test_prompt_bootstrap_browser_covers_partial_failure_long_error_empty_and_mo
     assert "测试问题生成" in browser
     assert "投放内容仿真" in browser
     assert 'name: "Dify 工作流"' in browser
-    assert 'name: "在 Dify 中编辑"' in browser
+    assert 'name: "打开 Dify 工作流"' in browser
     assert "运行固定测试集" in browser
 
 
@@ -159,6 +159,17 @@ def test_prompt_read_models_and_lists_never_include_raw_templates_or_fixed_input
     assert "fixed_variables" not in data
     assert "PromptProgramReleaseDetail" in editor
     assert "selected.system_template" in editor_panels
+    assert "待接入统一运行时" not in editor
+    assert "workflowRuntimesByPurpose.get(item.purpose)" in editor
+    assert 'return "GEO 内置评审 · 原生执行"' in editor_panels
+    assert 'return "预留 · 暂不可用"' in editor_panels
+    board = source(PROMPT / "DifyWorkflowBoard.tsx")
+    assert 'catalogId="native"' in board
+    assert 'catalogId="reserved"' in board
+    assert "workflow-catalog-${catalogId}" in board
+    assert 'label: "尚未完成迁移"' in board
+    assert "已有旧版业务结果（如有）不计作 Dify 验证" in board
+    assert "旧流程未验证" not in board
 
 
 def test_prompt_layout_contains_explicit_overflow_and_mobile_guards() -> None:

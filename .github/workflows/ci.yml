@@ -53,6 +53,7 @@ jobs:
       GEO_ACCEPTANCE_TEST_APP_DATABASE_URL: postgresql://geo_app_dev:geo_app_ci_only@localhost:5432/geo
       GEO_ACCEPTANCE_TEST_ISOLATION_MARKER: github-actions-postgres-integration
       GEO_ACCEPTANCE_TEST_WORKER_DATABASE_URL: postgresql://geo_worker_dev:geo_worker_ci_only@localhost:5432/geo
+      GEO_MIGRATION_REHEARSAL_DATABASE_URL: postgresql://geo_installer:geo_ci_only@localhost:5432/geo
       GEO_PLACEMENT_TEST_ADMIN_URL: postgresql://geo_installer:geo_ci_only@localhost:5432/geo
       GEO_F019_TEST_MINIO_ENDPOINT: http://localhost:9000
       GEO_TEST_DATABASE_URL: postgresql://geo_installer:geo_ci_only@localhost:5432/geo

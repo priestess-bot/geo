@@ -1,3 +1,17 @@
+import {
+  hasSyntheticBoundary as boundary,
+  hasUuidFields as ids,
+  isHash,
+  nonEmptyString,
+  nonNegativeInteger,
+  nullableHash,
+  nullablePositiveInteger,
+  nullableString,
+  positiveInteger,
+  safeRecord,
+  stringArray
+} from "./syntheticLabTypePrimitives";
+
 export const syntheticChannels = [
   "owned_site",
   "amazon",
@@ -69,6 +83,8 @@ export type StyleProfile = SyntheticBoundary & Readonly<{
   prompt_release_hash: string;
   approved_sample_count: number;
   status: "draft" | "in_review" | "approved" | "frozen" | "rejected" | "superseded";
+  build_verification_status: "verified" | "legacy_unverified" | null;
+  rebuild_required: boolean;
   replayed: boolean;
 }>;
 
@@ -278,25 +294,6 @@ export type SyntheticActionState = Readonly<{
 }>;
 
 export const initialSyntheticActionState: SyntheticActionState = { kind: "idle" };
-const HASH_PATTERN = /^[0-9a-f]{64}$/;
-const FORBIDDEN_FIELDS = new Set([
-  "authorization",
-  "authorization_header",
-  "authorization_value",
-  "cookie",
-  "cookies",
-  "credential",
-  "credentials",
-  "debug_trace",
-  "model_response",
-  "password",
-  "plaintext",
-  "raw_text",
-  "secret",
-  "secret_value",
-  "session_token",
-  "storage_state"
-]);
 
 export function isAuthorizationPage(value: unknown): value is SyntheticPage<CollectionAuthorization> {
   return isPage(value, isAuthorization);
@@ -402,6 +399,9 @@ export function isStyleProfile(value: unknown): value is StyleProfile {
     && [value.corpus_hash, value.profile_hash, value.prompt_release_hash].every(isHash)
     && nonNegativeInteger(value.approved_sample_count)
     && ["draft", "in_review", "approved", "frozen", "rejected", "superseded"].includes(String(value.status))
+    && (value.build_verification_status === null
+      || ["verified", "legacy_unverified"].includes(String(value.build_verification_status)))
+    && typeof value.rebuild_required === "boolean"
     && typeof value.replayed === "boolean";
 }
 
@@ -545,55 +545,6 @@ function countRecord(value: unknown): boolean {
   return safeRecord(value) && Object.values(value).every(nonNegativeInteger);
 }
 
-function safeRecord(value: unknown): value is Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  return Object.keys(value).every((key) => !FORBIDDEN_FIELDS.has(key.toLowerCase()));
-}
-
-function boundary(value: Record<string, unknown>): boolean {
-  return value.synthetic === true
-    && value.test_only === true
-    && value.publication_eligible === false;
-}
-
-function ids(value: Record<string, unknown>, names: string[]): boolean {
-  return names.every((name) => typeof value[name] === "string" && UUID_PATTERN.test(value[name]));
-}
-
 function isChannel(value: unknown): value is SyntheticChannel {
   return syntheticChannels.some((channel) => channel === value);
 }
-
-function stringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every(nonEmptyString);
-}
-
-function isHash(value: unknown): value is string {
-  return typeof value === "string" && HASH_PATTERN.test(value);
-}
-
-function nullableHash(value: unknown): boolean {
-  return value === null || isHash(value);
-}
-
-function nullableString(value: unknown): boolean {
-  return value === null || nonEmptyString(value);
-}
-
-function nonEmptyString(value: unknown): value is string {
-  return typeof value === "string" && value.trim().length > 0;
-}
-
-function positiveInteger(value: unknown): value is number {
-  return typeof value === "number" && Number.isInteger(value) && value > 0;
-}
-
-function nullablePositiveInteger(value: unknown): boolean {
-  return value === null || positiveInteger(value);
-}
-
-function nonNegativeInteger(value: unknown): value is number {
-  return typeof value === "number" && Number.isInteger(value) && value >= 0;
-}
-
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;

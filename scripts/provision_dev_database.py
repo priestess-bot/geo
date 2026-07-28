@@ -12,6 +12,7 @@ from psycopg import sql
 DEV_TENANT_ID = UUID("10000000-0000-4000-8000-000000000001")
 DEV_PROJECT_ID = UUID("20000000-0000-4000-8000-000000000002")
 DEV_IDENTITY_ID = UUID("30000000-0000-4000-8000-000000000003")
+MODEL_GATEWAY_WORKER_IDENTITY_ENV = "GEO_MODEL_GATEWAY_WORKER_SERVICE_IDENTITY_ID"
 
 
 def required(name: str) -> str:
@@ -19,6 +20,19 @@ def required(name: str) -> str:
     if not value:
         raise RuntimeError(f"{name} is required")
     return value
+
+
+def optional_uuid(name: str) -> UUID | None:
+    value = os.getenv(name, "").strip()
+    if not value:
+        return None
+    try:
+        parsed = UUID(value)
+    except ValueError as exc:
+        raise RuntimeError(f"{name} must be a UUID") from exc
+    if parsed.int == 0:
+        raise RuntimeError(f"{name} cannot be the nil UUID")
+    return parsed
 
 
 def provision_login(
@@ -88,6 +102,18 @@ def provision_workspace(cursor: psycopg.Cursor[tuple[object, ...]]) -> None:
         raise RuntimeError("development workspace conflicts with deterministic bootstrap IDs")
 
 
+def provision_model_gateway_worker(
+    cursor: psycopg.Cursor[tuple[object, ...]], *, identity_id: UUID
+) -> None:
+    """Bind the configured non-login Worker through the governed installer RPC."""
+    row = cursor.execute(
+        "SELECT geo_provision_service_identity(%s, 'model_gateway_worker', clock_timestamp())",
+        (identity_id,),
+    ).fetchone()
+    if row != (identity_id,):
+        raise RuntimeError("Model Gateway Worker service identity provisioning failed")
+
+
 def main() -> None:
     database_url = required("GEO_DATABASE_URL")
     with psycopg.connect(database_url) as connection:
@@ -106,6 +132,9 @@ def main() -> None:
             )
             if os.getenv("GEO_DEV_BOOTSTRAP_ENABLED", "0").strip() == "1":
                 provision_workspace(cursor)
+            worker_identity = optional_uuid(MODEL_GATEWAY_WORKER_IDENTITY_ENV)
+            if worker_identity is not None:
+                provision_model_gateway_worker(cursor, identity_id=worker_identity)
 
 
 if __name__ == "__main__":

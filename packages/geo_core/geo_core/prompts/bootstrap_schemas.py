@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from geo_core.prompts.bootstrap_limits import STYLE_PROFILE_SUMMARY_MAX_CHARACTERS
 from geo_core.prompts.program_contracts import (
     ProgramKind,
     provider_portable_output_schema,
@@ -28,7 +29,13 @@ def bootstrap_input_schema(kind: ProgramKind) -> dict[str, object]:
         "prompt_injection_present": {"type": "boolean"},
         **_input_properties(kind),
     }
-    return _strict_object(properties)
+    schema = _strict_object(properties)
+    if kind is ProgramKind.ARBITER:
+        required = schema["required"]
+        assert isinstance(required, list)
+        required.remove("candidate_payloads")
+        required.remove("arbiter_context_json")
+    return schema
 
 
 def bootstrap_output_schema(kind: ProgramKind) -> dict[str, object]:
@@ -58,7 +65,7 @@ def _input_properties(kind: ProgramKind) -> Mapping[str, object]:
             "guided_idea": _string(minimum=0, maximum=4000),
             "channel": _string(maximum=100),
             "scenario": _string(maximum=4000),
-            "style_profile": _string(maximum=4000),
+            "style_profile": _string(maximum=STYLE_PROFILE_SUMMARY_MAX_CHARACTERS),
             "approved_facts": _string_array(minimum=1, maximum=100),
         }
     if kind is ProgramKind.CLAIM_EXTRACTION:
@@ -88,12 +95,23 @@ def _input_properties(kind: ProgramKind) -> Mapping[str, object]:
     if kind is ProgramKind.STYLE_JUDGE:
         return {
             "candidate_text": _string(maximum=20_000),
-            "style_profile": _string(maximum=4000),
+            "style_profile": _string(maximum=STYLE_PROFILE_SUMMARY_MAX_CHARACTERS),
             "pass_threshold": {"type": "number", "minimum": 0, "maximum": 5},
         }
     if kind is ProgramKind.ARBITER:
         return {
             "candidate_ids": _string_array(minimum=1, maximum=20),
+            "candidate_payloads": _array(
+                _strict_object(
+                    {
+                        "candidate_id": _string(maximum=200),
+                        "payload_json": _string(maximum=100_000),
+                    }
+                ),
+                minimum=1,
+                maximum=20,
+            ),
+            "arbiter_context_json": _string(maximum=4_000),
             "evaluator_results": _array(
                 _strict_object(
                     {
@@ -154,6 +172,7 @@ def _input_properties(kind: ProgramKind) -> Mapping[str, object]:
                 "no_change",
                 "insufficient_evidence",
             ),
+            "type_admission_json": _string(maximum=4_000),
         }
     if kind is ProgramKind.STYLE_PROFILE:
         return {
@@ -356,10 +375,18 @@ def _output_properties(kind: ProgramKind) -> Mapping[str, object]:
     if kind is ProgramKind.STYLE_PROFILE:
         return {
             "sample_manifest_hash": _sha256(),
-            "voice_traits": _string_array(minimum=1, maximum=100),
-            "lexical_patterns": _string_array(minimum=1, maximum=100),
-            "structure_patterns": _string_array(minimum=1, maximum=100),
-            "avoid_patterns": _string_array(minimum=0, maximum=100),
+            "voice_traits": _string_array(
+                minimum=1, maximum=12, item_maximum=200
+            ),
+            "lexical_patterns": _string_array(
+                minimum=1, maximum=12, item_maximum=200
+            ),
+            "structure_patterns": _string_array(
+                minimum=1, maximum=12, item_maximum=200
+            ),
+            "avoid_patterns": _string_array(
+                minimum=0, maximum=12, item_maximum=200
+            ),
         }
     if kind is ProgramKind.OFFLINE_ANSWER:
         return {
@@ -524,8 +551,12 @@ def _integer(*, minimum: int, maximum: int) -> dict[str, object]:
     }
 
 
-def _string_array(*, minimum: int, maximum: int) -> dict[str, object]:
-    schema = _array(_string(maximum=500), minimum=minimum, maximum=maximum)
+def _string_array(
+    *, minimum: int, maximum: int, item_maximum: int = 500
+) -> dict[str, object]:
+    schema = _array(
+        _string(maximum=item_maximum), minimum=minimum, maximum=maximum
+    )
     schema["uniqueItems"] = True
     return schema
 

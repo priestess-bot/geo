@@ -6,8 +6,9 @@ from dataclasses import dataclass
 from decimal import Decimal
 import hashlib
 import json
+import math
 from types import MappingProxyType
-from typing import Mapping, Protocol
+from typing import Callable, Mapping, Protocol
 from uuid import UUID
 
 from geo_core.jobs.postgres import WorkerLease
@@ -23,6 +24,12 @@ DIFY_WORKFLOW_PURPOSES = frozenset(
         "knowledge.rag_grounding",
         "placements.generation",
         "placements.simulation",
+        "synthetic_lab.generation",
+        "synthetic_lab.claim_extraction",
+        "synthetic_lab.conflict_check",
+        "synthetic_lab.revision",
+        "synthetic_lab.style_profile",
+        "recommendations.recommendation",
     }
 )
 CONTEXT_CONTRACT_VERSION = "geo-dify-context-v1"
@@ -35,14 +42,46 @@ DYNAMIC_JSON_OUTPUT_SCHEMA: Mapping[str, object] = MappingProxyType(
 
 
 def canonical_json_hash(value: object) -> str:
-    return hashlib.sha256(
-        json.dumps(
-            canonical_json_value(value),
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode("utf-8")
-    ).hexdigest()
+    return hashlib.sha256(canonical_json_text(value).encode("utf-8")).hexdigest()
+
+
+def canonical_json_text(value: object) -> str:
+    return _canonical_json_text(canonical_json_value(value))
+
+
+def _canonical_json_text(value: object) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise WorkflowContractError("workflow hash input contains non-finite number")
+        number = Decimal(str(value))
+        if number == 0:
+            return "0"
+        rendered = format(number, "f")
+        return rendered.rstrip("0").rstrip(".") if "." in rendered else rendered
+    if isinstance(value, str):
+        return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    if isinstance(value, list):
+        return "[" + ",".join(_canonical_json_text(item) for item in value) + "]"
+    if isinstance(value, dict):
+        return (
+            "{"
+            + ",".join(
+                json.dumps(key, ensure_ascii=False, separators=(",", ":"))
+                + ":"
+                + _canonical_json_text(value[key])
+                for key in sorted(value)
+            )
+            + "}"
+        )
+    raise WorkflowContractError(
+        f"workflow hash input contains unsupported value: {type(value).__name__}"
+    )
 
 
 def canonical_json_value(value: object) -> object:
@@ -73,6 +112,9 @@ class WorkflowRuntimeRelease:
     dify_app_id: str
     dify_workflow_id: str
     dsl_hash: str
+    registered_workflow_hash: str
+    registered_snapshot_hash: str
+    registered_identity_source: str
     context_contract_version: str
     input_schema: Mapping[str, object]
     input_schema_hash: str
@@ -99,12 +141,19 @@ class WorkflowRuntimeRelease:
         for label, value in (
             ("prompt release hash", self.prompt_release_hash),
             ("DSL hash", self.dsl_hash),
+            ("registered workflow hash", self.registered_workflow_hash),
+            ("registered snapshot hash", self.registered_snapshot_hash),
             ("input schema hash", self.input_schema_hash),
             ("output schema hash", self.output_schema_hash),
             ("release hash", self.release_hash),
         ):
             if len(value) != 64 or any(char not in "0123456789abcdef" for char in value):
                 raise WorkflowContractError(f"{label} must be lowercase SHA-256")
+        if self.registered_identity_source not in {
+            "migration_backfill",
+            "runtime_enrollment",
+        }:
+            raise WorkflowContractError("registered Dify identity source is invalid")
         if not self.prompt_system_template.strip() or not self.prompt_user_template.strip():
             raise WorkflowContractError("Dify release Prompt templates cannot be empty")
 
@@ -151,6 +200,28 @@ class WorkflowExecutionResult:
     total_steps: int | None
     elapsed_seconds: Decimal | None
     response_hash: str
+    published_snapshot_id: UUID | None = None
+    published_snapshot_hash: str | None = None
+    published_workflow_id: str | None = None
+    request_hash: str | None = None
+
+    def __post_init__(self) -> None:
+        if (self.published_snapshot_id is None) != (self.published_snapshot_hash is None):
+            raise WorkflowContractError(
+                "Dify result published snapshot ID and hash must be frozen together"
+            )
+        if self.published_snapshot_hash is not None and (
+            len(self.published_snapshot_hash) != 64
+            or any(char not in "0123456789abcdef" for char in self.published_snapshot_hash)
+        ):
+            raise WorkflowContractError("Dify result published snapshot hash must be SHA-256")
+        if self.published_workflow_id is not None and not self.published_workflow_id.strip():
+            raise WorkflowContractError("Dify result published workflow ID cannot be empty")
+        if self.request_hash is not None and (
+            len(self.request_hash) != 64
+            or any(char not in "0123456789abcdef" for char in self.request_hash)
+        ):
+            raise WorkflowContractError("Dify result request hash must be SHA-256")
 
     def as_model_gateway_result(self) -> ModelGatewayResult:
         """Bridge existing business finalizers without recording a fake model call."""
@@ -175,6 +246,13 @@ class WorkflowExecutionResult:
                 "workflow_runtime": "dify",
                 "workflow_attempt_id": str(self.attempt_id),
                 "workflow_run_id": self.dify_run_id,
+                "published_snapshot_id": (
+                    str(self.published_snapshot_id)
+                    if self.published_snapshot_id is not None
+                    else None
+                ),
+                "published_snapshot_hash": self.published_snapshot_hash,
+                "published_workflow_id": self.published_workflow_id,
                 "total_steps": self.total_steps,
                 "elapsed_seconds": (
                     str(self.elapsed_seconds) if self.elapsed_seconds is not None else None
@@ -185,8 +263,22 @@ class WorkflowExecutionResult:
 
 class WorkflowExecutor(Protocol):
     def execute_optional(
-        self, lease: WorkerLease, request: WorkflowExecutionRequest
+        self,
+        lease: WorkerLease,
+        request: WorkflowExecutionRequest,
+        *,
+        validate_output: Callable[[Mapping[str, object]], None] | None = None,
     ) -> WorkflowExecutionResult | None: ...
+
+    def execute_frozen(
+        self,
+        lease: WorkerLease,
+        request: WorkflowExecutionRequest,
+        *,
+        release_id: UUID,
+        release_hash: str,
+        validate_output: Callable[[Mapping[str, object]], None] | None = None,
+    ) -> WorkflowExecutionResult: ...
 
 
 # Avoid a circular import in the validation branch above.

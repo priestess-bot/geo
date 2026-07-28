@@ -12,6 +12,7 @@ import {
   savePromptDraftAction
 } from "./promptWorkspaceActions";
 import {
+  DifyWorkflowRuntimeCard,
   PromptFlow,
   PromptProgramReleaseDetail,
   PromptRenderPreview,
@@ -67,8 +68,14 @@ export function PromptEditorWorkspace({
   const router = useRouter();
   const flow = data.selectedFlow;
   const difyManaged = isDifyManagedFlow(flow);
+  const workflowRuntimesByPurpose = useMemo(
+    () => new Map<string, DifyWorkflowRuntimeCard>(
+      data.workflowRuntimes.items.map((item) => [item.purpose, item])
+    ),
+    [data.workflowRuntimes.items]
+  );
   const workflowRuntime = flow
-    ? data.workflowRuntimes.items.find((item) => item.purpose === flow.purpose) || null
+    ? workflowRuntimesByPurpose.get(flow.purpose) || null
     : null;
   const difyConsoleUrl = workflowRuntime?.console_url
     || data.workflowRuntimes.items.find((item) => item.console_url)?.console_url
@@ -389,14 +396,18 @@ export function PromptEditorWorkspace({
                         <strong>{item.display_name}</strong>
                         <span>{flowStatus(
                           item,
-                          data.workflowRuntimes.items.find((runtime) => runtime.purpose === item.purpose),
+                          workflowRuntimesByPurpose.get(item.purpose),
                           data.workflowRuntimes.runtime_backend
                         )}</span>
                       </a>
                     ) : (
                       <div className={styles.flowUnavailable} key={item.flow_key}>
                         <strong>{item.display_name}</strong>
-                        <span>待接入统一运行时</span>
+                        <span>{flowStatus(
+                          item,
+                          workflowRuntimesByPurpose.get(item.purpose),
+                          data.workflowRuntimes.runtime_backend
+                        )}</span>
                       </div>
                     )
                   ))}

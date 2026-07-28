@@ -40,6 +40,7 @@ from geo_core.synthetic_lab.ports import (
     SyntheticJob,
     VersionedAggregate,
 )
+from geo_core.synthetic_lab.profile_build_binding import StyleProfileBuildBinding
 from geo_core.synthetic_lab.review_cases import (
     ReviewCase,
     ReviewSuite,
@@ -121,6 +122,7 @@ class ReviewApplication:
         *,
         principal: LabPrincipal,
         profile: StyleProfileVersion,
+        build_binding: StyleProfileBuildBinding,
         expected_version: int,
         idempotency_key: str,
     ) -> CommandReceipt:
@@ -133,6 +135,7 @@ class ReviewApplication:
             idempotency_key=idempotency_key,
             operation=SyntheticCommandOperation.SUBMIT_PROFILE,
             independent_reviewer=False,
+            build_binding=build_binding,
         )
 
     def decide_profile(
@@ -170,7 +173,22 @@ class ReviewApplication:
         operation: SyntheticCommandOperation,
         independent_reviewer: bool,
         decided_at: datetime | None = None,
+        build_binding: StyleProfileBuildBinding | None = None,
     ) -> CommandReceipt:
+        if operation is SyntheticCommandOperation.SUBMIT_PROFILE:
+            if build_binding is None or (
+                build_binding.project_id != profile.project_id
+                or build_binding.profile_version_id != profile.id
+                or build_binding.profile_hash != profile.profile_hash
+                or build_binding.bound_by != principal.actor_id
+            ):
+                raise SyntheticLabPersistenceError(
+                    "Style Profile submission requires its exact completed build result"
+                )
+        elif build_binding is not None:
+            raise SyntheticLabPersistenceError(
+                "Style Profile build result can only be bound during submission"
+            )
         identity = command_identity(
             project_id=profile.project_id,
             idempotency_key=idempotency_key,
@@ -180,6 +198,7 @@ class ReviewApplication:
                 "command": command,
                 "expected_version": expected_version,
                 "decided_at": decided_at,
+                "build_binding": build_binding,
             },
         )
         with self._uow_factory(project_id=profile.project_id) as uow:
@@ -201,6 +220,8 @@ class ReviewApplication:
                 reviewer_id=principal.actor_id if decided_at is not None else None,
                 reviewed_at=decided_at,
             )
+            if build_binding is not None:
+                uow.profile_build_bindings.stage(build_binding)
             uow.aggregates.stage(
                 VersionedAggregate(
                     project_id=profile.project_id,

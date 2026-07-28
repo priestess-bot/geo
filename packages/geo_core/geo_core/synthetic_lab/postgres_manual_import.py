@@ -59,6 +59,7 @@ from geo_core.synthetic_lab.sample_import import (
 
 
 _PREVIEW_TTL = timedelta(hours=24)
+MINIMUM_PROFILE_SHORT_EXAMPLES = 24
 
 
 class PostgresManualImportService(_PostgresManualImportServiceTail):
@@ -86,8 +87,10 @@ class PostgresManualImportService(_PostgresManualImportServiceTail):
             raise SyntheticLabContractError(
                 "Style Profile example IDs must be non-empty and unique"
             )
-        if maximum_examples < 1 or maximum_examples > 50:
-            raise SyntheticLabContractError("Style Profile example limit is invalid")
+        if maximum_examples < MINIMUM_PROFILE_SHORT_EXAMPLES or maximum_examples > 50:
+            raise SyntheticLabContractError(
+                "Style Profile example limit must be between 24 and 50"
+            )
         connection = self._open(project_id)
         try:
             rows = connection.execute(
@@ -108,9 +111,14 @@ class PostgresManualImportService(_PostgresManualImportServiceTail):
         finally:
             connection.rollback()
             connection.close()
-        if not rows:
+        if len(rows) < MINIMUM_PROFILE_SHORT_EXAMPLES:
+            missing = MINIMUM_PROFILE_SHORT_EXAMPLES - len(rows)
+            sample_label = "sample" if missing == 1 else "samples"
             raise SyntheticLabPersistenceError(
-                "Style Profile build requires at least one approved short example"
+                "Style Profile build found "
+                f"{len(rows)} approved, unique, short-example-eligible samples; "
+                f"requires {MINIMUM_PROFILE_SHORT_EXAMPLES}. Import, anonymize, and approve "
+                f"{missing} more eligible {sample_label} before retrying."
             )
         examples: list[tuple[UUID, str]] = []
         for row in rows:

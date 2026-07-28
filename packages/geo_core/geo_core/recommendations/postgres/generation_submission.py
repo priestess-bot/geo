@@ -31,6 +31,10 @@ from geo_core.recommendations.postgres.generation_codec import generation_spec_p
 from geo_core.recommendations.postgres.generation_reads import (
     PostgresRecommendationGenerationReads,
 )
+from geo_core.workflow_runtime.reconciliation import (
+    DifyRecoveryBindingError,
+    bind_dify_resubmission,
+)
 
 
 _CONTRIBUTOR_ROLES = frozenset({"owner", "admin", "analyst"})
@@ -61,6 +65,8 @@ class PsycopgRecommendationGenerationSubmission:
         *,
         selection: RecommendationGenerationSelection,
         idempotency_key: str,
+        recovery_of_attempt_id: UUID | None = None,
+        dify_reconciliation_token: str | None = None,
     ) -> GenerationExecution:
         require_project_role(principal, selection.project_id, allowed=_CONTRIBUTOR_ROLES)
         key_hash = idempotency_hash(idempotency_key)
@@ -102,6 +108,14 @@ class PsycopgRecommendationGenerationSubmission:
                 raise RecommendationGenerationConflict(
                     "Recommendation generation enqueue did not return a Job"
                 )
+            bind_dify_resubmission(
+                connection,
+                project_id=selection.project_id,
+                new_parent_job_id=result["job_id"],
+                actor_id=principal.identity_id,
+                recovery_of_attempt_id=recovery_of_attempt_id,
+                token=dify_reconciliation_token,
+            )
             execution = GenerationExecution(
                 self._reads.get_in_connection(
                     connection,
@@ -120,6 +134,9 @@ class PsycopgRecommendationGenerationSubmission:
         except RecommendationGenerationConflict:
             connection.rollback()
             raise
+        except DifyRecoveryBindingError as error:
+            connection.rollback()
+            raise RecommendationGenerationConflict(str(error)) from error
         except psycopg.Error as error:
             connection.rollback()
             raise RecommendationGenerationConflict(

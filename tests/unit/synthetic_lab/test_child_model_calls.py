@@ -16,6 +16,7 @@ from geo_core.prompts.program_contracts import ProgramKind
 from geo_core.synthetic_lab.child_model_calls import (
     SyntheticChildCallState,
     SyntheticChildCallStatus,
+    SyntheticChildModelCallTask,
     SyntheticChildModelCallCoordinator,
     SyntheticChildModelCallPending,
     child_model_call_id,
@@ -31,14 +32,20 @@ from geo_core.synthetic_lab.artifact_keyring import SyntheticArtifactKeyring
 from geo_core.synthetic_lab.execution_contracts import (
     FrozenPromptRef,
     ResolvedSyntheticPrompt,
+    SyntheticExecutionBackend,
+    SyntheticExecutionError,
+    SyntheticManualReconciliationRequired,
     SyntheticExecutionStale,
     SyntheticModelInvocation,
     SyntheticModelResult,
+    SyntheticWorkflowResult,
 )
 from geo_core.synthetic_lab.ports import RuntimeInputSnapshot
 from geo_core.synthetic_lab.postgres_child_model_calls import (
     PostgresSyntheticChildCallRepository,
 )
+from geo_core.synthetic_lab.postgres_codec import decode_object, encode_object
+from geo_core.workflow_runtime.errors import UnknownWorkflowOutcomeError
 
 
 PROJECT_ID = UUID("32000000-0000-0000-0000-000000000001")
@@ -55,6 +62,28 @@ class MemoryChildren:
         if current is None:
             current = SyntheticChildCallState(task=task, status=SyntheticChildCallStatus.QUEUED)
             self.states[task.child_job_id] = current
+        return current
+
+    def load_existing(self, invocation):
+        child_id = child_model_call_id(
+            parent_job_id=invocation.lease.job_id,
+            step_key=invocation.step_key,
+        )
+        current = self.states.get(child_id)
+        if current is None:
+            return None
+        expected = child_task_from_invocation(
+            invocation,
+            execution_backend=current.task.execution_backend,
+            workflow_release_id=current.task.workflow_release_id,
+            workflow_release_hash=current.task.workflow_release_hash,
+        )
+        if expected.input_hash != current.task.input_hash:
+            return SyntheticChildCallState(
+                task=current.task,
+                status=SyntheticChildCallStatus.FAILED,
+                failure_code="immutable_input_changed",
+            )
         return current
 
 
@@ -136,6 +165,15 @@ class ChildModel:
     def execute(self, invocation):
         assert invocation.lease.kind == "synthetic.model.call"
         return self.result
+
+
+class FailingChildModel:
+    def __init__(self, error: Exception) -> None:
+        self.error = error
+
+    def execute(self, invocation):
+        assert invocation.lease.kind == "synthetic.model.call"
+        raise self.error
 
 
 class _RecordedCursor:
@@ -254,14 +292,15 @@ def test_child_postgres_enqueue_freezes_both_schema_hashes_in_function_order() -
     assert connection.committed is True
     assert connection.closed is True
     sql, parameters = connection.calls[0]
-    assert sql.count("%s") == 46
-    assert len(parameters) == 46
+    assert sql.count("%s") == 49
+    assert len(parameters) == 49
     assert parameters[18] == task.prompt.frozen.frozen_state_version
     assert parameters[24] == task.admitted_by
-    assert parameters[39] == canonical_hash(task.prompt.output_schema)
-    assert parameters[40] == canonical_hash(task.prompt.application_output_schema)
-    assert parameters[41] == "s3://test-artifacts/children/%s.bin" % task.child_job_id
-    assert parameters[42] == _hash("child-artifact")
+    assert parameters[32:35] == ("model_gateway", None, None)
+    assert parameters[42] == canonical_hash(task.prompt.output_schema)
+    assert parameters[43] == canonical_hash(task.prompt.application_output_schema)
+    assert parameters[44] == "s3://test-artifacts/children/%s.bin" % task.child_job_id
+    assert parameters[45] == _hash("child-artifact")
 
 
 def test_parent_replay_waits_then_returns_exact_completed_child_result() -> None:
@@ -301,6 +340,113 @@ def test_parent_replay_rejects_same_child_identity_with_changed_input() -> None:
         coordinator.execute(changed)
 
 
+def test_parent_retry_uses_the_childs_frozen_dify_release_after_binding_changes() -> None:
+    repository = MemoryChildren()
+    invocation = _invocation("generation:batch:1")
+    first_release = _workflow_release(invocation)
+
+    class Releases:
+        current = first_release
+        calls = 0
+
+        def resolve_active(self, *, project_id, purpose):
+            assert project_id == invocation.lease.project_id
+            assert purpose == invocation.prompt.frozen.purpose
+            self.calls += 1
+            return self.current
+
+    releases = Releases()
+    coordinator = SyntheticChildModelCallCoordinator(
+        repository,
+        workflow_releases=releases,
+    )
+    with pytest.raises(SyntheticChildModelCallPending) as pending:
+        coordinator.execute(invocation)
+    frozen_task = repository.states[pending.value.child_job_id].task
+    assert frozen_task.execution_backend is SyntheticExecutionBackend.DIFY
+    assert frozen_task.workflow_release_id == first_release.id
+    assert frozen_task.workflow_release_hash == first_release.release_hash
+
+    releases.current = SimpleNamespace(
+        **{
+            **vars(first_release),
+            "id": uuid4(),
+            "release_hash": _hash("new-release"),
+        }
+    )
+    expected = _workflow_result(
+        release_id=first_release.id,
+        release_hash=first_release.release_hash,
+    )
+    repository.states[frozen_task.child_job_id] = SyntheticChildCallState(
+        task=frozen_task,
+        status=SyntheticChildCallStatus.SUCCEEDED,
+        result=expected,
+    )
+
+    assert coordinator.execute(invocation) is expected
+    assert releases.calls == 1
+
+
+def test_new_migrated_child_fails_closed_without_an_active_dify_release() -> None:
+    class Releases:
+        def resolve_active(self, *, project_id, purpose):
+            del project_id, purpose
+            return None
+
+    repository = MemoryChildren()
+    coordinator = SyntheticChildModelCallCoordinator(
+        repository,
+        workflow_releases=Releases(),
+    )
+
+    with pytest.raises(SyntheticExecutionError, match="no active release"):
+        coordinator.execute(_invocation("generation:batch:1"))
+    assert repository.states == {}
+
+
+def test_new_dify_child_rejects_a_release_for_another_frozen_prompt() -> None:
+    invocation = _invocation("generation:batch:1")
+    selected = _workflow_release(invocation)
+    release = SimpleNamespace(
+        **{**vars(selected), "prompt_release_id": uuid4()}
+    )
+
+    class Releases:
+        def resolve_active(self, *, project_id, purpose):
+            del project_id, purpose
+            return release
+
+    with pytest.raises(SyntheticExecutionStale, match="frozen Synthetic Prompt"):
+        SyntheticChildModelCallCoordinator(
+            MemoryChildren(),
+            workflow_releases=Releases(),
+        ).execute(invocation)
+
+
+def test_parent_treats_unknown_child_outcome_as_manual_terminal_work() -> None:
+    repository = MemoryChildren()
+    coordinator = SyntheticChildModelCallCoordinator(repository)
+    invocation = _invocation("generation:batch:1")
+    with pytest.raises(SyntheticChildModelCallPending) as pending:
+        coordinator.execute(invocation)
+    task = repository.states[pending.value.child_job_id].task
+    repository.states[task.child_job_id] = SyntheticChildCallState(
+        task=task,
+        status=SyntheticChildCallStatus.UNKNOWN_OUTCOME,
+        failure_code="dify_unknown_outcome",
+    )
+
+    with pytest.raises(
+        SyntheticManualReconciliationRequired,
+        match="manual reconciliation",
+    ) as caught:
+        coordinator.execute(invocation)
+
+    assert caught.value.child_job_id == task.child_job_id
+    assert caught.value.failure_code == "dify_unknown_outcome"
+
+
 def test_frozen_prompt_rejects_bare_or_legacy_purpose_alias() -> None:
     frozen = _invocation("generation:batch:1").prompt.frozen
 
@@ -330,6 +476,49 @@ def test_child_task_artifact_is_deterministic_encrypted_and_round_trips() -> Non
     encrypted = next(iter(objects.objects.values()))
     assert b"Generate candidate batch" not in encrypted
     assert b"synthetic_lab.generation" not in encrypted
+
+
+def test_legacy_native_child_payload_keeps_its_v1_identity_and_defaults() -> None:
+    task = child_task_from_invocation(_invocation("generation:batch:legacy"))
+    type_name, payload, _content_hash = encode_object(task)
+    raw_fields = payload.get("fields")
+    assert isinstance(raw_fields, dict)
+    for name in ("execution_backend", "workflow_release_id", "workflow_release_hash"):
+        raw_fields.pop(name)
+
+    decoded = decode_object(type_name, payload)
+
+    assert isinstance(decoded, SyntheticChildModelCallTask)
+    assert decoded == task
+    assert decoded.input_hash == task.input_hash
+
+
+def test_dify_child_artifact_round_trip_preserves_the_frozen_release() -> None:
+    release_id = uuid4()
+    release_hash = _hash("artifact-workflow-release")
+    task = child_task_from_invocation(
+        _invocation("generation:batch:dify"),
+        execution_backend=SyntheticExecutionBackend.DIFY,
+        workflow_release_id=release_id,
+        workflow_release_hash=release_hash,
+    )
+    objects = MemoryObjects()
+    artifacts = EncryptedSyntheticChildTaskArtifactStore(
+        object_store=objects,
+        keyring=SyntheticArtifactKeyring(active_version="1", keys={"1": b"k" * 32}),
+    )
+
+    loaded = artifacts.load(
+        artifacts.put(task),
+        project_id=task.project_id,
+        child_job_id=task.child_job_id,
+        expected_input_hash=task.input_hash,
+    )
+
+    assert loaded == task
+    assert loaded.execution_backend is SyntheticExecutionBackend.DIFY
+    assert loaded.workflow_release_id == release_id
+    assert loaded.workflow_release_hash == release_hash
 
 
 def test_child_task_artifact_rejects_wrong_project_key_or_input_hash() -> None:
@@ -384,6 +573,61 @@ def test_child_worker_completes_with_governed_attempt_reference() -> None:
             },
         )
     ]
+
+
+def test_child_worker_records_dify_attempt_reference() -> None:
+    release_id = uuid4()
+    release_hash = _hash("workflow-release")
+    task = child_task_from_invocation(
+        _invocation("generation:batch:1"),
+        execution_backend=SyntheticExecutionBackend.DIFY,
+        workflow_release_id=release_id,
+        workflow_release_hash=release_hash,
+    )
+    lease = _child_lease(task.child_job_id)
+    store = ChildStore()
+    expected = _workflow_result(release_id=release_id, release_hash=release_hash)
+    handler = SyntheticChildModelCallHandler(
+        store=store,  # type: ignore[arg-type]
+        repository=ClaimedChildRepository(task),
+        runtime_inputs=ChildRuntime(task.runtime_inputs),
+        prompts=ChildPrompts(),
+        model_gateway=ChildModel(expected),
+        lease_for=timedelta(minutes=2),
+    )
+
+    assert handler.handle(lease)["status"] == "succeeded"
+    assert store.completions[0] == (
+        f"dify-workflow://attempt/{expected.workflow_attempt_id}",
+        {
+            "workflow_attempt_id": str(expected.workflow_attempt_id),
+            "workflow_release_id": str(expected.workflow_release_id),
+            "response_hash": expected.response_hash,
+            "task_input_hash": task.input_hash,
+        },
+    )
+
+
+def test_child_worker_does_not_retry_unknown_dify_outcome() -> None:
+    task = child_task_from_invocation(_invocation("generation:batch:1"))
+    lease = _child_lease(task.child_job_id)
+    store = ChildStore()
+    handler = SyntheticChildModelCallHandler(
+        store=store,  # type: ignore[arg-type]
+        repository=ClaimedChildRepository(task),
+        runtime_inputs=ChildRuntime(task.runtime_inputs),
+        prompts=ChildPrompts(),
+        model_gateway=FailingChildModel(
+            UnknownWorkflowOutcomeError(
+                "Dify may have accepted this request; reconcile before retrying",
+                code="dify_unknown_outcome",
+            )
+        ),
+        lease_for=timedelta(minutes=2),
+    )
+
+    assert handler.handle(lease)["status"] == "failed"
+    assert store.failures == [("dify_unknown_outcome", None)]
 
 
 def test_child_worker_stops_when_parent_is_cancelled_before_model_call() -> None:
@@ -489,6 +733,33 @@ def _result() -> SyntheticModelResult:
         model_identity_hash=_hash("identity"),
         request_hash=_hash("request"),
         response_hash=_hash("response"),
+    )
+
+
+def _workflow_result(*, release_id: UUID, release_hash: str) -> SyntheticWorkflowResult:
+    return SyntheticWorkflowResult(
+        workflow_attempt_id=uuid4(),
+        workflow_release_id=release_id,
+        workflow_release_hash=release_hash,
+        output={"candidates": []},
+        configured_model="model-v1",
+        reported_model="model-v1",
+        model_identity_hash=_hash("dify-identity"),
+        request_hash=_hash("dify-request"),
+        response_hash=_hash("dify-response"),
+    )
+
+
+def _workflow_release(invocation: SyntheticModelInvocation):
+    frozen = invocation.prompt.frozen
+    return SimpleNamespace(
+        id=uuid4(),
+        project_id=frozen.project_id,
+        purpose=frozen.purpose,
+        prompt_release_id=frozen.release_id,
+        prompt_release_hash=frozen.release_hash,
+        configured_model=frozen.configured_model,
+        release_hash=_hash("workflow-release"),
     )
 
 

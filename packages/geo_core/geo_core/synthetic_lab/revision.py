@@ -29,7 +29,7 @@ from geo_core.synthetic_lab.evaluation import (
     assert_evaluation_for_candidate,
 )
 from geo_core.synthetic_lab.generation import (
-    FrozenCallLineage,
+    FrozenExecutionLineage,
     GeneratedCandidate,
     GenerationBatch,
     GenerationBatchKind,
@@ -108,7 +108,7 @@ class CandidateRevision(SyntheticOnly):
     parent_output_hash: str
     issue_codes: tuple[str, ...]
     issue_set_hash: str
-    call_lineage: FrozenCallLineage
+    call_lineage: FrozenExecutionLineage
     revised_candidate: RevisedCandidate
 
     def __post_init__(self) -> None:

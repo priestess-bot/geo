@@ -24,6 +24,7 @@ from geo_core.synthetic_lab.postgres_rows import (
 )
 from geo_core.synthetic_lab.postgres_codec import decode_object, payload_hash
 from geo_core.synthetic_lab.postgres_api_read_models import (
+    StyleProfileAggregateView,
     SyntheticAggregateView,
     SyntheticApiPage,
 )
@@ -100,6 +101,47 @@ class PostgresSyntheticApiReads(_PostgresSyntheticApiReadsTail):
             connection.rollback()
             connection.close()
 
+    def profiles(
+        self, project_id: UUID, *, limit: int, offset: int
+    ) -> SyntheticApiPage:
+        connection = self._open(project_id)
+        try:
+            total = connection.execute(
+                """SELECT count(DISTINCT resource_id) AS total
+                   FROM synthetic_lab_aggregate_versions
+                   WHERE project_id = %s AND kind = 'style_profile'""",
+                (project_id,),
+            ).fetchone()["total"]
+            rows = connection.execute(
+                """SELECT DISTINCT ON (aggregate.resource_id) aggregate.*,
+                          binding.verification_status AS build_verification_status,
+                          coalesce(binding.rebuild_required, false) AS rebuild_required
+                   FROM synthetic_lab_aggregate_versions AS aggregate
+                   LEFT JOIN synthetic_lab_style_profile_build_bindings AS binding
+                     ON binding.project_id = aggregate.project_id
+                    AND binding.profile_version_id = aggregate.resource_id
+                   WHERE aggregate.project_id = %s
+                     AND aggregate.kind = 'style_profile'
+                   ORDER BY aggregate.resource_id, aggregate.version DESC
+                   LIMIT %s OFFSET %s""",
+                (project_id, limit, offset),
+            ).fetchall()
+            items = []
+            for row in rows:
+                aggregate = aggregate_from_row(dict(row))
+                items.append(
+                    StyleProfileAggregateView(
+                        payload=aggregate.payload,
+                        state_version=aggregate.version,
+                        build_verification_status=row["build_verification_status"],
+                        rebuild_required=bool(row["rebuild_required"]),
+                    )
+                )
+            return SyntheticApiPage(tuple(items), int(total), limit, offset)
+        finally:
+            connection.rollback()
+            connection.close()
+
     def resource_inventory(self, project_id: UUID) -> dict[str, tuple[dict[str, object], ...]]:
         connection = self._open(project_id)
         try:
@@ -129,10 +171,16 @@ class PostgresSyntheticApiReads(_PostgresSyntheticApiReadsTail):
                 (project_id,),
             ).fetchall()
             profile_rows = connection.execute(
-                """SELECT DISTINCT ON (resource_id) *
-                   FROM synthetic_lab_aggregate_versions
-                   WHERE project_id = %s AND kind = 'style_profile'
-                   ORDER BY resource_id, version DESC""",
+                """SELECT DISTINCT ON (aggregate.resource_id) aggregate.*
+                   FROM synthetic_lab_aggregate_versions AS aggregate
+                   JOIN synthetic_lab_style_profile_build_bindings AS binding
+                     ON binding.project_id = aggregate.project_id
+                    AND binding.profile_version_id = aggregate.resource_id
+                    AND binding.verification_status = 'verified'
+                    AND binding.rebuild_required = false
+                   WHERE aggregate.project_id = %s
+                     AND aggregate.kind = 'style_profile'
+                   ORDER BY aggregate.resource_id, aggregate.version DESC""",
                 (project_id,),
             ).fetchall()
             profiles = tuple(aggregate_from_row(dict(row)).payload for row in profile_rows)

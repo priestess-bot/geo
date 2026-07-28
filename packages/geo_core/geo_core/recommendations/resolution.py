@@ -27,6 +27,10 @@ from geo_core.recommendations.evidence import (
     RuleRef,
     SurfaceRef,
 )
+from geo_core.recommendations.evidence_graph import EVIDENCE_GRAPH_CONTRACT_V2
+
+
+MAX_RECOMMENDATION_EVIDENCE_SELECTORS = 100
 
 
 class RecommendationEvidenceKind(StrEnum):
@@ -88,6 +92,10 @@ def freeze_evidence_selectors(
     identities = tuple(item.identity for item in selectors)
     if not selectors:
         raise RecommendationRuleViolation("Recommendation evidence selectors are required")
+    if len(selectors) > MAX_RECOMMENDATION_EVIDENCE_SELECTORS:
+        raise RecommendationRuleViolation(
+            "Recommendation accepts at most 100 evidence selectors"
+        )
     if len(set(identities)) != len(identities):
         raise RecommendationRuleViolation("Recommendation evidence selectors must be unique")
     return selectors
@@ -114,6 +122,7 @@ def resolve_evidence_graph(
     scope: RecommendationScope,
     decision: RecommendationDecision,
     selectors: tuple[RecommendationEvidenceSelector, ...],
+    contract_version: str = EVIDENCE_GRAPH_CONTRACT_V2,
 ) -> RecommendationEvidenceGraph:
     if scope.project_id != project_id:
         raise RecommendationRuleViolation("Recommendation scope belongs to another Project")
@@ -142,6 +151,7 @@ def resolve_evidence_graph(
         questions=_typed(resolved, QuestionRef),
         surfaces=_typed(resolved, SurfaceRef),
         attributions=_typed(resolved, AttributionRef),
+        contract_version=contract_version,
     )
 
 
@@ -155,6 +165,7 @@ def resolve_current_graph(
         scope=graph.scope,
         decision=graph.decision,
         selectors=selectors_from_graph(graph),
+        contract_version=graph.contract_version,
     )
 
 
@@ -178,6 +189,7 @@ def _typed(
 
 
 __all__ = [
+    "MAX_RECOMMENDATION_EVIDENCE_SELECTORS",
     "RecommendationEvidenceKind",
     "RecommendationEvidenceResolverPort",
     "RecommendationEvidenceSelector",

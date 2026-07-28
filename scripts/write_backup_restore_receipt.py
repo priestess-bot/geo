@@ -20,6 +20,7 @@ from scripts.backup_envelope import (  # noqa: E402
     BackupSecurityError,
     atomic_write,
     canonical_json,
+    read_canonical_json,
 )
 from scripts.non_b_business_consistency import (  # noqa: E402
     validate_business_consistency_manifest,
@@ -27,7 +28,7 @@ from scripts.non_b_business_consistency import (  # noqa: E402
 from scripts.write_restore_acl_rls_canary import validate_canary  # noqa: E402
 
 
-SCHEMA_VERSION = "geo-production-backup-restore-v5"
+SCHEMA_VERSION = "geo-production-backup-restore-v6"
 APPLICATION_KEY_PROBE_SCHEMA = "geo-application-key-recovery-probe-v3"
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 HASHED_RELATIONS = frozenset(
@@ -55,6 +56,7 @@ def write_receipt(
     restored_table_count: int,
     restored_migration_revision: str,
     restored_alembic_sql_checksum_ledger: object,
+    restored_database_checksum_ledger_rows: object,
     restored_critical_relation_counts: Mapping[str, int],
     restored_critical_relation_hashes: Mapping[str, str],
     restored_non_b_business_consistency: object,
@@ -118,6 +120,23 @@ def write_receipt(
         postgres.get("alembic_sql_checksum_ledger")
     )
     restored_migration_ledger = validate_ledger(restored_alembic_sql_checksum_ledger)
+    migration_entries = source_migration_ledger["entries"]
+    if not isinstance(migration_entries, list):
+        raise BackupSecurityError("Alembic SQL checksum ledger entries are invalid")
+    expected_revisions = tuple(
+        _ledger_revision(entry, "repository Alembic ledger entry")
+        for entry in migration_entries
+    )
+    source_database_ledger = _source_database_checksum_ledger(
+        postgres,
+        repository_entries=migration_entries,
+        expected_head=restored_migration_revision,
+        expected_revisions=expected_revisions,
+    )
+    restored_database_entries = _database_checksum_entries(
+        restored_database_checksum_ledger_rows,
+        expected_revisions=expected_revisions,
+    )
     source_relations = _relation_counts(
         postgres.get("critical_relation_counts"), "source critical relation counts"
     )
@@ -197,14 +216,12 @@ def write_receipt(
         or restored_migration_revision != postgres.get("migration_revision")
         or source_migration_ledger != restored_migration_ledger
         or source_migration_ledger["head_revision"] != restored_migration_revision
+        or source_database_ledger["entries"] != restored_database_entries
         or restored_relations != source_relations
         or restored_hashes != source_hashes
         or restored_business_consistency != source_business_consistency
     ):
         raise BackupSecurityError("PostgreSQL restore verification does not match manifest")
-    migration_entries = source_migration_ledger["entries"]
-    if not isinstance(migration_entries, list):
-        raise BackupSecurityError("Alembic SQL checksum ledger entries are invalid")
     manifest_hash = hashlib.sha256(manifest_bytes).hexdigest()
     if _SHA256.fullmatch(manifest_hash) is None:
         raise BackupSecurityError("verified manifest hash is invalid")
@@ -242,6 +259,11 @@ def write_receipt(
                 "verified_against_repository": True,
             },
             "critical_relation_hashes_verified": True,
+            "database_checksum_ledger": {
+                "entry_count": len(restored_database_entries),
+                "ledger_sha256": source_database_ledger["ledger_sha256"],
+                "verified_against_manifest": True,
+            },
             "foreign_key_integrity_verified": True,
             "critical_relation_counts": restored_relations,
             "migration_revision": restored_migration_revision,
@@ -283,6 +305,221 @@ def write_receipt(
     }
     atomic_write(output, canonical_json(receipt) + b"\n")
     return receipt
+
+
+def validate_restore_receipt(
+    path: Path,
+    *,
+    expected_backup_id: str,
+    expected_manifest_sha256: str,
+    expected_migration_revision: str,
+    expected_ledger_sha256: str,
+    expected_database_ledger_sha256: str,
+    expected_project_count: int,
+) -> dict[str, object]:
+    """Validate the canonical receipt emitted by the isolated restore tool."""
+
+    receipt = read_canonical_json(path, label="backup restore receipt")
+    expected_top_level = {
+        "backup_id",
+        "manifest_sha256",
+        "object_store",
+        "plaintext_staging_removed",
+        "postgres",
+        "provider_artifacts",
+        "recommendation_artifacts",
+        "restore_copy_removed",
+        "schema_version",
+        "secret_store",
+        "synthetic_artifacts",
+        "verified_at",
+        "workflow_c_artifacts",
+    }
+    if set(receipt) != expected_top_level or receipt.get("schema_version") != SCHEMA_VERSION:
+        raise BackupSecurityError("backup restore receipt structure is invalid")
+    verified_at = receipt.get("verified_at")
+    try:
+        parsed_verified_at = datetime.fromisoformat(
+            verified_at.replace("Z", "+00:00") if isinstance(verified_at, str) else ""
+        )
+    except ValueError:
+        raise BackupSecurityError("backup restore receipt time is invalid") from None
+    if parsed_verified_at.tzinfo is None:
+        raise BackupSecurityError("backup restore receipt time is invalid")
+    if (
+        receipt.get("backup_id") != expected_backup_id
+        or receipt.get("manifest_sha256") != expected_manifest_sha256
+        or receipt.get("plaintext_staging_removed") is not True
+        or receipt.get("restore_copy_removed") is not True
+    ):
+        raise BackupSecurityError("backup restore receipt scope is invalid")
+
+    postgres = _mapping(receipt.get("postgres"), "restore receipt postgres")
+    expected_postgres = {
+        "acl_rls_canary",
+        "alembic_sql_checksum_ledger",
+        "critical_relation_counts",
+        "critical_relation_hashes_verified",
+        "database_checksum_ledger",
+        "foreign_key_integrity_verified",
+        "migration_revision",
+        "non_b_business_consistency",
+        "restored_critical_relation_hashes",
+        "restored_project_count",
+        "restored_table_count",
+        "source_critical_relation_hashes",
+        "source_project_count",
+        "source_table_count",
+    }
+    if set(postgres) != expected_postgres:
+        raise BackupSecurityError("backup restore postgres receipt is invalid")
+    ledger = _mapping(
+        postgres.get("alembic_sql_checksum_ledger"), "restore receipt Alembic ledger"
+    )
+    if set(ledger) != {"entry_count", "ledger_sha256", "verified_against_repository"}:
+        raise BackupSecurityError("backup restore Alembic receipt is invalid")
+    database_ledger = _mapping(
+        postgres.get("database_checksum_ledger"),
+        "restore receipt database Alembic ledger",
+    )
+    if set(database_ledger) != {
+        "entry_count",
+        "ledger_sha256",
+        "verified_against_manifest",
+    }:
+        raise BackupSecurityError("backup restore database Alembic receipt is invalid")
+    entry_count = ledger.get("entry_count")
+    database_entry_count = database_ledger.get("entry_count")
+    if (
+        postgres.get("migration_revision") != expected_migration_revision
+        or postgres.get("source_project_count") != expected_project_count
+        or postgres.get("restored_project_count") != expected_project_count
+        or postgres.get("critical_relation_hashes_verified") is not True
+        or postgres.get("foreign_key_integrity_verified") is not True
+        or ledger.get("ledger_sha256") != expected_ledger_sha256
+        or ledger.get("verified_against_repository") is not True
+        or not isinstance(entry_count, int)
+        or isinstance(entry_count, bool)
+        or entry_count < 1
+        or not isinstance(database_entry_count, int)
+        or isinstance(database_entry_count, bool)
+        or database_entry_count != entry_count
+        or database_ledger.get("ledger_sha256")
+        != expected_database_ledger_sha256
+        or database_ledger.get("verified_against_manifest") is not True
+    ):
+        raise BackupSecurityError("backup restore PostgreSQL verification is incomplete")
+    object_store = _mapping(receipt.get("object_store"), "restore receipt object store")
+    if (
+        set(object_store)
+        != {
+            "per_object_sha256_verified",
+            "restored_bucket_object_counts",
+            "restored_object_count",
+            "source_bucket_object_counts",
+            "source_object_count",
+        }
+        or object_store.get("per_object_sha256_verified") is not True
+        or object_store.get("restored_object_count") != object_store.get("source_object_count")
+        or object_store.get("restored_bucket_object_counts")
+        != object_store.get("source_bucket_object_counts")
+    ):
+        raise BackupSecurityError("backup restore object verification is incomplete")
+    secret_store = _mapping(receipt.get("secret_store"), "restore receipt Secret Store")
+    if (
+        secret_store.get("frozen_handle_runtime_verified") is not True
+        or secret_store.get("frozen_handle_audit_count") != 1
+        or secret_store.get("frozen_handle_receipt_count") != 1
+    ):
+        raise BackupSecurityError("backup restore key recovery verification is incomplete")
+    return receipt
+
+
+def _source_database_checksum_ledger(
+    postgres: Mapping[str, object],
+    *,
+    repository_entries: list[object],
+    expected_head: str,
+    expected_revisions: tuple[str, ...],
+) -> dict[str, object]:
+    supplied = postgres.get("database_checksum_ledger")
+    if supplied is None:
+        entries = _database_checksum_entries(
+            repository_entries,
+            expected_revisions=expected_revisions,
+            allow_repository_fields=True,
+        )
+        payload = {"entries": entries, "head_revision": expected_head}
+        return {**payload, "ledger_sha256": _json_sha256(payload)}
+    ledger = _mapping(supplied, "manifest database Alembic ledger")
+    if set(ledger) != {
+        "entries",
+        "head_revision",
+        "ledger_sha256",
+        "schema_version",
+    } or ledger.get("schema_version") != "geo-database-alembic-checksum-ledger-v1":
+        raise BackupSecurityError("manifest database Alembic ledger is invalid")
+    if ledger.get("head_revision") != expected_head:
+        raise BackupSecurityError("manifest database Alembic ledger head is invalid")
+    entries = _database_checksum_entries(
+        ledger.get("entries"), expected_revisions=expected_revisions
+    )
+    payload = {"entries": entries, "head_revision": expected_head}
+    if ledger.get("ledger_sha256") != _json_sha256(payload):
+        raise BackupSecurityError("manifest database Alembic ledger digest is invalid")
+    return {**payload, "ledger_sha256": ledger["ledger_sha256"]}
+
+
+def _database_checksum_entries(
+    value: object,
+    *,
+    expected_revisions: tuple[str, ...],
+    allow_repository_fields: bool = False,
+) -> list[dict[str, str]]:
+    if not isinstance(value, list) or len(value) != len(expected_revisions):
+        raise BackupSecurityError("restored database Alembic ledger is incomplete")
+    result: list[dict[str, str]] = []
+    for expected_revision, raw in zip(expected_revisions, value, strict=True):
+        entry = _mapping(raw, "database Alembic ledger entry")
+        required_fields = {"downgrade_sha256", "revision", "upgrade_sha256"}
+        if (
+            not allow_repository_fields
+            and set(entry) != required_fields
+            or allow_repository_fields
+            and not required_fields.issubset(entry)
+        ):
+            raise BackupSecurityError("database Alembic ledger entry is invalid")
+        revision = _ledger_revision(entry, "database Alembic ledger entry")
+        upgrade = entry.get("upgrade_sha256")
+        downgrade = entry.get("downgrade_sha256")
+        if (
+            revision != expected_revision
+            or not isinstance(upgrade, str)
+            or _SHA256.fullmatch(upgrade) is None
+            or not isinstance(downgrade, str)
+            or _SHA256.fullmatch(downgrade) is None
+        ):
+            raise BackupSecurityError("database Alembic ledger entry is invalid")
+        result.append(
+            {
+                "downgrade_sha256": downgrade,
+                "revision": revision,
+                "upgrade_sha256": upgrade,
+            }
+        )
+    return result
+
+
+def _ledger_revision(value: object, label: str) -> str:
+    entry = _mapping(value, label)
+    revision = entry.get("revision")
+    if not isinstance(revision, str) or not revision:
+        raise BackupSecurityError(f"{label} revision is invalid")
+    return revision
+
+
+def _json_sha256(value: object) -> str:
+    return hashlib.sha256(canonical_json(value)).hexdigest()
 
 
 def _json_object(raw: bytes, label: str) -> dict[str, object]:
@@ -651,6 +888,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--restored-table-count", type=int, required=True)
     parser.add_argument("--restored-migration-revision", required=True)
     parser.add_argument("--restored-alembic-sql-checksum-ledger-json", required=True)
+    parser.add_argument("--restored-database-checksum-ledger-rows-json", required=True)
     parser.add_argument("--restored-critical-relation-counts-json", required=True)
     parser.add_argument("--restored-critical-relation-hashes-json", required=True)
     parser.add_argument("--restored-non-b-business-consistency-json", required=True)
@@ -668,6 +906,10 @@ def main(argv: list[str] | None = None) -> int:
             restored_alembic_sql_checksum_ledger=_json_value(
                 args.restored_alembic_sql_checksum_ledger_json,
                 "restored Alembic SQL checksum ledger",
+            ),
+            restored_database_checksum_ledger_rows=_json_value(
+                args.restored_database_checksum_ledger_rows_json,
+                "restored database Alembic checksum ledger rows",
             ),
             restored_critical_relation_counts=_relation_counts_json(
                 args.restored_critical_relation_counts_json

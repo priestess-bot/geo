@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
-
 import {
-  workflowPromptProgramKinds,
+  difyManagedPromptProgramKinds,
+  nativeReviewPromptProgramKinds,
+  reservedPromptProgramKinds,
   type DifyWorkflowRuntimeCard,
   type PromptFlow,
   type PromptProgramReleaseDetail,
@@ -10,44 +10,12 @@ import {
   type PromptWorkspaceData,
   type PromptWorkingDraft
 } from "./promptProgramTypes";
+import { DifyConsoleLink } from "./DifyConsoleLink";
 import styles from "./PromptPrograms.module.css";
 
+export { DifyConsoleLink } from "./DifyConsoleLink";
+
 export type SaveState = "saved" | "saving" | "dirty" | "error";
-
-export function DifyConsoleLink({
-  className = "button secondary",
-  consoleUrl,
-  label = "打开 Dify 工作流"
-}: {
-  className?: string;
-  consoleUrl: string | null | undefined;
-  label?: string;
-}) {
-  const [href, setHref] = useState<string | null>(null);
-
-  useEffect(() => {
-    setHref(resolveDifyConsoleUrl(consoleUrl));
-  }, [consoleUrl]);
-
-  if (!href) return null;
-  return <a className={className} href={href} rel="noreferrer" target="_blank">{label}</a>;
-}
-
-function resolveDifyConsoleUrl(consoleUrl: string | null | undefined): string | null {
-  if (!consoleUrl) return null;
-  try {
-    const target = new URL(consoleUrl);
-    const isLocalConsole = target.hostname === "127.0.0.1"
-      || target.hostname === "localhost"
-      || target.hostname === "::1";
-    if (isLocalConsole && typeof window !== "undefined") {
-      target.hostname = window.location.hostname;
-    }
-    return target.toString();
-  } catch {
-    return null;
-  }
-}
 
 const DIFY_CONTEXT_ROWS: Readonly<Record<string, ReadonlyArray<Readonly<{
   key: string;
@@ -79,6 +47,35 @@ const DIFY_CONTEXT_ROWS: Readonly<Record<string, ReadonlyArray<Readonly<{
     { key: "destination_id", label: "目标页面", description: "被仿真的目标页面身份。", source: "仿真快照" },
     { key: "evidence_item_ids", label: "内部证据", description: "仿真允许使用的内部证据 ID。", source: "证据包" },
     { key: "public_citation_item_ids", label: "公开引用", description: "仿真允许输出的引用 ID。", source: "证据包" }
+  ],
+  "synthetic_lab.generation": [
+    { key: "scenario", label: "测评场景", description: "Persona、用途和目标主体组成的冻结场景。", source: "Review Case" },
+    { key: "style_profile", label: "风格画像", description: "当前渠道已冻结的澳洲英文写作特征。", source: "Style Profile" },
+    { key: "approved_facts", label: "批准事实", description: "候选允许陈述的当前 Fact 摘要。", source: "Fact 快照" },
+    { key: "guided_idea", label: "创意参考", description: "仅作创意参考，不能作为事实依据。", source: "Review Case" }
+  ],
+  "synthetic_lab.claim_extraction": [
+    { key: "candidate_text", label: "候选文本", description: "本次需要拆解的完整合成测评。", source: "Generation/Revision" },
+    { key: "evidence", label: "证据清单", description: "允许绑定的 Fact 与证据引用。", source: "Review Case 快照" }
+  ],
+  "synthetic_lab.conflict_check": [
+    { key: "claims", label: "原子 Claim", description: "上一流程提取的全部 Claim。", source: "Claim 提取结果" },
+    { key: "evidence", label: "批准证据", description: "判断当前事实、未知推演和明确冲突的依据。", source: "Review Case 快照" }
+  ],
+  "synthetic_lab.revision": [
+    { key: "candidate_text", label: "待修订文本", description: "当前候选或上一轮修订文本。", source: "Review 状态机" },
+    { key: "issue_codes", label: "冻结问题", description: "本轮必须逐项解决或保留的问题。", source: "冲突/风格/仲裁结果" },
+    { key: "evidence", label: "批准证据", description: "修订时不得违背或扩写的事实边界。", source: "Review Case 快照" }
+  ],
+  "synthetic_lab.style_profile": [
+    { key: "channel", label: "目标渠道", description: "风格画像适用的平台与澳洲英文区域。", source: "Style Profile Build" },
+    { key: "evidence", label: "匿名短例", description: "从已批准样本清单中确定性选出的有限渠道短例。", source: "Corpus 快照" },
+    { key: "sample_manifest_hash", label: "样本清单 Hash", description: "用于证明 Dify 输入与冻结样本完全一致。", source: "Style Profile Build" }
+  ],
+  "recommendations.recommendation": [
+    { key: "scope", label: "建议范围", description: "项目、内容版本和适用对象组成的冻结范围。", source: "Recommendation Job" },
+    { key: "evidence", label: "真实证据", description: "允许用于形成建议的观测、统计、归因和 Fact。", source: "证据图谱快照" },
+    { key: "allowed_recommendation_types", label: "允许类型", description: "本次输出可选择的建议类型白名单。", source: "Recommendation Policy" }
   ]
 };
 
@@ -283,6 +280,8 @@ export function flowStatus(
   runtimeBackend: "native" | "dify" = "native"
 ): string {
   if (isDifyManagedFlow(flow)) return runtimeStatusLabel(runtime || null, runtimeBackend);
+  if (isNativeReviewFlow(flow)) return "GEO 内置评审 · 原生执行";
+  if (isReservedFlow(flow)) return "预留 · 暂不可用";
   if (flow.latest_test_status && isActiveTest(flow.latest_test_status)) return "测试中";
   if (flow.candidate_status === "tested") return "可发布";
   if (flow.draft && flow.current_release_id !== flow.draft.base_release_id) return "有草稿";
@@ -290,8 +289,20 @@ export function flowStatus(
 }
 
 export function isDifyManagedFlow(flow: PromptFlow | null): boolean {
-  return Boolean(flow && workflowPromptProgramKinds.includes(
-    flow.program_kind as typeof workflowPromptProgramKinds[number]
+  return Boolean(flow && difyManagedPromptProgramKinds.includes(
+    flow.program_kind as typeof difyManagedPromptProgramKinds[number]
+  ));
+}
+
+export function isNativeReviewFlow(flow: PromptFlow | null): boolean {
+  return Boolean(flow && nativeReviewPromptProgramKinds.includes(
+    flow.program_kind as typeof nativeReviewPromptProgramKinds[number]
+  ));
+}
+
+export function isReservedFlow(flow: PromptFlow | null): boolean {
+  return Boolean(flow && reservedPromptProgramKinds.includes(
+    flow.program_kind as typeof reservedPromptProgramKinds[number]
   ));
 }
 

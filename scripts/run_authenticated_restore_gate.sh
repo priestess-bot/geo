@@ -224,7 +224,7 @@ assert receipt["ephemeral_backup_key_destroyed"] is True
 assert receipt["restore_copy_removed"] is True
 assert all(receipt["negative_key_tests"].values())
 restored = receipt["production_equivalent_restore_receipt"]
-assert restored["schema_version"] == "geo-production-backup-restore-v5"
+assert restored["schema_version"] == "geo-production-backup-restore-v6"
 assert restored["postgres"]["migration_revision"] == sys.argv[2]
 assert restored["secret_store"]["verified_key_versions"] == [1, 2]
 assert restored["secret_store"]["representative_secret_count"] == 2

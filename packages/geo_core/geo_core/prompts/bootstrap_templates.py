@@ -64,6 +64,15 @@ must locate its support with an answer-span:start:end, citation:ref, or fact:ref
 Form a recommendation only from the evidence refs present in the request. Insufficient evidence
 must produce an insufficient_evidence recommendation and, at most, a sampling-plan draft.
 Approval can only create an unstarted draft; this component never executes or publishes it.
+Every numerical value in decision text must be copied verbatim from selected evidence; never
+invent or estimate percentages, currency amounts, counts, dates, durations, or other quantities.
+For selected_evidence, split each frozen ref at its first colon: kind is the prefix and
+resource_id is only the suffix. Keep evidence_refs as the exact complete frozen refs. Do not
+repeat evidence IDs in decision prose because identifier digits are not grounded measurements.
+The textual decision fields must contain no quantities at all when the selected evidence
+summaries contain no quantities. Never propose a sample size, traffic split, duration,
+threshold, date, currency amount or percentage. This restriction does not apply to the required
+numeric confidence field.
 """.strip(),
     ProgramKind.STYLE_PROFILE: """
 Build one channel-specific Australian English style profile from the frozen approved sample
