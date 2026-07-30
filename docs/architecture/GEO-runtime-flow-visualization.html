@@ -1,0 +1,1491 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4f6f5">
+  <meta name="description" content="GEO 项目业务流程、任务链路与系统健康可视化。">
+  <title>GEO 项目运行地图 | ADVINSYS Australia</title>
+  <style>
+    :root {
+      --ink: #15201d;
+      --ink-soft: #35433f;
+      --muted: #687570;
+      --paper: #ffffff;
+      --canvas: #f4f6f5;
+      --wash: #e9eeec;
+      --line: #d4dcda;
+      --line-strong: #aebbb7;
+      --green: #08745c;
+      --green-soft: #dff3ec;
+      --blue: #315ed2;
+      --blue-soft: #e5ebff;
+      --amber: #a85f00;
+      --amber-soft: #fff0d8;
+      --red: #b23b32;
+      --red-soft: #fde8e5;
+      --violet: #6a4bb0;
+      --violet-soft: #eee8fa;
+      --gray-soft: #edf0ef;
+      --radius: 7px;
+      --shadow: 0 12px 34px rgba(22, 40, 35, 0.09);
+      --max: 1660px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--canvas);
+      font-family: Inter, "SF Pro Text", "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+      font-size: 15px;
+      line-height: 1.5;
+      letter-spacing: 0;
+      -webkit-font-smoothing: antialiased;
+    }
+    button, select, a { font: inherit; letter-spacing: 0; }
+    button { color: inherit; }
+    a { color: inherit; }
+    svg { display: block; }
+    [hidden] { display: none !important; }
+
+    .skip-link {
+      position: fixed;
+      z-index: 1000;
+      top: 8px;
+      left: 8px;
+      padding: 8px 12px;
+      color: #fff;
+      background: var(--ink);
+      transform: translateY(-150%);
+    }
+    .skip-link:focus { transform: translateY(0); }
+
+    .app-header {
+      position: sticky;
+      z-index: 100;
+      top: 0;
+      min-height: 68px;
+      border-bottom: 1px solid rgba(21, 32, 29, 0.12);
+      background: rgba(255, 255, 255, 0.96);
+      backdrop-filter: blur(14px);
+    }
+    .header-inner {
+      width: min(calc(100% - 40px), var(--max));
+      min-height: 68px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 28px;
+    }
+    .brand {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand-mark {
+      width: 34px;
+      height: 34px;
+      flex: 0 0 auto;
+      display: grid;
+      place-items: center;
+      border-radius: 6px;
+      color: #fff;
+      background: var(--ink);
+      font-weight: 780;
+    }
+    .brand h1 {
+      margin: 0;
+      font-size: 17px;
+      line-height: 1.2;
+      font-weight: 760;
+    }
+    .brand p {
+      margin: 3px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .runtime-state {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--ink-soft);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    .runtime-state strong { font-weight: 720; }
+    .pulse {
+      position: relative;
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--green);
+    }
+    .pulse::after {
+      content: "";
+      position: absolute;
+      inset: -4px;
+      border: 1px solid rgba(8, 116, 92, 0.35);
+      border-radius: 50%;
+      animation: pulse 2s ease-out infinite;
+    }
+    @keyframes pulse {
+      from { transform: scale(.65); opacity: 1; }
+      to { transform: scale(1.45); opacity: 0; }
+    }
+
+    main {
+      width: min(calc(100% - 40px), var(--max));
+      margin: 0 auto;
+      padding: 30px 0 46px;
+    }
+    .project-intro {
+      display: grid;
+      grid-template-columns: minmax(280px, .8fr) minmax(660px, 1.65fr);
+      gap: 34px;
+      align-items: end;
+      padding-bottom: 28px;
+      border-bottom: 1px solid var(--line);
+    }
+    .project-copy h2 {
+      margin: 0;
+      font-size: 30px;
+      line-height: 1.15;
+      font-weight: 770;
+    }
+    .project-copy p {
+      max-width: 570px;
+      margin: 12px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .snapshot-time {
+      display: inline-flex;
+      margin-top: 12px;
+      color: var(--ink-soft);
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 11px;
+    }
+    .summary-rail {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(110px, 1fr));
+      border-top: 1px solid var(--line-strong);
+      border-bottom: 1px solid var(--line-strong);
+    }
+    .summary-item {
+      min-width: 0;
+      padding: 15px 16px 14px;
+      border-left: 1px solid var(--line);
+    }
+    .summary-item:first-child { border-left: 0; }
+    .summary-item span {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 650;
+    }
+    .summary-item strong {
+      display: block;
+      margin-top: 5px;
+      font-size: 20px;
+      line-height: 1.2;
+      font-weight: 780;
+      overflow-wrap: anywhere;
+    }
+    .summary-item small {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .summary-item[data-tone="good"] strong { color: var(--green); }
+    .summary-item[data-tone="warn"] strong { color: var(--amber); }
+    .summary-item[data-tone="block"] strong { color: var(--red); }
+
+    .toolbar {
+      min-height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 12px 0;
+    }
+    .view-tabs {
+      display: inline-grid;
+      grid-template-columns: repeat(3, minmax(112px, 1fr));
+      gap: 3px;
+      padding: 3px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--wash);
+    }
+    .tab-button {
+      min-height: 38px;
+      padding: 7px 14px;
+      border: 0;
+      border-radius: 4px;
+      color: var(--muted);
+      background: transparent;
+      font-size: 13px;
+      font-weight: 690;
+      cursor: pointer;
+    }
+    .tab-button:hover { color: var(--ink); }
+    .tab-button[aria-selected="true"] {
+      color: var(--ink);
+      background: var(--paper);
+      box-shadow: 0 1px 5px rgba(21, 32, 29, 0.1);
+    }
+    .view-tools {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .tool-button {
+      min-height: 38px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 12px;
+      border: 1px solid var(--line-strong);
+      border-radius: 5px;
+      background: var(--paper);
+      font-size: 12px;
+      font-weight: 670;
+      cursor: pointer;
+    }
+    .tool-button:hover { border-color: var(--ink-soft); }
+    .tool-button[aria-pressed="true"] {
+      color: var(--red);
+      border-color: rgba(178, 59, 50, .45);
+      background: var(--red-soft);
+    }
+    .tool-button svg { width: 16px; height: 16px; }
+
+    .view-panel {
+      min-height: 640px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--paper);
+      box-shadow: var(--shadow);
+    }
+    .panel-heading {
+      min-height: 72px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      padding: 17px 20px;
+      border-bottom: 1px solid var(--line);
+    }
+    .panel-heading h3 {
+      margin: 0;
+      font-size: 17px;
+      font-weight: 750;
+    }
+    .panel-heading p {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 11px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .legend span,
+    .status-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      flex: 0 0 auto;
+      border-radius: 50%;
+      background: var(--line-strong);
+    }
+    .status-dot.complete { background: var(--green); }
+    .status-dot.warning { background: var(--amber); }
+    .status-dot.waiting { background: var(--violet); }
+    .status-dot.blocked { background: var(--red); }
+    .status-dot.idle { background: #7b8783; }
+
+    .business-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 330px;
+      min-height: 566px;
+    }
+    .flow-region {
+      min-width: 0;
+      padding: 18px 0 20px;
+      overflow: hidden;
+    }
+    .flow-scroll {
+      min-width: 0;
+      overflow-x: auto;
+      scrollbar-color: var(--line-strong) transparent;
+    }
+    .flow-board {
+      min-width: 1120px;
+      padding: 0 18px 6px;
+    }
+    .stage-scale {
+      display: grid;
+      grid-template-columns: 116px repeat(7, minmax(118px, 1fr));
+      gap: 14px;
+      margin-bottom: 7px;
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 690;
+    }
+    .stage-scale span:not(:first-child) {
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--line);
+      text-align: center;
+    }
+    .lane {
+      display: grid;
+      grid-template-columns: 116px minmax(0, 1fr);
+      gap: 14px;
+      min-height: 113px;
+      padding: 12px 0;
+      border-top: 1px solid var(--line);
+    }
+    .lane:first-of-type { border-top: 0; }
+    .lane-label {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 4px;
+      padding-right: 12px;
+    }
+    .lane-label strong { font-size: 13px; font-weight: 740; }
+    .lane-label span { color: var(--muted); font-size: 10px; }
+    .node-track {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(118px, 1fr));
+      gap: 14px;
+      align-items: center;
+    }
+    .flow-node {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      min-height: 82px;
+      padding: 11px 10px 10px;
+      border: 1px solid var(--line-strong);
+      border-top: 3px solid #7b8783;
+      border-radius: 5px;
+      background: var(--paper);
+      text-align: left;
+      cursor: pointer;
+      transition: border-color 160ms ease, box-shadow 160ms ease, opacity 160ms ease, transform 160ms ease;
+    }
+    .flow-node::before {
+      content: "";
+      position: absolute;
+      z-index: -2;
+      top: calc(50% - 2px);
+      right: calc(100% + 1px);
+      width: 15px;
+      height: 1px;
+      background: var(--line-strong);
+    }
+    .flow-node:first-child::before { display: none; }
+    .flow-node::after {
+      content: "";
+      position: absolute;
+      z-index: -1;
+      top: calc(50% - 5px);
+      left: -6px;
+      width: 7px;
+      height: 7px;
+      border-top: 1px solid var(--line-strong);
+      border-right: 1px solid var(--line-strong);
+      background: var(--paper);
+      transform: rotate(45deg);
+    }
+    .flow-node:first-child::after { display: none; }
+    .flow-node:hover { border-color: var(--ink-soft); transform: translateY(-2px); }
+    .flow-node[aria-pressed="true"] {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 2px rgba(49, 94, 210, 0.14);
+    }
+    .flow-node.status-complete { border-top-color: var(--green); }
+    .flow-node.status-warning { border-top-color: var(--amber); }
+    .flow-node.status-waiting { border-top-color: var(--violet); }
+    .flow-node.status-blocked { border-top-color: var(--red); }
+    .flow-node.status-idle { border-top-color: #7b8783; }
+    .flow-node strong {
+      display: block;
+      font-size: 12px;
+      line-height: 1.3;
+      font-weight: 720;
+    }
+    .flow-node small {
+      display: block;
+      min-height: 28px;
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 10px;
+      line-height: 1.4;
+    }
+    .node-status {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      margin-top: 7px;
+      color: var(--ink-soft);
+      font-size: 9px;
+      font-weight: 700;
+    }
+    .node-status .status-dot { width: 6px; height: 6px; }
+    .blank-node { min-height: 1px; }
+    .flow-board.highlight-blockers .flow-node:not(.status-blocked) {
+      opacity: .2;
+      filter: grayscale(.7);
+    }
+    .flow-board.highlight-blockers .flow-node.status-blocked {
+      box-shadow: 0 0 0 2px rgba(178, 59, 50, .08);
+    }
+
+    .detail-panel {
+      min-width: 0;
+      padding: 21px 20px;
+      border-left: 1px solid var(--line);
+      background: #fbfcfb;
+    }
+    .mobile-detail-close,
+    .detail-backdrop { display: none; }
+    .detail-panel h4 {
+      margin: 13px 0 0;
+      font-size: 20px;
+      line-height: 1.25;
+      font-weight: 760;
+    }
+    .detail-panel > p {
+      margin: 10px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .detail-list {
+      margin: 20px 0 0;
+      border-top: 1px solid var(--line);
+    }
+    .detail-list div {
+      display: grid;
+      grid-template-columns: 82px minmax(0, 1fr);
+      gap: 12px;
+      padding: 11px 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .detail-list dt { color: var(--muted); font-size: 11px; }
+    .detail-list dd {
+      min-width: 0;
+      margin: 0;
+      color: var(--ink-soft);
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+    .detail-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 18px;
+    }
+    .primary-link {
+      min-height: 38px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      padding: 8px 12px;
+      border: 1px solid var(--ink);
+      border-radius: 4px;
+      color: #fff;
+      background: var(--ink);
+      font-size: 12px;
+      font-weight: 700;
+      text-decoration: none;
+    }
+    .primary-link:hover { border-color: var(--green); background: var(--green); }
+    .primary-link svg { width: 15px; height: 15px; }
+    .snapshot-note {
+      margin-top: 19px;
+      padding: 11px 12px;
+      border-left: 3px solid var(--amber);
+      color: var(--ink-soft);
+      background: var(--amber-soft);
+      font-size: 11px;
+    }
+
+    .trace-controls {
+      min-width: 260px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .trace-controls label { color: var(--muted); font-size: 11px; white-space: nowrap; }
+    .trace-controls select {
+      min-width: 220px;
+      height: 38px;
+      padding: 0 32px 0 10px;
+      border: 1px solid var(--line-strong);
+      border-radius: 4px;
+      color: var(--ink);
+      background: var(--paper);
+      font-size: 12px;
+    }
+    .trace-body { padding: 24px 22px 28px; }
+    .trace-summary {
+      display: grid;
+      grid-template-columns: minmax(260px, 1.25fr) repeat(3, minmax(120px, .55fr));
+      border-top: 1px solid var(--line-strong);
+      border-bottom: 1px solid var(--line-strong);
+    }
+    .trace-summary > div {
+      min-width: 0;
+      padding: 14px 16px;
+      border-left: 1px solid var(--line);
+    }
+    .trace-summary > div:first-child { border-left: 0; }
+    .trace-summary span { display: block; color: var(--muted); font-size: 10px; }
+    .trace-summary strong {
+      display: block;
+      margin-top: 5px;
+      font-size: 13px;
+      font-weight: 720;
+      overflow-wrap: anywhere;
+    }
+    .trace-grid {
+      display: grid;
+      grid-template-columns: repeat(8, minmax(130px, 1fr));
+      gap: 16px;
+      margin-top: 42px;
+      overflow-x: auto;
+      padding: 2px 3px 22px;
+    }
+    .trace-step {
+      position: relative;
+      min-height: 174px;
+      padding: 17px 13px 13px;
+      border-top: 3px solid var(--line-strong);
+      background: var(--canvas);
+    }
+    .trace-step::before {
+      content: "";
+      position: absolute;
+      top: 28px;
+      right: calc(100% + 2px);
+      width: 17px;
+      height: 1px;
+      background: var(--line-strong);
+    }
+    .trace-step::after {
+      content: "";
+      position: absolute;
+      top: 25px;
+      left: -5px;
+      width: 6px;
+      height: 6px;
+      border-top: 1px solid var(--line-strong);
+      border-right: 1px solid var(--line-strong);
+      transform: rotate(45deg);
+    }
+    .trace-step:first-child::before,
+    .trace-step:first-child::after { display: none; }
+    .trace-step[data-status="complete"] { border-top-color: var(--green); background: var(--green-soft); }
+    .trace-step[data-status="warning"] { border-top-color: var(--amber); background: var(--amber-soft); }
+    .trace-step[data-status="waiting"] { border-top-color: var(--violet); background: var(--violet-soft); }
+    .trace-step[data-status="blocked"] { border-top-color: var(--red); background: var(--red-soft); }
+    .trace-index {
+      width: 25px;
+      height: 25px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      color: #fff;
+      background: var(--ink);
+      font-size: 10px;
+      font-weight: 760;
+    }
+    .trace-step h4 { margin: 17px 0 0; font-size: 12px; line-height: 1.35; }
+    .trace-step p { margin: 8px 0 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
+    .trace-step small {
+      position: absolute;
+      left: 13px;
+      right: 13px;
+      bottom: 12px;
+      color: var(--ink-soft);
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 9px;
+      overflow-wrap: anywhere;
+    }
+    .trace-outcome {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 22px;
+      align-items: center;
+      margin-top: 24px;
+      padding: 16px 18px;
+      border-left: 3px solid var(--violet);
+      background: var(--violet-soft);
+    }
+    .trace-outcome h4 { margin: 0; font-size: 13px; }
+    .trace-outcome p { margin: 5px 0 0; color: var(--muted); font-size: 11px; }
+    .trace-outcome strong { font-size: 13px; white-space: nowrap; }
+
+    .health-body { padding: 21px 22px 28px; }
+    .health-banner {
+      display: grid;
+      grid-template-columns: minmax(300px, 1fr) repeat(4, minmax(120px, .45fr));
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--green);
+    }
+    .health-banner > div {
+      min-width: 0;
+      padding: 13px 15px;
+      border-left: 1px solid var(--line);
+    }
+    .health-banner > div:first-child { border-left: 0; }
+    .health-banner h4 { margin: 0; font-size: 13px; }
+    .health-banner p,
+    .health-banner span { display: block; margin: 4px 0 0; color: var(--muted); font-size: 10px; }
+    .health-banner strong { display: block; margin-top: 4px; font-size: 14px; }
+    .topology {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 24px;
+      margin-top: 28px;
+    }
+    .topology-column {
+      min-width: 0;
+      border-top: 2px solid var(--ink-soft);
+    }
+    .topology-column > header {
+      min-height: 62px;
+      padding: 12px 2px 10px;
+      border-bottom: 1px solid var(--line);
+    }
+    .topology-column h4 { margin: 0; font-size: 13px; }
+    .topology-column header p { margin: 4px 0 0; color: var(--muted); font-size: 10px; }
+    .service-list { margin: 0; padding: 0; list-style: none; }
+    .service {
+      min-height: 67px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      padding: 11px 2px;
+      border-bottom: 1px solid var(--line);
+    }
+    .service strong { display: block; font-size: 12px; font-weight: 710; }
+    .service small { display: block; margin-top: 3px; color: var(--muted); font-size: 9px; overflow-wrap: anywhere; }
+    .service-state {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      color: var(--green);
+      font-size: 9px;
+      font-weight: 720;
+      white-space: nowrap;
+    }
+    .service-state .status-dot { width: 6px; height: 6px; }
+    .health-footnote {
+      margin: 25px 0 0;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .page-footer {
+      display: flex;
+      justify-content: space-between;
+      gap: 24px;
+      padding: 21px 2px 0;
+      color: var(--muted);
+      font-size: 10px;
+    }
+    .page-footer p { margin: 0; }
+    .page-footer code { color: var(--ink-soft); font-size: 10px; }
+
+    @media (min-width: 1301px) and (max-width: 1450px) {
+      .business-layout { grid-template-columns: minmax(0, 1fr) 300px; }
+      .flow-board { min-width: 0; }
+      .stage-scale {
+        grid-template-columns: 105px repeat(7, minmax(100px, 1fr));
+        gap: 10px;
+      }
+      .lane { grid-template-columns: 105px minmax(0, 1fr); gap: 10px; }
+      .node-track { grid-template-columns: repeat(7, minmax(100px, 1fr)); gap: 10px; }
+      .flow-node { min-height: 88px; padding-right: 8px; padding-left: 8px; }
+      .flow-node::before { width: 11px; }
+    }
+
+    @media (max-width: 1300px) {
+      .project-intro { grid-template-columns: 1fr; gap: 20px; }
+      .business-layout { grid-template-columns: 1fr; }
+      .detail-panel { border-top: 1px solid var(--line); border-left: 0; }
+      .detail-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .detail-list div:nth-child(odd) { padding-right: 14px; }
+      .detail-list div:nth-child(even) { padding-left: 14px; border-left: 1px solid var(--line); }
+    }
+
+    @media (max-width: 1160px) {
+      .topology { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    @media (max-width: 760px) {
+      body { font-size: 14px; }
+      .header-inner, main { width: min(calc(100% - 24px), var(--max)); }
+      .header-inner { min-height: 76px; }
+      .brand p { display: none; }
+      .runtime-state { font-size: 11px; }
+      .runtime-state span:last-child { display: none; }
+      main { padding-top: 20px; }
+      .project-copy h2 { font-size: 25px; }
+      .summary-rail { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .summary-item { border-bottom: 1px solid var(--line); }
+      .summary-item:nth-child(odd) { border-left: 0; }
+      .summary-item:last-child { grid-column: 1 / -1; border-bottom: 0; }
+      .toolbar { align-items: stretch; flex-direction: column; }
+      .view-tabs { width: 100%; }
+      .view-tools { justify-content: flex-end; }
+      .panel-heading { align-items: flex-start; flex-direction: column; }
+      .legend { justify-content: flex-start; }
+      .flow-scroll { overflow: visible; }
+      .flow-board { min-width: 0; padding: 0 12px; }
+      .stage-scale { display: none; }
+      .lane { grid-template-columns: 1fr; gap: 9px; padding: 17px 0; }
+      .lane-label { padding-right: 0; }
+      .node-track { grid-template-columns: 1fr; gap: 12px; }
+      .blank-node { display: none; }
+      .flow-node { min-height: 76px; }
+      .flow-node::before {
+        top: auto;
+        right: auto;
+        bottom: 100%;
+        left: 20px;
+        width: 1px;
+        height: 13px;
+      }
+      .flow-node::after {
+        top: -6px;
+        left: 17px;
+        background: var(--paper);
+        transform: rotate(135deg);
+      }
+      .detail-panel {
+        position: fixed;
+        z-index: 310;
+        right: 12px;
+        bottom: 12px;
+        left: 12px;
+        max-height: calc(100vh - 24px);
+        overflow-y: auto;
+        border: 1px solid var(--line-strong);
+        border-radius: var(--radius);
+        box-shadow: 0 22px 70px rgba(21, 32, 29, .28);
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(calc(100% + 24px));
+        transition: opacity 180ms ease, transform 180ms ease;
+      }
+      .detail-panel.mobile-open {
+        opacity: 1;
+        pointer-events: auto;
+        transform: translateY(0);
+      }
+      body.detail-open { overflow: hidden; }
+      .mobile-detail-close {
+        position: absolute;
+        top: 13px;
+        right: 13px;
+        width: 34px;
+        height: 34px;
+        display: grid;
+        place-items: center;
+        padding: 0;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        background: var(--paper);
+        cursor: pointer;
+      }
+      .mobile-detail-close svg { width: 17px; height: 17px; }
+      .detail-backdrop {
+        position: fixed;
+        z-index: 300;
+        inset: 0;
+        display: block;
+        border: 0;
+        background: rgba(21, 32, 29, .46);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 180ms ease;
+      }
+      .detail-backdrop.visible { opacity: 1; pointer-events: auto; }
+      .detail-list { grid-template-columns: 1fr; }
+      .detail-list div:nth-child(odd),
+      .detail-list div:nth-child(even) { padding-right: 0; padding-left: 0; border-left: 0; }
+      .trace-controls { width: 100%; align-items: flex-start; flex-direction: column; }
+      .trace-controls select { width: 100%; min-width: 0; }
+      .trace-body, .health-body { padding: 17px 13px 22px; }
+      .trace-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .trace-summary > div:nth-child(3) { border-left: 0; border-top: 1px solid var(--line); }
+      .trace-summary > div:nth-child(4) { border-top: 1px solid var(--line); }
+      .trace-grid {
+        grid-template-columns: 1fr;
+        gap: 13px;
+        margin-top: 24px;
+        overflow: visible;
+      }
+      .trace-step { min-height: 126px; }
+      .trace-step::before {
+        top: auto;
+        right: auto;
+        bottom: 100%;
+        left: 25px;
+        width: 1px;
+        height: 14px;
+      }
+      .trace-step::after {
+        top: -6px;
+        left: 22px;
+        transform: rotate(135deg);
+      }
+      .trace-outcome { grid-template-columns: 1fr; gap: 8px; }
+      .health-banner { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .health-banner > div:first-child { grid-column: 1 / -1; border-bottom: 1px solid var(--line); }
+      .health-banner > div:nth-child(even) { border-left: 0; }
+      .topology { grid-template-columns: 1fr; gap: 22px; }
+      .page-footer { flex-direction: column; gap: 8px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; animation: none !important; transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">跳到主要内容</a>
+
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">G</div>
+        <div>
+          <h1>GEO 项目运行地图</h1>
+          <p>业务状态、任务链路与部署健康的统一只读视图</p>
+        </div>
+      </div>
+      <div class="runtime-state" aria-label="当前本地运行状态">
+        <span class="pulse" aria-hidden="true"></span>
+        <strong>本地路径可运行</strong>
+        <span>外部真实输入仍受阻</span>
+      </div>
+    </div>
+  </header>
+
+  <main id="main-content">
+    <section class="project-intro" aria-labelledby="project-title">
+      <div class="project-copy">
+        <h2 id="project-title">ADVINSYS Australia</h2>
+        <p>一眼区分已经真实执行的路径、仅完成技术验证的路径，以及需要人工或外部凭据才能继续的路径。</p>
+        <span class="snapshot-time">业务验收：2026-07-29 · 运行探针：2026-07-30 13:59 CST</span>
+      </div>
+      <div class="summary-rail" aria-label="项目关键状态">
+        <div class="summary-item" data-tone="good"><span>本地生产路径</span><strong>GO</strong><small>当前可控链路</small></div>
+        <div class="summary-item" data-tone="good"><span>Dify 工作流</span><strong>10 / 10</strong><small>真实 Canary + 激活</small></div>
+        <div class="summary-item" data-tone="warn"><span>事实候选</span><strong>941</strong><small>全部待人工审核</small></div>
+        <div class="summary-item" data-tone="block"><span>外部输入缺口</span><strong>7 类</strong><small>不可用 mock 替代</small></div>
+        <div class="summary-item" data-tone="warn"><span>客户批准报告</span><strong>0</strong><small>未批准结果不可见</small></div>
+      </div>
+    </section>
+
+    <div class="toolbar">
+      <div class="view-tabs" role="tablist" aria-label="运行地图视图">
+        <button class="tab-button" id="tab-business" role="tab" aria-controls="view-business" aria-selected="true" data-view="business">业务全景</button>
+        <button class="tab-button" id="tab-trace" role="tab" aria-controls="view-trace" aria-selected="false" data-view="trace">任务链路</button>
+        <button class="tab-button" id="tab-health" role="tab" aria-controls="view-health" aria-selected="false" data-view="health">系统健康</button>
+      </div>
+      <div class="view-tools" id="business-tools">
+        <button class="tool-button" id="blocker-toggle" type="button" aria-pressed="false">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16M7 12h10M10 19h4"/></svg>
+          仅突出阻塞
+        </button>
+        <button class="tool-button" id="reset-selection" type="button">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+          重置选择
+        </button>
+      </div>
+    </div>
+
+    <section class="view-panel" id="view-business" role="tabpanel" aria-labelledby="tab-business">
+      <header class="panel-heading">
+        <div>
+          <h3>从输入到客户结果的四条业务泳道</h3>
+          <p>点击任意节点查看真实状态、执行者、依据和下一步。</p>
+        </div>
+        <div class="legend" aria-label="状态图例">
+          <span><i class="status-dot complete"></i>已完成</span>
+          <span><i class="status-dot warning"></i>技术通过 / 业务不足</span>
+          <span><i class="status-dot waiting"></i>等待人工</span>
+          <span><i class="status-dot blocked"></i>外部阻塞</span>
+          <span><i class="status-dot idle"></i>尚未开始</span>
+        </div>
+      </header>
+
+      <div class="business-layout">
+        <div class="flow-region">
+          <div class="flow-scroll" aria-label="业务流程泳道，可横向滚动">
+            <div class="flow-board" id="flow-board">
+              <div class="stage-scale" aria-hidden="true">
+                <span>业务板块</span><span>输入</span><span>整理</span><span>冻结</span><span>执行</span><span>判断</span><span>交付</span><span>结果</span>
+              </div>
+
+              <section class="lane" aria-labelledby="lane-foundation">
+                <div class="lane-label"><strong id="lane-foundation">项目与知识</strong><span>共同输入</span></div>
+                <div class="node-track">
+                  <button class="flow-node status-complete" type="button" data-node="project" aria-pressed="false"><strong>项目与市场</strong><small>4 实体 · AU / en-AU</small><span class="node-status"><i class="status-dot complete"></i>已导入</span></button>
+                  <button class="flow-node status-warning" type="button" data-node="sources" aria-pressed="false"><strong>知识来源</strong><small>7 ready · 6 archived</small><span class="node-status"><i class="status-dot warning"></i>部分通过</span></button>
+                  <button class="flow-node status-waiting" type="button" data-node="facts" aria-pressed="true"><strong>事实与证据</strong><small>941 个候选待审核</small><span class="node-status"><i class="status-dot waiting"></i>等待人工</span></button>
+                  <button class="flow-node status-complete" type="button" data-node="campaign" aria-pressed="false"><strong>问题与 Campaign</strong><small>3 Campaign · 6 Query</small><span class="node-status"><i class="status-dot complete"></i>已建立</span></button>
+                  <button class="flow-node status-complete" type="button" data-node="dify" aria-pressed="false"><strong>Dify 工作流</strong><small>10 个托管流程</small><span class="node-status"><i class="status-dot complete"></i>已激活</span></button>
+                  <div class="blank-node" aria-hidden="true"></div>
+                  <div class="blank-node" aria-hidden="true"></div>
+                </div>
+              </section>
+
+              <section class="lane" aria-labelledby="lane-content">
+                <div class="lane-label"><strong id="lane-content">内容与投放</strong><span>真实 V600 路径</span></div>
+                <div class="node-track">
+                  <button class="flow-node status-complete" type="button" data-node="content-input" aria-pressed="false"><strong>内容任务输入</strong><small>V600 路径已执行</small><span class="node-status"><i class="status-dot complete"></i>已冻结</span></button>
+                  <button class="flow-node status-complete" type="button" data-node="content-generation" aria-pressed="false"><strong>Dify 内容生成</strong><small>真实 DeepSeek 调用</small><span class="node-status"><i class="status-dot complete"></i>已完成</span></button>
+                  <button class="flow-node status-warning" type="button" data-node="package" aria-pressed="false"><strong>Package Version</strong><small>状态 generated</small><span class="node-status"><i class="status-dot warning"></i>尚未批准</span></button>
+                  <button class="flow-node status-waiting" type="button" data-node="content-review" aria-pressed="false"><strong>人工审核</strong><small>不能自动替代</small><span class="node-status"><i class="status-dot waiting"></i>等待决定</span></button>
+                  <button class="flow-node status-idle" type="button" data-node="publication" aria-pressed="false"><strong>第三方发布</strong><small>需显式发布请求</small><span class="node-status"><i class="status-dot idle"></i>尚未开始</span></button>
+                  <button class="flow-node status-idle" type="button" data-node="verification" aria-pressed="false"><strong>URL 验证与复测</strong><small>T+28 / 56 / 84</small><span class="node-status"><i class="status-dot idle"></i>等待发布</span></button>
+                  <button class="flow-node status-blocked" type="button" data-node="customer-content" aria-pressed="false"><strong>客户结果</strong><small>批准报告 0</small><span class="node-status"><i class="status-dot blocked"></i>无可交付结果</span></button>
+                </div>
+              </section>
+
+              <section class="lane" aria-labelledby="lane-synthetic">
+                <div class="lane-label"><strong id="lane-synthetic">合成测评</strong><span>Admin 内部实验</span></div>
+                <div class="node-track">
+                  <button class="flow-node status-blocked" type="button" data-node="style-samples" aria-pressed="false"><strong>九渠道样本</strong><small>当前 Sample 0</small><span class="node-status"><i class="status-dot blocked"></i>缺合法样本</span></button>
+                  <button class="flow-node status-idle" type="button" data-node="style-profile" aria-pressed="false"><strong>风格画像</strong><small>Profile Build 0</small><span class="node-status"><i class="status-dot idle"></i>尚未开始</span></button>
+                  <button class="flow-node status-idle" type="button" data-node="synthetic-generation" aria-pressed="false"><strong>候选生成</strong><small>每 Case 默认 4 个</small><span class="node-status"><i class="status-dot idle"></i>等待画像</span></button>
+                  <button class="flow-node status-idle" type="button" data-node="conflict-revision" aria-pressed="false"><strong>冲突检查与修订</strong><small>最多 2 轮修订</small><span class="node-status"><i class="status-dot idle"></i>等待候选</span></button>
+                  <button class="flow-node status-idle" type="button" data-node="corpus" aria-pressed="false"><strong>语料版本</strong><small>批准后不可变</small><span class="node-status"><i class="status-dot idle"></i>尚未建立</span></button>
+                  <button class="flow-node status-idle" type="button" data-node="offline-experiment" aria-pressed="false"><strong>三臂离线实验</strong><small>每题默认 10 次</small><span class="node-status"><i class="status-dot idle"></i>尚未运行</span></button>
+                  <div class="blank-node" aria-hidden="true"></div>
+                </div>
+              </section>
+
+              <section class="lane" aria-labelledby="lane-observation">
+                <div class="lane-label"><strong id="lane-observation">观测与建议</strong><span>外部数据闭环</span></div>
+                <div class="node-track">
+                  <button class="flow-node status-warning" type="button" data-node="connectors" aria-pressed="false"><strong>Connector Core</strong><small>GSC / GA4 Definition</small><span class="node-status"><i class="status-dot warning"></i>底座可用</span></button>
+                  <button class="flow-node status-blocked" type="button" data-node="external-capture" aria-pressed="false"><strong>Provider 与浏览器</strong><small>0 Capture · 0 Sync</small><span class="node-status"><i class="status-dot blocked"></i>缺凭据与代理</span></button>
+                  <button class="flow-node status-blocked" type="button" data-node="sampling" aria-pressed="false"><strong>采样与 Observation</strong><small>真实业务样本不足</small><span class="node-status"><i class="status-dot blocked"></i>无法形成分母</span></button>
+                  <button class="flow-node status-idle" type="button" data-node="metrics" aria-pressed="false"><strong>指标、统计与告警</strong><small>等待真实 Observation</small><span class="node-status"><i class="status-dot idle"></i>尚无业务结果</span></button>
+                  <button class="flow-node status-warning" type="button" data-node="attribution" aria-pressed="false"><strong>归因账本</strong><small>AUD 0 技术 Canary</small><span class="node-status"><i class="status-dot warning"></i>非业务真相</span></button>
+                  <button class="flow-node status-warning" type="button" data-node="recommendation" aria-pressed="false"><strong>建议</strong><small>insufficient_evidence</small><span class="node-status"><i class="status-dot warning"></i>正确阻断</span></button>
+                  <button class="flow-node status-blocked" type="button" data-node="customer-report" aria-pressed="false"><strong>Customer 投影</strong><small>批准报告 0</small><span class="node-status"><i class="status-dot blocked"></i>无真实报告</span></button>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+
+        <aside class="detail-panel" aria-live="polite" aria-labelledby="detail-title">
+          <button class="mobile-detail-close" id="mobile-detail-close" type="button" aria-label="关闭节点详情">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18"/></svg>
+          </button>
+          <span class="status-label" id="detail-status"><i class="status-dot waiting"></i>等待人工</span>
+          <h4 id="detail-title">事实与证据</h4>
+          <p id="detail-description">RAG 已产出候选，但没有业务审核决定，因此不能进入正式 Fact 与 Evidence。</p>
+          <dl class="detail-list">
+            <div><dt>当前事实</dt><dd id="detail-fact">941 个 Fact Candidate，全部 pending_review</dd></div>
+            <div><dt>执行者</dt><dd id="detail-executor">GEO Worker + Dify RAG + 人工审核</dd></div>
+            <div><dt>下一步</dt><dd id="detail-next">由业务审核人逐条批准、拒绝或修订候选事实</dd></div>
+            <div><dt>验收依据</dt><dd id="detail-evidence">advinsys-production-path-validation §3 / §4.1</dd></div>
+          </dl>
+          <div class="detail-actions">
+            <a class="primary-link" id="detail-link" href="http://localhost:13001/projects/6f93ee7b-bd7f-4fca-92b2-0de17254953a?tab=knowledge" target="_blank" rel="noreferrer">
+              打开对应工作区
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M7 7h10v10"/></svg>
+            </a>
+          </div>
+          <div class="snapshot-note">此页面是只读验收快照，不会自动刷新数据库，也不会把技术 Canary 显示成真实业务结果。</div>
+        </aside>
+        <button class="detail-backdrop" id="detail-backdrop" type="button" tabindex="-1" aria-label="关闭节点详情"></button>
+      </div>
+    </section>
+
+    <section class="view-panel" id="view-trace" role="tabpanel" aria-labelledby="tab-trace" hidden>
+      <header class="panel-heading">
+        <div>
+          <h3>一次任务实际经过了什么</h3>
+          <p>从 API 入队到业务结果，区分执行成功与后续业务动作。</p>
+        </div>
+        <div class="trace-controls">
+          <label for="trace-select">选择真实运行</label>
+          <select id="trace-select">
+            <option value="content">V600 内容生成</option>
+            <option value="recommendation">建议生成</option>
+            <option value="knowledge">知识 RAG 处理</option>
+          </select>
+        </div>
+      </header>
+      <div class="trace-body">
+        <div class="trace-summary" aria-label="所选任务摘要">
+          <div><span>业务对象</span><strong id="trace-object">TerraMow V600 内容包</strong></div>
+          <div><span>最终技术状态</span><strong id="trace-tech-status">完成</strong></div>
+          <div><span>当前业务状态</span><strong id="trace-business-status">generated</strong></div>
+          <div><span>关键身份</span><strong id="trace-id">0bf28e75…e2d</strong></div>
+        </div>
+        <div class="trace-grid" id="trace-grid"></div>
+        <div class="trace-outcome" id="trace-outcome">
+          <div><h4 id="trace-outcome-title">模型运行成功不等于内容已经发布</h4><p id="trace-outcome-copy">当前停在人工审核之前；没有创建发布请求，也没有第三方提交或 URL 验证。</p></div>
+          <strong id="trace-outcome-state">等待人工审核</strong>
+        </div>
+      </div>
+    </section>
+
+    <section class="view-panel" id="view-health" role="tabpanel" aria-labelledby="tab-health" hidden>
+      <header class="panel-heading">
+        <div>
+          <h3>当前 staging 部署健康</h3>
+          <p>来自 2026-07-30 13:59 CST 的 Docker 状态与 HTTP 探针；不是持续监控。</p>
+        </div>
+        <div class="legend" aria-label="健康状态图例"><span><i class="status-dot complete"></i>运行 / Ready</span></div>
+      </header>
+      <div class="health-body">
+        <div class="health-banner">
+          <div><h4>公开入口均可访问</h4><p>GEO 核心服务与 Dify runtime 正在运行；API readiness 返回 ready。</p></div>
+          <div><span>Admin</span><strong>13001 · 200</strong></div>
+          <div><span>Customer</span><strong>13000 · 200</strong></div>
+          <div><span>Internal API</span><strong>18000 · ready</strong></div>
+          <div><span>Customer API</span><strong>18001 · ready</strong></div>
+        </div>
+
+        <div class="topology" aria-label="部署拓扑">
+          <section class="topology-column">
+            <header><h4>用户界面</h4><p>浏览器访问入口</p></header>
+            <ul class="service-list">
+              <li class="service"><span><strong>Admin Web</strong><small>localhost:13001</small></span><span class="service-state"><i class="status-dot complete"></i>200</span></li>
+              <li class="service"><span><strong>Customer Web</strong><small>localhost:13000</small></span><span class="service-state"><i class="status-dot complete"></i>200</span></li>
+              <li class="service"><span><strong>Dify Console</strong><small>localhost:15000</small></span><span class="service-state"><i class="status-dot complete"></i>运行</span></li>
+            </ul>
+          </section>
+
+          <section class="topology-column">
+            <header><h4>API 与调度</h4><p>命令、只读投影和可靠唤醒</p></header>
+            <ul class="service-list">
+              <li class="service"><span><strong>Internal API</strong><small>localhost:18000/ready</small></span><span class="service-state"><i class="status-dot complete"></i>Ready</span></li>
+              <li class="service"><span><strong>Customer API</strong><small>localhost:18001/ready</small></span><span class="service-state"><i class="status-dot complete"></i>Ready</span></li>
+              <li class="service"><span><strong>Outbox Relay</strong><small>数据库提交后可靠唤醒</small></span><span class="service-state"><i class="status-dot complete"></i>运行</span></li>
+            </ul>
+          </section>
+
+          <section class="topology-column">
+            <header><h4>持久化与队列</h4><p>业务真源、工件和低延迟唤醒</p></header>
+            <ul class="service-list">
+              <li class="service"><span><strong>PostgreSQL 16 + pgvector</strong><small>localhost:55433</small></span><span class="service-state"><i class="status-dot complete"></i>Healthy</span></li>
+              <li class="service"><span><strong>MinIO</strong><small>localhost:19000 / 19001</small></span><span class="service-state"><i class="status-dot complete"></i>Healthy</span></li>
+              <li class="service"><span><strong>Valkey</strong><small>localhost:16379</small></span><span class="service-state"><i class="status-dot complete"></i>Healthy</span></li>
+            </ul>
+          </section>
+
+          <section class="topology-column">
+            <header><h4>执行器</h4><p>业务 Job 与外部任务</p></header>
+            <ul class="service-list">
+              <li class="service"><span><strong>Task Worker</strong><small>Durable Job + 模型任务</small></span><span class="service-state"><i class="status-dot complete"></i>运行</span></li>
+              <li class="service"><span><strong>Connector Worker</strong><small>GSC / GA4 / 报告同步</small></span><span class="service-state"><i class="status-dot complete"></i>Healthy</span></li>
+              <li class="service"><span><strong>Browser Capture Worker</strong><small>受控消费者界面采集</small></span><span class="service-state"><i class="status-dot complete"></i>Healthy</span></li>
+              <li class="service"><span><strong>Dify API + Worker</strong><small>10 个 GEO 工作流</small></span><span class="service-state"><i class="status-dot complete"></i>Healthy</span></li>
+            </ul>
+          </section>
+        </div>
+        <p class="health-footnote">运行健康只证明进程和依赖可用，不代表已经取得 GSC/GA4、Provider、澳洲消费者 Surface 或真实 Revenue 数据。</p>
+      </div>
+    </section>
+
+    <footer class="page-footer">
+      <p>业务数据来源：<code>docs/operations/advinsys-production-path-validation-2026-07-29.md</code></p>
+      <p>Project <code>6f93ee7b-bd7f-4fca-92b2-0de17254953a</code></p>
+    </footer>
+  </main>
+
+  <script>
+    const projectId = "6f93ee7b-bd7f-4fca-92b2-0de17254953a";
+    const adminBase = `http://localhost:13001/projects/${projectId}`;
+
+    const nodeDetails = {
+      project: {
+        status: "complete", statusText: "已完成", title: "项目与市场",
+        description: "目标公司资料已按 manifest 导入新的 ADVINSYS Australia 项目。",
+        fact: "4 个实体、Australia / en-AU、10 个目标渠道、3 个 Campaign、27 个 Opportunity、6 个 Monitoring Query",
+        executor: "项目导入脚本 + PostgreSQL",
+        next: "无需重复导入；后续业务对象继续使用当前 Project ID",
+        evidence: "advinsys-production-path-validation §2", href: `${adminBase}?tab=basic`
+      },
+      sources: {
+        status: "warning", statusText: "部分通过", title: "知识来源",
+        description: "真实 Worker 已抓取、解析并执行 Dify RAG；Amazon 页面未产生可追溯 Fact，因此按失败保留。",
+        fact: "13 个 Source：7 ready、6 个历史修订 archived",
+        executor: "GEO Knowledge Worker + Dify knowledge.rag_grounding",
+        next: "复核失败来源；只对合法、可追溯的新修订重新处理",
+        evidence: "advinsys-production-path-validation §3 / §4.1", href: `${adminBase}?tab=knowledge&knowledge_tab=sources`
+      },
+      facts: {
+        status: "waiting", statusText: "等待人工", title: "事实与证据",
+        description: "RAG 已产出候选，但没有业务审核决定，因此不能进入正式 Fact 与 Evidence。",
+        fact: "941 个 Fact Candidate，全部 pending_review",
+        executor: "GEO Worker + Dify RAG + 人工审核",
+        next: "由业务审核人逐条批准、拒绝或修订候选事实",
+        evidence: "advinsys-production-path-validation §3 / §4.1", href: `${adminBase}?tab=knowledge&knowledge_tab=facts`
+      },
+      campaign: {
+        status: "complete", statusText: "已完成", title: "问题与 Campaign",
+        description: "项目已建立三条 Campaign、对应渠道任务以及六条 Monitoring Query。",
+        fact: "3 Campaign、27 Opportunity、6 Monitoring Query",
+        executor: "GEO 原生领域服务",
+        next: "在取得真实观测后冻结并执行采样协议",
+        evidence: "advinsys-production-path-validation §2", href: `${adminBase}?tab=geo`
+      },
+      dify: {
+        status: "complete", statusText: "已激活", title: "Dify 工作流",
+        description: "十个托管流程均完成真实 DeepSeek Canary、冻结发布登记和 staging 激活。",
+        fact: "10 / 10：问题生成、RAG、内容生成/仿真、合成生成/抽取/冲突/修订、风格画像、建议",
+        executor: "自托管 Dify 1.16.0 + DeepSeek",
+        next: "以真实业务 Job 继续验证 style_profile 与 recommendation 输入",
+        evidence: "advinsys-production-path-validation §3 / §4.2", href: `${adminBase}?tab=prompts`
+      },
+      "content-input": {
+        status: "complete", statusText: "已冻结", title: "内容任务输入",
+        description: "V600 内容生成路径已在当前 staging 实际执行，输入绑定到项目和内容任务。",
+        fact: "TerraMow V600 内容路径已执行",
+        executor: "GEO 内容生产服务",
+        next: "保持输入 lineage，任何修订创建新版本",
+        evidence: "advinsys-production-path-validation §3 / §4.2", href: `${adminBase}?tab=geo`
+      },
+      "content-generation": {
+        status: "complete", statusText: "已完成", title: "Dify 内容生成",
+        description: "内容由真实 Dify / DeepSeek 路径生成，不是 fixture 或 mock。",
+        fact: "生成结果已物化为不可变 Package Version",
+        executor: "Task Worker + Dify placements.generation",
+        next: "转交独立人工审核，不自动发布",
+        evidence: "advinsys-production-path-validation §4.2", href: `${adminBase}?tab=prompts`
+      },
+      package: {
+        status: "warning", statusText: "尚未批准", title: "Package Version",
+        description: "技术生成成功，但业务状态仍为 generated。",
+        fact: "0bf28e75-a1e9-4bdb-a20b-21fd25520e2d · generated",
+        executor: "GEO Worker + PostgreSQL",
+        next: "提交给与生成者不同的审核人员",
+        evidence: "advinsys-production-path-validation §3", href: `${adminBase}?tab=geo`
+      },
+      "content-review": {
+        status: "waiting", statusText: "等待人工", title: "人工审核",
+        description: "系统没有替代内容审核、批准或发布决定。",
+        fact: "V600 内容当前没有 approved / published 记录",
+        executor: "业务审核人员",
+        next: "审核事实准确性、渠道适配和发布资格后给出决定",
+        evidence: "advinsys-production-path-validation §4.2 / §5", href: `${adminBase}?tab=geo`
+      },
+      publication: {
+        status: "idle", statusText: "尚未开始", title: "第三方发布",
+        description: "只有明确的 Publication Request 才能进入人工第三方提交。导出不会产生发布副作用。",
+        fact: "当前没有 V600 第三方 Submission",
+        executor: "运营人员 + GEO 发布工作流",
+        next: "内容批准后显式创建发布请求",
+        evidence: "system-overview 业务主链", href: `${adminBase}?tab=geo&geo_section=placement&placement_stage=publication`
+      },
+      verification: {
+        status: "idle", statusText: "等待发布", title: "URL 验证与复测",
+        description: "第三方页面公开后才执行 URL 验证，并进入 T+28 / T+56 / T+84 复测。",
+        fact: "当前没有可验证的 V600 发布 URL",
+        executor: "Task Worker + 人工 URL 回填",
+        next: "完成第三方发布并回填真实 URL",
+        evidence: "system-overview 业务主链", href: `${adminBase}?tab=geo&geo_section=placement&placement_stage=publication`
+      },
+      "customer-content": {
+        status: "blocked", statusText: "无可交付结果", title: "客户内容结果",
+        description: "客户只能读取已批准、未失效的真实结果；当前没有满足条件的报告。",
+        fact: "Customer 已批准外部报告：0",
+        executor: "Customer API 只读投影",
+        next: "先完成真实业务结果、审核与不可变批准快照",
+        evidence: "advinsys-production-path-validation §3 / §4.4", href: "http://localhost:13000"
+      },
+      "style-samples": {
+        status: "blocked", statusText: "缺合法样本", title: "九渠道样本",
+        description: "真实合成实验不能用模型生成样本替代合法取得、匿名化并人工明审的澳洲英文样本。",
+        fact: "0 Sample、0 Style Collection Task",
+        executor: "Style Browser Worker + 人工明审",
+        next: "提供九个平台合法样本来源，每个平台至少 200 条匿名样本",
+        evidence: "advinsys-production-path-validation §3 / §5", href: `${adminBase}?tab=synthetic-lab`
+      },
+      "style-profile": {
+        status: "idle", statusText: "尚未开始", title: "风格画像",
+        description: "Dify 工作流已经激活，但当前没有经批准样本可用于真实 Profile Build。",
+        fact: "0 Profile Build",
+        executor: "Synthetic Worker + Dify synthetic_lab.style_profile",
+        next: "先完成样本收集、匿名化和人工批准",
+        evidence: "advinsys-production-path-validation §3", href: `${adminBase}?tab=synthetic-lab`
+      },
+      "synthetic-generation": {
+        status: "idle", statusText: "等待画像", title: "候选生成",
+        description: "每个 Case 默认生成四个候选；目前没有可执行的批准 Style Profile。",
+        fact: "0 Execution Task、0 Terminal Result",
+        executor: "Synthetic Worker + Dify synthetic_lab.generation",
+        next: "批准 Profile Version 和 Review Suite 后创建真实任务",
+        evidence: "六个月实施规划 §合成测评实验室", href: `${adminBase}?tab=synthetic-lab`
+      },
+      "conflict-revision": {
+        status: "idle", statusText: "等待候选", title: "冲突检查与修订",
+        description: "候选依次执行 claim extraction、conflict check 和最多两轮 revision。",
+        fact: "Dify 三条工作流已激活；业务运行 0",
+        executor: "Synthetic Worker + Dify + GEO 内置 style judge",
+        next: "生成真实候选后按冻结 Fact 执行冲突判断",
+        evidence: "infra/dify/README 与实施规划", href: `${adminBase}?tab=synthetic-lab`
+      },
+      corpus: {
+        status: "idle", statusText: "尚未建立", title: "语料版本",
+        description: "只有通过评审的 Candidate 才能组成不可变 Corpus Version。",
+        fact: "当前没有真实 Corpus Version",
+        executor: "Synthetic Lab 原生运行时",
+        next: "完成 Candidate 评审并批准语料版本",
+        evidence: "实施规划 §合成测评实验室", href: `${adminBase}?tab=synthetic-lab`
+      },
+      "offline-experiment": {
+        status: "idle", statusText: "尚未运行", title: "三臂离线实验",
+        description: "无语料基线、当前批准语料和候选语料按题配对比较；当前缺批准语料。",
+        fact: "真实 Offline Experiment：0",
+        executor: "Synthetic Lab + GEO offline_answer / metric judge",
+        next: "批准 Corpus 后按每题默认 10 次运行",
+        evidence: "实施规划 §合成测评实验室", href: `${adminBase}?tab=synthetic-lab`
+      },
+      connectors: {
+        status: "warning", statusText: "底座可用", title: "Connector Core",
+        description: "连接器定义、同步、游标、工件和投影底座可运行，但没有真实账号连接。",
+        fact: "GSC / GA4 Definition 为 draft；0 Connection、0 Sync",
+        executor: "Connector Worker + PyAirbyte",
+        next: "将真实授权凭据写入 Secret Store，再批准 Definition 与 Connection",
+        evidence: "advinsys-production-path-validation §3 / §5", href: `${adminBase}?tab=external-data`
+      },
+      "external-capture": {
+        status: "blocked", statusText: "缺凭据与代理", title: "Provider 与消费者界面",
+        description: "五类 Provider 以及 AIO、AI Mode、Copilot 均缺真实凭据、逐 Surface 授权或澳洲 sticky proxy。",
+        fact: "0 Surface Release、0 Egress Endpoint、0 Capture",
+        executor: "Provider Adapter + Browser Capture Worker",
+        next: "提供 Provider 凭据、Surface 授权、澳洲 sticky proxy 和实测 selector",
+        evidence: "advinsys-production-path-validation §5 / §6", href: `${adminBase}?tab=external-data`
+      },
+      sampling: {
+        status: "blocked", statusText: "无法形成分母", title: "采样与 Observation",
+        description: "没有真实 Provider、消费者界面或官方报告样本，不能形成可验收的采样分母。",
+        fact: "真实 ADVINSYS Sampling Observation 不足",
+        executor: "Workflow C Sampling Suite / Run / Task",
+        next: "按 source mode 分层执行真实重复采样，不混合分母",
+        evidence: "外部数据与跨引擎采样实施计划", href: `${adminBase}?tab=measurement`
+      },
+      metrics: {
+        status: "idle", statusText: "尚无业务结果", title: "指标、统计与告警",
+        description: "统计底座可执行，但没有达到冻结门槛的真实 Observation。",
+        fact: "当前不能给出 win / loss / equivalent 业务结论",
+        executor: "Workflow C Semantic / Statistical Worker",
+        next: "先完成有效采样，再计算区间、比较、漂移和告警",
+        evidence: "advinsys-production-path-validation §3 / §5", href: `${adminBase}?tab=measurement`
+      },
+      attribution: {
+        status: "warning", statusText: "非业务真相", title: "归因账本",
+        description: "Session 到 Revenue 的实体链技术上完整，但当前唯一旅程明确标记为验证 Canary。",
+        fact: "validation_canary_not_business_truth · AUD 0",
+        executor: "Attribution Ledger + PostgreSQL",
+        next: "提供一条经同意的真实 UTM / trace 到 Revenue 旅程",
+        evidence: "advinsys-production-path-validation §3 / §4.4", href: `${adminBase}?tab=external-data`
+      },
+      recommendation: {
+        status: "warning", statusText: "正确阻断", title: "建议",
+        description: "生成链路成功，但因缺少可批准的真实 Observation、Statistic、Fact 和 Rule，正常输出 insufficient_evidence。",
+        fact: "Recommendation 223aee23…195 · draft · 0 下游草稿",
+        executor: "Recommendation Worker + Dify recommendations.recommendation",
+        next: "补齐真实证据后创建新的 Recommendation Job",
+        evidence: "advinsys-production-path-validation §4.3", href: `${adminBase}?tab=recommendations`
+      },
+      "customer-report": {
+        status: "blocked", statusText: "无真实报告", title: "Customer 投影",
+        description: "in_review 报告不会泄露到 Customer；当前正确显示零份已批准报告。",
+        fact: "外部 Report d6a109bb…aa · in_review；Customer approved 0",
+        executor: "Customer API / Web approved-only reader",
+        next: "真实采样、归因和审核完成后创建不可变 approved snapshot",
+        evidence: "advinsys-production-path-validation §3 / §4.4", href: "http://localhost:13000"
+      }
+    };
+
+    const traces = {
+      content: {
+        object: "TerraMow V600 内容包", techStatus: "完成", businessStatus: "generated", id: "0bf28e75…e2d",
+        outcomeTitle: "模型运行成功不等于内容已经发布",
+        outcomeCopy: "当前停在人工审核之前；没有创建发布请求，也没有第三方提交或 URL 验证。",
+        outcomeState: "等待人工审核", outcomeTone: "waiting",
+        steps: [
+          ["任务输入冻结", "项目、Campaign、目标渠道和证据上下文形成不可变输入。", "GEO API", "complete"],
+          ["Job + Outbox", "Internal API 在数据库事务内创建 Durable Job 和唤醒事件。", "PostgreSQL", "complete"],
+          ["可靠唤醒", "Outbox Relay 投递到 Valkey；数据库仍是任务真源。", "Outbox / Valkey", "complete"],
+          ["Worker Lease", "Task Worker 获取 lease 与 fencing generation 后执行。", "Task Worker", "complete"],
+          ["Dify 生成", "冻结的 placements.generation 调用真实 DeepSeek。", "Dify Run", "complete"],
+          ["结果持久化", "结构化输出校验后保存工件和业务结果。", "MinIO + PostgreSQL", "complete"],
+          ["Package Version", "不可变内容版本物化，状态为 generated。", "0bf28e75…e2d", "warning"],
+          ["人工审核", "必须由业务审核人决定，系统没有自动推进。", "待处理", "waiting"]
+        ]
+      },
+      recommendation: {
+        object: "ADVINSYS Recommendation", techStatus: "完成", businessStatus: "insufficient_evidence", id: "d3245309…e33",
+        outcomeTitle: "证据不足是正常业务终态",
+        outcomeCopy: "系统没有为了填充建议看板而伪造方向，也没有自动创建 Experiment、Brief 或 Sampling 草稿。",
+        outcomeState: "0 个下游草稿", outcomeTone: "warning",
+        steps: [
+          ["请求生成", "Admin 创建项目范围 Recommendation Job。", "Internal API", "complete"],
+          ["持久入队", "Job、spec 与 outbox 在同一事务写入。", "PostgreSQL", "complete"],
+          ["Worker 执行", "Worker 获取冻结输入和 Dify runtime release。", "Task Worker", "complete"],
+          ["Dify 建议", "recommendations.recommendation 返回结构化结果。", "Dify + DeepSeek", "complete"],
+          ["合同校验", "输出和 lineage 经应用侧校验。", "GEO Runtime", "complete"],
+          ["草稿物化", "fenced RPC 原子创建可见不可变 draft。", "Migration 0118", "complete"],
+          ["证据判断", "缺 approved Observation、Statistic、Fact 与 Rule。", "insufficient_evidence", "warning"],
+          ["下游动作", "不创建任何自动执行或发布任务。", "0 drafts", "warning"]
+        ]
+      },
+      knowledge: {
+        object: "ADVINSYS Knowledge RAG", techStatus: "部分完成", businessStatus: "pending_review", id: "13 sources / 941 facts",
+        outcomeTitle: "处理完成不等于事实已经获批",
+        outcomeCopy: "7 个来源形成可追溯处理结果，941 个候选仍需业务明审；Amazon 无可追溯 Fact 时保留失败。",
+        outcomeState: "等待事实审核", outcomeTone: "waiting",
+        steps: [
+          ["来源接收", "URL、文件或授权文本创建 Source 与 Revision。", "Knowledge API", "complete"],
+          ["抓取解析", "Worker 获取真实页面并解析正文。", "Knowledge Worker", "complete"],
+          ["清洗分块", "正文清洗、分块和 hash 固化。", "PostgreSQL", "complete"],
+          ["Dify RAG", "冻结 chunk context 执行 knowledge.rag_grounding。", "Dify + DeepSeek", "complete"],
+          ["候选校验", "应用校验 Fact、Entity、Relation 输出结构。", "GEO Runtime", "complete"],
+          ["结果存储", "来源修订、chunk、候选和 lineage 持久化。", "PostgreSQL + MinIO", "complete"],
+          ["来源结果", "7 ready、6 个历史修订 archived。", "13 sources", "warning"],
+          ["事实审核", "941 个候选等待批准、拒绝或修订。", "pending_review", "waiting"]
+        ]
+      }
+    };
+
+    const statusLabels = {
+      complete: "已完成", warning: "技术通过 / 业务不足", waiting: "等待人工", blocked: "外部阻塞", idle: "尚未开始"
+    };
+
+    function selectNode(nodeKey, revealOnMobile = true) {
+      const detail = nodeDetails[nodeKey];
+      if (!detail) return;
+      document.querySelectorAll(".flow-node").forEach((node) => {
+        node.setAttribute("aria-pressed", String(node.dataset.node === nodeKey));
+      });
+      const status = document.getElementById("detail-status");
+      status.innerHTML = `<i class="status-dot ${detail.status}"></i>${detail.statusText || statusLabels[detail.status]}`;
+      document.getElementById("detail-title").textContent = detail.title;
+      document.getElementById("detail-description").textContent = detail.description;
+      document.getElementById("detail-fact").textContent = detail.fact;
+      document.getElementById("detail-executor").textContent = detail.executor;
+      document.getElementById("detail-next").textContent = detail.next;
+      document.getElementById("detail-evidence").textContent = detail.evidence;
+      const link = document.getElementById("detail-link");
+      link.href = detail.href;
+      link.hidden = !detail.href;
+      if (revealOnMobile && window.matchMedia("(max-width: 760px)").matches) openMobileDetail();
+    }
+
+    function openMobileDetail() {
+      document.querySelector(".detail-panel").classList.add("mobile-open");
+      document.getElementById("detail-backdrop").classList.add("visible");
+      document.body.classList.add("detail-open");
+      document.getElementById("mobile-detail-close").focus();
+    }
+
+    function closeMobileDetail() {
+      document.querySelector(".detail-panel").classList.remove("mobile-open");
+      document.getElementById("detail-backdrop").classList.remove("visible");
+      document.body.classList.remove("detail-open");
+    }
+
+    function renderTrace(traceKey) {
+      const trace = traces[traceKey];
+      if (!trace) return;
+      document.getElementById("trace-object").textContent = trace.object;
+      document.getElementById("trace-tech-status").textContent = trace.techStatus;
+      document.getElementById("trace-business-status").textContent = trace.businessStatus;
+      document.getElementById("trace-id").textContent = trace.id;
+      document.getElementById("trace-outcome-title").textContent = trace.outcomeTitle;
+      document.getElementById("trace-outcome-copy").textContent = trace.outcomeCopy;
+      document.getElementById("trace-outcome-state").textContent = trace.outcomeState;
+      document.getElementById("trace-outcome").style.borderLeftColor = `var(--${trace.outcomeTone === "waiting" ? "violet" : "amber"})`;
+      const grid = document.getElementById("trace-grid");
+      grid.innerHTML = trace.steps.map((step, index) => `
+        <article class="trace-step" data-status="${step[3]}">
+          <span class="trace-index">${index + 1}</span>
+          <h4>${step[0]}</h4>
+          <p>${step[1]}</p>
+          <small>${step[2]}</small>
+        </article>
+      `).join("");
+    }
+
+    function showView(viewName) {
+      closeMobileDetail();
+      document.querySelectorAll(".tab-button").forEach((button) => {
+        const selected = button.dataset.view === viewName;
+        button.setAttribute("aria-selected", String(selected));
+        button.tabIndex = selected ? 0 : -1;
+      });
+      document.querySelectorAll(".view-panel").forEach((panel) => {
+        panel.hidden = panel.id !== `view-${viewName}`;
+      });
+      document.getElementById("business-tools").hidden = viewName !== "business";
+    }
+
+    document.querySelectorAll(".flow-node").forEach((node) => {
+      node.addEventListener("click", () => selectNode(node.dataset.node));
+    });
+    document.querySelectorAll(".tab-button").forEach((button, index, buttons) => {
+      button.addEventListener("click", () => showView(button.dataset.view));
+      button.addEventListener("keydown", (event) => {
+        if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+        event.preventDefault();
+        const nextIndex = event.key === "ArrowRight" ? (index + 1) % buttons.length : (index - 1 + buttons.length) % buttons.length;
+        buttons[nextIndex].focus();
+        buttons[nextIndex].click();
+      });
+    });
+    document.getElementById("blocker-toggle").addEventListener("click", (event) => {
+      const pressed = event.currentTarget.getAttribute("aria-pressed") !== "true";
+      event.currentTarget.setAttribute("aria-pressed", String(pressed));
+      document.getElementById("flow-board").classList.toggle("highlight-blockers", pressed);
+    });
+    document.getElementById("reset-selection").addEventListener("click", () => {
+      selectNode("facts", false);
+      document.getElementById("blocker-toggle").setAttribute("aria-pressed", "false");
+      document.getElementById("flow-board").classList.remove("highlight-blockers");
+    });
+    document.getElementById("trace-select").addEventListener("change", (event) => renderTrace(event.target.value));
+    document.getElementById("mobile-detail-close").addEventListener("click", closeMobileDetail);
+    document.getElementById("detail-backdrop").addEventListener("click", closeMobileDetail);
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closeMobileDetail();
+    });
+
+    renderTrace("content");
+  </script>
+</body>
+</html>
