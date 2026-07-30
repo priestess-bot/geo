@@ -33,6 +33,8 @@ def test_maintenance_kinds_never_fall_back_to_the_general_worker(
             "recommendation-artifact-maintenance",
         ),
         ("synthetic_artifact_maintenance", "synthetic-artifact-maintenance"),
+        ("connector_sync", "connector-sync"),
+        ("browser_capture", "browser-capture"),
     ):
         tasks.send_durable_job(
             job_id=job_id,

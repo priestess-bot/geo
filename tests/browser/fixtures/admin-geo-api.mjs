@@ -1384,6 +1384,34 @@ const server = createServer(async (request, response) => {
   if (path === `${base}/invitations`) return send(response, { items: [], total: 0, limit: 100, offset: 0 });
   if (path === `${base}/members`) return send(response, { items: [{ membership_id: "00000000-0000-4000-8000-000000000004", project_id: PROJECT_ID, identity_id: secretActorId, issuer: "browser-fixture", subject: secretActorId, email: "owner@example.test", display_name: "Fixture Owner", role: secretRole, status: "active", created_at: NOW }], total: 1, limit: 100, offset: 0 });
   if (path === "/v1/auth/me") return send(response, { actor_id: secretActorId, tenant_id: TENANT_ID, project_ids: [PROJECT_ID], roles: [secretRole] });
+  if (path === `${base}/connectors` && request.method === "GET") return send(response, {
+    definitions: [], connections: [], scopes: [], runs: [], connection_tests: []
+  });
+  if (path === `${base}/browser-capture` && request.method === "GET") return send(response, {
+    surface_releases: [], egress_endpoints: [], profiles: [], egress_tests: [],
+    drift_events: [], tasks: [], sessions: []
+  });
+  if (path === `${base}/external-data/reports` && request.method === "GET") return send(response, []);
+  if (path === `${base}/attribution` && request.method === "GET") return send(response, {
+    policies: [], collectors: [], counts: {}, snapshots: []
+  });
+  if (path === `${base}/sampling/admission-policies` && request.method === "GET") return send(response, {
+    items: [], total: 0
+  });
+  if (path === `${base}/external-data/operational-alert-inputs` && request.method === "GET") return send(response, [{
+    id: "00000000-0000-4000-8000-000000000701",
+    source_kind: "browser_surface_drift",
+    source_id: "00000000-0000-4000-8000-000000000702",
+    source_version: 1,
+    signal_kind: "browser_build",
+    severity: "critical",
+    reason_code: "browser_build_drift",
+    action_path: `${base.replace("/v1", "")}?tab=external-data&section=browser`,
+    payload: { release_suspended: true },
+    input_hash: "f".repeat(64),
+    observed_at: NOW,
+    created_at: NOW
+  }]);
   if (path === `${base}/model-gateway/options` && request.method === "GET") {
     const synthetic = syntheticRuntimeOptions();
     const recommendation = recommendationRuntimeOptions();

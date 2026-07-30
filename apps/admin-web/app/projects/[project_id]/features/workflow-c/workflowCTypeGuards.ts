@@ -20,7 +20,12 @@ import type {
   SurfaceParserReleasePage
 } from "./workflowCTypes";
 
-const captureMethods = new Set(["provider_api", "proxy_grounded_api", "manual_ui"]);
+const captureMethods = new Set([
+  "provider_api",
+  "proxy_grounded_api",
+  "manual_ui",
+  "automated_ui"
+]);
 const conclusions = new Set([
   "win",
   "equivalent",

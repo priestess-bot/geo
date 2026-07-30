@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from datetime import datetime
 import hashlib
 import json
 from typing import Any
@@ -60,6 +61,54 @@ def _drift_source(connection: Any, project_id: UUID, source_hash: str) -> Mappin
     if _canonical_hash(_payload(row)) != source_hash:
         raise WorkflowCAlertAdmissionError("drift report content hash is invalid")
     return row
+
+
+def _external_health_source(
+    connection: Any, project_id: UUID, source_hash: str
+) -> Mapping[str, object]:
+    return _required_row(
+        connection.execute(
+            """SELECT source_kind, source_id, source_version, signal_kind,
+                      severity, reason_code, action_path, payload, input_hash,
+                      observed_at
+                 FROM external_operational_alert_inputs
+                WHERE project_id = %s AND input_hash = %s""",
+            (project_id, source_hash),
+        ).fetchone(),
+        "external operational alert input",
+    )
+
+
+def _external_health_input(
+    source: Mapping[str, object], *, selector: AlertEvaluationSelector, project_id: UUID
+) -> _ResolvedAlertInput:
+    _forbid_extra_selector(selector, baseline=False, item=False)
+    source_hash = _field(source, "input_hash", str)
+    if source_hash != selector.source_hash:
+        raise WorkflowCAlertAdmissionError("external health input hash changed")
+    source_kind = _field(source, "source_kind", str)
+    source_id = str(_required(source, "source_id"))
+    signal_kind = _field(source, "signal_kind", str)
+    return _resolved(
+        project_id=project_id,
+        resource_kind="external_operational_alert_input",
+        resource_key=f"{source_kind}:{source_id}:{signal_kind}",
+        source_hash=source_hash,
+        dimensions=(("source_kind", source_kind), ("signal_kind", signal_kind)),
+        values={
+            "schema_version": "alert-input-external-health-v1",
+            "source_kind": source_kind,
+            "source_id": source_id,
+            "source_version": _field(source, "source_version", int),
+            "signal_kind": signal_kind,
+            "severity": _field(source, "severity", str),
+            "reason_code": _field(source, "reason_code", str),
+            "action_path": _field(source, "action_path", str),
+            "payload": _mapping(_required(source, "payload"), "external health payload"),
+            "observed_at": _field(source, "observed_at", datetime).isoformat(),
+        },
+        evidence=(("external_operational_alert_input", source_hash, "payload"),),
+    )
 
 
 def _threshold_input(

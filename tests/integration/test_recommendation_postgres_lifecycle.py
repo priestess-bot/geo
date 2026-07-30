@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-import hashlib
 import os
 from pathlib import Path
 from typing import Any, cast
@@ -18,14 +17,7 @@ import pytest
 
 from geo_core.access.models import AccessPrincipal, MembershipRecord
 from geo_core.jobs.postgres import PostgresDurableJobStore
-from geo_core.model_gateway.contracts import ModelPolicy
-from geo_core.model_gateway.runtime_catalog import NewModelCallJobSelection
 from geo_core.project_scope import set_project_scope
-from geo_core.prompts.bootstrap_catalog import default_prompt_bootstrap_spec
-from geo_core.prompts.compiler_versions import BOOTSTRAP_COMPILER_VERSION
-from geo_core.prompts.application import PromptProgramApplication
-from geo_core.prompts.postgres import prompt_program_uow_factory
-from geo_core.prompts.program import ProgramKind
 from geo_core.recommendations import (
     DownstreamDraftKind,
     InputChangeReason,
@@ -63,9 +55,15 @@ from geo_core.recommendations.postgres.prompt_runtime import (
     build_recommendation_prompt_resolver,
 )
 from geo_core.recommendations.postgres.uow import RecommendationUnitOfWorkFactory
-from geo_core.secrets import SecretVersionHandle
-from tests.integration.model_gateway_postgres_fixtures import releases
 from tests.integration.placement_worker_support import login_url, seed_project
+from tests.integration.recommendation_postgres_lifecycle_support import (
+    RECOMMENDATION_RUNTIME_OPTION_ID,
+    RecommendationRuntimeCatalog,
+    UnusedRecommendationDependency,
+    hash_text,
+    recommendation_runtime_selection,
+    seed_frozen_recommendation_prompt,
+)
 
 
 ADMIN_URL = os.getenv("GEO_PLACEMENT_TEST_ADMIN_URL", "").strip()
@@ -208,12 +206,12 @@ def test_recommendation_lifecycle_uses_append_only_app_privileges() -> None:
 
         generation = PsycopgRecommendationGenerationSubmission(
             connection_factory=lambda: psycopg.connect(app_url, row_factory=dict_row),
-            runtime_catalog=_RecommendationRuntimeCatalog(
-                _recommendation_runtime_selection(seeded["project"])
+            runtime_catalog=RecommendationRuntimeCatalog(
+                recommendation_runtime_selection(seeded["project"])
             ),
             clock=lambda: now,
         )
-        prompt_binding_id = _seed_frozen_recommendation_prompt(
+        prompt_binding_id = seed_frozen_recommendation_prompt(
             app_url=app_url,
             seeded=seeded,
             owner=creator,
@@ -237,7 +235,7 @@ def test_recommendation_lifecycle_uses_append_only_app_privileges() -> None:
                 ),
             ),
             prompt_binding_id=prompt_binding_id,
-            model=GenerationModelSelector(runtime_selection_id=_RECOMMENDATION_RUNTIME_OPTION_ID),
+            model=GenerationModelSelector(runtime_selection_id=RECOMMENDATION_RUNTIME_OPTION_ID),
             valid_until=now + timedelta(days=7),
             minimum_real_observations=1,
         )
@@ -300,11 +298,11 @@ def test_recommendation_lifecycle_uses_append_only_app_privileges() -> None:
                 prompts=build_recommendation_prompt_resolver(connection_factory=worker_connect),
                 artifacts=cast(
                     RecommendationTaskArtifactStore,
-                    _UnusedRecommendationDependency("artifact store"),
+                    UnusedRecommendationDependency("artifact store"),
                 ),
                 model_results=cast(
                     GovernedRecommendationModelResultLoader,
-                    _UnusedRecommendationDependency("model result loader"),
+                    UnusedRecommendationDependency("model result loader"),
                 ),
             ),
             clock=lambda: now,
@@ -338,21 +336,65 @@ def test_recommendation_lifecycle_uses_append_only_app_privileges() -> None:
             "attribution_unavailable:connector_attribution_excluded_from_this_phase",
         )
         assert len(completed.result.recommendation.evidence.prompt_releases) == 1
+        generated_workflow = api.get_recommendation(
+            creator,
+            project_id=seeded["project"],
+            recommendation_id=completed.result.recommendation.id,
+        )
+        generated_list = api.list_recommendations(
+            creator,
+            project_id=seeded["project"],
+            limit=20,
+            offset=0,
+        )
+        assert generated_workflow.recommendation == completed.result.recommendation
+        assert generated_workflow.recommendation.status.value == "draft"
+        assert generated_workflow.drafts == ()
+        assert generated_list.total == 2
+        assert completed.result.recommendation.id in {
+            item.recommendation.id for item in generated_list.items
+        }
         with psycopg.connect(target_url, row_factory=dict_row) as admin:
             model_lineage = admin.execute(
                 """SELECT
                        (SELECT count(*) FROM recommendation_model_tasks
                          WHERE project_id = %s AND parent_job_id = %s) AS tasks,
                        (SELECT count(*) FROM recommendation_model_call_lineage
-                         WHERE project_id = %s AND parent_job_id = %s) AS calls""",
+                         WHERE project_id = %s AND parent_job_id = %s) AS calls,
+                       (SELECT count(*) FROM recommendation_evidence_bindings
+                         WHERE project_id = %s AND recommendation_id = %s
+                           AND evidence_kind = 'attribution') AS attribution_bindings,
+                       has_table_privilege(
+                           %s, 'recommendation_workflow_versions', 'INSERT'
+                       ) AS worker_direct_workflow_insert,
+                       has_table_privilege(
+                           %s, 'recommendation_evidence_bindings', 'INSERT'
+                       ) AS worker_direct_evidence_insert,
+                       has_function_privilege(
+                           %s,
+                           'geo_materialize_recommendation_generation_draft(uuid,uuid,uuid,bigint)',
+                           'EXECUTE'
+                       ) AS worker_materialization_execute""",
                 (
                     seeded["project"],
                     enqueued.job.id,
                     seeded["project"],
                     enqueued.job.id,
+                    seeded["project"],
+                    completed.result.recommendation.id,
+                    worker_login,
+                    worker_login,
+                    worker_login,
                 ),
             ).fetchone()
-        assert model_lineage == {"tasks": 0, "calls": 0}
+        assert model_lineage == {
+            "tasks": 0,
+            "calls": 0,
+            "attribution_bindings": 1,
+            "worker_direct_workflow_insert": False,
+            "worker_direct_evidence_insert": False,
+            "worker_materialization_execute": True,
+        }
 
         stale_created = application.create_recommendation(
             creator,
@@ -395,7 +437,7 @@ def test_recommendation_lifecycle_uses_append_only_app_privileges() -> None:
                     pending_message_id,
                     seeded["project"],
                     stale_approved.workflow.recommendation.id,
-                    _hash("recommendation-approved-fact-retirement"),
+                    hash_text("recommendation-approved-fact-retirement"),
                 ),
             )
             app.commit()
@@ -523,7 +565,7 @@ def _seed_approved_fact(connection: Any, *, seeded: dict[str, UUID]) -> UUID:
             uuid4(),
             uuid4(),
             "The approved product fact is current for this Project.",
-            _hash(f"fact:{fact_id}"),
+            hash_text(f"fact:{fact_id}"),
             seeded["owner"],
             "integration fixture approval",
         ),
@@ -553,7 +595,7 @@ def _seed_frozen_question(connection: Any, *, seeded: dict[str, UUID]) -> UUID:
             question_set_id,
             uuid4(),
             "Recommendation integration QuestionSet",
-            _hash(f"question-set:{question_set_id}"),
+            hash_text(f"question-set:{question_set_id}"),
             seeded["owner"],
             seeded["owner"],
             seeded["owner"],
@@ -574,9 +616,9 @@ def _seed_frozen_question(connection: Any, *, seeded: dict[str, UUID]) -> UUID:
             question_id,
             uuid4(),
             question_text,
-            _hash(question_text),
-            _hash(question_text.lower()),
-            _hash(f"question-source:{question_id}"),
+            hash_text(question_text),
+            hash_text(question_text.lower()),
+            hash_text(f"question-source:{question_id}"),
             question_set_id,
             seeded["project"],
         ),
@@ -608,156 +650,3 @@ def _block_drafts(
 def _database_url(admin_url: str, database_name: str) -> str:
     parts = urlsplit(admin_url)
     return urlunsplit((parts.scheme, parts.netloc, f"/{database_name}", parts.query, ""))
-
-
-def _hash(value: str) -> str:
-    return hashlib.sha256(value.encode("utf-8")).hexdigest()
-
-
-_RECOMMENDATION_RUNTIME_OPTION_ID = UUID("90000000-0000-4000-8000-000000000001")
-
-
-class _RecommendationRuntimeCatalog:
-    """Deterministic catalog fixture; provider execution is outside this DB contract."""
-
-    def __init__(self, selection: NewModelCallJobSelection) -> None:
-        self._selection = selection
-
-    def resolve_approved_runtime(
-        self,
-        *,
-        project_id: UUID,
-        runtime_selection_id: UUID,
-        required_purpose: str,
-        search_mode: str | None,
-    ) -> NewModelCallJobSelection:
-        assert project_id == self._selection.provider_secret_handle.project_id
-        assert runtime_selection_id == _RECOMMENDATION_RUNTIME_OPTION_ID
-        assert required_purpose == "recommendations.recommendation"
-        assert search_mode is None
-        return self._selection
-
-
-def _recommendation_runtime_selection(project_id: UUID) -> NewModelCallJobSelection:
-    adapter, model, route = releases()
-    return NewModelCallJobSelection(
-        runtime_manifest_id=UUID("90000000-0000-4000-8000-000000000002"),
-        runtime_manifest_hash=_hash("recommendation-runtime-manifest"),
-        runtime_option_id=_RECOMMENDATION_RUNTIME_OPTION_ID,
-        runtime_option_hash=_hash("recommendation-runtime-option"),
-        route=route,
-        configured_model=model.configured_model,
-        policy=ModelPolicy(
-            allowed_providers=frozenset({"openai"}),
-            allowed_adapter_release_ids=frozenset({route.adapter_release_id}),
-        ),
-        provider_secret_handle=SecretVersionHandle(
-            reference_id=UUID("90000000-0000-4000-8000-000000000003"),
-            project_id=project_id,
-            purpose="model_provider.openai",
-            version=1,
-        ),
-        adapter_release=adapter,
-        allowed_purposes=frozenset({"recommendations.recommendation"}),
-        allowed_search_modes=frozenset({None}),
-        provider_config_hash=_hash("recommendation-provider-config"),
-    )
-
-
-def _seed_frozen_recommendation_prompt(
-    *,
-    app_url: str,
-    seeded: dict[str, UUID],
-    owner: AccessPrincipal,
-    reviewer: AccessPrincipal,
-) -> UUID:
-    factory = prompt_program_uow_factory(lambda: psycopg.connect(app_url))
-    spec = default_prompt_bootstrap_spec(ProgramKind.RECOMMENDATION)
-
-    def command(operation):
-        with factory(seeded["project"]) as unit_of_work:
-            result = operation(
-                PromptProgramApplication(
-                    unit_of_work.prompts,
-                    test_evidence_verifier=_RecommendationPromptEvidenceVerifier(),
-                )
-            )
-            unit_of_work.commit()
-            return result
-
-    created = command(
-        lambda app: app.create_program(
-            owner,
-            project_id=seeded["project"],
-            program_kind=spec.program_kind,
-            purpose=spec.purpose,
-            system_template=spec.system_template,
-            user_template=spec.user_template,
-            schemas=spec.schemas,
-            model_policy=spec.model_policy,
-            test_set_id=spec.test_set_id,
-            test_set_version=1,
-            test_set_hash=spec.test_set_hash,
-            compiler_version=BOOTSTRAP_COMPILER_VERSION,
-            expected_version=0,
-            idempotency_key="recommendation-generation-prompt:create",
-        )
-    )
-    command(
-        lambda app: app.record_test(
-            owner,
-            project_id=seeded["project"],
-            release_id=created.value.release.id,
-            output_artifact_ref="s3://prompt-tests/recommendation-generation.json",
-            output_hash=_hash("recommendation-generation-prompt-output"),
-            expected_version=1,
-            idempotency_key="recommendation-generation-prompt:test",
-        )
-    )
-    command(
-        lambda app: app.approve_release(
-            reviewer,
-            project_id=seeded["project"],
-            release_id=created.value.release.id,
-            expected_version=2,
-            idempotency_key="recommendation-generation-prompt:approve",
-        )
-    )
-    command(
-        lambda app: app.freeze_release(
-            reviewer,
-            project_id=seeded["project"],
-            release_id=created.value.release.id,
-            expected_version=3,
-            idempotency_key="recommendation-generation-prompt:freeze",
-        )
-    )
-    bound = command(
-        lambda app: app.bind_release(
-            reviewer,
-            project_id=seeded["project"],
-            release_id=created.value.release.id,
-            purpose="recommendations.recommendation",
-            expected_version=0,
-            idempotency_key="recommendation-generation-prompt:bind",
-        )
-    )
-    return bound.value.binding.id
-
-
-class _RecommendationPromptEvidenceVerifier:
-    def verify(self, *, release, evidence) -> None:
-        assert evidence.project_id == release.project_id
-        assert evidence.release_id == release.id
-        assert evidence.release_hash == release.release_hash
-        assert evidence.output_artifact_ref.startswith("s3://prompt-tests/")
-
-
-class _UnusedRecommendationDependency:
-    """Fail if an insufficient-evidence parent ever enters a model-call path."""
-
-    def __init__(self, label: str) -> None:
-        self._label = label
-
-    def __getattr__(self, name: str) -> Any:
-        raise AssertionError(f"unused {self._label} accessed through {name}")

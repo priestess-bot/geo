@@ -90,6 +90,9 @@ class PeriodicHeartbeat:
             )
             self._thread.start()
 
+    def mark_failed(self) -> None:
+        self._safe_pulse("failed", force=True)
+
     def stop(self) -> None:
         with self._lock:
             thread = self._thread

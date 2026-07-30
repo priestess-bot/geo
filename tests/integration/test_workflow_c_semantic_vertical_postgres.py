@@ -106,13 +106,15 @@ from tests.integration.test_workflow_c_artifact_maintenance_postgres import (
     _seed_manual_runtime_option,
 )
 from tests.integration.test_recommendation_postgres_lifecycle import (
-    _RECOMMENDATION_RUNTIME_OPTION_ID,
-    _RecommendationRuntimeCatalog,
     _principal,
-    _recommendation_runtime_selection,
     _seed_approved_fact,
     _seed_frozen_question,
-    _seed_frozen_recommendation_prompt,
+)
+from tests.integration.recommendation_postgres_lifecycle_support import (
+    RECOMMENDATION_RUNTIME_OPTION_ID as _RECOMMENDATION_RUNTIME_OPTION_ID,
+    RecommendationRuntimeCatalog as _RecommendationRuntimeCatalog,
+    recommendation_runtime_selection as _recommendation_runtime_selection,
+    seed_frozen_recommendation_prompt as _seed_frozen_recommendation_prompt,
 )
 from tests.workflow_c_analysis_test_support import metric_protocol_definition_fixture
 from tests.integration.workflow_c_semantic_vertical_support import (

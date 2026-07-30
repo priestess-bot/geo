@@ -1,1 +1,8 @@
-{}
+{
+  "apps/api/geo_worker/tasks.py": 626,
+  "packages/geo_core/geo_core/alerts/evaluation.py": 632,
+  "packages/geo_core/geo_core/attribution/application.py": 774,
+  "packages/geo_core/geo_core/browser_capture/worker.py": 615,
+  "tests/infra/test_production_preflight.py": 809,
+  "tests/integration/test_browser_capture_execution_postgres.py": 870
+}

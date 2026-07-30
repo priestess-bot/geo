@@ -79,6 +79,11 @@ def test_legacy_profile_is_visible_with_rebuild_status_but_not_selectable() -> N
         reads = PostgresSyntheticApiReads(
             lambda: psycopg.connect(target_url, row_factory=dict_row)
         )
+        assert reads.authorizations(profile.project_id, limit=50, offset=0).total == 0
+        assert reads.imported_sample_options(profile.project_id, limit=50, offset=0).total == 0
+        assert reads.aggregates(
+            profile.project_id, kind="style_source", limit=50, offset=0
+        ).total == 0
         page = reads.profiles(profile.project_id, limit=50, offset=0)
         assert page.total == 1 and len(page.items) == 1
         projected = page.items[0]

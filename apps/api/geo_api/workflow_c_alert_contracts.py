@@ -31,6 +31,7 @@ class AlertRuleContract(StrictModel):
         "completion_freshness",
         "model_drift",
         "source_drift",
+        "external_health",
     ]
     severity: Literal["info", "warning", "critical"]
     parameters: dict[str, object] = Field(min_length=1, max_length=100)
@@ -129,6 +130,7 @@ class CreateAlertRuleRequest(StrictModel):
         "completion_freshness",
         "model_drift",
         "source_drift",
+        "external_health",
     ]
     severity: Literal["info", "warning", "critical"]
     parameters: dict[str, object] = Field(min_length=1, max_length=100)
@@ -151,6 +153,7 @@ class AlertRuleReleaseResponse(StrictModel):
         "completion_freshness",
         "model_drift",
         "source_drift",
+        "external_health",
     ]
     severity: Literal["info", "warning", "critical"]
     parameters: dict[str, object]

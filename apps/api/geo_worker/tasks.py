@@ -471,6 +471,8 @@ def send_durable_job(
     workflow_c_maintenance: bool = False,
     recommendation_artifact_maintenance: bool = False,
     synthetic_artifact_maintenance: bool = False,
+    connector_sync: bool = False,
+    browser_capture: bool = False,
 ) -> None:
     """Route a durable Job to the one Worker allowed to consume its kind."""
     dedicated_workers = (
@@ -478,10 +480,44 @@ def send_durable_job(
         + int(workflow_c_maintenance)
         + int(recommendation_artifact_maintenance)
         + int(synthetic_artifact_maintenance)
+        + int(connector_sync)
+        + int(browser_capture)
     )
     if dedicated_workers > 1:
         raise RuntimeError("a durable Job cannot target two dedicated Workers")
     if not style_collection:
+        if browser_capture:
+            from geo_core.browser_capture.routing import (
+                BROWSER_CAPTURE_ACTOR,
+                BROWSER_CAPTURE_QUEUE,
+            )
+
+            broker.enqueue(
+                dramatiq.Message(
+                    queue_name=BROWSER_CAPTURE_QUEUE,
+                    actor_name=BROWSER_CAPTURE_ACTOR,
+                    args=(str(job_id), str(project_id)),
+                    kwargs={},
+                    options={},
+                )
+            )
+            return
+        if connector_sync:
+            from geo_core.connectors.routing import (
+                CONNECTOR_SYNC_ACTOR,
+                CONNECTOR_SYNC_QUEUE,
+            )
+
+            broker.enqueue(
+                dramatiq.Message(
+                    queue_name=CONNECTOR_SYNC_QUEUE,
+                    actor_name=CONNECTOR_SYNC_ACTOR,
+                    args=(str(job_id), str(project_id)),
+                    kwargs={},
+                    options={},
+                )
+            )
+            return
         if workflow_c_maintenance:
             broker.enqueue(
                 dramatiq.Message(

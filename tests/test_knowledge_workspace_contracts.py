@@ -15,6 +15,7 @@ def test_knowledge_api_is_project_scoped_and_internal_only() -> None:
     expected = {
         "/v1/projects/{project_id}/knowledge/sources",
         "/v1/projects/{project_id}/knowledge/sources/{source_id}/reprocess",
+        "/v1/projects/{project_id}/knowledge/sources/{source_id}/revisions",
         "/v1/projects/{project_id}/knowledge/pipeline-runs",
         "/v1/projects/{project_id}/knowledge/pipeline-runs/{run_id}/stages",
         "/v1/projects/{project_id}/knowledge/chunks",

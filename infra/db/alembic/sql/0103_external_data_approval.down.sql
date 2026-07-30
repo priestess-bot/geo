@@ -1,0 +1,10 @@
+DROP VIEW external_data_customer_latest;
+DROP FUNCTION geo_invalidate_external_data_report(uuid, uuid, text, text, uuid, text, jsonb, text);
+DROP FUNCTION geo_decide_external_data_report(uuid, uuid, text, text, uuid, text, jsonb, text);
+DROP TRIGGER external_data_approvals_immutable ON external_data_approvals;
+DROP FUNCTION geo_external_data_approval_immutable();
+DROP TRIGGER external_data_snapshots_immutable ON external_data_snapshots;
+DROP FUNCTION geo_external_data_snapshot_immutable();
+DROP TABLE external_data_approvals;
+DROP TABLE external_data_reports;
+DROP TABLE external_data_snapshots;

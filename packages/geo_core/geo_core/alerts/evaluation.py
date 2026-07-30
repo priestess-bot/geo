@@ -371,6 +371,69 @@ def _source_drift(
     )
 
 
+def _external_health(
+    parameters: Mapping[str, object],
+    values: Mapping[str, object],
+    _evaluated_at: datetime,
+) -> _RuleDecision:
+    parameter_schema = "alert-rule-external-health-v1"
+    input_schema = "alert-input-external-health-v1"
+    _exact(parameters, {"schema_version", "minimum_severity"}, "external health parameters")
+    _schema(parameters, parameter_schema, "external health parameters")
+    minimum = _enum(
+        parameters["minimum_severity"], {"info", "warning", "critical"},
+        "external health minimum severity",
+    )
+    expected = {
+        "schema_version", "source_kind", "source_id", "source_version",
+        "signal_kind", "severity", "reason_code", "action_path", "payload",
+        "observed_at",
+    }
+    _exact(values, expected, "external health input")
+    _schema(values, input_schema, "external health input")
+    source_kind = _key(values["source_kind"], "external health source kind")
+    source_id = _text(values["source_id"], "external health source id")
+    source_version = _positive_integer(values["source_version"], "external health source version")
+    signal_kind = _key(values["signal_kind"], "external health signal kind")
+    severity = _enum(values["severity"], {"info", "warning", "critical"}, "external health severity")
+    reason_code = _key(values["reason_code"], "external health reason code")
+    action_path = _text(values["action_path"], "external health action path")
+    if not action_path.startswith("/projects/"):
+        raise AlertRuleViolation("external health action path must be project-local")
+    payload = values["payload"]
+    if not isinstance(payload, Mapping):
+        raise AlertRuleViolation("external health payload must be an object")
+    observed_value = values["observed_at"]
+    if not isinstance(observed_value, str):
+        raise AlertRuleViolation("external health observed at must be ISO 8601 text")
+    try:
+        observed_at = datetime.fromisoformat(observed_value.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise AlertRuleViolation("external health observed at is invalid") from error
+    _require_aware(observed_at, "external health observed at")
+    ranks = {"info": 1, "warning": 2, "critical": 3}
+    matched = ranks[severity] >= ranks[minimum]
+    canonical_input = {
+        "schema_version": input_schema,
+        "source_kind": source_kind,
+        "source_id": source_id,
+        "source_version": source_version,
+        "signal_kind": signal_kind,
+        "severity": severity,
+        "reason_code": reason_code,
+        "action_path": action_path,
+        "payload": dict(payload),
+        "observed_at": observed_at.isoformat(),
+    }
+    return _decision(
+        parameter_schema,
+        input_schema,
+        canonical_input,
+        canonical_input | {"minimum_severity": minimum},
+        (reason_code,) if matched else (),
+    )
+
+
 def _set_drift(
     parameters: Mapping[str, object],
     values: Mapping[str, object],
@@ -565,4 +628,5 @@ _EVALUATORS: Mapping[AlertRuleKind, _Evaluator] = {
     AlertRuleKind.COMPLETION_FRESHNESS: _completion_freshness,
     AlertRuleKind.MODEL_DRIFT: _model_drift,
     AlertRuleKind.SOURCE_DRIFT: _source_drift,
+    AlertRuleKind.EXTERNAL_HEALTH: _external_health,
 }

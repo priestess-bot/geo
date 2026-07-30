@@ -17,6 +17,7 @@ SamplingCaptureMethod = Literal[
     "provider_api",
     "proxy_grounded_api",
     "manual_ui",
+    "automated_ui",
 ]
 SamplingLocationControl = Literal[
     "country",

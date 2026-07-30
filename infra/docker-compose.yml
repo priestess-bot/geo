@@ -42,6 +42,8 @@ services:
       GEO_DEV_APP_PASSWORD: geo_app_dev
       GEO_DEV_WORKER_PASSWORD: geo_worker_dev
       GEO_DEV_BOOTSTRAP_ENABLED: "1"
+      GEO_CONNECTOR_SERVICE_IDENTITY_ID: ${GEO_CONNECTOR_SERVICE_IDENTITY_ID:-40000000-0000-4000-8000-000000000004}
+      GEO_BROWSER_CAPTURE_SERVICE_IDENTITY_ID: ${GEO_BROWSER_CAPTURE_SERVICE_IDENTITY_ID:-40000000-0000-4000-8000-000000000005}
     command:
       - /bin/sh
       - -c
@@ -81,7 +83,9 @@ services:
           geo-restricted-recommendation-artifacts \
           geo-restricted-workflow-c-artifacts \
           geo-synthetic-style-raw \
-          geo-synthetic-style-derived
+          geo-synthetic-style-derived \
+          geo-connector-raw \
+          geo-browser-capture-raw
         do
           mc mb --ignore-existing "geo/$${bucket}" >/dev/null
         done
@@ -177,6 +181,88 @@ services:
         condition: service_completed_successfully
       valkey:
         condition: service_healthy
+
+  connector-worker:
+    profiles: ["connectors"]
+    build:
+      context: ..
+      dockerfile: apps/connector_worker/Dockerfile
+    environment:
+      GEO_DEPLOYMENT_ENVIRONMENT: development
+      GEO_RELEASE_COMMIT: ${GEO_RELEASE_COMMIT:-0000000000000000000000000000000000000000}
+      GEO_DATABASE_URL: postgresql://geo_worker_dev:geo_worker_dev@postgres:5432/geo
+      GEO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
+      GEO_CONNECTOR_SERVICE_IDENTITY_ID: ${GEO_CONNECTOR_SERVICE_IDENTITY_ID:-40000000-0000-4000-8000-000000000004}
+      GEO_SECRET_STORE_MASTER_KEYRING_FILE: /run/secrets/secret_store_master_keyring
+      GEO_SECRET_STORE_REQUEST_HASH_KEY_FILE: /run/secrets/secret_store_request_hash_key
+      GEO_CONNECTOR_ARTIFACT_KEY_FILE: /run/secrets/connector_artifact_key
+      GEO_CONNECTOR_ARTIFACT_KEY_REFERENCE: ${GEO_CONNECTOR_ARTIFACT_KEY_REFERENCE:-connector-artifact:v1}
+      GEO_CONNECTOR_ARTIFACT_OBJECT_STORE_ENDPOINT: http://minio:9000
+      GEO_CONNECTOR_ARTIFACT_OBJECT_STORE_BUCKET: geo-connector-raw
+      GEO_CONNECTOR_ARTIFACT_OBJECT_STORE_ACCESS_KEY: geo_dev
+      GEO_CONNECTOR_ARTIFACT_OBJECT_STORE_SECRET_KEY: geo_dev_secret
+      GEO_CONNECTOR_ARTIFACT_OBJECT_STORE_AUTO_CREATE_BUCKET: "0"
+    volumes:
+      - ${GEO_SECRET_STORE_MASTER_KEYRING_FILE:-../.secrets/secret-store-master-keyring.json}:/run/secrets/secret_store_master_keyring:ro
+      - ${GEO_SECRET_STORE_REQUEST_HASH_KEY_FILE:-../.secrets/secret-store-request-hash-key}:/run/secrets/secret_store_request_hash_key:ro
+      - ${GEO_CONNECTOR_ARTIFACT_KEY_FILE:-../.secrets/connector-artifact-key}:/run/secrets/connector_artifact_key:ro
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
+      valkey:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "from pathlib import Path; assert b'dramatiq' in Path('/proc/1/cmdline').read_bytes() and Path('/tmp/geo-worker-ready').is_file()"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 15s
+
+  browser-capture-worker:
+    profiles: ["browser-capture"]
+    build:
+      context: ..
+      dockerfile: apps/browser_capture_worker/Dockerfile
+    user: "10001:10001"
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m,nosuid
+    environment:
+      GEO_DEPLOYMENT_ENVIRONMENT: development
+      GEO_RELEASE_COMMIT: ${GEO_RELEASE_COMMIT:-0000000000000000000000000000000000000000}
+      GEO_DATABASE_URL: postgresql://geo_worker_dev:geo_worker_dev@postgres:5432/geo
+      GEO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
+      GEO_BROWSER_CAPTURE_SERVICE_IDENTITY_ID: ${GEO_BROWSER_CAPTURE_SERVICE_IDENTITY_ID:-40000000-0000-4000-8000-000000000005}
+      GEO_BROWSER_RUNTIME_RELEASE: ${GEO_BROWSER_RUNTIME_RELEASE:-playwright:1.60.0/chromium}
+      GEO_SECRET_STORE_MASTER_KEYRING_FILE: /run/secrets/secret_store_master_keyring
+      GEO_SECRET_STORE_REQUEST_HASH_KEY_FILE: /run/secrets/secret_store_request_hash_key
+      GEO_BROWSER_ARTIFACT_KEY_FILE: /run/secrets/browser_artifact_key
+      GEO_BROWSER_ARTIFACT_KEY_REFERENCE: ${GEO_BROWSER_ARTIFACT_KEY_REFERENCE:-browser-artifact:v1}
+      GEO_BROWSER_ARTIFACT_OBJECT_STORE_ENDPOINT: http://minio:9000
+      GEO_BROWSER_ARTIFACT_OBJECT_STORE_BUCKET: geo-browser-capture-raw
+      GEO_BROWSER_ARTIFACT_OBJECT_STORE_ACCESS_KEY: geo_dev
+      GEO_BROWSER_ARTIFACT_OBJECT_STORE_SECRET_KEY: geo_dev_secret
+      GEO_BROWSER_ARTIFACT_OBJECT_STORE_AUTO_CREATE_BUCKET: "0"
+      GEO_BROWSER_ARTIFACT_RETENTION_DAYS: ${GEO_BROWSER_ARTIFACT_RETENTION_DAYS:-30}
+    volumes:
+      - ${GEO_SECRET_STORE_MASTER_KEYRING_FILE:-../.secrets/secret-store-master-keyring.json}:/run/secrets/secret_store_master_keyring:ro
+      - ${GEO_SECRET_STORE_REQUEST_HASH_KEY_FILE:-../.secrets/secret-store-request-hash-key}:/run/secrets/secret_store_request_hash_key:ro
+      - ${GEO_BROWSER_ARTIFACT_KEY_FILE:-../.secrets/browser-artifact-key}:/run/secrets/browser_artifact_key:ro
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
+      valkey:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "from pathlib import Path; assert b'dramatiq' in Path('/proc/1/cmdline').read_bytes() and Path('/tmp/geo-worker-ready').is_file()"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 15s
 
   outbox-relay:
     profiles: ["workers"]

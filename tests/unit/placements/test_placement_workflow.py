@@ -556,6 +556,17 @@ def test_full_application_chain_keeps_export_and_publication_separate() -> None:
         ),
         authenticity_risks=(),
     )
+    assert brief.goals == {
+        "query": "best robot vacuum",
+        "consumer_experience": {
+            "description": "It cleaned a two-bedroom home daily.",
+            "source": "customer supplied note",
+            "usage_rights": "authorised_experience",
+            "disclosure": "Customer wording was edited for clarity.",
+        },
+    }
+    assert "goals" not in brief.goals
+    assert brief.constraints == {}
     attempt, _ = app.create_evidence_attempt(
         project_id=project_id,
         campaign_id=campaign.id,

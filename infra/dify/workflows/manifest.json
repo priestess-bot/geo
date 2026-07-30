@@ -16,7 +16,7 @@
       "file": "geo-rag-grounding.yml",
       "model_provider": "langgenius/deepseek/deepseek",
       "purpose": "knowledge.rag_grounding",
-      "sha256": "1855777994a64f1c4ac84863477d0c16278c9ec90ad3c4f6c1570726d73f3447"
+      "sha256": "a9bf35585b10f32c4adf247031d8d6faad3afb1eecbb277edfb949d6bdd7eeb0"
     },
     {
       "configured_model": "deepseek-chat",

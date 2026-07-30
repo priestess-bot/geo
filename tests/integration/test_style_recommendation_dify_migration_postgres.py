@@ -27,10 +27,10 @@ from tests.integration.recommendation_dify_legacy_guard_support import (
     seed_pre_upgrade_v3_parent,
 )
 from tests.integration.placement_worker_support import login_url, seed_project
-from tests.integration.test_recommendation_postgres_lifecycle import (
-    _principal,
-    _seed_frozen_recommendation_prompt,
+from tests.integration.recommendation_postgres_lifecycle_support import (
+    seed_frozen_recommendation_prompt as _seed_frozen_recommendation_prompt,
 )
+from tests.integration.test_recommendation_postgres_lifecycle import _principal
 
 
 ADMIN_URL = os.getenv("GEO_PLACEMENT_TEST_ADMIN_URL", "").strip()

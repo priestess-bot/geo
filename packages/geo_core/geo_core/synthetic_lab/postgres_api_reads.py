@@ -39,13 +39,13 @@ class PostgresSyntheticApiReads(_PostgresSyntheticApiReadsTail):
         connection = self._open(project_id)
         try:
             total = connection.execute(
-                """SELECT count(*) FROM (
+                """SELECT count(*) AS total FROM (
                        SELECT DISTINCT channel, adapter_release
                        FROM synthetic_lab_authorization_versions
                        WHERE project_id = %s
                    ) AS current""",
                 (project_id,),
-            ).fetchone()[0]
+            ).fetchone()["total"]
             rows = connection.execute(
                 """SELECT DISTINCT ON (channel, adapter_release) *
                    FROM synthetic_lab_authorization_versions
@@ -70,9 +70,10 @@ class PostgresSyntheticApiReads(_PostgresSyntheticApiReadsTail):
         connection = self._open(project_id)
         try:
             total = connection.execute(
-                "SELECT count(*) FROM synthetic_lab_imported_samples WHERE project_id = %s",
+                """SELECT count(*) AS total FROM synthetic_lab_imported_samples
+                   WHERE project_id = %s""",
                 (project_id,),
-            ).fetchone()[0]
+            ).fetchone()["total"]
             rows = connection.execute(
                 """SELECT id, channel, source_rights, short_example_eligible, created_at,
                           row_number
@@ -524,11 +525,11 @@ class PostgresSyntheticApiReads(_PostgresSyntheticApiReadsTail):
         connection = self._open(project_id)
         try:
             total = connection.execute(
-                """SELECT count(DISTINCT resource_id)
+                """SELECT count(DISTINCT resource_id) AS total
                    FROM synthetic_lab_aggregate_versions
                    WHERE project_id = %s AND kind = %s""",
                 (project_id, kind),
-            ).fetchone()[0]
+            ).fetchone()["total"]
             rows = connection.execute(
                 """SELECT DISTINCT ON (resource_id) *
                    FROM synthetic_lab_aggregate_versions

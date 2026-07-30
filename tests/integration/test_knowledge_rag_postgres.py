@@ -458,6 +458,16 @@ def test_f019_int_01_02_governed_rag_revision_archive_and_project_isolation() ->
             == "failed"
         )
 
+        with psycopg.connect(ADMIN_URL) as admin:
+            admin.execute(
+                """UPDATE knowledge_sources
+                   SET status = 'failed', error_code = 'KnowledgeSourceRevisionRequired',
+                       error_detail = 'source content changed'
+                   WHERE id = %s AND project_id = %s""",
+                (first_ids["source_id"], primary["project"]),
+            )
+            admin.commit()
+
         second = application.create_source_revision(
             primary_principal,
             project_id=primary["project"],

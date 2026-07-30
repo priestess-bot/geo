@@ -141,6 +141,15 @@ def validate_key_material(
         except (binascii.Error, ValueError):
             issues.append(PreflightIssue("SECRET_CONTENT_INVALID", hash_field))
 
+    for field in ("GEO_CONNECTOR_ARTIFACT_KEY_FILE", "GEO_BROWSER_ARTIFACT_KEY_FILE"):
+        content = contents.get(field)
+        if content is None:
+            continue
+        try:
+            domain_material[field] = frozenset({_raw_256_material(content)})
+        except ValueError:
+            issues.append(PreflightIssue("SECRET_CONTENT_INVALID", field))
+
     restore_password_field = "GEO_RESTORE_SMOKE_PASSWORD_FILE"
     restore_password = contents.get(restore_password_field)
     if restore_password is not None:
@@ -246,6 +255,23 @@ def _master_key_material(raw: bytes) -> frozenset[bytes]:
     if active_version not in decoded or len(set(decoded.values())) != len(decoded):
         raise ValueError
     return frozenset(decoded.values())
+
+
+def _raw_256_material(raw: bytes) -> bytes:
+    value = raw.strip()
+    candidates = [value]
+    try:
+        candidates.append(bytes.fromhex(value.decode("ascii")))
+    except (UnicodeDecodeError, ValueError):
+        pass
+    try:
+        candidates.append(base64.b64decode(value, validate=True))
+    except (binascii.Error, ValueError):
+        pass
+    for candidate in candidates:
+        if len(candidate) == 32:
+            return candidate
+    raise ValueError
 
 
 def _backup_key_material(raw: bytes) -> frozenset[bytes]:

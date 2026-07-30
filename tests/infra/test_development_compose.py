@@ -96,3 +96,60 @@ def test_staging_migration_provisions_the_same_worker_identity_used_at_runtime()
         configured
         == services["task-worker"]["environment"]["GEO_MODEL_GATEWAY_WORKER_SERVICE_IDENTITY_ID"]
     )
+
+
+def test_staging_internal_api_mounts_complete_control_plane_runtime_secrets() -> None:
+    services = yaml.safe_load(STAGING_OPERATOR.read_text(encoding="utf-8"))["services"]
+    internal = services["internal-api"]
+    environment = internal["environment"]
+    volumes = internal["volumes"]
+
+    assert environment["GEO_DEPLOYMENT_ENVIRONMENT"] == "staging"
+    assert environment["GEO_SECRET_STORE_MASTER_KEYRING_FILE"] == (
+        "/run/geo-staging-secrets/secret-store-keyring.json"
+    )
+    assert environment["GEO_SECRET_STORE_REQUEST_HASH_KEY_FILE"] == (
+        "/run/geo-staging-secrets/secret-request-hash-key"
+    )
+    assert environment["GEO_WORKFLOW_C_ARTIFACT_KEYRING_FILE"] == (
+        "/run/geo-staging-secrets/workflow-c-artifact-keyring.json"
+    )
+    assert environment["GEO_WORKFLOW_C_ARTIFACT_OBJECT_STORE_ENDPOINT"] == (
+        "http://minio:9000"
+    )
+    assert environment["GEO_WORKFLOW_C_ARTIFACT_OBJECT_STORE_BUCKET"] == (
+        "geo-restricted-workflow-c-artifacts"
+    )
+    assert environment["GEO_WORKFLOW_C_ARTIFACT_OBJECT_STORE_ACCESS_KEY_FILE"] == (
+        "/run/geo-staging-secrets/workflow-c-artifact-object-store-access-key"
+    )
+    assert environment["GEO_WORKFLOW_C_ARTIFACT_OBJECT_STORE_SECRET_KEY_FILE"] == (
+        "/run/geo-staging-secrets/workflow-c-artifact-object-store-secret-key"
+    )
+    assert environment["GEO_WORKFLOW_C_ARTIFACT_OBJECT_STORE_AUTO_CREATE_BUCKET"] == "0"
+    assert any(
+        item.endswith(":/run/geo-staging-secrets/secret-store-keyring.json:ro")
+        for item in volumes
+    )
+    assert any(
+        item.endswith(":/run/geo-staging-secrets/secret-request-hash-key:ro")
+        for item in volumes
+    )
+    assert any(
+        item.endswith(
+            ":/run/geo-staging-secrets/workflow-c-artifact-keyring.json:ro"
+        )
+        for item in volumes
+    )
+    assert any(
+        item.endswith(
+            ":/run/geo-staging-secrets/workflow-c-artifact-object-store-access-key:ro"
+        )
+        for item in volumes
+    )
+    assert any(
+        item.endswith(
+            ":/run/geo-staging-secrets/workflow-c-artifact-object-store-secret-key:ro"
+        )
+        for item in volumes
+    )

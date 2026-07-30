@@ -4,7 +4,7 @@
 This is an operator bootstrap for the existing ``GEO_DEEPSEEK_API_KEY_FILE``.
 It never serializes or prints the key.  The resulting runtime is deliberately
 limited to non-search JSON responses and serves ``prompt_release_test`` plus,
-when explicitly enabled, the native Synthetic Review steps.
+when explicitly enabled, the Dify-managed review and Recommendation steps.
 """
 
 from __future__ import annotations
@@ -43,9 +43,9 @@ from geo_core.secrets.postgres import build_secret_store_api
 PROVIDER = "deepseek"
 DEFAULT_MODEL = "deepseek-v4-flash"
 ADAPTER_RELEASE_ID = "deepseek-chat-completions-v1"
-SYNTHETIC_REVIEW_ADAPTER_RELEASE_ID = "deepseek-chat-completions-synthetic-review-v2"
+SYNTHETIC_REVIEW_ADAPTER_RELEASE_ID = "deepseek-chat-completions-synthetic-review-v3"
 PROMPT_TEST_RUNTIME_SCOPE = "prompt-test-v2"
-SYNTHETIC_REVIEW_RUNTIME_SCOPE = "synthetic-review-v3"
+SYNTHETIC_REVIEW_RUNTIME_SCOPE = "synthetic-review-and-recommendation-v4"
 SYNTHETIC_REVIEW_PURPOSES = frozenset(
     {
         "synthetic_lab.generation",
@@ -54,6 +54,7 @@ SYNTHETIC_REVIEW_PURPOSES = frozenset(
         "synthetic_lab.revision",
         "synthetic_lab.style_judge",
         "synthetic_lab.arbiter",
+        "recommendations.recommendation",
     }
 )
 _CAPABILITY_SOURCE = "https://api-docs.deepseek.com/api/create-chat-completion/"
@@ -228,7 +229,10 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument(
         "--enable-synthetic-review",
         action="store_true",
-        help="publish a replacement runtime that permits the six Synthetic Review purposes",
+        help=(
+            "publish a replacement runtime that permits the Synthetic Review "
+            "and Recommendation purposes"
+        ),
     )
     parser.add_argument("--api-key-file", default="/run/secrets/deepseek_api_key")
     parser.add_argument(
@@ -498,7 +502,7 @@ def _manifest(
     scope = (
         SYNTHETIC_REVIEW_RUNTIME_SCOPE if synthetic_review else PROMPT_TEST_RUNTIME_SCOPE
     ) + identity_suffix
-    adapter_release_id = (
+    adapter_release_base = (
         (
             SYNTHETIC_REVIEW_ADAPTER_RELEASE_ID
             if configured_model == DEFAULT_MODEL
@@ -507,6 +511,7 @@ def _manifest(
         if synthetic_review
         else ADAPTER_RELEASE_ID
     )
+    adapter_release_id = _adapter_release_identity(adapter_release_base, evidence)
     model_release_id = f"{configured_model}-{scope}"
     policy_id = uuid5(
         NAMESPACE_URL,
@@ -594,6 +599,19 @@ def _manifest(
             },
         }
     )
+
+
+def _adapter_release_identity(base: str, evidence: Mapping[str, str]) -> str:
+    """Bind a globally immutable Adapter Release ID to its evidence locations."""
+    identity = {
+        "base": base,
+        "capability_reference": evidence["capability_reference"],
+        "capability_sha256": evidence["capability_sha256"],
+        "terms_reference": evidence["terms_reference"],
+        "terms_sha256": evidence["terms_sha256"],
+    }
+    encoded = json.dumps(identity, sort_keys=True, separators=(",", ":")).encode()
+    return f"{base}-{hashlib.sha256(encoded).hexdigest()[:12]}"
 
 
 def _current_policy_lineage(*, database_url: str, project_id: UUID) -> tuple[UUID | None, int]:

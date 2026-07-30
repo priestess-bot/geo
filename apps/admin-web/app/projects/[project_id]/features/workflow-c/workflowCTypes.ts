@@ -17,7 +17,7 @@ export const workflowViews = [
 ] as const;
 
 export type WorkflowView = (typeof workflowViews)[number];
-export type CaptureMethod = "provider_api" | "proxy_grounded_api" | "manual_ui";
+export type CaptureMethod = "provider_api" | "proxy_grounded_api" | "manual_ui" | "automated_ui";
 export type EvidenceStatus = "complete" | "ineligible";
 export type EvidenceConclusion =
   | "win"

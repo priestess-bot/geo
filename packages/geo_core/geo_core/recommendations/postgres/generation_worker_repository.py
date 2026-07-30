@@ -23,9 +23,7 @@ from geo_core.recommendations.generation_contracts import (
     ResolvedGenerationPrompt,
     canonical_hash,
 )
-from geo_core.recommendations.generation_ports import (
-    RecommendationPromptResolverPort,
-)
+from geo_core.recommendations.generation_ports import RecommendationPromptResolverPort
 from geo_core.recommendations.generation_evidence import (
     GENERATION_EVIDENCE_CONTRACT_V1,
 )
@@ -49,6 +47,7 @@ from geo_core.recommendations.postgres.generation_codec import (
 from geo_core.recommendations.postgres.generation_worker_support import (
     assert_fenced_lease as _assert_lease,
     enqueue_outbox as _enqueue_outbox,
+    materialize_generated_draft as _materialize_generated_draft,
     require_parent_kind as _require_kind,
 )
 from geo_core.recommendations.postgres.generation_worker_sql import (
@@ -483,6 +482,7 @@ class PostgresRecommendationGenerationWorkerRepository:
             ),
         ).rowcount
         if changed == 1:
+            _materialize_generated_draft(connection, lease)
             return
         row = connection.execute(
             """SELECT recommendation_id, result_hash FROM recommendation_generation_results
@@ -495,6 +495,7 @@ class PostgresRecommendationGenerationWorkerRepository:
             or row["result_hash"] != canonical_hash(payload)
         ):
             raise LostJobLease("Recommendation parent result replay changed")
+        _materialize_generated_draft(connection, lease)
 
     def _outcome(self, parent_lease: WorkerLease, row: Mapping[str, Any]) -> RecommendationModelOutcome:
         role = RecommendationModelRole(str(row["role"]))

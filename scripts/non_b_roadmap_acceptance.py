@@ -20,7 +20,7 @@ DEFAULT_OUTPUT = (
 )
 CHECKBOX = re.compile(r"^\s*- \[([ xX])\]\s+`([^`]+)`")
 TEMPLATE_PREFIXES = ("DOR-", "DOD-")
-EVIDENCE_SCHEMA = "non-b-acceptance-register-v1"
+EVIDENCE_SCHEMA = "non-b-acceptance-register-v2"
 
 
 class AcceptanceRegisterError(ValueError):
@@ -160,47 +160,44 @@ def _source_identity(*, output: Path) -> dict[str, str]:
         relative_output = output.resolve().relative_to(ROOT).as_posix()
     except ValueError:
         relative_output = None
-    pathspec = ["--", "."]
-    if relative_output is not None:
-        pathspec.append(f":(exclude){relative_output}")
     try:
-        commit = subprocess.check_output(
-            ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
-        ).strip()
-        status = subprocess.check_output(
-            ["git", "status", "--porcelain=v1", "-z", *pathspec], cwd=ROOT
-        )
-        diff = subprocess.check_output(
-            ["git", "diff", "--binary", "HEAD", *pathspec], cwd=ROOT
-        )
-        untracked = subprocess.check_output(
+        inventory = subprocess.check_output(
             [
                 "git",
                 "ls-files",
+                "--cached",
                 "--others",
                 "--exclude-standard",
                 "-z",
-                *pathspec,
+                "--",
+                ".",
             ],
             cwd=ROOT,
         )
     except (OSError, subprocess.CalledProcessError) as exc:
         raise AcceptanceRegisterError("git source identity is unavailable") from exc
     digest = hashlib.sha256()
-    digest.update(status)
-    digest.update(diff)
-    for raw_path in sorted(item for item in untracked.split(b"\0") if item):
+    file_count = 0
+    for raw_path in sorted(item for item in inventory.split(b"\0") if item):
         relative = raw_path.decode("utf-8")
         if relative_output is not None and relative == relative_output:
             continue
         path = ROOT / relative
         digest.update(relative.encode("utf-8"))
         digest.update(b"\0")
-        if path.is_file():
+        if path.is_symlink():
+            digest.update(b"symlink\0")
+            digest.update(path.readlink().as_posix().encode("utf-8"))
+        elif path.is_file():
+            digest.update(b"file\0")
             digest.update(path.read_bytes())
+        else:
+            digest.update(b"other\0")
+        digest.update(b"\0")
+        file_count += 1
     return {
-        "head_commit": commit,
-        "tree_state": "dirty" if status else "clean",
+        "identity_method": "repository-content-v2",
+        "file_count": str(file_count),
         "tree_fingerprint": digest.hexdigest(),
     }
 

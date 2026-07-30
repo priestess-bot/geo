@@ -38,6 +38,7 @@ class AlertRuleKind(StrEnum):
     COMPLETION_FRESHNESS = "completion_freshness"
     MODEL_DRIFT = "model_drift"
     SOURCE_DRIFT = "source_drift"
+    EXTERNAL_HEALTH = "external_health"
 
 
 class AlertSeverity(StrEnum):

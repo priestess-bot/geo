@@ -21,6 +21,7 @@ from scripts.bootstrap_deepseek_prompt_runtime import (
     SYNTHETIC_REVIEW_PURPOSES,
     SYNTHETIC_REVIEW_RUNTIME_SCOPE,
     _arguments,
+    _adapter_release_identity,
     _manifest,
     _project_operator,
 )
@@ -95,7 +96,7 @@ def test_bootstrap_manifest_is_a_single_purpose_deepseek_prompt_runtime() -> Non
 
     runtime = manifest.provider_runtimes[0]
     assert runtime.adapter_release.provider == PROVIDER
-    assert runtime.adapter_release.adapter_release_id == ADAPTER_RELEASE_ID
+    assert runtime.adapter_release.adapter_release_id.startswith(f"{ADAPTER_RELEASE_ID}-")
     assert runtime.allowed_purposes == frozenset({"prompt_release_test"})
     assert runtime.allowed_search_modes == frozenset({"disabled"})
     assert runtime.secret_reference_id == secret.reference_id
@@ -139,14 +140,34 @@ def test_bootstrap_manifest_can_replace_runtime_for_synthetic_review() -> None:
     )
 
     runtime = manifest.provider_runtimes[0]
-    assert runtime.adapter_release.adapter_release_id == SYNTHETIC_REVIEW_ADAPTER_RELEASE_ID
+    assert runtime.adapter_release.adapter_release_id.startswith(
+        f"{SYNTHETIC_REVIEW_ADAPTER_RELEASE_ID}-"
+    )
     assert runtime.allowed_purposes == purposes
+    assert "recommendations.recommendation" in runtime.allowed_purposes
     assert runtime.allowed_search_modes == frozenset({"disabled", None})
     assert manifest.model_releases[0].model_release_id.endswith(
         SYNTHETIC_REVIEW_RUNTIME_SCOPE
     )
     assert manifest.policy_version == 2
     assert manifest.previous_policy_version_id == previous_policy_id
+
+
+def test_adapter_release_identity_changes_with_project_scoped_evidence() -> None:
+    first = {
+        "capability_reference": "s3://geo-artifacts/project-a/capabilities.json",
+        "capability_sha256": "a" * 64,
+        "terms_reference": "s3://geo-artifacts/project-a/terms.json",
+        "terms_sha256": "b" * 64,
+    }
+    second = {**first, "capability_reference": first["capability_reference"].replace("a/", "b/")}
+
+    assert _adapter_release_identity(ADAPTER_RELEASE_ID, first) == _adapter_release_identity(
+        ADAPTER_RELEASE_ID, first
+    )
+    assert _adapter_release_identity(ADAPTER_RELEASE_ID, first) != _adapter_release_identity(
+        ADAPTER_RELEASE_ID, second
+    )
 
 
 def test_bootstrap_manifest_freezes_observed_model_behind_configured_alias() -> None:

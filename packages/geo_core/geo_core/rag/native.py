@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections import defaultdict
-import hashlib
 import json
 from typing import Mapping, Sequence
 
@@ -18,6 +17,12 @@ from geo_core.rag.contracts import (
     QuestionPlan,
     RagAdapterError,
     RagSourceDocument,
+)
+from geo_core.rag.native_batch_resolution import (
+    candidate_id as _candidate_id,
+    finding as _finding,
+    resolve_batch_entities,
+    sha256_text as _sha,
 )
 
 
@@ -69,6 +74,9 @@ Allowed entity types: Brand, Product, Competitor, Feature, Specification, UseCas
 PainPoint, Market, Channel.
 Allowed relation keys: belongs_to, has_feature, has_specification, competes_with,
 belongs_to_market, uses_channel, compatible_with, has_pain_point, supports_use_case.
+Every relation subject and object must exactly match a name emitted in the entities array. If both
+endpoints cannot be emitted as allowed, source-traceable entities, omit the relation. A URL by
+itself is not an entity name and must not be used as a relation endpoint.
 Preserve source spelling and punctuation. Return JSON only."""
 
 _QUESTION_GROUNDING_PROMPT = """You ground governed user-question plans in verified facts.
@@ -193,20 +201,17 @@ class ProjectNativeRagAdapterV1:
         if missing_groups:
             raise RagAdapterError("document produced no traceable fact candidate")
 
-        entities = tuple(
-            CandidateEntity(
-                candidate_id=_candidate_id("entity", *key),
-                project_id=key[0],
-                entity_type=key[1],
-                name=key[2],
-                source_document_ids=tuple(sorted(source_ids)),
-            )
-            for key, source_ids in sorted(entity_sources.items())
+        entities, filtered_relations, resolution_findings = resolve_batch_entities(
+            entity_sources=entity_sources,
+            relations=relations,
+            documents=document_by_id,
         )
+        findings.extend(resolution_findings)
+        self._last_validation_findings = tuple(findings)
         return CandidateGraph(
             tuple(facts),
             entities,
-            tuple(relations),
+            filtered_relations,
             tuple(questions),
             tuple(findings),
         )
@@ -384,7 +389,7 @@ def _validate_model_output(
         )
 
     entity_values: list[tuple[str, str]] = []
-    seen_entities: set[tuple[str, str]] = set()
+    entity_type_by_name: dict[str, str] = {}
     for row in entity_rows:
         try:
             _exact_keys(row, {"entity_type", "name", "source_quote"}, "entity")
@@ -396,10 +401,12 @@ def _validate_model_output(
         except _CandidateValidationError as exc:
             findings.append(_finding(document, "entity", exc.reason_code, row))
             continue
-        entity_key = (entity_type, name)
-        if entity_key not in seen_entities:
-            entity_values.append(entity_key)
-            seen_entities.add(entity_key)
+        previous_type = entity_type_by_name.get(name)
+        if previous_type is None:
+            entity_values.append((entity_type, name))
+            entity_type_by_name[name] = entity_type
+        elif previous_type != entity_type:
+            findings.append(_finding(document, "entity", "ambiguous_entity_name", row))
 
     relations: list[CandidateRelation] = []
     seen_relations: set[tuple[str, str, str]] = set()
@@ -414,6 +421,8 @@ def _validate_model_output(
             quote = _source_text(row, "source_quote", document, "relation source quote")
             if subject not in quote or obj not in quote:
                 raise _CandidateValidationError("relation_quote_missing_endpoint")
+            if subject not in entity_type_by_name or obj not in entity_type_by_name:
+                raise _CandidateValidationError("relation_endpoint_not_an_entity")
         except _CandidateValidationError as exc:
             findings.append(_finding(document, "relation", exc.reason_code, row))
             continue
@@ -540,30 +549,6 @@ def _source_text(
     return value
 
 
-def _finding(
-    document: RagSourceDocument,
-    candidate_kind: str,
-    reason_code: str,
-    row: Mapping[str, object],
-) -> CandidateValidationFinding:
-    canonical = json.dumps(row, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return CandidateValidationFinding(
-        project_id=document.project_id,
-        source_document_id=document.document_id,
-        candidate_kind=candidate_kind,
-        reason_code=reason_code,
-        candidate_hash=_sha(canonical),
-    )
-
-
 def _line_locator(content: str, quote: str) -> str:
     offset = content.find(quote)
     return f"line:{content.count(chr(10), 0, offset) + 1}"
-
-
-def _candidate_id(kind: str, *values: str) -> str:
-    return f"{kind}-{hashlib.sha256('|'.join(values).encode()).hexdigest()[:24]}"
-
-
-def _sha(value: str) -> str:
-    return hashlib.sha256(value.encode()).hexdigest()

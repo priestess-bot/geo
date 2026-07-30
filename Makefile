@@ -3,7 +3,9 @@ SHELL := /bin/bash
 DEV_COMPOSE := docker compose -f infra/docker-compose.yml
 PROD_ENV ?= infra/production.env
 BACKUP_SOURCE_ENVIRONMENT ?= production
-PROD_COMPOSE := docker compose --env-file $(PROD_ENV) -f infra/compose.prod.yml -f infra/compose.style-collection.yml
+PROD_COMPOSE := docker compose --env-file $(PROD_ENV) -f infra/compose.prod.yml \
+	-f infra/compose.style-collection.yml -f infra/compose.connector.yml \
+	-f infra/compose.browser-capture.yml
 
 .PHONY: bootstrap install lint python-typecheck web-typecheck typecheck quality test test-migrated test-integration test-integration-required \
 	roadmap-evidence-schema roadmap-evidence-verify roadmap-performance-profile \

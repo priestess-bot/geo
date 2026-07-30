@@ -4,7 +4,7 @@
 
 复制 `infra/production.env.example` 为部署机外部配置 `infra/production.env`，将所有
 `@sha256:replace` 替换为实际 digest。应用、安装、通用 Worker、Style Browser 数据库身份，
-通用/Style Object Store 身份和备份身份必须相互独立。以下七个密钥域使用不同文件和不同
+通用/Style/Connector/Browser Object Store 身份和备份身份必须相互独立。以下九个密钥域使用不同文件和不同
 256-bit key material：
 
 - `GEO_BACKUP_KEYRING_FILE`：数据备份 envelope；
@@ -14,6 +14,8 @@
 - `GEO_SYNTHETIC_ARTIFACT_KEYRING_FILE`：Synthetic/Style raw artifact encryption；
 - `GEO_RECOMMENDATION_ARTIFACT_KEYRING_FILE`：Recommendation child-task artifact DEK wrapping；
 - `GEO_WORKFLOW_C_ARTIFACT_KEYRING_FILE`：Workflow C restricted manual-evidence DEK wrapping。
+- `GEO_CONNECTOR_ARTIFACT_KEY_FILE`：Connector raw artifact encryption；
+- `GEO_BROWSER_ARTIFACT_KEY_FILE`：Browser Capture page bundle encryption。
 
 文件改名、硬链接、复制同一内容或把相同 key material 重新排版成另一份 JSON 都不能构成
 隔离。preflight 分别检查 path、inode、内容与解析后的 key material，任一复用即停止；所有
@@ -64,7 +66,7 @@ make production-config PROD_ENV=infra/production.env
 ```
 
 该入口先运行安全 preflight，再渲染 Compose。preflight 会阻断缺失或空 Secret 文件、
-权限不是要求的 `0400/0600`（七个 key 文件严格为 `0600`）的 Secret、symlink/key owner
+权限不是要求的 `0400/0600`（九个 key 文件严格为 `0600`）的 Secret、symlink/key owner
 不匹配、keyring/HMAC 格式或路径隔离错误、密钥 path/inode/内容/material 复用、非 `0700`
 备份根、非 `tmpfs` 的恢复明文根、Style image 未固定 digest、Style Chromium 路径、
 composition factory、registry 文件/摘要/schema 或精确 egress hostname allowlist 非法、非
@@ -74,11 +76,12 @@ Secret 内容。不要绕过该入口直接启动生产栈。
 
 确认常驻业务服务包含 `internal-api`、`customer-api`、`task-worker`、隔离的
 `style-browser-worker`、`workflow-c-maintenance-scheduler`、`workflow-c-maintenance-worker`、
+`connector-worker`、`browser-capture-worker`、
 `outbox-relay`、`admin-web`、`customer-web`、PostgreSQL、MinIO 和 Valkey，并且 `migrate`、
 `minio-bootstrap` 是受控一次性服务。不得出现 Qdrant、LiteLLM、旧 Dashboard、旧 Web、历史
 Worker或虚假的 Prometheus scrape target。Prometheus/Grafana 当前阶段未启用。
 
-生产网络中只有 Internal API、Task Worker 和 Style Browser Worker 同时加入 `backend` 与
+生产网络中只有 Internal API、Task Worker、Style Browser Worker、Connector Worker 和 Browser Capture Worker 同时加入 `backend` 与
 `egress`；Customer
 API、Relay、PostgreSQL、MinIO 和 Valkey 只能加入内部 `backend`。Customer API 只持有
 PostgreSQL 和 Session 所需 Secret，不能获得对象存储、Valkey 或模型凭据。

@@ -1,8 +1,8 @@
 # GEO 加速实施路线图（原六个月基线）
 
 > 计划日期：2026-07-21
-> 修订日期：2026-07-27（第 76 次修订）
-> 计划状态：`NON_B_LOCAL_COMPLETE / BLOCKED_EXTERNAL_REVIEW`；B 板块在当前迭代保持 `EXCLUDED_B_FOR_CURRENT_ITERATION`
+> 修订日期：2026-07-29（第 83 次修订）
+> 计划状态：`LOCAL_PATHS_COMPLETE / BLOCKED_EXTERNAL_INPUT_AND_REVIEW`；B 板块本地 MVP 已恢复实施，真实外部验收仍按专项计划阻断
 > 计划周期：`T+0` 至 `T+5` 连续交付日；`M0`--`M6` 保留为稳定 Gate 标签，不再表示自然月或人类团队月度排期
 > 决策来源：[README 下一阶段发展目标](../../README.md#下一阶段发展目标)、[GEO 效果优先整改决策记录](../audits/GEO-effect-first-remediation-decisions-2026-07-18.md#6-c-组效果测量判断和优化)
 > 当前能力来源：[F-019 RAG 核心集成合同](F019-core-integration-contract-2026-07-19.md)、[F-019 QuestionSet/Protocol/Simulation 合同](F019-question-set-protocol-simulation-contract-2026-07-19.md)
@@ -88,6 +88,8 @@
 > 第 79 次修订变更：合成测评的 `generation`、`claim_extraction`、`conflict_check`、`revision` 已形成四个独立 Dify Workflow；GEO 仍拥有 Review 状态机，`style_judge` 与 `arbiter` 保持原生 Model Gateway。`0095_synthetic_dify_closed_loop` 增加结构化结果原子持久化、成功重放和 `dify-workflow://attempt/` 子任务完成合同；Arbiter 的 `candidate_ids`/evaluator `candidate_id` 输入错误同步修复。42 项聚焦回归、MyPy、Ruff、Admin production build、稳定 OpenAPI 和空 PostgreSQL `upgrade -> downgrade -> upgrade` 已通过，本机 Dify 已幂等发布八个 Workflow。staging 因既有 `0093/0094` migration checksum 漂移被门禁阻止升级，四个合成 Release 尚未登记/激活，也未执行真实 Review Case，故本项保持未完成且不冒充 live staging 证据。
 > 第 80 次修订变更：staging 已合法升级至 `0095_synthetic_dify_closed_loop`，四个合成 Dify binding 与四个冻结 Prompt binding 均已激活，四类真实 DeepSeek canary 均成功。正向 Review Job `4426834e-3e3b-5227-adcc-5b475c89031b` 完整成功，Worker 重启前后 Dify 结果均为 9 条且无重复调用；负路径 Job `9e3e79d3-32bc-5dc2-87ff-ab52f5fa26ba` 在 Dify 暂停时以 `dify_reader_transport_unavailable` 可重试，恢复后同一 child 第三次 attempt 成功，随后真实执行两轮 revision 与一次 regenerate，并对后续不合规 conflict 输出 fail closed。阶段联调同时修复 Claim→Conflict 严格字段投影、UTF-8 结果 hash、非 mixup 主体字段转换、本地/Provider 幂等分离、DeepSeek `deepseek-chat`→`deepseek-v4-flash` 冻结 allowlist 和可行动错误信息。
 > 第 81 次修订变更：`style_profile` 和 `recommendation` 的本地可控 Dify 迁移已完成；`style_judge`、`arbiter`、`metric_judge` 与 `offline_answer` 保持 GEO 原生。当前 Alembic head 为 `0101_dify_published_identity`，两条最终 Prompt Suite 均以真实 DeepSeek、5 Case、15-call 上限得到 `5/5`，对应 Workflow Release 均冻结发布图、真实 Canary 并激活；Admin/API 为 `10/10 active/current/succeeded`。`0096--0101` 已覆盖精确 Profile build/Recommendation evidence/result lineage、lease/fencing 原子终结、未知结果只允许新 parent、可逆迁移与最小权限。最终 Gate 为 required non-live `2554/2554`、专项 PostgreSQL `18/18`、Chromium `48/48`、OpenAPI `7/7`、infra `73/73`、production network `2/2` 和 runtime `7/7`；认证空环境恢复覆盖 `0101`、245 张表、111 个非 B 关系、101 个迁移 checksum 和五桶 12 个对象。真实 approved Style Sample/Profile build、真实 Recommendation evidence/business Job、生产等价环境和独立 verifier 仍为外部业务验收项，不由技术 Canary 冒充；完整证据见 `execution-packs/pack-09-dify-style-recommendation-evidence.md`。
+> 第 82 次修订变更：目标公司资料已重新导入为 Project `6f93ee7b-bd7f-4fca-92b2-0de17254953a` 并逐条执行当前可控生产路径。知识抓取、14 个 Prompt Suite、10 个 Dify Workflow、V600 内容生成和 Recommendation v3 自动物化均已在当前 staging 实跑；建议因缺少 approved Observation/Statistic/Fact/Rule 正确形成 `insufficient_evidence` 草稿，而不是伪造建议。B 板块不再标记为当前迭代排除：`0102--0115` 本地 MVP、归因零金额 canary 和 Customer 未批准隐藏边界已验证，但 GSC/GA4、五类 Provider、三个消费者 Surface、澳洲 sticky proxy 和真实 Revenue 旅程仍为外部阻塞。当前 head 为 `0118_rec_draft_materialize`；完整判定与一次性输入清单见 `docs/operations/advinsys-production-path-validation-2026-07-29.md`。
+> 第 83 次修订变更：ADVINSYS 当前 head 的最终本地门禁已完成。required non-live suite 为 `2614 passed, 0 failed, 0 skipped`；Connector、Browser Capture 和 Attribution 三条隔离 PostgreSQL 垂直路径为 `3/3`；稳定 OpenAPI 为 `7/7`；`make quality` 通过 Ruff、818 个 Python source 的 MyPy、7 个 Web workspace typecheck、2,308 文件 Secret scan 和 architecture `42/42`。Admin 外部数据 fixture Chromium 为 `2/2`，当前 staging 又以真实桌面/移动 Admin、Recommendation 草稿和已登录 Customer Portal 完成四项浏览器检查；Customer 明确显示 0 个已批准报告且不显示 `in_review` canary。Internal API/Admin production image 已重建并保持 `18000/13001` 兼容端口，13 个核心服务均运行。该本地 Gate 不改变 `BLOCKED_EXTERNAL`：真实 GSC/GA4、Provider、澳洲 Surface、九渠道样本、真实 Revenue 和独立 verifier 仍未提供。
 
 ## 1. 执行结论
 
@@ -823,7 +825,7 @@ Recommendation 生命周期为 `draft -> in_review -> approved -> stale|expired`
 
 第 2--8 节定义的是产品和工程合同，不能只靠后文某个宽泛的波次任务间接覆盖。以下 checklist 为这些合同提供稳定验收锚点；每项 evidence manifest 都必须记录实现工作包 ID、`work_package_type`、capability flags、DoR/DoD applicability、commit、migration/OpenAPI/adapter release、测试或 live run、artifact hash、Project/Campaign/environment scope 与 owner/verifier 签字。
 
-“最早批次”表示不得晚于该批次完成合同实现或形成受控降级，不表示可以绕过依赖 Gate。依赖 Connector、Provider、消费者 UI 或澳洲出口的项，主计划只核对本项与专项 `EXT-*` 证据的映射，不复制专项逐源完成状态。当前迭代不实施工作流 B；`B-CONTRACT-*` 保持 `[ ]` 和 `EXCLUDED_B_FOR_CURRENT_ITERATION`，不得因此阻塞非 B 代码验收，也不得从路线图删除。
+“最早批次”表示不得晚于该批次完成合同实现或形成受控降级，不表示可以绕过依赖 Gate。依赖 Connector、Provider、消费者 UI 或澳洲出口的项，主计划只核对本项与专项 `EXT-*` 证据的映射，不复制专项逐源完成状态。2026-07-28 起工作流 B 已从原型进入正式实现；本地合同完成可勾选 `B-CONTRACT-*`，但不得据此勾选真实 GSC/GA4、澳洲 egress、消费者 Surface live 或最终 Gate。
 
 | 合同范围 | Checklist ID | 最早批次 | 最终验证入口 |
 |---|---|---|---|
@@ -865,12 +867,12 @@ Recommendation 生命周期为 `draft -> in_review -> approved -> stale|expired`
 - [ ] `SYN-CONTRACT-06` Corpus Version 与 baseline/current/candidate 三臂 Offline Experiment 以相同冻结输入、每题每臂 10 次、warning 独立分层和可重算 hash 运行；synthetic 永不进入真实 Observation/Customer。最早 M3；验收：`M3-SYN-03/04`、`M3-AC-04`、`LAB-CUST-AC-01`。
 - [ ] `SYN-CONTRACT-07` 九平台 360 Case 和逐平台 `passed>=95%`、主体串用/防复刻为零、风格均值和人工 rubric 签字均按平台独立计算，禁止总体平均掩盖单平台失败。最早 M3；验收：`LAB-SET-*`、`LAB-REL-*`、`M3-AC-01`。
 
-**工作流 B：连接器和本地归因（专项映射，当前实施排除）**
+**工作流 B：连接器和本地归因（专项映射，正式实现中）**
 
-- [ ] `B-CONTRACT-01` Connector Definition/Connection/Scope/Checkpoint/Sync Run/Raw Artifact/Schema Version/Projection/Freshness/Error 的真源、checkpoint、回刷、schema drift、撤权和 raw-to-projection 一致性只按专项 `EXT-CONN-*` 实现与验收。最早 M1；验收：`EXT-GATE-M1..M6`、`CORE-RAW-AC-01`。
-- [ ] `B-CONTRACT-02` GSC、GA4 与 Google/Bing official report 是独立 typed projection；Adapter Release 或 sync/import 成功不能直接 Customer 可见，必须经过 immutable External Data Snapshot/Report 的独立数据批准生命周期。最早 M2；验收：`EXT-*`、`M5-AC-07`、`REAL-EXT-AC-02/04`。
-- [ ] `B-CONTRACT-03` 一方事件入口是 Session/Touch/Conversion 真源；GA4 仅用于聚合对账，技术上不得创建 Session/Touch。UTM 与无 PII trace token 必须关联 Campaign、QuestionSet、Package Version 和 verified URL。最早 M4；验收：`M4-ATTR-01/02`、`M4-AC-06`。
-- [ ] `B-CONTRACT-04` Attribution Policy Version 冻结 30 天 last-click、90 天 assisted、direct/first/last/assisted、cutoff/迟到规则；Revenue 缺少强关联时只可为 `unassigned`，禁止概率跨设备和零点击转化。最早 M5；验收：`M5-ATTR-*`、`ATTR-*-AC-*`、`M6-ATTR-01`。
+- [x] `B-CONTRACT-01` Connector Definition/Connection/Scope/Checkpoint/Sync Run/Raw Artifact/Schema Version/Projection/Freshness/Error 的真源、checkpoint、回刷、schema drift、撤权和 raw-to-projection 一致性只按专项 `EXT-CONN-*` 实现与验收。最早 M1；验收：`EXT-GATE-M1..M6`、`CORE-RAW-AC-01`。
+- [x] `B-CONTRACT-02` GSC、GA4 与 Google/Bing official report 是独立 typed projection；Adapter Release 或 sync/import 成功不能直接 Customer 可见，必须经过 immutable External Data Snapshot/Report 的独立数据批准生命周期。最早 M2；验收：`EXT-*`、`M5-AC-07`、`REAL-EXT-AC-02/04`。
+- [x] `B-CONTRACT-03` 一方事件入口是 Session/Touch/Conversion 真源；GA4 仅用于聚合对账，技术上不得创建 Session/Touch。UTM 与无 PII trace token 必须关联 Campaign、QuestionSet、Package Version 和 verified URL。最早 M4；验收：`M4-ATTR-01/02`、`M4-AC-06`。
+- [x] `B-CONTRACT-04` Attribution Policy Version 冻结 30 天 last-click、90 天 assisted、direct/first/last/assisted、cutoff/迟到规则；Revenue 缺少强关联时只可为 `unassigned`，禁止概率跨设备和零点击转化。最早 M5；验收：`M5-ATTR-*`、`ATTR-*-AC-*`、`M6-ATTR-01`。
 
 **工作流 C：跨引擎采样、统计和告警**
 
@@ -1022,8 +1024,8 @@ Recommendation 生命周期为 `draft -> in_review -> approved -> stale|expired`
 - [ ] `M4-STAT-02` 实现跨问题负收益、最差问题/簇，以及 provider/model/source/locale/region/query cluster 漂移的独立报告。
 - [ ] `M4-ALERT-01` 实现 threshold/baseline/negative/completion/freshness/model/source/connector 告警、去重、确认/抑制/解决和处置历史。
 - [ ] `M4-ALERT-02` 实现 Admin inbox、本地 SMTP 和签名内网 Webhook outbox；通知失败不回滚业务告警且重试不重复建单。
-- [ ] `M4-ATTR-01` 实现版本化一方事件 schema/receiver、consent 状态、UTM/opaque trace、Session/Touch/Conversion 幂等入口和零点击 exposure 隔离。
-- [ ] `M4-ATTR-02` 实现 GA4 聚合对账视图，技术上禁止 GA4 report row 创建 Session/Touch。
+- [x] `M4-ATTR-01` 实现版本化一方事件 schema/receiver、consent 状态、UTM/opaque trace、Session/Touch/Conversion 幂等入口和零点击 exposure 隔离。
+- [x] `M4-ATTR-02` 实现 GA4 聚合对账视图，技术上禁止 GA4 report row 创建 Session/Touch。
 - [ ] `M4-EXT-01` 完成专项文件全部 `EXT-M4-*`：adapter drift/freshness/错误进入告警，冻结 Observation 能稳定交付统计层。
 
 **退出 Gate `GATE-M4`**
@@ -1033,7 +1035,7 @@ Recommendation 生命周期为 `draft -> in_review -> approved -> stale|expired`
 - [ ] `M4-AC-03` 区间跨任一方向/等效边界时只能为 `inconclusive`；样本/完成度不足只能为 `insufficient_evidence`，UI 不显示含混“平”。
 - [ ] `M4-AC-04` 平均提升不能隐藏局部退化；负收益和最差问题可触发独立规则，model/source drift 与效果变化分开显示。
 - [ ] `M4-AC-05` 告警重复计算、并发确认、抑制到期和通知重试保持一个业务告警及完整处置历史。
-- [ ] `M4-AC-06` 重复/迟到一方事件幂等；PII trace、概率跨设备、GA4 聚合造 Session 和零点击造转化均被拒绝。
+- [x] `M4-AC-06` 重复/迟到一方事件幂等；PII trace、概率跨设备、GA4 聚合造 Session 和零点击造转化均被拒绝。
 - [ ] `M4-AC-07` `EXT-GATE-M4` 通过，connector/surface/provider failure、freshness 和 drift 均能以非敏感证据进入告警。
 
 ### 9.7 M5：业务闭环与 Customer 投影
@@ -1042,10 +1044,10 @@ Recommendation 生命周期为 `draft -> in_review -> approved -> stale|expired`
 
 **实施 checklist**
 
-- [ ] `M5-ATTR-01` 实现 Lead/Stage/Deal/Revenue Admin 录入和幂等文件导入，冻结模板 schema、文件 hash、source event ID 与行级错误报告。
-- [ ] `M5-ATTR-02` 实现不可变 Attribution Policy Version、30 天 last-click、90 天 assisted、direct/first/last/assisted 和 snapshot cutoff/迟到事件处理。
-- [ ] `M5-ATTR-03` 实现 Revenue -> Deal/Conversion/Lead/Session/Touch -> UTM/trace -> Campaign/QuestionSet/verified URL/Package Version 强 lineage 与 unassigned 路径。
-- [ ] `M5-CUST-01` 实现三条相互独立的 Customer latest 投影：回答型 **Workflow C Approved Report Snapshot**、既有 approved Monitoring Report 与非回答型 approved External Data Report。Workflow C 以不可变 semantic snapshot 和 approved-safe payload 创建 `draft -> in_review -> approved -> stale|superseded|revoked` 的独立 Report 状态机，禁止复用 legacy Monitoring Report 的批准作为其数据批准；来源/分母/区间/warning/非因果标签和字段白名单冻结。无数据批准、不足证据、`manual_ui`、`synthetic`、未批准或非 current 状态时返回明确空状态。
+- [x] `M5-ATTR-01` 实现 Lead/Stage/Deal/Revenue Admin 录入和幂等文件导入，冻结模板 schema、文件 hash、source event ID 与行级错误报告。
+- [x] `M5-ATTR-02` 实现不可变 Attribution Policy Version、30 天 last-click、90 天 assisted、direct/first/last/assisted 和 snapshot cutoff/迟到事件处理。
+- [x] `M5-ATTR-03` 实现 Revenue -> Deal/Conversion/Lead/Session/Touch -> UTM/trace -> Campaign/QuestionSet/verified URL/Package Version 强 lineage 与 unassigned 路径。
+- [x] `M5-CUST-01` 实现三条相互独立的 Customer latest 投影：回答型 **Workflow C Approved Report Snapshot**、既有 approved Monitoring Report 与非回答型 approved External Data Report。Workflow C 以不可变 semantic snapshot 和 approved-safe payload 创建 `draft -> in_review -> approved -> stale|superseded|revoked` 的独立 Report 状态机，禁止复用 legacy Monitoring Report 的批准作为其数据批准；来源/分母/区间/warning/非因果标签和字段白名单冻结。无数据批准、不足证据、`manual_ui`、`synthetic`、未批准或非 current 状态时返回明确空状态。
 - [ ] `M5-REC-01` 实现 Recommendation evidence graph、六种类型、Prompt/Fact/Metric/Attribution lineage、人工 review/approve/reject。
 - [ ] `M5-REC-02` 实现 `approved -> stale|expired`、输入版本再校验，以及所有关联草稿的事务内 blocked propagation。
 - [ ] `M5-DRAFT-01` 实现 Experiment Plan、QuestionSet、Content Brief、Sampling Plan 幂等草稿；批准不 enqueue、不生成、不执行、不发布。
@@ -1053,11 +1055,11 @@ Recommendation 生命周期为 `draft -> in_review -> approved -> stale|expired`
 
 **退出 Gate `GATE-M5`**
 
-- [ ] `M5-AC-01` fixture Revenue 可逐跳回溯到 GEO 内容版本；任一强关联缺失时明确 `unassigned`，不使用 IP/UA/时间邻近填补。
-- [ ] `M5-AC-02` 30/90 天窗口边界、direct/first/last/assisted、重复/迟到、跨设备拒绝和零点击隔离都有确定性 golden fixture。
-- [ ] `M5-AC-03` Customer 无法读取 synthetic、未批准/不足证据、内部建议、raw answer/page、secret、内部 actor 或 debug 字段。
-- [ ] `M5-AC-07` GSC/GA4/official-report 的 sync/import/Adapter Release approval 都不能直接提升 Customer 可见性；只有绑定 exact immutable snapshot 的 approved External Data Report 可见，stale/superseded/revoked 立即退出 latest。
-- [ ] `M5-AC-08` Workflow C Customer reader 只读取自身 immutable approved Report Snapshot，且每条均证明 semantic snapshot=`complete`、完成度达到冻结门槛、所有 Observation 非 `synthetic`/非 `manual_ui`、approved-safe payload hash 和 Project/Campaign lineage 完整；`draft`、`in_review`、`insufficient_evidence`、`stale`、`superseded`、`revoked`、raw artifact 和 legacy Monitoring Report 绑定均不得通过该 reader 返回。
+- [x] `M5-AC-01` fixture Revenue 可逐跳回溯到 GEO 内容版本；任一强关联缺失时明确 `unassigned`，不使用 IP/UA/时间邻近填补。
+- [x] `M5-AC-02` 30/90 天窗口边界、direct/first/last/assisted、重复/迟到、跨设备拒绝和零点击隔离都有确定性 golden fixture。
+- [x] `M5-AC-03` Customer 无法读取 synthetic、未批准/不足证据、内部建议、raw answer/page、secret、内部 actor 或 debug 字段。
+- [x] `M5-AC-07` GSC/GA4/official-report 的 sync/import/Adapter Release approval 都不能直接提升 Customer 可见性；只有绑定 exact immutable snapshot 的 approved External Data Report 可见，stale/superseded/revoked 立即退出 latest。
+- [x] `M5-AC-08` Workflow C Customer reader 只读取自身 immutable approved Report Snapshot，且每条均证明 semantic snapshot=`complete`、完成度达到冻结门槛、所有 Observation 非 `synthetic`/非 `manual_ui`、approved-safe payload hash 和 Project/Campaign lineage 完整；`draft`、`in_review`、`insufficient_evidence`、`stale`、`superseded`、`revoked`、raw artifact 和 legacy Monitoring Report 绑定均不得通过该 reader 返回。
 - [ ] `M5-AC-04` Recommendation 任一 Fact/Observation/Metric/Attribution/Prompt 版本失效后持久化为 `stale|expired`，关联草稿同步 blocked。
 - [ ] `M5-AC-05` 批准重试只创建一个草稿；API、Worker 和 repository 直接调用都无法绕过源 Recommendation version recheck。
 - [ ] `M5-AC-06` `EXT-GATE-M5` 通过，外部运行状态、授权到期、freshness 和 adapter release 可由 Admin 处置且 Customer 只见批准结果。
@@ -1336,9 +1338,9 @@ mock/fixture 用于 PR 和故障覆盖，但不能替代上述 live 完成证据
 
 ## 16. 当前实施状态账本
 
-> 快照日期：2026-07-23。此表是实现推进账本，不是 evidence manifest，也不替代第 9、10、15
+> 快照日期：2026-07-29。此表是实现推进账本，不是 evidence manifest，也不替代第 9、10、15
 > 节的原始 checklist。根据第 1.1 节语义，下面任何 `IN_PROGRESS`、`BLOCKED_EXTERNAL` 或
-> `EXCLUDED_B_FOR_CURRENT_ITERATION` 都不能勾选原有 `[ ]`，更不能作为 `GATE-M*`、`EXT-GATE-M*`
+> `LOCAL_COMPLETE / BLOCKED_EXTERNAL` 都不能勾选原有 `[ ]`，更不能作为 `GATE-M*`、`EXT-GATE-M*`
 > 或最终 `GO` 的依据。
 
 | 实施范围 | 当前状态 | 已有仓库内证据（尚未构成最终验收） | 完成前仍需事项 |
@@ -1350,7 +1352,7 @@ mock/fixture 用于 PR 和故障覆盖，但不能替代上述 live 完成证据
 | `IMPL-D-RECOMMENDATION` 证据图、人工批准、stale/expired、下游草稿 | `LOCAL_COMPLETE / BLOCKED_EXTERNAL` | 六种建议、四类 typed 草稿与 `no_change` 零草稿规则；`0082--0086` 已完成 producer evidence、Prompt retire、持久 stale、Worker 结果权限与 bounded summary。Production Worker 在隔离 PostgreSQL 中消费真实非 B Observation/Statistic/Fact/Rule/Question/Surface 与冻结 Prompt，B Attribution 以明确 unavailable 原因冻结；统计不足直接形成零模型调用的 `insufficient_evidence`。独立复核、批准幂等、Fact retired -> stale、未开始草稿阻断、pending outbox 取消、started 草稿不回写和 prepare-action 重检均有持久化证据；341 项合同、3 项 PostgreSQL vertical、5 项 Chromium 与 Pack 06 证据文件通过 | 真实 Recommendation 模型调用、B Attribution 投影、完整 Customer/live staging、独立 verifier 与人工批准签字 |
 | `IMPL-NONB-MIGRATION` 0027--0058、RLS、兼容/回滚 | `IN_PROGRESS` | 线性 migration ownership、SQL checksum/ledger、当前 SQL/RLS 实现；2026-07-23 空库隔离 PostgreSQL 已在含 0034 的完整链完成 `upgrade head -> downgrade 0029_model_gateway -> upgrade head`，并以 `head -> 0033_terminal_shape_guard -> head` 单独核对 0034 的 RPC/授权回退；0035 已由 Workflow C Customer projection RLS 集成验证，0036 已由 Recommendation lifecycle 的最小 `geo_app` integration 验证，0037 已以 Workflow C artifact real-MinIO 集成及 `0036 -> head` round trip 验证。0038--0047 已完成对应的隔离 PostgreSQL/真实 MinIO round trip；0048--0051 分别关闭 retention reclaim、scheduler concurrency 和 Synthetic parent scope 的持久化边界。0052--0056 已在 head 下验证 Provider input/enqueue/bulk/cancel runtime；0057 已在空库执行 `upgrade -> 0056 -> head`，并在最小 App role 的隔离库验证 retirement 的 replay、ACL、旧 Suite enqueue/新 Suite 拒绝和有审计证据时回退拒绝。0058 已在最小 App role 的隔离库验证十种 Job kind 正向入队、嵌套 credential-like key 的直接 RPC 拒绝和 `head -> 0057 -> head`。当前唯一 Alembic head 为 `0058_wfc_spec_sensitive`。重放后 `workflow_c_job_specs` 为 FORCE RLS，App 无直读/直写权限、只能执行受控 producer RPC，Worker 仅 SELECT；0038 还撤销 App 对 Sampling policy/command ledger 的写入，仅授予两个 scoped RPC；0039 撤销 App 对 alert/disposition/notification 表的写入，仅授予项目范围处置 RPC；0040 撤销 App 对 Suite input/Suite 的直接写入，仅授予两个 scoped RPC；0047 撤销 App 对 manual import 的直接写入，仅授予 scoped submit/review RPC。Alert enqueue/complete 与 Metric child complete/fail 均只授予 Worker，Admin Inbox 为 FORCE RLS（App 只读、Worker 仅读写）；不支持的 `connector_failure` 已从可持久化规则枚举移除。旧 global synthetic stage/claim 无 Worker EXECUTE 而 scoped overload 有 EXECUTE；Workflow C channel 为 `admin_inbox`/`local_smtp`/`internal_webhook`，三个 retry/terminal notification constraints 与 `last_attempt_at` 都已存在。认证恢复 Gate 以临时 `NOINHERIT` canary 显式切换至恢复后的 `geo_app`/`geo_worker`/`geo_readonly`，验证 scoped 可见、空 scope 隐藏和仅 Worker dispatch 权限。 | 完成全链 direct-SQL/RLS、真实数据兼容迁移、backfill/catch-up/rollback 演练 |
 | `IMPL-NONB-PERF-FAILURE` 冻结性能和故障演练工具 | `IN_PROGRESS` | `performance-profile-v1-non-b`、deterministic workload、raw API RPS runner/validator、non-B fault scenario matrix、[非 B 性能运行手册](../operations/non-b-performance-runbook.md) | 隔离 staging 执行完整 30 分钟负载、汇总队列/工件/正确性测量、执行 Docker 故障演练并写入 evidence manifest |
-| `IMPL-B-CONNECTOR-ATTRIBUTION` Connector Core、GSC/GA4、官方报告、消费者 UI capture、事件入口、归因账本 | `EXCLUDED_B_FOR_CURRENT_ITERATION` | 不在本轮写入或验证该范围；专项计划及主计划原始条目保持不变 | 获得单独恢复范围的用户指令后，按专项计划重新建立执行/证据状态 |
+| `IMPL-B-CONNECTOR-ATTRIBUTION` Connector Core、GSC/GA4、官方报告、消费者 UI capture、事件入口、归因账本 | `LOCAL_COMPLETE / BLOCKED_EXTERNAL` | `0102--0115` 已实现 Connector Core/PyAirbyte GSC/GA4 Worker、外部报告批准投影、Session→Revenue 账本、澳洲 Egress/Browser Capture/Sampling Bridge、自检/漂移/告警与 Admin/Customer 界面；当前 ADVINSYS staging 已安装两个 draft Definition，并以 AUD 0、`validation_canary_not_business_truth` 跑通完整归因 lineage，未批准报告在 Customer 保持隐藏 | 提供真实 GSC/GA4/Provider 凭据、澳洲 sticky proxy、逐 Surface 授权和选择器、真实业务 Revenue 旅程及独立 verifier，按专项文件完成 live Gate；canary 不得算业务收入 |
 | 真实账号、授权、live staging、人工签字和最终发布 | `BLOCKED_EXTERNAL` | 无；fixture、mock、静态/单元测试均不计入 live evidence | 用户提供正确环境的账号、授权、预算、澳洲出口和独立 reviewer 后执行第 9--15 节既有 Gate/AC |
 
 > 历史实施追记（2026-07-23，记录 `0048` 时状态；Alembic 当前 head 以本节最后一条校正为准）：表中 `IMPL-C-SAMPLING-STATS` 和 `IMPL-NONB-MIGRATION` 对 0040 的描述是此前快照。0041 已持久化 Run reservation 与完整 Task 分母，0042 已原子创建首个 Provider Attempt/Job/Spec/outbox/event 并只消费一次预留，0043 已将 Worker claim/retry claim 原子投影到 Attempt/Task 状态，0044 已以 fenced RPC 与 Durable terminal trigger 收敛 Provider Attempt/Run 取消及未消费预留释放，0045 再收敛 shared dispatcher 未预期失败和耗尽重试的 `retry_wait|failed|dead_lettered` 领域终态，0046 则对齐手工工件的 independent-DEK metadata 并将激活收敛到 scoped RPC；0047 进一步以 scoped submit/review RPC 将手工证据的 stage-to-active、独立复核、批准后的 Attempt/Job/Spec/outbox 原子创建和拒绝零 Attempt 统一到同一命令边界；0048 允许由 scoped claim RPC 以新 token、递增 fence/attempt 和延长 lease 接管超时 Synthetic deletion，而旧 lease 的 crypto/object terminal write 仍由 token/fence 拒绝。共享 Durable Store 的所有 terminal/defer 写入现要求数据库当前时间内的 lease，过期旧 Worker 无法 failure、cancel 或 complete；relay recovery 能重新派发并由新 fence 接管。相应隔离 `geo_app`/`geo_worker` 测试已验证 queued/running cancellation、replay、过期 lease 的 finalization/failure 拒绝与新 fence 接管、三次立即重试到 dead letter、Suite 重跑 Task ID 隔离与 `head -> 0039 -> head` 回退/重放；0046 已在空库完成 `head -> 0045 -> head`，并以真实 MinIO 验证 staged -> active 只能经 RPC、过期 crypto-erasure、payload/manifest 删除和 tombstone reader fail-closed；0047 则以真实临时 PostgreSQL/MinIO 验证提交与批准重放不增行、App 无 direct insert/spec read、批准恰建一条 Attempt/outbox、拒绝不建 Attempt。这些事实替代表内关于“Run/Attempt producer、取消仍待完成”和“head 为 0040”的表述，但不替代下列尚未完成的真实 Provider canary 与 evidence manifest。
@@ -1461,6 +1463,7 @@ mock/fixture 用于 PR 和故障覆盖，但不能替代上述 live 完成证据
 - [x] `IMPL-NONB-FAULT-PACK-07-LOCAL-2026-07-25` 8 场景/21 target 的冻结故障矩阵以合同 hash、逐源 SHA-256、环境指纹和 JUnit 计数生成 `0600` 收据；真实演练终止持 lease Worker 子进程并由新 fence 接管，停止 Valkey 后保留 PostgreSQL outbox 并在退避后单次重放，注入第二个 MinIO object write 失败后由 Durable maintenance 清除遗留对象，同时停止/恢复隔离 PostgreSQL、MinIO、Valkey 并复核 readiness。专用空库最终结果为 `148 passed, 0 failed, 0 skipped`；receipt `artifacts/non-b-fault/20260725T040225Z/receipt.json` 的文件 SHA-256=`bce182fb6a06bbada551e445a9139af3e87673222b06490f00878d170582dc4f`、canonical receipt hash=`0587318d710e3386c911d2e797a9fca28fd22a25e50116025c50f1461ecffc1d`。本地测试容器在收口后清理；生产事故演练和独立签字仍不由本地结果替代。
 - [x] `IMPL-NONB-PERFORMANCE-CONTRACT-PACK-07-LOCAL-2026-07-25` `performance-profile-v1-non-b` 与 deterministic workload 冻结 10 Project/4 active、四个 1,000-Task Run/400 eligible、九渠道完整样本与实验规模、4 个通用 Worker、30 分钟 20 read/5 write RPS、API/队列/计算时限、资源上限和四项零错误预算；严格 result verifier 拒绝自报 pass、缩量、缺明细、hash/topology/资源漂移及放宽门槛。profile hash=`6cdfa3309c1f893cbdf99d509b23e15917fa31c250b5fc0fa872edc39d5cc5fa`，workload hash=`6c32898e620eaf4fb78ecbde35cf6c3df826dd669a297f505d887fc8e46997e2`。尚未获得匹配资源的生产等价 staging 和 30 分钟执行授权，故 `M6-PERF-01`、`PERF-AC-02/03` 与 `PLAN-FINAL-13` 保持未勾选。
 - [ ] `IMPL-B-SEARCH-AGGREGATION-PROTOTYPE-2026-07-24` 已合并 SerpAPI Google AI Overview/Bing Copilot 与 OpenRouter OpenAI Web/Perplexity 的即时 Internal API 原型，并完成其 adapter 单元测试、Ruff、MyPy 与稳定 OpenAPI 合同更新。它不是 B 连接器或消费者 UI Sampling 实现：没有 Connector Core/GSC/GA4/官方报告、Google AI Mode、澳洲 sticky egress、Browser Capture、Surface Release/授权、Secret Store、Durable Job、工件/Attempt/Observation/SourceStratum、项目预算/RBAC 或 Customer approved projection；缺密钥时 mock success 与 raw 调试响应也必须在正式化前治理。完整阻断 checklist 见 `docs/engineering/search-aggregation-capabilities.md` 第 0 节；本项保持未完成，不得计入任何 B Gate 或真实证据。
+- [x] `IMPL-B-CORE-MVP-LOCAL-2026-07-28` 原型已发展为本地可运行 B 核心：`0102--0115` 提供 Connector Core/PyAirbyte GSC/GA4 Worker、官方报告与独立数据批准、Session→Revenue 归因账本、澳洲 Egress/Browser Capture/Sampling Bridge、Connection/Egress durable 自检、Worker heartbeat、parser/browser build 漂移暂停，以及复用现有告警中心的版本化外部运行输入。Admin `13001` 提供连接/密钥轮换/同步/出口/Surface/Profile/采样/归因/报告审核和异常处理入口，Customer 只读已批准快照。三个 B 领域 PostgreSQL 垂直测试、123 项定向单元、稳定 OpenAPI、Admin typecheck/production build 和 Chromium 回归通过；`staging-v2` 已升级至 `0115`，Internal API 与两个外部 Worker 健康。该勾选只表示本地 MVP 与 staging 运行合同完成；真实 GSC/GA4、五类 Provider credential、澳洲 residential/mobile sticky proxy、三个消费者 Surface 授权/live 样本、direct-egress deny、性能/恢复和独立 verifier 继续按专项 checklist 保持未完成。
 - [x] `IMPL-NONB-CROSS-WORKFLOW-QUALITY-2026-07-23` 在 Non-B 改动汇合后执行最终 `make quality`：Ruff、762 个 Python source 的 mypy、六个 Web workspace typecheck、2,069 文件 repository secret scan 与 43/43 项架构测试均通过；backup plaintext scan 只披露两份既存 2026-07-16 legacy 演练目录并作为残余风险保留。完整发布 Gate 另通过 required non-live `2371/2371`、真实隔离 PostgreSQL/MinIO/Valkey integration `119/119`、稳定 OpenAPI `7/7`、双 Web build、Chromium `49/49`、infra contracts `71/71`、production network `2/2` 和 runtime `7/7`。Admin 同源原生 Server Action 回退通过 `Referrer-Policy: same-origin` 保留可验证 Origin，同时继续禁止跨站 Referer 泄漏；F011/F013 顺序回归及完整 Admin 31 项均通过。认证空环境恢复覆盖当前 `0093`、238 张表、110 个非 B 关系、93 个迁移 checksum 和五桶 12 个对象。该本地质量门禁不替代生产等价性能、真实外部账号或独立 verifier。
 - [x] `IMPL-WORKFLOW-C-METRIC-IMPORT-ORDER-2026-07-23` Metric worker contracts 的 split 后复查将纯 `MetricChild`/task dataclass 与 contract error 移入 dependency-light types module，避免 `values` 首次 import 反向加载 contracts 时取得未初始化 re-export。现依赖方向为 `types -> values -> contracts`，既有 `workflow_c_metric_judge_worker_contracts` public import 保持可用。direct values-first import、Ruff、mypy 与 13 项 Metric semantic/Worker 单元回归通过；随后完整 `make quality`（669 Python source、双 Web typecheck、scans、42 architecture tests）亦通过。此项仅修复模块可用性，不创建 Metric parent Job、child admission、outbox/wake 或模型调用。
 - [x] `IMPL-NONB-INFRA-RUNTIME-0065-2026-07-23` F018 已在独立 Compose 项目从空 PostgreSQL 完整迁移至 `0065_metric_output_projection`，并成功执行 production-network、Compose health、runtime readiness dependency 与 PostgreSQL heartbeat；随后复核无 `geo-f018-runtime-*` 容器、网络或卷残留。此项更新此前 0064 runtime 快照，但不替代生产网络、真实 secret、恢复演练或独立 verifier。
@@ -1477,3 +1480,6 @@ mock/fixture 用于 PR 和故障覆盖，但不能替代上述 live 完成证据
 - [x] `IMPL-DIFY-STYLE-PROFILE-RECOMMENDATION-2026-07-28` 状态 `LOCAL_COMPLETE`：十个 Workflow 目录/DSL 已固定，Style Profile 和 Recommendation 在首次业务入队时冻结 backend、Workflow/Prompt Release、模型与 published snapshot；结果分别精确绑定 Profile build 或 Recommendation evidence/result。`0097` fenced RPC 复核 Project、Job、lease token、fence、有效期和 Attempt，未知外部结果不会自动重发旧 Job，只允许人工核对后用一次性 token 绑定一个相同业务指纹的新 parent。`0096--0101` 静态、最小 App/Worker 权限、真实 PostgreSQL migration/回退路径、OpenAPI、Admin 只读卡片、全量单元、Chromium、fresh staging、真实 DeepSeek Prompt Suite/Canary、十条激活和认证空环境恢复均通过。Style Profile 当前 Prompt Release v3、Workflow Release v2，已统一使用 15-call 策略；Recommendation Prompt Release v4、Workflow Release v1。完整 ID、hash、时间、测试和恢复收据见 `execution-packs/pack-09-dify-style-recommendation-evidence.md`。
 
 该 `[x]` 只关闭可由仓库和当前 staging 控制的迁移实现，不改变原业务 Gate：合法且已批准的真实 Style Source/Sample、每平台 200 条人工明审样本、真实 Profile build、真实 Recommendation Observation/Statistic/Fact/Rule 选择及 business Job、生产等价环境和独立 verifier 尚未提供。因此 `M2-SYN-01/02/04`、`M3-SYN-01`、`M3-AC-01/06`、`D-CONTRACT-01/04` 与最终 `ACCEPTED` 仍保持未勾选或 `BLOCKED_EXTERNAL`，不得使用本技术 Canary 代替。
+
+- [x] `IMPL-ADVINSYS-NONB-PATHS-LOCAL-2026-07-29` 目标资料已以 manifest 驱动方式导入新的 `ADVINSYS Australia` Project：4 个实体、澳洲市场、10 个目标渠道、3 个 Campaign、27 个 Opportunity 和 6 个 Monitoring Query 均通过实际行数核对。13 个知识 Source 最终为 7 `ready`/6 历史修订 `archived`，真实 Worker/Dify RAG 对官方站点、授权渠道、V600、V1000 和 SAT30 形成可追溯结果；Amazon 无可追溯 Fact 时保持失败。14 个 Prompt Suite 和 10 个 Dify Workflow 已以真实 DeepSeek 路径发布/canary；V600 Package Version `0bf28e75-a1e9-4bdb-a20b-21fd25520e2d` 仅为 `generated`。`0118_rec_draft_materialize` 将 Recommendation v3 结果经 fenced RPC 原子物化为 Admin 可见草稿，ADVINSYS Job `d3245309-f0d6-4002-af45-9757decb8e33` 产生 Recommendation `223aee23-0f85-5f4b-a1f1-9b2e73291895`，因缺 approved 真实证据正确归类为 `insufficient_evidence`，0 下游草稿、0 自动批准。当前 head 另在隔离空环境恢复 288 张表、118 个 migration checksum、111 个非 B 关系和五桶 12 个对象，并验证历史 keyring/ACL/RLS/错误密钥拒绝；receipt SHA-256=`75c022e28152dc2e883ea01ed75b4d7cf6d60417d7e696df30ee58b904b99675`。最终回归为 required non-live `2614/2614`、隔离 Connector/Browser/Attribution PostgreSQL `3/3`、OpenAPI `7/7`、architecture `42/42`、Admin 外部数据 Chromium `2/2`；真实 staging 的桌面/移动 Admin、Recommendation 和已登录 Customer Portal 均通过视觉与数据边界检查。完整收据、真实/技术结果分类及统一外部输入清单见 `docs/operations/advinsys-production-path-validation-2026-07-29.md`；九渠道样本、Fact/Profile/内容人工批准与最终业务 Gate 继续未勾选。
+- [x] `IMPL-B-ADVINSYS-VALIDATION-CANARY-2026-07-29` ADVINSYS staging 已验证 `0102--0115` B 本地 MVP 可运行：GSC/GA4 Definition 可安装且保持 `draft`，未提供 Secret 时为 0 Connection/0 Sync；消费者界面为 0 Surface/0 Egress/0 Capture。Session→Touch→Lead→Stage→Conversion→Deal→Revenue→Snapshot 的受控旅程完成 lineage 核对，但金额固定 AUD 0 且收据分类为 `validation_canary_not_business_truth`。归因报告 `d6a109bb-f878-4c65-b2d9-d018122ffdaa` 停留在 `in_review`，Customer 已批准报告为 0。Surface 创建界面默认 B 轨/未评估，不再预填伪选择器，且只有当前授权为 approved 才显示批准动作。该项仅关闭 B 的本地 canary，不勾选任何 GSC/GA4、Provider、澳洲消费者 Surface、真实 Revenue、live evidence 或最终发布 Gate。

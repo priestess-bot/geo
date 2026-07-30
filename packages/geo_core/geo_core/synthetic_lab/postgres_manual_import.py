@@ -278,9 +278,10 @@ class PostgresManualImportService(_PostgresManualImportServiceTail):
         connection = self._open(principal.project_id)
         try:
             total = connection.execute(
-                "SELECT count(*) FROM synthetic_lab_manual_import_previews WHERE project_id = %s",
+                """SELECT count(*) AS total FROM synthetic_lab_manual_import_previews
+                   WHERE project_id = %s""",
                 (principal.project_id,),
-            ).fetchone()[0]
+            ).fetchone()["total"]
             rows = connection.execute(
                 _PREVIEW_SELECT
                 + " ORDER BY preview.submitted_at DESC, preview.id LIMIT %s OFFSET %s",

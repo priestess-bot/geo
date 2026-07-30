@@ -11,6 +11,14 @@ import time
 import psycopg
 
 from geo_core.jobs.outbox import PostgresOutboxStore
+from geo_core.connectors.connection_test import CONNECTOR_CONNECTION_TEST_JOB_KIND
+from geo_core.connectors.jobs import CONNECTOR_SYNC_JOB_KIND
+from geo_core.connectors.routing import CONNECTOR_OUTBOX_TOPICS
+from geo_core.browser_capture.routing import BROWSER_CAPTURE_OUTBOX_TOPICS
+from geo_core.browser_capture.routing import (
+    BROWSER_CAPTURE_JOB_KIND,
+    BROWSER_EGRESS_TEST_JOB_KIND,
+)
 from geo_core.runtime_health import RuntimeHealthRepository, RuntimeHeartbeat
 from geo_worker.config import (
     bounded_int_setting,
@@ -45,6 +53,8 @@ def _send_job(
     workflow_c_maintenance: bool,
     recommendation_artifact_maintenance: bool,
     synthetic_artifact_maintenance: bool,
+    connector_sync: bool,
+    browser_capture: bool,
 ) -> None:
     send_durable_job(
         job_id=job_id,
@@ -53,6 +63,8 @@ def _send_job(
         workflow_c_maintenance=workflow_c_maintenance,
         recommendation_artifact_maintenance=recommendation_artifact_maintenance,
         synthetic_artifact_maintenance=synthetic_artifact_maintenance,
+        connector_sync=connector_sync,
+        browser_capture=browser_capture,
     )
 
 
@@ -88,6 +100,8 @@ def relay_once(store: PostgresOutboxStore, *, worker_id: str, batch_size: int) -
                 synthetic_artifact_maintenance=(
                     message.topic in SYNTHETIC_ARTIFACT_MAINTENANCE_OUTBOX_TOPICS
                 ),
+                connector_sync=message.topic in CONNECTOR_OUTBOX_TOPICS,
+                browser_capture=message.topic in BROWSER_CAPTURE_OUTBOX_TOPICS,
             )
         except Exception:
             store.fail(message, worker_id=worker_id, error="dispatch_failed")
@@ -115,6 +129,13 @@ def recover_once(store: PostgresOutboxStore, *, batch_size: int) -> int:
                 synthetic_artifact_maintenance=(
                     job.kind in SYNTHETIC_ARTIFACT_MAINTENANCE_OUTBOX_TOPICS
                 ),
+                connector_sync=job.kind in {
+                    CONNECTOR_SYNC_JOB_KIND, CONNECTOR_CONNECTION_TEST_JOB_KIND
+                },
+                browser_capture=job.kind in {
+                    BROWSER_CAPTURE_JOB_KIND,
+                    BROWSER_EGRESS_TEST_JOB_KIND,
+                },
             )
         except Exception:
             continue

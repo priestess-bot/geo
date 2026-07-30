@@ -21,6 +21,7 @@ _MEMORY_SIZE = re.compile(r"^[1-9][0-9]{0,5}[mg]$")
 _RELEASE_PLACEHOLDERS = {"development", "latest", "replace", "unknown"}
 _SECRET_PURPOSE = re.compile(r"^[a-z][a-z0-9_.-]{0,127}$")
 _IDEMPOTENCY_KEY = re.compile(r"^[A-Za-z0-9._:-]{8,256}$")
+_GIT_COMMIT = re.compile(r"^[0-9a-f]{40}$")
 
 
 def required_value(
@@ -54,20 +55,20 @@ def validate_runtime_values(
     for field in REQUIRED_TEXT_FIELDS:
         required_value(values, field, issues)
 
-    service_identity = values.get(
-        "GEO_MODEL_GATEWAY_WORKER_SERVICE_IDENTITY_ID", ""
-    ).strip()
-    if service_identity:
+    for field in (
+        "GEO_MODEL_GATEWAY_WORKER_SERVICE_IDENTITY_ID",
+        "GEO_STYLE_COLLECTION_SERVICE_IDENTITY_ID",
+        "GEO_CONNECTOR_SERVICE_IDENTITY_ID",
+        "GEO_BROWSER_CAPTURE_SERVICE_IDENTITY_ID",
+    ):
+        service_identity = values.get(field, "").strip()
+        if not service_identity:
+            continue
         try:
             if UUID(service_identity).int == 0:
                 raise ValueError
         except ValueError:
-            issues.append(
-                PreflightIssue(
-                    "SERVICE_IDENTITY_UUID_INVALID",
-                    "GEO_MODEL_GATEWAY_WORKER_SERVICE_IDENTITY_ID",
-                )
-            )
+            issues.append(PreflightIssue("SERVICE_IDENTITY_UUID_INVALID", field))
 
     for field in (
         "GEO_RESTORE_PROBE_SERVICE_IDENTITY_ID",
@@ -112,6 +113,9 @@ def validate_runtime_values(
         or "replace" in release_version.casefold()
     ):
         issues.append(PreflightIssue("RELEASE_VERSION_INVALID", "GEO_RELEASE_VERSION"))
+    release_commit = values.get("GEO_RELEASE_COMMIT", "").strip()
+    if release_commit and _GIT_COMMIT.fullmatch(release_commit) is None:
+        issues.append(PreflightIssue("RELEASE_COMMIT_INVALID", "GEO_RELEASE_COMMIT"))
 
     staging_size = values.get("GEO_BACKUP_MINIO_STAGING_SIZE", "").strip()
     if staging_size and _MEMORY_SIZE.fullmatch(staging_size.casefold()) is None:

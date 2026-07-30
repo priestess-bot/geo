@@ -1,0 +1,20 @@
+.workspace { display: grid; gap: 20px; }
+.header, .sectionTitle { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.header h2, .section h3, .section h4 { margin: 0; }
+.summary, .metrics { display: flex; flex-wrap: wrap; gap: 10px; }
+.summary span, .metrics div { border: 1px solid var(--border, #d8dde3); padding: 8px 12px; background: #fff; }
+.summary strong, .metrics strong { margin-right: 4px; }
+.intro { margin: 0; color: #53606d; }
+.section { border-top: 1px solid var(--border, #d8dde3); padding-top: 20px; display: grid; gap: 16px; }
+.columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 20px; align-items: start; }
+.columns > div { min-width: 0; display: grid; gap: 12px; }
+.rows { display: grid; gap: 8px; }
+.row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; align-items: start; border-top: 1px solid #e6e9ed; padding: 10px 0; }
+.row > span:first-child { min-width: 0; display: grid; gap: 3px; }
+.row small { color: #64717d; overflow-wrap: anywhere; }
+.row form { grid-column: 1 / -1; }
+.status { white-space: nowrap; font-size: 12px; font-weight: 700; color: #274c3a; }
+.empty { color: #64717d; margin: 0; padding: 12px 0; }
+.problem { display: grid; gap: 4px; border-left: 3px solid #b64337; padding: 10px 12px; background: #fff5f3; }
+.code { max-height: 420px; overflow: auto; background: #172027; color: #eef3f5; padding: 12px; font-size: 12px; }
+@media (max-width: 720px) { .header, .sectionTitle { flex-direction: column; } .summary { width: 100%; } }

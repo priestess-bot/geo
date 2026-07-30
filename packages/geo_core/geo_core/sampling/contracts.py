@@ -47,6 +47,7 @@ SUPPORTED_CAPTURE_METHODS = frozenset(
         CaptureMethod.PROVIDER_API,
         CaptureMethod.PROXY_GROUNDED_API,
         CaptureMethod.MANUAL_UI,
+        CaptureMethod.AUTOMATED_UI,
     }
 )
 
@@ -129,9 +130,7 @@ class SamplingSourceStratum:
         except ValueError as error:
             raise SamplingRuleViolation("capture method is unsupported") from error
         if capture_method not in SUPPORTED_CAPTURE_METHODS:
-            raise SamplingRuleViolation(
-                "automated_ui requires Browser/Egress work and is ineligible in Sampling Core"
-            )
+            raise SamplingRuleViolation("capture method is unsupported")
         try:
             location_control = LocationControl(self.location_control)
         except ValueError as error:
@@ -162,6 +161,13 @@ class SamplingSourceStratum:
                 raise SamplingRuleViolation(
                     "API strata require egress_policy_category=not_applicable"
                 )
+        elif capture_method is CaptureMethod.AUTOMATED_UI:
+            if self.configured_model != "not_applicable" or self.reported_model != "not_applicable":
+                raise SamplingRuleViolation("automated UI strata cannot claim a model identity")
+            if self.account_cohort not in {"clean_anonymous", "managed_test_account"}:
+                raise SamplingRuleViolation("automated UI strata require a frozen account cohort")
+            if self.egress_policy_category == "not_applicable":
+                raise SamplingRuleViolation("automated UI strata require a frozen egress cohort")
         if not SHA256_PATTERN.fullmatch(self.location_evidence_hash):
             raise SamplingRuleViolation("location capability evidence hash must be SHA-256")
         requested_country = _optional_geo(self.requested_country)
@@ -300,7 +306,7 @@ class SamplingSuite:
             if self.repetitions != 10:
                 raise SamplingRuleViolation("API sampling freezes exactly 10 default repeats")
         elif self.repetitions < 3:
-            raise SamplingRuleViolation("manual_ui requires at least three repeats")
+            raise SamplingRuleViolation("UI sampling requires at least three repeats")
         planned_count = len(questions) * self.repetitions
         minimum_valid = max(3, (4 * self.repetitions + 4) // 5)
         if self.max_planned_tasks < planned_count or self.max_daily_tasks < 1:
@@ -390,7 +396,7 @@ class SamplingTaskIdentity:
         except ValueError as error:
             raise SamplingRuleViolation("Task capture method is unsupported") from error
         if capture_method not in SUPPORTED_CAPTURE_METHODS:
-            raise SamplingRuleViolation("automated_ui Tasks are ineligible in this release")
+            raise SamplingRuleViolation("Task capture method is unsupported")
         for digest in (
             self.suite_hash,
             self.source_stratum_hash,

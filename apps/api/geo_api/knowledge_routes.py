@@ -125,6 +125,32 @@ def knowledge_router() -> APIRouter:
             )
         )
 
+    @router.post("/sources/{source_id}/revisions", status_code=status.HTTP_202_ACCEPTED)
+    def create_source_revision(
+        project_id: UUID,
+        source_id: UUID,
+        payload: CreateKnowledgeSourceRequest,
+        request: Request,
+        idempotency_key: IdempotencyHeader,
+        authorization: AuthorizationHeader = None,
+    ) -> Any:
+        return _call(
+            lambda: _application(request).create_source_revision(
+                _principal(request, authorization),
+                project_id=project_id,
+                source_id=source_id,
+                source=SourceInput(
+                    source_kind=payload.source_kind,
+                    title=payload.title,
+                    source_url=payload.source_url,
+                    filename=payload.filename,
+                    media_type=payload.media_type,
+                    raw_content=_content(payload),
+                ),
+                idempotency_key=idempotency_key,
+            )
+        )
+
     @router.get("/sources/{source_id}/download")
     def download_source(
         project_id: UUID,

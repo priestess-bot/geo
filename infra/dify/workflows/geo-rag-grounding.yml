@@ -148,7 +148,7 @@ workflow:
 
             </geo_output_schema>'
         - role: user
-          text: 'Ground the one supplied question against the frozen Fact and entity references. Preserve the question''s intent, state which frozen refs support it and identify any unsupported premise instead of filling it with a plausible claim.
+          text: 'Execute the frozen Knowledge operation identified by adapter_purpose. For geo-rag-graph-extraction, extract only exact source facts, allowed entities and explicit relations; every relation subject and object must exactly match a name also emitted in entities, otherwise omit that relation. Never use a bare URL as a relation endpoint. For geo-rag-question-grounding, preserve the question intent, select only supplied Fact references and identify unsupported premises instead of inventing support.
 
 
             <geo_runtime_context>

@@ -26,6 +26,7 @@ from geo_core.recommendations import (
 from geo_core.recommendations.downstream_service import concrete_draft_from_approval
 from geo_core.recommendations.models import DownstreamDraftKind
 from geo_core.recommendations.generation_contracts import canonical_hash
+from geo_core.recommendations.generation_results import build_insufficient_result
 from geo_core.recommendations.evidence_graph import EVIDENCE_GRAPH_CONTRACT_V1
 from geo_core.recommendations.generation_evidence import (
     GENERATION_EVIDENCE_CONTRACT_V1,
@@ -52,6 +53,8 @@ from geo_core.recommendations.postgres.downstream_codec import (
     concrete_draft_payload,
 )
 from geo_core.recommendations.postgres.generation_codec import (
+    generation_result_from_payload,
+    generation_result_payload,
     generation_spec_from_payload,
     generation_spec_payload,
 )
@@ -173,6 +176,53 @@ def test_generation_spec_codec_preserves_primary_and_arbiter_lineage() -> None:
 
     assert loaded == spec
     assert loaded.input_hash == spec.input_hash
+
+
+def test_generation_result_v3_round_trips_materializable_draft_manifest() -> None:
+    spec = generation_spec(real_observations=1, minimum_real_observations=3)
+    result = build_insufficient_result(
+        spec,
+        ("insufficient_real_observation_count",),
+        recommendation_id=uuid4(),
+        created_at=NOW,
+    )
+
+    payload = generation_result_payload(result)
+    loaded = generation_result_from_payload(payload)
+
+    assert loaded == result
+    assert payload["contract_version"] == "recommendation-generation-result-v3"
+    materialization = payload["materialization"]
+    assert isinstance(materialization, dict)
+    assert materialization["evidence_graph_hash"] == result.recommendation.evidence.graph_hash
+    assert materialization["input_fingerprint"] == (
+        result.recommendation.evidence.input_fingerprint
+    )
+    assert len(materialization["evidence_bindings"]) == len(
+        result.recommendation.evidence.all_refs
+    )
+
+    tampered = deepcopy(payload)
+    tampered_materialization = tampered["materialization"]
+    assert isinstance(tampered_materialization, dict)
+    tampered_materialization["input_fingerprint"] = "0" * 64
+    with pytest.raises(ValueError, match="materialization changed"):
+        generation_result_from_payload(tampered)
+
+
+def test_generation_result_codec_keeps_v2_rows_readable() -> None:
+    spec = generation_spec(real_observations=1, minimum_real_observations=3)
+    result = build_insufficient_result(
+        spec,
+        ("insufficient_real_observation_count",),
+        recommendation_id=uuid4(),
+        created_at=NOW,
+    )
+    payload = generation_result_payload(result)
+    payload["contract_version"] = "recommendation-generation-result-v2"
+    payload.pop("materialization")
+
+    assert generation_result_from_payload(payload) == result
 
 
 def test_generation_spec_codec_preserves_v3_input_hash_without_new_type_signals() -> None:

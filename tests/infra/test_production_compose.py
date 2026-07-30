@@ -670,7 +670,13 @@ def test_artifact_keyrings_and_style_runtime_have_least_privilege_mounts() -> No
     }.isdisjoint(recommendation_scheduler["secrets"])
 
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
-    assert "-f infra/compose.prod.yml -f infra/compose.style-collection.yml" in makefile
+    for compose_file in (
+        "infra/compose.prod.yml",
+        "infra/compose.style-collection.yml",
+        "infra/compose.connector.yml",
+        "infra/compose.browser-capture.yml",
+    ):
+        assert f"-f {compose_file}" in makefile
 
 
 def test_initial_owner_provision_is_explicit_installer_only_profile() -> None:

@@ -58,7 +58,11 @@ exactly once in considered_evaluators.
     ProgramKind.METRIC_JUDGE: """
 Evaluate every supplied metric definition exactly once against the answer and frozen evidence.
 Do not merge metrics, change denominators, or infer evidence that is absent. Every metric result
-must locate its support with an answer-span:start:end, citation:ref, or fact:ref locator.
+must locate its support with an answer_span, citation, or fact locator. An answer_span locator
+must copy the frozen observation version and content_hash and must include integer start and end
+offsets for a non-empty exact slice of answer_text. A recommendation or corpus_absorption result
+must include a numeric score from 0 through 1; a sentiment result must include a numeric score
+from -1 through 1; a fact or citation_entailment result must set score to null.
 """.strip(),
     ProgramKind.RECOMMENDATION: """
 Form a recommendation only from the evidence refs present in the request. Insufficient evidence

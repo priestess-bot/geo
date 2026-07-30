@@ -169,14 +169,15 @@ class PlacementApplication(
         authenticity_risks: tuple[AuthenticityRisk, ...],
     ) -> BriefVersion:
         validate_authenticity(experience=consumer_experience, risks=authenticity_risks)
-        snapshot: dict[str, object] = {"goals": dict(goals), "constraints": dict(constraints)}
+        persisted_goals: dict[str, object] = dict(goals)
         if consumer_experience:
-            snapshot["consumer_experience"] = {
+            persisted_goals["consumer_experience"] = {
                 "description": consumer_experience.description,
                 "source": consumer_experience.source,
                 "usage_rights": consumer_experience.usage_rights,
                 "disclosure": consumer_experience.disclosure,
             }
+        snapshot = {"goals": persisted_goals, "constraints": dict(constraints)}
         with self._uow_factory(project_id) as uow:
             require_campaign_resource(
                 uow.placements,
@@ -189,7 +190,7 @@ class PlacementApplication(
                 project_id=project_id,
                 opportunity_id=opportunity_id,
                 primary_brand_entity_id=primary_brand_entity_id,
-                goals=snapshot,
+                goals=persisted_goals,
                 constraints=constraints,
                 compared_entity_ids=compared_entity_ids,
                 allowed_subject_entity_ids=allowed_subject_entity_ids,

@@ -1,0 +1,11 @@
+DROP TRIGGER browser_parsed_observations_immutable ON browser_parsed_observations;
+DROP TABLE browser_parsed_observations;
+DROP TRIGGER browser_page_artifacts_immutable ON browser_page_artifact_bundles;
+DROP TABLE browser_page_artifact_bundles;
+DROP TRIGGER browser_egress_verifications_immutable ON browser_egress_verifications;
+DROP TABLE browser_egress_verifications;
+DROP TABLE browser_capture_sessions;
+DROP TABLE browser_profile_versions;
+DROP TABLE browser_egress_endpoints;
+DROP TABLE browser_surface_releases;
+DROP FUNCTION geo_browser_evidence_immutable();

@@ -15,11 +15,27 @@ from fastapi import FastAPI, Request
 from starlette.responses import Response
 
 from geo_api.access_write_routes import invitation_auth_router, invitation_management_router
+from geo_api.attribution_routes import attribution_router
+from geo_api.attribution_runtime import build_attribution_service
+from geo_api.browser_capture_routes import browser_capture_router
+from geo_api.browser_capture_runtime import (
+    build_browser_capture_admin_service,
+    build_browser_capture_attempt_service,
+)
 from geo_api.engineering_routes import engineering_router, github_integration_router
 from geo_api.engineering_runtime import build_engineering_service
 from geo_api.catalog_routes import catalog_bootstrap_router, catalog_router
 from geo_api.catalog_runtime import build_catalog_application
 from geo_api.customer_geo_routes import customer_geo_router
+from geo_api.connector_routes import connector_router
+from geo_api.connector_runtime import (
+    build_connector_admin_service,
+    build_external_data_service,
+)
+from geo_api.external_data_routes import (
+    external_data_admin_router,
+    external_data_customer_router,
+)
 from geo_api.foundation_services import (
     FoundationServices,
     UnavailableFoundationServices,
@@ -135,6 +151,11 @@ def create_api_app(
     workflow_c_customer_reader: WorkflowCCustomerReportReader | None = None,
     model_gateway_runtime_api: object | None = None,
     workflow_runtime_api: object | None = None,
+    connector_admin_service: object | None = None,
+    external_data_service: object | None = None,
+    attribution_service: object | None = None,
+    browser_capture_admin_service: object | None = None,
+    browser_capture_attempt_service: object | None = None,
 ) -> FastAPI:
     """Build one API surface without importing the legacy application module."""
 
@@ -221,6 +242,19 @@ def create_api_app(
     app.state.workflow_runtime_api = workflow_runtime_api or (
         build_workflow_runtime_api() if surface == "internal" else None
     )
+    app.state.connector_admin_service = connector_admin_service or (
+        build_connector_admin_service() if surface == "internal" else None
+    )
+    app.state.external_data_service = external_data_service or build_external_data_service()
+    app.state.attribution_service = attribution_service or (
+        build_attribution_service() if surface == "internal" else None
+    )
+    app.state.browser_capture_admin_service = browser_capture_admin_service or (
+        build_browser_capture_admin_service() if surface == "internal" else None
+    )
+    app.state.browser_capture_attempt_service = browser_capture_attempt_service or (
+        build_browser_capture_attempt_service() if surface == "internal" else None
+    )
     install_problem_handlers(app)
     _install_request_metadata_middleware(app, surface=surface)
 
@@ -248,6 +282,10 @@ def create_api_app(
         app.include_router(knowledge_router())
         app.include_router(knowledge_question_router())
         app.include_router(search_aggregation_router())
+        app.include_router(connector_router())
+        app.include_router(external_data_admin_router())
+        app.include_router(attribution_router())
+        app.include_router(browser_capture_router())
         app.include_router(prompt_bootstrap_router())
         app.include_router(prompt_program_router())
         app.include_router(model_gateway_runtime_router())
@@ -270,6 +308,7 @@ def create_api_app(
             app.include_router(catalog_bootstrap_router())
     else:
         app.include_router(customer_geo_router())
+        app.include_router(external_data_customer_router())
         app.include_router(customer_project_export_router())
         reader = workflow_c_customer_reader or build_workflow_c_customer_reader()
         app.include_router(workflow_c_customer_router(reader=reader))

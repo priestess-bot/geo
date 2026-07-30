@@ -182,12 +182,14 @@ class PromptTestExecutionHandler:
             PromptTestExecutionError,
             PromptBootstrapRuleViolation,
             PromptProgramRuleViolation,
-        ):
+        ) as error:
             return self._fail(
                 lease,
                 error_code="prompt_test_contract",
                 classification="contract",
                 retry_delay=None,
+                failure_type=type(error).__name__,
+                failure_detail=str(error),
             )
         except Exception as error:
             return self._fail(
@@ -215,12 +217,19 @@ class PromptTestExecutionHandler:
         error_code: str,
         classification: str,
         retry_delay: timedelta | None,
+        failure_type: str | None = None,
+        failure_detail: str | None = None,
     ) -> Mapping[str, object]:
         self._store.heartbeat(lease, lease_for=self._lease_for)
+        details = {"classification": classification}
+        if failure_type:
+            details["failure_type"] = failure_type
+        if failure_detail:
+            details["failure_detail"] = failure_detail[:500]
         status = self._store.fail(
             lease,
             error_code=error_code,
-            details={"classification": classification},
+            details=details,
             retry_delay=retry_delay,
         )
         return {"status": status, "job_id": str(lease.job_id)}

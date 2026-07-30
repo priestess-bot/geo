@@ -1,12 +1,22 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
 
 from geo_core.jobs.outbox import OutboxMessage, RecoverableJob
 from geo_worker import relay
+
+
+def test_relay_imports_only_the_lightweight_browser_routing_contract() -> None:
+    source = (Path(__file__).resolve().parents[3] / "apps/api/geo_worker/relay.py").read_text(
+        encoding="utf-8"
+    )
+    assert "geo_core.browser_capture.routing" in source
+    assert "geo_core.browser_capture.worker" not in source
+    assert "geo_core.browser_capture.egress_test" not in source
 
 
 class _Store:
@@ -38,6 +48,10 @@ class _RecoveryStore:
                 uuid4(), uuid4(), "recommendation.artifact_maintenance"
             ),
             RecoverableJob(uuid4(), uuid4(), "synthetic_lab.artifact_maintenance"),
+            RecoverableJob(uuid4(), uuid4(), "connector.sync"),
+            RecoverableJob(uuid4(), uuid4(), "connector.connection_test"),
+            RecoverableJob(uuid4(), uuid4(), "browser.capture"),
+            RecoverableJob(uuid4(), uuid4(), "browser.egress_test"),
         )
 
     def recoverable(self, *, batch_size: int):
@@ -70,11 +84,15 @@ def test_recovery_continues_after_one_dispatch_failure(monkeypatch) -> None:
 
     monkeypatch.setattr(relay, "_send_job", send)
 
-    assert relay.recover_once(store, batch_size=10) == 4
-    assert len(dispatched) == 5
+    assert relay.recover_once(store, batch_size=10) == 8
+    assert len(dispatched) == 9
     assert dispatched[2]["workflow_c_maintenance"] is True
     assert dispatched[3]["recommendation_artifact_maintenance"] is True
     assert dispatched[4]["synthetic_artifact_maintenance"] is True
+    assert dispatched[5]["connector_sync"] is True
+    assert dispatched[6]["connector_sync"] is True
+    assert dispatched[7]["browser_capture"] is True
+    assert dispatched[8]["browser_capture"] is True
 
 
 def test_synthetic_maintenance_producer_uses_the_atomic_worker_rpc(monkeypatch) -> None:

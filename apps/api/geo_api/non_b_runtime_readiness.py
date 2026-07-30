@@ -1,4 +1,4 @@
-"""Production readiness contract for durable non-B Internal API runtimes."""
+"""Deployment readiness contract for durable non-B Internal API runtimes."""
 
 from __future__ import annotations
 
@@ -91,7 +91,7 @@ def bind_runtime(
 
 
 class ProductionInternalRuntimeReadiness:
-    """Require durable non-B runtimes only after shared readiness succeeds."""
+    """Require durable non-B runtimes in staging and production deployments."""
 
     def __init__(
         self,
@@ -102,9 +102,10 @@ class ProductionInternalRuntimeReadiness:
         bindings: NonBRuntimeBindings,
     ) -> None:
         self._delegate = delegate
-        self._enforced = (
-            surface == "internal" and deployment_environment.strip().lower() == "production"
-        )
+        self._enforced = surface == "internal" and deployment_environment.strip().lower() in {
+            "production",
+            "staging",
+        }
         self._bindings = bindings
 
     async def check(self) -> ReadinessResult:

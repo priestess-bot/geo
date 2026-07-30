@@ -6,6 +6,7 @@ export const workbenchTabs = [
   { id: "synthetic-lab", label: "合成测评实验室" },
   { id: "recommendations", label: "建议" },
   { id: "measurement", label: "测量与告警" },
+  { id: "external-data", label: "外部数据与归因" },
   { id: "knowledge", label: "知识库" },
   { id: "operations", label: "运营工作台" },
   { id: "geo", label: "GEO 投放" },

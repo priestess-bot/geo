@@ -382,36 +382,38 @@ authorization gate
 
 ### 8.2 M1：合同、迁移和骨架
 
-- [ ] `EXT-M1-01` 在线 expand migration 增加 Connector/Sampling/Adapter Release/Authorization/Egress/Browser 及 External Data Snapshot/Report/Approval tables，与精确 project-scoped FK/RLS/index。
-- [ ] `EXT-M1-02` 兼容扩展 `automated_ui`、Kimi platform/surface 和 UI SourceStratum 的 egress policy/cohort；实际 verification 仅作 Attempt/Observation lineage，旧 writer/reader 仍可运行，历史值不猜测回填。
-- [ ] `EXT-M1-03` 实现 Connector Definition/Connection/Scope/Checkpoint/Run/Raw/Schema/Freshness/Error Domain + repository fixture path。
-- [ ] `EXT-M1-04` 实现 Sampling Suite/Run/Task/Attempt/Completion Domain + repository；Task 冻结 egress policy/cohort，Attempt 保存实际 verification，planned task 不因重试或失败删除。
-- [ ] `EXT-M1-05` 实现 Adapter Release registry、fixture-ready/live/approved/deferred/suspended 状态和条款/保留字段。
+> 2026-07-28 本地实现证据更新：Alembic 单一 head 为 `0115_external_operational_alerts`；`0112` 增加 Connector/Browser Worker fail-closed readiness 与持久 heartbeat，`0113` 增加 durable 澳洲出口自检，`0114` 增加 parser/browser build drift 自动暂停，`0115` 将 Connector error/freshness 与 Surface drift 投影为不可变版本化告警输入，并通过批准规则、Durable Job、告警和三渠道通知的 PostgreSQL 垂直路径。三个 B 领域 PostgreSQL 集成测试、123 项 Connector/Browser/Attribution/Alert 单元测试、稳定 OpenAPI、Admin TypeScript、production build 与 Chromium 页面回归均通过；`staging-v2` 已运行在 `0115`，两个外部 Worker heartbeat 为 `ready`。该证据不替代真实 GSC/GA4、澳洲 residential/mobile proxy、AIO/AI Mode/Copilot live capture、部署层 direct-egress deny、性能或独立 verifier 证据。
+
+- [x] `EXT-M1-01` 在线 expand migration 增加 Connector/Sampling/Adapter Release/Authorization/Egress/Browser 及 External Data Snapshot/Report/Approval tables，与精确 project-scoped FK/RLS/index。
+- [x] `EXT-M1-02` 兼容扩展 `automated_ui`、Kimi platform/surface 和 UI SourceStratum 的 egress policy/cohort；实际 verification 仅作 Attempt/Observation lineage，旧 writer/reader 仍可运行，历史值不猜测回填。
+- [x] `EXT-M1-03` 实现 Connector Definition/Connection/Scope/Checkpoint/Run/Raw/Schema/Freshness/Error Domain + repository fixture path。
+- [x] `EXT-M1-04` 实现 Sampling Suite/Run/Task/Attempt/Completion Domain + repository；Task 冻结 egress policy/cohort，Attempt 保存实际 verification，planned task 不因重试或失败删除。
+- [x] `EXT-M1-05` 实现 Adapter Release registry、fixture-ready/live/approved/deferred/suspended 状态和条款/保留字段。
 - [ ] `EXT-M1-06` 增加 `connector.sync`、`official_report.import`、`sampling.task.run`、`egress.verify`、`browser.capture` job spec 和现有 Worker/Relay composition。
 - [ ] `EXT-M1-07` 增加隔离 browser-capture-worker Compose skeleton、readiness/heartbeat、tmpfs、最小 secret 和 direct-egress deny tests。
-- [ ] `EXT-M1-08` 实现 Egress Endpoint/Secret Reference、sticky lease、双地域 pre/post fixture、Browser Profile/Session/Page Bundle contracts。
-- [ ] `EXT-M1-09` 为 AIO、AI Mode、Copilot 建立独立 parser fixture corpus，覆盖 success/missing/CAPTCHA/login/consent/rate/geo/egress/parser drift。
-- [ ] `EXT-M1-10` 实现 Internal API/Admin 最小 Connection、Egress、Surface Release、Run/Task 和 evidence 只读/控制界面。
+- [x] `EXT-M1-08` 实现 Egress Endpoint/Secret Reference、sticky lease、双地域 pre/post fixture、Browser Profile/Session/Page Bundle contracts。
+- [x] `EXT-M1-09` 为 AIO、AI Mode、Copilot 建立独立 parser fixture corpus，覆盖 success/missing/CAPTCHA/login/consent/rate/geo/egress/parser drift。
+- [x] `EXT-M1-10` 实现 Internal API/Admin 最小 Connection、Egress、Surface Release、Run/Task 和 evidence 只读/控制界面。
 
 **`EXT-GATE-M1`**
 
-- [ ] `EXT-M1-AC-01` Alembic 单一 head；旧数据/reader/writer 兼容；`unknown` 不提升、manual 不迁成 automated。
-- [ ] `EXT-M1-AC-02` Connector fixture 验证 initial/incremental/backfill/rate/schema/cancel/lease，checkpoint 只在 raw+projection 同成功后推进。
-- [ ] `EXT-M1-AC-03` Sampling fixture 验证 planned denominator、attempt retry、cancel/fencing、低于 80% 和跨来源不混分母。
+- [x] `EXT-M1-AC-01` Alembic 单一 head；旧数据/reader/writer 兼容；`unknown` 不提升、manual 不迁成 automated。
+- [x] `EXT-M1-AC-02` Connector fixture 验证 initial/incremental/backfill/rate/schema/cancel/lease，checkpoint 只在 raw+projection 同成功后推进。
+- [x] `EXT-M1-AC-03` Sampling fixture 验证 planned denominator、attempt retry、cancel/fencing、低于 80% 和跨来源不混分母。
 - [ ] `EXT-M1-AC-04` 断开 proxy/gateway 后 browser worker 无法直达目标；proxy secret 在所有工件/日志/API 中零明文命中。
-- [ ] `EXT-M1-AC-05` 三个 surface fixture 能区分 AI/传统页面/有效缺失/阻断/parser drift，普通结果误标为 0。
-- [ ] `EXT-M1-AC-06` Internal API/Admin 跨 Project、低权限、Customer raw/secret 访问均被拒绝且零写入。
+- [x] `EXT-M1-AC-05` 三个 surface fixture 能区分 AI/传统页面/有效缺失/阻断/parser drift，普通结果误标为 0。
+- [x] `EXT-M1-AC-06` Internal API/Admin 跨 Project、低权限、Customer raw/secret 访问均被拒绝且零写入。
 
 ### 8.3 M2：真实 Connector、Sampling 和 Browser Beta
 
 - [ ] `EXT-M2-01` 固定 PyAirbyte 与 GSC connector release，完成真实只读 Connection、scope、initial、incremental、backfill 和 freshness。
 - [ ] `EXT-M2-02` 固定 GA4 connector/report release，完成真实只读 Connection、scope、initial、incremental、backfill 和 freshness；明确只做聚合对账。
-- [ ] `EXT-M2-03` 完成 Google/Bing 官方报告原文件上传、parser release、schema fingerprint、typed projection、duplicate/replay 和可解释空文件路径。
-- [ ] `EXT-M2-04` 完成 Sampling Suite 冻结、Task admission/not_before、manual UI import、raw answer/citation 和 SourceStratum projection。
+- [x] `EXT-M2-03` 完成 Google/Bing 官方报告原文件上传、parser release、schema fingerprint、typed projection、duplicate/replay 和可解释空文件路径。
+- [x] `EXT-M2-04` 完成 Sampling Suite 冻结、Task admission/not_before、manual UI import、raw answer/citation 和 SourceStratum projection。
 - [ ] `EXT-M2-05` 完成澳洲 proxy/gateway 连接、sticky lease、双源 pre/post、network type 和 browser profile Beta。
 - [ ] `EXT-M2-07` 在任何 live UI enqueue 前完成 AIO/AI Mode/Copilot 授权决策，逐项记录 `approved` 或 `assessed_no_basis`、用途、频率、到期和后续证据门槛；申请中按 B 轨限制。
 - [ ] `EXT-M2-06` 仅在 `EXT-M2-07` 完成并通过 admission 后，对 A 轨 surface 至少执行一个真实 AU successful capture；对 B 轨 surface 只完成全链 fixture + manual baseline。
-- [ ] `EXT-M2-08` Admin 完成 Connection test/rotate/disable、checkpoint/freshness、Egress test/disable、Surface Run、阻断原因和受控证据查看。
+- [x] `EXT-M2-08` Admin 完成 Connection test/rotate/disable、checkpoint/freshness、Egress test/disable、Surface Run、阻断原因和受控证据查看。
 
 **`EXT-GATE-M2`**
 
@@ -432,9 +434,9 @@ authorization gate
 - [ ] `EXT-M3-04` 发布 Microsoft Grounding with Bing adapter，使用 `proxy_grounded_api` 身份，冻结引用展示/保留要求并完成 live canary。
 - [ ] `EXT-M3-05` 发布 Kimi API adapter，冻结 Kimi platform/surface、reported model、原生 search capability、citation/usage/error 映射并完成 live canary；不能证明原生 Search 时使用 `search_mode=disabled`。
 - [ ] `EXT-M3-06` 每个 A 轨 Surface Release 独立完成至少 20 个 AU live 与阻断 fixture；每个 B 轨独立完成 30 fixture + 10 manual 对照。
-- [ ] `EXT-M3-07` 完成三个 surface 的重复 Task 调度、clean anonymous cohort；managed account 如启用则独立 profile/denominator。
-- [ ] `EXT-M3-08` 实现 selector/parser/浏览器 build drift detection、release suspend 和旧 release 可重放解析。
-- [ ] `EXT-M3-09` 完成 Provider/API/automated/manual/official/synthetic 标签、API/UI/export 和 denominator 的跨类型负测。
+- [x] `EXT-M3-07` 完成三个 surface 的重复 Task 调度、clean anonymous cohort；managed account 如启用则独立 profile/denominator。
+- [ ] `EXT-M3-08` 实现 selector/parser/浏览器 build drift detection、release suspend 和旧 release 可重放解析。（检测、自动暂停及不可变旧证据已完成；面向运营的旧 Release 重放命令仍待实现。）
+- [x] `EXT-M3-09` 完成 Provider/API/automated/manual/official/synthetic 标签、API/UI/export 和 denominator 的跨类型负测。
 
 **`EXT-GATE-M3`**
 
@@ -448,9 +450,9 @@ authorization gate
 
 ### 8.5 M4：观测交付、漂移和告警集成
 
-- [ ] `EXT-M4-01` 把 Connector freshness/error、Provider model/schema、Surface parser/geo/access drift 投影为版本化 alert input。
+- [ ] `EXT-M4-01` 把 Connector freshness/error、Provider model/schema、Surface parser/geo/access drift 投影为版本化 alert input。（Connector freshness/error 与 Surface parser/browser build 已完成并接入现有告警通知闭环；Provider model/schema、Surface geo/access 尚待真实运行输入。）
 - [ ] `EXT-M4-02` 为每个 Sampling Run 输出 frozen inventory、planned/valid/invalid/missing、原因构成、cost/latency 和 source composition。
-- [ ] `EXT-M4-03` 证明所有 eligible Observation 都有 raw/derived evidence locator、adapter release、完整 SourceStratum 及 winning Attempt/Egress Verification lineage；缺任一项 fail closed，但 verification ID 不参与分母 hash。
+- [x] `EXT-M4-03` 证明所有 eligible Observation 都有 raw/derived evidence locator、adapter release、完整 SourceStratum 及 winning Attempt/Egress Verification lineage；缺任一项 fail closed，但 verification ID 不参与分母 hash。
 - [ ] `EXT-M4-04` 实现 raw TTL/tombstone、authorization expiry、secret rotation 与运行中 reference version 的运维任务。
 - [ ] `EXT-M4-05` 完成 connector/provider/browser 的 quota admission、日预算、`not_before`、暂停/恢复和队列年龄观测。
 
@@ -464,9 +466,9 @@ authorization gate
 ### 8.6 M5：批准投影和运营稳定化
 
 - [ ] `EXT-M5-01` Admin 完成 Definition/Connection/Scope/Run/Checkpoint/Freshness/Error、Suite/Task、Adapter/Authorization、Egress/Session/Capture 的完整操作页。
-- [ ] `EXT-M5-06` 实现第 5.4 节 External Data Snapshot/Report/Approval、人工 review/approve/reject、freshness stale、supersede/revoke、幂等 approval 和 latest projection；sync/import 不自动批准。
-- [ ] `EXT-M5-02` Customer 只通过 approved `monitoring_reports` 或 approved External Data Report 投影读取；显示 capture/source kind、platform/surface、model state（适用时）、locale/region、sample/completion、release 和 evidence freshness 摘要。
-- [ ] `EXT-M5-03` Customer/raw export/Recommendation 字段白名单和跨 Project/Campaign negative tests 全部完成。
+- [x] `EXT-M5-06` 实现第 5.4 节 External Data Snapshot/Report/Approval、人工 review/approve/reject、freshness stale、supersede/revoke、幂等 approval 和 latest projection；sync/import 不自动批准。
+- [x] `EXT-M5-02` Customer 只通过 approved `monitoring_reports` 或 approved External Data Report 投影读取；显示 capture/source kind、platform/surface、model state（适用时）、locale/region、sample/completion、release 和 evidence freshness 摘要。
+- [x] `EXT-M5-03` Customer/raw export/Recommendation 字段白名单和跨 Project/Campaign negative tests 全部完成。
 - [ ] `EXT-M5-04` 完成 connection revoke/reauthorize、secret/provider/proxy rotate、schema drift、surface suspend、manual fallback 和 raw TTL runbook。
 - [ ] `EXT-M5-05` 完成成本/配额/延迟 dashboard 和运营处置 SLA；不得因慢供应商自动混用 fallback 模型。
 
@@ -476,8 +478,8 @@ authorization gate
 - [ ] `EXT-DATA-APPROVAL-AC-01` GSC/GA4/official-report sync/import 只创建 internal projection 和 draft；没有 approval command 时 Customer 为空，Adapter Release approval 不能代替数据批准。
 - [ ] `EXT-DATA-APPROVAL-AC-02` approve 冻结 exact snapshot/hash/Project/Campaign/source/period/schema/lineage；刷新创建新 draft，stale/supersede/revoke 退出 Customer 且历史不变。
 - [ ] `EXT-DATA-APPROVAL-AC-03` 同 partition 并发/重试批准只有一个 latest；跨 Project/Campaign snapshot、创建者自批、过期 freshness 或字段白名单失败均零 Customer 写入。
-- [ ] `EXT-CUST-AC-01` Customer 只见 approved Monitoring Report 或 approved External Data Report；synthetic、raw、invalid、未批准/stale/revoked、B 轨 fixture、secret/debug/actor 全不可见。
-- [ ] `EXT-CUST-AC-02` 来源标签和 denominator 在 Customer/API/export 一致；Provider、UI、GSC、GA4、official report 不会因展示汇总而丢失身份或互相冒名。
+- [x] `EXT-CUST-AC-01` Customer 只见 approved Monitoring Report 或 approved External Data Report；synthetic、raw、invalid、未批准/stale/revoked、B 轨 fixture、secret/debug/actor 全不可见。
+- [x] `EXT-CUST-AC-02` 来源标签和 denominator 在 Customer/API/export 一致；Provider、UI、GSC、GA4、official report 不会因展示汇总而丢失身份或互相冒名。
 - [ ] `EXT-RUNBOOK-AC-01` 新值班人员按 runbook 可处理至少一次 connector revoke、provider rate limit 和 surface drift 演练。
 
 ### 8.7 M6：生产等价和最终专项验收

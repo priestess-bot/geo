@@ -13,6 +13,7 @@ import time
 from typing import Any
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
+from uuid import UUID
 
 
 DEFAULT_MANIFEST = Path("docs/target_company/advinsys-geo-project.json")
@@ -51,7 +52,36 @@ def load_manifest(path: Path) -> dict[str, Any]:
     names = [item.get("canonical_name") for item in products]
     if len(names) != len(set(names)):
         raise ValueError("target manifest product names must be unique")
+    optional_destinations = manifest.get("optional_destinations", [])
+    if not isinstance(optional_destinations, list):
+        raise ValueError("target manifest optional_destinations must be a list")
+    destination_keys = [
+        item.get("destination_key") for item in [*destinations, *optional_destinations]
+    ]
+    if len(destination_keys) != len(set(destination_keys)):
+        raise ValueError("target manifest destination keys must be unique")
     return manifest
+
+
+def select_project(
+    projects: list[dict[str, Any]], *, project_name: str, project_id: str | None = None
+) -> dict[str, Any] | None:
+    """Select one explicit target and reject ambiguous display-name reuse."""
+    if project_id is not None:
+        project = next((item for item in projects if item["id"] == project_id), None)
+        if project is None:
+            raise ValueError(f"project_id {project_id} does not exist")
+        if project["name"] != project_name:
+            raise ValueError(
+                f"project_id {project_id} is named {project['name']!r}, expected {project_name!r}"
+            )
+        return project
+    matches = [item for item in projects if item["name"] == project_name]
+    if len(matches) > 1:
+        raise ValueError(
+            f"multiple projects are named {project_name!r}; pass --project-id explicitly"
+        )
+    return matches[0] if matches else None
 
 
 class Api:
@@ -83,16 +113,28 @@ class Api:
             raise RuntimeError(f"{method} {path} failed ({error.code}): {detail}") from error
 
 
-def provision(api: Api, manifest: dict[str, Any], repository_root: Path) -> dict[str, object]:
+def provision(
+    api: Api,
+    manifest: dict[str, Any],
+    repository_root: Path,
+    *,
+    project_id: str | None = None,
+    create_new: bool = False,
+) -> dict[str, object]:
     project_config = manifest["project"]
     project_name = project_config["name"]
     brand_config = project_config["brand"]
     market_config = project_config["market"]
     products = manifest["products"]
     destinations = manifest["destinations"]
+    optional_destinations = manifest.get("optional_destinations", [])
     evidence_seeds = manifest["evidence_seeds"]
     projects = api.request("GET", "/v1/projects")["items"]
-    project = next((item for item in projects if item["name"] == project_name), None)
+    if create_new and project_id is not None:
+        raise ValueError("--create-new and --project-id cannot be used together")
+    project = None if create_new else select_project(
+        projects, project_name=project_name, project_id=project_id
+    )
     if project is None:
         project = api.request("POST", "/v1/projects", {"name": project_name})
     project_id = project["id"]
@@ -132,7 +174,7 @@ def provision(api: Api, manifest: dict[str, Any], repository_root: Path) -> dict
     destination_rows = api.request("GET", f"/v1/projects/{project_id}/geo/destinations")
     by_key = {item["destination_key"]: item for item in destination_rows}
     configured_destinations: list[dict[str, Any]] = []
-    for item in destinations:
+    for item in [*destinations, *optional_destinations]:
         channel = item["publication_channel"]
         destination_key = item["destination_key"]
         url = item["canonical_url"]
@@ -175,10 +217,17 @@ def provision(api: Api, manifest: dict[str, Any], repository_root: Path) -> dict
             )
         configured_destinations.append(destination)
 
+    standard_destination_keys = {item["destination_key"] for item in destinations}
+    standard_destinations = [
+        item
+        for item in configured_destinations
+        if item["destination_key"] in standard_destination_keys
+    ]
+
     campaigns = api.request("GET", f"/v1/projects/{project_id}/geo/campaigns")
     campaign_by_name = {item["name"]: item for item in campaigns}
     campaign_rows: list[dict[str, Any]] = []
-    destination_ids = [item["id"] for item in configured_destinations]
+    destination_ids = [item["id"] for item in standard_destinations]
     for product in product_rows:
         name = f"{product['canonical_name']} AU Recommendation"
         campaign = campaign_by_name.get(name)
@@ -306,9 +355,10 @@ def provision(api: Api, manifest: dict[str, Any], repository_root: Path) -> dict
         "brand_id": brand["id"],
         "market_profile_id": market["id"],
         "product_ids": [item["id"] for item in product_rows],
-        "destination_count": len(configured_destinations),
+        "destination_count": len(standard_destinations),
+        "optional_destination_count": len(configured_destinations) - len(standard_destinations),
         "campaign_count": len(campaign_rows),
-        "opportunity_count": len(campaign_rows) * len(configured_destinations),
+        "opportunity_count": len(campaign_rows) * len(standard_destinations),
         "knowledge_source_count": len(manifest["knowledge_sources"]),
         "evidence_count": len(evidence_seeds),
         "prompt_catalog_installed": True,
@@ -353,10 +403,14 @@ def expected_summary(manifest: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def verify(api: Api, manifest: dict[str, Any]) -> dict[str, object]:
+def verify(
+    api: Api, manifest: dict[str, Any], *, project_id: str | None = None
+) -> dict[str, object]:
     expected = expected_summary(manifest)
     projects = api.request("GET", "/v1/projects")["items"]
-    project = next((item for item in projects if item["name"] == expected["project_name"]), None)
+    project = select_project(
+        projects, project_name=expected["project_name"], project_id=project_id
+    )
     if project is None:
         return {**expected, "ok": False, "missing": ["project"], "project_id": None}
     project_id = project["id"]
@@ -371,17 +425,37 @@ def verify(api: Api, manifest: dict[str, Any]) -> dict[str, object]:
         *(item["canonical_name"] for item in manifest["products"]),
     }
     expected_keys = {item["destination_key"] for item in manifest["destinations"]}
+    expected_optional_keys = {
+        item["destination_key"] for item in manifest.get("optional_destinations", [])
+    }
     expected_sources = {item["title"] for item in manifest["knowledge_sources"]}
     expected_hashes = {
         hashlib.sha256(item["statement"].encode()).hexdigest()
         for item in manifest["evidence_seeds"]
     }
+    expected_campaign_names = {
+        f"{item['canonical_name']} AU Recommendation" for item in manifest["products"]
+    }
+    target_campaigns = [item for item in campaigns if item["name"] in expected_campaign_names]
     actual_opportunities = 0
-    for campaign in campaigns:
+    actual_monitoring_queries = 0
+    opportunity_destinations_match = True
+    standard_destination_ids = {
+        item["id"] for item in destinations if item["destination_key"] in expected_keys
+    }
+    for campaign in target_campaigns:
         rows = api.request(
             "GET", f"/v1/projects/{project_id}/geo/campaigns/{campaign['id']}/opportunities"
         )
         actual_opportunities += len(rows)
+        opportunity_destinations_match = opportunity_destinations_match and {
+            item["destination_id"] for item in rows
+        } == standard_destination_ids
+        queries = api.request(
+            "GET", f"/v1/projects/{project_id}/geo/campaigns/{campaign['id']}/monitoring-queries"
+        )
+        actual_monitoring_queries += len(queries)
+    actual_destination_keys = {item["destination_key"] for item in destinations}
     checks = {
         "entities": expected_names <= {item["canonical_name"] for item in entities},
         "market": any(
@@ -389,9 +463,12 @@ def verify(api: Api, manifest: dict[str, Any]) -> dict[str, object]:
             and item["locale"] == manifest["project"]["market"]["locale"]
             for item in markets
         ),
-        "destinations": expected_keys <= {item["destination_key"] for item in destinations},
-        "campaigns": len(campaigns) >= expected["campaign_count"],
-        "opportunities": actual_opportunities >= expected["opportunity_count"],
+        "destinations": actual_destination_keys == expected_keys | expected_optional_keys,
+        "optional_destinations": expected_optional_keys <= actual_destination_keys,
+        "campaigns": {item["name"] for item in target_campaigns} == expected_campaign_names,
+        "opportunities": actual_opportunities == expected["opportunity_count"],
+        "opportunity_destinations": opportunity_destinations_match,
+        "monitoring_queries": actual_monitoring_queries == expected["monitoring_query_count"],
         "knowledge_sources": expected_sources <= {item["title"] for item in sources},
         "knowledge_sources_ready": all(
             item["status"] == "ready" for item in sources if item["title"] in expected_sources
@@ -408,8 +485,9 @@ def verify(api: Api, manifest: dict[str, Any]) -> dict[str, object]:
             "entity_count": len(entities),
             "market_count": len(markets),
             "destination_count": len(destinations),
-            "campaign_count": len(campaigns),
+            "campaign_count": len(target_campaigns),
             "opportunity_count": actual_opportunities,
+            "monitoring_query_count": actual_monitoring_queries,
             "knowledge_source_count": len(sources),
             "evidence_count": len(evidence),
         },
@@ -442,6 +520,16 @@ def main() -> None:
     parser.add_argument("--actor-id", default="30000000-0000-4000-8000-000000000003")
     parser.add_argument("--tenant-id", default="10000000-0000-4000-8000-000000000001")
     parser.add_argument("--manifest", default=DEFAULT_MANIFEST, type=Path)
+    parser.add_argument(
+        "--project-id",
+        type=lambda value: str(UUID(value)),
+        help="operate on one exact existing project instead of selecting by display name",
+    )
+    parser.add_argument(
+        "--create-new",
+        action="store_true",
+        help="create a new project even when an identically named project already exists",
+    )
     parser.add_argument("--mode", choices=("actual",), default="actual")
     action = parser.add_mutually_exclusive_group()
     action.add_argument("--dry-run", action="store_true")
@@ -449,6 +537,10 @@ def main() -> None:
     action.add_argument("--apply", action="store_true")
     parser.add_argument("--receipt", type=Path)
     args = parser.parse_args()
+    if args.create_new and not args.apply:
+        parser.error("--create-new requires --apply")
+    if args.create_new and args.project_id:
+        parser.error("--create-new cannot be combined with --project-id")
     manifest_path = args.manifest.resolve()
     manifest = load_manifest(manifest_path)
     action_name = "dry_run" if args.dry_run else "verify" if args.verify_only else "apply"
@@ -456,9 +548,17 @@ def main() -> None:
         result = {**expected_summary(manifest), "ok": True, "mutated": False}
     else:
         api = Api(args.api_url, args.actor_id, args.tenant_id)
+        verification_project_id = args.project_id
         if action_name == "apply":
-            provision(api, manifest, Path(__file__).resolve().parents[1])
-        result = verify(api, manifest)
+            provisioned = provision(
+                api,
+                manifest,
+                Path(__file__).resolve().parents[1],
+                project_id=args.project_id,
+                create_new=args.create_new,
+            )
+            verification_project_id = str(provisioned["project_id"])
+        result = verify(api, manifest, project_id=verification_project_id)
         if not result["ok"]:
             raise RuntimeError(f"ADVINSYS verification failed: {result}")
     output = receipt(action_name, manifest_path, result)

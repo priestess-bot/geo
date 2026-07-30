@@ -1,0 +1,116 @@
+services:
+  browser-capture-artifact-bootstrap:
+    image: ${GEO_MINIO_MC_IMAGE:?set a digest-pinned GEO_MINIO_MC_IMAGE}
+    restart: "no"
+    init: true
+    read_only: true
+    user: "10001:10001"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 128
+    tmpfs:
+      - /tmp:size=64m,mode=0700,noexec,nosuid,nodev
+    entrypoint: ["/bin/sh", "/bootstrap/bootstrap-isolated-writer.sh"]
+    environment:
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ROOT_USER_FILE: /run/secrets/minio_root_user
+      MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_root_password
+      ISOLATED_BUCKET: geo-browser-capture-raw
+      ISOLATED_PREFIX: browser-captures/
+      ISOLATED_POLICY_NAME: geo-browser-capture-writer-v1
+      ISOLATED_WRITER_ACCESS_KEY_FILE: /run/secrets/browser_artifact_writer_access_key
+      ISOLATED_WRITER_SECRET_KEY_FILE: /run/secrets/browser_artifact_writer_secret_key
+      ISOLATED_RECEIPT_NAME: browser-capture-artifact-policy
+      ISOLATED_RETENTION_DAYS: ${GEO_BROWSER_ARTIFACT_RETENTION_DAYS:-30}
+    secrets:
+      - minio_root_user
+      - minio_root_password
+      - browser_artifact_writer_access_key
+      - browser_artifact_writer_secret_key
+    volumes:
+      - ./minio:/bootstrap:ro
+    networks:
+      - backend
+    depends_on:
+      minio:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+          pids: 128
+
+  browser-capture-worker:
+    image: ${GEO_BROWSER_CAPTURE_WORKER_IMAGE:?set a digest-pinned Browser Capture Worker image}
+    restart: unless-stopped
+    init: true
+    read_only: true
+    user: "10001:10001"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 512
+    tmpfs:
+      - /tmp:size=512m,mode=0700,nosuid,nodev
+    environment:
+      GEO_DEPLOYMENT_ENVIRONMENT: production
+      GEO_RELEASE_COMMIT: ${GEO_RELEASE_COMMIT:?set the current 40-character Git commit}
+      GEO_DATABASE_URL_FILE: /run/secrets/browser_capture_worker_database_url
+      GEO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
+      GEO_BROWSER_CAPTURE_SERVICE_IDENTITY_ID: ${GEO_BROWSER_CAPTURE_SERVICE_IDENTITY_ID:?set the provisioned browser_capture_worker identity}
+      GEO_BROWSER_RUNTIME_RELEASE: ${GEO_BROWSER_RUNTIME_RELEASE:?set the exact Playwright and browser release}
+      GEO_SECRET_STORE_MASTER_KEYRING_FILE: /run/secrets/secret_store_master_keyring
+      GEO_SECRET_STORE_REQUEST_HASH_KEY_FILE: /run/secrets/secret_store_request_hash_key
+      GEO_BROWSER_ARTIFACT_KEY_FILE: /run/secrets/browser_artifact_key
+      GEO_BROWSER_ARTIFACT_KEY_REFERENCE: ${GEO_BROWSER_ARTIFACT_KEY_REFERENCE:?set the active Browser artifact key reference}
+      GEO_BROWSER_ARTIFACT_RETENTION_DAYS: ${GEO_BROWSER_ARTIFACT_RETENTION_DAYS:-30}
+      GEO_BROWSER_ARTIFACT_OBJECT_STORE_ENDPOINT: http://minio:9000
+      GEO_BROWSER_ARTIFACT_OBJECT_STORE_BUCKET: geo-browser-capture-raw
+      GEO_BROWSER_ARTIFACT_OBJECT_STORE_REGION: ${GEO_OBJECT_STORE_REGION:-us-east-1}
+      GEO_BROWSER_ARTIFACT_OBJECT_STORE_AUTO_CREATE_BUCKET: "0"
+      GEO_BROWSER_ARTIFACT_OBJECT_STORE_ACCESS_KEY_FILE: /run/secrets/browser_artifact_writer_access_key
+      GEO_BROWSER_ARTIFACT_OBJECT_STORE_SECRET_KEY_FILE: /run/secrets/browser_artifact_writer_secret_key
+    secrets:
+      - browser_capture_worker_database_url
+      - browser_artifact_key
+      - browser_artifact_writer_access_key
+      - browser_artifact_writer_secret_key
+      - secret_store_master_keyring
+      - secret_store_request_hash_key
+    command: ["python", "-m", "geo_browser_capture_worker.entrypoint"]
+    networks:
+      - backend
+      - egress
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      browser-capture-artifact-bootstrap:
+        condition: service_completed_successfully
+      valkey:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "from pathlib import Path; assert b'dramatiq' in Path('/proc/1/cmdline').read_bytes() and Path('/tmp/geo-worker-ready').is_file()"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 4G
+          pids: 512
+
+secrets:
+  browser_capture_worker_database_url:
+    file: ${GEO_BROWSER_CAPTURE_WORKER_DATABASE_URL_FILE:?set Browser Capture Worker database URL file}
+  browser_artifact_key:
+    file: ${GEO_BROWSER_ARTIFACT_KEY_FILE:?set Browser artifact key file}
+  browser_artifact_writer_access_key:
+    file: ${GEO_BROWSER_ARTIFACT_WRITER_ACCESS_KEY_FILE:?set Browser artifact writer access key file}
+  browser_artifact_writer_secret_key:
+    file: ${GEO_BROWSER_ARTIFACT_WRITER_SECRET_KEY_FILE:?set Browser artifact writer secret key file}

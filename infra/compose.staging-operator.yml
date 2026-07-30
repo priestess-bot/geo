@@ -19,6 +19,28 @@ services:
       GEO_ADMIN_ACTOR_ID: ${GEO_ADMIN_ACTOR_ID:?set the staging acceptance owner identity}
       GEO_ADMIN_TENANT_ID: ${GEO_ADMIN_TENANT_ID:?set the staging acceptance tenant}
 
+  # Workflow C fails closed unless the API can verify the same artifact
+  # keyring canaries registered by migrate and can stage governed manual
+  # evidence in the restricted bucket. Local acceptance credentials remain
+  # file-mounted; production uses separate writer/reader/deleter principals.
+  internal-api:
+    environment:
+      GEO_DEPLOYMENT_ENVIRONMENT: staging
+      GEO_SECRET_STORE_MASTER_KEYRING_FILE: /run/geo-staging-secrets/secret-store-keyring.json
+      GEO_SECRET_STORE_REQUEST_HASH_KEY_FILE: /run/geo-staging-secrets/secret-request-hash-key
+      GEO_WORKFLOW_C_ARTIFACT_KEYRING_FILE: /run/geo-staging-secrets/workflow-c-artifact-keyring.json
+      GEO_WORKFLOW_C_ARTIFACT_OBJECT_STORE_ENDPOINT: http://minio:9000
+      GEO_WORKFLOW_C_ARTIFACT_OBJECT_STORE_BUCKET: geo-restricted-workflow-c-artifacts
+      GEO_WORKFLOW_C_ARTIFACT_OBJECT_STORE_ACCESS_KEY_FILE: /run/geo-staging-secrets/workflow-c-artifact-object-store-access-key
+      GEO_WORKFLOW_C_ARTIFACT_OBJECT_STORE_SECRET_KEY_FILE: /run/geo-staging-secrets/workflow-c-artifact-object-store-secret-key
+      GEO_WORKFLOW_C_ARTIFACT_OBJECT_STORE_AUTO_CREATE_BUCKET: "0"
+    volumes:
+      - ${GEO_STAGING_SECRET_STORE_MASTER_KEYRING_FILE:?set the staging Secret Store keyring path}:/run/geo-staging-secrets/secret-store-keyring.json:ro
+      - ${GEO_STAGING_SECRET_STORE_REQUEST_HASH_KEY_FILE:?set the staging Secret Store request hash key path}:/run/geo-staging-secrets/secret-request-hash-key:ro
+      - ${GEO_STAGING_WORKFLOW_C_ARTIFACT_KEYRING_FILE:?set the staging Workflow C artifact keyring path}:/run/geo-staging-secrets/workflow-c-artifact-keyring.json:ro
+      - ${GEO_STAGING_WORKFLOW_C_ARTIFACT_READER_ACCESS_KEY_FILE:?set the staging Workflow C local object-store access key path}:/run/geo-staging-secrets/workflow-c-artifact-object-store-access-key:ro
+      - ${GEO_STAGING_WORKFLOW_C_ARTIFACT_READER_SECRET_KEY_FILE:?set the staging Workflow C local object-store secret key path}:/run/geo-staging-secrets/workflow-c-artifact-object-store-secret-key:ro
+
   # These internal-only sinks make all three alert channels testable in staging
   # without relaying emails or webhook payloads to an external network.
   alert-smtp-relay:
@@ -98,3 +120,11 @@ services:
         condition: service_healthy
       alert-webhook-sink:
         condition: service_healthy
+
+  # Local staging secret files are mode 0600 and owned by the operator. The
+  # production overlays keep these workers on their fixed 10001 identities.
+  connector-worker:
+    user: "${GEO_DEV_HOST_UID:-1000}:${GEO_DEV_HOST_GID:-1000}"
+
+  browser-capture-worker:
+    user: "${GEO_DEV_HOST_UID:-1000}:${GEO_DEV_HOST_GID:-1000}"

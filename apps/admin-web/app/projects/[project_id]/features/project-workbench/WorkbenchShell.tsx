@@ -21,6 +21,8 @@ import { SyntheticLabWorkspace } from "../synthetic-lab/SyntheticLabWorkspace";
 import type { SyntheticWorkspaceData } from "../synthetic-lab/syntheticLabTypes";
 import { WorkflowCPanel } from "../workflow-c/WorkflowCWorkspace";
 import type { WorkflowCWorkspaceData } from "../workflow-c/workflowCTypes";
+import { ExternalOperationsWorkspace } from "../external-operations/ExternalOperationsWorkspace";
+import type { ExternalOperationsData } from "../external-operations/externalOperationsTypes";
 import { workbenchHref, workbenchTabs, type WorkbenchTab } from "./tabs";
 
 type Props = Readonly<{
@@ -35,6 +37,7 @@ type Props = Readonly<{
   secretData: SecretWorkspaceData | null;
   syntheticData: SyntheticWorkspaceData | null;
   workflowCData: WorkflowCWorkspaceData | null;
+  externalOperationsData: ExternalOperationsData | null;
   projectId: string;
 }>;
 
@@ -50,6 +53,7 @@ export function WorkbenchShell({
   secretData,
   syntheticData,
   workflowCData,
+  externalOperationsData,
   projectId
 }: Props) {
   const project = catalog.project.data;
@@ -155,6 +159,11 @@ export function WorkbenchShell({
             data={workflowCData}
             projectId={project.id}
           /> : <EmptyState text="正在准备测量与告警工作台。" />
+        ) : null}
+        {activeTab === "external-data" ? (
+          externalOperationsData
+            ? <ExternalOperationsWorkspace data={externalOperationsData} projectId={project.id} />
+            : <EmptyState text="正在准备外部数据与归因工作台。" />
         ) : null}
         {activeTab === "knowledge" ? (
           knowledgeData ? <KnowledgeWorkspace

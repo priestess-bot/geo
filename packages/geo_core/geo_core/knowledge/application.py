@@ -261,7 +261,8 @@ class KnowledgeApplication(
         return self._list(
             principal,
             project_id,
-            """SELECT id, project_id, source_kind, title, source_url, filename, media_type,
+            """SELECT id, project_id, logical_source_id, supersedes_source_id,
+                      source_kind, title, source_url, filename, media_type,
                       status, content_hash, error_code, error_detail,
                       octet_length(raw_content) AS content_bytes, created_at, updated_at
                FROM knowledge_sources WHERE project_id = %s

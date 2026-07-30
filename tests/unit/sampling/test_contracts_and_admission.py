@@ -48,32 +48,37 @@ def test_manual_suite_requires_at_least_three_repeats() -> None:
     assert suite.minimum_valid_repeats == 3
 
 
-def test_automated_ui_is_explicitly_ineligible_in_sampling_core() -> None:
-    with pytest.raises(SamplingRuleViolation, match="Browser/Egress"):
-        SamplingSourceStratum(
-            platform="google",
-            surface="ai-mode",
-            configured_model="not_reported",
-            reported_model="not_reported",
-            capture_method=CaptureMethod.AUTOMATED_UI,
-            adapter_release="surface-release-v1",
-            locale="en-AU",
-            region="AU",
-            language="en",
-            search_mode="enabled",
-            account_cohort="clean-account",
-            egress_policy_category="au-residential-v1",
-            location_control="country",
-            location_evidence_hash="a" * 64,
-            requested_country="AU",
-            requested_region=None,
-            requested_locale="en-AU",
-            requested_language="en",
-            effective_country="AU",
-            effective_region=None,
-            effective_locale=None,
-            effective_language=None,
-        )
+def test_automated_ui_freezes_stable_browser_and_egress_dimensions() -> None:
+    source = SamplingSourceStratum(
+        platform="google",
+        surface="google_ai_mode",
+        configured_model="not_applicable",
+        reported_model="not_applicable",
+        capture_method=CaptureMethod.AUTOMATED_UI,
+        adapter_release="surface-profile-release-v1",
+        locale="en-AU",
+        region="AU",
+        language="en",
+        search_mode="enabled",
+        account_cohort="clean_anonymous",
+        egress_policy_category="au-residential-cohort-v1",
+        location_control="country",
+        location_evidence_hash="a" * 64,
+        requested_country="AU",
+        requested_region=None,
+        requested_locale="en-AU",
+        requested_language="en",
+        effective_country="AU",
+        effective_region=None,
+        effective_locale=None,
+        effective_language=None,
+    )
+
+    assert source.capture_method is CaptureMethod.AUTOMATED_UI
+    with pytest.raises(SamplingRuleViolation, match="model identity"):
+        replace(source, configured_model="consumer-ui")
+    with pytest.raises(SamplingRuleViolation, match="egress cohort"):
+        replace(source, egress_policy_category="not_applicable")
 
 
 def test_api_stratum_uses_not_applicable_account_and_egress_dimensions() -> None:

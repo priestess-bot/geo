@@ -299,7 +299,7 @@ def test_admin_preserves_migrated_prompt_simulation_read_and_download_paths() ->
 def test_project_page_loads_geo_workspace_without_serial_catalog_waterfall() -> None:
     page = (GEO_ROOT.parent / "page.tsx").read_text(encoding="utf-8")
     start = page.index(
-        "const [catalog, invitations, members, geoData, knowledgeData, promptData, secretData, syntheticData, recommendationData, workflowCData] = await Promise.all"
+        "const [catalog, invitations, members, geoData, knowledgeData, promptData, secretData, syntheticData, recommendationData, workflowCData, externalOperationsData] = await Promise.all"
     )
     end = page.index(");", start)
     parallel_block = page[start:end]
@@ -311,6 +311,7 @@ def test_project_page_loads_geo_workspace_without_serial_catalog_waterfall() -> 
     assert "loadSyntheticLabWorkspace(projectId, query)" in parallel_block
     assert "loadRecommendationWorkspace(projectId, query)" in parallel_block
     assert "loadWorkflowCWorkspace(projectId, query)" in parallel_block
+    assert "loadExternalOperations(projectId)" in parallel_block
 
 
 def test_admin_geo_files_stay_below_refactor_size_limits() -> None:

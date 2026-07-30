@@ -295,6 +295,32 @@ def test_worker_keeps_failed_evaluation_as_non_admitted_terminal_result() -> Non
     assert store.completed["passed"] is False
 
 
+def test_worker_records_an_actionable_contract_failure_without_prompt_data() -> None:
+    claim, lease = _claim_and_lease()
+    store = _JobStore()
+
+    class ContractFailureExecutor:
+        def execute(self, **values: object) -> PromptTestCaseModelResult:
+            del values
+            raise PromptTestExecutionError("application output schema is incompatible")
+
+    response = PromptTestExecutionHandler(
+        store=store,  # type: ignore[arg-type]
+        repository=_ExecutionRepository(claim),
+        executor=ContractFailureExecutor(),  # type: ignore[arg-type]
+        artifacts=_ArtifactStore(),
+        lease_for=timedelta(seconds=30),
+    ).handle(lease)
+
+    assert response["status"] == "failed"
+    assert store.failed == "prompt_test_contract"
+    assert store.failure_details == {
+        "classification": "contract",
+        "failure_type": "PromptTestExecutionError",
+        "failure_detail": "application output schema is incompatible",
+    }
+
+
 def test_worker_propagates_cancellation_and_fences_stale_release() -> None:
     claim, lease = _claim_and_lease()
     cancelled = _JobStore(cancel=True)
@@ -542,6 +568,7 @@ class _JobStore:
         self.cancel = cancel
         self.completed: dict[str, object] = {}
         self.failed: str | None = None
+        self.failure_details: dict[str, object] = {}
 
     def heartbeat(self, lease: WorkerLease, *, lease_for: timedelta) -> None:
         del lease, lease_for
@@ -572,8 +599,9 @@ class _JobStore:
         details: Mapping[str, object],
         retry_delay: timedelta | None,
     ) -> str:
-        del lease, details, retry_delay
+        del lease, retry_delay
         self.failed = error_code
+        self.failure_details = dict(details)
         return "failed"
 
 

@@ -17,6 +17,8 @@ ServiceType = Literal[
     "workflow_c_maintenance_scheduler",
     "recommendation_artifact_maintenance_worker",
     "recommendation_artifact_maintenance_scheduler",
+    "connector_worker",
+    "browser_capture_worker",
 ]
 HeartbeatStatus = Literal["starting", "ready", "stopping", "failed"]
 

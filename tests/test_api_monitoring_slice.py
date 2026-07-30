@@ -365,11 +365,11 @@ def test_customer_openapi_has_only_read_operations_for_geo_routes() -> None:
     paths = app.openapi()["paths"]
     geo_paths = {path: item for path, item in paths.items() if "/geo/" in path}
 
-    # Legacy monitoring has seven read routes.  The eighth is the separate,
-    # independently-approved Workflow C report projection, which is likewise
-    # Customer-read-only and never exposes a raw observation.
-    assert len(geo_paths) == 8
+    # Legacy monitoring has seven read routes. Workflow C and external data add
+    # two independently approved, Customer-read-only projections.
+    assert len(geo_paths) == 9
     assert "/v1/projects/{project_id}/geo/workflow-c-reports" in geo_paths
+    assert "/v1/projects/{project_id}/geo/external-data" in geo_paths
     assert all(
         set(item) & {"post", "put", "patch", "delete"} == set() for item in geo_paths.values()
     )

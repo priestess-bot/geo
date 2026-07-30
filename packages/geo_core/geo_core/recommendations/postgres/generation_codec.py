@@ -29,6 +29,7 @@ from geo_core.recommendations.generation_contracts import (
     RecommendationGenerationResult,
     RecommendationGenerationSpec,
     ScopeLocator,
+    canonical_hash,
 )
 from geo_core.recommendations.generation_evidence import (
     GENERATION_EVIDENCE_CONTRACT_V1,
@@ -197,9 +198,11 @@ def generation_spec_from_payload(value: object) -> RecommendationGenerationSpec:
 def generation_result_payload(
     result: RecommendationGenerationResult,
 ) -> dict[str, object]:
+    workflow = workflow_payload(RecommendationWorkflow(result.recommendation))
     return {
-        "contract_version": "recommendation-generation-result-v2",
-        "workflow": workflow_payload(RecommendationWorkflow(result.recommendation)),
+        "contract_version": "recommendation-generation-result-v3",
+        "workflow": workflow,
+        "materialization": _generation_materialization(result, workflow),
         "model_call_ids": [str(value) for value in result.model_call_ids],
         "workflow_attempt_ids": [str(value) for value in result.workflow_attempt_ids],
         "insufficient_reasons": list(result.insufficient_reasons),
@@ -212,10 +215,11 @@ def generation_result_from_payload(value: object) -> RecommendationGenerationRes
     if contract_version not in {
         "recommendation-generation-result-v1",
         "recommendation-generation-result-v2",
+        "recommendation-generation-result-v3",
     }:
         raise ValueError("unsupported Recommendation generation result contract")
     workflow = workflow_from_payload(root.get("workflow"))
-    return RecommendationGenerationResult(
+    result = RecommendationGenerationResult(
         recommendation=workflow.recommendation,
         model_call_ids=tuple(
             UUID(str(item))
@@ -236,6 +240,46 @@ def generation_result_from_payload(value: object) -> RecommendationGenerationRes
             )
         ),
     )
+    if contract_version == "recommendation-generation-result-v3":
+        expected = _generation_materialization(
+            result,
+            workflow_payload(RecommendationWorkflow(result.recommendation)),
+        )
+        if root.get("materialization") != expected:
+            raise ValueError("Recommendation generation materialization changed")
+    return result
+
+
+def _generation_materialization(
+    result: RecommendationGenerationResult,
+    workflow: Mapping[str, object],
+) -> dict[str, object]:
+    recommendation = result.recommendation
+    return {
+        "workflow_payload_hash": canonical_hash(workflow),
+        "evidence_graph_hash": recommendation.evidence.graph_hash,
+        "input_fingerprint": recommendation.evidence.input_fingerprint,
+        "evidence_bindings": [
+            {
+                "ordinal": ordinal,
+                "evidence_kind": reference.ref_kind,
+                "resource_id": reference.resource_id,
+                "resource_version": reference.version,
+                "resource_hash": reference.sha256,
+                "locator": dict(reference.locator),
+                "input_versions": [
+                    {
+                        "kind": value.kind.value,
+                        "resource_id": value.resource_id,
+                        "version": value.version,
+                        "sha256": value.sha256,
+                    }
+                    for value in reference.input_versions()
+                ],
+            }
+            for ordinal, reference in enumerate(recommendation.evidence.all_refs)
+        ],
+    }
 
 
 def _evidence_from_payload(

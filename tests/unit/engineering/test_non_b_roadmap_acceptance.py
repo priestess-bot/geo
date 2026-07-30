@@ -23,13 +23,13 @@ def test_classification_resolves_every_roadmap_id_without_local_gaps() -> None:
     register = build_register(policy_path=DEFAULT_POLICY, output=DEFAULT_OUTPUT)
 
     assert register["summary"] == {
-        "all": 319,
+        "all": 322,
         "templates": 13,
-        "excluded_b": 47,
+        "excluded_b": 49,
         "mixed_atomic": 68,
-        "included_non_b": 259,
+        "included_non_b": 260,
         "local_gap": 0,
-        "ready_for_review": 83,
+        "ready_for_review": 84,
         "blocked_external": 176,
     }
     checks = {item["check_id"]: item for item in register["checks"]}
@@ -47,6 +47,15 @@ def test_classification_resolves_every_roadmap_id_without_local_gaps() -> None:
         item["path"].endswith("pack-09-dify-style-recommendation-evidence.md")
         for item in migrated["evidence_refs"]
     )
+    advinsys = checks["IMPL-ADVINSYS-NONB-PATHS-LOCAL-2026-07-29"]
+    assert advinsys["acceptance_status"] == "READY_FOR_REVIEW"
+    assert any(
+        item["path"].endswith("advinsys-production-path-validation-2026-07-29.md")
+        for item in advinsys["evidence_refs"]
+    )
+    assert checks["IMPL-B-ADVINSYS-VALIDATION-CANARY-2026-07-29"][
+        "scope_disposition"
+    ] == "EXCLUDED_B_FOR_CURRENT_ITERATION"
     assert all(item["fixture_is_not_live"] is True for item in checks.values())
 
 
@@ -56,31 +65,39 @@ def test_exported_register_is_source_and_hash_bound(tmp_path: Path) -> None:
     verified = verify_register(policy_path=DEFAULT_POLICY, register_path=output)
 
     assert verified["register_hash"] == written["register_hash"]
-    assert verified["check_count"] == 319
+    assert verified["check_count"] == 322
     assert len(written["source_identity"]["tree_fingerprint"]) == 64
 
 
-def test_source_fingerprint_excludes_a_tracked_register(
-    monkeypatch: pytest.MonkeyPatch,
+def test_source_fingerprint_excludes_register_and_is_commit_independent(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     calls: list[list[str]] = []
+    source = tmp_path / "source.txt"
+    source.write_text("stable source\n", encoding="utf-8")
+    output = tmp_path / "register.json"
 
-    def check_output(command: list[str], **kwargs: object) -> str | bytes:
+    def check_output(command: list[str], **kwargs: object) -> bytes:
         calls.append(command)
-        return f"{'a' * 40}\n" if kwargs.get("text") else b""
+        del kwargs
+        return b"register.json\0source.txt\0"
 
+    monkeypatch.setattr(acceptance, "ROOT", tmp_path)
     monkeypatch.setattr(acceptance.subprocess, "check_output", check_output)
 
-    identity = acceptance._source_identity(output=DEFAULT_OUTPUT)
+    identity = acceptance._source_identity(output=output)
 
-    exclusion = ":(exclude)docs/engineering/execution-packs/pack-08-acceptance-register.json"
-    assert calls[0] == ["git", "rev-parse", "HEAD"]
-    assert all(call[-3:] == ["--", ".", exclusion] for call in calls[1:])
-    assert identity == {
-        "head_commit": "a" * 40,
-        "tree_state": "clean",
-        "tree_fingerprint": acceptance.hashlib.sha256(b"").hexdigest(),
-    }
+    assert calls == [
+        ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", "."]
+    ]
+    assert identity["identity_method"] == "repository-content-v2"
+    assert identity["file_count"] == "1"
+    assert len(identity["tree_fingerprint"]) == 64
+
+    source.write_text("changed source\n", encoding="utf-8")
+    assert acceptance._source_identity(output=output)["tree_fingerprint"] != identity[
+        "tree_fingerprint"
+    ]
 
 
 def test_unknown_classification_id_fails_closed(tmp_path: Path) -> None:

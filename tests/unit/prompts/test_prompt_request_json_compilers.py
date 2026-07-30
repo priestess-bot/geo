@@ -106,6 +106,36 @@ def test_workspace_context_slot_renders_from_the_frozen_request_json() -> None:
     ) in rendered.compiled_user
 
 
+def test_workspace_does_not_require_absent_optional_arbiter_compatibility_fields() -> None:
+    spec = default_prompt_bootstrap_spec(ProgramKind.ARBITER)
+    fixture = fixture_for(spec.fixtures, EvalScenario.POSITIVE)
+    draft = spec.compile_draft(project_id=PROJECT_ID, owner_id=OWNER_ID)
+    release = draft.release.compile(
+        id=uuid4(),
+        program=draft.program,
+        version=2,
+        system_template=draft.release.system_template,
+        user_template=draft.release.user_template,
+        schemas=workspace_schema_contract(draft.release),
+        model_policy=draft.release.model_policy,
+        test_set_id=draft.release.test_set_id,
+        test_set_version=draft.release.test_set_version,
+        test_set_hash=draft.release.test_set_hash,
+        compiler_version=draft.release.compiler_version,
+    )
+
+    rendered = render_program_release(
+        release=release,
+        variables={"request_json": json.dumps(thaw_mapping(fixture.input_value))},
+    )
+
+    required = set(release.schemas.variable_schema["required"])
+    assert "candidate_payloads" not in required
+    assert "arbiter_context_json" not in required
+    assert "evaluator_results" in required
+    assert "<request_json>" in rendered.compiled_user
+
+
 def test_v2_request_json_delimiter_breakout_is_safe_canonical_and_recoverable() -> None:
     spec = default_prompt_bootstrap_spec(ProgramKind.GENERATION)
     release = spec.compile_draft(project_id=PROJECT_ID, owner_id=OWNER_ID).release

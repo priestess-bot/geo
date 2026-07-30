@@ -6,7 +6,12 @@ from pathlib import Path
 import pytest
 
 from scripts.geo_acceptance.contracts import AcceptanceConfig, CHANNELS
-from scripts.provision_advinsys_project import entity_request, expected_summary, load_manifest
+from scripts.provision_advinsys_project import (
+    entity_request,
+    expected_summary,
+    load_manifest,
+    select_project,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,6 +55,34 @@ def test_catalog_entity_request_excludes_manifest_only_query_configuration() -> 
         "attributes": product["attributes"],
     }
     assert "queries" not in request
+
+
+def test_project_selection_requires_an_id_when_display_names_are_ambiguous() -> None:
+    projects = [
+        {"id": "00000000-0000-4000-8000-000000000001", "name": "ADVINSYS Australia"},
+        {"id": "00000000-0000-4000-8000-000000000002", "name": "ADVINSYS Australia"},
+    ]
+
+    with pytest.raises(ValueError, match="pass --project-id explicitly"):
+        select_project(projects, project_name="ADVINSYS Australia")
+    assert select_project(
+        projects,
+        project_name="ADVINSYS Australia",
+        project_id="00000000-0000-4000-8000-000000000002",
+    ) == projects[1]
+
+
+def test_project_selection_rejects_an_id_with_the_wrong_name() -> None:
+    projects = [
+        {"id": "00000000-0000-4000-8000-000000000001", "name": "Another project"}
+    ]
+
+    with pytest.raises(ValueError, match="expected 'ADVINSYS Australia'"):
+        select_project(
+            projects,
+            project_name="ADVINSYS Australia",
+            project_id="00000000-0000-4000-8000-000000000001",
+        )
 
 
 def test_controlled_acceptance_cannot_claim_a_real_public_url_or_run_in_production() -> None:

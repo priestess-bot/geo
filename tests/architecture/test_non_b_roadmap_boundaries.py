@@ -56,12 +56,3 @@ def test_non_b_roadmap_packages_do_not_cross_into_excluded_workstreams() -> None
                 offenders[path.relative_to(ROOT).as_posix()] = forbidden
 
     assert offenders == {}
-
-
-def test_non_b_roadmap_packages_cannot_create_browser_automation_modules() -> None:
-    forbidden_paths = (
-        CORE / "browser_capture",
-        CORE / "attribution",
-        CORE / "connectors",
-    )
-    assert not any(path.exists() for path in forbidden_paths)

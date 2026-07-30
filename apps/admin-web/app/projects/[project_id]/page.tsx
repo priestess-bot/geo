@@ -12,6 +12,7 @@ import { loadRecommendationWorkspace } from "./features/recommendations/recommen
 import { loadSecretWorkspace } from "./features/secret-store/secretStoreData";
 import { loadSyntheticLabWorkspace } from "./features/synthetic-lab/syntheticLabData";
 import { loadWorkflowCWorkspace } from "./features/workflow-c/workflowCData";
+import { loadExternalOperations } from "./features/external-operations/externalOperationsData";
 
 // Project workspaces contain per-request identity and membership state.
 export const dynamic = "force-dynamic";
@@ -31,7 +32,7 @@ export default async function ProjectDetailPage({
     searchParams || Promise.resolve({})
   ]);
   const activeTab = normalizeWorkbenchTab(queryValue(query, "tab"));
-  const [catalog, invitations, members, geoData, knowledgeData, promptData, secretData, syntheticData, recommendationData, workflowCData] = await Promise.all([
+  const [catalog, invitations, members, geoData, knowledgeData, promptData, secretData, syntheticData, recommendationData, workflowCData, externalOperationsData] = await Promise.all([
     loadCatalog(projectId),
     loadProjectInvitations(projectId),
     loadProjectMembers(projectId),
@@ -41,7 +42,8 @@ export default async function ProjectDetailPage({
     activeTab === "secrets" ? loadSecretWorkspace(projectId, query) : Promise.resolve(null),
     activeTab === "synthetic-lab" ? loadSyntheticLabWorkspace(projectId, query) : Promise.resolve(null),
     activeTab === "recommendations" ? loadRecommendationWorkspace(projectId, query) : Promise.resolve(null),
-    activeTab === "measurement" ? loadWorkflowCWorkspace(projectId, query) : Promise.resolve(null)
+    activeTab === "measurement" ? loadWorkflowCWorkspace(projectId, query) : Promise.resolve(null),
+    activeTab === "external-data" ? loadExternalOperations(projectId) : Promise.resolve(null)
   ]);
   if (catalog.project.problem?.status === 401) redirect("/login");
   if (workflowCData?.alerts.problem?.status === 401) redirect("/login");
@@ -58,6 +60,7 @@ export default async function ProjectDetailPage({
     secretData={secretData}
     syntheticData={syntheticData}
     workflowCData={workflowCData}
+    externalOperationsData={externalOperationsData}
     projectId={projectId}
   />;
 }

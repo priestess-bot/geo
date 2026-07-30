@@ -2,14 +2,14 @@
   "schema_version": "non-b-acceptance-classification-v1",
   "roadmap": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
   "expected_counts": {
-    "all": 319,
+    "all": 322,
     "templates": 13,
     "acceptance": 218,
-    "implementation_ledger": 88,
-    "roadmap_checked": 94,
-    "excluded_b": 47,
+    "implementation_ledger": 91,
+    "roadmap_checked": 113,
+    "excluded_b": 49,
     "mixed_atomic": 68,
-    "included_non_b": 259
+    "included_non_b": 260
   },
   "excluded_b_ids": [
     "B-CONTRACT-01",
@@ -58,7 +58,9 @@
     "STAT-UI-AC-01",
     "PLAN-FINAL-02",
     "PLAN-FINAL-06",
-    "IMPL-B-SEARCH-AGGREGATION-PROTOTYPE-2026-07-24"
+    "IMPL-B-SEARCH-AGGREGATION-PROTOTYPE-2026-07-24",
+    "IMPL-B-CORE-MVP-LOCAL-2026-07-28",
+    "IMPL-B-ADVINSYS-VALIDATION-CANARY-2026-07-29"
   ],
   "mixed_atomic_ids": [
     "FND-VIS-01",
@@ -137,6 +139,14 @@
     "IMPL-SYNTHETIC-RETENTION-PROJECT-SCOPE-2026-07-23"
   ],
   "evidence_groups": [
+    {
+      "prefixes": [
+        "IMPL-ADVINSYS-NONB-PATHS-LOCAL-2026-07-29"
+      ],
+      "paths": [
+        "docs/operations/advinsys-production-path-validation-2026-07-29.md"
+      ]
+    },
     {
       "prefixes": [
         "IMPL-DIFY-STYLE-PROFILE-RECOMMENDATION-2026-07-28"

@@ -1,0 +1,115 @@
+services:
+  connector-artifact-bootstrap:
+    image: ${GEO_MINIO_MC_IMAGE:?set a digest-pinned GEO_MINIO_MC_IMAGE}
+    restart: "no"
+    init: true
+    read_only: true
+    user: "10001:10001"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 128
+    tmpfs:
+      - /tmp:size=64m,mode=0700,noexec,nosuid,nodev
+    entrypoint: ["/bin/sh", "/bootstrap/bootstrap-isolated-writer.sh"]
+    environment:
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ROOT_USER_FILE: /run/secrets/minio_root_user
+      MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_root_password
+      ISOLATED_BUCKET: geo-connector-raw
+      ISOLATED_PREFIX: connectors/
+      ISOLATED_POLICY_NAME: geo-connector-writer-v1
+      ISOLATED_WRITER_ACCESS_KEY_FILE: /run/secrets/connector_artifact_writer_access_key
+      ISOLATED_WRITER_SECRET_KEY_FILE: /run/secrets/connector_artifact_writer_secret_key
+      ISOLATED_RECEIPT_NAME: connector-artifact-policy
+      ISOLATED_RETENTION_DAYS: ${GEO_CONNECTOR_ARTIFACT_RETENTION_DAYS:-90}
+    secrets:
+      - minio_root_user
+      - minio_root_password
+      - connector_artifact_writer_access_key
+      - connector_artifact_writer_secret_key
+    volumes:
+      - ./minio:/bootstrap:ro
+    networks:
+      - backend
+    depends_on:
+      minio:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+          pids: 128
+
+  connector-worker:
+    image: ${GEO_CONNECTOR_WORKER_IMAGE:?set a digest-pinned Connector Worker image}
+    restart: unless-stopped
+    init: true
+    read_only: true
+    user: "10001:10001"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 512
+    tmpfs:
+      - /tmp:size=2g,mode=0700,noexec,nosuid,nodev
+    environment:
+      GEO_DEPLOYMENT_ENVIRONMENT: production
+      GEO_RELEASE_COMMIT: ${GEO_RELEASE_COMMIT:?set the current 40-character Git commit}
+      GEO_DATABASE_URL_FILE: /run/secrets/connector_worker_database_url
+      GEO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
+      GEO_CONNECTOR_SERVICE_IDENTITY_ID: ${GEO_CONNECTOR_SERVICE_IDENTITY_ID:?set the provisioned connector_worker identity}
+      GEO_SECRET_STORE_MASTER_KEYRING_FILE: /run/secrets/secret_store_master_keyring
+      GEO_SECRET_STORE_REQUEST_HASH_KEY_FILE: /run/secrets/secret_store_request_hash_key
+      GEO_CONNECTOR_ARTIFACT_KEY_FILE: /run/secrets/connector_artifact_key
+      GEO_CONNECTOR_ARTIFACT_KEY_REFERENCE: ${GEO_CONNECTOR_ARTIFACT_KEY_REFERENCE:?set the active Connector artifact key reference}
+      GEO_CONNECTOR_ARTIFACT_RETENTION_DAYS: ${GEO_CONNECTOR_ARTIFACT_RETENTION_DAYS:-90}
+      GEO_CONNECTOR_ARTIFACT_OBJECT_STORE_ENDPOINT: http://minio:9000
+      GEO_CONNECTOR_ARTIFACT_OBJECT_STORE_BUCKET: geo-connector-raw
+      GEO_CONNECTOR_ARTIFACT_OBJECT_STORE_REGION: ${GEO_OBJECT_STORE_REGION:-us-east-1}
+      GEO_CONNECTOR_ARTIFACT_OBJECT_STORE_AUTO_CREATE_BUCKET: "0"
+      GEO_CONNECTOR_ARTIFACT_OBJECT_STORE_ACCESS_KEY_FILE: /run/secrets/connector_artifact_writer_access_key
+      GEO_CONNECTOR_ARTIFACT_OBJECT_STORE_SECRET_KEY_FILE: /run/secrets/connector_artifact_writer_secret_key
+    secrets:
+      - connector_worker_database_url
+      - connector_artifact_key
+      - connector_artifact_writer_access_key
+      - connector_artifact_writer_secret_key
+      - secret_store_master_keyring
+      - secret_store_request_hash_key
+    command: ["python", "-m", "geo_connector_worker.entrypoint"]
+    networks:
+      - backend
+      - egress
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      connector-artifact-bootstrap:
+        condition: service_completed_successfully
+      valkey:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "from pathlib import Path; assert b'dramatiq' in Path('/proc/1/cmdline').read_bytes() and Path('/tmp/geo-worker-ready').is_file()"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 4G
+          pids: 512
+
+secrets:
+  connector_worker_database_url:
+    file: ${GEO_CONNECTOR_WORKER_DATABASE_URL_FILE:?set Connector Worker database URL file}
+  connector_artifact_key:
+    file: ${GEO_CONNECTOR_ARTIFACT_KEY_FILE:?set Connector artifact key file}
+  connector_artifact_writer_access_key:
+    file: ${GEO_CONNECTOR_ARTIFACT_WRITER_ACCESS_KEY_FILE:?set Connector artifact writer access key file}
+  connector_artifact_writer_secret_key:
+    file: ${GEO_CONNECTOR_ARTIFACT_WRITER_SECRET_KEY_FILE:?set Connector artifact writer secret key file}

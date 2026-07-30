@@ -1,0 +1,15 @@
+DROP FUNCTION geo_enqueue_connector_sync(uuid, uuid, integer, text, jsonb, integer);
+DROP TABLE connector_job_specs;
+DROP TABLE connector_ga4_projection_rows;
+DROP TABLE connector_gsc_projection_rows;
+DROP TABLE connector_errors;
+DROP TABLE connector_freshness;
+DROP TABLE connector_projection_batches;
+DROP TABLE connector_schema_versions;
+DROP TABLE connector_raw_artifacts;
+ALTER TABLE connector_checkpoints DROP CONSTRAINT connector_checkpoints_run_fkey;
+DROP TABLE connector_sync_runs;
+DROP TABLE connector_checkpoints;
+DROP TABLE connector_scopes;
+DROP TABLE connector_connections;
+DROP TABLE connector_definitions;

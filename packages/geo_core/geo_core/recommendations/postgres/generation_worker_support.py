@@ -177,6 +177,22 @@ def assert_fenced_lease(connection: Any, lease: WorkerLease) -> None:
         raise JobCancellationRequested("Recommendation Job cancellation was requested")
 
 
+def materialize_generated_draft(connection: Any, lease: WorkerLease) -> None:
+    row = connection.execute(
+        """SELECT geo_materialize_recommendation_generation_draft(
+                   %s, %s, %s, %s
+               ) AS materialized""",
+        (
+            lease.project_id,
+            lease.job_id,
+            lease.lease_token,
+            lease.fencing_generation,
+        ),
+    ).fetchone()
+    if row is None or row["materialized"] is not True:
+        raise LostJobLease("Recommendation generated draft was not materialized")
+
+
 def enqueue_outbox(
     connection: Any,
     *,
@@ -211,6 +227,7 @@ __all__ = [
     "assert_fenced_lease",
     "assert_task_lease",
     "enqueue_outbox",
+    "materialize_generated_draft",
     "model_task",
     "recoverable_result_ref",
     "require_parent_kind",

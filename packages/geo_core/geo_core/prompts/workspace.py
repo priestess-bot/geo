@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from types import MappingProxyType
+from collections.abc import Sequence
 from typing import Literal, Mapping
 from uuid import UUID
 
@@ -233,6 +234,7 @@ def workspace_schema_contract(
     """
 
     input_properties = release.schemas.input_schema.get("properties", {})
+    input_required = release.schemas.input_schema.get("required", [])
     properties: dict[str, object] = {
         "request_json": {"type": "string", "minLength": 2, "maxLength": 100_000}
     }
@@ -244,7 +246,18 @@ def workspace_schema_contract(
             "type": "object",
             "properties": properties,
             "required": (
-                list(properties) if require_context_slots else ["request_json"]
+                [
+                    "request_json",
+                    *(
+                        str(key)
+                        for key in input_required
+                        if isinstance(key, str) and key in properties
+                    ),
+                ]
+                if require_context_slots
+                and isinstance(input_required, Sequence)
+                and not isinstance(input_required, (str, bytes, bytearray))
+                else ["request_json"]
             ),
             "additionalProperties": False,
         },

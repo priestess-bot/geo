@@ -116,13 +116,15 @@ def test_runtime_readiness_accepts_a_complete_explicitly_durable_set() -> None:
     assert asyncio.run(readiness.check()).ready
 
 
-def test_production_internal_ready_reports_all_missing_runtimes_in_stable_order(
+@pytest.mark.parametrize("deployment_environment", ("production", "staging"))
+def test_deployed_internal_ready_reports_all_missing_runtimes_in_stable_order(
     monkeypatch: pytest.MonkeyPatch,
+    deployment_environment: str,
 ) -> None:
     _disable_default_non_b_builders(monkeypatch)
     app = create_api_app(
         surface="internal",
-        settings=ApiSettings(deployment_environment="production"),
+        settings=ApiSettings(deployment_environment=deployment_environment),
         services=CONFIGURED_SERVICES,
         readiness_service=_Ready(),
         prompt_program_application=_UntrustedRuntime(),
@@ -138,11 +140,14 @@ def test_production_internal_ready_reports_all_missing_runtimes_in_stable_order(
     assert "_UntrustedRuntime" not in rendered
 
 
-def test_production_internal_ready_accepts_explicit_durable_injections() -> None:
+@pytest.mark.parametrize("deployment_environment", ("production", "staging"))
+def test_deployed_internal_ready_accepts_explicit_durable_injections(
+    deployment_environment: str,
+) -> None:
     durable = _TaggedRuntime(persistence="durable")
     app = create_api_app(
         surface="internal",
-        settings=ApiSettings(deployment_environment="production"),
+        settings=ApiSettings(deployment_environment=deployment_environment),
         services=CONFIGURED_SERVICES,
         readiness_service=_Ready(),
         prompt_program_application=durable,

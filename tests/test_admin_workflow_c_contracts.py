@@ -59,9 +59,18 @@ def test_sampling_keeps_a_fixed_denominator_and_supported_capture_methods() -> N
     for label in ["已规划", "有效", "无效", "缺失", "有效完成度"]:
         assert f'label="{label}"' in panel
     assert "denominator_hash" in panel
-    assert '"provider_api" | "proxy_grounded_api" | "manual_ui"' in types
-    assert 'new Set(["provider_api", "proxy_grounded_api", "manual_ui"])' in guards
-    assert "automated_ui" not in feature_source()
+    assert (
+        '"provider_api" | "proxy_grounded_api" | "manual_ui" | "automated_ui"'
+        in types
+    )
+    assert "const captureMethods = new Set([" in guards
+    for capture_method in (
+        "provider_api",
+        "proxy_grounded_api",
+        "manual_ui",
+        "automated_ui",
+    ):
+        assert f'"{capture_method}"' in guards
     assert '"lease_token", "lease_owner", "lease_expires_at", "fencing_generation"' in guards
     assert "lease_token" not in panel
     assert "lease_owner" not in panel

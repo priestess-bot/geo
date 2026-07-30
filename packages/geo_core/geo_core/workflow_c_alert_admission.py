@@ -26,6 +26,8 @@ from geo_core.workflow_c_alert_inputs import (
     _completion_input,
     _drift_input,
     _drift_source,
+    _external_health_input,
+    _external_health_source,
     _negative_question_input,
     _row,
     _semantic_source,
@@ -204,6 +206,12 @@ class PostgresWorkflowCAlertAdmissionRepository:
             return _negative_question_input(
                 _comparison_source(connection, project_id, selector.source_hash),
                 parameters=parameters,
+                selector=selector,
+                project_id=project_id,
+            )
+        if kind is AlertRuleKind.EXTERNAL_HEALTH:
+            return _external_health_input(
+                _external_health_source(connection, project_id, selector.source_hash),
                 selector=selector,
                 project_id=project_id,
             )

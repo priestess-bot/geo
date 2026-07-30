@@ -128,6 +128,12 @@ def _valid_environment(tmp_path: Path) -> dict[str, str]:
         base64.b64encode(b"H" * 32).decode("ascii"),
         encoding="ascii",
     )
+    Path(values["GEO_CONNECTOR_ARTIFACT_KEY_FILE"]).write_text(
+        base64.b64encode(b"C" * 32).decode("ascii"), encoding="ascii"
+    )
+    Path(values["GEO_BROWSER_ARTIFACT_KEY_FILE"]).write_text(
+        base64.b64encode(b"U" * 32).decode("ascii"), encoding="ascii"
+    )
     values.update(
         {
             field: "https://service.example.com/path" for field in HTTPS_URL_FIELDS
@@ -156,6 +162,7 @@ def _valid_environment(tmp_path: Path) -> dict[str, str]:
             "GEO_JWT_AUDIENCE": "geo-admin",
             "GEO_ADMIN_OIDC_ALLOWED_ORIGINS": "https://auth.example.com",
             "GEO_RELEASE_VERSION": "2026.07.19-rc1",
+            "GEO_RELEASE_COMMIT": "a" * 40,
             "GEO_BACKUP_ROOT": str(backup_root),
             "GEO_BACKUP_MINIO_STAGING_SIZE": "8g",
             "GEO_RESTORE_TMPFS_ROOT": str(restore_tmpfs_root),
@@ -174,6 +181,12 @@ def _valid_environment(tmp_path: Path) -> dict[str, str]:
             "GEO_RUNTIME_EXPECTED_WORKFLOW_C_MAINTENANCE_WORKER_INSTANCES": "1",
             "GEO_MODEL_GATEWAY_WORKER_SERVICE_IDENTITY_ID": "d9e70000-0000-0000-0000-000000000001",
             "GEO_STYLE_COLLECTION_SERVICE_IDENTITY_ID": "d9e70000-0000-0000-0000-000000000002",
+            "GEO_CONNECTOR_SERVICE_IDENTITY_ID": "d9e70000-0000-0000-0000-000000000006",
+            "GEO_BROWSER_CAPTURE_SERVICE_IDENTITY_ID": "d9e70000-0000-0000-0000-000000000007",
+            "GEO_CONNECTOR_ARTIFACT_KEY_REFERENCE": "connector-artifact:v1",
+            "GEO_BROWSER_ARTIFACT_KEY_REFERENCE": "browser-artifact:v1",
+            "GEO_CONNECTOR_ARTIFACT_RETENTION_DAYS": "90",
+            "GEO_BROWSER_ARTIFACT_RETENTION_DAYS": "30",
             "GEO_RESTORE_PROBE_SERVICE_IDENTITY_ID": "d9e70000-0000-0000-0000-000000000003",
             "GEO_RESTORE_SECRET_REFERENCE_ID": "d9e70000-0000-0000-0000-000000000004",
             "GEO_RESTORE_SECRET_PROJECT_ID": "d9e70000-0000-0000-0000-000000000005",

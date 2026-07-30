@@ -68,7 +68,7 @@ class KnowledgeRagSourceApplicationMixin:
                 )
             previous = _one(
                 connection.execute(
-                    """SELECT id, logical_source_id, status
+                    """SELECT id, logical_source_id, status, error_code
                        FROM knowledge_sources
                        WHERE id = %s AND project_id = %s FOR UPDATE""",
                     (source_id, project_id),
@@ -76,7 +76,11 @@ class KnowledgeRagSourceApplicationMixin:
             )
             if previous is None:
                 raise KnowledgeNotFound("Knowledge source does not exist")
-            if previous["status"] != "ready":
+            revision_required = (
+                previous["status"] == "failed"
+                and previous["error_code"] == "KnowledgeSourceRevisionRequired"
+            )
+            if previous["status"] != "ready" and not revision_required:
                 raise KnowledgeConflict("only a ready Knowledge source can create a revision")
             logical_source_id = previous["logical_source_id"] or previous["id"]
             successor = _one(

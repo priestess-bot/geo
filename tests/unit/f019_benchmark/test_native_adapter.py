@@ -141,6 +141,89 @@ def test_native_adapter_drops_and_hashes_one_invalid_candidate() -> None:
     assert len(finding.candidate_hash) == 64
 
 
+def test_native_adapter_drops_relation_whose_endpoint_is_not_an_entity() -> None:
+    output = _output()
+    output["relations"] = [
+        *output["relations"],
+        {
+            "subject": "A1",
+            "predicate": "uses_channel",
+            "object": "每分钟 2 升",
+            "source_quote": "A1 的流量为每分钟 2 升。",
+        },
+    ]
+
+    graph = ProjectNativeRagAdapterV1(FakeInvoker(output)).extract((_document(),))
+
+    assert len(graph.relations) == 2
+    assert any(
+        item.candidate_kind == "relation"
+        and item.reason_code == "relation_endpoint_not_an_entity"
+        for item in graph.validation_findings
+    )
+
+
+def test_native_adapter_keeps_one_type_for_an_ambiguous_entity_name() -> None:
+    output = _output()
+    output["entities"] = [
+        *output["entities"],
+        {"entity_type": "Feature", "name": "A1", "source_quote": "A1"},
+    ]
+
+    graph = ProjectNativeRagAdapterV1(FakeInvoker(output)).extract((_document(),))
+
+    assert [(item.entity_type, item.name) for item in graph.entities].count(
+        ("Product", "A1")
+    ) == 1
+    assert not any(item.entity_type == "Feature" and item.name == "A1" for item in graph.entities)
+    assert any(
+        item.candidate_kind == "entity" and item.reason_code == "ambiguous_entity_name"
+        for item in graph.validation_findings
+    )
+
+
+def test_native_adapter_resolves_entity_type_ambiguity_across_documents() -> None:
+    class CrossDocumentInvoker(FakeInvoker):
+        def complete_json(self, **kwargs) -> Mapping[str, object]:
+            messages = kwargs["messages"]
+            if "A1 is presented as a feature." in messages[1]["content"]:
+                return {
+                    "facts": [
+                        {
+                            "text": "A1 is presented as a feature.",
+                            "source_quote": "A1 is presented as a feature.",
+                        }
+                    ],
+                    "entities": [
+                        {"entity_type": "Feature", "name": "A1", "source_quote": "A1"}
+                    ],
+                    "relations": [],
+                }
+            return super().complete_json(**kwargs)
+
+    second = RagSourceDocument(
+        "doc-2",
+        "project-1",
+        "A1 feature fragment",
+        "A1 is presented as a feature.",
+        "source://doc-2",
+    )
+
+    graph = ProjectNativeRagAdapterV1(CrossDocumentInvoker(_output())).extract(
+        (_document(), second)
+    )
+
+    assert [(item.entity_type, item.name) for item in graph.entities].count(
+        ("Product", "A1")
+    ) == 1
+    assert not any(item.entity_type == "Feature" and item.name == "A1" for item in graph.entities)
+    assert not any(item.subject == "A1" or item.object == "A1" for item in graph.relations)
+    assert {
+        "ambiguous_entity_name_across_documents",
+        "ambiguous_relation_endpoint_across_documents",
+    } <= {item.reason_code for item in graph.validation_findings}
+
+
 def test_native_adapter_rejects_question_plan_outside_batch() -> None:
     plan = QuestionPlan(
         "missing",

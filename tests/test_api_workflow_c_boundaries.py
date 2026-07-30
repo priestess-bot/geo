@@ -86,7 +86,7 @@ def test_default_internal_mount_is_discoverable_but_fails_closed_without_durable
     assert response.json()["type"] == "urn:geo:problem:workflow-c-unavailable"
 
 
-def test_workflow_c_openapi_excludes_automated_ui_and_b_workflow_commands() -> None:
+def test_workflow_c_openapi_accepts_automated_ui_but_excludes_b_workflow_commands() -> None:
     internal, api, _, _ = internal_app()
     schema = internal.openapi()
     capture_schema = schema["components"]["schemas"]["SamplingSourceStratumContract"]
@@ -109,6 +109,7 @@ def test_workflow_c_openapi_excludes_automated_ui_and_b_workflow_commands() -> N
         "provider_api",
         "proxy_grounded_api",
         "manual_ui",
+        "automated_ui",
     }
     assert api.persistence == "memory_test_only"
     assert {

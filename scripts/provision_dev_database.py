@@ -13,6 +13,8 @@ DEV_TENANT_ID = UUID("10000000-0000-4000-8000-000000000001")
 DEV_PROJECT_ID = UUID("20000000-0000-4000-8000-000000000002")
 DEV_IDENTITY_ID = UUID("30000000-0000-4000-8000-000000000003")
 MODEL_GATEWAY_WORKER_IDENTITY_ENV = "GEO_MODEL_GATEWAY_WORKER_SERVICE_IDENTITY_ID"
+CONNECTOR_WORKER_IDENTITY_ENV = "GEO_CONNECTOR_SERVICE_IDENTITY_ID"
+BROWSER_CAPTURE_WORKER_IDENTITY_ENV = "GEO_BROWSER_CAPTURE_SERVICE_IDENTITY_ID"
 
 
 def required(name: str) -> str:
@@ -114,6 +116,28 @@ def provision_model_gateway_worker(
         raise RuntimeError("Model Gateway Worker service identity provisioning failed")
 
 
+def provision_connector_worker(
+    cursor: psycopg.Cursor[tuple[object, ...]], *, identity_id: UUID
+) -> None:
+    row = cursor.execute(
+        "SELECT geo_provision_service_identity(%s, 'connector_worker', clock_timestamp())",
+        (identity_id,),
+    ).fetchone()
+    if row != (identity_id,):
+        raise RuntimeError("Connector Worker service identity provisioning failed")
+
+
+def provision_browser_capture_worker(
+    cursor: psycopg.Cursor[tuple[object, ...]], *, identity_id: UUID
+) -> None:
+    row = cursor.execute(
+        "SELECT geo_provision_service_identity(%s, 'browser_capture_worker', clock_timestamp())",
+        (identity_id,),
+    ).fetchone()
+    if row != (identity_id,):
+        raise RuntimeError("Browser Capture Worker service identity provisioning failed")
+
+
 def main() -> None:
     database_url = required("GEO_DATABASE_URL")
     with psycopg.connect(database_url) as connection:
@@ -135,6 +159,12 @@ def main() -> None:
             worker_identity = optional_uuid(MODEL_GATEWAY_WORKER_IDENTITY_ENV)
             if worker_identity is not None:
                 provision_model_gateway_worker(cursor, identity_id=worker_identity)
+            connector_identity = optional_uuid(CONNECTOR_WORKER_IDENTITY_ENV)
+            if connector_identity is not None:
+                provision_connector_worker(cursor, identity_id=connector_identity)
+            browser_identity = optional_uuid(BROWSER_CAPTURE_WORKER_IDENTITY_ENV)
+            if browser_identity is not None:
+                provision_browser_capture_worker(cursor, identity_id=browser_identity)
 
 
 if __name__ == "__main__":

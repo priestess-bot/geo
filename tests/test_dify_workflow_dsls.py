@@ -64,6 +64,13 @@ def test_dify_workflow_manifest_and_dsl_contracts_are_frozen() -> None:
             )
             assert "copied verbatim from the selected evidence summaries" in prompt_text
             assert "never invent or estimate percentages" in prompt_text
+        if item["purpose"] == "knowledge.rag_grounding":
+            prompt_text = "\n".join(
+                str(prompt["text"]) for prompt in llm["data"]["prompt_template"]
+            )
+            assert "identified by adapter_purpose" in prompt_text
+            assert "must exactly match a name also emitted in entities" in prompt_text
+            assert "Never use a bare URL as a relation endpoint" in prompt_text
         end = next(node for node in nodes if node["data"]["type"] == "end")
         assert end["data"]["outputs"][0]["variable"] == "result"
 

@@ -72,6 +72,16 @@ class PostgresJobControlMixin:
     def is_legacy_project_replay_source(self, *, project_id: UUID, source_job_id: UUID) -> bool:
         if is_exact_legacy_simulation_job(self._db, project_id=project_id, job_id=source_job_id):
             return True
+        project_job = self._db.execute(
+            """SELECT EXISTS (
+                 SELECT 1 FROM durable_jobs
+                 WHERE id = %s AND project_id = %s AND campaign_id IS NULL
+                   AND kind = 'knowledge.rag.extract'
+               )""",
+            (source_job_id, project_id),
+        ).fetchone()
+        if project_job and project_job[0]:
+            return True
         row = self._db.execute(
             """SELECT EXISTS (
                  SELECT 1
@@ -90,6 +100,7 @@ class PostgresJobControlMixin:
                        geo_is_exact_legacy_simulation_artifact_job(
                          target.id, target.project_id
                        )
+                     WHEN 'knowledge.rag.extract' THEN true
                      ELSE false
                    END
                )""",
@@ -233,6 +244,7 @@ class PostgresJobControlMixin:
             "prompt_simulation.generate",
             "publication.verify",
             "artifact.finalize",
+            "knowledge.rag.extract",
         }:
             raise PlacementRuleViolation("this job kind cannot be replayed")
         self._require_current_replay_contract(
@@ -308,6 +320,24 @@ class PostgresJobControlMixin:
         return tuple(dict(zip(names, value, strict=True)) for value in cursor.fetchall())
 
     def _clone_spec(self, kind: str, project_id: UUID, source: UUID, target: UUID) -> None:
+        if kind == "knowledge.rag.extract":
+            changed = self._db.execute(
+                """INSERT INTO knowledge_rag_job_specs
+                     (job_id, project_id, pipeline_run_id, source_id, document_id,
+                      configured_model, model_call_budget, adapter_release,
+                      selection_manifest_hash, requested_by, replayed_from_job_id)
+                   SELECT %s, project_id, pipeline_run_id, source_id, document_id,
+                          configured_model, model_call_budget, adapter_release,
+                          selection_manifest_hash, requested_by, %s
+                   FROM knowledge_rag_job_specs
+                   WHERE job_id = %s AND project_id = %s""",
+                (target, source, source, project_id),
+            ).rowcount
+            if changed != 1:
+                raise PlacementRuleViolation(
+                    "Knowledge RAG replay did not clone exactly one frozen spec"
+                )
+            return
         contracts = {
             "evidence_pack.build": (
                 "evidence_pack_job_specs",
