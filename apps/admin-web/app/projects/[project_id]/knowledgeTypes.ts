@@ -59,7 +59,8 @@ export type PromotedFactEvidence = {
 export type FactEvidenceProposal = {
   project_id: string; promotable: boolean; blockers: string[];
   fact: {
-    id: string; status: string; statement: string; statement_hash: string;
+    id: string; status: string; lifecycle_status: string; extractor_release: string;
+    statement: string; statement_hash: string;
     reviewed_by: string | null; reviewed_at: string | null;
   };
   source: {

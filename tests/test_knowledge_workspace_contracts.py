@@ -1,7 +1,9 @@
 from pathlib import Path
 import re
+from uuid import uuid4
 
 from geo_api.app_factory import create_api_app
+from geo_api.knowledge_contracts import KnowledgeFactView
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -72,6 +74,22 @@ def test_fact_promotion_action_never_submits_service_derived_lineage() -> None:
         assert derived not in body
     assert "public_domain" not in promotion
     assert "idempotencyKey" in promotion
+
+
+def test_fact_evidence_contract_accepts_persisted_fact_lineage_metadata() -> None:
+    fact = KnowledgeFactView(
+        id=uuid4(),
+        status="approved",
+        lifecycle_status="active",
+        extractor_release="project-native-rag-v1",
+        statement="A governed fact.",
+        statement_hash="a" * 64,
+        reviewed_by=uuid4(),
+        reviewed_at=None,
+    )
+
+    assert fact.lifecycle_status == "active"
+    assert fact.extractor_release == "project-native-rag-v1"
 
 
 def test_knowledge_upload_preserves_the_five_mebibyte_file_boundary() -> None:

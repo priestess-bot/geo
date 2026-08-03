@@ -13030,9 +13030,17 @@
       "KnowledgeFactView": {
         "additionalProperties": false,
         "properties": {
+          "extractor_release": {
+            "title": "Extractor Release",
+            "type": "string"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
+            "type": "string"
+          },
+          "lifecycle_status": {
+            "title": "Lifecycle Status",
             "type": "string"
           },
           "reviewed_at": {
@@ -13075,6 +13083,8 @@
         "required": [
           "id",
           "status",
+          "lifecycle_status",
+          "extractor_release",
           "statement",
           "statement_hash",
           "reviewed_by",

@@ -44,6 +44,8 @@ class PromoteFactEvidenceRequest(KnowledgeEvidenceContract):
 class KnowledgeFactView(KnowledgeEvidenceContract):
     id: UUID
     status: str
+    lifecycle_status: str
+    extractor_release: str
     statement: str
     statement_hash: str
     reviewed_by: UUID | None
