@@ -6,16 +6,19 @@ GEO Platform 是一个以证据为基础的 AI 搜索监测与渠道投放系统
 
 ## 当前入口
 
-本地验收统一使用以下宿主机端口：
+单栈部署和当前 staging 验收统一使用以下宿主机端口：
 
 | 入口 | 地址 | 边界 |
 | --- | --- | --- |
-| Admin Web | `http://localhost:3001` | 项目、证据、监测、目的地、生成、审核、投放管理 |
-| Customer Web | `http://localhost:3000` | 客户只读指标、测量窗口、已验证 URL 和已批准报告 |
-| Internal API | `http://localhost:8000` | 内部管理与写入 API |
-| Customer API | `http://localhost:8001` | 独立进程中的客户最小权限只读 API |
+| Admin Web | `http://localhost:13001` | 项目、证据、监测、目的地、生成、审核、投放管理 |
+| Customer Web | `http://localhost:13000` | 客户只读指标、测量窗口、已验证 URL 和已批准报告 |
+| Internal API | `http://localhost:18000` | 内部管理与写入 API |
+| Customer API | `http://localhost:18001` | 独立进程中的客户最小权限只读 API |
+| Dify Console | `http://localhost:15000` | 托管工作流编辑和运行 |
 
-这些是 `.env.example` 与开发 Compose 的默认宿主机端口。端口冲突时可以在根目录 `.env` 覆盖 `GEO_INTERNAL_API_HOST_PORT`、`GEO_CUSTOMER_API_HOST_PORT`、`GEO_ADMIN_WEB_HOST_PORT` 和 `GEO_CUSTOMER_WEB_HOST_PORT`，但验收证据必须记录实际地址。
+这些是 `infra/geo-stack.env.example` 与 canonical 单栈 Compose 的默认端口。端口冲突时可以在
+`infra/geo-stack.env` 覆盖对应变量，但验收证据必须记录实际地址。`make dev-up` 仍可用于
+隔离开发测试（默认 3000/3001/8000/8001），不能与 canonical 单栈同时运行，也不承载迁移目标。
 
 ## 一次启动完整开发栈
 
@@ -51,8 +54,8 @@ uv run python scripts/provision_advinsys_project.py
 
 ```mermaid
 flowchart LR
-  A[Admin Web :3001] --> I[Internal API :8000]
-  C[Customer Web :3000] --> U[Customer API :8001]
+  A[Admin Web :13001] --> I[Internal API :18000]
+  C[Customer Web :13000] --> U[Customer API :18001]
   I --> P[(PostgreSQL)]
   U --> P
   I --> M[(MinIO)]
@@ -60,7 +63,8 @@ flowchart LR
   V --> W[geo_worker]
   W --> P
   W --> M
-  W --> D[DeepSeek v4 flash]
+  W --> D[DeepSeek]
+  I --> F[Dify Console :15000]
 ```
 
 - PostgreSQL 是业务对象、审计和 Durable Job 的唯一真源。
@@ -150,6 +154,7 @@ docs/                 当前架构、ADR、操作手册、工程治理和两份�
 - [文档索引](docs/README.md)
 - [本轮 14 项 ACCEPTED 整改验证记录](docs/engineering/GEO-accepted-remediation-verification-record-2026-07-19.md)
 - [整改门禁与外部 staging 边界](docs/operations/remediation-gates.md)
+- [单栈部署与跨服务器迁移](docs/operations/geo-deploy-and-migration.md)
 - [当前系统架构](docs/architecture/system-overview.md)
 - [GEO v3 运行与验收合同](docs/GEO-v3-%E5%85%A8%E6%B5%81%E7%A8%8B%E8%BF%90%E8%A1%8C%E6%89%8B%E5%86%8C.md)
 - [ADVINSYS GEO 独立全流程操作手册](docs/operations/geo-ui-operator-guide.md)（[PDF](docs/operations/ADVINSYS-GEO-%E5%85%A8%E6%B5%81%E7%A8%8B%E9%83%A8%E7%BD%B2%E8%BF%90%E7%BB%B4%E6%89%8B%E5%86%8C.pdf)）

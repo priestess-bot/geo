@@ -75,6 +75,8 @@ class QuestionGenerationView(QuestionContract):
     input_hash: str
     error_code: str | None
     configured_model: str
+    execution_backend: Literal["dify", "native"] | None
+    actual_model: str | None
     model_call_budget: int
     adapter_release: str
     semantic_duplicate_threshold: float

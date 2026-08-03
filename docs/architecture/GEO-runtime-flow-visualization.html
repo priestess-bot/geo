@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f4f6f5">
-  <meta name="description" content="GEO 项目业务流程、任务链路与系统健康可视化。">
+  <meta name="description" content="GEO 项目业务流程、任务链路、调用拓扑与系统健康可视化。">
   <title>GEO 项目运行地图 | ADVINSYS Australia</title>
   <style>
     :root {
@@ -71,6 +71,8 @@
       background: rgba(255, 255, 255, 0.96);
       backdrop-filter: blur(14px);
     }
+    body.admin-embedded .app-header { display: none; }
+    body.admin-embedded .topology-pan-rail { top: 0; }
     .header-inner {
       width: min(calc(100% - 40px), var(--max));
       min-height: 68px;
@@ -215,7 +217,7 @@
     }
     .view-tabs {
       display: inline-grid;
-      grid-template-columns: repeat(3, minmax(112px, 1fr));
+      grid-template-columns: repeat(4, minmax(108px, 1fr));
       gap: 3px;
       padding: 3px;
       border: 1px solid var(--line);
@@ -262,6 +264,11 @@
       color: var(--red);
       border-color: rgba(178, 59, 50, .45);
       background: var(--red-soft);
+    }
+    .topology-desktop-control[aria-pressed="true"] {
+      color: var(--blue);
+      border-color: rgba(49, 94, 210, .4);
+      background: var(--blue-soft);
     }
     .tool-button svg { width: 16px; height: 16px; }
 
@@ -643,6 +650,477 @@
     .trace-outcome p { margin: 5px 0 0; color: var(--muted); font-size: 11px; }
     .trace-outcome strong { font-size: 13px; white-space: nowrap; }
 
+    .runtime-topology-body { padding: 20px 20px 24px; }
+    .topology-summary {
+      display: grid;
+      grid-template-columns: minmax(300px, 1.25fr) repeat(3, minmax(140px, .5fr));
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--blue);
+      background: #fbfcff;
+    }
+    .topology-summary > div {
+      min-width: 0;
+      padding: 13px 15px;
+      border-left: 1px solid var(--line);
+    }
+    .topology-summary > div:first-child { border-left: 0; }
+    .topology-summary h4 { margin: 0; font-size: 13px; }
+    .topology-summary p,
+    .topology-summary span { display: block; margin: 4px 0 0; color: var(--muted); font-size: 10px; }
+    .topology-summary strong { display: block; margin-top: 4px; font-size: 14px; overflow-wrap: anywhere; }
+    .topology-controls {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 14px;
+      margin-top: 18px;
+    }
+    .topology-control-group {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .topology-control-group label { color: var(--muted); font-size: 11px; white-space: nowrap; }
+    .topology-mode {
+      display: inline-grid;
+      grid-template-columns: repeat(2, minmax(88px, 1fr));
+      gap: 2px;
+      padding: 3px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      background: var(--wash);
+    }
+    .topology-mode button {
+      min-height: 32px;
+      padding: 5px 10px;
+      border: 0;
+      border-radius: 3px;
+      color: var(--muted);
+      background: transparent;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .topology-mode button[aria-pressed="true"] {
+      color: var(--ink);
+      background: var(--paper);
+      box-shadow: 0 1px 4px rgba(21, 32, 29, .1);
+    }
+    .topology-control-group select {
+      min-width: 190px;
+      height: 38px;
+      padding: 0 32px 0 10px;
+      border: 1px solid var(--line-strong);
+      border-radius: 4px;
+      color: var(--ink);
+      background: var(--paper);
+      font-size: 12px;
+    }
+    .topology-control-group select:disabled { color: var(--muted); background: var(--gray-soft); }
+    .topology-axis-scales {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .topology-axis-scale {
+      height: 38px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      padding: 2px 2px 2px 8px;
+      border: 1px solid var(--line-strong);
+      border-radius: 5px;
+      background: var(--paper);
+    }
+    .topology-axis-scale > span {
+      color: var(--ink-soft);
+      font-size: 10px;
+      font-weight: 760;
+      white-space: nowrap;
+    }
+    .topology-axis-scale svg { width: 14px; height: 14px; flex: 0 0 auto; }
+    .topology-control-group .topology-axis-select {
+      width: 68px;
+      min-width: 0;
+      height: 32px;
+      padding: 0 20px 0 7px;
+      border: 0;
+      border-left: 1px solid var(--line);
+      border-radius: 0;
+      color: var(--ink);
+      background: var(--paper);
+      font-size: 11px;
+      font-weight: 720;
+    }
+    .topology-layout {
+      position: relative;
+      display: block;
+      margin-top: 14px;
+      border: 1px solid var(--line);
+      overflow: hidden;
+    }
+    .topology-map-region { position: relative; min-width: 0; background: #fbfcfb; }
+    .topology-network-legend {
+      min-height: 42px;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px 16px;
+      padding: 8px 14px;
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 9px;
+    }
+    .network-key { display: inline-flex; align-items: center; gap: 6px; }
+    .network-key i {
+      width: 16px;
+      height: 5px;
+      border-radius: 1px;
+      background: var(--line-strong);
+    }
+    .network-key[data-network="geo"] i { background: var(--green); }
+    .network-key[data-network="bridge"] i { background: var(--blue); }
+    .network-key[data-network="dify"] i { background: var(--violet); }
+    .network-key[data-network="ssrf"] i { background: var(--amber); }
+    .topology-pan-rail {
+      position: sticky;
+      z-index: 12;
+      top: 68px;
+      min-height: 42px;
+      display: grid;
+      grid-template-columns: 32px minmax(120px, 1fr) 32px auto;
+      gap: 9px;
+      align-items: center;
+      padding: 5px 10px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, .96);
+      backdrop-filter: blur(10px);
+    }
+    .topology-pan-button {
+      width: 32px;
+      height: 32px;
+      display: grid;
+      place-items: center;
+      padding: 0;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      color: var(--ink-soft);
+      background: var(--paper);
+      cursor: pointer;
+    }
+    .topology-pan-button:hover:not(:disabled) { border-color: var(--ink-soft); }
+    .topology-pan-button:disabled { color: var(--line-strong); cursor: default; }
+    .topology-pan-button svg { width: 15px; height: 15px; }
+    .topology-pan-range {
+      width: 100%;
+      height: 22px;
+      margin: 0;
+      accent-color: var(--blue);
+      cursor: ew-resize;
+    }
+    .topology-pan-range:disabled { cursor: default; }
+    .topology-pan-status {
+      min-width: 72px;
+      color: var(--muted);
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 9px;
+      text-align: right;
+      white-space: nowrap;
+    }
+    .topology-map-scroll {
+      height: clamp(520px, 68vh, 760px);
+      min-width: 0;
+      overflow: auto;
+      cursor: grab;
+      overscroll-behavior: contain;
+      scrollbar-color: var(--line-strong) transparent;
+    }
+    .topology-map-scroll.is-dragging { cursor: grabbing; user-select: none; }
+    .topology-canvas-stage { position: relative; min-width: 100%; }
+    .runtime-topology-canvas {
+      --topology-columns: repeat(7, minmax(128px, 1fr));
+      --topology-column-gap: 36px;
+      --topology-counter-scale-x: 1;
+      --topology-counter-scale-y: 1;
+      position: relative;
+      width: max(1180px, 100%);
+      min-height: 1020px;
+      padding: 0 20px 24px;
+      isolation: isolate;
+      transform-origin: 0 0;
+    }
+    .runtime-topology-canvas[data-mode="all"] {
+      --topology-columns: repeat(7, 160px);
+      --topology-column-gap: 88px;
+      width: 1688px;
+    }
+    .runtime-topology-canvas[data-fit="true"] {
+      --topology-columns: repeat(7, minmax(0, 1fr));
+      --topology-column-gap: clamp(10px, 1.8vw, 24px);
+    }
+    .topology-column-heads {
+      position: absolute;
+      z-index: 4;
+      top: 0;
+      left: 20px;
+      width: calc(100% - 40px);
+      height: 54px;
+      display: grid;
+      grid-template-columns: var(--topology-columns);
+      gap: var(--topology-column-gap);
+      align-items: end;
+    }
+    .topology-column-heads span {
+      padding: 0 2px 8px;
+      border-bottom: 1px solid var(--line-strong);
+      color: var(--muted);
+      font-size: 10px;
+      font-weight: 720;
+      text-align: center;
+      transform: scale(var(--topology-counter-scale-x), var(--topology-counter-scale-y));
+      transform-origin: center;
+    }
+    .topology-grid {
+      position: absolute;
+      z-index: 3;
+      top: 70px;
+      left: 20px;
+      width: calc(100% - 40px);
+      display: grid;
+      grid-template-columns: var(--topology-columns);
+      grid-template-rows: repeat(8, 88px);
+      gap: 30px var(--topology-column-gap);
+      pointer-events: none;
+    }
+    .topology-network-band {
+      position: absolute;
+      z-index: 0;
+      border: 1px dashed rgba(49, 94, 210, .3);
+      border-radius: 5px;
+      pointer-events: none;
+    }
+    .topology-network-band span {
+      position: absolute;
+      top: -10px;
+      left: 12px;
+      padding: 1px 6px;
+      color: var(--blue);
+      background: #fbfcfb;
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 8px;
+      transform: scale(var(--topology-counter-scale-x), var(--topology-counter-scale-y));
+      transform-origin: 0 0;
+    }
+    .topology-network-band.geo-core { top: 57px; left: 260px; width: 920px; height: 232px; border-color: rgba(8, 116, 92, .28); }
+    .topology-network-band.geo-workers { top: 293px; left: 508px; width: 672px; height: 710px; border-color: rgba(8, 116, 92, .28); }
+    .topology-network-band.geo-core span,
+    .topology-network-band.geo-workers span { color: var(--green); }
+    .runtime-topology-canvas[data-mode="focus"] .topology-network-band,
+    .runtime-topology-canvas[data-fit="true"] .topology-network-band { display: none; }
+    .topology-edge-layer {
+      position: absolute;
+      z-index: 1;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+      pointer-events: none;
+    }
+    .topology-edge-group { pointer-events: stroke; cursor: pointer; }
+    .topology-edge-line {
+      fill: none;
+      stroke: #7e8c87;
+      stroke-width: 1.35;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      marker-end: url(#topology-arrow);
+      vector-effect: non-scaling-stroke;
+    }
+    .topology-edge-group[data-kind="event"] .topology-edge-line { stroke: var(--green); stroke-dasharray: 5 4; }
+    .topology-edge-group[data-kind="storage"] .topology-edge-line { stroke: var(--blue); }
+    .topology-edge-group[data-kind="external"] .topology-edge-line { stroke: var(--amber); stroke-dasharray: 3 4; }
+    .topology-edge-hit { fill: none; stroke: transparent; stroke-width: 14; }
+    .topology-edge-label rect { fill: rgba(255, 255, 255, .98); stroke: var(--line-strong); rx: 2; }
+    .topology-edge-label { pointer-events: all; cursor: pointer; }
+    .topology-edge-label text { fill: var(--ink-soft); font-size: 9px; font-weight: 720; text-anchor: middle; }
+    .topology-edge-group.is-dimmed .topology-edge-line { opacity: .12; }
+    .topology-edge-group.is-dimmed .topology-edge-hit { pointer-events: none; }
+    .topology-edge-label.is-dimmed rect { fill: rgba(255, 255, 255, .94); stroke: var(--line); }
+    .topology-edge-label.is-dimmed text { fill: var(--muted); }
+    .topology-edge-group.is-selected .topology-edge-line { stroke: var(--red); stroke-width: 2.2; }
+    .topology-edge-label.is-selected rect { stroke: var(--red); stroke-width: 1.5; }
+    .topology-mobile-edges { display: none; }
+    .topology-node {
+      position: relative;
+      z-index: 4;
+      width: 100%;
+      min-height: 78px;
+      align-self: center;
+      padding: 10px 11px 9px;
+      border: 1px solid var(--line-strong);
+      border-left: 3px solid var(--green);
+      border-radius: 5px;
+      color: var(--ink);
+      background: var(--paper);
+      text-align: left;
+      cursor: pointer;
+      pointer-events: auto;
+      transform: scale(var(--topology-counter-scale-x), var(--topology-counter-scale-y));
+      transform-origin: center;
+      transition: opacity 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+    }
+    .topology-node:hover { border-color: var(--ink-soft); }
+    .topology-node[aria-pressed="true"] { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(49, 94, 210, .13); }
+    .topology-node[data-status="configured"] { border-left-color: var(--amber); border-style: dashed; }
+    .topology-node[data-status="blocked"] { border-left-color: var(--red); border-style: dashed; background: #fffafa; }
+    .topology-node[data-status="external"] { border-left-color: var(--amber); background: #fffdf9; }
+    .topology-node[data-status="actor"] { border-left-color: var(--ink-soft); background: var(--gray-soft); }
+    .topology-node[data-network-theme="dify"] { border-left-color: var(--violet); }
+    .topology-node[data-network-bridge="true"] { border-top: 2px solid var(--blue); }
+    .topology-node.is-scenario-hidden,
+    .topology-cluster.is-scenario-hidden { visibility: hidden; pointer-events: none; }
+    .topology-node.is-dimmed { opacity: .22; filter: grayscale(.7); }
+    .topology-node.is-neighbor { opacity: 1; }
+    .topology-node-group-label { display: none; }
+    .topology-node strong { display: block; font-size: 11px; line-height: 1.3; font-weight: 740; }
+    .topology-node small { display: block; margin-top: 4px; color: var(--muted); font-size: 9px; line-height: 1.35; overflow-wrap: anywhere; }
+    .topology-node-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-top: 7px;
+      color: var(--ink-soft);
+      font-size: 8px;
+      font-weight: 700;
+    }
+    .topology-node-meta span { min-width: 0; overflow-wrap: anywhere; }
+    .topology-node-meta .status-dot { width: 5px; height: 5px; }
+    .topology-cluster {
+      z-index: 5;
+      grid-column: 6;
+      grid-row: 1 / span 3;
+      align-self: start;
+      min-height: 78px;
+      border: 1px solid rgba(106, 75, 176, .5);
+      border-left: 3px solid var(--violet);
+      border-top: 2px solid var(--blue);
+      border-radius: 5px;
+      background: var(--paper);
+      pointer-events: auto;
+      transform: scale(var(--topology-counter-scale-x), var(--topology-counter-scale-y));
+      transform-origin: top center;
+      transition: opacity 160ms ease;
+    }
+    .topology-cluster.is-dimmed { opacity: .22; filter: grayscale(.7); }
+    .topology-cluster-header {
+      width: 100%;
+      min-height: 78px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+      padding: 9px 9px 8px;
+      border: 0;
+      border-radius: 4px;
+      color: var(--ink);
+      background: transparent;
+      text-align: left;
+      cursor: pointer;
+    }
+    .topology-cluster-header strong { display: block; font-size: 11px; }
+    .topology-cluster-header small { display: block; margin-top: 4px; color: var(--muted); font-size: 9px; }
+    .topology-cluster-header svg { width: 15px; height: 15px; transition: transform 160ms ease; }
+    .dify-service-list { display: grid; gap: 0; margin: 0; padding: 0; border-top: 1px solid var(--line); list-style: none; }
+    .dify-service {
+      width: 100%;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 6px;
+      padding: 6px 1px;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      color: var(--ink-soft);
+      background: transparent;
+      font-size: 8px;
+      text-align: left;
+      cursor: pointer;
+    }
+    .dify-service:last-child { border-bottom: 0; }
+    .dify-service:hover,
+    .dify-service[aria-pressed="true"] { color: var(--violet); }
+    .dify-service span:last-child { color: var(--muted); font-family: "SFMono-Regular", Consolas, monospace; }
+    .topology-inspector {
+      position: fixed;
+      z-index: 410;
+      top: 84px;
+      right: 20px;
+      bottom: 20px;
+      width: min(390px, calc(100vw - 40px));
+      overflow-y: auto;
+      padding: 20px 19px;
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius);
+      background: var(--paper);
+      box-shadow: 0 22px 70px rgba(21, 32, 29, .28);
+      pointer-events: none;
+      transform: translateX(calc(100% + 32px));
+      transition: transform 180ms ease;
+    }
+    .topology-inspector.mobile-open { pointer-events: auto; transform: translateX(0); }
+    .topology-inspector-close {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      padding: 0;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: var(--paper);
+      cursor: pointer;
+    }
+    .topology-inspector-close svg { width: 17px; height: 17px; }
+    .topology-inspector h4 { margin: 11px 0 0; font-size: 18px; line-height: 1.3; }
+    .topology-inspector > p { margin: 8px 0 0; color: var(--muted); font-size: 12px; }
+    .topology-detail-list { margin: 16px 0 0; border-top: 1px solid var(--line); }
+    .topology-detail-list div {
+      display: grid;
+      grid-template-columns: 70px minmax(0, 1fr);
+      gap: 9px;
+      padding: 9px 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .topology-detail-list dt { color: var(--muted); font-size: 10px; }
+    .topology-detail-list dd { min-width: 0; margin: 0; color: var(--ink-soft); font-size: 10px; overflow-wrap: anywhere; }
+    .topology-detail-note {
+      margin-top: 15px;
+      padding: 10px 11px;
+      border-left: 3px solid var(--blue);
+      color: var(--ink-soft);
+      background: var(--blue-soft);
+      font-size: 10px;
+    }
+    .topology-dify-services { margin-top: 18px; }
+    .topology-dify-services h5 { margin: 0 0 8px; font-size: 11px; }
+    .topology-detail-backdrop {
+      position: fixed;
+      z-index: 400;
+      inset: 0;
+      display: block;
+      border: 0;
+      background: rgba(21, 32, 29, .2);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 180ms ease;
+    }
+    .topology-detail-backdrop.visible { opacity: 1; pointer-events: auto; }
+    body.topology-detail-open { overflow: hidden; }
+
     .health-body { padding: 21px 22px 28px; }
     .health-banner {
       display: grid;
@@ -742,7 +1220,7 @@
       .topology { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
 
-    @media (max-width: 760px) {
+    @media (max-width: 800px) {
       body { font-size: 14px; }
       .header-inner, main { width: min(calc(100% - 24px), var(--max)); }
       .header-inner { min-height: 76px; }
@@ -756,7 +1234,7 @@
       .summary-item:nth-child(odd) { border-left: 0; }
       .summary-item:last-child { grid-column: 1 / -1; border-bottom: 0; }
       .toolbar { align-items: stretch; flex-direction: column; }
-      .view-tabs { width: 100%; }
+      .view-tabs { width: 100%; grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .view-tools { justify-content: flex-end; }
       .panel-heading { align-items: flex-start; flex-direction: column; }
       .legend { justify-content: flex-start; }
@@ -793,13 +1271,11 @@
         border: 1px solid var(--line-strong);
         border-radius: var(--radius);
         box-shadow: 0 22px 70px rgba(21, 32, 29, .28);
-        opacity: 0;
         pointer-events: none;
         transform: translateY(calc(100% + 24px));
-        transition: opacity 180ms ease, transform 180ms ease;
+        transition: transform 180ms ease;
       }
       .detail-panel.mobile-open {
-        opacity: 1;
         pointer-events: auto;
         transform: translateY(0);
       }
@@ -861,6 +1337,151 @@
         transform: rotate(135deg);
       }
       .trace-outcome { grid-template-columns: 1fr; gap: 8px; }
+      .runtime-topology-body { padding: 14px 12px 20px; }
+      .topology-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .topology-summary > div:first-child { grid-column: 1 / -1; border-bottom: 1px solid var(--line); }
+      .topology-summary > div:nth-child(even) { border-left: 0; }
+      .topology-summary > div:last-child { grid-column: 1 / -1; border-top: 1px solid var(--line); border-left: 0; }
+      .topology-controls { align-items: stretch; flex-direction: column; }
+      .topology-control-group { width: 100%; }
+      .topology-control-group:first-child { align-items: stretch; flex-direction: column; }
+      .topology-mode { width: 100%; }
+      .topology-control-group label { display: block; }
+      .topology-control-group select { width: 100%; min-width: 0; }
+      .topology-control-group:last-child { justify-content: flex-end; }
+      .topology-desktop-control,
+      .topology-pan-rail { display: none; }
+      .topology-network-legend { align-items: flex-start; flex-direction: column; gap: 6px; }
+      .topology-canvas-stage { width: auto !important; height: auto !important; }
+      .topology-map-scroll { height: auto; }
+      .runtime-topology-canvas { width: auto; min-height: 0; padding: 0; }
+      .topology-column-heads,
+      .topology-network-band,
+      .topology-edge-layer { display: none; }
+      .topology-grid {
+        position: static;
+        width: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 13px;
+      }
+      .topology-node,
+      .topology-cluster {
+        position: relative;
+        width: 100%;
+        min-height: 74px;
+        order: var(--mobile-order, 100);
+      }
+      .topology-node:not(.is-mobile-first)::before,
+      .topology-cluster:not(.is-mobile-first)::before {
+        content: "";
+        position: absolute;
+        top: -11px;
+        left: 20px;
+        width: 1px;
+        height: 10px;
+        background: var(--line-strong);
+      }
+      .topology-node:not(.is-mobile-first)::after,
+      .topology-cluster:not(.is-mobile-first)::after {
+        content: "";
+        position: absolute;
+        top: -7px;
+        left: 17px;
+        width: 6px;
+        height: 6px;
+        border-right: 1px solid var(--line-strong);
+        border-bottom: 1px solid var(--line-strong);
+        background: #fbfcfb;
+        transform: rotate(45deg);
+      }
+      .topology-node.is-dimmed,
+      .topology-cluster.is-dimmed { display: none; }
+      .topology-node.is-scenario-hidden,
+      .topology-cluster.is-scenario-hidden { display: none; }
+      .topology-node-group-label {
+        display: block;
+        margin-bottom: 4px;
+        color: var(--muted);
+        font-size: 8px;
+        font-weight: 720;
+      }
+      .topology-mobile-edges {
+        display: grid;
+        gap: 0;
+        margin: 2px 13px 16px;
+        border-top: 1px solid var(--line);
+      }
+      .topology-mobile-edge {
+        width: 100%;
+        display: grid;
+        grid-template-columns: 4px minmax(0, 1fr);
+        gap: 10px;
+        padding: 10px 0;
+        border: 0;
+        border-bottom: 1px solid var(--line);
+        color: var(--ink);
+        background: transparent;
+        text-align: left;
+        cursor: pointer;
+      }
+      .topology-mobile-edge::before { content: ""; border-radius: 1px; background: var(--line-strong); }
+      .topology-mobile-edge[data-kind="event"]::before { background: var(--green); }
+      .topology-mobile-edge[data-kind="storage"]::before { background: var(--blue); }
+      .topology-mobile-edge[data-kind="external"]::before { background: var(--amber); }
+      .topology-mobile-edge strong { display: block; font-size: 11px; }
+      .topology-mobile-edge span { display: block; margin-top: 3px; color: var(--muted); font-size: 9px; overflow-wrap: anywhere; }
+      .topology-cluster { grid-column: auto; grid-row: auto; }
+      .topology-cluster-header { min-height: 72px; }
+      .topology-inspector {
+        position: fixed;
+        z-index: 410;
+        top: auto;
+        right: 12px;
+        bottom: 12px;
+        left: 12px;
+        max-height: calc(100vh - 24px);
+        overflow-y: auto;
+        border: 1px solid var(--line-strong);
+        border-radius: var(--radius);
+        box-shadow: 0 22px 70px rgba(21, 32, 29, .28);
+        pointer-events: none;
+        transform: translateY(calc(100% + 24px));
+        transition: transform 180ms ease;
+      }
+      .topology-inspector.mobile-open { pointer-events: auto; transform: translateY(0); }
+      body.topology-detail-open { overflow: hidden; }
+      .topology-inspector-close {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        width: 34px;
+        height: 34px;
+        display: grid;
+        place-items: center;
+        padding: 0;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        background: var(--paper);
+        cursor: pointer;
+      }
+      .topology-inspector-close svg { width: 17px; height: 17px; }
+      .topology-detail-list { grid-template-columns: 1fr; }
+      .topology-detail-list div:nth-child(odd),
+      .topology-detail-list div:nth-child(even) { padding-right: 0; padding-left: 0; border-left: 0; }
+      .topology-detail-backdrop {
+        position: fixed;
+        z-index: 400;
+        inset: 0;
+        display: block;
+        border: 0;
+        background: rgba(21, 32, 29, .46);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 180ms ease;
+      }
+      .topology-detail-backdrop.visible { opacity: 1; pointer-events: auto; }
       .health-banner { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .health-banner > div:first-child { grid-column: 1 / -1; border-bottom: 1px solid var(--line); }
       .health-banner > div:nth-child(even) { border-left: 0; }
@@ -882,7 +1503,7 @@
         <div class="brand-mark" aria-hidden="true">G</div>
         <div>
           <h1>GEO 项目运行地图</h1>
-          <p>业务状态、任务链路与部署健康的统一只读视图</p>
+          <p>业务状态、任务链路、调用拓扑与部署健康的统一只读视图</p>
         </div>
       </div>
       <div class="runtime-state" aria-label="当前本地运行状态">
@@ -898,7 +1519,7 @@
       <div class="project-copy">
         <h2 id="project-title">ADVINSYS Australia</h2>
         <p>一眼区分已经真实执行的路径、仅完成技术验证的路径，以及需要人工或外部凭据才能继续的路径。</p>
-        <span class="snapshot-time">业务验收：2026-07-29 · 运行探针：2026-07-30 13:59 CST</span>
+        <span class="snapshot-time">业务验收：2026-07-29 · 运行探针：2026-08-03 03:06 CST</span>
       </div>
       <div class="summary-rail" aria-label="项目关键状态">
         <div class="summary-item" data-tone="good"><span>本地生产路径</span><strong>GO</strong><small>当前可控链路</small></div>
@@ -913,6 +1534,7 @@
       <div class="view-tabs" role="tablist" aria-label="运行地图视图">
         <button class="tab-button" id="tab-business" role="tab" aria-controls="view-business" aria-selected="true" data-view="business">业务全景</button>
         <button class="tab-button" id="tab-trace" role="tab" aria-controls="view-trace" aria-selected="false" data-view="trace">任务链路</button>
+        <button class="tab-button" id="tab-topology" role="tab" aria-controls="view-topology" aria-selected="false" data-view="topology">调用拓扑</button>
         <button class="tab-button" id="tab-health" role="tab" aria-controls="view-health" aria-selected="false" data-view="health">系统健康</button>
       </div>
       <div class="view-tools" id="business-tools">
@@ -967,6 +1589,7 @@
                 <div class="lane-label"><strong id="lane-content">内容与投放</strong><span>真实 V600 路径</span></div>
                 <div class="node-track">
                   <button class="flow-node status-complete" type="button" data-node="content-input" aria-pressed="false"><strong>内容任务输入</strong><small>V600 路径已执行</small><span class="node-status"><i class="status-dot complete"></i>已冻结</span></button>
+                  <button class="flow-node status-complete" type="button" data-node="content-simulation" aria-pressed="false"><strong>仿真消费者短评</strong><small>TEST ONLY · V600</small><span class="node-status"><i class="status-dot complete"></i>真实运行通过</span></button>
                   <button class="flow-node status-complete" type="button" data-node="content-generation" aria-pressed="false"><strong>Dify 内容生成</strong><small>真实 DeepSeek 调用</small><span class="node-status"><i class="status-dot complete"></i>已完成</span></button>
                   <button class="flow-node status-warning" type="button" data-node="package" aria-pressed="false"><strong>Package Version</strong><small>状态 generated</small><span class="node-status"><i class="status-dot warning"></i>尚未批准</span></button>
                   <button class="flow-node status-waiting" type="button" data-node="content-review" aria-pressed="false"><strong>人工审核</strong><small>不能自动替代</small><span class="node-status"><i class="status-dot waiting"></i>等待决定</span></button>
@@ -1019,7 +1642,7 @@
             <div><dt>验收依据</dt><dd id="detail-evidence">advinsys-production-path-validation §3 / §4.1</dd></div>
           </dl>
           <div class="detail-actions">
-            <a class="primary-link" id="detail-link" href="http://localhost:13001/projects/6f93ee7b-bd7f-4fca-92b2-0de17254953a?tab=knowledge" target="_blank" rel="noreferrer">
+            <a class="primary-link" id="detail-link" href="/projects/6f93ee7b-bd7f-4fca-92b2-0de17254953a?tab=knowledge" target="_top" rel="noreferrer">
               打开对应工作区
               <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M7 7h10v10"/></svg>
             </a>
@@ -1040,6 +1663,7 @@
           <label for="trace-select">选择真实运行</label>
           <select id="trace-select">
             <option value="content">V600 内容生成</option>
+            <option value="simulation">V600 仿真消费者短评</option>
             <option value="recommendation">建议生成</option>
             <option value="knowledge">知识 RAG 处理</option>
           </select>
@@ -1060,11 +1684,151 @@
       </div>
     </section>
 
+    <section class="view-panel" id="view-topology" role="tabpanel" aria-labelledby="tab-topology" hidden>
+      <header class="panel-heading">
+        <div>
+          <h3>当前单栈服务如何协作</h3>
+          <p>基于实际容器、网络和调用合同；当前本机运行 staging-v2，目标机由同一套脚本以 geo 单栈启动。</p>
+        </div>
+        <div class="legend" aria-label="拓扑状态图例">
+          <span><i class="status-dot complete"></i>当前运行</span>
+          <span><i class="status-dot warning"></i>已配置未启动</span>
+          <span><i class="status-dot blocked"></i>外部缺失</span>
+        </div>
+      </header>
+      <div class="runtime-topology-body">
+        <div class="topology-summary" aria-label="调用拓扑摘要">
+          <div><h4 id="topology-summary-title">异步模型任务</h4><p id="topology-summary-copy">从 Admin 命令到 Durable Job、Dify 模型调用和结果持久化。</p></div>
+          <div><span>当前 GEO 服务</span><strong>13 个运行</strong></div>
+          <div><span>运行网络</span><strong>4 个相关网络</strong></div>
+          <div><span>当前终点</span><strong id="topology-summary-outcome">结果落库，等待业务动作</strong></div>
+        </div>
+
+        <div class="topology-controls">
+          <div class="topology-control-group">
+            <div class="topology-mode" role="group" aria-label="拓扑显示模式">
+              <button type="button" data-topology-mode="focus" aria-pressed="true">场景聚焦</button>
+              <button type="button" data-topology-mode="all" aria-pressed="false">全部关系</button>
+            </div>
+            <label for="topology-scenario">调用场景</label>
+            <select id="topology-scenario">
+              <option value="async-model">异步模型任务</option>
+              <option value="dify-workflow">Dify 工作流</option>
+              <option value="connector-sync">连接器同步</option>
+              <option value="browser-capture">消费者界面采集</option>
+              <option value="style-collection">合成样本采集</option>
+              <option value="customer-read">客户只读查询</option>
+              <option value="alert-delivery">告警发送</option>
+              <option value="deployment-migration">部署与迁移</option>
+            </select>
+          </div>
+          <div class="topology-control-group">
+            <button class="tool-button" id="topology-dify-toggle" type="button" aria-expanded="false">
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+              <span id="topology-dify-toggle-label">Dify 组件</span>
+            </button>
+            <button class="tool-button topology-desktop-control" id="topology-fit" type="button" aria-pressed="false" title="将完整拓扑紧凑排列到当前可视宽度">
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg>
+              适应窗口
+            </button>
+            <div class="topology-axis-scales topology-desktop-control" role="group" aria-label="拓扑宽高缩放">
+              <label class="topology-axis-scale" title="单独调整拓扑宽度">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M8 9l-3 3 3 3M16 9l3 3-3 3"/></svg>
+                <span>宽</span>
+                <select class="topology-axis-select" id="topology-scale-x" aria-label="拓扑宽度缩放比例">
+                  <option value="100" selected>100%</option><option value="125">125%</option><option value="150">150%</option>
+                  <option value="175">175%</option><option value="200">200%</option><option value="225">225%</option>
+                  <option value="250">250%</option><option value="275">275%</option><option value="300">300%</option>
+                  <option value="325">325%</option><option value="350">350%</option><option value="375">375%</option>
+                  <option value="400">400%</option><option value="425">425%</option><option value="450">450%</option>
+                  <option value="475">475%</option><option value="500">500%</option>
+                </select>
+              </label>
+              <label class="topology-axis-scale" title="单独调整拓扑高度">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M9 8l3-3 3 3M9 16l3 3 3-3"/></svg>
+                <span>高</span>
+                <select class="topology-axis-select" id="topology-scale-y" aria-label="拓扑高度缩放比例">
+                  <option value="100" selected>100%</option><option value="125">125%</option><option value="150">150%</option>
+                  <option value="175">175%</option><option value="200">200%</option><option value="225">225%</option>
+                  <option value="250">250%</option><option value="275">275%</option><option value="300">300%</option>
+                  <option value="325">325%</option><option value="350">350%</option><option value="375">375%</option>
+                  <option value="400">400%</option><option value="425">425%</option><option value="450">450%</option>
+                  <option value="475">475%</option><option value="500">500%</option>
+                </select>
+              </label>
+            </div>
+            <button class="tool-button" id="topology-reset" type="button">
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+              重置聚焦
+            </button>
+          </div>
+        </div>
+
+        <div class="topology-layout">
+          <div class="topology-map-region">
+            <div class="topology-network-legend" aria-label="实际 Docker 网络">
+              <span class="network-key" data-network="geo"><i></i><code>geo-advinsys-staging-v2_default</code></span>
+              <span class="network-key" data-network="bridge"><i></i><code>geo-dify-runtime</code></span>
+              <span class="network-key" data-network="dify"><i></i><code>geo-dify_default</code></span>
+              <span class="network-key" data-network="ssrf"><i></i><code>geo-dify_ssrf_proxy_network</code></span>
+            </div>
+            <div class="topology-pan-rail" aria-label="拓扑横向位置控制">
+              <button class="topology-pan-button" id="topology-pan-left" type="button" title="向左移动" aria-label="向左移动拓扑">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+              </button>
+              <input class="topology-pan-range" id="topology-pan-range" type="range" min="0" max="0" value="0" step="1" aria-label="拓扑横向位置">
+              <button class="topology-pan-button" id="topology-pan-right" type="button" title="向右移动" aria-label="向右移动拓扑">
+                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+              </button>
+              <span class="topology-pan-status" id="topology-pan-status">完整可见</span>
+            </div>
+            <div class="topology-map-scroll" aria-label="技术调用拓扑，可横向滚动">
+              <div class="topology-canvas-stage" id="topology-canvas-stage">
+              <div class="runtime-topology-canvas" id="runtime-topology-canvas" data-mode="focus">
+                <div class="topology-network-band geo-core"><span>GEO default · Web / API / 核心状态</span></div>
+                <div class="topology-network-band geo-workers"><span>GEO default · 队列 / Worker / 工件</span></div>
+                <div class="topology-column-heads" aria-hidden="true">
+                  <span>访问者</span><span>Web 入口</span><span>API 与调度</span><span>状态与队列</span><span>执行器</span><span>Dify / 代理</span><span>外部系统</span>
+                </div>
+                <svg class="topology-edge-layer" id="topology-edge-layer" aria-label="服务调用连线"></svg>
+                <div class="topology-grid" id="topology-grid"></div>
+                <div class="topology-mobile-edges" id="topology-mobile-edges" aria-label="调用关系"></div>
+              </div>
+              </div>
+            </div>
+          </div>
+
+          <aside class="topology-inspector" id="topology-inspector" aria-live="polite" aria-labelledby="topology-detail-title">
+            <button class="topology-inspector-close" id="topology-inspector-close" type="button" aria-label="关闭拓扑详情">
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18"/></svg>
+            </button>
+            <span class="status-label" id="topology-detail-status"><i class="status-dot complete"></i>当前运行</span>
+            <h4 id="topology-detail-title">Internal API</h4>
+            <p id="topology-detail-description">Admin 的稳定读写入口，并负责创建受治理命令、Job 与不可变输入。</p>
+            <dl class="topology-detail-list">
+              <div><dt id="topology-detail-label-1">进程</dt><dd id="topology-detail-value-1">uvicorn geo_api.internal_app:app</dd></div>
+              <div><dt id="topology-detail-label-2">端口</dt><dd id="topology-detail-value-2">localhost:18000 → 8000</dd></div>
+              <div><dt id="topology-detail-label-3">网络</dt><dd id="topology-detail-value-3">GEO default + geo-dify-runtime</dd></div>
+              <div><dt id="topology-detail-label-4">读写</dt><dd id="topology-detail-value-4">PostgreSQL、MinIO、Valkey readiness、Dify API</dd></div>
+              <div><dt id="topology-detail-label-5">代码入口</dt><dd id="topology-detail-value-5">apps/api/geo_api/internal_app.py</dd></div>
+              <div><dt id="topology-detail-label-6">配置来源</dt><dd id="topology-detail-value-6">infra/compose.prod.yml + staging/Dify overlays</dd></div>
+            </dl>
+            <div class="topology-detail-note" id="topology-detail-note">当前 staging 实际加入 GEO 默认网络与 geo-dify-runtime；这里不借用生产网络名称。</div>
+            <section class="topology-dify-services" id="topology-dify-services" hidden>
+              <h5>Dify 内部组件</h5>
+              <ul class="dify-service-list" id="topology-dify-service-list" aria-label="Dify 内部组件"></ul>
+            </section>
+          </aside>
+          <button class="topology-detail-backdrop" id="topology-detail-backdrop" type="button" tabindex="-1" aria-label="关闭拓扑详情"></button>
+        </div>
+      </div>
+    </section>
+
     <section class="view-panel" id="view-health" role="tabpanel" aria-labelledby="tab-health" hidden>
       <header class="panel-heading">
         <div>
           <h3>当前 staging 部署健康</h3>
-          <p>来自 2026-07-30 13:59 CST 的 Docker 状态与 HTTP 探针；不是持续监控。</p>
+          <p>来自 2026-07-30 16:36 CST 的 Docker 状态与 HTTP 探针；不是持续监控。</p>
         </div>
         <div class="legend" aria-label="健康状态图例"><span><i class="status-dot complete"></i>运行 / Ready</span></div>
       </header>
@@ -1127,7 +1891,8 @@
 
   <script>
     const projectId = "6f93ee7b-bd7f-4fca-92b2-0de17254953a";
-    const adminBase = `http://localhost:13001/projects/${projectId}`;
+    const adminBase = `/projects/${projectId}`;
+    const customerBase = document.body.dataset.customerWebBase || "http://localhost:13000";
 
     const nodeDetails = {
       project: {
@@ -1186,6 +1951,15 @@
         next: "转交独立人工审核，不自动发布",
         evidence: "advinsys-production-path-validation §4.2", href: `${adminBase}?tab=prompts`
       },
+      "content-simulation": {
+        status: "complete", statusText: "真实运行通过", title: "仿真消费者短评",
+        description: "运营人员从 Admin 创建 V600 的 TEST ONLY 短评任务；后台冻结真实性模式、受众和输出形式，Dify 生成后再由 GEO 拒绝普通品牌文案和虚构产品效果。",
+        fact: "Simulation 97f7ca4b…4c60 · Job eed63c67…bef2 · Dify Run 854cc009…947a · test_only=true",
+        executor: "Task Worker + Dify placements.simulation + GEO 输出质量门禁",
+        next: "只用于内部技术预览；不得进入正式审核、导出或发布",
+        evidence: "PostgreSQL prompt_simulation_results + Dify Run lineage",
+        href: `${adminBase}?tab=geo&geo_section=placement&placement_stage=simulation&campaign_id=049efe96-2ef6-4020-885f-df770ce5ab90&opportunity_id=85285108-ed3a-4a48-be0e-7d4a31f9024a&simulation_id=97f7ca4b-4a98-5409-9d55-ff05bdb14c60&job_id=eed63c67-fe14-490d-a725-adbe5437bef2`
+      },
       package: {
         status: "warning", statusText: "尚未批准", title: "Package Version",
         description: "技术生成成功，但业务状态仍为 generated。",
@@ -1224,7 +1998,7 @@
         fact: "Customer 已批准外部报告：0",
         executor: "Customer API 只读投影",
         next: "先完成真实业务结果、审核与不可变批准快照",
-        evidence: "advinsys-production-path-validation §3 / §4.4", href: "http://localhost:13000"
+        evidence: "advinsys-production-path-validation §3 / §4.4", href: customerBase
       },
       "style-samples": {
         status: "blocked", statusText: "缺合法样本", title: "九渠道样本",
@@ -1328,7 +2102,7 @@
         fact: "外部 Report d6a109bb…aa · in_review；Customer approved 0",
         executor: "Customer API / Web approved-only reader",
         next: "真实采样、归因和审核完成后创建不可变 approved snapshot",
-        evidence: "advinsys-production-path-validation §3 / §4.4", href: "http://localhost:13000"
+        evidence: "advinsys-production-path-validation §3 / §4.4", href: customerBase
       }
     };
 
@@ -1347,6 +2121,21 @@
           ["结果持久化", "结构化输出校验后保存工件和业务结果。", "MinIO + PostgreSQL", "complete"],
           ["Package Version", "不可变内容版本物化，状态为 generated。", "0bf28e75…e2d", "warning"],
           ["人工审核", "必须由业务审核人决定，系统没有自动推进。", "待处理", "waiting"]
+        ]
+      },
+      simulation: {
+        object: "TerraMow V600 仿真消费者短评", techStatus: "完成", businessStatus: "TEST ONLY", id: "97f7ca4b…4c60",
+        outcomeTitle: "仿真文案生成成功，但永远不可发布",
+        outcomeCopy: "真实 Dify / DeepSeek 结果已通过第一人称、体验 Claim 和禁止虚构效果门禁；它是内部技术预览，不是消费者证言或正式内容版本。",
+        outcomeState: "仅限内部预览", outcomeTone: "complete",
+        steps: [
+          ["页面输入", "Admin 选择 ADVINSYS、V600、合成消费者评价、澳洲受众和短评。", "localhost:13001", "complete"],
+          ["冻结合同", "后台形成 task_contract，并冻结 Prompt 绑定、事实证据与输入哈希。", "41ddbba9…abd1", "complete"],
+          ["Job + Outbox", "Internal API 在同一事务创建 prompt_simulation.generate 与可靠唤醒。", "eed63c67…bef2", "complete"],
+          ["Worker Lease", "Task Worker 获取 lease 与 fencing generation 后调用固定 Release。", "Durable Job", "complete"],
+          ["Dify 仿真", "placements.simulation 使用真实 DeepSeek 生成澳洲英文第一人称短评。", "Dify Run 854cc009…947a", "complete"],
+          ["质量门禁", "应用校验 Schema、证据引用、第一人称体验 Claim，并拒绝虚构使用效果。", "GEO Runtime", "complete"],
+          ["不可变结果", "结果、Claim、输入/输出哈希与模型 lineage 落库；publication_eligible=false。", "97f7ca4b…4c60", "complete"]
         ]
       },
       recommendation: {
@@ -1383,6 +2172,321 @@
       }
     };
 
+    const topologyNodes = [
+      {
+        id: "operator", label: "运营人员", subtitle: "Admin 操作与人工决定", group: "访问者", col: 1, row: 1,
+        status: "actor", tone: "complete", statusText: "交互入口", meta: "浏览器",
+        description: "通过 Admin 发起管理命令、查看任务状态，并完成系统不能替代的人工决定。",
+        runtime: "本机浏览器", endpoint: "localhost:13001 / 15000", networks: "不直接加入 Docker 网络",
+        io: "Admin Web、Dify Console", entry: "浏览器交互", source: "当前 staging 公开端口",
+        note: "浏览器不直接访问 PostgreSQL、Valkey、MinIO 或 Worker。"
+      },
+      {
+        id: "deployment-tooling", label: "单栈部署工具", subtitle: "install + lifecycle + doctor", group: "部署与迁移", col: 1, row: 4,
+        status: "running", tone: "complete", statusText: "已验证", meta: "宿主机 CLI",
+        description: "统一入口负责配置、启动、停止、健康检查、旧栈清理和迁移包导入导出。",
+        runtime: "bash + Python 3", endpoint: "宿主机命令行", networks: "Docker Engine / Compose", io: "Compose bundle、Secret、迁移包",
+        entry: "scripts/geo-stack.sh + deploy/install.sh + scripts/geo_migrate.py", source: "单栈部署与跨服务器迁移指南",
+        note: "新服务器默认项目名为 geo；当前本机保留 geo-advinsys-staging-v2 作为已验证来源。旧 geo-development 已清理。"
+      },
+      {
+        id: "customer", label: "客户用户", subtitle: "只读批准结果", group: "访问者", col: 1, row: 2,
+        status: "actor", tone: "complete", statusText: "交互入口", meta: "浏览器",
+        description: "只通过 Customer Web 查看已批准、未失效的真实投影。",
+        runtime: "本机浏览器", endpoint: "localhost:13000", networks: "不直接加入 Docker 网络",
+        io: "Customer Web", entry: "浏览器交互", source: "当前 staging 公开端口",
+        note: "当前 ADVINSYS 已批准报告为 0；页面可运行不等于已有客户结果。"
+      },
+      {
+        id: "admin-web", label: "Admin Web", subtitle: "管理工作台", group: "Web 入口", col: 2, row: 1,
+        status: "running", tone: "complete", statusText: "当前运行", meta: "13001 → 3000",
+        description: "内部管理界面；业务操作转发到 Internal API，/runtime-map 直接呈现同一份只读架构快照。",
+        runtime: "node apps/admin-web/server.js", endpoint: "localhost:13001 → container:3000",
+        networks: "geo-advinsys-staging-v2_default", io: "Internal API + 只读运行地图快照",
+        entry: "apps/admin-web/app + /runtime-map", source: "Internal API / docs/architecture/GEO-runtime-flow-visualization.html",
+        note: "运行地图在 Admin 内同源隔离呈现，镜像只携带规定的唯一快照；当前容器不混用 3001 开发构建。"
+      },
+      {
+        id: "customer-web", label: "Customer Web", subtitle: "客户只读门户", group: "Web 入口", col: 2, row: 2,
+        status: "running", tone: "complete", statusText: "当前运行", meta: "13000 → 3000",
+        description: "客户只读界面，只调用独立 Customer API。",
+        runtime: "node apps/customer-web/server.js", endpoint: "localhost:13000 → container:3000",
+        networks: "geo-advinsys-staging-v2_default", io: "Customer API",
+        entry: "apps/customer-web/app", source: "infra/compose.prod.yml + staging overlay",
+        note: "Customer Web 不调用 Internal API，也不直接读取未批准报告。"
+      },
+      {
+        id: "dify-console", label: "Dify Console", subtitle: "工作流编辑与运行界面", group: "Web 入口", col: 2, row: 3,
+        status: "running", tone: "complete", statusText: "当前运行", meta: "15000 → 80",
+        description: "自托管 Dify 控制台，由 Nginx 暴露在本机端口 15000。",
+        runtime: "geo-dify-nginx + geo-dify-web", endpoint: "localhost:15000 → nginx:80",
+        networks: "geo-dify_default", io: "Dify Web / API",
+        entry: "infra/dify/docker-compose.dify.yml", source: "Dify 1.16.0 compose",
+        note: "GEO Admin 的 Prompt 页面只读展示 Dify 工作流内容；实际编辑在此控制台完成。"
+      },
+      {
+        id: "internal-api", label: "Internal API", subtitle: "命令与内部读模型", group: "API 与调度", col: 3, row: 1,
+        status: "running", tone: "complete", statusText: "Ready", meta: "18000 → 8000",
+        description: "Admin 的稳定读写入口，并负责创建受治理命令、Job 与不可变输入。",
+        runtime: "uvicorn geo_api.internal_app:app", endpoint: "localhost:18000 → container:8000",
+        networks: "geo-advinsys-staging-v2_default + geo-dify-runtime", io: "PostgreSQL、MinIO、Valkey readiness、Dify API",
+        entry: "apps/api/geo_api/internal_app.py", source: "infra/compose.prod.yml + staging/Dify overlays",
+        note: "当前 staging 实际加入 GEO 默认网络与 geo-dify-runtime；这里不借用生产网络名称。"
+      },
+      {
+        id: "customer-api", label: "Customer API", subtitle: "批准投影专用 API", group: "API 与调度", col: 3, row: 2,
+        status: "running", tone: "complete", statusText: "Ready", meta: "18001 → 8000",
+        description: "独立只读 API，只注册 Customer DTO 和批准投影。",
+        runtime: "uvicorn geo_api.customer_app:app", endpoint: "localhost:18001 → container:8000",
+        networks: "geo-advinsys-staging-v2_default", io: "PostgreSQL approved-only projection",
+        entry: "apps/api/geo_api/customer_app.py", source: "infra/compose.prod.yml + staging overlay",
+        note: "其 readiness 只依赖 PostgreSQL；内部管理路由根本不注册。"
+      },
+      {
+        id: "outbox-relay", label: "Outbox Relay", subtitle: "可靠唤醒", group: "API 与调度", col: 3, row: 3,
+        status: "running", tone: "complete", statusText: "当前运行", meta: "无公开端口",
+        description: "从 PostgreSQL 读取已提交 outbox，再向 Valkey 发布低延迟唤醒。",
+        runtime: "python -m geo_worker.relay", endpoint: "internal only",
+        networks: "geo-advinsys-staging-v2_default", io: "PostgreSQL → Valkey",
+        entry: "apps/api/geo_worker/relay.py", source: "infra/compose.prod.yml",
+        note: "Valkey 不是任务真源；Relay 或队列暂时不可用时仍可从数据库重投。"
+      },
+      {
+        id: "postgres", label: "PostgreSQL 16", subtitle: "业务状态真源 + pgvector", group: "状态与队列", col: 4, row: 1,
+        status: "running", tone: "complete", statusText: "Healthy", meta: "55433 → 5432",
+        description: "保存业务对象、Durable Job、lease、fencing、outbox、lineage 和投影。",
+        runtime: "pgvector/pgvector:pg16", endpoint: "localhost:55433 → container:5432",
+        networks: "geo-advinsys-staging-v2_default", io: "双 API、Relay、各 Worker",
+        entry: "infra/db/alembic", source: "infra/compose.prod.yml + staging volume",
+        note: "任务状态和业务结果以 PostgreSQL 为准，不能由 Valkey 队列状态反推。"
+      },
+      {
+        id: "valkey", label: "Valkey", subtitle: "Dramatiq 低延迟唤醒", group: "状态与队列", col: 4, row: 3,
+        status: "running", tone: "complete", statusText: "Healthy", meta: "16379 → 6379",
+        description: "承载 Dramatiq 消息和 Worker 唤醒，不保存最终业务状态。",
+        runtime: "valkey-server --appendonly yes", endpoint: "localhost:16379 → container:6379",
+        networks: "geo-advinsys-staging-v2_default", io: "Outbox Relay → Worker consumers",
+        entry: "Valkey 8.0.2", source: "infra/compose.prod.yml",
+        note: "队列丢失可由 PostgreSQL outbox 与 Durable Job 状态恢复。"
+      },
+      {
+        id: "minio", label: "MinIO", subtitle: "不可变与受限工件", group: "状态与队列", col: 4, row: 5,
+        status: "running", tone: "complete", statusText: "Healthy", meta: "19000 / 19001",
+        description: "保存生成、连接器、采样、浏览器、Synthetic 与 Recommendation 工件。",
+        runtime: "minio server /data", endpoint: "API 19000 / Console 19001",
+        networks: "geo-advinsys-staging-v2_default", io: "Internal API 与专用 Worker 身份",
+        entry: "MinIO RELEASE.2025-01-20", source: "infra/compose.prod.yml + bootstrap policies",
+        note: "页面只展示 bucket 职责，不展示凭据、正文或加密材料。"
+      },
+      {
+        id: "migration-package", label: "加密迁移包", subtitle: "PostgreSQL + 缓存 + 工件", group: "状态与队列", col: 4, row: 7,
+        status: "configured", tone: "warning", statusText: "已验证；待目标机", meta: "AES-256 + hash",
+        description: "迁移包覆盖 GEO 与 Dify 的数据库、Valkey/Redis、MinIO、Weaviate、Dify 状态和受控配置文件。",
+        runtime: "geo_migrate.py", endpoint: "宿主机文件系统（600）", networks: "不加入 Docker 网络", io: "加密 payload + manifest + restore receipt",
+        entry: "scripts/geo_migrate.py export/import/verify", source: "docs/operations/geo-deploy-and-migration.md",
+        note: "密钥和迁移口令不写入 manifest；导入必须使用空目标确认，并在恢复后重新执行 doctor 与服务健康检查。"
+      },
+      {
+        id: "task-worker", label: "Task Worker", subtitle: "Durable Job + 模型任务", group: "执行器", col: 5, row: 1,
+        status: "running", tone: "complete", statusText: "当前运行", meta: "1 process / 4 threads",
+        description: "获取数据库 lease 与 fencing generation，执行模型、统计、建议和内容任务。",
+        runtime: "dramatiq geo_worker.tasks", endpoint: "internal only",
+        networks: "geo-advinsys-staging-v2_default + geo-dify-runtime", io: "PostgreSQL、Valkey、MinIO、Dify API、告警 Sink",
+        entry: "apps/api/geo_worker/tasks.py", source: "infra/compose.prod.yml + staging/Dify overlays",
+        note: "当前 staging 为 1 个进程；生产性能合同中的实例数不冒充当前运行数量。"
+      },
+      {
+        id: "connector-worker", label: "Connector Worker", subtitle: "GSC / GA4 / 官方报告", group: "执行器", col: 5, row: 4,
+        status: "running", tone: "complete", statusText: "Healthy", meta: "无公开端口",
+        description: "执行固定版本 PyAirbyte 连接器，同步原始工件、schema、checkpoint 和投影。",
+        runtime: "python -m geo_connector_worker.entrypoint", endpoint: "internal only",
+        networks: "geo-advinsys-staging-v2_default", io: "Valkey、PostgreSQL、MinIO、外部数据源",
+        entry: "apps/connector_worker", source: "infra/compose.connector.yml",
+        note: "Worker 进程健康，但 ADVINSYS 当前 Connection 和真实 Sync 都是 0。"
+      },
+      {
+        id: "browser-capture-worker", label: "Browser Capture Worker", subtitle: "消费者 Surface 采集", group: "执行器", col: 5, row: 5,
+        status: "running", tone: "complete", statusText: "Healthy", meta: "无公开端口",
+        description: "执行受控浏览器采集，并将页面工件与 Attempt/Observation lineage 绑定。",
+        runtime: "python -m geo_browser_capture_worker.entrypoint", endpoint: "internal only",
+        networks: "geo-advinsys-staging-v2_default", io: "Valkey、PostgreSQL、MinIO、代理出口",
+        entry: "apps/browser_capture_worker", source: "infra/compose.browser-capture.yml",
+        note: "当前没有澳洲 sticky proxy、Surface Release 或真实 Capture；进程健康不代表采集完成。"
+      },
+      {
+        id: "style-browser-worker", label: "Style Browser Worker", subtitle: "九渠道样本采集", group: "执行器", col: 5, row: 6,
+        status: "configured", tone: "warning", statusText: "已配置未启动", meta: "当前容器 0",
+        description: "隔离登录和公开页面采集，形成匿名化 Style Sample。",
+        runtime: "python -m geo_style_worker.entrypoint", endpoint: "style-browser-runtime:9222",
+        networks: "配置为 backend + egress + style-browser-control；当前 staging 未加入",
+        io: "PostgreSQL、Valkey、Synthetic MinIO buckets、Style Source",
+        entry: "apps/style_browser_worker", source: "infra/compose.style-collection.yml",
+        note: "此节点使用虚线，因为它存在于受控部署合同中，但不在当前运行容器列表。"
+      },
+      {
+        id: "alert-smtp", label: "SMTP Alert Sink", subtitle: "staging 邮件接收端", group: "执行器", col: 5, row: 7,
+        status: "running", tone: "complete", statusText: "Healthy", meta: "internal :8025",
+        description: "在 staging 内接收告警邮件，避免向外部邮箱产生副作用。",
+        runtime: "python scripts/staging_alert_smtp_sink.py", endpoint: "alert-smtp-relay:8025",
+        networks: "geo-advinsys-staging-v2_default", io: "Task Worker SMTP",
+        entry: "scripts/staging_alert_smtp_sink.py", source: "infra/compose.staging-operator.yml",
+        note: "它证明告警发送路径可执行，不是实际生产邮件服务。"
+      },
+      {
+        id: "alert-webhook", label: "Webhook Alert Sink", subtitle: "staging 内网接收端", group: "执行器", col: 5, row: 8,
+        status: "running", tone: "complete", statusText: "Healthy", meta: "internal :8080",
+        description: "在 staging 内通过 TLS 接收签名 Webhook 告警。",
+        runtime: "python scripts/staging_alert_webhook_sink.py", endpoint: "alert-webhook-sink:8080",
+        networks: "geo-advinsys-staging-v2_default", io: "Task Worker HTTPS Webhook",
+        entry: "scripts/staging_alert_webhook_sink.py", source: "infra/compose.staging-operator.yml",
+        note: "它是内网验收 Sink，不代表外部业务 Webhook 已配置。"
+      },
+      {
+        id: "au-proxy", label: "澳洲粘性代理", subtitle: "同一次采集的固定出口", group: "Dify / 代理", col: 6, row: 5,
+        status: "blocked", tone: "blocked", statusText: "外部缺失", meta: "Endpoint 0",
+        description: "Browser Capture 需要绑定同一 sticky lease 的 pre/target/post 澳洲出口证明。",
+        runtime: "尚未提供", endpoint: "尚无可用代理 Endpoint",
+        networks: "外部 HTTPS egress", io: "Browser Capture Worker → Consumer Surfaces",
+        entry: "外部供应商", source: "ADVINSYS 真实生产路径验收 §5/§6",
+        note: "普通轮换代理不能证明目标页面与地域检查使用同一出口。"
+      },
+      {
+        id: "deepseek", label: "DeepSeek API", subtitle: "Dify 当前模型 Provider", group: "外部系统", col: 7, row: 1,
+        status: "external", tone: "complete", statusText: "真实调用通过", meta: "HTTPS",
+        description: "十个 Dify 工作流已通过真实 DeepSeek canary；凭据不进入地图。",
+        runtime: "外部模型 API", endpoint: "HTTPS provider endpoint",
+        networks: "经 Dify 受控外连", io: "Dify API / Worker",
+        entry: "Dify Model Provider", source: "dify-canaries.jsonl",
+        note: "这里只证明既有 canary 与 V600 生成调用，不代表其他 Provider 凭据已经具备。"
+      },
+      {
+        id: "external-data", label: "GSC / GA4 / 官方报告", subtitle: "真实外部数据源", group: "外部系统", col: 7, row: 4,
+        status: "blocked", tone: "blocked", statusText: "外部缺失", meta: "Sync 0",
+        description: "连接器底座已运行，但缺真实 Property、授权与 Secret Reference。",
+        runtime: "Google API / 报告导入", endpoint: "外部 HTTPS",
+        networks: "Connector Worker egress", io: "Connector Worker",
+        entry: "PyAirbyte source adapters", source: "ADVINSYS 真实生产路径验收 §3/§5",
+        note: "Definition 存在不等于 Connection 或 Sync 已经完成。"
+      },
+      {
+        id: "consumer-surfaces", label: "AIO / AI Mode / Copilot", subtitle: "澳洲消费者界面", group: "外部系统", col: 7, row: 5,
+        status: "blocked", tone: "blocked", statusText: "外部缺失", meta: "Capture 0",
+        description: "三个 Surface 需要独立授权、Release、实测 selector/parser 和地域证明。",
+        runtime: "消费者搜索界面", endpoint: "外部浏览器页面",
+        networks: "经澳洲 sticky proxy", io: "Browser Capture Worker",
+        entry: "Google / Microsoft consumer surfaces", source: "ADVINSYS 真实生产路径验收 §5/§6",
+        note: "现有 30 个 parser fixture 只证明本地解析合同，不是 live 澳洲采集。"
+      },
+      {
+        id: "style-sources", label: "九渠道 Style Sources", subtitle: "公开或授权登录页面", group: "外部系统", col: 7, row: 6,
+        status: "blocked", tone: "blocked", statusText: "缺合法样本", meta: "Sample 0",
+        description: "每个平台需要合法取得、匿名化并人工明审的澳洲英文样本。",
+        runtime: "外部网页 / 授权账号", endpoint: "逐渠道 allowlist",
+        networks: "Style Browser egress", io: "Style Browser Worker",
+        entry: "九个平台来源", source: "ADVINSYS 真实生产路径验收 §5/§6",
+        note: "模型生成文本不能替代真实 Style Sample。"
+      }
+    ];
+
+    const difyServices = [
+      { id: "dify-nginx", label: "Nginx", state: "运行", runtime: "HTTP gateway", endpoint: "localhost:15000 → 80", networks: "geo-dify_default", io: "Web / API routing", entry: "infra/dify/docker-compose.dify.yml" },
+      { id: "dify-web", label: "Web", state: "运行", runtime: "Dify Console frontend", endpoint: "internal :3000", networks: "geo-dify_default", io: "Nginx / API", entry: "geo-dify-web:1.16.0-geo" },
+      { id: "dify-api", label: "API", state: "Healthy", runtime: "Dify API 1.16.0", endpoint: "internal :5001", networks: "geo-dify_default + geo-dify-runtime + ssrf_proxy", io: "GEO API/Worker、Dify stores", entry: "langgenius/dify-api:1.16.0" },
+      { id: "dify-worker", label: "Worker", state: "运行", runtime: "Dify async worker", endpoint: "internal", networks: "geo-dify_default + ssrf_proxy", io: "Redis、PostgreSQL、Weaviate、Provider", entry: "langgenius/dify-api:1.16.0" },
+      { id: "dify-beat", label: "Worker Beat", state: "运行", runtime: "Dify scheduler", endpoint: "internal", networks: "geo-dify_default + ssrf_proxy", io: "Redis / Worker", entry: "langgenius/dify-api:1.16.0" },
+      { id: "dify-agent", label: "Agent Backend", state: "运行", runtime: "uvicorn dify_agent", endpoint: "internal :5050", networks: "geo-dify_default", io: "Dify agent runtime", entry: "langgenius/dify-agent-backend:1.16.0" },
+      { id: "dify-plugin", label: "Plugin Daemon", state: "运行", runtime: "Dify plugin daemon", endpoint: "internal", networks: "geo-dify_default + ssrf_proxy", io: "API / plugins", entry: "langgenius/dify-plugin-daemon:0.6.3-local" },
+      { id: "dify-sandbox", label: "Sandbox", state: "Healthy", runtime: "Dify sandbox", endpoint: "internal", networks: "geo-dify_ssrf_proxy_network", io: "受控代码执行", entry: "langgenius/dify-sandbox:0.2.15" },
+      { id: "dify-local-sandbox", label: "Local Sandbox", state: "Healthy", runtime: "shellctl serve", endpoint: "internal :5004", networks: "geo-dify_default", io: "Agent local execution", entry: "dify agent local sandbox" },
+      { id: "dify-postgres", label: "PostgreSQL", state: "Healthy", runtime: "PostgreSQL 15", endpoint: "internal :5432", networks: "geo-dify_default", io: "Dify metadata", entry: "postgres:15-alpine" },
+      { id: "dify-redis", label: "Redis", state: "Healthy", runtime: "Redis 6 (认证参数隐藏)", endpoint: "internal :6379", networks: "geo-dify_default", io: "Dify queue / cache", entry: "redis:6-alpine" },
+      { id: "dify-weaviate", label: "Weaviate", state: "运行", runtime: "Weaviate 1.27.0", endpoint: "internal :8080", networks: "geo-dify_default", io: "Dify vector store", entry: "semitechnologies/weaviate:1.27.0" },
+      { id: "dify-ssrf", label: "SSRF Proxy", state: "运行", runtime: "Squid proxy", endpoint: "internal :3128", networks: "geo-dify_default + ssrf_proxy", io: "受控外部访问", entry: "ubuntu/squid:latest" }
+    ];
+
+    const topologyEdges = [
+      { id: "operator-admin", from: "operator", to: "admin-web", label: "HTTP :13001", kind: "http", scenarios: ["async-model", "dify-workflow", "connector-sync", "browser-capture", "style-collection", "alert-delivery"], description: "运营人员通过浏览器访问 Admin。", trigger: "页面访问或操作", recovery: "浏览器重试；不改变已提交命令", truth: "Internal API / PostgreSQL", availability: "当前可用" },
+      { id: "operator-deployment", from: "operator", to: "deployment-tooling", label: "CLI / SSH", kind: "http", scenarios: ["deployment-migration"], description: "部署人员在目标 Linux 主机执行一键安装、迁移和 doctor。", trigger: "显式部署或恢复命令", recovery: "按命令输出修复依赖后可重试", truth: "宿主机命令 + evidence manifest", availability: "当前可用" },
+      { id: "deployment-compose", from: "deployment-tooling", to: "admin-web", label: "Compose up/down", kind: "event", scenarios: ["deployment-migration"], description: "统一脚本用同一组 Compose 文件启动 GEO、Worker 和 Dify bridge。", trigger: "stack up 或 install.sh", recovery: "doctor 检查失败时不宣称部署完成", truth: "Docker Compose config + health", availability: "当前可用" },
+      { id: "deployment-package", from: "deployment-tooling", to: "migration-package", label: "export / import", kind: "storage", scenarios: ["deployment-migration"], description: "源机导出加密迁移包，目标机在空环境显式确认后导入。", trigger: "维护窗口与迁移口令", recovery: "hash/pg_restore/doctor 失败则保留目标机未验收状态", truth: "manifest + restore receipt", availability: "真实导出与 verify 已通过" },
+      { id: "package-postgres", from: "migration-package", to: "postgres", label: "pg_dump / restore", kind: "storage", scenarios: ["deployment-migration"], description: "迁移包恢复 GEO、Dify 和插件数据库逻辑备份。", trigger: "目标为空且通过确认", recovery: "先 pg_restore --list，再恢复并核对 revision/relations", truth: "PostgreSQL dumps", availability: "真实 dump verify 已通过" },
+      { id: "package-minio", from: "migration-package", to: "minio", label: "MinIO archive", kind: "storage", scenarios: ["deployment-migration"], description: "迁移包恢复 GEO MinIO 对象和 Dify Weaviate/状态数据。", trigger: "停止对应 stateful service", recovery: "安全解包、权限修复、重启后 hash 对账", truth: "MinIO/Weaviate archives", availability: "真实包已生成；目标机待导入" },
+      { id: "customer-web", from: "customer", to: "customer-web", label: "HTTP :13000", kind: "http", scenarios: ["customer-read"], description: "客户通过浏览器访问 Customer 门户。", trigger: "页面访问", recovery: "浏览器重试", truth: "Customer API 投影", availability: "当前可用" },
+      { id: "operator-dify", from: "operator", to: "dify-console", label: "HTTP :15000", kind: "http", scenarios: ["dify-workflow"], description: "运营人员进入 Dify 控制台编辑和测试托管工作流。", trigger: "显式打开 Dify", recovery: "浏览器重试", truth: "Dify metadata store", availability: "当前可用" },
+      { id: "admin-internal", from: "admin-web", to: "internal-api", label: "HTTP API", kind: "http", scenarios: ["async-model", "dify-workflow", "connector-sync", "browser-capture", "style-collection", "alert-delivery"], description: "Admin Web 将内部命令和查询转发给 Internal API。", trigger: "用户操作", recovery: "HTTP 合同返回可行动错误", truth: "PostgreSQL", availability: "当前可用" },
+      { id: "customer-customer-api", from: "customer-web", to: "customer-api", label: "HTTP API", kind: "http", scenarios: ["customer-read"], description: "Customer Web 只调用独立 Customer API。", trigger: "客户查询", recovery: "只读请求可重试", truth: "批准投影", availability: "当前可用" },
+      { id: "internal-postgres", from: "internal-api", to: "postgres", label: "SQL / Job+Outbox", kind: "storage", scenarios: ["async-model", "connector-sync", "browser-capture", "style-collection", "alert-delivery"], description: "Internal API 在同一事务写业务命令、Durable Job、immutable spec 和 outbox。", trigger: "受治理命令准入", recovery: "幂等键重放；事务失败零写入", truth: "PostgreSQL", availability: "当前可用" },
+      { id: "internal-minio", from: "internal-api", to: "minio", label: "S3 governed write", kind: "storage", scenarios: ["connector-sync", "browser-capture"], description: "Internal API 仅在受治理入口写入允许的 restricted/manual 工件。", trigger: "已通过 admission 的工件提交", recovery: "提交收据与 hash 对账", truth: "PostgreSQL manifest + MinIO object", availability: "当前可用" },
+      { id: "internal-dify", from: "internal-api", to: "dify-runtime", label: "Dify API :5001", kind: "http", scenarios: ["dify-workflow"], description: "Internal API 通过 geo-dify-runtime 读取和管理托管工作流元数据。", trigger: "Prompt/Dify 页面请求", recovery: "超时返回明确不可用状态", truth: "Dify API + GEO binding", availability: "当前可用" },
+      { id: "customer-postgres", from: "customer-api", to: "postgres", label: "SQL read-only", kind: "storage", scenarios: ["customer-read"], description: "Customer API 只读取批准且未失效的项目投影。", trigger: "客户查询", recovery: "只读查询可重试", truth: "PostgreSQL approved snapshot", availability: "当前可用；ADVINSYS 报告数为 0" },
+      { id: "postgres-outbox", from: "postgres", to: "outbox-relay", label: "SQL poll", kind: "event", scenarios: ["async-model", "connector-sync", "browser-capture", "style-collection", "alert-delivery"], description: "Relay 读取已经提交且尚未投递的 outbox。", trigger: "事务提交后的待投递事件", recovery: "租约到期后重投", truth: "PostgreSQL outbox", availability: "当前可用" },
+      { id: "outbox-valkey", from: "outbox-relay", to: "valkey", label: "Dramatiq wake", kind: "event", scenarios: ["async-model", "connector-sync", "browser-capture", "style-collection", "alert-delivery"], description: "Relay 向 Valkey 发布低延迟唤醒。", trigger: "已提交 outbox", recovery: "失败保留 outbox 并重投", truth: "PostgreSQL", availability: "当前可用" },
+      { id: "valkey-task", from: "valkey", to: "task-worker", label: "queue wake", kind: "event", scenarios: ["async-model", "alert-delivery"], description: "唤醒 Task Worker 尝试获取对应数据库 Job。", trigger: "Dramatiq 消息", recovery: "无 lease 不执行；可重新唤醒", truth: "PostgreSQL Durable Job", availability: "当前可用" },
+      { id: "valkey-connector", from: "valkey", to: "connector-worker", label: "connector queue", kind: "event", scenarios: ["connector-sync"], description: "唤醒 Connector Worker 执行冻结的同步任务。", trigger: "Connector outbox event", recovery: "checkpoint + Durable Job 重试", truth: "PostgreSQL", availability: "进程可用；真实 Connection 0" },
+      { id: "valkey-browser", from: "valkey", to: "browser-capture-worker", label: "capture queue", kind: "event", scenarios: ["browser-capture"], description: "唤醒 Browser Capture Worker 执行冻结 Attempt。", trigger: "Browser capture outbox event", recovery: "Attempt 级重试并重新产生出口证据", truth: "PostgreSQL Attempt", availability: "进程可用；真实 Capture 0" },
+      { id: "valkey-style", from: "valkey", to: "style-browser-worker", label: "style queue", kind: "event", scenarios: ["style-collection"], description: "唤醒隔离 Style Browser Worker 执行采集。", trigger: "Style Collection Task", recovery: "任务级重试，不绕过访问控制", truth: "PostgreSQL", availability: "当前 Worker 未启动" },
+      { id: "task-postgres", from: "task-worker", to: "postgres", label: "SQL lease/result", kind: "storage", scenarios: ["async-model", "dify-workflow", "alert-delivery"], description: "Task Worker 获取 lease/fence，并以受控 RPC 写结果和终态。", trigger: "成功获取 Job lease", recovery: "lease 丢失停止提交；按 retry policy 恢复", truth: "PostgreSQL", availability: "当前可用" },
+      { id: "task-minio", from: "task-worker", to: "minio", label: "S3 artifact", kind: "storage", scenarios: ["async-model", "dify-workflow"], description: "Task Worker 写入生成、建议或采样相关不可变工件。", trigger: "结构化输出通过校验", recovery: "hash/manifest 对账与受控重试", truth: "PostgreSQL manifest + MinIO object", availability: "当前可用" },
+      { id: "task-dify", from: "task-worker", to: "dify-runtime", label: "Dify API :5001", kind: "http", scenarios: ["async-model", "dify-workflow"], description: "Task Worker 使用冻结 workflow release 调用 Dify API。", trigger: "持有有效 lease 的模型任务", recovery: "180 秒超时；Durable Job policy 决定重试", truth: "GEO Job + Dify run lineage", availability: "当前可用" },
+      { id: "dify-console-runtime", from: "dify-console", to: "dify-runtime", label: "Nginx / API", kind: "http", scenarios: ["dify-workflow"], description: "Dify Console 经 Nginx 访问 Web 与 API。", trigger: "控制台操作", recovery: "Dify HTTP 错误反馈", truth: "Dify PostgreSQL", availability: "当前可用" },
+      { id: "dify-deepseek", from: "dify-runtime", to: "deepseek", label: "HTTPS model", kind: "external", scenarios: ["async-model", "dify-workflow"], description: "Dify 执行冻结工作流并调用 DeepSeek。", trigger: "Dify workflow node", recovery: "Dify/GEO 超时和 Job retry；不泄露凭据", truth: "Dify run + GEO model lineage", availability: "真实 canary 已通过" },
+      { id: "connector-postgres", from: "connector-worker", to: "postgres", label: "SQL checkpoint", kind: "storage", scenarios: ["connector-sync"], description: "Connector Worker 保存 Connection、Checkpoint、Sync Run、Schema 和 Projection。", trigger: "冻结 Connector task", recovery: "按 checkpoint 增量继续或受控回刷", truth: "PostgreSQL", availability: "底座可用；真实 Sync 0" },
+      { id: "connector-minio", from: "connector-worker", to: "minio", label: "S3 raw artifact", kind: "storage", scenarios: ["connector-sync"], description: "保存连接器原始工件与 manifest。", trigger: "读取批次完成", recovery: "content hash 与记录数对账", truth: "MinIO object + PostgreSQL manifest", availability: "底座可用" },
+      { id: "connector-external", from: "connector-worker", to: "external-data", label: "HTTPS / OAuth", kind: "external", scenarios: ["connector-sync"], description: "Connector Worker 调用 GSC、GA4 或导入官方报告。", trigger: "已批准 Connection + Secret Reference", recovery: "限流退避、checkpoint、撤权失败闭合", truth: "外部 API + raw artifact", availability: "缺真实授权" },
+      { id: "browser-postgres", from: "browser-capture-worker", to: "postgres", label: "SQL Attempt", kind: "storage", scenarios: ["browser-capture"], description: "保存 Attempt、出口验证、Observation 和 parser lineage。", trigger: "冻结 Capture Task", recovery: "每次重试创建新的 Attempt evidence", truth: "PostgreSQL", availability: "底座可用；Capture 0" },
+      { id: "browser-minio", from: "browser-capture-worker", to: "minio", label: "S3 page bundle", kind: "storage", scenarios: ["browser-capture"], description: "保存加密、受限、按保留策略管理的页面工件。", trigger: "capture 落盘前治理通过", recovery: "bundle hash 与数据库 lineage 对账", truth: "MinIO object + PostgreSQL manifest", availability: "底座可用" },
+      { id: "browser-proxy", from: "browser-capture-worker", to: "au-proxy", label: "HTTPS 粘性会话", kind: "external", scenarios: ["browser-capture"], description: "一次 Capture 必须绑定同一澳洲 sticky proxy lease。", trigger: "已批准 Endpoint 与 Surface Release", recovery: "出口变化使 Attempt 失效并重新执行", truth: "代理侧日志 + pre/target/post evidence", availability: "缺真实代理" },
+      { id: "proxy-surfaces", from: "au-proxy", to: "consumer-surfaces", label: "Browser session", kind: "external", scenarios: ["browser-capture"], description: "通过固定澳洲出口访问对应消费者搜索界面。", trigger: "合法授权与未受阻访问", recovery: "验证码、封禁或 drift 进入明确阻断", truth: "Page Artifact Bundle", availability: "缺 live Surface Release" },
+      { id: "style-postgres", from: "style-browser-worker", to: "postgres", label: "SQL collection", kind: "storage", scenarios: ["style-collection"], description: "保存 Collection Run、Task、匿名化样本和审核状态。", trigger: "合法 Style Source", recovery: "保留失败原因并可重试合法来源", truth: "PostgreSQL", availability: "Worker 未启动；Sample 0" },
+      { id: "style-minio", from: "style-browser-worker", to: "minio", label: "S3 raw/derived", kind: "storage", scenarios: ["style-collection"], description: "分别保存受限 raw 与匿名 derived 工件。", trigger: "落盘前分类和清理通过", recovery: "独立加密域与 retention job", truth: "MinIO + artifact manifest", availability: "配置存在；无真实样本" },
+      { id: "style-sources", from: "style-browser-worker", to: "style-sources", label: "Playwright HTTPS", kind: "external", scenarios: ["style-collection"], description: "在 allowlist 内采集公开或授权登录页面。", trigger: "来源授权、账号和访问策略均满足", recovery: "不绕过验证码、封禁或访问控制", truth: "Style Source Revision", availability: "缺合法样本输入" },
+      { id: "task-smtp", from: "task-worker", to: "alert-smtp", label: "SMTP :8025", kind: "external", scenarios: ["alert-delivery"], description: "Task Worker 向 staging SMTP Sink 发送可验收告警。", trigger: "告警规则触发且未抑制", recovery: "失败记录 delivery attempt 并可重试", truth: "PostgreSQL alert/disposition", availability: "当前可用" },
+      { id: "task-webhook", from: "task-worker", to: "alert-webhook", label: "HTTPS signed", kind: "external", scenarios: ["alert-delivery"], description: "Task Worker 向内网 TLS Webhook Sink 发送签名告警。", trigger: "告警规则触发且未抑制", recovery: "失败记录、退避重试、允许人工处置", truth: "PostgreSQL alert/disposition", availability: "当前可用" }
+    ];
+
+    const topologyScenarios = {
+      "async-model": {
+        title: "异步模型任务", copy: "从 Admin 命令到 Durable Job、Dify 模型调用和结果持久化。",
+        outcome: "结果落库，等待业务动作",
+        nodes: ["operator", "admin-web", "internal-api", "postgres", "outbox-relay", "valkey", "task-worker", "minio", "dify-runtime", "deepseek"]
+      },
+      "dify-workflow": {
+        title: "Dify 工作流", copy: "区分控制台管理路径与 Worker 的真实 workflow API 调用路径。",
+        outcome: "10 个 GEO 工作流已激活",
+        nodes: ["operator", "admin-web", "internal-api", "dify-console", "task-worker", "postgres", "minio", "dify-runtime", "deepseek"]
+      },
+      "connector-sync": {
+        title: "连接器同步", copy: "从受治理 Connection 到队列、Connector Worker、外部 API 和原始工件。",
+        outcome: "底座运行，真实 Sync 为 0",
+        nodes: ["operator", "admin-web", "internal-api", "postgres", "outbox-relay", "valkey", "connector-worker", "minio", "external-data"]
+      },
+      "browser-capture": {
+        title: "消费者界面采集", copy: "展示 Capture Attempt、页面工件、澳洲 sticky proxy 和消费者 Surface 的完整边界。",
+        outcome: "代理与 live Surface 缺失",
+        nodes: ["operator", "admin-web", "internal-api", "postgres", "outbox-relay", "valkey", "browser-capture-worker", "minio", "au-proxy", "consumer-surfaces"]
+      },
+      "style-collection": {
+        title: "合成样本采集", copy: "从合法 Style Source 到隔离浏览器、受限 raw 工件和匿名化样本。",
+        outcome: "Worker 未启动，Sample 为 0",
+        nodes: ["operator", "admin-web", "internal-api", "postgres", "outbox-relay", "valkey", "style-browser-worker", "minio", "style-sources"]
+      },
+      "customer-read": {
+        title: "客户只读查询", copy: "Customer Web 和 Customer API 只读取已批准、未失效的项目投影。",
+        outcome: "当前批准报告为 0",
+        nodes: ["customer", "customer-web", "customer-api", "postgres"]
+      },
+      "alert-delivery": {
+        title: "告警发送", copy: "告警任务通过 SMTP 与签名 Webhook 两条独立通道投递到 staging Sink。",
+        outcome: "两条本地投递路径可用",
+        nodes: ["operator", "admin-web", "internal-api", "postgres", "outbox-relay", "valkey", "task-worker", "alert-smtp", "alert-webhook"]
+      },
+      "deployment-migration": {
+        title: "部署与迁移", copy: "从宿主机一键启动单栈，到加密迁移包导出、校验和空目标恢复。",
+        outcome: "源机导出与 verify 已通过；目标机导入需显式执行",
+        nodes: ["operator", "deployment-tooling", "admin-web", "migration-package", "postgres", "minio", "dify-runtime"]
+      }
+    };
+
     const statusLabels = {
       complete: "已完成", warning: "技术通过 / 业务不足", waiting: "等待人工", blocked: "外部阻塞", idle: "尚未开始"
     };
@@ -1404,7 +2508,7 @@
       const link = document.getElementById("detail-link");
       link.href = detail.href;
       link.hidden = !detail.href;
-      if (revealOnMobile && window.matchMedia("(max-width: 760px)").matches) openMobileDetail();
+      if (revealOnMobile && window.matchMedia("(max-width: 800px)").matches) openMobileDetail();
     }
 
     function openMobileDetail() {
@@ -1442,8 +2546,644 @@
       `).join("");
     }
 
+    const topologyState = {
+      mode: "focus",
+      scenario: "async-model",
+      selectedNode: null,
+      selectedEdge: null,
+      difyExpanded: false,
+      fit: false,
+      scaleX: 1,
+      scaleY: 1,
+      drawFrame: null
+    };
+    const topologyZoomMinimum = 1;
+    const topologyZoomMaximum = 5;
+    const topologyZoomStep = .25;
+
+    const difyRuntimeDetail = {
+      id: "dify-runtime", label: "Dify Runtime", status: "running", tone: "complete", statusText: "当前运行",
+      description: "自托管 Dify 运行时。GEO 的 Internal API 和 Task Worker 只通过 geo-dify-runtime 连接 Dify API。",
+      runtime: "13 个当前运行的 Dify 容器", endpoint: "Console :15000 / API internal :5001",
+      networks: "geo-dify-runtime + geo-dify_default + geo-dify_ssrf_proxy_network",
+      io: "GEO Internal API / Task Worker、DeepSeek、Dify stores",
+      entry: "infra/dify/docker-compose.dify.yml", source: "Dify 1.16.0 + GEO runtime overlay",
+      note: "只有 Dify API 加入 geo-dify-runtime；Dify Worker 不直接加入 GEO staging 网络。"
+    };
+
+    function escapeTopologyText(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function topologyNodeById(nodeId) {
+      if (nodeId === "dify-runtime") return difyRuntimeDetail;
+      return topologyNodes.find((node) => node.id === nodeId);
+    }
+
+    function renderTopologyNodes() {
+      const grid = document.getElementById("topology-grid");
+      const nodeMarkup = topologyNodes.map((node) => `
+        <button
+          class="topology-node"
+          type="button"
+          data-topology-node="${escapeTopologyText(node.id)}"
+          data-status="${escapeTopologyText(node.status)}"
+          data-network-theme="${node.id === "dify-console" ? "dify" : "geo"}"
+          data-network-bridge="${String(node.id === "internal-api" || node.id === "task-worker")}"
+          aria-pressed="false"
+          style="grid-column:${node.col};grid-row:${node.row};--mobile-order:${node.col * 20 + node.row}"
+        >
+          <span class="topology-node-group-label">${escapeTopologyText(node.group)}</span>
+          <strong>${escapeTopologyText(node.label)}</strong>
+          <small>${escapeTopologyText(node.subtitle)}</small>
+          <span class="topology-node-meta">
+            <span><i class="status-dot ${escapeTopologyText(node.tone)}"></i> ${escapeTopologyText(node.statusText)}</span>
+            <span>${escapeTopologyText(node.meta)}</span>
+          </span>
+        </button>
+      `).join("");
+      const difyMarkup = `
+        <article class="topology-cluster" data-topology-node="dify-runtime" style="--mobile-order:121">
+          <button class="topology-cluster-header" id="topology-cluster-header" type="button" aria-controls="topology-inspector" aria-pressed="false">
+            <span><strong>Dify Runtime</strong><small>13 个运行组件 · API bridge</small></span>
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+          </button>
+        </article>
+      `;
+      grid.innerHTML = `${nodeMarkup}${difyMarkup}`;
+      document.getElementById("topology-dify-service-list").innerHTML = difyServices.map((service) => `
+        <li><button class="dify-service" type="button" data-dify-service="${escapeTopologyText(service.id)}" aria-pressed="false"><span>${escapeTopologyText(service.label)}</span><span>${escapeTopologyText(service.state)}</span></button></li>
+      `).join("");
+
+      grid.querySelectorAll(".topology-node").forEach((node) => {
+        node.addEventListener("click", () => selectTopologyNode(node.dataset.topologyNode));
+      });
+      document.getElementById("topology-cluster-header").addEventListener("click", () => {
+        toggleDifyCluster(true);
+      });
+      document.querySelectorAll(".dify-service").forEach((button) => {
+        button.addEventListener("click", (event) => {
+          event.stopPropagation();
+          selectDifyService(button.dataset.difyService);
+        });
+      });
+    }
+
+    function setTopologyDetail(detail, detailKind = "node") {
+      const status = document.getElementById("topology-detail-status");
+      const fields = detailKind === "edge" ? [
+        ["方向", `${topologyNodeById(detail.from).label} → ${topologyNodeById(detail.to).label}`],
+        ["协议", detail.label],
+        ["触发", detail.trigger],
+        ["恢复", detail.recovery],
+        ["业务真源", detail.truth],
+        ["当前可用性", detail.availability]
+      ] : [
+        ["进程", detail.runtime],
+        ["端口", detail.endpoint],
+        ["网络", detail.networks],
+        ["读写", detail.io],
+        ["代码入口", detail.entry],
+        ["配置来源", detail.source]
+      ];
+      const edgeBlocked = detailKind === "edge" && (detail.availability.includes("缺") || detail.availability.includes("未启动"));
+      const edgeWarning = detailKind === "edge" && !edgeBlocked && (detail.availability.includes("0") || detail.availability.includes("底座"));
+      const tone = detailKind === "edge" ? (edgeBlocked ? "blocked" : edgeWarning ? "warning" : "complete") : detail.tone;
+      const statusText = detailKind === "edge" ? detail.availability : detail.statusText;
+      status.innerHTML = `<i class="status-dot ${tone}"></i>${escapeTopologyText(statusText)}`;
+      document.getElementById("topology-detail-title").textContent = detailKind === "edge" ? detail.label : detail.label;
+      document.getElementById("topology-detail-description").textContent = detail.description;
+      fields.forEach(([label, value], index) => {
+        document.getElementById(`topology-detail-label-${index + 1}`).textContent = label;
+        document.getElementById(`topology-detail-value-${index + 1}`).textContent = value;
+      });
+      document.getElementById("topology-detail-note").textContent = detailKind === "edge"
+        ? "连线表示实际协议和责任边界；箭头方向不代表业务结果已经获批。"
+        : detail.note;
+    }
+
+    function selectTopologyNode(nodeId, revealOnMobile = true) {
+      const detail = topologyNodeById(nodeId);
+      if (!detail) return;
+      topologyState.selectedNode = nodeId;
+      topologyState.selectedEdge = null;
+      setDifyServicesVisible(nodeId === "dify-runtime" && topologyState.difyExpanded);
+      document.querySelectorAll(".dify-service").forEach((button) => button.setAttribute("aria-pressed", "false"));
+      setTopologyDetail(detail);
+      applyTopologyState();
+      if (revealOnMobile) {
+        revealTopologyNode(nodeId);
+        openTopologyDetail();
+      }
+    }
+
+    function selectDifyService(serviceId) {
+      const service = difyServices.find((item) => item.id === serviceId);
+      if (!service) return;
+      topologyState.selectedNode = "dify-runtime";
+      topologyState.selectedEdge = null;
+      setDifyServicesVisible(true);
+      document.querySelectorAll(".dify-service").forEach((button) => {
+        button.setAttribute("aria-pressed", String(button.dataset.difyService === serviceId));
+      });
+      setTopologyDetail({
+        ...service,
+        label: `Dify ${service.label}`,
+        tone: "complete",
+        statusText: service.state,
+        description: `${service.label} 是当前 Dify 1.16.0 运行组的一部分。`,
+        source: "infra/dify/docker-compose.dify.yml",
+        note: "Dify 内部组件属于独立运行域；GEO 只通过 Dify API bridge 调用它。"
+      });
+      applyTopologyState();
+      revealTopologyNode("dify-runtime");
+      openTopologyDetail();
+    }
+
+    function selectTopologyEdge(edgeId) {
+      const edge = topologyEdges.find((item) => item.id === edgeId);
+      if (!edge) return;
+      topologyState.selectedNode = null;
+      topologyState.selectedEdge = edgeId;
+      setDifyServicesVisible(false);
+      setTopologyDetail(edge, "edge");
+      applyTopologyState();
+      openTopologyDetail();
+    }
+
+    function setDifyServicesVisible(visible) {
+      topologyState.difyExpanded = visible;
+      const section = document.getElementById("topology-dify-services");
+      const control = document.getElementById("topology-dify-toggle");
+      section.hidden = !visible;
+      control.setAttribute("aria-expanded", String(visible));
+      document.getElementById("topology-dify-toggle-label").textContent = visible ? "收起 Dify 组件" : "Dify 组件";
+    }
+
+    function toggleDifyCluster(expanded, revealDetail = true) {
+      topologyState.difyExpanded = expanded;
+      setDifyServicesVisible(expanded);
+      if (!expanded || !revealDetail) return;
+      topologyState.selectedNode = "dify-runtime";
+      topologyState.selectedEdge = null;
+      setTopologyDetail(difyRuntimeDetail);
+      applyTopologyState();
+      revealTopologyNode("dify-runtime");
+      openTopologyDetail();
+    }
+
+    function openTopologyDetail() {
+      document.getElementById("topology-inspector").classList.add("mobile-open");
+      document.getElementById("topology-detail-backdrop").classList.add("visible");
+      document.body.classList.add("topology-detail-open");
+      document.getElementById("topology-inspector-close").focus();
+    }
+
+    function closeTopologyDetail() {
+      document.getElementById("topology-inspector").classList.remove("mobile-open");
+      document.getElementById("topology-detail-backdrop").classList.remove("visible");
+      document.body.classList.remove("topology-detail-open");
+    }
+
+    function updateTopologyPanRail() {
+      const scroll = document.querySelector(".topology-map-scroll");
+      const range = document.getElementById("topology-pan-range");
+      const maximum = Math.max(0, Math.round(scroll.scrollWidth - scroll.clientWidth));
+      const value = Math.min(maximum, Math.round(scroll.scrollLeft));
+      range.max = String(maximum);
+      range.value = String(value);
+      range.disabled = maximum === 0;
+      document.getElementById("topology-pan-left").disabled = value <= 0;
+      document.getElementById("topology-pan-right").disabled = value >= maximum;
+      document.getElementById("topology-pan-status").textContent = maximum === 0
+        ? "完整可见"
+        : `横向 ${Math.round(value / maximum * 100)}%`;
+    }
+
+    function updateTopologyCanvasLayout(redraw = true) {
+      const scroll = document.querySelector(".topology-map-scroll");
+      const stage = document.getElementById("topology-canvas-stage");
+      const canvas = document.getElementById("runtime-topology-canvas");
+      canvas.dataset.mode = topologyState.mode;
+      if (window.matchMedia("(max-width: 800px)").matches) {
+        topologyState.fit = false;
+        topologyState.scaleX = 1;
+        topologyState.scaleY = 1;
+        canvas.dataset.fit = "false";
+        canvas.style.width = "";
+        canvas.style.transform = "";
+        canvas.style.setProperty("--topology-counter-scale-x", "1");
+        canvas.style.setProperty("--topology-counter-scale-y", "1");
+        stage.style.width = "";
+        stage.style.height = "";
+        document.getElementById("topology-fit").setAttribute("aria-pressed", "false");
+        syncTopologyZoomControls();
+        updateTopologyPanRail();
+        if (redraw) requestTopologyDraw();
+        return;
+      }
+      canvas.dataset.fit = String(topologyState.fit);
+      const naturalWidth = topologyState.fit
+        ? scroll.clientWidth
+        : topologyState.mode === "all" ? 1688 : Math.max(1180, scroll.clientWidth);
+      canvas.style.width = `${naturalWidth}px`;
+      canvas.style.transform = topologyState.scaleX === 1 && topologyState.scaleY === 1
+        ? ""
+        : `scale(${topologyState.scaleX}, ${topologyState.scaleY})`;
+      canvas.style.setProperty("--topology-counter-scale-x", String(1 / topologyState.scaleX));
+      canvas.style.setProperty("--topology-counter-scale-y", String(1 / topologyState.scaleY));
+      stage.style.width = `${Math.max(scroll.clientWidth, naturalWidth * topologyState.scaleX)}px`;
+      stage.style.height = `${canvas.offsetHeight * topologyState.scaleY}px`;
+      requestAnimationFrame(updateTopologyPanRail);
+      if (redraw) requestTopologyDraw();
+    }
+
+    function syncTopologyZoomControls() {
+      document.getElementById("topology-scale-x").value = String(Math.round(topologyState.scaleX * 100));
+      document.getElementById("topology-scale-y").value = String(Math.round(topologyState.scaleY * 100));
+    }
+
+    function setTopologyFit(fit) {
+      topologyState.fit = fit;
+      topologyState.scaleX = 1;
+      topologyState.scaleY = 1;
+      document.getElementById("topology-fit").setAttribute("aria-pressed", String(fit));
+      syncTopologyZoomControls();
+      document.querySelector(".topology-map-scroll").scrollTo({ left: 0, top: 0 });
+      updateTopologyCanvasLayout();
+    }
+
+    function setTopologyZoom(scaleX, scaleY, anchorClientPosition = null) {
+      if (window.matchMedia("(max-width: 800px)").matches) return;
+      const scroll = document.querySelector(".topology-map-scroll");
+      const rect = scroll.getBoundingClientRect();
+      const anchorX = anchorClientPosition ? anchorClientPosition.x - rect.left : scroll.clientWidth / 2;
+      const anchorY = anchorClientPosition ? anchorClientPosition.y - rect.top : scroll.clientHeight / 2;
+      const ratioX = (scroll.scrollLeft + anchorX) / Math.max(1, scroll.scrollWidth);
+      const ratioY = (scroll.scrollTop + anchorY) / Math.max(1, scroll.scrollHeight);
+      const steppedX = Math.round(scaleX / topologyZoomStep) * topologyZoomStep;
+      const steppedY = Math.round(scaleY / topologyZoomStep) * topologyZoomStep;
+      topologyState.fit = false;
+      topologyState.scaleX = Math.max(topologyZoomMinimum, Math.min(topologyZoomMaximum, steppedX));
+      topologyState.scaleY = Math.max(topologyZoomMinimum, Math.min(topologyZoomMaximum, steppedY));
+      document.getElementById("topology-fit").setAttribute("aria-pressed", "false");
+      syncTopologyZoomControls();
+      updateTopologyCanvasLayout();
+      requestAnimationFrame(() => {
+        scroll.scrollLeft = ratioX * scroll.scrollWidth - anchorX;
+        scroll.scrollTop = ratioY * scroll.scrollHeight - anchorY;
+        updateTopologyPanRail();
+      });
+    }
+
+    function fitTopologyToWindow() {
+      setTopologyFit(true);
+    }
+
+    function panTopologyBy(amount) {
+      const scroll = document.querySelector(".topology-map-scroll");
+      scroll.scrollBy({ left: amount, behavior: "smooth" });
+    }
+
+    function revealTopologyNode(nodeId) {
+      if (window.matchMedia("(max-width: 800px)").matches) return;
+      requestAnimationFrame(() => {
+        const node = document.querySelector(`[data-topology-node="${nodeId}"]`);
+        const scroll = document.querySelector(".topology-map-scroll");
+        if (!node || getComputedStyle(node).visibility === "hidden") return;
+        const nodeRect = node.getBoundingClientRect();
+        const scrollRect = scroll.getBoundingClientRect();
+        const drawerAllowance = Math.min(410, Math.max(0, scroll.clientWidth - 520));
+        const desiredX = Math.max(220, (scroll.clientWidth - drawerAllowance) / 2);
+        const desiredY = scroll.clientHeight / 2;
+        const currentX = nodeRect.left + nodeRect.width / 2 - scrollRect.left;
+        const currentY = nodeRect.top + nodeRect.height / 2 - scrollRect.top;
+        scroll.scrollTo({
+          left: scroll.scrollLeft + currentX - desiredX,
+          top: scroll.scrollTop + currentY - desiredY,
+          behavior: "smooth"
+        });
+      });
+    }
+
+    function normalizeTopologyRect(rect, canvasRect, scaleX, scaleY) {
+      const left = (rect.left - canvasRect.left) / scaleX;
+      const top = (rect.top - canvasRect.top) / scaleY;
+      const width = rect.width / scaleX;
+      const height = rect.height / scaleY;
+      return { left, top, right: left + width, bottom: top + height, width, height };
+    }
+
+    function topologyRectsOverlap(left, right, padding = 0) {
+      return left.left < right.right + padding
+        && left.right > right.left - padding
+        && left.top < right.bottom + padding
+        && left.bottom > right.top - padding;
+    }
+
+    function topologyLabelWidth(label) {
+      const textWidth = Array.from(label).reduce((width, character) => width + (/[^\u0000-\u00ff]/.test(character) ? 10 : 6.6), 0);
+      return Math.max(50, Math.min(180, Math.ceil(textWidth + 20)));
+    }
+
+    function topologyPath(sourceRect, targetRect, labelWidth, labelHeight, nodeRects, occupiedLabels, canvasWidth, canvasHeight) {
+      const sourceCenter = { x: sourceRect.left + sourceRect.width / 2, y: sourceRect.top + sourceRect.height / 2 };
+      const targetCenter = { x: targetRect.left + targetRect.width / 2, y: targetRect.top + targetRect.height / 2 };
+      const horizontal = Math.abs(targetCenter.x - sourceCenter.x) >= 80;
+      const halfWidth = labelWidth / 2;
+      const halfHeight = labelHeight / 2;
+      let start;
+      let end;
+      const candidates = [];
+
+      if (horizontal) {
+        const forward = targetCenter.x > sourceCenter.x;
+        start = { x: forward ? sourceRect.right : sourceRect.left, y: sourceCenter.y };
+        end = { x: forward ? targetRect.left : targetRect.right, y: targetCenter.y };
+        const middleY = (start.y + end.y) / 2;
+        const belowY = Math.max(sourceRect.bottom, targetRect.bottom) + 17;
+        const aboveY = Math.min(sourceRect.top, targetRect.top) - 17;
+        const routeYs = [middleY, belowY, aboveY, middleY + 32, middleY - 32, belowY + 28, aboveY - 28];
+        [0.5, 0.35, 0.65, 0.2, 0.8].forEach((fraction) => {
+          routeYs.forEach((y) => candidates.push({ x: start.x + (end.x - start.x) * fraction, y }));
+        });
+      } else {
+        const forward = targetCenter.y > sourceCenter.y;
+        start = { x: sourceCenter.x, y: forward ? sourceRect.bottom : sourceRect.top };
+        end = { x: targetCenter.x, y: forward ? targetRect.top : targetRect.bottom };
+        const middleX = (start.x + end.x) / 2;
+        const rightX = Math.max(sourceRect.right, targetRect.right) + halfWidth + 16;
+        const leftX = Math.min(sourceRect.left, targetRect.left) - halfWidth - 16;
+        const routeXs = [rightX, leftX, middleX, rightX + 30, leftX - 30];
+        [0.5, 0.35, 0.65, 0.2, 0.8].forEach((fraction) => {
+          routeXs.forEach((x) => candidates.push({ x, y: start.y + (end.y - start.y) * fraction }));
+        });
+      }
+
+      const clampCandidate = (candidate) => ({
+        x: Math.min(canvasWidth - halfWidth - 6, Math.max(halfWidth + 6, candidate.x)),
+        y: Math.min(canvasHeight - halfHeight - 6, Math.max(62 + halfHeight, candidate.y))
+      });
+      const candidateRect = (candidate) => ({
+        left: candidate.x - halfWidth,
+        right: candidate.x + halfWidth,
+        top: candidate.y - halfHeight,
+        bottom: candidate.y + halfHeight
+      });
+      const curveFor = (curveLabel) => {
+        const direction = horizontal
+          ? { x: Math.sign(end.x - start.x) || 1, y: 0 }
+          : { x: 0, y: Math.sign(end.y - start.y) || 1 };
+        const firstSpan = horizontal ? Math.abs(curveLabel.x - start.x) : Math.abs(curveLabel.y - start.y);
+        const secondSpan = horizontal ? Math.abs(end.x - curveLabel.x) : Math.abs(end.y - curveLabel.y);
+        const firstTurn = horizontal ? Math.abs(curveLabel.y - start.y) : Math.abs(curveLabel.x - start.x);
+        const secondTurn = horizontal ? Math.abs(end.y - curveLabel.y) : Math.abs(end.x - curveLabel.x);
+        const firstHandle = Math.max(8, Math.min(firstTurn > 24 ? 24 : 96, firstSpan * .42));
+        const secondHandle = Math.max(8, Math.min(secondTurn > 24 ? 24 : 96, secondSpan * .42));
+        const firstControl = {
+          x: start.x + direction.x * firstHandle,
+          y: start.y + direction.y * firstHandle
+        };
+        const labelEntryControl = {
+          x: curveLabel.x - direction.x * firstHandle,
+          y: curveLabel.y - direction.y * firstHandle
+        };
+        const labelExitControl = {
+          x: curveLabel.x + direction.x * secondHandle,
+          y: curveLabel.y + direction.y * secondHandle
+        };
+        const finalControl = {
+          x: end.x - direction.x * secondHandle,
+          y: end.y - direction.y * secondHandle
+        };
+        return {
+          path: [
+            `M ${start.x} ${start.y}`,
+            `C ${firstControl.x} ${firstControl.y} ${labelEntryControl.x} ${labelEntryControl.y} ${curveLabel.x} ${curveLabel.y}`,
+            `C ${labelExitControl.x} ${labelExitControl.y} ${finalControl.x} ${finalControl.y} ${end.x} ${end.y}`
+          ].join(" "),
+          segments: [
+            [start, firstControl, labelEntryControl, curveLabel],
+            [curveLabel, labelExitControl, finalControl, end]
+          ]
+        };
+      };
+      const cubicPoint = (segment, progress) => {
+        const inverse = 1 - progress;
+        return {
+          x: inverse ** 3 * segment[0].x
+            + 3 * inverse ** 2 * progress * segment[1].x
+            + 3 * inverse * progress ** 2 * segment[2].x
+            + progress ** 3 * segment[3].x,
+          y: inverse ** 3 * segment[0].y
+            + 3 * inverse ** 2 * progress * segment[1].y
+            + 3 * inverse * progress ** 2 * segment[2].y
+            + progress ** 3 * segment[3].y
+        };
+      };
+      const isEndpointRect = (nodeRect, endpointRect) => Math.abs(nodeRect.left - endpointRect.left) < .5
+        && Math.abs(nodeRect.top - endpointRect.top) < .5
+        && Math.abs(nodeRect.right - endpointRect.right) < .5
+        && Math.abs(nodeRect.bottom - endpointRect.bottom) < .5;
+      const curveObstacles = nodeRects.filter((nodeRect) => !isEndpointRect(nodeRect, sourceRect)
+        && !isEndpointRect(nodeRect, targetRect));
+      const curveAvoidsNodes = (candidate) => curveFor(candidate).segments.every((segment) => {
+        for (let step = 1; step < 72; step += 1) {
+          const point = cubicPoint(segment, step / 72);
+          if (curveObstacles.some((nodeRect) => point.x > nodeRect.left - 6
+            && point.x < nodeRect.right + 6
+            && point.y > nodeRect.top - 6
+            && point.y < nodeRect.bottom + 6)) return false;
+        }
+        return true;
+      });
+      const isFree = (candidate) => {
+        const rect = candidateRect(candidate);
+        return !nodeRects.some((nodeRect) => topologyRectsOverlap(rect, nodeRect, 5))
+          && !occupiedLabels.some((labelRect) => topologyRectsOverlap(rect, labelRect, 5))
+          && curveAvoidsNodes(candidate);
+      };
+
+      let label = candidates.map(clampCandidate).find(isFree);
+      if (!label) {
+        const scanXs = horizontal
+          ? [start.x + (end.x - start.x) * .5, start.x + (end.x - start.x) * .3, start.x + (end.x - start.x) * .7]
+          : [Math.max(sourceRect.right, targetRect.right) + halfWidth + 16, Math.min(sourceRect.left, targetRect.left) - halfWidth - 16];
+        outer: for (let y = 74; y < canvasHeight - 18; y += 24) {
+          for (const x of scanXs) {
+            const scanned = clampCandidate({ x, y });
+            if (isFree(scanned)) {
+              label = scanned;
+              break outer;
+            }
+          }
+        }
+      }
+      if (!label) {
+        const preferred = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
+        const freeCandidates = [];
+        for (let y = 74; y < canvasHeight - 18; y += 22) {
+          for (let x = halfWidth + 8; x < canvasWidth - halfWidth - 8; x += 24) {
+            const scanned = { x, y };
+            if (isFree(scanned)) freeCandidates.push({ ...scanned, distance: Math.abs(x - preferred.x) + Math.abs(y - preferred.y) });
+          }
+        }
+        freeCandidates.sort((left, right) => left.distance - right.distance);
+        label = freeCandidates[0];
+      }
+      label ||= clampCandidate({ x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 });
+      occupiedLabels.push(candidateRect(label));
+      return { path: curveFor(label).path, labelX: label.x, labelY: label.y };
+    }
+
+    function renderTopologyEdges() {
+      topologyState.drawFrame = null;
+      const panel = document.getElementById("view-topology");
+      const canvas = document.getElementById("runtime-topology-canvas");
+      const svg = document.getElementById("topology-edge-layer");
+      if (panel.hidden || window.matchMedia("(max-width: 800px)").matches) {
+        svg.innerHTML = "";
+        return;
+      }
+      const canvasRect = canvas.getBoundingClientRect();
+      svg.setAttribute("viewBox", `0 0 ${canvas.clientWidth} ${canvas.clientHeight}`);
+      const activeScenarioEdges = new Set(topologyEdges.filter((edge) => edge.scenarios.includes(topologyState.scenario)).map((edge) => edge.id));
+      const neighborEdges = topologyState.selectedNode
+        ? new Set(topologyEdges.filter((edge) => edge.from === topologyState.selectedNode || edge.to === topologyState.selectedNode).map((edge) => edge.id))
+        : null;
+      const marker = `
+        <defs>
+          <marker id="topology-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0 0 8 4 0 8Z" fill="context-stroke"></path>
+          </marker>
+        </defs>
+      `;
+      const visibleNodeRects = [...document.querySelectorAll("[data-topology-node]")]
+        .filter((element) => getComputedStyle(element).visibility !== "hidden" && getComputedStyle(element).display !== "none")
+        .map((element) => normalizeTopologyRect(element.getBoundingClientRect(), canvasRect, topologyState.scaleX, topologyState.scaleY));
+      const occupiedLabels = [];
+      const renderedEdges = topologyEdges.filter((edge) => topologyState.mode === "all" || activeScenarioEdges.has(edge.id)).map((edge) => {
+        const source = document.querySelector(`[data-topology-node="${edge.from}"]`);
+        const target = document.querySelector(`[data-topology-node="${edge.to}"]`);
+        if (!source || !target) return null;
+        const sourceRect = normalizeTopologyRect(source.getBoundingClientRect(), canvasRect, topologyState.scaleX, topologyState.scaleY);
+        const targetRect = normalizeTopologyRect(target.getBoundingClientRect(), canvasRect, topologyState.scaleX, topologyState.scaleY);
+        const labelWidth = topologyLabelWidth(edge.label);
+        const geometry = topologyPath(
+          sourceRect,
+          targetRect,
+          labelWidth / topologyState.scaleX,
+          18 / topologyState.scaleY,
+          visibleNodeRects,
+          occupiedLabels,
+          canvas.clientWidth,
+          canvas.clientHeight
+        );
+        const selectedActive = topologyState.selectedEdge ? topologyState.selectedEdge === edge.id : !neighborEdges || neighborEdges.has(edge.id);
+        const dimmed = !selectedActive;
+        const selected = topologyState.selectedEdge === edge.id;
+        const ariaLabel = `${escapeTopologyText(edge.label)}：${escapeTopologyText(edge.description)}`;
+        return {
+          line: `
+          <g class="topology-edge-group${dimmed ? " is-dimmed" : ""}${selected ? " is-selected" : ""}" data-topology-edge="${escapeTopologyText(edge.id)}" data-kind="${escapeTopologyText(edge.kind)}" role="button" tabindex="${dimmed ? -1 : 0}" aria-label="${escapeTopologyText(edge.label)}：${escapeTopologyText(edge.description)}">
+            <path class="topology-edge-hit" d="${geometry.path}"></path>
+            <path class="topology-edge-line" d="${geometry.path}"></path>
+          </g>
+        `,
+          label: `
+            <g class="topology-edge-label${dimmed ? " is-dimmed" : ""}${selected ? " is-selected" : ""}" data-topology-edge="${escapeTopologyText(edge.id)}" transform="translate(${geometry.labelX}, ${geometry.labelY})" role="button" tabindex="0" aria-label="${ariaLabel}">
+              <g transform="scale(${1 / topologyState.scaleX}, ${1 / topologyState.scaleY})">
+                <rect x="${-labelWidth / 2}" y="-9" width="${labelWidth}" height="18"></rect>
+                <text y="3">${escapeTopologyText(edge.label)}</text>
+              </g>
+            </g>
+          `
+        };
+      }).filter(Boolean);
+      svg.innerHTML = `${marker}<g class="topology-edge-lines">${renderedEdges.map((edge) => edge.line).join("")}</g><g class="topology-edge-labels">${renderedEdges.map((edge) => edge.label).join("")}</g>`;
+      svg.querySelectorAll("[data-topology-edge]").forEach((element) => {
+        element.addEventListener("click", () => selectTopologyEdge(element.dataset.topologyEdge));
+        element.addEventListener("keydown", (event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          selectTopologyEdge(element.dataset.topologyEdge);
+        });
+      });
+    }
+
+    function requestTopologyDraw() {
+      if (topologyState.drawFrame !== null) cancelAnimationFrame(topologyState.drawFrame);
+      topologyState.drawFrame = requestAnimationFrame(renderTopologyEdges);
+    }
+
+    function renderMobileTopologyEdges() {
+      const activeEdges = topologyEdges.filter((edge) => topologyState.mode === "all" || edge.scenarios.includes(topologyState.scenario));
+      const container = document.getElementById("topology-mobile-edges");
+      container.innerHTML = activeEdges.map((edge) => `
+        <button class="topology-mobile-edge" type="button" data-mobile-topology-edge="${escapeTopologyText(edge.id)}" data-kind="${escapeTopologyText(edge.kind)}">
+          <span><strong>${escapeTopologyText(edge.label)}</strong><span>${escapeTopologyText(topologyNodeById(edge.from).label)} → ${escapeTopologyText(topologyNodeById(edge.to).label)}</span></span>
+        </button>
+      `).join("");
+      container.querySelectorAll("[data-mobile-topology-edge]").forEach((button) => {
+        button.addEventListener("click", () => selectTopologyEdge(button.dataset.mobileTopologyEdge));
+      });
+    }
+
+    function applyTopologyState(redraw = true) {
+      const scenario = topologyScenarios[topologyState.scenario];
+      const activeNodes = new Set(scenario.nodes);
+      const allNodeOrder = [...topologyNodes.map((node) => node.id), "dify-runtime"].sort((leftId, rightId) => {
+        const left = topologyNodeById(leftId);
+        const right = topologyNodeById(rightId);
+        const leftOrder = leftId === "dify-runtime" ? 121 : left.col * 20 + left.row;
+        const rightOrder = rightId === "dify-runtime" ? 121 : right.col * 20 + right.row;
+        return leftOrder - rightOrder;
+      });
+      const firstVisibleNode = topologyState.mode === "focus" ? scenario.nodes[0] : allNodeOrder[0];
+      const connectedNodes = new Set();
+      if (topologyState.selectedNode) {
+        connectedNodes.add(topologyState.selectedNode);
+        topologyEdges.forEach((edge) => {
+          if (edge.from === topologyState.selectedNode) connectedNodes.add(edge.to);
+          if (edge.to === topologyState.selectedNode) connectedNodes.add(edge.from);
+        });
+      }
+      document.querySelectorAll("[data-topology-node]").forEach((element) => {
+        const nodeId = element.dataset.topologyNode;
+        element.classList.toggle("is-mobile-first", nodeId === firstVisibleNode);
+        const baseActive = topologyState.mode === "all" || activeNodes.has(nodeId);
+        const selectionActive = !topologyState.selectedNode || connectedNodes.has(nodeId);
+        element.classList.toggle("is-scenario-hidden", !baseActive);
+        element.classList.toggle("is-dimmed", baseActive && !selectionActive);
+        element.classList.toggle("is-neighbor", baseActive && selectionActive && topologyState.selectedNode !== nodeId);
+        const button = element.matches("button") ? element : element.querySelector(".topology-cluster-header");
+        if (button) button.setAttribute("aria-pressed", String(topologyState.selectedNode === nodeId));
+        const scenarioOrder = scenario.nodes.indexOf(nodeId);
+        const node = topologyNodeById(nodeId);
+        const allOrder = nodeId === "dify-runtime" ? 121 : node ? node.col * 20 + node.row : 200;
+        element.style.setProperty("--mobile-order", String(topologyState.mode === "focus" && scenarioOrder >= 0 ? scenarioOrder + 1 : allOrder));
+      });
+      document.querySelectorAll("[data-topology-mode]").forEach((button) => {
+        button.setAttribute("aria-pressed", String(button.dataset.topologyMode === topologyState.mode));
+      });
+      document.getElementById("topology-scenario").disabled = topologyState.mode === "all";
+      document.getElementById("topology-summary-title").textContent = topologyState.mode === "all" ? "全部运行关系" : scenario.title;
+      document.getElementById("topology-summary-copy").textContent = topologyState.mode === "all"
+        ? "显示当前单栈的全部主要调用；当前本机是 staging-v2，fresh install 默认使用 geo；点击节点可只突出一跳上下游。"
+        : scenario.copy;
+      document.getElementById("topology-summary-outcome").textContent = topologyState.mode === "all" ? "13 个 GEO 服务 + Dify 运行组" : scenario.outcome;
+      renderMobileTopologyEdges();
+      updateTopologyCanvasLayout(redraw);
+    }
+
     function showView(viewName) {
       closeMobileDetail();
+      closeTopologyDetail();
       document.querySelectorAll(".tab-button").forEach((button) => {
         const selected = button.dataset.view === viewName;
         button.setAttribute("aria-selected", String(selected));
@@ -1453,6 +3193,7 @@
         panel.hidden = panel.id !== `view-${viewName}`;
       });
       document.getElementById("business-tools").hidden = viewName !== "business";
+      if (viewName === "topology") updateTopologyCanvasLayout();
     }
 
     document.querySelectorAll(".flow-node").forEach((node) => {
@@ -1479,12 +3220,119 @@
       document.getElementById("flow-board").classList.remove("highlight-blockers");
     });
     document.getElementById("trace-select").addEventListener("change", (event) => renderTrace(event.target.value));
+    document.querySelectorAll("[data-topology-mode]").forEach((button) => {
+      button.addEventListener("click", () => {
+        topologyState.mode = button.dataset.topologyMode;
+        topologyState.selectedNode = null;
+        topologyState.selectedEdge = null;
+        topologyState.fit = false;
+        topologyState.scaleX = 1;
+        topologyState.scaleY = 1;
+        document.getElementById("topology-fit").setAttribute("aria-pressed", "false");
+        syncTopologyZoomControls();
+        toggleDifyCluster(false, false);
+        closeTopologyDetail();
+        document.querySelector(".topology-map-scroll").scrollTo({ left: 0, top: 0 });
+        setTopologyDetail(topologyNodeById("internal-api"));
+        applyTopologyState();
+      });
+    });
+    document.getElementById("topology-scenario").addEventListener("change", (event) => {
+      topologyState.scenario = event.target.value;
+      topologyState.selectedNode = null;
+      topologyState.selectedEdge = null;
+      toggleDifyCluster(false, false);
+      closeTopologyDetail();
+      document.querySelector(".topology-map-scroll").scrollTo({ left: 0, top: 0 });
+      setTopologyDetail(topologyNodeById(topologyScenarios[topologyState.scenario].nodes[0]));
+      applyTopologyState();
+    });
+    document.getElementById("topology-dify-toggle").addEventListener("click", () => toggleDifyCluster(!topologyState.difyExpanded));
+    document.getElementById("topology-fit").addEventListener("click", fitTopologyToWindow);
+    document.getElementById("topology-scale-x").addEventListener("change", (event) => {
+      setTopologyZoom(Number(event.target.value) / 100, topologyState.scaleY);
+    });
+    document.getElementById("topology-scale-y").addEventListener("change", (event) => {
+      setTopologyZoom(topologyState.scaleX, Number(event.target.value) / 100);
+    });
+    document.getElementById("topology-pan-left").addEventListener("click", () => panTopologyBy(-Math.max(180, document.querySelector(".topology-map-scroll").clientWidth * .45)));
+    document.getElementById("topology-pan-right").addEventListener("click", () => panTopologyBy(Math.max(180, document.querySelector(".topology-map-scroll").clientWidth * .45)));
+    document.getElementById("topology-pan-range").addEventListener("input", (event) => {
+      document.querySelector(".topology-map-scroll").scrollLeft = Number(event.target.value);
+    });
+    document.getElementById("topology-reset").addEventListener("click", () => {
+      topologyState.selectedNode = null;
+      topologyState.selectedEdge = null;
+      topologyState.fit = false;
+      topologyState.scaleX = 1;
+      topologyState.scaleY = 1;
+      document.getElementById("topology-fit").setAttribute("aria-pressed", "false");
+      syncTopologyZoomControls();
+      toggleDifyCluster(false, false);
+      document.querySelectorAll(".dify-service").forEach((button) => button.setAttribute("aria-pressed", "false"));
+      closeTopologyDetail();
+      document.querySelector(".topology-map-scroll").scrollTo({ left: 0, top: 0, behavior: "smooth" });
+      setTopologyDetail(topologyNodeById("internal-api"));
+      applyTopologyState();
+    });
     document.getElementById("mobile-detail-close").addEventListener("click", closeMobileDetail);
     document.getElementById("detail-backdrop").addEventListener("click", closeMobileDetail);
+    document.getElementById("topology-inspector-close").addEventListener("click", closeTopologyDetail);
+    document.getElementById("topology-detail-backdrop").addEventListener("click", closeTopologyDetail);
     document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") closeMobileDetail();
+      if (event.key === "Escape") {
+        closeMobileDetail();
+        closeTopologyDetail();
+      }
     });
+    const topologyScroll = document.querySelector(".topology-map-scroll");
+    const topologyDrag = { active: false, startX: 0, startY: 0, startLeft: 0, startTop: 0 };
+    let topologyZoomWheelTimestamp = 0;
+    topologyScroll.addEventListener("scroll", updateTopologyPanRail, { passive: true });
+    topologyScroll.addEventListener("wheel", (event) => {
+      if (event.ctrlKey || event.metaKey) {
+        event.preventDefault();
+        const timestamp = performance.now();
+        if (timestamp - topologyZoomWheelTimestamp < 80) return;
+        topologyZoomWheelTimestamp = timestamp;
+        const delta = event.deltaY < 0 ? topologyZoomStep : -topologyZoomStep;
+        setTopologyZoom(topologyState.scaleX + delta, topologyState.scaleY + delta, { x: event.clientX, y: event.clientY });
+        return;
+      }
+      if (!event.shiftKey || Math.abs(event.deltaY) < Math.abs(event.deltaX)) return;
+      event.preventDefault();
+      topologyScroll.scrollLeft += event.deltaY;
+    }, { passive: false });
+    topologyScroll.addEventListener("pointerdown", (event) => {
+      if (event.pointerType !== "mouse" || event.button !== 0 || event.target.closest("button, [data-topology-edge], input")) return;
+      topologyDrag.active = true;
+      topologyDrag.startX = event.clientX;
+      topologyDrag.startY = event.clientY;
+      topologyDrag.startLeft = topologyScroll.scrollLeft;
+      topologyDrag.startTop = topologyScroll.scrollTop;
+      topologyScroll.classList.add("is-dragging");
+      topologyScroll.setPointerCapture(event.pointerId);
+    });
+    topologyScroll.addEventListener("pointermove", (event) => {
+      if (!topologyDrag.active) return;
+      topologyScroll.scrollLeft = topologyDrag.startLeft - (event.clientX - topologyDrag.startX);
+      topologyScroll.scrollTop = topologyDrag.startTop - (event.clientY - topologyDrag.startY);
+    });
+    const stopTopologyDrag = (event) => {
+      if (!topologyDrag.active) return;
+      topologyDrag.active = false;
+      topologyScroll.classList.remove("is-dragging");
+      if (topologyScroll.hasPointerCapture(event.pointerId)) topologyScroll.releasePointerCapture(event.pointerId);
+    };
+    topologyScroll.addEventListener("pointerup", stopTopologyDrag);
+    topologyScroll.addEventListener("pointercancel", stopTopologyDrag);
+    window.addEventListener("resize", () => updateTopologyCanvasLayout());
 
+    renderTopologyNodes();
+    setTopologyDetail(topologyNodeById("internal-api"));
+    applyTopologyState(false);
+    syncTopologyZoomControls();
+    updateTopologyPanRail();
     renderTrace("content");
   </script>
 </body>

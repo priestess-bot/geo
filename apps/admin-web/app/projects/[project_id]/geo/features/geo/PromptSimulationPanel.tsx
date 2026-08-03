@@ -37,6 +37,11 @@ export function PromptSimulationPanel({ projectId, data, catalog }: {
   const output = objectValue(simulation?.artifact_manifest?.output);
   const renderedText = stringValue(output?.rendered_text);
   const claims = output?.claims;
+  const inputBrief = objectValue(editableSimulation?.input_snapshot?.brief);
+  const inputGoals = objectValue(inputBrief?.goals);
+  const inputConstraints = objectValue(inputBrief?.constraints);
+  const inputEvidenceIds = evidenceIds(editableSimulation?.input_snapshot?.evidence_items);
+  const inputVariables = objectValue(editableSimulation?.input_snapshot?.client_variables) || {};
   const canCreate = Boolean(
     selection.campaignId && opportunity && destination && binding?.status === "bound"
     && binding.template_release_id && binding.release_hash
@@ -107,23 +112,27 @@ export function PromptSimulationPanel({ projectId, data, catalog }: {
             </select>
           </label>
           <label>治理合格证据（可多选）
-            <select className={styles.multiSelect} name="evidence_item_ids" required multiple size={Math.min(Math.max(evidence.length, 3), 8)}>
+            <select className={styles.multiSelect} name="evidence_item_ids" required multiple
+              defaultValue={inputEvidenceIds} size={Math.min(Math.max(evidence.length, 3), 8)}>
               {evidence.map((item) => <option key={item.id} value={item.id}>
                 {item.item_type} · {item.subject_role} · {evidenceLabel(item.snapshot.text, item.source_id)}
               </option>)}
             </select>
           </label>
-          <label>测试目标<select name="intent" defaultValue="product recommendation"><option value="product recommendation">商品推荐</option><option value="product comparison">产品比较</option><option value="buying guide">购买指南</option></select></label>
-          <label>模拟受众<input name="audience" defaultValue="澳大利亚消费者" required /></label>
-          <label>输出形式<select name="deliverable" defaultValue="channel-specific draft"><option value="channel-specific draft">渠道适配文案</option><option value="short review">短评</option><option value="community post">社区帖子</option></select></label>
-          <label className={styles.check}><input type="checkbox" name="public_citations_required" defaultChecked />公开事实需要引用</label>
-          <label className={styles.check}><input type="checkbox" name="unsupported_superlatives" />允许无证据最高级表述</label>
-          <input type="hidden" name="variables" value="{}" />
+          <label>测试目标<select name="intent" defaultValue={stringValue(inputGoals?.intent) || "product recommendation"}><option value="product recommendation">商品推荐</option><option value="product comparison">产品比较</option><option value="buying guide">购买指南</option></select></label>
+          <label>模拟受众<input name="audience" defaultValue={stringValue(inputGoals?.audience) || "澳大利亚消费者"} required /></label>
+          <label>输出形式<select name="deliverable" defaultValue={stringValue(inputGoals?.deliverable) || "channel-specific draft"}><option value="channel-specific draft">渠道适配文案</option><option value="short review">短评</option><option value="community post">社区帖子</option></select></label>
+          <label className={styles.check}><input type="checkbox" name="public_citations_required"
+            defaultChecked={booleanValue(inputConstraints?.public_citations_required) ?? true} />公开事实需要引用</label>
+          <label className={styles.check}><input type="checkbox" name="unsupported_superlatives"
+            defaultChecked={booleanValue(inputConstraints?.unsupported_superlatives) ?? false} />允许无证据最高级表述</label>
+          <input type="hidden" name="variables" value={JSON.stringify(inputVariables)} />
           <details>
             <summary>模型设置</summary>
             <div className={styles.formInset}>
-              <label>模型<input name="configured_model" defaultValue="deepseek-v4-flash" required /></label>
-              <label>总调用预算<input name="model_call_budget" type="number" min="1" max="5" defaultValue="2" required /></label>
+              <label>模型<input name="configured_model" defaultValue={editableSimulation?.configured_model || "deepseek-v4-flash"} required /></label>
+              <label>总调用预算<input name="model_call_budget" type="number" min="1" max="5"
+                defaultValue={editableSimulation?.model_call_budget || 2} required /></label>
               <label>模型策略 Hash<input name="model_policy_hash" defaultValue={DEFAULT_MODEL_POLICY_HASH} pattern="[0-9a-f]{64}" required /></label>
             </div>
           </details>
@@ -231,6 +240,18 @@ function objectValue(value: JsonValue | undefined): JsonObject | null {
 
 function stringValue(value: JsonValue | undefined): string | null {
   return typeof value === "string" ? value : null;
+}
+
+function booleanValue(value: JsonValue | undefined): boolean | null {
+  return typeof value === "boolean" ? value : null;
+}
+
+function evidenceIds(value: JsonValue | undefined): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    const id = objectValue(item)?.id;
+    return typeof id === "string" ? [id] : [];
+  });
 }
 
 function evidenceLabel(text: string | null, fallback: string): string {

@@ -87,6 +87,10 @@ test("F019-WEB-01: Admin completes governed QuestionSet binding and a non-publis
   await expect(generationPanel.getByRole("status")).toContainText("测试问题生成任务已排队");
   await expect(page.getByTestId("question-generation-job")).toHaveCount(1);
   await expect(page.getByText("1 个维度", { exact: true })).toBeVisible();
+  await expect(page.getByText("Dify · deepseek-chat", { exact: true })).toBeVisible();
+  const questionJob = page.getByTestId("question-generation-job");
+  await questionJob.getByText("技术信息", { exact: true }).click();
+  await expect(questionJob.getByText("请求模型 deepseek-v4-flash", { exact: true })).toBeVisible();
   await expect(page.getByText("事实 · Fixture product specification", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("可能重复", { exact: true })).toBeVisible();
   await expect(page.getByText("最近相似度 94.7%", { exact: true })).toBeVisible();
@@ -134,6 +138,8 @@ test("F019-WEB-01: Admin completes governed QuestionSet binding and a non-publis
   await simulationPanel.locator('select[name="product_entity_id"]')
     .selectOption("00000000-0000-4000-8000-000000000011");
   await simulationPanel.locator('select[name="evidence_item_ids"]').selectOption(EVIDENCE_ID);
+  await simulationPanel.locator('input[name="audience"]').fill("Australian lawn owners");
+  await simulationPanel.locator('select[name="deliverable"]').selectOption("short review");
   await simulationPanel.getByRole("button", { name: "运行仅测试预览" }).click();
   const simulationStatus = simulationPanel.getByRole("status")
     .filter({ hasText: "内部 GEO 问题仿真任务已排队" });
@@ -143,6 +149,9 @@ test("F019-WEB-01: Admin completes governed QuestionSet binding and a non-publis
   await expect(page.getByText("test_only=true · publication_eligible=false", { exact: true }))
     .toBeVisible();
   await expect(page.getByText("geo_question_test", { exact: true })).toBeVisible();
+  await expect(page.locator('input[name="audience"]')).toHaveValue("Australian lawn owners");
+  await expect(page.locator('select[name="deliverable"]')).toHaveValue("short review");
+  await expect(page.locator('select[name="evidence_item_ids"] option:checked')).toHaveValue(EVIDENCE_ID);
   await expect(page.getByText("Fixture Mower is one evidence-grounded option for the stated lawn scenario.", { exact: true }))
     .toBeVisible();
   await expect(page.getByTestId("prompt-simulation-panel").getByRole("button", { name: /发布/ }))

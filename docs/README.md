@@ -37,6 +37,7 @@
 - [本地开发运行](operations/development-runbook.md)
 - [ADVINSYS GEO 独立全流程操作手册](operations/geo-ui-operator-guide.md)（[PDF 版](operations/ADVINSYS-GEO-%E5%85%A8%E6%B5%81%E7%A8%8B%E9%83%A8%E7%BD%B2%E8%BF%90%E7%BB%B4%E6%89%8B%E5%86%8C.pdf)）
 - [生产部署](operations/production-runbook.md)
+- [单栈部署与跨服务器迁移](operations/geo-deploy-and-migration.md)
 - [GEO 非 B 能力运维](operations/non-b-roadmap-operations.md)
 - [备份与恢复](operations/backup-restore.md)
 

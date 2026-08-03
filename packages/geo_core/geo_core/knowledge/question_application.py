@@ -322,6 +322,7 @@ class KnowledgeQuestionApplicationMixin:
                         """SELECT spec.job_id, spec.project_id, spec.campaign_id,
                                   job.status, job.input_hash, job.error_code,
                                   spec.configured_model, spec.model_call_budget,
+                                  result.execution_backend, result.actual_model,
                                   spec.adapter_release, spec.semantic_duplicate_threshold,
                                   result.artifact_uri, result.artifact_hash,
                                   result.dimension_count, result.candidate_count,

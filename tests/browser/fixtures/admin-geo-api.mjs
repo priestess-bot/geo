@@ -656,6 +656,8 @@ function questionGeneration(created = false) {
     ...base,
     error_code: null,
     configured_model: "deepseek-v4-flash",
+    execution_backend: "dify",
+    actual_model: "deepseek-chat",
     model_call_budget: 60,
     adapter_release: "project-native-rag-v1",
     semantic_duplicate_threshold: 0.92,
@@ -785,6 +787,12 @@ function createQuestionSimulation(payload) {
     question_set_item_id: QUESTION_SET_ITEM_ID,
     question_candidate_id: QUESTION_CANDIDATE_ID,
     input_snapshot: {
+      brief: {
+        goals: payload.goals,
+        constraints: payload.constraints
+      },
+      evidence_items: payload.evidence_item_ids.map((id) => ({ id })),
+      client_variables: payload.variables,
       question_binding: {
         question_set_id: QUESTION_SET_ID,
         question_set_hash: set.content_hash,

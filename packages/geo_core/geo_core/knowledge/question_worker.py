@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass
 from datetime import timedelta
 import hashlib
 import json
-from typing import Mapping, Protocol, Sequence
+from typing import Literal, Mapping, Protocol, Sequence
 
 from geo_core.jobs.postgres import (
     JobCancellationRequested,
@@ -109,6 +109,13 @@ class StoredQuestionArtifact:
     content_hash: str
 
 
+@dataclass(frozen=True)
+class QuestionBatchResult:
+    output: Mapping[str, object]
+    execution_backend: Literal["dify", "native"]
+    actual_model: str
+
+
 class StoredObjectLike(Protocol):
     uri: str
     content_hash: str
@@ -161,6 +168,9 @@ class QuestionWorkerRepository(Protocol):
         claim: QuestionGenerationClaim,
         candidates: Sequence[QuestionCandidateDraft],
         artifact: StoredQuestionArtifact,
+        *,
+        execution_backend: Literal["dify", "native"],
+        actual_model: str,
     ) -> Mapping[str, object]: ...
 
 
@@ -191,6 +201,7 @@ class KnowledgeQuestionGenerateHandler:
             claim = self._repository.load(lease)
             self._validate_selection(claim)
             candidates: list[QuestionCandidateDraft] = []
+            execution_identities: set[tuple[Literal["dify", "native"], str]] = set()
             with LeaseHeartbeat(
                 self._store,
                 lease,
@@ -198,10 +209,13 @@ class KnowledgeQuestionGenerateHandler:
                 interval=min(self._lease_for / 3, timedelta(seconds=30)),
             ) as heartbeat:
                 for dimensions in _batches_by_turn(claim):
-                    output = self._generate_batch(lease, claim, dimensions, candidates)
+                    batch = self._generate_batch(lease, claim, dimensions, candidates)
+                    execution_identities.add(
+                        (batch.execution_backend, batch.actual_model)
+                    )
                     candidates.extend(
                         parse_question_candidates(
-                            output,
+                            batch.output,
                             dimensions=dimensions,
                             facts=claim.facts,
                             entities=claim.entities,
@@ -223,11 +237,18 @@ class KnowledgeQuestionGenerateHandler:
                     expected_hash=content_hash,
                 )
                 heartbeat.raise_if_stopped()
+            if len(execution_identities) != 1:
+                raise QuestionContractError(
+                    "question generation batches used inconsistent execution identities"
+                )
+            execution_backend, actual_model = execution_identities.pop()
             details = self._repository.finalize(
                 lease,
                 claim,
                 candidates,
                 StoredQuestionArtifact(stored.uri, stored.content_hash),
+                execution_backend=execution_backend,
+                actual_model=actual_model,
             )
             return {"status": "succeeded", "job_id": str(lease.job_id), **details}
         except (JobCancellationRequested, LostJobLease):
@@ -247,7 +268,7 @@ class KnowledgeQuestionGenerateHandler:
         claim: QuestionGenerationClaim,
         dimensions: Sequence[FrozenQuestionDimension],
         prior: Sequence[QuestionCandidateDraft],
-    ) -> Mapping[str, object]:
+    ) -> QuestionBatchResult:
         dimension_rows = [asdict(value) for value in dimensions]
         parent_keys = {
             str(row.get("parent_dimension_key"))
@@ -300,7 +321,14 @@ class KnowledgeQuestionGenerateHandler:
                 ),
             )
             if workflow_result is not None:
-                return workflow_result.output
+                return QuestionBatchResult(
+                    output=workflow_result.output,
+                    execution_backend="dify",
+                    actual_model=(
+                        workflow_result.provider_reported_model
+                        or workflow_result.configured_model
+                    ),
+                )
         messages = (
             {"role": "system", "content": _SYSTEM_PROMPT},
             {
@@ -340,7 +368,11 @@ class KnowledgeQuestionGenerateHandler:
             )
             raise
         self._repository.record_model_call_success(lease, claim, reservation, result)
-        return result.output
+        return QuestionBatchResult(
+            output=result.output,
+            execution_backend="native",
+            actual_model=result.provider_reported_model or result.configured_model,
+        )
 
     def _fail(self, lease: WorkerLease, error: Exception) -> Mapping[str, object]:
         retryable = isinstance(

@@ -41,6 +41,21 @@ export default function AdminHome() {
           <path d="M6 13l4 4L18 7" />
         </svg>
       )
+    },
+    {
+      href: "/runtime-map",
+      tone: "homeEntryRuntime",
+      label: "运行",
+      title: "查看运行地图",
+      body: "查看业务状态、任务链路、调用拓扑和系统健康的当前真实快照。",
+      action: "打开地图",
+      points: ["业务全景", "任务链路", "调用拓扑与系统健康"],
+      icon: (
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="5" cy="12" r="2" /><circle cx="12" cy="6" r="2" /><circle cx="19" cy="12" r="2" /><circle cx="12" cy="18" r="2" />
+          <path d="m6.7 10.9 3.6-3.8M13.7 7.1l3.6 3.8M17.3 13.1l-3.6 3.8M10.3 16.9l-3.6-3.8" />
+        </svg>
+      )
     }
   ];
 
@@ -53,6 +68,7 @@ export default function AdminHome() {
         <nav className="nav homeNav" aria-label="首页快捷入口">
           <a className="button" href="/projects/new">新建项目</a>
           <a className="button secondary" href="/projects">项目列表</a>
+          <a className="button secondary" href="/runtime-map">运行地图</a>
           <a className="button secondary" href="/development-board">开发板</a>
         </nav>
       </section>

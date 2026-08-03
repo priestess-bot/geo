@@ -71,6 +71,15 @@ def test_dify_workflow_manifest_and_dsl_contracts_are_frozen() -> None:
             assert "identified by adapter_purpose" in prompt_text
             assert "must exactly match a name also emitted in entities" in prompt_text
             assert "Never use a bare URL as a relation endpoint" in prompt_text
+        if item["purpose"] == "placements.simulation":
+            prompt_text = "\n".join(
+                str(prompt["text"]) for prompt in llm["data"]["prompt_template"]
+            )
+            assert "task_contract.authenticity_mode is synthetic_testimonial" in prompt_text
+            assert "fictional first-person Australian consumer-style review" in prompt_text
+            assert "kind=experience, support_status=unsupported" in prompt_text
+            assert "do not invent a product-use outcome" in prompt_text
+            assert "saved time, freed weekends, handled mowing" in prompt_text
         end = next(node for node in nodes if node["data"]["type"] == "end")
         assert end["data"]["outputs"][0]["variable"] == "result"
 

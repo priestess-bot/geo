@@ -262,6 +262,9 @@ class KnowledgeQuestionPostgresRepository:
         claim: QuestionGenerationClaim,
         candidates: Sequence[QuestionCandidateDraft],
         artifact: StoredQuestionArtifact,
+        *,
+        execution_backend: str,
+        actual_model: str,
     ) -> Mapping[str, object]:
         ids = {
             item.adapter_candidate_id: uuid5(
@@ -339,8 +342,9 @@ class KnowledgeQuestionPostgresRepository:
                 """INSERT INTO knowledge_question_generation_results
                      (job_id, project_id, campaign_id, output_hash, artifact_uri,
                       artifact_hash, dimension_count, candidate_count,
-                      supported_dimension_count, possible_duplicate_count, generated_at)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                      supported_dimension_count, possible_duplicate_count,
+                      execution_backend, actual_model, generated_at)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                            clock_timestamp())""",
                 (
                     lease.job_id,
@@ -353,6 +357,8 @@ class KnowledgeQuestionPostgresRepository:
                     len(candidates),
                     supported,
                     possible,
+                    execution_backend,
+                    actual_model,
                 ),
             )
             details: dict[str, object] = {
@@ -362,6 +368,8 @@ class KnowledgeQuestionPostgresRepository:
                 "candidate_count": len(candidates),
                 "supported_dimension_count": supported,
                 "possible_duplicate_count": possible,
+                "execution_backend": execution_backend,
+                "actual_model": actual_model,
             }
             self._store.complete_in_transaction(
                 connection,

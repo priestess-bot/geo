@@ -1,0 +1,50 @@
+{
+  "schema_version": "geo-stack-runtime-manifest-v1",
+  "canonical_project": "geo",
+  "canonical_mode": "internal",
+  "compose_files": [
+    "infra/docker-compose.yml",
+    "infra/compose.staging-operator.yml",
+    "infra/dify/compose.geo-runtime.yml"
+  ],
+  "dify_project": "geo-dify",
+  "ports": {
+    "admin_web": 13001,
+    "customer_web": 13000,
+    "internal_api": 18000,
+    "customer_api": 18001,
+    "minio_api": 19000,
+    "minio_console": 19001,
+    "valkey": 16379,
+    "dify_console": 15000
+  },
+  "required_services": [
+    "postgres",
+    "minio",
+    "minio-init",
+    "valkey",
+    "internal-api",
+    "customer-api",
+    "task-worker",
+    "outbox-relay",
+    "connector-worker",
+    "browser-capture-worker",
+    "admin-web",
+    "customer-web"
+  ],
+  "dify_databases": ["dify", "dify_plugin"],
+  "legacy_projects": ["geo-development", "geo-advinsys-staging"],
+  "excluded_projects": [
+    "assetgraph",
+    "sub2api",
+    "geo-workflowc-fresh-migration"
+  ],
+  "authoritative_data": {
+    "postgresql": "geo",
+    "object_store": "geo MinIO buckets",
+    "dify_postgresql": ["dify", "dify_plugin"],
+    "dify_weaviate": "Dify Weaviate persistence",
+    "dify_state": "geo-dify-state.json"
+  },
+  "operational_snapshots": ["geo Valkey RDB", "Dify Redis RDB"]
+}

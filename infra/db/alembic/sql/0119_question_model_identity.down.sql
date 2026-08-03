@@ -1,0 +1,4 @@
+ALTER TABLE knowledge_question_generation_results
+DROP CONSTRAINT knowledge_question_results_model_identity_check,
+DROP COLUMN actual_model,
+DROP COLUMN execution_backend;

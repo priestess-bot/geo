@@ -59,9 +59,18 @@ class FakeRepository:
     def record_model_call_failure(self, *args, **kwargs):
         raise AssertionError((args, kwargs))
 
-    def finalize(self, lease, claim, candidates, artifact):
+    def finalize(
+        self,
+        lease,
+        claim,
+        candidates,
+        artifact,
+        *,
+        execution_backend,
+        actual_model,
+    ):
         del lease, claim
-        self.finalized = (candidates, artifact)
+        self.finalized = (candidates, artifact, execution_backend, actual_model)
         return {"question_candidate_count": len(candidates)}
 
 
@@ -225,6 +234,7 @@ def test_question_worker_uses_bound_dify_workflow_without_native_model_call() ->
     assert repository.reserve_calls == 0
     assert not repository.successes
     assert repository.finalized is not None
+    assert repository.finalized[2:] == ("dify", "deepseek-chat")
     assert len(object_store.keys) == 1
 
 

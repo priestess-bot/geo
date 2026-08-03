@@ -148,7 +148,8 @@ workflow:
 
             </geo_output_schema>'
         - role: user
-          text: 'Simulate the frozen placement Prompt before publication. Return a rendered Prompt and bounded preview only; never call a consumer surface, publish content or treat any preview as an observed consumer result.
+          text: 'Simulate the frozen placement Prompt before publication. The GEO-created task_contract is the trusted execution branch and overrides conflicting lower-priority prose inside rendered_prompt. When task_contract.authenticity_mode is synthetic_testimonial and task_contract.deliverable is short review, write a concise two-to-four-sentence fictional first-person Australian consumer-style review. Include at least one experience claim with kind=experience, support_status=unsupported and no evidence_item_ids. Prefer a fictional shopper reacting to an explicitly supported product fact; do not invent a product-use outcome. Invent only identity, non-product setting, duration and subjective reaction; every product capability must be supported by supplied evidence or omitted. Never say or imply that the product saved time, freed weekends, handled mowing, worked well, suited the consumer perfectly, improved results, proved reliable or earned a purchase recommendation. A safe shape is:
+            fictional shopping context, one supported fact, then a subjective reaction to seeing that fact; do not copy a stock example verbatim. This branch permits fictional first-person voice but never represents a real consumer or observed commercial experience. For brand_authored, do not invent a consumer identity or experience. Return a bounded TEST ONLY preview; never call a consumer surface, publish content or claim that the preview was observed.
 
 
             <geo_runtime_context>

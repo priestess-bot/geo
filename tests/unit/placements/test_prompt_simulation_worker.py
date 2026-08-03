@@ -193,7 +193,16 @@ def test_prompt_simulation_handler_allows_synthetic_consumer_copy_but_never_publ
         simulation_id=uuid4(),
         project_id=uuid4(),
         input_hash="a" * 64,
-        input_snapshot={},
+        input_snapshot={
+            "brief": {
+                "goals": {
+                    "intent": "product recommendation",
+                    "audience": "Australian homeowners",
+                    "deliverable": "short review",
+                },
+                "constraints": {"public_citations_required": True},
+            }
+        },
         authenticity_mode=authenticity_mode,
         system_prompt="Use the selected platform style.",
         rendered_prompt="Generate a preview.",
@@ -256,7 +265,16 @@ def test_simulation_uses_bound_dify_workflow_without_native_model_call() -> None
         simulation_id=uuid4(),
         project_id=uuid4(),
         input_hash="a" * 64,
-        input_snapshot={},
+        input_snapshot={
+            "brief": {
+                "goals": {
+                    "intent": "product recommendation",
+                    "audience": "Australian homeowners",
+                    "deliverable": "short review",
+                },
+                "constraints": {"public_citations_required": True},
+            }
+        },
         authenticity_mode=PromptSimulationAuthenticityMode.SYNTHETIC_TESTIMONIAL,
         system_prompt="Use the selected platform style.",
         rendered_prompt="Generate a preview.",
@@ -283,9 +301,110 @@ def test_simulation_uses_bound_dify_workflow_without_native_model_call() -> None
 
     assert result["status"] == "succeeded"
     assert workflow.requests[0].purpose == "placements.simulation"
+    assert workflow.requests[0].context["task_contract"] == {
+        "contract": "geo-prompt-simulation-task-v1",
+        "authenticity_mode": "synthetic_testimonial",
+        "simulation_purpose": "content_preview",
+        "test_only": True,
+        "publication_eligible": False,
+        "intent": "product recommendation",
+        "audience": "Australian homeowners",
+        "deliverable": "short review",
+        "public_citations_required": True,
+    }
     assert gateway.request is None
     assert repository.reserve_calls == 0
     assert repository.success_log is None
+
+
+def test_simulation_rejects_generic_brand_copy_for_synthetic_short_review() -> None:
+    evidence_id = uuid4()
+    claim = PromptSimulationClaim(
+        simulation_id=uuid4(),
+        project_id=uuid4(),
+        input_hash="a" * 64,
+        input_snapshot={"brief": {"goals": {"deliverable": "short review"}}},
+        authenticity_mode=PromptSimulationAuthenticityMode.SYNTHETIC_TESTIMONIAL,
+        system_prompt="Use the selected platform style.",
+        rendered_prompt="Generate a preview.",
+        configured_model="deepseek-v4-flash",
+        model_call_budget=1,
+        evidence_item_ids=(evidence_id,),
+        public_citation_item_ids=(evidence_id,),
+        output_schema={"type": "object", "required": ["content_json", "claims"]},
+    )
+    generic_output = {
+        "content_json": {"required_disclosures": [], "expected_links": []},
+        "rendered_text": "The TerraMow V600 is designed for medium-sized lawns.",
+        "claims": [
+            {
+                "text": "The TerraMow V600 is designed for medium-sized lawns.",
+                "kind": "factual",
+                "support_status": "supported",
+                "evidence_item_ids": [str(evidence_id)],
+            }
+        ],
+        "internal_evidence_refs": [str(evidence_id)],
+        "public_citation_refs": [str(evidence_id)],
+    }
+    store = _Store()
+    repository = _Repository(claim)
+    workflow = _WorkflowExecutor(generic_output)
+    lease = WorkerLease(
+        uuid4(), claim.project_id, "prompt_simulation.generate", "worker", uuid4(), 1, 1, 3
+    )
+
+    result = PromptSimulationHandler(
+        store=store,
+        repository=repository,
+        gateway=_Gateway(evidence_id),
+        lease_for=timedelta(seconds=30),
+        workflow_executor=workflow,
+    ).handle(lease)
+
+    assert result["status"] == "failed"
+    assert store.failure["details"]["classification"] == "contract"
+    assert "fictional first-person voice" in store.failure["details"]["message"]
+    assert repository.finalized is None
+
+
+def test_simulation_rejects_invented_product_outcome_in_synthetic_short_review() -> None:
+    evidence_id = uuid4()
+    claim = PromptSimulationClaim(
+        simulation_id=uuid4(),
+        project_id=uuid4(),
+        input_hash="a" * 64,
+        input_snapshot={"brief": {"goals": {"deliverable": "short review"}}},
+        authenticity_mode=PromptSimulationAuthenticityMode.SYNTHETIC_TESTIMONIAL,
+        system_prompt="Use the selected platform style.",
+        rendered_prompt="Generate a preview.",
+        configured_model="deepseek-v4-flash",
+        model_call_budget=1,
+        evidence_item_ids=(evidence_id,),
+        public_citation_item_ids=(evidence_id,),
+        output_schema={"type": "object", "required": ["content_json", "claims"]},
+    )
+    output = _simulation_output()
+    output["rendered_text"] = (
+        "I've used the TerraMow V600 for a few weeks and it has been a real time-saver."
+    )
+    store = _Store()
+    repository = _Repository(claim)
+    lease = WorkerLease(
+        uuid4(), claim.project_id, "prompt_simulation.generate", "worker", uuid4(), 1, 1, 3
+    )
+
+    result = PromptSimulationHandler(
+        store=store,
+        repository=repository,
+        gateway=_Gateway(evidence_id),
+        lease_for=timedelta(seconds=30),
+        workflow_executor=_WorkflowExecutor(output),
+    ).handle(lease)
+
+    assert result["status"] == "failed"
+    assert "prohibited invented product outcome" in store.failure["details"]["message"]
+    assert repository.finalized is None
 
 
 def test_simulation_dify_failure_never_falls_back_to_native_gateway() -> None:

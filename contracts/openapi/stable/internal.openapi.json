@@ -22546,6 +22546,17 @@
       "QuestionGenerationView": {
         "additionalProperties": false,
         "properties": {
+          "actual_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual Model"
+          },
           "adapter_release": {
             "title": "Adapter Release",
             "type": "string"
@@ -22619,6 +22630,21 @@
             ],
             "title": "Error Code"
           },
+          "execution_backend": {
+            "anyOf": [
+              {
+                "enum": [
+                  "dify",
+                  "native"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Backend"
+          },
           "generated_at": {
             "anyOf": [
               {
@@ -22688,6 +22714,8 @@
           "input_hash",
           "error_code",
           "configured_model",
+          "execution_backend",
+          "actual_model",
           "model_call_budget",
           "adapter_release",
           "semantic_duplicate_threshold",

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import timedelta
 from typing import Mapping, Protocol
 
@@ -36,6 +37,7 @@ from geo_core.placements.generation_worker import (
 )
 from geo_core.placements.ports import GeneratedPlacement, ModelCallClaim
 from geo_core.placements.runtime_prompts import simulation_system_prompt
+from geo_core.placements.simulation import PromptSimulationAuthenticityMode
 from geo_core.placements.worker_models import (
     ModelCallReservation,
     PromptSimulationClaim,
@@ -44,6 +46,15 @@ from geo_core.workflow_runtime import (
     WorkflowExecutionError,
     WorkflowExecutionRequest,
     WorkflowExecutor,
+)
+
+
+_PROHIBITED_SYNTHETIC_OUTCOME = re.compile(
+    r"\b(?:time[- ]sav(?:er|ing)|saved?\s+(?:me|us)\s+time|"
+    r"spend\s+(?:my|our)\s+weekends?|handles?\s+(?:the\s+)?mowing|"
+    r"works?\s+(?:well|great|perfectly)|performs?\b|"
+    r"reliab(?:le|ly|ility)|suits?\s+(?:my|our)\b|recommend(?:ed|ing)?\b)",
+    re.I,
 )
 
 
@@ -131,26 +142,7 @@ class PromptSimulationHandler:
                         WorkflowExecutionRequest(
                             project_id=claim.project_id,
                             purpose="placements.simulation",
-                            context={
-                                "simulation_id": str(claim.simulation_id),
-                                "authenticity_mode": claim.authenticity_mode.value,
-                                "campaign_id": (
-                                    str(claim.campaign_id) if claim.campaign_id else None
-                                ),
-                                "opportunity_id": (
-                                    str(claim.opportunity_id) if claim.opportunity_id else None
-                                ),
-                                "destination_id": (
-                                    str(claim.destination_id) if claim.destination_id else None
-                                ),
-                                "evidence_item_ids": [
-                                    str(value) for value in claim.evidence_item_ids
-                                ],
-                                "public_citation_item_ids": [
-                                    str(value) for value in claim.public_citation_item_ids
-                                ],
-                                "rendered_prompt": claim.rendered_prompt,
-                            },
+                            context=build_prompt_simulation_workflow_context(claim),
                             input_hash=request_hash,
                             output_schema=claim.output_schema,
                             system_prompt="\n\n".join(
@@ -219,6 +211,7 @@ class PromptSimulationHandler:
         try:
             validate_output_schema(result.output, claim.output_schema)
             placement = parse_generated_placement(result.output, claim=claim)
+            validate_prompt_simulation_output(claim, placement)
             details = self._repository.finalize_prompt_simulation(lease, claim, placement, result)
             return {"status": "succeeded", "job_id": str(lease.job_id), **details}
         except PlacementRuleViolation as exc:
@@ -265,6 +258,93 @@ def build_prompt_simulation_request(claim: PromptSimulationClaim) -> ModelGatewa
         temperature=0.0,
         max_output_tokens=8192,
     )
+
+
+def build_prompt_simulation_workflow_context(
+    claim: PromptSimulationClaim,
+) -> Mapping[str, object]:
+    """Build the Dify-owned context with a small trusted simulation contract."""
+
+    brief = claim.input_snapshot.get("brief")
+    goals = brief.get("goals") if isinstance(brief, Mapping) else None
+    constraints = brief.get("constraints") if isinstance(brief, Mapping) else None
+    task_contract: dict[str, object] = {
+        "contract": "geo-prompt-simulation-task-v1",
+        "authenticity_mode": claim.authenticity_mode.value,
+        "simulation_purpose": claim.simulation_purpose,
+        "test_only": True,
+        "publication_eligible": False,
+    }
+    if isinstance(goals, Mapping):
+        for name in ("intent", "audience", "deliverable"):
+            value = goals.get(name)
+            if isinstance(value, str) and value.strip():
+                task_contract[name] = value.strip()
+    if isinstance(constraints, Mapping):
+        task_contract["public_citations_required"] = bool(
+            constraints.get("public_citations_required", False)
+        )
+
+    return {
+        "simulation_id": str(claim.simulation_id),
+        "authenticity_mode": claim.authenticity_mode.value,
+        "campaign_id": str(claim.campaign_id) if claim.campaign_id else None,
+        "opportunity_id": str(claim.opportunity_id) if claim.opportunity_id else None,
+        "destination_id": str(claim.destination_id) if claim.destination_id else None,
+        "evidence_item_ids": [str(value) for value in claim.evidence_item_ids],
+        "public_citation_item_ids": [
+            str(value) for value in claim.public_citation_item_ids
+        ],
+        "task_contract": task_contract,
+        "rendered_prompt": claim.rendered_prompt,
+    }
+
+
+def validate_prompt_simulation_output(
+    claim: PromptSimulationClaim, placement: GeneratedPlacement
+) -> None:
+    """Reject generic brand copy masquerading as a requested synthetic short review."""
+
+    if (
+        claim.authenticity_mode
+        is not PromptSimulationAuthenticityMode.SYNTHETIC_TESTIMONIAL
+        or _simulation_deliverable(claim) != "short review"
+    ):
+        return
+    if (
+        re.search(
+            r"\b(?:I|I'm|I've|I'd|my|me|we|we're|we've|our|us)\b",
+            placement.rendered_text,
+            re.I,
+        )
+        is None
+    ):
+        raise PlacementRuleViolation(
+            "synthetic testimonial short review must use a fictional first-person voice"
+        )
+    experience_claims = [item for item in placement.claims if item.kind == "experience"]
+    if not experience_claims:
+        raise PlacementRuleViolation(
+            "synthetic testimonial short review must include an explicit experience claim"
+        )
+    if any(
+        item.support_status != "unsupported" or item.evidence_item_ids
+        for item in experience_claims
+    ):
+        raise PlacementRuleViolation(
+            "synthetic testimonial experience claims must remain unsupported and unbound"
+        )
+    if _PROHIBITED_SYNTHETIC_OUTCOME.search(placement.rendered_text):
+        raise PlacementRuleViolation(
+            "synthetic testimonial contains a prohibited invented product outcome"
+        )
+
+
+def _simulation_deliverable(claim: PromptSimulationClaim) -> str | None:
+    brief = claim.input_snapshot.get("brief")
+    goals = brief.get("goals") if isinstance(brief, Mapping) else None
+    deliverable = goals.get("deliverable") if isinstance(goals, Mapping) else None
+    return deliverable.strip().casefold() if isinstance(deliverable, str) else None
 
 
 def _model_error_classification(error: Exception) -> str:

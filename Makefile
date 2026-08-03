@@ -30,7 +30,9 @@ PROD_COMPOSE := docker compose --env-file $(PROD_ENV) -f infra/compose.prod.yml 
 	production-provision-owner \
 	api-image admin-image customer-image images \
 	backup restore-smoke backup-restore-dev-smoke deepseek-live ci \
-	advinsys-dry-run advinsys-verify f019-benchmark operator-guide-pdf
+	advinsys-dry-run advinsys-verify f019-benchmark operator-guide-pdf \
+	stack-config stack-up stack-down stack-status stack-doctor stack-cleanup-legacy \
+	stack-export stack-import stack-verify
 
 bootstrap: install
 	cp -n .env.example .env 2>/dev/null || true
@@ -314,6 +316,57 @@ admin-web:
 
 customer-web:
 	corepack pnpm --filter geo-production-customer-web dev -- --port 3000
+
+STACK_ENV ?= infra/geo-stack.env
+STACK_KEY_FILE ?= $(GEO_MIGRATION_KEY_FILE)
+STACK_SECRET_ROOT ?= $(GEO_MIGRATION_SECRET_ROOT)
+STACK_OUTPUT_ROOT ?= $(GEO_MIGRATION_OUTPUT_ROOT)
+STACK_PACKAGE ?= $(GEO_MIGRATION_PACKAGE)
+
+stack-config:
+	GEO_STACK_ENV_FILE=$(STACK_ENV) scripts/geo-stack.sh config
+
+stack-up:
+	GEO_STACK_ENV_FILE=$(STACK_ENV) scripts/geo-stack.sh up
+
+stack-down:
+	GEO_STACK_ENV_FILE=$(STACK_ENV) scripts/geo-stack.sh down
+
+stack-status:
+	GEO_STACK_ENV_FILE=$(STACK_ENV) scripts/geo-stack.sh status
+
+stack-doctor:
+	GEO_STACK_ENV_FILE=$(STACK_ENV) scripts/geo-stack.sh doctor
+
+stack-cleanup-legacy:
+	GEO_STACK_ENV_FILE=$(STACK_ENV) scripts/geo-stack.sh cleanup-legacy --confirm
+
+stack-export:
+	@test -n "$(STACK_KEY_FILE)" || (echo "GEO_MIGRATION_KEY_FILE is required" >&2; exit 2)
+	@test -n "$(STACK_SECRET_ROOT)" || (echo "GEO_MIGRATION_SECRET_ROOT is required" >&2; exit 2)
+	@test -n "$(STACK_OUTPUT_ROOT)" || (echo "GEO_MIGRATION_OUTPUT_ROOT is required" >&2; exit 2)
+	GEO_STACK_ENV_FILE=$(STACK_ENV) scripts/geo-stack.sh export \
+		--output-root "$(STACK_OUTPUT_ROOT)" \
+		--encryption-key-file "$(STACK_KEY_FILE)" \
+		--secret-root "$(STACK_SECRET_ROOT)"
+
+stack-import:
+	@test -n "$(STACK_KEY_FILE)" || (echo "GEO_MIGRATION_KEY_FILE is required" >&2; exit 2)
+	@test -n "$(STACK_SECRET_ROOT)" || (echo "GEO_MIGRATION_SECRET_ROOT is required" >&2; exit 2)
+	@test -n "$(STACK_PACKAGE)" || (echo "GEO_MIGRATION_PACKAGE is required" >&2; exit 2)
+	GEO_STACK_ENV_FILE=$(STACK_ENV) GEO_MIGRATION_PACKAGE="$(STACK_PACKAGE)" \
+		scripts/geo-stack.sh import \
+		--package "$(STACK_PACKAGE)" \
+		--encryption-key-file "$(STACK_KEY_FILE)" \
+		--secret-root "$(STACK_SECRET_ROOT)" \
+		--target-empty --confirm
+
+stack-verify:
+	@test -n "$(STACK_KEY_FILE)" || (echo "GEO_MIGRATION_KEY_FILE is required" >&2; exit 2)
+	@test -n "$(STACK_PACKAGE)" || (echo "GEO_MIGRATION_PACKAGE is required" >&2; exit 2)
+	GEO_STACK_ENV_FILE=$(STACK_ENV) scripts/geo-stack.sh verify \
+		--package "$(STACK_PACKAGE)" \
+		--encryption-key-file "$(STACK_KEY_FILE)"
 
 db-up:
 	$(DEV_COMPOSE) up -d postgres minio valkey

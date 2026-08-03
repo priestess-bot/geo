@@ -77,9 +77,10 @@ export function QuestionSetWorkspace({ projectId, data }: {
               <span>{job.candidate_count ?? 0} 条候选</span>
               <span>{job.supported_dimension_count ?? 0} 个有来源维度</span>
               <span>{job.possible_duplicate_count ?? 0} 条可能重复</span>
-              <span>{job.configured_model}</span>
+              <span>{actualModelLabel(job.execution_backend, job.actual_model)}</span>
             </span>
-            <TechnicalInfo><span>{job.adapter_release}</span><code>{job.input_hash}</code>
+            <TechnicalInfo><span>请求模型 {job.configured_model}</span>
+              <span>{job.adapter_release}</span><code>{job.input_hash}</code>
               {job.artifact_hash ? <code>{job.artifact_hash}</code> : null}</TechnicalInfo>
           </a>)}</div>
           : <Empty>尚无测试问题生成任务。</Empty>}
@@ -327,4 +328,12 @@ function percent(value: number): string {
 function preview(value: string, max: number): string {
   const normalized = value.replace(/\s+/g, " ").trim();
   return normalized.length > max ? `${normalized.slice(0, max - 1)}…` : normalized;
+}
+
+function actualModelLabel(
+  backend: "dify" | "native" | null,
+  model: string | null
+): string {
+  if (!backend || !model) return "实际模型待执行";
+  return `${backend === "dify" ? "Dify" : "原生 Gateway"} · ${model}`;
 }

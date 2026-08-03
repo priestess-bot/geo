@@ -218,6 +218,15 @@ def test_f019_int_03_question_candidates_freeze_bind_and_immutable_versions() ->
                     ).fetchone(),
                 }
         assert generated["status"] == "succeeded", generated
+        generations = knowledge.list_question_generations(
+            principal,
+            project_id=project["project"],
+            campaign_id=campaign_id,
+        )
+        assert len(generations) == 1
+        assert generations[0]["configured_model"] == "deepseek-v4-flash"
+        assert generations[0]["execution_backend"] == "native"
+        assert generations[0]["actual_model"] == "deepseek-v4-flash"
         candidates = knowledge.list_question_candidates(
             principal,
             project_id=project["project"],

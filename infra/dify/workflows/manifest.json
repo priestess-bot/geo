@@ -30,7 +30,7 @@
       "file": "geo-placement-simulation.yml",
       "model_provider": "langgenius/deepseek/deepseek",
       "purpose": "placements.simulation",
-      "sha256": "cb4a9c9271082e67d35ea743dc9c21b3eabe56f7569628847d3a517a02267922"
+      "sha256": "a1795dec95e5738790912ac898ab7181210c956b0c5e86621a90baf945e67be1"
     },
     {
       "configured_model": "deepseek-chat",

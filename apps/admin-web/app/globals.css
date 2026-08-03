@@ -206,7 +206,7 @@ button.danger,
 .homeEntryGrid {
   display: grid;
   gap: 16px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .homeEntry {
@@ -241,6 +241,48 @@ button.danger,
 
 .homeEntryDelivery::before {
   background: #857143;
+}
+
+.homeEntryRuntime::before {
+  background: #3d7456;
+}
+
+.runtimeMapShell {
+  background: #eef3f5;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.runtimeMapTopbar {
+  align-items: center;
+  background: #ffffff;
+  border-bottom: 1px solid #d5dde5;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  min-height: 74px;
+  padding: 12px 20px;
+}
+
+.runtimeMapTopbar h1 {
+  color: #10212b;
+  font-size: 24px;
+  line-height: 1.1;
+  margin: 2px 0 0;
+}
+
+.runtimeMapTopbar .eyebrow {
+  margin: 0;
+}
+
+.runtimeMapFrame {
+  background: #ffffff;
+  border: 0;
+  height: 100%;
+  min-height: 0;
+  width: 100%;
 }
 
 .homeEntry:hover,
@@ -2312,6 +2354,19 @@ pre {
 
   .homeEntryBody {
     min-height: 0;
+  }
+
+  .runtimeMapTopbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .runtimeMapTopbar .nav {
+    width: 100%;
+  }
+
+  .runtimeMapTopbar .button {
+    flex: 1 1 0;
   }
 
   .modalActions,

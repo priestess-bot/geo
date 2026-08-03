@@ -22,6 +22,7 @@ WORKDIR /app
 RUN addgroup --system --gid 10001 geo && adduser --system --uid 10001 --ingroup geo geo
 COPY --from=build --chown=geo:geo /app/apps/admin-web/.next/standalone ./
 COPY --from=build --chown=geo:geo /app/apps/admin-web/.next/static ./apps/admin-web/.next/static
+COPY --chown=geo:geo docs/architecture/GEO-runtime-flow-visualization.html ./docs/architecture/GEO-runtime-flow-visualization.html
 USER 10001:10001
 EXPOSE 3000
 CMD ["node", "apps/admin-web/server.js"]

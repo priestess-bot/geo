@@ -390,6 +390,7 @@ export interface KnowledgeQuestionGenerationCreated {
 export interface KnowledgeQuestionGenerationView {
   job_id: string; project_id: string; campaign_id: string; status: JobState;
   input_hash: string; error_code: string | null; configured_model: string;
+  execution_backend: "dify" | "native" | null; actual_model: string | null;
   model_call_budget: number; adapter_release: string;
   semantic_duplicate_threshold: number; artifact_uri: string | null;
   artifact_hash: string | null; dimension_count: number | null;

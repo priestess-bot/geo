@@ -80,6 +80,7 @@ export function WorkbenchShell({
     <main className="shell">
       <section className="topbar compactTopbar">
         <nav className="nav">
+          <a className="button secondary" href="/runtime-map">运行地图</a>
           <a className="button secondary" href="/projects">项目列表</a>
           <a className="button secondary" href="/">返回首页</a>
         </nav>
