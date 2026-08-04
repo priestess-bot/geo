@@ -207,9 +207,9 @@ def _host_tar(source: Path, destination: Path) -> None:
             if item.is_symlink():
                 link_name = os.readlink(item)
                 link_target = (item.parent / link_name).resolve(strict=False)
-                if os.path.isabs(link_name) and link_name not in _SAFE_RUNTIME_ABSOLUTE_SYMLINKS:
-                    raise MigrationError(f"persistent directory contains an unsafe symlink: {item}")
-                if not os.path.isabs(link_name) and link_target != root and root not in link_target.parents:
+                target_is_safe_system_link = link_target.as_posix() in _SAFE_RUNTIME_ABSOLUTE_SYMLINKS
+                target_is_internal = link_target == root or root in link_target.parents
+                if not target_is_safe_system_link and not target_is_internal:
                     raise MigrationError(f"persistent directory contains an unsafe symlink: {item}")
                 archive.add(item, arcname=item.relative_to(source).as_posix(), recursive=False)
                 continue
@@ -465,14 +465,21 @@ def _extract_archive_to_directory(archive: Path, destination: Path) -> None:
     with tarfile.open(archive, "r") as payload:
         for member in payload.getmembers():
             target = (destination / member.name).resolve()
+            if member.issym():
+                link_target = (destination / member.name).parent / member.linkname
+                if link_target.resolve(strict=False).as_posix() in _SAFE_RUNTIME_ABSOLUTE_SYMLINKS:
+                    continue
             if destination not in target.parents:
                 raise MigrationError(f"unsafe state archive member: {member.name}")
 
         def safe_filter(member: tarfile.TarInfo, path: str) -> tarfile.TarInfo:
+            if member.issym():
+                link_target = (Path(path) / member.name).parent / member.linkname
+                if link_target.resolve(strict=False).as_posix() in _SAFE_RUNTIME_ABSOLUTE_SYMLINKS:
+                    return member
             if member.issym() and os.path.isabs(member.linkname):
                 if member.linkname not in _SAFE_RUNTIME_ABSOLUTE_SYMLINKS:
                     raise MigrationError(f"unsafe state archive symlink: {member.name}")
-                return member
             return tarfile.data_filter(member, path)
 
         payload.extractall(destination, filter=safe_filter)

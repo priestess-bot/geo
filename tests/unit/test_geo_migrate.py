@@ -83,6 +83,7 @@ def test_host_archive_allows_internal_symlinks_but_rejects_escape(tmp_path: Path
     assert "alias.txt" in names
 
     (source / "python").symlink_to("/usr/bin/python3.12")
+    (source / "python3").symlink_to("python")
     runtime_archive = tmp_path / "runtime.tar.gz"
     _host_tar(source, runtime_archive)
     restored = tmp_path / "restored"
@@ -91,6 +92,7 @@ def test_host_archive_allows_internal_symlinks_but_rejects_escape(tmp_path: Path
     _extract_archive_to_directory(runtime_archive, restored)
     assert (restored / "python").is_symlink()
     assert (restored / "python").readlink() == Path("/usr/bin/python3.12")
+    assert (restored / "python3").is_symlink()
 
     (source / "escape.txt").symlink_to("/etc/passwd")
     with pytest.raises(MigrationError, match="unsafe symlink"):
