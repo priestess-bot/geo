@@ -6,7 +6,7 @@ import tarfile
 
 import pytest
 
-from scripts.geo_migrate import MigrationError, _extract_safe, _files, _verify_payload, build_parser
+from scripts.geo_migrate import MigrationError, _extract_safe, _files, _host_tar, _verify_payload, build_parser
 
 
 def test_payload_entries_are_deterministic_and_verify(tmp_path: Path) -> None:
@@ -69,3 +69,19 @@ def test_verify_parser_accepts_stack_wrapper_repo_root() -> None:
     )
     assert args.command == "verify"
     assert args.repo_root == "/srv/geo"
+
+
+def test_host_archive_allows_internal_symlinks_but_rejects_escape(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "target.txt").write_text("inside", encoding="utf-8")
+    (source / "alias.txt").symlink_to("target.txt")
+    archive = tmp_path / "safe.tar.gz"
+    _host_tar(source, archive)
+    with tarfile.open(archive, "r:gz") as payload:
+        names = {member.name for member in payload.getmembers()}
+    assert "alias.txt" in names
+
+    (source / "escape.txt").symlink_to("/etc/passwd")
+    with pytest.raises(MigrationError, match="unsafe symlink"):
+        _host_tar(source, tmp_path / "unsafe.tar.gz")

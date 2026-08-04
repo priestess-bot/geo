@@ -199,10 +199,17 @@ def _host_tar(source: Path, destination: Path) -> None:
 
     if not source.is_dir() or source.is_symlink():
         raise MigrationError(f"persistent directory is unavailable: {source}")
+    root = source.resolve()
     destination.parent.mkdir(parents=True, exist_ok=True)
     with tarfile.open(destination, "w:gz") as archive:
         for item in sorted(source.rglob("*")):
-            if item.is_symlink() or not (item.is_file() or item.is_dir()):
+            if item.is_symlink():
+                link_target = (item.parent / os.readlink(item)).resolve(strict=False)
+                if link_target != root and root not in link_target.parents:
+                    raise MigrationError(f"persistent directory contains an unsafe symlink: {item}")
+                archive.add(item, arcname=item.relative_to(source).as_posix(), recursive=False)
+                continue
+            if not (item.is_file() or item.is_dir()):
                 raise MigrationError(f"persistent directory contains an unsupported path: {item}")
             archive.add(item, arcname=item.relative_to(source).as_posix(), recursive=False)
 
