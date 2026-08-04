@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import type { SyntheticActionState } from "./syntheticLabTypes";
 import styles from "./SyntheticLab.module.css";
 
@@ -24,7 +26,11 @@ export function SyntheticActionFeedback({ state }: { state: SyntheticActionState
           <div><dt>清单哈希</dt><dd><code>{state.importResult.manifest_hash}</code></dd></div>
         </dl>
       ) : null}
-      {state.nextHref ? <a className={styles.resultLink} href={state.nextHref}>打开任务</a> : null}
+      {state.nextHref ? (
+        <Link className={styles.resultLink} href={state.nextHref} scroll={false}>
+          查看任务与结果
+        </Link>
+      ) : null}
     </div>
   );
 }

@@ -66,3 +66,5 @@ artifacts/
 .runtime/
 infra/geo-stack.env
 test-results/
+geo-migrations/
+.geo-sync/

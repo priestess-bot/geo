@@ -24,6 +24,7 @@ import {
   type SyntheticResourceInventory,
   type SyntheticRuntimeOption
 } from "./syntheticLabTypes";
+import { accessModeLabel, channelLabel } from "./SyntheticLabUI";
 import styles from "./SyntheticLab.module.css";
 
 const PROFILE_PURPOSE = "synthetic_lab.style_profile";
@@ -63,20 +64,20 @@ export function StyleProfileBuildForm({
     || facts.length === 0 || eligibleRuntimes.length === 0;
   return (
     <details className={styles.inlineDetails}>
-      <summary>构建 Profile</summary>
+      <summary>构建风格画像</summary>
       <form action={action} className={styles.writeForm}>
         <CommandFields commandKey={commandKey} projectId={projectId} />
         <input name="profile_version_id" type="hidden" value={profile.id} />
         <fieldset disabled={!canContribute || pending || blocked}>
-          <legend>冻结样本、Fact、Prompt 与模型后构建</legend>
+          <legend>冻结样本、事实、Prompt 与模型后构建</legend>
           <div className={styles.formGridThree}>
             <OptionSelect label="事实快照" name="fact_snapshot_id" options={facts} />
             <RuntimeSelect name="runtime_selection_id" options={eligibleRuntimes} />
-            <p className={styles.formNote}>服务端将冻结创建 Profile 时保存的 {profile.approved_sample_count} 条样本 manifest。</p>
-            <button type="submit">{pending ? "排队中..." : "构建 Profile"}</button>
+            <p className={styles.formNote}>服务端将冻结创建风格画像时保存的 {profile.approved_sample_count} 条样本清单。</p>
+            <button type="submit">{pending ? "排队中..." : "构建风格画像"}</button>
           </div>
         </fieldset>
-        {blocked ? <p className={styles.formNote}>blocked · draft / persisted 200-sample manifest / Fact / approved Provider API runtime required</p> : null}
+        {blocked ? <p className={styles.formNote}>暂不可构建：需要草稿状态、已落库的 200 条样本清单、事实快照和已批准的 Provider API 运行时。</p> : null}
         <SyntheticActionFeedback state={state} />
       </form>
     </details>
@@ -87,16 +88,24 @@ export function ReviewCaseRunForm({
   canContribute,
   cases,
   commandKey,
+  defaultCaseId,
+  defaultRuntimeId,
+  defaultStylePassThreshold = 4.2,
   projectId,
   runtimes,
-  suite
+  suite,
+  variant = "inline"
 }: {
   canContribute: boolean;
   cases: ReviewCase[];
   commandKey: string;
+  defaultCaseId?: string | null;
+  defaultRuntimeId?: string | null;
+  defaultStylePassThreshold?: number;
   projectId: string;
   runtimes: SyntheticRuntimeOption[];
   suite: ReviewSuite;
+  variant?: "inline" | "primary";
 }) {
   const [state, action, pending] = useActionState(
     enqueueReviewCaseRunAction, initialSyntheticActionState
@@ -105,20 +114,51 @@ export function ReviewCaseRunForm({
     && item.allowed_search_modes.includes(null)
     && REVIEW_PURPOSES.every((purpose) => item.allowed_purposes.includes(purpose)));
   const blocked = suite.status !== "frozen" || cases.length === 0 || eligibleRuntimes.length === 0;
+  const selectedCaseId = cases.some((item) => item.id === defaultCaseId)
+    ? defaultCaseId || undefined : undefined;
+  const selectedRuntimeId = eligibleRuntimes.some((item) => item.selection_id === defaultRuntimeId)
+    ? defaultRuntimeId || undefined : undefined;
   return (
-    <form action={action} className={styles.writeForm}>
+    <form action={action} className={`${styles.writeForm}${variant === "primary" ? ` ${styles.primaryGenerationForm}` : ""}`}>
       <CommandFields commandKey={commandKey} projectId={projectId} />
       <input name="suite_version_id" type="hidden" value={suite.id} />
       <fieldset disabled={!canContribute || pending || blocked}>
-          <legend>运行一个冻结测评用例</legend>
-        <div className={styles.formGridThree}>
-          <OptionSelect label="测评用例" name="case_id" options={cases.map((item) => ({ id: item.id, label: `${item.ordinal} · ${item.case_key}` }))} />
-          <RuntimeSelect name="runtime_selection_id" options={eligibleRuntimes} />
-          <label><span>风格通过阈值</span><input defaultValue="4.2" max="5" min="0" name="style_pass_threshold" required step="0.1" type="number" /></label>
-          <button type="submit">{pending ? "排队中..." : "运行用例"}</button>
+        <legend>{variant === "primary" ? "填写本次生成配置" : "运行一个冻结测评用例"}</legend>
+        <div className={variant === "primary" ? styles.generationFormGrid : styles.formGridThree}>
+          <label>
+            <span>目标测评用例</span>
+            <select defaultValue={selectedCaseId} name="case_id" required>
+              {cases.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.ordinal} · {item.case_key} · {item.mode === "guided_scenario" ? "引导场景" : "自主场景"}{item.competitor_scenario ? " · 含竞品" : ""}
+                </option>
+              ))}
+            </select>
+            <small>用例已经冻结人物、场景、问题集、Fact 和风格画像。</small>
+          </label>
+          <label>
+            <span>模型运行时</span>
+            <select defaultValue={selectedRuntimeId} name="runtime_selection_id" required>
+              {eligibleRuntimes.map((option) => (
+                <option key={option.selection_id} value={option.selection_id}>
+                  {option.provider} · {option.configured_model}
+                </option>
+              ))}
+            </select>
+            <small>只显示已批准且支持完整生成、检查和修订链路的运行时。</small>
+          </label>
+          <label>
+            <span>风格通过阈值</span>
+            <input defaultValue={defaultStylePassThreshold} max="5" min="0" name="style_pass_threshold" required step="0.1" type="number" />
+            <small>默认 4.2 / 5；低于阈值会触发自动修订。</small>
+          </label>
+          <button className={styles.generateSubmit} type="submit">
+            {pending ? "正在创建任务..." : "开始生成目标仿真文案"}
+          </button>
         </div>
       </fieldset>
-      {blocked ? <p className={styles.formNote}>已阻断 · 需要冻结的测评套件 / 用例 / 支持六种用途的 Provider API 运行时</p> : null}
+      {blocked ? <p className={styles.formNote}>暂不能生成：需要冻结测评套件、至少一个用例，以及支持完整流程的 Provider API 运行时。</p> : null}
+      {!canContribute && !blocked ? <p className={styles.formNote}>当前账号没有创建合成任务的权限，或生成依赖尚未全部就绪。</p> : null}
       <SyntheticActionFeedback state={state} />
     </form>
   );
@@ -160,10 +200,10 @@ export function CorpusOfflineExperimentForms({
       <form action={candidateAction} className={styles.writeForm}>
         <CommandFields commandKey={commandKeys.candidate} projectId={projectId} />
         <fieldset disabled={!canContribute || candidatePending || inventory.review_jobs.length === 0}>
-          <legend>从通过或 Warning 的 Review 结果冻结候选 Corpus</legend>
+          <legend>从通过或带提醒的测评结果冻结候选语料</legend>
           <div className={styles.formGridThree}>
             <label><span>已完成测评任务</span><select multiple name="review_job_ids" required size={Math.min(8, Math.max(3, inventory.review_jobs.length))}>{inventory.review_jobs.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
-            <button type="submit">{candidatePending ? "排队中..." : "冻结候选 Corpus"}</button>
+            <button type="submit">{candidatePending ? "排队中..." : "冻结候选语料"}</button>
           </div>
         </fieldset>
         <SyntheticActionFeedback state={candidateState} />
@@ -171,7 +211,7 @@ export function CorpusOfflineExperimentForms({
       <form action={approvalAction} className={styles.writeForm}>
         <CommandFields commandKey={commandKeys.approve} projectId={projectId} />
         <fieldset disabled={!canApprove || approvalPending || inventory.candidate_corpora.length === 0}>
-          <legend>批准候选 Corpus</legend>
+          <legend>批准候选语料</legend>
           <div className={styles.formGridThree}>
             <OptionSelect label="候选语料" name="source_corpus_job_id" options={inventory.candidate_corpora} />
             <button type="submit">{approvalPending ? "排队中..." : "批准并冻结"}</button>
@@ -182,7 +222,7 @@ export function CorpusOfflineExperimentForms({
       <form action={experimentAction} className={styles.writeForm}>
         <CommandFields commandKey={commandKeys.experiment} projectId={projectId} />
         <fieldset disabled={!canContribute || experimentPending || experimentBlocked}>
-          <legend>运行 baseline / current / candidate 三臂配对实验</legend>
+          <legend>运行三臂配对实验（无语料基线 / 当前语料 / 候选语料）</legend>
           <div className={styles.formGridThree}>
             <OptionSelect label="问题集" name="question_set_id" options={inventory.question_sets} />
             <OptionSelect label="当前已批准语料" name="current_corpus_job_id" options={inventory.approved_corpora} />
@@ -232,15 +272,15 @@ export function StyleCollectionAdmissionForm({
       <input name="project_id" type="hidden" value={projectId} />
       <input name="idempotency_key" type="hidden" value={commandKey} />
       <fieldset disabled={!canContribute || pending || blocked}>
-        <legend>澳洲英文 Style Collection</legend>
+        <legend>澳洲英文风格样本采集</legend>
         <div className={styles.formGridThree}>
-          <label><span>风格来源</span><select name="style_source_revision_id" onChange={(event) => setSourceId(event.target.value)} value={source?.id || ""}>{liveSources.map((item) => <option key={item.id} value={item.id}>{item.channel} · r{item.revision_number} · {item.access_mode}</option>)}</select></label>
+          <label><span>风格来源</span><select name="style_source_revision_id" onChange={(event) => setSourceId(event.target.value)} value={source?.id || ""}>{liveSources.map((item) => <option key={item.id} value={item.id}>{channelLabel(item.channel)} · 修订 {item.revision_number} · {accessModeLabel(item.access_mode)}</option>)}</select></label>
           <label><span>已批准适配器</span><select name="adapter_release">{adapters.map((item) => <option key={item.id} value={item.adapter_release}>{item.adapter_release}</option>)}</select></label>
           <label><span>登录密钥引用</span><select name="login_secret_reference_id" required={source?.access_mode === "authenticated"}><option value="">无需密钥</option>{secrets.map((item) => <option key={item.reference_id} value={item.reference_id}>{item.purpose} · v{item.current_version}</option>)}</select></label>
           <button disabled={!canContribute || pending || blocked} type="submit">{pending ? "排队中..." : "批准并排队采集"}</button>
         </div>
       </fieldset>
-      {blocked ? <p className={styles.formNote}>blocked · source / authorization / login secret admission incomplete</p> : null}
+      {blocked ? <p className={styles.formNote}>暂不可采集：需要启用的来源、已批准的采集授权；登录页面还需要可用的登录密钥引用。</p> : null}
       <SyntheticActionFeedback state={state} />
     </form>
   );

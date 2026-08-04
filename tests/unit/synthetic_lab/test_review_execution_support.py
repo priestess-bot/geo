@@ -3,6 +3,7 @@ from uuid import uuid4
 
 import pytest
 
+from geo_core.synthetic_lab.direct_generation import DirectGenerationScenario
 from geo_core.synthetic_lab.execution_contracts import FrozenEvidence, SyntheticExecutionError
 from geo_core.synthetic_lab.review_execution_support import (
     claim_assessments,
@@ -26,8 +27,18 @@ def _task(*, creative_reference: str | None = None):
 
 def _claims(task):
     return (
-        {"claim_id": "c1", "text": "First", "subject_id": str(task.subject_id)},
-        {"claim_id": "c2", "text": "Second", "subject_id": str(task.subject_id)},
+        {
+            "claim_id": "c1",
+            "text": "First",
+            "subject_id": str(task.subject_id),
+            "evidence_refs": [],
+        },
+        {
+            "claim_id": "c2",
+            "text": "Second",
+            "subject_id": str(task.subject_id),
+            "evidence_refs": [],
+        },
     )
 
 
@@ -63,6 +74,7 @@ def _assessments():
                 "fact_ref": "",
                 "expected_subject_id": "",
                 "observed_subject_id": "",
+                "evidence_refs": [],
             },
             {
                 "claim_id": "c2",
@@ -70,6 +82,7 @@ def _assessments():
                 "fact_ref": "",
                 "expected_subject_id": "",
                 "observed_subject_id": "",
+                "evidence_refs": [],
             },
         ]
     }
@@ -102,6 +115,7 @@ def test_subject_mixup_cannot_invent_expected_or_observed_subject() -> None:
                 "fact_ref": "",
                 "expected_subject_id": str(task.subject_id),
                 "observed_subject_id": str(uuid4()),
+                "evidence_refs": [],
             }
         ]
     }
@@ -129,6 +143,7 @@ def test_non_mixup_assessment_ignores_non_semantic_subject_fields() -> None:
                     "fact_ref": "",
                     "expected_subject_id": str(task.subject_id),
                     "observed_subject_id": str(task.subject_id),
+                    "evidence_refs": [],
                 }
             ]
         },
@@ -148,3 +163,23 @@ def test_guided_reference_is_always_untrusted_injection_evidence() -> None:
     assert guided["prompt_injection_present"] is True
     assert autonomous["untrusted_text"] == ""
     assert autonomous["prompt_injection_present"] is False
+
+
+def test_authenticated_direct_generation_goal_is_not_treated_as_scraped_injection() -> None:
+    project_id = uuid4()
+    task = _task()
+    task.case = DirectGenerationScenario(
+        id=uuid4(),
+        project_id=project_id,
+        input_snapshot_id=uuid4(),
+        channel="reddit",
+        persona="An Australian buyer",
+        use_case="Write a practical owner-style review.",
+        subject="TerraMow V600",
+        generation_goal="Explain where the product fits and state known limits.",
+    )
+
+    direct = common_review_input(task)
+
+    assert direct["untrusted_text"] == ""
+    assert direct["prompt_injection_present"] is False

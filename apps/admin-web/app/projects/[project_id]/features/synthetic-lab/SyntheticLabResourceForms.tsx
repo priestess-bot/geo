@@ -20,6 +20,7 @@ import {
   type SyntheticResourceInventory,
   type SyntheticResourceOption
 } from "./syntheticLabTypes";
+import { channelLabel } from "./SyntheticLabUI";
 import styles from "./SyntheticLab.module.css";
 import formStyles from "./SyntheticLabResourceForms.module.css";
 
@@ -38,14 +39,14 @@ export function CreateStyleSourceForm(props: CommandProps) {
       <CommandFields {...props} />
       <input name="expected_version" type="hidden" value={0} />
       <fieldset disabled={!props.canContribute || pending}>
-        <legend>新增 Style Source</legend>
+        <legend>新增风格来源</legend>
         <div className={styles.formGridThree}>
           <ChannelSelect />
           <label><span>访问方式</span><select name="access_mode" onChange={(event) => setAccessMode(event.target.value)} value={accessMode}><option value="public">公开</option><option value="authenticated">已登录</option><option value="manual_import">人工导入</option></select></label>
           {manual
             ? <label className={styles.grow}><span>来源名称</span><input maxLength={200} name="source_label" required /></label>
             : <label className={styles.grow}><span>HTTPS URL</span><input maxLength={2048} name="source_url" required type="url" /></label>}
-          <button type="submit">{pending ? "创建中..." : "创建 Source"}</button>
+          <button type="submit">{pending ? "创建中..." : "创建来源"}</button>
         </div>
       </fieldset>
       <SyntheticActionFeedback state={state} />
@@ -67,7 +68,7 @@ export function ManualSampleImportForm({ sources, ...props }: CommandProps & {
       <fieldset disabled={!props.canContribute || pending || manualSources.length === 0}>
         <legend>上传样本并生成预览</legend>
         <div className={styles.formGridThree}>
-          <OptionSelect label="风格来源" name="style_source_revision_id" options={manualSources.map((source) => ({ id: source.id, label: `${source.channel} · 修订 ${source.revision_number}` }))} />
+          <OptionSelect label="风格来源" name="style_source_revision_id" options={manualSources.map((source) => ({ id: source.id, label: `${channelLabel(source.channel)} · 修订 ${source.revision_number}` }))} />
           <label><span>格式</span><select defaultValue="text" name="import_format"><option value="text">纯文本</option><option value="csv">CSV</option><option value="jsonl">JSONL</option></select></label>
           <label><span>样本文件</span><input accept=".txt,.text,.csv,.jsonl,.ndjson,text/plain,text/csv,application/x-ndjson" name="sample_file" required type="file" /></label>
           <label><span>来源权利</span><select defaultValue="" name="default_source_rights" required><option disabled value="">请选择权利依据</option><option value="owned">自有</option><option value="licensed">已授权</option><option value="public_reference">公开引用</option><option value="authorized_manual_capture">已授权人工采集</option></select></label>
@@ -102,7 +103,7 @@ export function ManualImportApprovalForm({ actorIdentityId, preview, ...props }:
           {preview.rows.map((row) => (
             <label className={formStyles.previewRow} key={row.row_number}>
               <input defaultChecked={row.selectable} disabled={!row.selectable} name="selected_row_numbers" type="checkbox" value={row.row_number} />
-              <span><strong>#{row.row_number} · {row.disposition}</strong><span>{row.redacted_text}</span>{row.detected_codes.length ? <small>{row.detected_codes.join(" · ")}</small> : null}{row.blocking_codes.length ? <small>{row.blocking_codes.join(" · ")}</small> : null}</span>
+              <span><strong>#{row.row_number} · {importDispositionLabel(row.disposition)}</strong><span>{row.redacted_text}</span>{row.detected_codes.length ? <small>{row.detected_codes.join(" · ")}</small> : null}{row.blocking_codes.length ? <small>{row.blocking_codes.join(" · ")}</small> : null}</span>
             </label>
           ))}
         </div>
@@ -135,7 +136,7 @@ export function CreateStyleProfileForm({ inventory, ...props }: CommandProps & {
       <CommandFields {...props} />
       <input name="expected_version" type="hidden" value={0} />
       <fieldset disabled={!props.canContribute || pending || samples.length === 0 || prompts.length === 0}>
-        <legend>创建 Style Profile draft</legend>
+        <legend>创建风格画像草稿</legend>
         <div className={styles.formGridThree}>
           <ChannelSelect onChange={setChannel} value={channel} />
           <ResourceSelect label="Prompt 程序" name="prompt_binding_id" options={prompts} />
@@ -143,7 +144,7 @@ export function CreateStyleProfileForm({ inventory, ...props }: CommandProps & {
             <strong>批准样本</strong>
             {samples.map((sample) => <label key={sample.id}><input name="approved_sample_ids" type="checkbox" value={sample.id} /> {sample.label}</label>)}
           </div>
-          <button type="submit">{pending ? "创建中..." : "创建 Profile"}</button>
+          <button type="submit">{pending ? "创建中..." : "创建风格画像"}</button>
         </div>
       </fieldset>
       <SyntheticActionFeedback state={state} />
@@ -185,7 +186,7 @@ export function CreateReviewCaseForm({ inventory, suite, ...props }: CommandProp
       <input name="expected_version" type="hidden" value={0} />
       <input name="channel" type="hidden" value={suite.channel} />
       <fieldset disabled={!props.canContribute || pending || blocked}>
-        <legend>新增 Review Case</legend>
+        <legend>新增测评用例</legend>
         <div className={styles.formGridThree}>
           <label><span>用例键</span><input maxLength={200} name="case_key" pattern="[a-zA-Z0-9_.:-]+" required /></label>
           <label><span>序号</span><input min={1} name="ordinal" required type="number" /></label>
@@ -200,7 +201,7 @@ export function CreateReviewCaseForm({ inventory, suite, ...props }: CommandProp
           {mode === "guided_scenario" ? <label><span>创意参考</span><input maxLength={4000} name="creative_reference" required /></label> : null}
         </div>
         <label className={styles.checkbox}><input name="competitor_scenario" type="checkbox" value="true" /> 竞品场景</label>
-        <button type="submit">{pending ? "创建中..." : "创建 Case"}</button>
+        <button type="submit">{pending ? "创建中..." : "创建用例"}</button>
       </fieldset>
       <SyntheticActionFeedback state={state} />
     </form>
@@ -212,7 +213,7 @@ function CommandFields({ commandKey, projectId }: CommandProps) {
 }
 
 function ChannelSelect({ value, onChange }: { value?: string; onChange?: (value: string) => void }) {
-  return <label><span>渠道</span><select defaultValue={value ? undefined : "reddit"} name="channel" onChange={onChange ? (event) => onChange(event.target.value) : undefined} value={value}>{syntheticChannels.map((channel) => <option key={channel} value={channel}>{channel}</option>)}</select></label>;
+  return <label><span>渠道</span><select defaultValue={value ? undefined : "reddit"} name="channel" onChange={onChange ? (event) => onChange(event.target.value) : undefined} value={value}>{syntheticChannels.map((channel) => <option key={channel} value={channel}>{channelLabel(channel)}</option>)}</select></label>;
 }
 
 function ResourceSelect({ label, name, options }: { label: string; name: string; options: SyntheticResourceOption[] }) {
@@ -221,4 +222,12 @@ function ResourceSelect({ label, name, options }: { label: string; name: string;
 
 function OptionSelect({ label, name, options }: { label: string; name: string; options: ReadonlyArray<{ id: string; label: string }> }) {
   return <label><span>{label}</span><select name={name} required>{options.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>;
+}
+
+function importDispositionLabel(value: string): string {
+  return {
+    ready_for_review: "待复核",
+    blocked: "已阻断",
+    duplicate: "重复样本"
+  }[value] || value;
 }

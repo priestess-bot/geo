@@ -33,6 +33,16 @@ JobKind = Literal[
     "corpus_finalize",
     "offline_experiment",
 ]
+SyntheticJobStatus = Literal[
+    "queued",
+    "running",
+    "finalizing",
+    "retry_wait",
+    "succeeded",
+    "failed",
+    "dead_lettered",
+    "cancelled",
+]
 AuthorizationPurpose = Literal["style_collection"]
 _ItemT = TypeVar("_ItemT")
 
@@ -518,16 +528,7 @@ class SyntheticJobResponse(SyntheticMutationResponse):
     id: UUID
     project_id: UUID
     kind: JobKind
-    status: Literal[
-        "queued",
-        "running",
-        "finalizing",
-        "retry_wait",
-        "succeeded",
-        "failed",
-        "dead_lettered",
-        "cancelled",
-    ]
+    status: SyntheticJobStatus
     version: int = Field(ge=1)
     input_hash: Sha256
     fencing_generation: int = Field(ge=0)
@@ -550,3 +551,4 @@ ImportedSampleOptionPageResponse = SyntheticPageResponse[ImportedSampleOptionRes
 StyleProfilePageResponse = SyntheticPageResponse[StyleProfileResponse]
 ReviewSuitePageResponse = SyntheticPageResponse[ReviewSuiteResponse]
 ReviewCasePageResponse = SyntheticPageResponse[ReviewCaseResponse]
+SyntheticJobPageResponse = SyntheticPageResponse[SyntheticJobResponse]

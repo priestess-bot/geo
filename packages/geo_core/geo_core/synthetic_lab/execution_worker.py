@@ -23,6 +23,7 @@ from geo_core.synthetic_lab.domain import SyntheticLabContractError
 from geo_core.synthetic_lab.execution import SyntheticTaskExecutor
 from geo_core.synthetic_lab.execution_contracts import (
     CorpusFinalizeTask,
+    DirectGenerationTask,
     OfflineExperimentRunTask,
     ReviewCaseRunTask,
     StyleProfileBuildTask,
@@ -45,6 +46,7 @@ from geo_core.synthetic_lab.ports import (
 _TASK_KINDS: Mapping[type[object], frozenset[str]] = {
     StyleProfileBuildTask: frozenset({"style.profile.build"}),
     ReviewCaseRunTask: frozenset({"review.case.run", "candidate_generation"}),
+    DirectGenerationTask: frozenset({"review.case.run", "candidate_generation"}),
     CorpusFinalizeTask: frozenset({"corpus.finalize", "corpus_finalize"}),
     OfflineExperimentRunTask: frozenset({"offline_experiment.run", "offline_experiment"}),
 }
@@ -123,7 +125,14 @@ class SyntheticExecutionHandler:
                     ),
                 },
             )
-        except (SyntheticExecutionStale, SyntheticLabStaleInput):
+        except SyntheticExecutionStale:
+            return self._fail(
+                lease,
+                error_code="synthetic_prompt_stale",
+                classification="prompt_binding_stale",
+                retry_delay=None,
+            )
+        except SyntheticLabStaleInput:
             return self._fail(
                 lease,
                 error_code="synthetic_runtime_stale",

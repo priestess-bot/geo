@@ -32,6 +32,8 @@ def test_advinsys_manifest_is_the_complete_nine_channel_source_of_truth() -> Non
         "monitoring_query_count": 6,
         "knowledge_source_count": 6,
         "evidence_seed_count": 4,
+        "approved_fact_seed_count": 5,
+        "channel_style_count": 9,
     }
     assert {item["publication_channel"] for item in manifest["destinations"]} == {
         "owned_site", "productreview", "youtube", "reddit", "amazon",

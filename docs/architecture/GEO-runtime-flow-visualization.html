@@ -1519,12 +1519,12 @@
       <div class="project-copy">
         <h2 id="project-title">ADVINSYS Australia</h2>
         <p>一眼区分已经真实执行的路径、仅完成技术验证的路径，以及需要人工或外部凭据才能继续的路径。</p>
-        <span class="snapshot-time">业务验收：2026-07-29 · 运行探针：2026-08-03 03:06 CST</span>
+        <span class="snapshot-time">业务验收：2026-08-04 · 运行探针：2026-08-04 05:02 CST</span>
       </div>
       <div class="summary-rail" aria-label="项目关键状态">
         <div class="summary-item" data-tone="good"><span>本地生产路径</span><strong>GO</strong><small>当前可控链路</small></div>
         <div class="summary-item" data-tone="good"><span>Dify 工作流</span><strong>10 / 10</strong><small>真实 Canary + 激活</small></div>
-        <div class="summary-item" data-tone="warn"><span>事实候选</span><strong>941</strong><small>全部待人工审核</small></div>
+        <div class="summary-item" data-tone="warn"><span>当前批准事实</span><strong>5</strong><small>三款产品可追溯</small></div>
         <div class="summary-item" data-tone="block"><span>外部输入缺口</span><strong>7 类</strong><small>不可用 mock 替代</small></div>
         <div class="summary-item" data-tone="warn"><span>客户批准报告</span><strong>0</strong><small>未批准结果不可见</small></div>
       </div>
@@ -1577,7 +1577,7 @@
                 <div class="node-track">
                   <button class="flow-node status-complete" type="button" data-node="project" aria-pressed="false"><strong>项目与市场</strong><small>4 实体 · AU / en-AU</small><span class="node-status"><i class="status-dot complete"></i>已导入</span></button>
                   <button class="flow-node status-warning" type="button" data-node="sources" aria-pressed="false"><strong>知识来源</strong><small>7 ready · 6 archived</small><span class="node-status"><i class="status-dot warning"></i>部分通过</span></button>
-                  <button class="flow-node status-waiting" type="button" data-node="facts" aria-pressed="true"><strong>事实与证据</strong><small>941 个候选待审核</small><span class="node-status"><i class="status-dot waiting"></i>等待人工</span></button>
+                  <button class="flow-node status-warning" type="button" data-node="facts" aria-pressed="true"><strong>事实与证据</strong><small>5 批准 · 571 待审</small><span class="node-status"><i class="status-dot warning"></i>部分已批准</span></button>
                   <button class="flow-node status-complete" type="button" data-node="campaign" aria-pressed="false"><strong>问题与 Campaign</strong><small>3 Campaign · 6 Query</small><span class="node-status"><i class="status-dot complete"></i>已建立</span></button>
                   <button class="flow-node status-complete" type="button" data-node="dify" aria-pressed="false"><strong>Dify 工作流</strong><small>10 个托管流程</small><span class="node-status"><i class="status-dot complete"></i>已激活</span></button>
                   <div class="blank-node" aria-hidden="true"></div>
@@ -1603,9 +1603,9 @@
                 <div class="lane-label"><strong id="lane-synthetic">合成测评</strong><span>Admin 内部实验</span></div>
                 <div class="node-track">
                   <button class="flow-node status-blocked" type="button" data-node="style-samples" aria-pressed="false"><strong>九渠道样本</strong><small>当前 Sample 0</small><span class="node-status"><i class="status-dot blocked"></i>缺合法样本</span></button>
-                  <button class="flow-node status-idle" type="button" data-node="style-profile" aria-pressed="false"><strong>风格画像</strong><small>Profile Build 0</small><span class="node-status"><i class="status-dot idle"></i>尚未开始</span></button>
-                  <button class="flow-node status-idle" type="button" data-node="synthetic-generation" aria-pressed="false"><strong>候选生成</strong><small>每 Case 默认 4 个</small><span class="node-status"><i class="status-dot idle"></i>等待画像</span></button>
-                  <button class="flow-node status-idle" type="button" data-node="conflict-revision" aria-pressed="false"><strong>冲突检查与修订</strong><small>最多 2 轮修订</small><span class="node-status"><i class="status-dot idle"></i>等待候选</span></button>
+                  <button class="flow-node status-warning" type="button" data-node="style-profile" aria-pressed="false"><strong>渠道风格</strong><small>9 手工预设 · Profile 0</small><span class="node-status"><i class="status-dot warning"></i>待样本校准</span></button>
+                  <button class="flow-node status-warning" type="button" data-node="synthetic-generation" aria-pressed="false"><strong>候选生成</strong><small>4 成功任务 · 每次 4 候选</small><span class="node-status"><i class="status-dot warning"></i>直接生成已实跑</span></button>
+                  <button class="flow-node status-warning" type="button" data-node="conflict-revision" aria-pressed="false"><strong>冲突检查与修订</strong><small>声明 / 冲突 / 风格 / 仲裁</small><span class="node-status"><i class="status-dot warning"></i>审核闭环已实跑</span></button>
                   <button class="flow-node status-idle" type="button" data-node="corpus" aria-pressed="false"><strong>语料版本</strong><small>批准后不可变</small><span class="node-status"><i class="status-dot idle"></i>尚未建立</span></button>
                   <button class="flow-node status-idle" type="button" data-node="offline-experiment" aria-pressed="false"><strong>三臂离线实验</strong><small>每题默认 10 次</small><span class="node-status"><i class="status-dot idle"></i>尚未运行</span></button>
                   <div class="blank-node" aria-hidden="true"></div>
@@ -1632,13 +1632,13 @@
           <button class="mobile-detail-close" id="mobile-detail-close" type="button" aria-label="关闭节点详情">
             <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18"/></svg>
           </button>
-          <span class="status-label" id="detail-status"><i class="status-dot waiting"></i>等待人工</span>
+          <span class="status-label" id="detail-status"><i class="status-dot warning"></i>部分已批准</span>
           <h4 id="detail-title">事实与证据</h4>
-          <p id="detail-description">RAG 已产出候选，但没有业务审核决定，因此不能进入正式 Fact 与 Evidence。</p>
+          <p id="detail-description">RAG 共形成 941 个候选，其中 5 条已形成具有当前验证 lineage 的 approved_fact Evidence，可供三款产品直接生成使用。</p>
           <dl class="detail-list">
-            <div><dt>当前事实</dt><dd id="detail-fact">941 个 Fact Candidate，全部 pending_review</dd></div>
+            <div><dt>当前事实</dt><dd id="detail-fact">5 条当前批准事实；941 个候选中 370 approved、571 pending_review</dd></div>
             <div><dt>执行者</dt><dd id="detail-executor">GEO Worker + Dify RAG + 人工审核</dd></div>
-            <div><dt>下一步</dt><dd id="detail-next">由业务审核人逐条批准、拒绝或修订候选事实</dd></div>
+            <div><dt>下一步</dt><dd id="detail-next">继续审核待审候选，只把核实通过的内容提升为可追溯 approved_fact Evidence</dd></div>
             <div><dt>验收依据</dt><dd id="detail-evidence">advinsys-production-path-validation §3 / §4.1</dd></div>
           </dl>
           <div class="detail-actions">
@@ -1664,6 +1664,7 @@
           <select id="trace-select">
             <option value="content">V600 内容生成</option>
             <option value="simulation">V600 仿真消费者短评</option>
+            <option value="synthetic-direct">V600 合成测评直接生成</option>
             <option value="recommendation">建议生成</option>
             <option value="knowledge">知识 RAG 处理</option>
           </select>
@@ -1884,7 +1885,7 @@
     </section>
 
     <footer class="page-footer">
-      <p>业务数据来源：<code>docs/operations/advinsys-production-path-validation-2026-07-29.md</code></p>
+      <p>业务数据来源：<code>docs/operations/advinsys-production-path-validation-2026-07-29.md</code> + 合成测评第 87 次修订实跑收据</p>
       <p>Project <code>6f93ee7b-bd7f-4fca-92b2-0de17254953a</code></p>
     </footer>
   </main>
@@ -1912,11 +1913,11 @@
         evidence: "advinsys-production-path-validation §3 / §4.1", href: `${adminBase}?tab=knowledge&knowledge_tab=sources`
       },
       facts: {
-        status: "waiting", statusText: "等待人工", title: "事实与证据",
-        description: "RAG 已产出候选，但没有业务审核决定，因此不能进入正式 Fact 与 Evidence。",
-        fact: "941 个 Fact Candidate，全部 pending_review",
+        status: "warning", statusText: "部分已批准", title: "事实与证据",
+        description: "RAG 共形成 941 个候选；其中 5 条已进一步形成具有当前验证 lineage 的 approved_fact Evidence，可供三款产品的直接生成使用。候选状态 approved 不等于已形成正式 Fact Evidence。",
+        fact: "5 条当前批准事实；941 个候选中 370 approved、571 pending_review",
         executor: "GEO Worker + Dify RAG + 人工审核",
-        next: "由业务审核人逐条批准、拒绝或修订候选事实",
+        next: "继续审核 571 个待审候选，并只把核实通过的内容提升为可追溯 approved_fact Evidence",
         evidence: "advinsys-production-path-validation §3 / §4.1", href: `${adminBase}?tab=knowledge&knowledge_tab=facts`
       },
       campaign: {
@@ -2006,31 +2007,31 @@
         fact: "0 Sample、0 Style Collection Task",
         executor: "Style Browser Worker + 人工明审",
         next: "提供九个平台合法样本来源，每个平台至少 200 条匿名样本",
-        evidence: "advinsys-production-path-validation §3 / §5", href: `${adminBase}?tab=synthetic-lab`
+        evidence: "advinsys-production-path-validation §3 / §5", href: `${adminBase}?tab=synthetic-lab&synthetic_view=style`
       },
       "style-profile": {
-        status: "idle", statusText: "尚未开始", title: "风格画像",
-        description: "Dify 工作流已经激活，但当前没有经批准样本可用于真实 Profile Build。",
-        fact: "0 Profile Build",
-        executor: "Synthetic Worker + Dify synthetic_lab.style_profile",
-        next: "先完成样本收集、匿名化和人工批准",
-        evidence: "advinsys-production-path-validation §3", href: `${adminBase}?tab=synthetic-lab`
+        status: "warning", statusText: "待样本校准", title: "渠道风格",
+        description: "九个渠道已有可编辑、版本化的澳洲英语手工初始风格，直接生成会冻结所选版本；它们不是从真实样本构建的正式 Style Profile。",
+        fact: "9 个 manual_initial 风格版本；0 个真实 Profile Build",
+        executor: "Admin 手工设置 + Direct Generation Snapshot；正式画像由 Dify style_profile 构建",
+        next: "当前可直接生成；取得合法匿名样本后再构建和批准正式 Style Profile",
+        evidence: "advinsys-production-path-validation §3", href: `${adminBase}?tab=synthetic-lab&synthetic_view=style`
       },
       "synthetic-generation": {
-        status: "idle", statusText: "等待画像", title: "候选生成",
-        description: "每个 Case 默认生成四个候选；目前没有可执行的批准 Style Profile。",
-        fact: "0 Execution Task、0 Terminal Result",
+        status: "warning", statusText: "直接生成已实跑", title: "候选生成",
+        description: "Admin 在同一页面选择渠道、产品和模型并填写目标。服务端只从当前批准事实、手工渠道风格和六步模型运行时形成不可变输入，不再要求先操作 Suite 或正式 Profile。",
+        fact: "4 个真实成功 Direct Generation Job；最终镜像点击任务 20c8c73b…0697 与 07994a63…e240 均自动恢复并成功",
         executor: "Synthetic Worker + Dify synthetic_lab.generation",
-        next: "批准 Profile Version 和 Review Suite 后创建真实任务",
-        evidence: "六个月实施规划 §合成测评实验室", href: `${adminBase}?tab=synthetic-lab`
+        next: "可继续直接生成；正式跨渠道发布前仍须补齐真实样本、Profile 和固定回归集",
+        evidence: "Jobs f26cf4e7…8837 / 20c8c73b…0697 / 07994a63…e240 + Direct Generation Snapshot + Review Result", href: `${adminBase}?tab=synthetic-lab&synthetic_view=generate&synthetic_job_id=20c8c73b-33e5-53de-b8c7-17fd1c2b0697`
       },
       "conflict-revision": {
-        status: "idle", statusText: "等待候选", title: "冲突检查与修订",
-        description: "候选依次执行 claim extraction、conflict check 和最多两轮 revision。",
-        fact: "Dify 三条工作流已激活；业务运行 0",
+        status: "warning", statusText: "审核闭环已实跑", title: "冲突检查与修订",
+        description: "四个候选均执行声明提取、Fact 冲突检查、原生风格判断和仲裁；仅出现知识库未覆盖的推演提醒，没有当前 Fact 冲突或主体串用，因此本次无需进入 revision。",
+        fact: "f26cf4e7…8837：9 个 Dify attempt、8 个原生模型调用、2 条批准事实命中、0 条冲突、0 次必要修订",
         executor: "Synthetic Worker + Dify + GEO 内置 style judge",
-        next: "生成真实候选后按冻结 Fact 执行冲突判断",
-        evidence: "infra/dify/README 与实施规划", href: `${adminBase}?tab=synthetic-lab`
+        next: "保留 warning 分层；用实际冲突输入继续验证真实 revision 分支，不把未触发写成已触发",
+        evidence: "Review Result de0c6f5b…b641；修订状态机另有既有负路径证据", href: `${adminBase}?tab=synthetic-lab&synthetic_view=generate&synthetic_job_id=f26cf4e7-8358-5f0f-9a75-272fbe8f8837`
       },
       corpus: {
         status: "idle", statusText: "尚未建立", title: "语料版本",
@@ -2038,7 +2039,7 @@
         fact: "当前没有真实 Corpus Version",
         executor: "Synthetic Lab 原生运行时",
         next: "完成 Candidate 评审并批准语料版本",
-        evidence: "实施规划 §合成测评实验室", href: `${adminBase}?tab=synthetic-lab`
+        evidence: "实施规划 §合成测评实验室；当前仅保留内部 API", href: ""
       },
       "offline-experiment": {
         status: "idle", statusText: "尚未运行", title: "三臂离线实验",
@@ -2046,7 +2047,7 @@
         fact: "真实 Offline Experiment：0",
         executor: "Synthetic Lab + GEO offline_answer / metric judge",
         next: "批准 Corpus 后按每题默认 10 次运行",
-        evidence: "实施规划 §合成测评实验室", href: `${adminBase}?tab=synthetic-lab`
+        evidence: "实施规划 §合成测评实验室；当前仅保留内部 API", href: ""
       },
       connectors: {
         status: "warning", statusText: "底座可用", title: "Connector Core",
@@ -2138,6 +2139,22 @@
           ["不可变结果", "结果、Claim、输入/输出哈希与模型 lineage 落库；publication_eligible=false。", "97f7ca4b…4c60", "complete"]
         ]
       },
+      "synthetic-direct": {
+        object: "TerraMow V600 合成测评", techStatus: "完成", businessStatus: "completed_with_warning", id: "f26cf4e7…8837",
+        outcomeTitle: "直接生成闭环已跑通，但结果仍是 TEST ONLY",
+        outcomeCopy: "最终 Reddit 文案命中两条当前批准事实；知识库未覆盖的推演被单独标记为提醒。结果只在 Admin 内部可见，不能进入真实 Observation、客户报告或发布。",
+        outcomeState: "4 候选 · 2 Fact 命中", outcomeTone: "warning",
+        steps: [
+          ["页面输入", "运营人员选择 Reddit、V600 和 DeepSeek，并填写约 550 平方米草坪的生成目标。", "Admin 13001", "complete"],
+          ["冻结直接输入", "服务端冻结手工渠道风格版本、两条当前批准事实、目标、阈值和六步运行时。", "Snapshot d53e107d…abd3", "complete"],
+          ["Job + Outbox", "Server Action 创建项目范围 Durable Job，页面原地显示并自动轮询。", "f26cf4e7…8837", "complete"],
+          ["四候选生成", "Dify synthetic_lab.generation 生成四个独立候选。", "Dify + DeepSeek", "complete"],
+          ["声明与冲突", "每个候选经 claim_extraction 和 conflict_check，对照冻结 Fact 判断。", "9 Dify attempts", "complete"],
+          ["风格与仲裁", "GEO 原生 style_judge 和 arbiter 选择最终候选。", "8 native model calls", "complete"],
+          ["必要修订判断", "本次没有 Fact 冲突或主体串用，因此正确跳过 revision；未知推演保留 warning。", "0 revision", "warning"],
+          ["结果与追溯", "最终文案、候选评估、Fact hash 和知识追溯链接原子落库。", "Result de0c6f5b…b641", "complete"]
+        ]
+      },
       recommendation: {
         object: "ADVINSYS Recommendation", techStatus: "完成", businessStatus: "insufficient_evidence", id: "d3245309…e33",
         outcomeTitle: "证据不足是正常业务终态",
@@ -2155,10 +2172,10 @@
         ]
       },
       knowledge: {
-        object: "ADVINSYS Knowledge RAG", techStatus: "部分完成", businessStatus: "pending_review", id: "13 sources / 941 facts",
-        outcomeTitle: "处理完成不等于事实已经获批",
-        outcomeCopy: "7 个来源形成可追溯处理结果，941 个候选仍需业务明审；Amazon 无可追溯 Fact 时保留失败。",
-        outcomeState: "等待事实审核", outcomeTone: "waiting",
+        object: "ADVINSYS Knowledge RAG", techStatus: "部分完成", businessStatus: "5 approved facts", id: "13 sources / 941 candidates",
+        outcomeTitle: "候选批准状态不等于正式 Fact Evidence",
+        outcomeCopy: "7 个来源形成可追溯处理结果；5 条已提升为当前批准事实并用于直接生成，其余候选继续按业务审核决定处理。Amazon 无可追溯 Fact 时保留失败。",
+        outcomeState: "5 批准 · 571 待审", outcomeTone: "warning",
         steps: [
           ["来源接收", "URL、文件或授权文本创建 Source 与 Revision。", "Knowledge API", "complete"],
           ["抓取解析", "Worker 获取真实页面并解析正文。", "Knowledge Worker", "complete"],
@@ -2167,7 +2184,7 @@
           ["候选校验", "应用校验 Fact、Entity、Relation 输出结构。", "GEO Runtime", "complete"],
           ["结果存储", "来源修订、chunk、候选和 lineage 持久化。", "PostgreSQL + MinIO", "complete"],
           ["来源结果", "7 ready、6 个历史修订 archived。", "13 sources", "warning"],
-          ["事实审核", "941 个候选等待批准、拒绝或修订。", "pending_review", "waiting"]
+          ["事实审核", "941 个候选中 370 为 approved、571 为 pending_review；当前正式 approved_fact Evidence 为 5 条。", "5 governed facts", "warning"]
         ]
       }
     };
@@ -2186,8 +2203,8 @@
         status: "running", tone: "complete", statusText: "已验证", meta: "宿主机 CLI",
         description: "统一入口负责配置、启动、停止、健康检查、旧栈清理和迁移包导入导出。",
         runtime: "bash + Python 3", endpoint: "宿主机命令行", networks: "Docker Engine / Compose", io: "Compose bundle、Secret、迁移包",
-        entry: "scripts/geo-stack.sh + deploy/install.sh + scripts/geo_migrate.py", source: "单栈部署与跨服务器迁移指南",
-        note: "新服务器默认项目名为 geo；当前本机保留 geo-advinsys-staging-v2 作为已验证来源。旧 geo-development 已清理。"
+        entry: "scripts/geo-stack.sh + deploy/install.sh + scripts/geo_migrate.py + scripts/geo_sync.py", source: "单栈部署与跨服务器迁移指南",
+        note: "初始基线从本机导出；切换后新服务器是唯一 primary，本机只作为可覆盖的 test-replica。"
       },
       {
         id: "customer", label: "客户用户", subtitle: "只读批准结果", group: "访问者", col: 1, row: 2,
@@ -2279,12 +2296,28 @@
         note: "页面只展示 bucket 职责，不展示凭据、正文或加密材料。"
       },
       {
-        id: "migration-package", label: "加密迁移包", subtitle: "PostgreSQL + 缓存 + 工件", group: "状态与队列", col: 4, row: 7,
+        id: "migration-package", label: "加密迁移包", subtitle: "基线 + 父归档增量", group: "状态与队列", col: 4, row: 7,
         status: "configured", tone: "warning", statusText: "已验证；待目标机", meta: "AES-256 + hash",
-        description: "迁移包覆盖 GEO 与 Dify 的数据库、Valkey/Redis、MinIO、Weaviate、Dify 状态和受控配置文件。",
-        runtime: "geo_migrate.py", endpoint: "宿主机文件系统（600）", networks: "不加入 Docker 网络", io: "加密 payload + manifest + restore receipt",
-        entry: "scripts/geo_migrate.py export/import/verify", source: "docs/operations/geo-deploy-and-migration.md",
-        note: "密钥和迁移口令不写入 manifest；导入必须使用空目标确认，并在恢复后重新执行 doctor 与服务健康检查。"
+        description: "基线和组件增量覆盖 GEO/Dify 数据、MinIO、Weaviate、Dify app/storage、plugin_daemon、状态和 keyring。",
+        runtime: "geo_migrate.py + geo_sync.py", endpoint: "宿主机文件系统（600）", networks: "不加入 Docker 网络", io: "gzip + GPG payload + manifest + restore receipt",
+        entry: "scripts/geo_migrate.py export/import/verify; scripts/geo_sync.py upload/download/apply", source: "docs/operations/geo-deploy-and-migration.md",
+        note: "GitHub 只存私有 Release 加密分片；新主服务器唯一写入，本机测试写入会在增量覆盖时消失。"
+      },
+      {
+        id: "github-archive", label: "GitHub 加密归档", subtitle: "私有 Release transport", group: "部署与迁移", col: 5, row: 7,
+        status: "configured", tone: "warning", statusText: "需 gh 授权", meta: "45 MiB 分片",
+        description: "GitHub Release 只作为加密 payload 的版本化传输层，不保存明文数据库、知识或 Dify 文件。",
+        runtime: "gh release upload/download", endpoint: "GitHub private repository", networks: "外部 HTTPS", io: "archive-manifest + encrypted chunks",
+        entry: "scripts/geo_sync.py", source: "单栈部署与跨服务器迁移指南",
+        note: "仓库必须为 private；缺父归档、分片 hash 不一致或公开仓库都会 fail closed。"
+      },
+      {
+        id: "test-replica", label: "本机 Test Replica", subtitle: "主服务器增量覆盖目标", group: "部署与迁移", col: 5, row: 8,
+        status: "configured", tone: "warning", statusText: "可测试 / 可覆盖", meta: "不参与生产写入",
+        description: "切换后保留的本机验证环境；允许临时测试，但不把本机变更回写到 primary。",
+        runtime: "geo-sync apply-incremental", endpoint: "本机 canonical ports", networks: "本机 Docker networks", io: "父链物化 + test-replica overwrite",
+        entry: "scripts/geo_sync.py apply-incremental --overwrite-test-replica", source: "单栈部署与跨服务器迁移指南",
+        note: "覆盖前会停止写入并使用完整物化包恢复；未显式指定覆盖参数时拒绝执行。"
       },
       {
         id: "task-worker", label: "Task Worker", subtitle: "Durable Job + 模型任务", group: "执行器", col: 5, row: 1,
@@ -2408,7 +2441,10 @@
       { id: "operator-admin", from: "operator", to: "admin-web", label: "HTTP :13001", kind: "http", scenarios: ["async-model", "dify-workflow", "connector-sync", "browser-capture", "style-collection", "alert-delivery"], description: "运营人员通过浏览器访问 Admin。", trigger: "页面访问或操作", recovery: "浏览器重试；不改变已提交命令", truth: "Internal API / PostgreSQL", availability: "当前可用" },
       { id: "operator-deployment", from: "operator", to: "deployment-tooling", label: "CLI / SSH", kind: "http", scenarios: ["deployment-migration"], description: "部署人员在目标 Linux 主机执行一键安装、迁移和 doctor。", trigger: "显式部署或恢复命令", recovery: "按命令输出修复依赖后可重试", truth: "宿主机命令 + evidence manifest", availability: "当前可用" },
       { id: "deployment-compose", from: "deployment-tooling", to: "admin-web", label: "Compose up/down", kind: "event", scenarios: ["deployment-migration"], description: "统一脚本用同一组 Compose 文件启动 GEO、Worker 和 Dify bridge。", trigger: "stack up 或 install.sh", recovery: "doctor 检查失败时不宣称部署完成", truth: "Docker Compose config + health", availability: "当前可用" },
-      { id: "deployment-package", from: "deployment-tooling", to: "migration-package", label: "export / import", kind: "storage", scenarios: ["deployment-migration"], description: "源机导出加密迁移包，目标机在空环境显式确认后导入。", trigger: "维护窗口与迁移口令", recovery: "hash/pg_restore/doctor 失败则保留目标机未验收状态", truth: "manifest + restore receipt", availability: "真实导出与 verify 已通过" },
+      { id: "deployment-package", from: "deployment-tooling", to: "migration-package", label: "baseline / delta", kind: "storage", scenarios: ["deployment-migration"], description: "源机短暂停写生成压缩加密基线；primary 后续生成带 parent 的组件增量。", trigger: "维护窗口或主服务器同步命令", recovery: "hash/父链/restore receipt 失败则不覆盖副本", truth: "manifest + restore receipt", availability: "本地合同与单元测试通过；live GitHub 需授权" },
+      { id: "deployment-github", from: "deployment-tooling", to: "github-archive", label: "Release upload/download", kind: "http", scenarios: ["deployment-migration"], description: "同步器检查 private 仓库并上传/下载加密分片。", trigger: "gh auth + 显式同步命令", recovery: "网络/授权失败可重试，不改变数据库", truth: "archive-manifest + chunk hash", availability: "代码路径已实现；等待真实私有仓库验收" },
+      { id: "github-package", from: "github-archive", to: "migration-package", label: "encrypted chunks", kind: "storage", scenarios: ["deployment-migration"], description: "Release 资产在本机重组为完整加密包，随后才进入 GPG 解密和恢复。", trigger: "下载完成且分片连续", recovery: "缺片/错 hash 立即停止", truth: "payload sha256", availability: "本地单测通过" },
+      { id: "package-replica", from: "migration-package", to: "test-replica", label: "overwrite test state", kind: "storage", scenarios: ["deployment-migration"], description: "主服务器增量父链物化为完整状态，覆盖本机测试副本。", trigger: "显式 --overwrite-test-replica", recovery: "未指定覆盖参数或父链错误则不写入", truth: "materialized restore receipt", availability: "父链逻辑已实现；等待真实增量演练" },
       { id: "package-postgres", from: "migration-package", to: "postgres", label: "pg_dump / restore", kind: "storage", scenarios: ["deployment-migration"], description: "迁移包恢复 GEO、Dify 和插件数据库逻辑备份。", trigger: "目标为空且通过确认", recovery: "先 pg_restore --list，再恢复并核对 revision/relations", truth: "PostgreSQL dumps", availability: "真实 dump verify 已通过" },
       { id: "package-minio", from: "migration-package", to: "minio", label: "MinIO archive", kind: "storage", scenarios: ["deployment-migration"], description: "迁移包恢复 GEO MinIO 对象和 Dify Weaviate/状态数据。", trigger: "停止对应 stateful service", recovery: "安全解包、权限修复、重启后 hash 对账", truth: "MinIO/Weaviate archives", availability: "真实包已生成；目标机待导入" },
       { id: "customer-web", from: "customer", to: "customer-web", label: "HTTP :13000", kind: "http", scenarios: ["customer-read"], description: "客户通过浏览器访问 Customer 门户。", trigger: "页面访问", recovery: "浏览器重试", truth: "Customer API 投影", availability: "当前可用" },
@@ -2481,9 +2517,9 @@
         nodes: ["operator", "admin-web", "internal-api", "postgres", "outbox-relay", "valkey", "task-worker", "alert-smtp", "alert-webhook"]
       },
       "deployment-migration": {
-        title: "部署与迁移", copy: "从宿主机一键启动单栈，到加密迁移包导出、校验和空目标恢复。",
-        outcome: "源机导出与 verify 已通过；目标机导入需显式执行",
-        nodes: ["operator", "deployment-tooling", "admin-web", "migration-package", "postgres", "minio", "dify-runtime"]
+        title: "部署与迁移", copy: "本机生成加密基线并上传私有 Release，新服务器恢复后成为唯一 primary；本机只接受可覆盖增量。",
+        outcome: "全量/增量合同已实现；真实 GitHub Release 和跨主机恢复仍需凭据验收",
+        nodes: ["operator", "deployment-tooling", "github-archive", "migration-package", "test-replica", "postgres", "minio", "dify-runtime"]
       }
     };
 

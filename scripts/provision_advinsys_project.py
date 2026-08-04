@@ -55,11 +55,40 @@ def load_manifest(path: Path) -> dict[str, Any]:
     optional_destinations = manifest.get("optional_destinations", [])
     if not isinstance(optional_destinations, list):
         raise ValueError("target manifest optional_destinations must be a list")
+    channel_styles = manifest.get("channel_styles")
+    if not isinstance(channel_styles, list) or len(channel_styles) != 9:
+        raise ValueError("target manifest must define nine channel_styles")
+    style_channels = {item.get("channel") for item in channel_styles}
+    if style_channels != STANDARD_CHANNELS or any(
+        not isinstance(item.get("directive"), str) or not item["directive"].strip()
+        for item in channel_styles
+    ):
+        raise ValueError("target manifest channel_styles must cover each standard channel")
     destination_keys = [
         item.get("destination_key") for item in [*destinations, *optional_destinations]
     ]
     if len(destination_keys) != len(set(destination_keys)):
         raise ValueError("target manifest destination keys must be unique")
+    approved_fact_seeds = manifest.get("approved_fact_seeds")
+    product_names = set(names)
+    source_titles = {item.get("title") for item in manifest.get("knowledge_sources", [])}
+    if not isinstance(approved_fact_seeds, list) or not approved_fact_seeds:
+        raise ValueError("target manifest must define approved_fact_seeds")
+    fact_keys = [
+        (item.get("source_title"), item.get("statement"))
+        for item in approved_fact_seeds
+    ]
+    if len(fact_keys) != len(set(fact_keys)) or any(
+        item.get("source_title") not in source_titles
+        or item.get("subject_name") not in product_names
+        or item.get("subject_role") != "product"
+        or not isinstance(item.get("statement"), str)
+        or not item["statement"].strip()
+        for item in approved_fact_seeds
+    ):
+        raise ValueError("target manifest approved_fact_seeds are invalid or duplicated")
+    if product_names != {item["subject_name"] for item in approved_fact_seeds}:
+        raise ValueError("target manifest must seed an approved Fact for every product")
     return manifest
 
 
@@ -129,6 +158,8 @@ def provision(
     destinations = manifest["destinations"]
     optional_destinations = manifest.get("optional_destinations", [])
     evidence_seeds = manifest["evidence_seeds"]
+    approved_fact_seeds = manifest["approved_fact_seeds"]
+    channel_styles = manifest["channel_styles"]
     projects = api.request("GET", "/v1/projects")["items"]
     if create_new and project_id is not None:
         raise ValueError("--create-new and --project-id cannot be used together")
@@ -349,6 +380,33 @@ def provision(
             },
         )
 
+    approved_fact_rows = _ensure_approved_fact_evidence(
+        api,
+        project_id,
+        approved_fact_seeds,
+        entity_by_name,
+    )
+
+    existing_styles = api.request(
+        "GET",
+        f"/v1/projects/{project_id}/synthetic-lab/channel-styles?limit=100&include_history=false",
+    )["items"]
+    styles_by_channel = {item["channel"]: item for item in existing_styles}
+    for item in channel_styles:
+        channel = item["channel"]
+        if channel in styles_by_channel:
+            continue
+        created = api.request(
+            "POST",
+            f"/v1/projects/{project_id}/synthetic-lab/channel-styles/{channel}/versions",
+            {
+                "expected_current_version": 0,
+                "directive": item["directive"],
+            },
+            key=_key(project_id, f"channel-style:{channel}:v1"),
+        )
+        styles_by_channel[channel] = created
+
     return {
         "project_id": project_id,
         "project_name": project_name,
@@ -361,6 +419,8 @@ def provision(
         "opportunity_count": len(campaign_rows) * len(standard_destinations),
         "knowledge_source_count": len(manifest["knowledge_sources"]),
         "evidence_count": len(evidence_seeds),
+        "approved_fact_count": len(approved_fact_rows),
+        "channel_style_count": len(styles_by_channel),
         "prompt_catalog_installed": True,
     }
 
@@ -370,12 +430,83 @@ def _key(project_id: str, title: str) -> str:
     return f"advinsys-bootstrap:{digest}"
 
 
+def _ensure_approved_fact_evidence(
+    api: Api,
+    project_id: str,
+    seeds: list[dict[str, Any]],
+    entities_by_name: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Approve exact manifest Facts and promote them into generation Evidence."""
+
+    facts = api.request("GET", f"/v1/projects/{project_id}/knowledge/fact-candidates")
+    promoted: list[dict[str, Any]] = []
+    for seed in seeds:
+        matches = [
+            item
+            for item in facts
+            if item["source_title"] == seed["source_title"]
+            and item["statement"] == seed["statement"]
+            and item["lifecycle_status"] == "active"
+        ]
+        if len(matches) != 1:
+            raise RuntimeError(
+                "approved Fact seed must match one active candidate: "
+                f"{seed['source_title']} / {seed['statement']}"
+            )
+        fact = matches[0]
+        if fact["status"] == "rejected":
+            raise RuntimeError(f"approved Fact seed was explicitly rejected: {fact['id']}")
+        if fact["status"] != "approved":
+            fact = api.request(
+                "PATCH",
+                f"/v1/projects/{project_id}/knowledge/fact-candidates/{fact['id']}",
+                {
+                    "decision": "approved",
+                    "notes": "Approved by the versioned ADVINSYS target manifest.",
+                },
+            )
+        proposal = api.request(
+            "GET",
+            f"/v1/projects/{project_id}/knowledge/fact-candidates/{fact['id']}/evidence-proposal",
+        )
+        defaults = proposal["defaults"]
+        promoted.append(
+            api.request(
+                "POST",
+                f"/v1/projects/{project_id}/knowledge/fact-candidates/{fact['id']}/evidence",
+                {
+                    "title": defaults["title"],
+                    "subject_entity_id": entities_by_name[seed["subject_name"]]["id"],
+                    "subject_role": seed["subject_role"],
+                    "usage_rights": "public_reference",
+                    "confidentiality": "public",
+                    "public_citation": {
+                        "disclosure_allowed": True,
+                        "source_url": defaults.get("source_url"),
+                        "source_title": defaults["source_title"],
+                        "label": defaults["citation_label"],
+                        "quotation_allowed": False,
+                        "attribution_required": False,
+                    },
+                },
+                key=f"knowledge-fact-evidence:{project_id}:{fact['id']}",
+            )
+        )
+    return promoted
+
+
 def _wait_for_official_sources(
     api: Api, project_id: str, evidence_seeds: list[dict[str, Any]]
 ) -> dict[str, dict[str, Any]]:
     for _ in range(60):
         rows = api.request("GET", f"/v1/projects/{project_id}/knowledge/sources")
-        by_title = {item["title"]: item for item in rows}
+        by_title: dict[str, dict[str, Any]] = {}
+        for item in rows:
+            current = by_title.get(item["title"])
+            if current is None or (
+                current["status"] != "ready" and item["status"] == "ready"
+            ):
+                by_title[item["title"]] = item
         required = {
             item["source_title"]: by_title.get(item["source_title"])
             for item in evidence_seeds
@@ -400,6 +531,8 @@ def expected_summary(manifest: dict[str, Any]) -> dict[str, Any]:
         "monitoring_query_count": sum(len(item["queries"]) for item in manifest["products"]),
         "knowledge_source_count": len(manifest["knowledge_sources"]),
         "evidence_seed_count": len(manifest["evidence_seeds"]),
+        "approved_fact_seed_count": len(manifest["approved_fact_seeds"]),
+        "channel_style_count": len(manifest["channel_styles"]),
     }
 
 
@@ -420,6 +553,10 @@ def verify(
     campaigns = api.request("GET", f"/v1/projects/{project_id}/geo/campaigns")
     sources = api.request("GET", f"/v1/projects/{project_id}/knowledge/sources")
     evidence = api.request("GET", f"/v1/projects/{project_id}/evidence-items?limit=500")
+    channel_styles = api.request(
+        "GET",
+        f"/v1/projects/{project_id}/synthetic-lab/channel-styles?limit=100&include_history=false",
+    )["items"]
     expected_names = {
         manifest["project"]["brand"]["canonical_name"],
         *(item["canonical_name"] for item in manifest["products"]),
@@ -432,6 +569,10 @@ def verify(
     expected_hashes = {
         hashlib.sha256(item["statement"].encode()).hexdigest()
         for item in manifest["evidence_seeds"]
+    }
+    expected_fact_hashes = {
+        hashlib.sha256(item["statement"].encode()).hexdigest()
+        for item in manifest["approved_fact_seeds"]
     }
     expected_campaign_names = {
         f"{item['canonical_name']} AU Recommendation" for item in manifest["products"]
@@ -471,11 +612,20 @@ def verify(
         "monitoring_queries": actual_monitoring_queries == expected["monitoring_query_count"],
         "knowledge_sources": expected_sources <= {item["title"] for item in sources},
         "knowledge_sources_ready": all(
-            item["status"] == "ready" for item in sources if item["title"] in expected_sources
+            any(item["title"] == title and item["status"] == "ready" for item in sources)
+            for title in expected_sources
         ),
         "evidence_seeds": expected_hashes <= {
             item["snapshot"]["sha256"] for item in evidence
         },
+        "approved_fact_seeds": expected_fact_hashes <= {
+            item["snapshot"]["sha256"]
+            for item in evidence
+            if item["item_type"] == "approved_fact"
+        },
+        "channel_styles": {
+            item["channel"] for item in channel_styles
+        } == {item["channel"] for item in manifest["channel_styles"]},
     }
     return {
         **expected,
@@ -490,6 +640,10 @@ def verify(
             "monitoring_query_count": actual_monitoring_queries,
             "knowledge_source_count": len(sources),
             "evidence_count": len(evidence),
+            "approved_fact_count": sum(
+                item["item_type"] == "approved_fact" for item in evidence
+            ),
+            "channel_style_count": len(channel_styles),
         },
         "ok": all(checks.values()),
     }

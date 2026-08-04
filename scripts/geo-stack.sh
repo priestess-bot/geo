@@ -187,7 +187,7 @@ try:
     payload = json.loads(path.read_text(encoding="utf-8"))
 except (OSError, json.JSONDecodeError) as error:
     raise SystemExit(f"cleanup error: migration manifest is unreadable: {path}") from error
-if payload.get("schema_version") != "geo-runtime-migration-v1" or payload.get("status") != "verified-export":
+if payload.get("schema_version") not in {"geo-runtime-migration-v1", "geo-runtime-migration-v2"} or payload.get("status") != "verified-export":
     raise SystemExit("cleanup error: migration manifest is not a verified GEO runtime export")
 PY
   fi

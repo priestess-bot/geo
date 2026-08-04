@@ -4,7 +4,9 @@
 The migration package is deliberately operator-facing.  It contains logical
 PostgreSQL dumps and quiesced stateful-volume snapshots, while credentials and
 keyrings are included only inside an encrypted payload.  The sidecar manifest
-never contains secret values.
+never contains secret values.  The v2 format also captures Dify's local
+application and plugin storage, which is otherwise easy to miss when moving a
+self-hosted Dify instance.
 """
 
 from __future__ import annotations
@@ -25,7 +27,8 @@ from typing import Iterable
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SCHEMA = "geo-runtime-migration-v1"
+SCHEMA = "geo-runtime-migration-v2"
+LEGACY_SCHEMA = "geo-runtime-migration-v1"
 DEFAULT_SOURCE_PROJECT = "geo-advinsys-staging-v2"
 DEFAULT_TARGET_PROJECT = "geo"
 DEFAULT_DIFY_PROJECT = "geo-dify"
@@ -36,6 +39,11 @@ _MIGRATION_SECRET_NAMES = frozenset(
         "migration-passphrase",
         "geo-migration-passphrase",
     }
+)
+
+_DIFY_PERSISTENT_DIRECTORIES = (
+    ("app-storage", "app/storage"),
+    ("plugin-daemon", "plugin_daemon"),
 )
 
 
@@ -170,7 +178,7 @@ def _docker_tar(container: str, source: str, destination: Path) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     try:
         with destination.open("wb") as output:
-            _docker("exec", container, "tar", "-C", source, "-cf", "-", ".", stdout=output)
+            _docker("exec", container, "tar", "-C", source, "-czf", "-", ".", stdout=output)
         return
     except MigrationError:
         # The MinIO image is intentionally minimal and has no tar binary.  A
@@ -179,9 +187,42 @@ def _docker_tar(container: str, source: str, destination: Path) -> None:
             copied = Path(temporary) / "data"
             copied.mkdir()
             _docker("cp", f"{container}:{source}/.", str(copied))
-            with tarfile.open(destination, "w") as archive:
+            with tarfile.open(destination, "w:gz") as archive:
                 for item in sorted(copied.rglob("*")):
+                    if item.is_symlink() or not (item.is_file() or item.is_dir()):
+                        raise MigrationError(f"state archive contains an unsupported path: {item}")
                     archive.add(item, arcname=item.relative_to(copied).as_posix(), recursive=False)
+
+
+def _host_tar(source: Path, destination: Path) -> None:
+    """Archive a bind-mounted runtime directory without following links."""
+
+    if not source.is_dir() or source.is_symlink():
+        raise MigrationError(f"persistent directory is unavailable: {source}")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with tarfile.open(destination, "w:gz") as archive:
+        for item in sorted(source.rglob("*")):
+            if item.is_symlink() or not (item.is_file() or item.is_dir()):
+                raise MigrationError(f"persistent directory contains an unsupported path: {item}")
+            archive.add(item, arcname=item.relative_to(source).as_posix(), recursive=False)
+
+
+def _git_metadata(repo_root: Path, *, allow_dirty: bool) -> dict[str, object]:
+    """Bind a package to the exact source code used to produce it."""
+
+    try:
+        commit = _run(["git", "-C", str(repo_root), "rev-parse", "HEAD"]).decode().strip()
+        status = _run(["git", "-C", str(repo_root), "status", "--porcelain"]).decode()
+    except MigrationError as error:
+        raise MigrationError(f"source repository metadata is unavailable: {error}") from error
+    if not commit or len(commit) != 40:
+        raise MigrationError("source repository HEAD is not a full commit")
+    if status and not allow_dirty:
+        raise MigrationError(
+            "source repository has uncommitted changes; commit the running code before export "
+            "or explicitly pass --allow-dirty for a non-reproducible package"
+        )
+    return {"commit": commit, "dirty": bool(status)}
 
 
 def _docker_copy(container: str, source: str, destination: Path) -> None:
@@ -264,6 +305,17 @@ def _restore_archive_to_mount(container: str, destination: str, archive: Path, *
             archive.name,
         ]
     )
+
+
+def _restore_host_archive(archive: Path, destination: Path, *, clear: bool) -> None:
+    """Restore a bind-mounted Dify directory after validating its archive."""
+
+    if destination == Path("/") or len(destination.parts) < 3:
+        raise MigrationError(f"refusing to restore into an unsafe directory: {destination}")
+    destination.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if clear:
+        _clear_directory(destination)
+    _extract_archive_to_directory(archive, destination)
 
 
 def _restore_file_to_mount(container: str, destination: str, source: Path, *, clear: bool) -> None:
@@ -353,6 +405,12 @@ def _encrypt(payload: Path, destination: Path, key_file: Path) -> None:
             "--symmetric",
             "--cipher-algo",
             "AES256",
+            "--s2k-cipher-algo",
+            "AES256",
+            "--s2k-digest-algo",
+            "SHA512",
+            "--s2k-count",
+            "65011712",
             "--compress-algo",
             "none",
             "--output",
@@ -419,6 +477,12 @@ def _copy_runtime_inputs(args: argparse.Namespace, payload: Path) -> list[str]:
     (payload / "dify").mkdir(parents=True, exist_ok=True)
     shutil.copy2(state, payload / "dify" / _DIFY_STATE_NAME)
     os.chmod(payload / "dify" / _DIFY_STATE_NAME, 0o600)
+    volumes_root = runtime_root / "docker" / "volumes"
+    for archive_name, relative_root in _DIFY_PERSISTENT_DIRECTORIES:
+        _host_tar(
+            volumes_root / relative_root,
+            payload / "dify" / f"{archive_name}.tar.gz",
+        )
     return sorted(excluded)
 
 
@@ -429,10 +493,12 @@ def export_package(args: argparse.Namespace) -> Path:
     if package.exists():
         raise MigrationError(f"migration package already exists: {package}")
     package.mkdir(mode=0o700)
+    archive_id = package.name
     payload_root = package / "payload"
     payload_root.mkdir(mode=0o700)
     stopped: list[str] = []
     try:
+        git_metadata = _git_metadata(Path(args.repo_root).resolve(), allow_dirty=args.allow_dirty)
         geo_pg = _resolve_container(args.source_project, "postgres")
         geo_minio = _resolve_container(args.source_project, "minio")
         geo_valkey = _resolve_container(args.source_project, "valkey")
@@ -446,14 +512,19 @@ def export_package(args: argparse.Namespace) -> Path:
         _dump_postgres(dify_pg, "dify_plugin", payload_root / "dify" / "postgres-dify_plugin.dump")
         _dump_rdb(geo_valkey, "valkey-cli", payload_root / "geo" / "valkey.rdb")
         _dump_rdb(dify_redis, "redis-cli", payload_root / "dify" / "redis.rdb")
-        _docker_tar(geo_minio, "/data", payload_root / "geo" / "minio-data.tar")
-        _docker_tar(dify_weaviate, "/var/lib/weaviate", payload_root / "dify" / "weaviate-data.tar")
+        _docker_tar(geo_minio, "/data", payload_root / "geo" / "minio-data.tar.gz")
+        _docker_tar(dify_weaviate, "/var/lib/weaviate", payload_root / "dify" / "weaviate-data.tar.gz")
         excluded_secret_files = _copy_runtime_inputs(args, payload_root)
         entries = _files(payload_root, exclude={"payload-manifest.json"})
         payload_manifest = {
             "schema_version": SCHEMA,
             "source_project": args.source_project,
             "dify_project": args.dify_project,
+            "kind": "baseline",
+            "archive_id": archive_id,
+            "source_environment": args.source_environment,
+            "source_role": args.source_role,
+            "source_git": git_metadata,
             "created_at": datetime.now(UTC).isoformat(),
             "quiesced": bool(args.quiesce),
             "excluded_secret_files": excluded_secret_files,
@@ -466,12 +537,12 @@ def export_package(args: argparse.Namespace) -> Path:
         payload_manifest["files"] = entries
         payload_json.write_bytes(_canonical_json(payload_manifest))
         with tempfile.TemporaryDirectory(prefix="geo-migration-") as temp:
-            tar_path = Path(temp) / "payload.tar"
-            with tarfile.open(tar_path, "w") as archive:
+            tar_path = Path(temp) / "payload.tar.gz"
+            with tarfile.open(tar_path, "w:gz") as archive:
                 for item in sorted(payload_root.rglob("*")):
                     if item.is_file():
                         archive.add(item, arcname=item.relative_to(payload_root).as_posix(), recursive=False)
-            encrypted = package / "payload.tar.gpg"
+            encrypted = package / "payload.tar.gz.gpg"
             _encrypt(tar_path, encrypted, Path(args.encryption_key_file).resolve())
         shutil.rmtree(payload_root)
         manifest = {
@@ -480,6 +551,11 @@ def export_package(args: argparse.Namespace) -> Path:
             "created_at": payload_manifest["created_at"],
             "source_project": args.source_project,
             "dify_project": args.dify_project,
+            "kind": "baseline",
+            "archive_id": archive_id,
+            "source_environment": args.source_environment,
+            "source_role": args.source_role,
+            "source_git": git_metadata,
             "excluded_secret_files": excluded_secret_files,
             "source_containers": {
                 "geo_postgres": geo_pg,
@@ -491,9 +567,9 @@ def export_package(args: argparse.Namespace) -> Path:
             },
             "quiesced": bool(args.quiesce),
             "payload": {
-                "path": "payload.tar.gpg",
-                "size_bytes": (package / "payload.tar.gpg").stat().st_size,
-                "sha256": _sha256(package / "payload.tar.gpg"),
+                "path": "payload.tar.gz.gpg",
+                "size_bytes": (package / "payload.tar.gz.gpg").stat().st_size,
+                "sha256": _sha256(package / "payload.tar.gz.gpg"),
                 "encryption": "OpenPGP symmetric AES256",
             },
             "entries": entries,
@@ -517,15 +593,22 @@ def _read_manifest(package: Path) -> dict[str, object]:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         raise MigrationError(f"migration manifest is unreadable: {manifest_path}") from error
-    if manifest.get("schema_version") != SCHEMA or manifest.get("status") != "verified-export":
+    if manifest.get("schema_version") not in {SCHEMA, LEGACY_SCHEMA} or manifest.get("status") != "verified-export":
         raise MigrationError("unsupported or unverified migration manifest")
     payload = manifest.get("payload")
-    if not isinstance(payload, dict) or payload.get("path") != "payload.tar.gpg":
+    if not isinstance(payload, dict) or payload.get("path") not in {"payload.tar.gz.gpg", "payload.tar.gpg"}:
         raise MigrationError("migration payload metadata is invalid")
-    encrypted = package / "payload.tar.gpg"
+    encrypted = package / str(payload["path"])
     if _sha256(encrypted) != payload.get("sha256") or encrypted.stat().st_size != payload.get("size_bytes"):
         raise MigrationError("migration payload checksum does not match manifest")
     return manifest
+
+
+def _payload_path(package: Path, manifest: dict[str, object]) -> Path:
+    payload = manifest.get("payload")
+    if not isinstance(payload, dict) or not isinstance(payload.get("path"), str):
+        raise MigrationError("migration payload metadata is invalid")
+    return package / str(payload["path"])
 
 
 def _restore_pg(container: str, database: str, dump: Path) -> None:
@@ -584,6 +667,79 @@ def _verify_pg(container: str, database: str) -> dict[str, object]:
     return {"migration_revision": revision, "relation_count": int(count or "0")}
 
 
+def _scalar(container: str, database: str, user: str, sql: str) -> str:
+    return _docker(
+        "exec",
+        container,
+        "psql",
+        "-U",
+        user,
+        "-d",
+        database,
+        "-X",
+        "-qAt",
+        "-c",
+        sql,
+    ).decode("utf-8", errors="replace").strip()
+
+
+def _assert_target_empty(target_pg: str, dify_pg: str, target_minio: str) -> None:
+    try:
+        projects = _scalar(target_pg, "geo", "geo_installer", "SELECT count(*) FROM public.projects;")
+    except MigrationError as error:
+        if "does not exist" in str(error):
+            projects = "0"
+        else:
+            raise
+    if projects != "0":
+        raise MigrationError(
+            f"target GEO database is not empty: projects={projects}; use a fresh target or remove its data explicitly"
+        )
+    try:
+        dify_apps = _scalar(dify_pg, "dify", "postgres", "SELECT count(*) FROM public.apps;")
+    except MigrationError as error:
+        if "does not exist" in str(error):
+            dify_apps = "0"
+        else:
+            raise
+    if dify_apps != "0":
+        raise MigrationError(
+            f"target Dify database is not empty: app_rows={dify_apps}; use a fresh target before import"
+        )
+    mount_type, mount_name, mount_source = _mount(target_minio, "/data")
+    if mount_type == "bind":
+        root = Path(mount_source).resolve()
+        unexpected = [
+            item
+            for item in root.rglob("*")
+            if item.is_file() and ".minio.sys" not in item.parts
+        ]
+        if unexpected:
+            raise MigrationError(
+                f"target MinIO is not empty: {len(unexpected)} data files exist; use a fresh target"
+            )
+    elif mount_type == "volume":
+        if not mount_name:
+            raise MigrationError("target MinIO Docker volume has no name")
+        first_data_file = _docker(
+            "run",
+            "--rm",
+            "-v",
+            f"{mount_name}:/data:ro",
+            "busybox:1.36",
+            "sh",
+            "-ceu",
+            "find /data -type f ! -path '/data/.minio.sys/*' -print -quit",
+        ).decode("utf-8", errors="replace").strip()
+        if first_data_file:
+            raise MigrationError(
+                "target MinIO is not empty: data files exist in its Docker volume "
+                f"(first={first_data_file}); use a fresh target"
+            )
+    else:
+        raise MigrationError(f"unsupported target MinIO mount type: {mount_type}")
+
+
 def _verify_secret_store(container: str) -> dict[str, object]:
     """Run the application-owned keyring and ciphertext restore canary."""
 
@@ -612,11 +768,13 @@ def _verify_secret_store(container: str) -> dict[str, object]:
 
 def import_package(args: argparse.Namespace) -> Path:
     package = Path(args.package).resolve()
-    _read_manifest(package)
+    manifest = _read_manifest(package)
     if not args.confirm:
         raise MigrationError("import requires --confirm; use --dry-run to validate without changing data")
-    if args.target_empty is not True:
-        raise MigrationError("import requires --target-empty because it replaces target state")
+    if args.target_empty is not True and args.replace_test_replica is not True:
+        raise MigrationError(
+            "import requires --target-empty, or explicit --replace-test-replica for a disposable test replica"
+        )
     target_pg = _resolve_container(args.target_project, "postgres")
     target_minio = _resolve_container(args.target_project, "minio")
     target_valkey = _resolve_container(args.target_project, "valkey")
@@ -624,6 +782,8 @@ def import_package(args: argparse.Namespace) -> Path:
     dify_pg = _resolve_container(args.dify_project, "db_postgres")
     dify_redis = _resolve_container(args.dify_project, "redis")
     dify_weaviate = _resolve_container(args.dify_project, "weaviate")
+    if args.target_empty:
+        _assert_target_empty(target_pg, dify_pg, target_minio)
     stopped: list[str] = []
     receipt_path = package / "restore-receipt.json"
     try:
@@ -631,7 +791,7 @@ def import_package(args: argparse.Namespace) -> Path:
         with tempfile.TemporaryDirectory(prefix="geo-import-") as temp:
             temp_root = Path(temp)
             decrypted = temp_root / "payload.tar"
-            _decrypt(package / "payload.tar.gpg", decrypted, Path(args.encryption_key_file).resolve())
+            _decrypt(_payload_path(package, manifest), decrypted, Path(args.encryption_key_file).resolve())
             extracted = temp_root / "payload"
             extracted.mkdir(mode=0o700)
             _extract_safe(decrypted, extracted)
@@ -648,7 +808,7 @@ def import_package(args: argparse.Namespace) -> Path:
             _restore_pg(dify_pg, "dify", extracted / "dify" / "postgres-dify.dump")
             _restore_pg(dify_pg, "dify_plugin", extracted / "dify" / "postgres-dify_plugin.dump")
             _docker("stop", target_minio)
-            _restore_archive_to_mount(target_minio, "/data", extracted / "geo" / "minio-data.tar", clear=True)
+            _restore_archive_to_mount(target_minio, "/data", extracted / "geo" / "minio-data.tar.gz", clear=True)
             _docker("start", target_minio)
             _docker("stop", target_valkey)
             _restore_file_to_mount(target_valkey, "/data", extracted / "geo" / "valkey.rdb", clear=True)
@@ -657,10 +817,17 @@ def import_package(args: argparse.Namespace) -> Path:
             _restore_file_to_mount(dify_redis, "/data", extracted / "dify" / "redis.rdb", clear=True)
             _docker("start", dify_redis)
             _docker("stop", dify_weaviate)
-            _restore_archive_to_mount(dify_weaviate, "/var/lib/weaviate", extracted / "dify" / "weaviate-data.tar", clear=True)
+            _restore_archive_to_mount(dify_weaviate, "/var/lib/weaviate", extracted / "dify" / "weaviate-data.tar.gz", clear=True)
             _docker("start", dify_weaviate)
             runtime_root = Path(args.dify_runtime_root).resolve()
             dify_payload = extracted / "dify"
+            volumes_root = runtime_root / "docker" / "volumes"
+            for archive_name, relative_root in _DIFY_PERSISTENT_DIRECTORIES:
+                _restore_host_archive(
+                    dify_payload / f"{archive_name}.tar.gz",
+                    volumes_root / relative_root,
+                    clear=True,
+                )
             runtime_root.joinpath("docker").mkdir(parents=True, exist_ok=True)
             if (dify_payload / "dify.env").exists():
                 shutil.copy2(dify_payload / "dify.env", runtime_root / "docker" / ".env")
@@ -691,6 +858,7 @@ def import_package(args: argparse.Namespace) -> Path:
             "source_manifest_sha256": _sha256(package / "manifest.json"),
             "target_project": args.target_project,
             "dify_project": args.dify_project,
+            "replacement_mode": "empty-target" if args.target_empty else "test-replica-overwrite",
             "checks": checks,
         }
         receipt_path.write_bytes(_canonical_json(receipt))
@@ -712,7 +880,7 @@ def verify_package(args: argparse.Namespace) -> None:
     manifest = _read_manifest(package)
     with tempfile.TemporaryDirectory(prefix="geo-verify-") as temporary:
         decrypted = Path(temporary) / "payload.tar"
-        _decrypt(package / "payload.tar.gpg", decrypted, Path(args.encryption_key_file).resolve())
+        _decrypt(_payload_path(package, manifest), decrypted, Path(args.encryption_key_file).resolve())
         extracted = Path(temporary) / "payload"
         extracted.mkdir(mode=0o700)
         _extract_safe(decrypted, extracted)
@@ -748,7 +916,7 @@ def dry_run(args: argparse.Namespace) -> None:
     _secure_file(Path(args.encryption_key_file).resolve())
     with tempfile.TemporaryDirectory(prefix="geo-import-dry-run-") as temporary:
         decrypted = Path(temporary) / "payload.tar"
-        _decrypt(package / "payload.tar.gpg", decrypted, Path(args.encryption_key_file).resolve())
+        _decrypt(_payload_path(package, manifest), decrypted, Path(args.encryption_key_file).resolve())
         extracted = Path(temporary) / "payload"
         extracted.mkdir(mode=0o700)
         _extract_safe(decrypted, extracted)
@@ -768,12 +936,15 @@ def build_parser() -> argparse.ArgumentParser:
     export = subparsers.add_parser("export")
     export.add_argument("--repo-root", default=str(ROOT))
     export.add_argument("--source-project", default=os.getenv("GEO_SOURCE_PROJECT", DEFAULT_SOURCE_PROJECT))
+    export.add_argument("--source-environment", default=os.getenv("GEO_SOURCE_ENVIRONMENT", "staging"))
+    export.add_argument("--source-role", default=os.getenv("GEO_SOURCE_ROLE", "source"))
     export.add_argument("--dify-project", default=DEFAULT_DIFY_PROJECT)
     export.add_argument("--output-root", required=True)
     export.add_argument("--encryption-key-file", required=True)
     export.add_argument("--secret-root", required=True)
     export.add_argument("--dify-runtime-root", default=str(ROOT / ".runtime" / "dify-1.16.0"))
     export.add_argument("--dify-state-file", default=str(ROOT / ".runtime" / _DIFY_STATE_NAME))
+    export.add_argument("--allow-dirty", action="store_true")
     export.add_argument("--no-quiesce", dest="quiesce", action="store_false")
     export.set_defaults(quiesce=True)
     imp = subparsers.add_parser("import")
@@ -786,6 +957,7 @@ def build_parser() -> argparse.ArgumentParser:
     imp.add_argument("--dify-runtime-root", default=str(ROOT / ".runtime" / "dify-1.16.0"))
     imp.add_argument("--dify-state-file", default=str(ROOT / ".runtime" / _DIFY_STATE_NAME))
     imp.add_argument("--target-empty", action="store_true")
+    imp.add_argument("--replace-test-replica", action="store_true")
     imp.add_argument("--confirm", action="store_true")
     imp.add_argument("--dry-run", action="store_true")
     verify = subparsers.add_parser("verify")

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Request, status
+from fastapi import APIRouter, Query, Request, status
 
 from geo_api.catalog_routes import _principal
 from geo_api.synthetic_lab_contracts import (
@@ -16,13 +16,27 @@ from geo_api.synthetic_lab_contracts import (
     EnqueueStyleProfileBuildRequest,
     EnqueueSyntheticJobRequest,
     FinalizeSyntheticJobRequest,
+    JobKind,
     SyntheticJobResponse,
+    SyntheticJobPageResponse,
+    SyntheticJobStatus,
     StyleCollectionAdmissionResponse,
 )
-from geo_api.synthetic_lab_presenters import job_response, style_collection_admission_response
+from geo_api.synthetic_lab_direct_contracts import (
+    EnqueueDirectGenerationRequest,
+    SyntheticReviewResultResponse,
+)
+from geo_api.synthetic_lab_direct_presenters import review_result_response
+from geo_api.synthetic_lab_presenters import (
+    job_page,
+    job_response,
+    style_collection_admission_response,
+)
 from geo_api.synthetic_lab_route_support import (
     AuthorizationHeader,
     IdempotencyHeader,
+    LimitQuery,
+    OffsetQuery,
     run as _run,
     run_write as _run_write,
 )
@@ -30,6 +44,33 @@ from geo_api.synthetic_lab_route_support import (
 
 def synthetic_lab_job_router() -> APIRouter:
     router = APIRouter()
+
+    @router.get(
+        "/jobs",
+        response_model=SyntheticJobPageResponse,
+        operation_id="listSyntheticLabJobs",
+    )
+    def list_jobs(
+        project_id: UUID,
+        request: Request,
+        limit: LimitQuery = 50,
+        offset: OffsetQuery = 0,
+        kind: JobKind | None = None,
+        job_status: SyntheticJobStatus | None = Query(default=None, alias="status"),
+        authorization: AuthorizationHeader = None,
+    ) -> SyntheticJobPageResponse:
+        return job_page(
+            _run(
+                request,
+                "list_jobs",
+                _principal(request, authorization),
+                project_id=project_id,
+                limit=limit,
+                offset=offset,
+                kind=kind,
+                status=job_status,
+            )
+        )
 
     @router.post(
         "/jobs/style-collection",
@@ -96,6 +137,30 @@ def synthetic_lab_job_router() -> APIRouter:
             _run_write(
                 request,
                 "enqueue_review_case",
+                _principal(request, authorization),
+                idempotency_key,
+                project_id=project_id,
+                payload=payload,
+            )
+        )
+
+    @router.post(
+        "/jobs/direct-generation",
+        response_model=SyntheticJobResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+        operation_id="enqueueSyntheticDirectGenerationJob",
+    )
+    def enqueue_direct_generation(
+        project_id: UUID,
+        payload: EnqueueDirectGenerationRequest,
+        request: Request,
+        idempotency_key: IdempotencyHeader,
+        authorization: AuthorizationHeader = None,
+    ) -> SyntheticJobResponse:
+        return job_response(
+            _run_write(
+                request,
+                "enqueue_direct_generation",
                 _principal(request, authorization),
                 idempotency_key,
                 project_id=project_id,
@@ -188,6 +253,27 @@ def synthetic_lab_job_router() -> APIRouter:
             _run(
                 request,
                 "get_job",
+                _principal(request, authorization),
+                project_id=project_id,
+                job_id=job_id,
+            )
+        )
+
+    @router.get(
+        "/jobs/{job_id}/result",
+        response_model=SyntheticReviewResultResponse,
+        operation_id="getSyntheticLabReviewResult",
+    )
+    def get_job_result(
+        project_id: UUID,
+        job_id: UUID,
+        request: Request,
+        authorization: AuthorizationHeader = None,
+    ) -> SyntheticReviewResultResponse:
+        return review_result_response(
+            _run(
+                request,
+                "get_job_result",
                 _principal(request, authorization),
                 project_id=project_id,
                 job_id=job_id,

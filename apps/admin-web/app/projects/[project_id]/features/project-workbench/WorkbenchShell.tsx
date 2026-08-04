@@ -67,14 +67,6 @@ export function WorkbenchShell({
     recommendationData?.listProblem?.status === 503
     || recommendationData?.selectedProblem?.status === 503
   );
-  const syntheticRuntimeUnavailable = Boolean(syntheticData && [
-    syntheticData.authorizationsProblem,
-    syntheticData.sourcesProblem,
-    syntheticData.profilesProblem,
-    syntheticData.suitesProblem,
-    syntheticData.casesProblem,
-    syntheticData.jobProblem
-  ].some((problem) => problem?.status === 503));
 
   return (
     <main className="shell">
@@ -92,14 +84,6 @@ export function WorkbenchShell({
         </div>
         <details className="projectTechnical"><summary>技术信息</summary><code>Tenant {project.tenant_id}</code><code>Project {project.id}</code></details>
       </section>
-
-      {activeTab !== "geo" ? <section className="stats projectBoard" aria-label="项目看板">
-        <div className="stat"><span className="muted">状态</span><strong>{statusLabel(project.status)}</strong></div>
-        <div className="stat"><span className="muted">实体</span><strong>{catalog.entities.data.length}</strong></div>
-        <div className="stat"><span className="muted">市场</span><strong>{catalog.markets.data.length}</strong></div>
-        <div className="stat"><span className="muted">证据</span><strong>{catalog.evidence.data.length}</strong></div>
-        <div className="stat"><span className="muted">成员角色</span><strong>{members.currentRole ? roleLabel(members.currentRole) : "未识别"}</strong></div>
-      </section> : null}
 
       <nav className="tabBar" aria-label="项目工作台">
         {workbenchTabs.map((tab) => (
@@ -141,8 +125,7 @@ export function WorkbenchShell({
         ) : null}
         {activeTab === "synthetic-lab" ? (
           syntheticData ? <SyntheticLabWorkspace
-            actorIdentityId={actorIdentityId}
-            currentRole={syntheticRuntimeUnavailable ? null : members.currentRole}
+            currentRole={members.currentRole}
             data={syntheticData}
             projectId={project.id}
           /> : <EmptyState text="正在准备合成测评实验室工作台。" />

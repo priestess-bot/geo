@@ -408,11 +408,19 @@ class PostgresSyntheticChildCallRepository:
             return connection.execute(
                 """SELECT status.*, child.task_artifact_uri, child.task_artifact_hash,
                           child.child_input_hash, child.prompt_state_version,
-                          child.admitted_by
+                          child.admitted_by,
+                          workflow.prompt_release_id AS workflow_prompt_release_id,
+                          workflow.prompt_release_hash AS workflow_prompt_release_hash,
+                          workflow.configured_model AS workflow_configured_model,
+                          workflow.purpose AS workflow_purpose
                    FROM synthetic_lab_model_call_child_status AS status
                    JOIN synthetic_lab_model_call_children AS child
                      ON child.project_id = status.project_id
                     AND child.child_job_id = status.child_job_id
+                   LEFT JOIN dify_workflow_releases AS workflow
+                     ON workflow.id = child.workflow_release_id
+                    AND workflow.project_id = child.project_id
+                    AND workflow.release_hash = child.workflow_release_hash
                    WHERE status.project_id = %s AND status.child_job_id = %s""",
                 (project_id, child_job_id),
             ).fetchone()

@@ -11,6 +11,7 @@ from geo_core.synthetic_lab.application_support import (
     require_roles,
     stage_command,
 )
+from geo_core.synthetic_lab.channel_styles import ChannelStyleVersion
 from geo_core.synthetic_lab.domain import (
     StyleProfileSampleManifest,
     StyleProfileVersion,
@@ -28,7 +29,14 @@ from geo_core.synthetic_lab.ports import (
 from geo_core.synthetic_lab.review_cases import ReviewCase, ReviewSuite
 
 
-_Resource = TypeVar("_Resource", StyleSource, StyleProfileVersion, ReviewSuite, ReviewCase)
+_Resource = TypeVar(
+    "_Resource",
+    StyleSource,
+    StyleProfileVersion,
+    ChannelStyleVersion,
+    ReviewSuite,
+    ReviewCase,
+)
 
 
 class SyntheticResourceApplication:
@@ -129,6 +137,38 @@ class SyntheticResourceApplication:
                     expected_version=0,
                 )
             return stage_command(uow, identity, profile)
+
+    def create_channel_style(
+        self,
+        *,
+        principal: LabPrincipal,
+        style: ChannelStyleVersion,
+        expected_version: int,
+        idempotency_key: str,
+    ) -> CommandReceipt:
+        require_roles(principal, style.project_id, LabRole.OPERATOR, LabRole.REVIEWER)
+        identity = command_identity(
+            project_id=style.project_id,
+            idempotency_key=idempotency_key,
+            operation=SyntheticCommandOperation.CREATE_CHANNEL_STYLE,
+            request={"resource": style, "expected_version": expected_version},
+        )
+        with self._uow_factory(project_id=style.project_id) as uow:
+            replay = recover_command(uow, identity, ChannelStyleVersion)
+            if replay is not None:
+                return replay
+            uow.aggregates.stage(
+                VersionedAggregate(
+                    project_id=style.project_id,
+                    kind="channel_style",
+                    resource_id=style.style_id,
+                    version=style.version_number,
+                    submitted_by=principal.actor_id,
+                    payload=style,
+                ),
+                expected_version=expected_version,
+            )
+            return stage_command(uow, identity, style)
 
     def create_review_suite(
         self,

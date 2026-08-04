@@ -9,6 +9,7 @@ from geo_core.project_scope import set_project_scope
 from geo_core.secrets.models import SecretVersionHandle
 from geo_core.synthetic_lab.collection_execution_contracts import StyleCollectionTask
 from geo_core.synthetic_lab.execution_contracts import (
+    DirectGenerationTask,
     CorpusFinalizeOutput,
     CorpusFinalizeTask,
     OfflineExperimentRunOutput,
@@ -35,7 +36,9 @@ from geo_core.synthetic_lab.profile_build_binding import (
 )
 
 from geo_core.synthetic_lab.postgres_api_read_models import (
+    SyntheticApiPage,
     SyntheticJobView,
+    SyntheticReviewResultView,
     _corpus_warning_summary,
     _offline_warning_summary,
 )
@@ -118,6 +121,7 @@ class _PostgresSyntheticApiReadsTail:
                 (
                     StyleProfileBuildTask,
                     ReviewCaseRunTask,
+                    DirectGenerationTask,
                     CorpusFinalizeTask,
                     OfflineExperimentRunTask,
                 ),
@@ -278,6 +282,7 @@ class _PostgresSyntheticApiReadsTail:
                 (
                     StyleProfileBuildTask,
                     ReviewCaseRunTask,
+                    DirectGenerationTask,
                     CorpusFinalizeTask,
                     OfflineExperimentRunTask,
                 ),
@@ -324,6 +329,71 @@ class _PostgresSyntheticApiReadsTail:
             connection.rollback()
             connection.close()
 
+    def jobs(
+        self,
+        project_id: UUID,
+        *,
+        limit: int,
+        offset: int,
+        kind: str | None = None,
+        status: str | None = None,
+    ) -> SyntheticApiPage:
+        clauses = ["metadata.project_id = %s", "metadata.domain_job_kind <> 'model_call_child'"]
+        parameters: list[object] = [project_id]
+        if kind is not None:
+            clauses.append("metadata.domain_job_kind = %s")
+            parameters.append(kind)
+        if status is not None:
+            clauses.append("durable.status = %s")
+            parameters.append(status)
+        where = " AND ".join(clauses)
+        connection = self._open(project_id)
+        try:
+            total = connection.execute(
+                f"""SELECT count(*) AS total
+                    FROM synthetic_lab_job_metadata AS metadata
+                    JOIN durable_jobs AS durable
+                      ON durable.id = metadata.job_id
+                     AND durable.project_id = metadata.project_id
+                    WHERE {where}""",
+                tuple(parameters),
+            ).fetchone()["total"]
+            rows = connection.execute(
+                f"""SELECT metadata.*, durable.kind AS durable_kind, durable.status,
+                           durable.priority, durable.input_hash, durable.idempotency_key,
+                           durable.attempt_count, durable.max_attempts, durable.next_run_at,
+                           durable.lease_owner, durable.lease_token,
+                           durable.lease_expires_at, durable.heartbeat_at,
+                           durable.fencing_generation, durable.cancel_requested_at,
+                           durable.parent_job_id, durable.replay_nonce, durable.result_ref,
+                           durable.error_code
+                    FROM synthetic_lab_job_metadata AS metadata
+                    JOIN durable_jobs AS durable
+                      ON durable.id = metadata.job_id
+                     AND durable.project_id = metadata.project_id
+                    WHERE {where}
+                    ORDER BY durable.updated_at DESC, durable.id DESC
+                    LIMIT %s OFFSET %s""",
+                (*parameters, limit, offset),
+            ).fetchall()
+            return SyntheticApiPage(
+                tuple(job_from_row(dict(row)) for row in rows),
+                int(total),
+                limit,
+                offset,
+            )
+        finally:
+            connection.rollback()
+            connection.close()
+
+    def review_result(self, project_id: UUID, job_id: UUID) -> SyntheticReviewResultView:
+        task, result = self.completed_execution(project_id, job_id)
+        if not isinstance(task, (ReviewCaseRunTask, DirectGenerationTask)) or not isinstance(
+            result, ReviewCaseRunOutput
+        ):
+            raise SyntheticLabNotFound("completed Review Case result is unavailable")
+        return SyntheticReviewResultView(job_id=job_id, task=task, result=result)
+
     def job_view(self, project_id: UUID, job_id: UUID) -> SyntheticJobView:
         job = self.job(project_id, job_id)
         connection = self._open(project_id)
@@ -340,7 +410,7 @@ class _PostgresSyntheticApiReadsTail:
                 raise ValueError("stored Synthetic execution result payload hash changed")
             result = decode_object(row["result_type"], row["result_payload"])
             task = self.execution_task_or_none(project_id, job_id)
-            if isinstance(task, ReviewCaseRunTask) and isinstance(result, ReviewCaseRunOutput):
+            if isinstance(task, (ReviewCaseRunTask, DirectGenerationTask)) and isinstance(result, ReviewCaseRunOutput):
                 resolution = result.resolution
                 warning = resolution.status.value == "completed_with_warning"
                 configured_model = (

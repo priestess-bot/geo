@@ -44,6 +44,9 @@ from geo_core.synthetic_lab.postgres_api_support import stable_id
 from geo_core.synthetic_lab.postgres_execution_admission_tail import (
     _PostgresSyntheticExecutionAdmissionTail,
 )
+from geo_core.synthetic_lab.postgres_execution_direct_admission import (
+    _PostgresSyntheticDirectGenerationAdmission,
+)
 from geo_core.synthetic_lab.postgres_execution_runtime import (
     PostgresRuntimePromptApplication,
     PostgresSyntheticRuntimeInputPort,
@@ -51,19 +54,13 @@ from geo_core.synthetic_lab.postgres_execution_runtime import (
 from geo_core.synthetic_lab.postgres_manual_import import PostgresManualImportService
 from geo_core.synthetic_lab.postgres_uow import PostgresSyntheticLabUnitOfWorkFactory
 from geo_core.synthetic_lab.review_cases import ReviewSuiteStatus
+from geo_core.synthetic_lab.review_programs import REVIEW_PROGRAM_KINDS
 
 
-_REVIEW_PROMPTS = (
-    ProgramKind.GENERATION,
-    ProgramKind.CLAIM_EXTRACTION,
-    ProgramKind.CONFLICT_CHECK,
-    ProgramKind.REVISION,
-    ProgramKind.STYLE_JUDGE,
-    ProgramKind.ARBITER,
-)
-
-
-class PostgresSyntheticExecutionAdmission(_PostgresSyntheticExecutionAdmissionTail):
+class PostgresSyntheticExecutionAdmission(
+    _PostgresSyntheticDirectGenerationAdmission,
+    _PostgresSyntheticExecutionAdmissionTail,
+):
     """Freeze selectors into typed tasks before the Durable Job transaction commits."""
 
     def __init__(
@@ -272,7 +269,7 @@ class PostgresSyntheticExecutionAdmission(_PostgresSyntheticExecutionAdmissionTa
                 kind=kind,
                 runtime_selection_id=runtime_selection_id,
             )
-            for kind in _REVIEW_PROMPTS
+            for kind in REVIEW_PROGRAM_KINDS
         }
         primary = prompts[ProgramKind.GENERATION]
         runtime = RuntimeInputSnapshot(

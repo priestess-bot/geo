@@ -29,6 +29,31 @@ class SyntheticLabApi(Protocol):
         self, principal: AccessPrincipal, *, project_id: UUID
     ) -> object: ...
 
+    def direct_generation_options(
+        self, principal: AccessPrincipal, *, project_id: UUID
+    ) -> object: ...
+
+    def list_channel_styles(
+        self,
+        principal: AccessPrincipal,
+        *,
+        project_id: UUID,
+        limit: int,
+        offset: int,
+        channel: str | None,
+        include_history: bool,
+    ) -> SyntheticPageRead: ...
+
+    def create_channel_style(
+        self,
+        principal: AccessPrincipal,
+        *,
+        project_id: UUID,
+        channel: str,
+        payload: object,
+        idempotency_key: str,
+    ) -> object: ...
+
     def list_authorizations(
         self, principal: AccessPrincipal, *, project_id: UUID, limit: int, offset: int
     ) -> SyntheticPageRead: ...
@@ -244,6 +269,15 @@ class SyntheticLabApi(Protocol):
         idempotency_key: str,
     ) -> object: ...
 
+    def enqueue_direct_generation(
+        self,
+        principal: AccessPrincipal,
+        *,
+        project_id: UUID,
+        payload: object,
+        idempotency_key: str,
+    ) -> object: ...
+
     def enqueue_corpus_finalize(
         self,
         principal: AccessPrincipal,
@@ -262,6 +296,17 @@ class SyntheticLabApi(Protocol):
         idempotency_key: str,
     ) -> object: ...
 
+    def list_jobs(
+        self,
+        principal: AccessPrincipal,
+        *,
+        project_id: UUID,
+        limit: int,
+        offset: int,
+        kind: str | None,
+        status: str | None,
+    ) -> SyntheticPageRead: ...
+
     def admit_style_collection(
         self,
         principal: AccessPrincipal,
@@ -272,6 +317,10 @@ class SyntheticLabApi(Protocol):
     ) -> object: ...
 
     def get_job(self, principal: AccessPrincipal, *, project_id: UUID, job_id: UUID) -> object: ...
+
+    def get_job_result(
+        self, principal: AccessPrincipal, *, project_id: UUID, job_id: UUID
+    ) -> object: ...
 
     def cancel_job(
         self,

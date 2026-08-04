@@ -196,8 +196,8 @@ def test_worker_fails_permanently_when_prompt_binding_changes() -> None:
 
     assert result["status"] == "failed"
     assert runtime.store.failures[0] == (
-        "synthetic_runtime_stale",
-        {"classification": "stale_input"},
+        "synthetic_prompt_stale",
+        {"classification": "prompt_binding_stale"},
         None,
     )
 

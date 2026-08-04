@@ -16,6 +16,7 @@ from geo_core.project_scope import set_project_scope
 from geo_core.synthetic_lab.execution_contracts import (
     CorpusFinalizeOutput,
     CorpusFinalizeTask,
+    DirectGenerationTask,
     OfflineExperimentRunOutput,
     OfflineExperimentRunTask,
     ReviewCaseRunOutput,
@@ -34,18 +35,21 @@ from geo_core.synthetic_lab.postgres_codec import decode_object, encode_object, 
 _TASK_KIND = {
     StyleProfileBuildTask: "style.profile.build",
     ReviewCaseRunTask: "review.case.run",
+    DirectGenerationTask: "review.case.run",
     CorpusFinalizeTask: "corpus.finalize",
     OfflineExperimentRunTask: "offline_experiment.run",
 }
 _OUTPUT_FOR_TASK = {
     StyleProfileBuildTask: StyleProfileBuildOutput,
     ReviewCaseRunTask: ReviewCaseRunOutput,
+    DirectGenerationTask: ReviewCaseRunOutput,
     CorpusFinalizeTask: CorpusFinalizeOutput,
     OfflineExperimentRunTask: OfflineExperimentRunOutput,
 }
 _DOMAIN_KIND = {
     StyleProfileBuildTask: "style_profile_build",
     ReviewCaseRunTask: "candidate_generation",
+    DirectGenerationTask: "candidate_generation",
     CorpusFinalizeTask: "corpus_finalize",
     OfflineExperimentRunTask: "offline_experiment",
 }
@@ -154,6 +158,7 @@ class PostgresSyntheticExecutionRepository:
                 (
                     StyleProfileBuildTask,
                     ReviewCaseRunTask,
+                    DirectGenerationTask,
                     CorpusFinalizeTask,
                     OfflineExperimentRunTask,
                 ),

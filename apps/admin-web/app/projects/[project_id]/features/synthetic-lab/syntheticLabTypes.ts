@@ -11,6 +11,28 @@ import {
   safeRecord,
   stringArray
 } from "./syntheticLabTypePrimitives";
+import type { SyntheticReviewResult } from "./syntheticLabResultTypes";
+import {
+  type ChannelStyle
+} from "./syntheticLabDirectTypes";
+
+export { isChannelStyle, isDirectGenerationOptions } from "./syntheticLabDirectTypes";
+export type {
+  ChannelStyle,
+  DirectGenerationOptions,
+  DirectGenerationSubject,
+  DirectKnowledgeItem
+} from "./syntheticLabDirectTypes";
+export type { SyntheticWorkspaceData } from "./syntheticLabWorkspaceTypes";
+
+export { isSyntheticReviewResult } from "./syntheticLabResultTypes";
+export type {
+  SyntheticCandidateEvaluation,
+  SyntheticCandidateRevision,
+  SyntheticClaimAssessment,
+  SyntheticGenerationBatch,
+  SyntheticReviewResult
+} from "./syntheticLabResultTypes";
 
 export const syntheticChannels = [
   "owned_site",
@@ -139,8 +161,20 @@ export type SyntheticJob = SyntheticBoundary & Readonly<{
   cancel_requested: boolean;
   result_hash: string | null;
   replayed: boolean;
-  warning_summary?: WarningSummary;
+  warning_summary?: WarningSummary | null;
 }>;
+
+export const syntheticLabViews = [
+  "overview",
+  "generate",
+  "results",
+  "corpus",
+  "style",
+  "suites",
+  "settings"
+] as const;
+
+export type SyntheticLabView = (typeof syntheticLabViews)[number];
 
 export type StyleCollectionAdmission = SyntheticBoundary & Readonly<{
   disposition: "accepted" | "b_track" | "rejected";
@@ -255,32 +289,6 @@ export type SyntheticLoadProblem = Readonly<{
   correlationId?: string;
 }>;
 
-export type SyntheticWorkspaceData = Readonly<{
-  authorizations: SyntheticPage<CollectionAuthorization>;
-  authorizationsProblem?: SyntheticLoadProblem;
-  sources: SyntheticPage<StyleSource>;
-  sourcesProblem?: SyntheticLoadProblem;
-  importPreviews: SyntheticPage<ManualImportPreviewSummary>;
-  importPreviewsProblem?: SyntheticLoadProblem;
-  selectedImportPreview: ManualImportPreview | null;
-  importPreviewProblem?: SyntheticLoadProblem;
-  inventory: SyntheticResourceInventory;
-  inventoryProblem?: SyntheticLoadProblem;
-  runtimeOptions: SyntheticRuntimeOptions;
-  runtimeOptionsProblem?: SyntheticLoadProblem;
-  loginSecrets: StyleLoginSecretReference[];
-  loginSecretsProblem?: SyntheticLoadProblem;
-  profiles: SyntheticPage<StyleProfile>;
-  profilesProblem?: SyntheticLoadProblem;
-  suites: SyntheticPage<ReviewSuite>;
-  suitesProblem?: SyntheticLoadProblem;
-  selectedSuiteId: string | null;
-  selectedCases: SyntheticPage<ReviewCase>;
-  casesProblem?: SyntheticLoadProblem;
-  selectedJob: SyntheticJob | null;
-  jobProblem?: SyntheticLoadProblem;
-}>;
-
 export type SyntheticActionState = Readonly<{
   kind: "idle" | "success" | "error";
   message?: string;
@@ -289,8 +297,18 @@ export type SyntheticActionState = Readonly<{
   responseToken?: string;
   nextHref?: string;
   job?: SyntheticJob;
+  channelStyle?: ChannelStyle;
   importResult?: ManualImportResult;
   importPreview?: ManualImportPreview;
+}>;
+
+export type SyntheticJobRefreshState = Readonly<{
+  ok: boolean;
+  job?: SyntheticJob;
+  result?: SyntheticReviewResult;
+  message?: string;
+  status?: number;
+  correlationId?: string;
 }>;
 
 export const initialSyntheticActionState: SyntheticActionState = { kind: "idle" };
@@ -442,7 +460,12 @@ export function isSyntheticJob(value: unknown): value is SyntheticJob {
     && typeof value.cancel_requested === "boolean"
     && nullableHash(value.result_hash)
     && typeof value.replayed === "boolean"
-    && (value.warning_summary === undefined || isWarningSummary(value.warning_summary));
+    && (value.warning_summary === undefined || value.warning_summary === null
+      || isWarningSummary(value.warning_summary));
+}
+
+export function isSyntheticJobPage(value: unknown): value is SyntheticPage<SyntheticJob> {
+  return isPage(value, isSyntheticJob);
 }
 
 export function isStyleCollectionAdmission(value: unknown): value is StyleCollectionAdmission {

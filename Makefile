@@ -32,7 +32,7 @@ PROD_COMPOSE := docker compose --env-file $(PROD_ENV) -f infra/compose.prod.yml 
 	backup restore-smoke backup-restore-dev-smoke deepseek-live ci \
 	advinsys-dry-run advinsys-verify f019-benchmark operator-guide-pdf \
 	stack-config stack-up stack-down stack-status stack-doctor stack-cleanup-legacy \
-	stack-export stack-import stack-verify
+	stack-export stack-import stack-verify sync-baseline-upload sync-download
 
 bootstrap: install
 	cp -n .env.example .env 2>/dev/null || true
@@ -322,6 +322,9 @@ STACK_KEY_FILE ?= $(GEO_MIGRATION_KEY_FILE)
 STACK_SECRET_ROOT ?= $(GEO_MIGRATION_SECRET_ROOT)
 STACK_OUTPUT_ROOT ?= $(GEO_MIGRATION_OUTPUT_ROOT)
 STACK_PACKAGE ?= $(GEO_MIGRATION_PACKAGE)
+SYNC_REPO ?= $(GEO_SYNC_ARCHIVE_REPO)
+SYNC_PASSPHRASE_FILE ?= $(GEO_SYNC_PASSPHRASE_FILE)
+SYNC_OUTPUT_ROOT ?= $(GEO_SYNC_OUTPUT_ROOT)
 
 stack-config:
 	GEO_STACK_ENV_FILE=$(STACK_ENV) scripts/geo-stack.sh config
@@ -367,6 +370,28 @@ stack-verify:
 	GEO_STACK_ENV_FILE=$(STACK_ENV) scripts/geo-stack.sh verify \
 		--package "$(STACK_PACKAGE)" \
 		--encryption-key-file "$(STACK_KEY_FILE)"
+
+sync-baseline-upload:
+	@test -n "$(SYNC_REPO)" || (echo "GEO_SYNC_ARCHIVE_REPO is required" >&2; exit 2)
+	@test -n "$(SYNC_PASSPHRASE_FILE)" || (echo "GEO_SYNC_PASSPHRASE_FILE is required" >&2; exit 2)
+	@test -n "$(SYNC_OUTPUT_ROOT)" || (echo "GEO_SYNC_OUTPUT_ROOT is required" >&2; exit 2)
+	@test -n "$(STACK_SECRET_ROOT)" || (echo "GEO_MIGRATION_SECRET_ROOT is required" >&2; exit 2)
+	uv run python scripts/geo_sync.py export-baseline-upload \
+		--repo "$(SYNC_REPO)" \
+		--passphrase-file "$(SYNC_PASSPHRASE_FILE)" \
+		--output-root "$(SYNC_OUTPUT_ROOT)" \
+		--secret-root "$(STACK_SECRET_ROOT)"
+
+sync-download:
+	@test -n "$(SYNC_REPO)" || (echo "GEO_SYNC_ARCHIVE_REPO is required" >&2; exit 2)
+	@test -n "$(SYNC_PASSPHRASE_FILE)" || (echo "GEO_SYNC_PASSPHRASE_FILE is required" >&2; exit 2)
+	@test -n "$(GEO_SYNC_RELEASE)" || (echo "GEO_SYNC_RELEASE is required" >&2; exit 2)
+	@test -n "$(SYNC_OUTPUT_ROOT)" || (echo "GEO_SYNC_OUTPUT_ROOT is required" >&2; exit 2)
+	uv run python scripts/geo_sync.py verify-release \
+		--repo "$(SYNC_REPO)" \
+		--passphrase-file "$(SYNC_PASSPHRASE_FILE)" \
+		--release "$(GEO_SYNC_RELEASE)" \
+		--output "$(SYNC_OUTPUT_ROOT)/$(GEO_SYNC_RELEASE)"
 
 db-up:
 	$(DEV_COMPOSE) up -d postgres minio valkey

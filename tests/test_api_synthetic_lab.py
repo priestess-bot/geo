@@ -13,6 +13,7 @@ from geo_api.synthetic_lab_runtime import SyntheticPageRead
 from geo_core.access.models import AccessPrincipal, MembershipRecord
 from geo_core.synthetic_lab.domain import SyntheticLabContractError
 from geo_core.synthetic_lab.ports import SyntheticLabPermissionDenied
+from synthetic_lab_direct_api_test_support import SyntheticLabDirectApiMixin
 from synthetic_lab_api_test_support import source_payload as _source_payload
 
 
@@ -45,7 +46,7 @@ class PrincipalServices:
         return self.principal
 
 
-class MemorySyntheticLabApi:
+class MemorySyntheticLabApi(SyntheticLabDirectApiMixin):
     def __init__(self, creator_id: UUID) -> None:
         self.creator_id = creator_id
         self.authorizations = {
@@ -70,6 +71,7 @@ class MemorySyntheticLabApi:
         self.previews: dict[UUID, dict[str, Any]] = {}
         self.preview_submitters: dict[UUID, UUID] = {}
         self.profiles: dict[UUID, dict[str, Any]] = {}
+        self.channel_styles: dict[str, dict[str, Any]] = {}
         self.suites: dict[UUID, dict[str, Any]] = {}
         self.cases: dict[UUID, dict[str, Any]] = {}
         self.jobs: dict[UUID, dict[str, Any]] = {}
@@ -590,7 +592,9 @@ def test_openapi_is_internal_only_strict_redacted_and_stable() -> None:
         f"{prefix}/jobs/revision",
         f"{prefix}/jobs/corpus",
         f"{prefix}/jobs/offline-experiment",
+        f"{prefix}/jobs",
         f"{prefix}/jobs/{{job_id}}",
+        f"{prefix}/jobs/{{job_id}}/result",
         f"{prefix}/jobs/{{job_id}}/cancel",
         f"{prefix}/jobs/{{job_id}}/finalize",
     }
@@ -633,7 +637,9 @@ def test_openapi_is_internal_only_strict_redacted_and_stable() -> None:
         "enqueueSyntheticRevisionJob",
         "enqueueSyntheticCorpusJob",
         "enqueueSyntheticOfflineExperimentJob",
+        "listSyntheticLabJobs",
         "getSyntheticLabJob",
+        "getSyntheticLabReviewResult",
         "cancelSyntheticLabJob",
         "finalizeSyntheticLabJob",
     }

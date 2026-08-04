@@ -155,6 +155,7 @@ docs/                 当前架构、ADR、操作手册、工程治理和两份�
 - [本轮 14 项 ACCEPTED 整改验证记录](docs/engineering/GEO-accepted-remediation-verification-record-2026-07-19.md)
 - [整改门禁与外部 staging 边界](docs/operations/remediation-gates.md)
 - [单栈部署与跨服务器迁移](docs/operations/geo-deploy-and-migration.md)
+- 迁移脚本：`scripts/geo_sync.py`（私有 GitHub Release 加密基线、父归档增量和测试副本覆盖恢复）
 - [当前系统架构](docs/architecture/system-overview.md)
 - [GEO v3 运行与验收合同](docs/GEO-v3-%E5%85%A8%E6%B5%81%E7%A8%8B%E8%BF%90%E8%A1%8C%E6%89%8B%E5%86%8C.md)
 - [ADVINSYS GEO 独立全流程操作手册](docs/operations/geo-ui-operator-guide.md)（[PDF](docs/operations/ADVINSYS-GEO-%E5%85%A8%E6%B5%81%E7%A8%8B%E9%83%A8%E7%BD%B2%E8%BF%90%E7%BB%B4%E6%89%8B%E5%86%8C.pdf)）

@@ -19,6 +19,7 @@ from geo_core.synthetic_lab.application_support import canonical_hash
 from geo_core.synthetic_lab.execution_contracts import (
     CorpusFinalizeOutput,
     CorpusFinalizeTask,
+    DirectGenerationTask,
     ExecutionCheckpoint,
     OfflineExperimentRunOutput,
     OfflineExperimentRunTask,
@@ -79,7 +80,7 @@ class SyntheticTaskExecutor:
             return self._finalize_corpus(lease=lease, task=task, checkpoint=checkpoint)
         if isinstance(task, OfflineExperimentRunTask):
             return self._run_offline(lease=lease, task=task, checkpoint=checkpoint)
-        if isinstance(task, ReviewCaseRunTask):
+        if isinstance(task, (ReviewCaseRunTask, DirectGenerationTask)):
             return self._reviews.run(lease=lease, task=task, checkpoint=checkpoint)
         raise SyntheticExecutionError("unsupported Synthetic execution task")
 

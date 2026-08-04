@@ -6,8 +6,11 @@ from collections.abc import Callable, Mapping
 from typing import Any, cast
 
 from geo_core.project_scope import set_project_scope
+from geo_core.placements.execution_eligibility import approved_fact_evidence_is_current
 from geo_core.prompts.application import PromptProgramApplication
 from geo_core.prompts.postgres_repository import PsycopgPromptProgramRepository
+from geo_core.synthetic_lab.channel_styles import ChannelStyleVersion
+from geo_core.synthetic_lab.direct_generation import DirectKnowledgeSnapshot
 from geo_core.synthetic_lab.domain import StyleProfileStatus, StyleProfileVersion
 from geo_core.synthetic_lab.ports import RuntimeInputSnapshot, SyntheticLabStaleInput
 from geo_core.synthetic_lab.postgres_rows import aggregate_from_row
@@ -23,18 +26,8 @@ class PostgresSyntheticRuntimeInputPort:
         connection = self._connection_factory()
         try:
             set_project_scope(connection, frozen.project_id)
-            facts = connection.execute(
-                """SELECT id, pack_hash FROM evidence_pack_attempts
-                   WHERE project_id = %s AND id = %s AND status = 'ready'
-                     AND pack_hash IS NOT NULL""",
-                (frozen.project_id, frozen.fact_snapshot_id),
-            ).fetchone()
-            profile_row = connection.execute(
-                """SELECT * FROM synthetic_lab_aggregate_versions
-                   WHERE project_id = %s AND kind = 'style_profile' AND resource_id = %s
-                   ORDER BY version DESC LIMIT 1""",
-                (frozen.project_id, frozen.profile_version_id),
-            ).fetchone()
+            facts = self._facts(connection, frozen)
+            profile = self._style(connection, frozen)
             prompt = connection.execute(
                 """SELECT state.id FROM prompt_program_release_states AS state
                    JOIN prompt_program_releases AS release
@@ -50,7 +43,6 @@ class PostgresSyntheticRuntimeInputPort:
                     frozen.prompt_release_hash,
                 ),
             ).fetchone()
-            profile = self._profile(profile_row)
             return RuntimeInputSnapshot(
                 project_id=frozen.project_id,
                 fact_snapshot_id=frozen.fact_snapshot_id,
@@ -59,17 +51,24 @@ class PostgresSyntheticRuntimeInputPort:
                 ),
                 profile_version_id=frozen.profile_version_id,
                 profile_hash=(
-                    profile.profile_hash if profile is not None else frozen.profile_hash
+                    self._style_hash(profile)
+                    if profile is not None
+                    else frozen.profile_hash
                 ),
                 prompt_release_id=frozen.prompt_release_id,
                 prompt_release_hash=frozen.prompt_release_hash,
                 facts_current_approved=facts is not None,
                 profile_frozen=(
                     profile is not None
-                    and profile.status is StyleProfileStatus.FROZEN
-                    and profile.profile_hash == frozen.profile_hash
+                    and self._style_hash(profile) == frozen.profile_hash
+                    and (
+                        isinstance(profile, ChannelStyleVersion)
+                        or profile.status is StyleProfileStatus.FROZEN
+                    )
                 ),
                 prompt_frozen=prompt is not None,
+                fact_source_kind=frozen.fact_source_kind,
+                profile_source_kind=frozen.profile_source_kind,
             )
         finally:
             connection.rollback()
@@ -84,6 +83,69 @@ class PostgresSyntheticRuntimeInputPort:
         except Exception as error:
             raise SyntheticLabStaleInput("stored Style Profile runtime is invalid") from error
         return aggregate.payload if isinstance(aggregate.payload, StyleProfileVersion) else None
+
+    @staticmethod
+    def _facts(connection: Any, frozen: RuntimeInputSnapshot) -> Mapping[str, Any] | None:
+        if frozen.fact_source_kind == "evidence_pack":
+            return connection.execute(
+                """SELECT id, pack_hash FROM evidence_pack_attempts
+                   WHERE project_id = %s AND id = %s AND status = 'ready'
+                     AND pack_hash IS NOT NULL""",
+                (frozen.project_id, frozen.fact_snapshot_id),
+            ).fetchone()
+        row = connection.execute(
+            """SELECT * FROM synthetic_lab_aggregate_versions
+               WHERE project_id = %s AND kind = 'direct_knowledge_snapshot'
+                 AND resource_id = %s ORDER BY version DESC LIMIT 1""",
+            (frozen.project_id, frozen.fact_snapshot_id),
+        ).fetchone()
+        if row is None:
+            return None
+        aggregate = aggregate_from_row(cast(Mapping[str, Any], row))
+        snapshot = aggregate.payload
+        if not isinstance(snapshot, DirectKnowledgeSnapshot):
+            return None
+        approved_ids = tuple(
+            item.evidence_id for item in snapshot.items if item.kind == "approved_fact"
+        )
+        if approved_ids and not approved_fact_evidence_is_current(
+            connection,
+            project_id=frozen.project_id,
+            evidence_ids=approved_ids,
+        ):
+            return None
+        return {"id": snapshot.id, "pack_hash": snapshot.snapshot_hash}
+
+    @staticmethod
+    def _style(
+        connection: Any, frozen: RuntimeInputSnapshot
+    ) -> StyleProfileVersion | ChannelStyleVersion | None:
+        kind = (
+            "style_profile"
+            if frozen.profile_source_kind == "sample_profile"
+            else "channel_style"
+        )
+        rows = connection.execute(
+            """SELECT * FROM synthetic_lab_aggregate_versions
+               WHERE project_id = %s AND kind = %s AND resource_id = %s
+               ORDER BY version DESC""",
+            (frozen.project_id, kind, frozen.profile_version_id),
+        ).fetchall()
+        for row in rows:
+            aggregate = aggregate_from_row(cast(Mapping[str, Any], row))
+            payload = aggregate.payload
+            if isinstance(payload, StyleProfileVersion):
+                return payload
+            if (
+                isinstance(payload, ChannelStyleVersion)
+                and payload.style_hash == frozen.profile_hash
+            ):
+                return payload
+        return None
+
+    @staticmethod
+    def _style_hash(profile: StyleProfileVersion | ChannelStyleVersion) -> str:
+        return profile.profile_hash if isinstance(profile, StyleProfileVersion) else profile.style_hash
 
 
 class PostgresRuntimePromptApplication:

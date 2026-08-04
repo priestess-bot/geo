@@ -32,6 +32,7 @@ from geo_api.synthetic_lab_contracts import (
     SyntheticResourceInventoryResponse,
     SyntheticResourceOptionResponse,
     StyleCollectionAdmissionResponse,
+    SyntheticJobPageResponse,
     SyntheticJobResponse,
 )
 
@@ -299,10 +300,17 @@ def job_response(item: object) -> SyntheticJobResponse:
         result_hash = _field(durable, "result_ref", None)
     if isinstance(result_hash, str) and result_hash.startswith("synthetic://result/"):
         result_hash = result_hash.removeprefix("synthetic://result/")
+    kind = _enum_value(_field(value, "kind"))
+    public_kind = {
+        "style.profile.build": "style_profile_build",
+        "review.case.run": "candidate_generation",
+        "corpus.finalize": "corpus_finalize",
+        "offline_experiment.run": "offline_experiment",
+    }.get(kind, kind)
     return SyntheticJobResponse(
         id=_field(value, "id"),
         project_id=_field(value, "project_id"),
-        kind=cast(JobKind, _enum_value(_field(value, "kind"))),
+        kind=cast(JobKind, public_kind),
         status=_enum_value(_field(value, "status")),
         version=_field(value, "version"),
         input_hash=_field(value, "input_hash"),
@@ -353,6 +361,10 @@ def case_page(page: object) -> ReviewCasePageResponse:
     return _page(page, case_response, ReviewCasePageResponse)
 
 
+def job_page(page: object) -> SyntheticJobPageResponse:
+    return _page(page, job_response, SyntheticJobPageResponse)
+
+
 def _page(
     page: object,
     presenter: Callable[[object], _ResponseT],
@@ -393,6 +405,7 @@ __all__ = [
     "case_page",
     "case_response",
     "job_response",
+    "job_page",
     "imported_sample_option_page",
     "manual_import_preview_page",
     "manual_import_preview_response",

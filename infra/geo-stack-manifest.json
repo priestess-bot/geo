@@ -8,6 +8,8 @@
     "infra/dify/compose.geo-runtime.yml"
   ],
   "dify_project": "geo-dify",
+  "migration_transport": "private GitHub Release encrypted assets",
+  "migration_entrypoint": "scripts/geo_sync.py",
   "ports": {
     "admin_web": 13001,
     "customer_web": 13000,

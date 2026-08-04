@@ -192,7 +192,7 @@ export async function freezeStyleProfileAction(
   const expectedVersion = integerField(formData, "expected_version", 1);
   const key = commandKey(formData);
   if (!UUID_PATTERN.test(profileVersionId) || expectedVersion === null || !key) {
-    return invalid("Profile、版本或 Idempotency-Key 无效。");
+    return invalid("风格画像、版本或幂等键无效。");
   }
   const response = await runtimeRequest<StyleProfile>(
     `${syntheticBase(projectId)}/style-profiles/${encodeURIComponent(profileVersionId)}/freeze`,
@@ -203,9 +203,9 @@ export async function freezeStyleProfileAction(
     }
   );
   if (!response.ok) return commandFailure(response);
-  if (!isStyleProfile(response.data)) return upstreamInvalid("Profile 冻结响应不安全或无法识别。");
+  if (!isStyleProfile(response.data)) return upstreamInvalid("风格画像冻结响应不安全或无法识别。");
   revalidateProject(projectId);
-  return safeState({ kind: "success", message: "Style Profile 已冻结。" });
+  return safeState({ kind: "success", message: "风格画像已冻结。" });
 }
 
 export async function submitStyleProfileAction(
@@ -217,7 +217,7 @@ export async function submitStyleProfileAction(
   if (!access.ok) return access.state;
   return profileLifecycleAction(projectId, formData, {
     endpoint: "submit",
-    successMessage: "Style Profile 已提交独立审批。",
+    successMessage: "风格画像已提交独立审批。",
     body: (expectedVersion) => ({ expected_version: expectedVersion })
   });
 }
@@ -231,11 +231,11 @@ export async function decideStyleProfileAction(
   if (!access.ok) return access.state;
   const decision = field(formData, "decision");
   if (decision !== "approve" && decision !== "reject") {
-    return invalid("Profile 审批决定无效。");
+    return invalid("风格画像审批决定无效。");
   }
   return profileLifecycleAction(projectId, formData, {
     endpoint: "decision",
-    successMessage: decision === "approve" ? "Style Profile 已批准。" : "Style Profile 已拒绝。",
+    successMessage: decision === "approve" ? "风格画像已批准。" : "风格画像已拒绝。",
     body: (expectedVersion) => ({ expected_version: expectedVersion, decision })
   });
 }
@@ -251,7 +251,7 @@ export async function freezeReviewSuiteAction(
   const expectedVersion = integerField(formData, "expected_version", 1);
   const key = commandKey(formData);
   if (!UUID_PATTERN.test(suiteVersionId) || expectedVersion === null || !key) {
-    return invalid("Review Suite、版本或 Idempotency-Key 无效。");
+    return invalid("测评套件、版本或幂等键无效。");
   }
   const response = await runtimeRequest<ReviewSuite>(
     `${syntheticBase(projectId)}/review-suites/${encodeURIComponent(suiteVersionId)}/freeze`,
@@ -262,9 +262,9 @@ export async function freezeReviewSuiteAction(
     }
   );
   if (!response.ok) return commandFailure(response);
-  if (!isReviewSuite(response.data)) return upstreamInvalid("Review Suite 冻结响应不安全或无法识别。");
+  if (!isReviewSuite(response.data)) return upstreamInvalid("测评套件冻结响应不安全或无法识别。");
   revalidateProject(projectId);
-  return safeState({ kind: "success", message: "Review Suite 已冻结。" });
+  return safeState({ kind: "success", message: "测评套件已冻结。" });
 }
 
 async function authorizationResult(
@@ -291,7 +291,7 @@ async function profileLifecycleAction(
   const expectedVersion = integerField(formData, "expected_version", 1);
   const key = commandKey(formData);
   if (!UUID_PATTERN.test(profileVersionId) || expectedVersion === null || !key) {
-    return invalid("Profile、版本或 Idempotency-Key 无效。");
+    return invalid("风格画像、版本或幂等键无效。");
   }
   const response = await runtimeRequest<StyleProfile>(
     `${syntheticBase(projectId)}/style-profiles/${encodeURIComponent(profileVersionId)}/${options.endpoint}`,
@@ -302,7 +302,7 @@ async function profileLifecycleAction(
     }
   );
   if (!response.ok) return commandFailure(response);
-  if (!isStyleProfile(response.data)) return upstreamInvalid("Profile 审批响应不安全或无法识别。");
+  if (!isStyleProfile(response.data)) return upstreamInvalid("风格画像审批响应不安全或无法识别。");
   revalidateProject(projectId);
   return safeState({ kind: "success", message: options.successMessage });
 }

@@ -70,11 +70,18 @@ class ClaimAssessment(SyntheticOnly):
     expected_subject_id: UUID | None = None
     observed_subject_id: UUID | None = None
     output_annotation: str | None = None
+    evidence_refs: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         _require_hash(self.claim_hash, "claim hash")
         status = _as_enum(self.status, FactStatus, "Fact status")
         object.__setattr__(self, "status", status)
+        evidence_refs = tuple(self.evidence_refs)
+        if len(evidence_refs) != len(set(evidence_refs)):
+            raise SyntheticLabContractError("claim evidence references must be unique")
+        for evidence_ref in evidence_refs:
+            _require_text(evidence_ref, "claim evidence reference")
+        object.__setattr__(self, "evidence_refs", evidence_refs)
         fact_bound = self.fact_id is not None or self.fact_hash is not None
         if fact_bound:
             if self.fact_id is None or self.fact_hash is None:

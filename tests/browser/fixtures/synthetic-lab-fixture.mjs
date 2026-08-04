@@ -18,6 +18,8 @@ const PROFILE_ID = "00000000-0000-4000-8000-000000000704";
 const PROFILE_VERSION_ID = "00000000-0000-4000-8000-000000000705";
 const SUITE_ID = "00000000-0000-4000-8000-000000000706";
 const SUITE_VERSION_ID = "00000000-0000-4000-8000-000000000707";
+const CREATED_SUITE_ID = "00000000-0000-4000-8000-000000000726";
+const CREATED_SUITE_VERSION_ID = "00000000-0000-4000-8000-000000000727";
 const CASE_A_ID = "00000000-0000-4000-8000-000000000708";
 const CASE_B_ID = "00000000-0000-4000-8000-000000000709";
 const PROMPT_RELEASE_ID = "00000000-0000-4000-8000-000000000710";
@@ -29,6 +31,15 @@ const COMPLETED_REVIEW_JOB_B_ID = "00000000-0000-4000-8000-000000000717";
 const CANDIDATE_CORPUS_JOB_ID = "00000000-0000-4000-8000-000000000718";
 const APPROVED_CORPUS_JOB_ID = "00000000-0000-4000-8000-000000000719";
 const QUESTION_SET_ID = "00000000-0000-4000-8000-000000000720";
+const DIRECT_SUBJECT_ID = "00000000-0000-4000-8000-000000000750";
+const DIRECT_FACT_A_ID = "00000000-0000-4000-8000-000000000751";
+const DIRECT_FACT_B_ID = "00000000-0000-4000-8000-000000000752";
+const DIRECT_INPUT_SNAPSHOT_ID = "00000000-0000-4000-8000-000000000753";
+const DIRECT_SCENARIO_ID = "00000000-0000-4000-8000-000000000754";
+const SYNTHETIC_CHANNELS = [
+  "owned_site", "amazon", "youtube", "tiktok", "instagram",
+  "productreview", "reddit", "ozbargain", "quora"
+];
 
 let mode = "normal";
 let authorizationState = "approved";
@@ -36,7 +47,10 @@ let authorizationVersion = 1;
 let profileStatus = "frozen";
 let previewStatus = "pending";
 let suiteStatus = "draft";
+let createdSuite = null;
 const jobs = new Map();
+const directJobPolls = new Map();
+const editedChannelStyles = new Map();
 
 export function resetSyntheticLabFixture() {
   mode = "normal";
@@ -45,7 +59,10 @@ export function resetSyntheticLabFixture() {
   profileStatus = "frozen";
   previewStatus = "pending";
   suiteStatus = "draft";
+  createdSuite = null;
   jobs.clear();
+  directJobPolls.clear();
+  editedChannelStyles.clear();
 }
 
 export function handleSyntheticLabFixture({
@@ -60,7 +77,8 @@ export function handleSyntheticLabFixture({
 }) {
   if (path === "/__synthetic_mode" && request.method === "POST") {
     mode = [
-      "normal", "governance", "legacy_profile", "manual_approval_rejected", "empty", "unavailable", "conflict"
+      "normal", "governance", "legacy_profile", "manual_approval_rejected",
+      "manual_import_unavailable", "empty", "unavailable", "conflict"
     ].includes(payload?.mode)
       ? payload.mode
       : "normal";
@@ -84,6 +102,38 @@ export function handleSyntheticLabFixture({
     return true;
   }
   const empty = mode === "empty";
+  if (path === `${base}/direct-generation/options` && request.method === "GET") {
+    send(response, directGenerationOptions(projectId, empty));
+    return true;
+  }
+  if (path === `${base}/channel-styles` && request.method === "GET") {
+    send(response, page(empty ? [] : channelStyles(projectId)));
+    return true;
+  }
+  const channelStyleRoute = path.match(
+    new RegExp(`^${base}/channel-styles/([^/]+)/versions$`)
+  );
+  if (channelStyleRoute && request.method === "POST") {
+    const channel = channelStyleRoute[1];
+    const current = channelStyles(projectId).find((item) => item.channel === channel);
+    const idempotencyKey = request.headers["idempotency-key"];
+    if (!SYNTHETIC_CHANNELS.includes(channel) || !current
+        || payload?.expected_current_version !== current.version_number
+        || typeof payload?.directive !== "string" || !payload.directive.trim()
+        || typeof idempotencyKey !== "string" || !idempotencyKey) {
+      send(response, { detail: "channel style version payload is invalid" }, 422);
+      return true;
+    }
+    const next = channelStyle(projectId, channel, current.version_number + 1, payload.directive, current.id);
+    editedChannelStyles.set(channel, next);
+    send(response, next, 201);
+    return true;
+  }
+  if (mode === "manual_import_unavailable"
+      && path.startsWith(`${base}/sample-import-previews`)) {
+    send(response, { detail: "manual import encryption or object storage is unavailable" }, 503);
+    return true;
+  }
   if (path === `${base}/authorizations` && request.method === "GET") {
     send(response, page(empty ? [] : [authorization(projectId)]));
     return true;
@@ -146,7 +196,14 @@ export function handleSyntheticLabFixture({
     send(response, {
       ...BOUNDARY,
       samples: [],
-      prompt_bindings: [],
+      prompt_bindings: [
+        resourceOption("00000000-0000-4000-8000-000000000731", "synthetic_lab.generation · Dify binding v1", "prompt_binding", "frozen"),
+        resourceOption("00000000-0000-4000-8000-000000000732", "synthetic_lab.claim_extraction · Dify binding v1", "prompt_binding", "frozen"),
+        resourceOption("00000000-0000-4000-8000-000000000733", "synthetic_lab.conflict_check · Dify binding v1", "prompt_binding", "frozen"),
+        resourceOption("00000000-0000-4000-8000-000000000734", "synthetic_lab.revision · Dify binding v1", "prompt_binding", "frozen"),
+        resourceOption("00000000-0000-4000-8000-000000000735", "synthetic_lab.style_judge · native binding v1", "prompt_binding", "frozen"),
+        resourceOption("00000000-0000-4000-8000-000000000736", "synthetic_lab.arbiter · native binding v1", "prompt_binding", "frozen")
+      ],
       question_sets: [
         resourceOption(QUESTION_SET_ID, "Frozen AU buyer questions", "question_set", "frozen")
       ],
@@ -235,22 +292,32 @@ export function handleSyntheticLabFixture({
     return true;
   }
   if (path === `${base}/review-suites`) {
-    if (request.method === "GET") send(response, page(empty ? [] : [suite(projectId)]));
-    else send(response, {
-      ...suite(projectId),
-      id: payload.suite_id,
-      suite_id: payload.suite_id,
-      channel: payload.channel,
-      case_count: payload.case_count,
-      case_set_hash: payload.case_set_hash,
-      status: "draft",
-      replayed: false
-    }, 201);
+    if (request.method === "GET") {
+      send(response, page(empty ? [] : [createdSuite, suite(projectId)].filter(Boolean)));
+    }
+    else {
+      createdSuite = {
+        ...BOUNDARY,
+        id: CREATED_SUITE_VERSION_ID,
+        project_id: projectId,
+        suite_id: CREATED_SUITE_ID,
+        version_number: 1,
+        state_version: 1,
+        channel: payload.channel,
+        case_count: 0,
+        case_set_hash: "0".repeat(64),
+        status: "draft",
+        replayed: false
+      };
+      send(response, createdSuite, 201);
+    }
     return true;
   }
   const casesRoute = path.match(new RegExp(`^${base}/review-suites/([^/]+)/cases$`));
   if (casesRoute) {
-    if (request.method === "GET") send(response, page(empty ? [] : cases(projectId)));
+    if (request.method === "GET") {
+      send(response, page(empty || casesRoute[1] === CREATED_SUITE_VERSION_ID ? [] : cases(projectId)));
+    }
     else send(response, {
       ...BOUNDARY,
       id: "00000000-0000-4000-8000-000000000711",
@@ -306,6 +373,43 @@ export function handleSyntheticLabFixture({
     }, 202);
     return true;
   }
+  if (path === `${base}/jobs/direct-generation` && request.method === "POST") {
+    const options = directGenerationOptions(projectId, false);
+    const subject = options.subjects[0];
+    const style = options.channel_styles.find((item) => item.channel === payload?.channel);
+    const idempotencyKey = request.headers["idempotency-key"];
+    const expectedKeys = [
+      "channel", "channel_style_hash", "channel_style_version_id", "generation_goal",
+      "include_competitor_context", "knowledge_snapshot_hash", "runtime_selection_id",
+      "style_pass_threshold", "subject_entity_id"
+    ];
+    const valid = subject && style && typeof idempotencyKey === "string" && idempotencyKey
+      && JSON.stringify(Object.keys(payload || {}).sort()) === JSON.stringify(expectedKeys)
+      && payload.subject_entity_id === subject.id
+      && payload.channel_style_version_id === style.id
+      && payload.channel_style_hash === style.style_hash
+      && payload.knowledge_snapshot_hash === subject.knowledge_snapshot_hash
+      && payload.runtime_selection_id === RUNTIME_SELECTION_ID
+      && typeof payload.generation_goal === "string" && payload.generation_goal.trim()
+      && payload.style_pass_threshold === 4.2
+      && payload.include_competitor_context === false;
+    if (!valid) {
+      send(response, { detail: "direct generation payload is invalid" }, 422);
+      return true;
+    }
+    const job = jobView({
+      id: executionJobId(projectId, idempotencyKey, "direct-generation"),
+      projectId,
+      kind: "candidate_generation",
+      status: "queued",
+      version: 1,
+      cancelRequested: false
+    });
+    jobs.set(job.id, job);
+    directJobPolls.set(job.id, 0);
+    send(response, job, 202);
+    return true;
+  }
   const enqueue = path.match(new RegExp(`^${base}/jobs/(generation|revision|corpus|offline-experiment)$`));
   if (enqueue && request.method === "POST") {
     const kind = {
@@ -333,17 +437,79 @@ export function handleSyntheticLabFixture({
     send(response, job, 202);
     return true;
   }
+  if (path === `${base}/jobs` && request.method === "GET") {
+    const staticItems = empty ? [] : [
+      jobView({
+        id: COMPLETED_REVIEW_JOB_A_ID,
+        projectId,
+        kind: "candidate_generation",
+        status: "succeeded",
+        version: 3,
+        cancelRequested: false,
+        resultHash: "a".repeat(64)
+      }),
+      jobView({
+        id: COMPLETED_REVIEW_JOB_B_ID,
+        projectId,
+        kind: "candidate_generation",
+        status: "succeeded",
+        version: 3,
+        cancelRequested: false,
+        resultHash: "b".repeat(64)
+      }),
+      jobView({
+        id: EXISTING_STYLE_COLLECTION_JOB_ID,
+        projectId,
+        kind: "style_collection",
+        status: "queued",
+        version: 1,
+        cancelRequested: false
+      })
+    ];
+    const dynamicItems = [...jobs.values()];
+    const merged = [...dynamicItems, ...staticItems.filter(
+      (item) => !jobs.has(item.id)
+    )];
+    send(response, page(merged));
+    return true;
+  }
+  const resultRoute = path.match(new RegExp(`^${base}/jobs/([^/]+)/result$`));
+  if (resultRoute && request.method === "GET") {
+    if (directJobPolls.has(resultRoute[1])) {
+      send(response, directReviewResult(projectId, resultRoute[1]));
+    } else if (![COMPLETED_REVIEW_JOB_A_ID, COMPLETED_REVIEW_JOB_B_ID].includes(resultRoute[1])) {
+      send(response, { detail: "completed Review Case result is unavailable" }, 404);
+    } else {
+      send(response, reviewResult(projectId, resultRoute[1]));
+    }
+    return true;
+  }
   const jobRoute = path.match(new RegExp(`^${base}/jobs/([^/]+)(?:/(cancel))?$`));
   if (jobRoute) {
+    const completed = [COMPLETED_REVIEW_JOB_A_ID, COMPLETED_REVIEW_JOB_B_ID]
+      .includes(jobRoute[1]);
     const current = jobs.get(jobRoute[1]) || jobView({
       id: jobRoute[1],
       projectId,
       kind: jobRoute[1] === EXISTING_STYLE_COLLECTION_JOB_ID ? "style_collection" : "candidate_generation",
-      status: jobRoute[1] === EXISTING_STYLE_COLLECTION_JOB_ID ? "queued" : "running",
-      version: 1,
-      cancelRequested: false
+      status: jobRoute[1] === EXISTING_STYLE_COLLECTION_JOB_ID ? "queued" : completed ? "succeeded" : "running",
+      version: completed ? 3 : 1,
+      cancelRequested: false,
+      resultHash: completed ? (jobRoute[1] === COMPLETED_REVIEW_JOB_A_ID ? "a" : "b").repeat(64) : null
     });
-    if (jobRoute[2] === "cancel" && request.method === "POST") {
+    if (!jobRoute[2] && request.method === "GET" && directJobPolls.has(jobRoute[1])) {
+      const pollCount = (directJobPolls.get(jobRoute[1]) || 0) + 1;
+      directJobPolls.set(jobRoute[1], pollCount);
+      const finished = pollCount >= 2;
+      const progressed = {
+        ...current,
+        status: finished ? "succeeded" : "running",
+        version: finished ? 3 : 2,
+        result_hash: finished ? "7".repeat(64) : null
+      };
+      jobs.set(progressed.id, progressed);
+      send(response, progressed);
+    } else if (jobRoute[2] === "cancel" && request.method === "POST") {
       const cancelled = { ...current, status: "cancelled", version: current.version + 1, cancel_requested: true };
       jobs.set(cancelled.id, cancelled);
       send(response, cancelled);
@@ -376,6 +542,88 @@ function resourceOption(id, label, kind, status, channel = null) {
 
 function page(items) {
   return { ...BOUNDARY, items, total: items.length, limit: 100, offset: 0 };
+}
+
+function directGenerationOptions(projectId, empty = false) {
+  return {
+    ...BOUNDARY,
+    subjects: empty ? [] : [{
+      id: DIRECT_SUBJECT_ID,
+      name: "ADVINSYS TerraMow V600",
+      canonical_url: "https://www.advinsys.com.au/products/terramow-v600",
+      knowledge_snapshot_hash: "b".repeat(64),
+      knowledge_items: directKnowledgeItems(projectId, false),
+      competitor_knowledge_snapshot_hash: null,
+      competitor_knowledge_items: []
+    }],
+    channel_styles: empty ? [] : channelStyles(projectId),
+    has_competitor_knowledge: false
+  };
+}
+
+function channelStyles(projectId) {
+  return SYNTHETIC_CHANNELS.map(
+    (channel) => editedChannelStyles.get(channel) || channelStyle(projectId, channel)
+  );
+}
+
+function channelStyle(projectId, channel, version = 1, directive = null, previousVersionId = null) {
+  const text = directive || `${channel} fixture style: write concise Australian English, use only supplied knowledge, and state uncertainty plainly.`;
+  return {
+    ...BOUNDARY,
+    replayed: false,
+    id: stableUuid(`${channel}:style-version:${version}`),
+    project_id: projectId,
+    style_id: stableUuid(`${channel}:style`),
+    version_number: version,
+    previous_version_id: previousVersionId,
+    channel,
+    locale: "en-AU",
+    directive: text,
+    provenance: version === 1 ? "manual_initial" : "manual_edit",
+    calibration_status: "pending_sample_calibration",
+    style_hash: createHash("sha256").update(`${channel}:${version}:${text}`).digest("hex")
+  };
+}
+
+function directKnowledgeItems(projectId, matched) {
+  return [
+    directKnowledgeItem({
+      evidenceId: DIRECT_FACT_A_ID,
+      projectId,
+      summary: "Triple-Cam AI Vision Robot Mower V600",
+      hashCharacter: "c",
+      matched
+    }),
+    directKnowledgeItem({
+      evidenceId: DIRECT_FACT_B_ID,
+      projectId,
+      summary: "600 square metres (0.15 acre)",
+      hashCharacter: "d",
+      matched
+    })
+  ];
+}
+
+function directKnowledgeItem({ evidenceId, projectId, summary, hashCharacter, matched }) {
+  return {
+    evidence_id: evidenceId,
+    kind: "approved_fact",
+    subject_entity_id: DIRECT_SUBJECT_ID,
+    subject_name: "ADVINSYS TerraMow V600",
+    summary,
+    snapshot_hash: hashCharacter.repeat(64),
+    source_title: "ADVINSYS official product page",
+    source_url: "https://www.advinsys.com.au/products/terramow-v600",
+    trace_href: `/projects/${projectId}?tab=knowledge&knowledge_tab=trace&knowledge_fact_id=${evidenceId}`,
+    matched,
+    conflicting: false
+  };
+}
+
+function stableUuid(seed) {
+  const hash = createHash("sha256").update(seed).digest("hex");
+  return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-5${hash.slice(13, 16)}-8${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
 }
 
 function authorization(projectId, replayed = false) {
@@ -586,7 +834,7 @@ export function syntheticRuntimeOptions() {
   };
 }
 
-function jobView({ id, projectId, kind, status, version, cancelRequested }) {
+function jobView({ id, projectId, kind, status, version, cancelRequested, resultHash = null }) {
   return {
     ...BOUNDARY,
     id,
@@ -597,7 +845,7 @@ function jobView({ id, projectId, kind, status, version, cancelRequested }) {
     input_hash: "9".repeat(64),
     fencing_generation: 1,
     cancel_requested: cancelRequested,
-    result_hash: null,
+    result_hash: resultHash,
     replayed: false,
     warning_summary: {
       warning_count: 2,
@@ -610,5 +858,179 @@ function jobView({ id, projectId, kind, status, version, cancelRequested }) {
       by_model: { "fixture-model-release-with-a-long-name": 2 },
       by_question_cluster: { "residential-mower-value-and-maintenance": 2 }
     }
+  };
+}
+
+function reviewResult(projectId, jobId) {
+  const warning = jobId === COMPLETED_REVIEW_JOB_B_ID;
+  return {
+    ...BOUNDARY,
+    job_id: jobId,
+    project_id: projectId,
+    review_run_id: "00000000-0000-4000-8000-000000000737",
+    run_origin: "regression",
+    input_snapshot_id: null,
+    review_suite_version_id: SUITE_VERSION_ID,
+    review_case_id: warning ? CASE_B_ID : CASE_A_ID,
+    scenario_id: warning ? CASE_B_ID : CASE_A_ID,
+    case_key: warning ? "au-mower-competitor-guided" : "au-mower-autonomous",
+    channel: "reddit",
+    scenario_mode: warning ? "guided_scenario" : "autonomous_scenario",
+    competitor_scenario: warning,
+    style_pass_threshold: 4.2,
+    runtime_selection_id: RUNTIME_SELECTION_ID,
+    profile_version_id: PROFILE_VERSION_ID,
+    fact_snapshot_id: FACT_SNAPSHOT_ID,
+    generation_goal: null,
+    channel_style_version_id: null,
+    channel_style_version_number: null,
+    channel_style_hash: null,
+    knowledge_snapshot_hash: null,
+    knowledge_context_items: [],
+    final_text: warning
+      ? "I compared it with the usual big-name option and found the setup straightforward. It handled a medium Australian lawn well, though long-term battery life is still unknown."
+      : "Setup was straightforward and it handled a medium Australian lawn without fuss. The controls felt practical, and the cut stayed consistent across the yard.",
+    status: warning ? "completed_with_warning" : "passed",
+    warning_codes: warning ? ["derived_or_unknown"] : [],
+    failure_code: null,
+    resolution_candidate_id: "00000000-0000-4000-8000-000000000738",
+    result_hash: (warning ? "b" : "a").repeat(64),
+    batches: [{
+      id: "00000000-0000-4000-8000-000000000739",
+      batch_number: 1,
+      kind: "initial",
+      scenario_mode: warning ? "guided_scenario" : "autonomous_scenario",
+      candidate_count: 4,
+      provider: "dify",
+      configured_model: "deepseek-chat"
+    }],
+    evaluations: [{
+      id: "00000000-0000-4000-8000-000000000740",
+      candidate_id: "00000000-0000-4000-8000-000000000738",
+      candidate_output_hash: "c".repeat(64),
+      style_score: warning ? 4.4 : 4.7,
+      style_passed: true,
+      disposition: warning ? "warning" : "pass",
+      correctable_issue_codes: [],
+      soft_issue_codes: [],
+      warning_codes: warning ? ["derived_or_unknown"] : [],
+      claim_assessments: [{
+        claim_hash: "d".repeat(64),
+        status: warning ? "derived_or_unknown" : "current_approved",
+        fact_id: warning ? null : "00000000-0000-4000-8000-000000000741",
+        fact_hash: warning ? null : "e".repeat(64),
+        expected_subject_id: null,
+        observed_subject_id: null,
+        output_annotation: warning ? "derived_or_unknown" : null,
+        evidence_refs: warning ? [] : [`evidence:00000000-0000-4000-8000-000000000741:${"e".repeat(64)}`]
+      }],
+      provider: "dify",
+      configured_model: "deepseek-chat",
+      evidence_artifact_hash: "f".repeat(64)
+    }],
+    revisions: warning ? [{
+      id: "00000000-0000-4000-8000-000000000742",
+      round_number: 1,
+      parent_candidate_id: "00000000-0000-4000-8000-000000000743",
+      parent_output_hash: "1".repeat(64),
+      revised_candidate_id: "00000000-0000-4000-8000-000000000738",
+      revised_output_hash: "c".repeat(64),
+      issue_codes: ["style_below_threshold"],
+      provider: "dify",
+      configured_model: "deepseek-chat"
+    }] : [],
+    model_call_ids: [],
+    workflow_attempt_ids: [
+      "00000000-0000-4000-8000-000000000744",
+      "00000000-0000-4000-8000-000000000745"
+    ]
+  };
+}
+
+function directReviewResult(projectId, jobId) {
+  const style = channelStyle(projectId, "reddit");
+  const finalCandidateId = stableUuid(`${jobId}:final-candidate`);
+  return {
+    ...BOUNDARY,
+    job_id: jobId,
+    project_id: projectId,
+    review_run_id: stableUuid(`${jobId}:review-run`),
+    run_origin: "direct",
+    input_snapshot_id: DIRECT_INPUT_SNAPSHOT_ID,
+    review_suite_version_id: null,
+    review_case_id: null,
+    scenario_id: DIRECT_SCENARIO_ID,
+    case_key: `direct:${DIRECT_SCENARIO_ID}`,
+    channel: "reddit",
+    scenario_mode: "guided_scenario",
+    competitor_scenario: false,
+    style_pass_threshold: 4.2,
+    runtime_selection_id: RUNTIME_SELECTION_ID,
+    profile_version_id: style.style_id,
+    fact_snapshot_id: DIRECT_INPUT_SNAPSHOT_ID,
+    generation_goal: "Explain whether the TerraMow V600 fits a medium Australian lawn.",
+    channel_style_version_id: style.id,
+    channel_style_version_number: style.version_number,
+    channel_style_hash: style.style_hash,
+    knowledge_snapshot_hash: "b".repeat(64),
+    knowledge_context_items: directKnowledgeItems(projectId, true),
+    final_text: "For a medium Australian lawn, the TerraMow V600 is listed for up to 600 square metres. The triple-camera system is a documented feature, but real-world slope and wet-grass performance are not covered by the supplied facts.",
+    status: "completed_with_warning",
+    warning_codes: ["derived_or_unknown"],
+    failure_code: null,
+    resolution_candidate_id: finalCandidateId,
+    result_hash: "7".repeat(64),
+    batches: [{
+      id: stableUuid(`${jobId}:batch`),
+      batch_number: 1,
+      kind: "initial",
+      scenario_mode: "guided_scenario",
+      candidate_count: 4,
+      provider: "dify",
+      configured_model: "gpt-fixture"
+    }],
+    evaluations: [{
+      id: stableUuid(`${jobId}:evaluation`),
+      candidate_id: finalCandidateId,
+      candidate_output_hash: "8".repeat(64),
+      style_score: 4.5,
+      style_passed: true,
+      disposition: "warning",
+      correctable_issue_codes: [],
+      soft_issue_codes: [],
+      warning_codes: ["derived_or_unknown"],
+      claim_assessments: [
+        {
+          claim_hash: "1".repeat(64),
+          status: "current_approved",
+          fact_id: DIRECT_FACT_B_ID,
+          fact_hash: "d".repeat(64),
+          expected_subject_id: null,
+          observed_subject_id: null,
+          output_annotation: null,
+          evidence_refs: [`evidence:${DIRECT_FACT_B_ID}:${"d".repeat(64)}`]
+        },
+        {
+          claim_hash: "2".repeat(64),
+          status: "derived_or_unknown",
+          fact_id: null,
+          fact_hash: null,
+          expected_subject_id: null,
+          observed_subject_id: null,
+          output_annotation: "derived_or_unknown",
+          evidence_refs: []
+        }
+      ],
+      provider: "openai",
+      configured_model: "gpt-fixture",
+      evidence_artifact_hash: "9".repeat(64)
+    }],
+    revisions: [],
+    model_call_ids: [stableUuid(`${jobId}:model-call`)],
+    workflow_attempt_ids: [
+      stableUuid(`${jobId}:generation-attempt`),
+      stableUuid(`${jobId}:claim-attempt`),
+      stableUuid(`${jobId}:conflict-attempt`)
+    ]
   };
 }

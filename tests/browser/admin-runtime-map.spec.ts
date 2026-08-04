@@ -9,7 +9,7 @@ function collectRuntimeErrors(page: Page): string[] {
   return errors;
 }
 
-test("Admin 运行地图嵌入唯一架构快照并支持独立宽高缩放", async ({ page }) => {
+test("Admin 运行地图嵌入唯一架构快照并支持四个视图和独立宽高缩放", async ({ page }, testInfo) => {
   const runtimeErrors = collectRuntimeErrors(page);
   const homeResponse = await page.goto("/", { waitUntil: "domcontentloaded" });
 
@@ -30,6 +30,14 @@ test("Admin 运行地图嵌入唯一架构快照并支持独立宽高缩放", as
   await expect(map.locator(".app-header")).toHaveCSS("display", "none");
   const detailLink = map.getByRole("link", { name: "打开对应工作区" });
   await expect(detailLink).toHaveAttribute("href", /^\/projects\//);
+
+  await page.screenshot({ path: testInfo.outputPath("runtime-map-business-desktop.png"), fullPage: true });
+
+  await map.getByRole("tab", { name: "任务链路" }).click();
+  await expect(map.getByLabel("所选任务摘要")).toBeVisible();
+  await map.getByLabel("选择真实运行").selectOption("simulation");
+  await expect(map.locator("#trace-business-status")).toHaveText("TEST ONLY");
+  await page.screenshot({ path: testInfo.outputPath("runtime-map-trace-desktop.png"), fullPage: true });
 
   await map.getByRole("tab", { name: "调用拓扑" }).click();
   await map.getByLabel("调用场景").selectOption("browser-capture");
@@ -66,12 +74,18 @@ test("Admin 运行地图嵌入唯一架构快照并支持独立宽高缩放", as
   await expect(canvas).toHaveCSS("transform", "matrix(1, 0, 0, 5, 0, 0)");
   expect(runtimeErrors).toEqual([]);
 
+  await page.screenshot({ path: testInfo.outputPath("runtime-map-topology-desktop.png"), fullPage: true });
+
+  await map.getByRole("tab", { name: "系统健康" }).click();
+  await expect(map.getByText("运行健康只证明进程和依赖可用")).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("runtime-map-health-desktop.png"), fullPage: true });
+
   await map.getByRole("tab", { name: "业务全景" }).click();
   await detailLink.click();
   await expect(page).toHaveURL(/\/projects\/[^/?]+\?tab=knowledge$/);
 });
 
-test("Admin 运行地图在移动视口使用可操作的关系清单", async ({ page }) => {
+test("Admin 运行地图在移动视口使用可操作的关系清单", async ({ page }, testInfo) => {
   const runtimeErrors = collectRuntimeErrors(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/runtime-map", { waitUntil: "domcontentloaded" });
@@ -92,4 +106,5 @@ test("Admin 运行地图在移动视口使用可操作的关系清单", async ({
   expect(parentOverflow).toBe(false);
   expect(mapOverflow).toBe(false);
   expect(runtimeErrors).toEqual([]);
+  await page.screenshot({ path: testInfo.outputPath("runtime-map-topology-mobile.png"), fullPage: true });
 });

@@ -13,6 +13,11 @@ from geo_core.prompts.program_contracts import ProgramKind
 from geo_core.prompts.bootstrap_limits import STYLE_PROFILE_SUMMARY_MAX_CHARACTERS
 from geo_core.synthetic_lab.application_support import canonical_hash
 from geo_core.synthetic_lab.corpus import CorpusCandidateEntry, CorpusRole
+from geo_core.synthetic_lab.channel_styles import ChannelStyleVersion
+from geo_core.synthetic_lab.direct_generation import (
+    DirectGenerationScenario,
+    DirectKnowledgeSnapshot,
+)
 from geo_core.synthetic_lab.domain import (
     AU_ENGLISH_LOCALE,
     MIN_PROFILE_SAMPLE_COUNT,
@@ -216,6 +221,108 @@ class ReviewCaseRunTask:
 
 
 @dataclass(frozen=True, kw_only=True)
+class DirectGenerationTask:
+    project_id: UUID
+    job_id: UUID
+    model_job_version: int
+    requested_by: UUID
+    review_run_id: UUID
+    case: DirectGenerationScenario
+    subject_id: UUID
+    evidence: tuple[FrozenEvidence, ...]
+    knowledge_snapshot: DirectKnowledgeSnapshot
+    channel_style: ChannelStyleVersion
+    style_profile_summary: str
+    style_pass_threshold: float
+    runtime_inputs: RuntimeInputSnapshot
+    prompts: Mapping[ProgramKind, FrozenPromptRef]
+    input_snapshot_hash: str = field(init=False)
+    input_hash: str = field(init=False)
+
+    def __post_init__(self) -> None:
+        _validate_task_identity(self.project_id, self.job_id, self.model_job_version)
+        _require_uuid(self.requested_by, "Direct Generation requester")
+        _require_uuid(self.review_run_id, "Direct Generation run")
+        _require_uuid(self.subject_id, "Direct Generation subject")
+        _require_text(self.style_profile_summary, "Direct Generation Channel Style")
+        if len(self.style_profile_summary) > STYLE_PROFILE_SUMMARY_MAX_CHARACTERS:
+            raise SyntheticLabContractError("Direct Generation Channel Style exceeds 16KB")
+        if not 0 <= self.style_pass_threshold <= 5:
+            raise SyntheticLabContractError("style pass threshold must be between 0 and 5")
+        if (
+            self.case.project_id != self.project_id
+            or self.knowledge_snapshot.project_id != self.project_id
+            or self.channel_style.project_id != self.project_id
+        ):
+            raise SyntheticLabContractError("Direct Generation input crosses Project scope")
+        if (
+            self.case.input_snapshot_id != self.knowledge_snapshot.id
+            or self.knowledge_snapshot.primary_subject_id != self.subject_id
+            or self.case.channel != self.channel_style.channel
+            or self.style_profile_summary != self.channel_style.directive
+        ):
+            raise SyntheticLabContractError("Direct Generation snapshot components disagree")
+        evidence = tuple(self.evidence)
+        object.__setattr__(self, "evidence", evidence)
+        expected_evidence = {
+            (item.ref, str(item.subject_entity_id), item.summary)
+            for item in self.knowledge_snapshot.items
+        }
+        actual_evidence = {(item.ref, item.subject_id, item.summary) for item in evidence}
+        if actual_evidence != expected_evidence:
+            raise SyntheticLabContractError("Direct Generation evidence changed after preview")
+        validate_review_subject_inventory(self.subject_id, evidence)
+        prompts = MappingProxyType({ProgramKind(key): value for key, value in self.prompts.items()})
+        object.__setattr__(self, "prompts", prompts)
+        required = {
+            ProgramKind.GENERATION,
+            ProgramKind.CLAIM_EXTRACTION,
+            ProgramKind.CONFLICT_CHECK,
+            ProgramKind.REVISION,
+            ProgramKind.STYLE_JUDGE,
+            ProgramKind.ARBITER,
+        }
+        if set(prompts) != required or any(
+            ref.program_kind != kind for kind, ref in prompts.items()
+        ):
+            raise SyntheticLabContractError("Direct Generation requires six exact Prompt bindings")
+        _validate_task_runtime(
+            self.project_id,
+            self.job_id,
+            self.runtime_inputs,
+            prompts[ProgramKind.GENERATION],
+        )
+        if (
+            self.runtime_inputs.fact_source_kind != "direct_knowledge"
+            or self.runtime_inputs.fact_snapshot_id != self.knowledge_snapshot.id
+            or self.runtime_inputs.fact_snapshot_hash != self.knowledge_snapshot.snapshot_hash
+            or self.runtime_inputs.profile_source_kind != "manual_channel_style"
+            or self.runtime_inputs.profile_version_id != self.channel_style.style_id
+            or self.runtime_inputs.profile_hash != self.channel_style.style_hash
+        ):
+            raise SyntheticLabContractError("Direct Generation runtime snapshot changed")
+        if any(ref.project_id != self.project_id for ref in prompts.values()):
+            raise SyntheticLabContractError("Direct Generation Prompt crosses Project scope")
+        if len({ref.model_policy_hash for ref in prompts.values()}) != 1:
+            raise SyntheticLabContractError("Direct Generation Prompt policies differ")
+        snapshot_hash = canonical_hash(
+            {
+                "scenario": self.case,
+                "knowledge": self.knowledge_snapshot,
+                "channel_style": self.channel_style,
+            }
+        )
+        object.__setattr__(self, "input_snapshot_hash", snapshot_hash)
+        from geo_core.synthetic_lab.execution_task_hashing import direct_task_value
+
+        object.__setattr__(self, "input_hash", canonical_hash(direct_task_value(self)))
+
+    @property
+    def review_suite_hash(self) -> str:
+        return self.input_snapshot_hash
+
+
+@dataclass(frozen=True, kw_only=True)
 class CorpusFinalizeTask:
     project_id: UUID
     job_id: UUID
@@ -350,8 +457,13 @@ class OfflineExperimentRunTask:
 
 
 SyntheticExecutionTask: TypeAlias = (
-    StyleProfileBuildTask | ReviewCaseRunTask | CorpusFinalizeTask | OfflineExperimentRunTask
+    StyleProfileBuildTask
+    | ReviewCaseRunTask
+    | DirectGenerationTask
+    | CorpusFinalizeTask
+    | OfflineExperimentRunTask
 )
+ReviewExecutionTask: TypeAlias = ReviewCaseRunTask | DirectGenerationTask
 SyntheticExecutionOutput: TypeAlias = (
     StyleProfileBuildOutput
     | ReviewCaseRunOutput
@@ -405,7 +517,7 @@ ExecutionCheckpoint: TypeAlias = Callable[[], RuntimeInputSnapshot]
 
 
 def prompt_refs(task: SyntheticExecutionTask) -> tuple[FrozenPromptRef, ...]:
-    if isinstance(task, ReviewCaseRunTask):
+    if isinstance(task, (ReviewCaseRunTask, DirectGenerationTask)):
         return tuple(
             task.prompts[kind] for kind in sorted(task.prompts, key=lambda item: item.value)
         )
@@ -442,6 +554,7 @@ __all__ = [
     "CorpusFinalizeTask",
     "ExecutionCheckpoint",
     "DIFY_SYNTHETIC_PROGRAM_KINDS",
+    "DirectGenerationTask",
     "FrozenEvidence",
     "FrozenPromptRef",
     "OfflineExperimentRunOutput",
@@ -449,6 +562,7 @@ __all__ = [
     "ResolvedSyntheticPrompt",
     "ReviewCaseRunOutput",
     "ReviewCaseRunTask",
+    "ReviewExecutionTask",
     "StyleProfileBuildOutput",
     "StyleProfileBuildTask",
     "SyntheticExecutionError",

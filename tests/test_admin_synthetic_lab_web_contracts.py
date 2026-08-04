@@ -25,26 +25,26 @@ def test_synthetic_loader_is_bounded_project_scoped_and_fail_closed() -> None:
     shell = (FEATURE.parent / "project-workbench/WorkbenchShell.tsx").read_text(encoding="utf-8")
     tabs = (FEATURE.parent / "project-workbench/tabs.ts").read_text(encoding="utf-8")
     data = source("syntheticLabData.ts")
-    types = source("syntheticLabTypes.ts")
     primitives = source("syntheticLabTypePrimitives.ts")
 
     assert 'activeTab === "synthetic-lab" ? loadSyntheticLabWorkspace(projectId, query)' in page
     assert "SyntheticLabWorkspace" in shell
-    assert "syntheticRuntimeUnavailable ? null : members.currentRole" in shell
+    assert "syntheticRuntimeUnavailable" not in shell
+    assert "currentRole={members.currentRole}" in shell
     assert 'id: "synthetic-lab", label: "合成测评实验室"' in tabs
-    assert "const PAGE_SIZE = 100" in data
+    assert "const JOB_PAGE_SIZE = 10" in data
     assert "await Promise.all([" in data
     for path in (
-        "/authorizations",
-        "/style-sources",
-        "/sample-import-previews",
-        "/resource-inventory",
-        "/style-profiles",
-        "/review-suites",
+        "/direct-generation/options",
+        "/model-gateway/options",
+        "/jobs",
         "/jobs/",
     ):
         assert path in data
-    assert "synthetic_suite_id" in data
+    for hidden_path in (
+        "/authorizations", "/style-sources", "/review-suites", "/style-profiles"
+    ):
+        assert hidden_path not in data
     assert "synthetic_job_id" in data
     assert "publication_eligible: false" in data
     assert "isSyntheticJob" in data
@@ -85,6 +85,8 @@ def test_every_synthetic_server_action_reauthorizes_membership_and_role() -> Non
         "admitStyleCollectionAction",
         "enqueueStyleProfileBuildAction",
         "enqueueReviewCaseRunAction",
+        "enqueueDirectGenerationAction",
+        "saveChannelStyleAction",
         "enqueueCandidateCorpusAction",
         "enqueueApprovedCorpusAction",
         "enqueueOfflineExperimentAction",
@@ -184,17 +186,17 @@ def test_governance_defaults_and_manual_review_are_fail_closed() -> None:
     assert "previewResponse.data.rows.filter((row) => row.selectable)" in actions
     assert "actorIdentityId: membership.identity_id" in action_support
     assert "actorIdentityId={actorIdentityId}" in shell
-    assert "actorIdentityId={actorIdentityId}" in workspace
-    browser = (ROOT / "tests/browser/admin-synthetic-lab.spec.ts").read_text(
-        encoding="utf-8"
-    )
-    assert "manual_approval_rejected" in browser
-    assert "权限不足，或授权/双人批准条件未满足" in browser
+    assert "SyntheticLabManagementViews" not in workspace
+    assert "SyntheticLabGovernanceForms" not in workspace
 
 
 def test_ui_covers_governance_review_generation_and_warning_contracts() -> None:
-    workspace = source("SyntheticLabWorkspace.tsx")
+    ui = source("SyntheticLabUI.tsx")
+    primary = source("SyntheticGenerationWorkbench.tsx")
+    channel_styles = source("SyntheticChannelStyleWorkspace.tsx")
+    management = source("SyntheticLabManagementViews.tsx")
     resources = source("SyntheticLabResourceForms.tsx")
+    resource_actions = source("syntheticLabResourceActions.ts")
     jobs = source("SyntheticLabJobForms.tsx")
     warnings = source("SyntheticLabWarnings.tsx")
 
@@ -202,25 +204,34 @@ def test_ui_covers_governance_review_generation_and_warning_contracts() -> None:
         "synthetic = true",
         "test_only = true",
         "publication_eligible = false",
-            "客户门户不读取、不展示且不可发布这些结果",
+        "不会进入客户门户，也不能直接发布",
     ):
-        assert marker in workspace
+        assert marker in ui
     for control in (
-            "采集授权",
-            "风格来源与人工样本",
-            "风格画像",
-            "测评套件 / 用例",
-            "生成、修订、语料与三臂实验",
+        "生成工作台",
+        "渠道风格",
     ):
-        assert control in workspace
+        assert control in ui
+    for hidden_control in ("实验室首页", "任务与结果", "语料实验", "测评套件", "授权设置"):
+        assert hidden_control not in ui
+    assert "生成一条仿真用户文案" in primary
+    assert "enqueueDirectGenerationAction" in primary
+    assert "refreshSyntheticJobAction" in primary
+    assert "本次实际调用的知识" in primary
+    assert "查看证据与追溯链" in primary
+    assert "九渠道手工风格设置" in channel_styles
+    assert "手工初始预设 · 待样本校准" in channel_styles
     assert "取消任务" in jobs
-    assert "构建 Profile" in jobs
-    assert "运行用例" in jobs
+    assert "构建风格画像" in jobs
+    assert "开始生成目标仿真文案" in jobs
     assert "runtime_selection_id" in jobs
-    assert "build_verification_status" in workspace
-    assert "rebuild_required" in workspace
-    assert "需新建版本并重建" in workspace
-    assert "不能原地重建" in workspace
+    assert "build_verification_status" in management
+    assert "rebuild_required" in management
+    assert "需要重建" in management
+    assert "不能用于新任务" in management
+    assert 'scroll={false}' in management
+    assert "router.replace" not in resources
+    assert "redirect(" in resource_actions
     assert "model-gateway/options" in source("syntheticLabData.ts")
     assert "EnqueueSyntheticJobForm" not in jobs
     assert "enqueueSyntheticJobAction" not in jobs
@@ -244,11 +255,13 @@ def test_ui_covers_governance_review_generation_and_warning_contracts() -> None:
     ):
         assert stratum in warnings
     assert "不会将缺失证据记为 0" in warnings
-    assert "<SyntheticLabWarnings />" in workspace
+    assert "knowledge_context_items" in primary
 
 
 def test_ui_has_empty_loading_error_conflict_long_value_and_mobile_guards() -> None:
     workspace = source("SyntheticLabWorkspace.tsx")
+    ui = source("SyntheticLabUI.tsx")
+    management = source("SyntheticLabManagementViews.tsx")
     support = source("syntheticLabActionSupport.ts")
     styles = source("SyntheticLab.module.css")
     fixture = (
@@ -256,9 +269,10 @@ def test_ui_has_empty_loading_error_conflict_long_value_and_mobile_guards() -> N
     ).read_text(encoding="utf-8")
 
     assert "SyntheticLabLoading" in workspace
-    assert "合成测评实验室暂不可用" in workspace
-    assert "LoadProblem" in workspace
-    assert "暂无风格来源" in workspace
+    assert "合成测评实验室暂不可用" not in workspace
+    assert "其他未依赖此数据的功能仍可继续使用" in ui
+    assert "人工导入暂不可用" in management
+    assert "还没有风格来源" in management
     assert "409" in support and "状态冲突" in support
     assert "extraordinarily-long-release-identity" in fixture
     assert "overflow-x: auto" in styles

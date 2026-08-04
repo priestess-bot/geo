@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from uuid import UUID
 
 from geo_core.synthetic_lab.corpus import CorpusVersion
 from geo_core.synthetic_lab.offline_results import ArmMetricSummary
@@ -36,6 +37,13 @@ class StyleProfileAggregateView:
 class SyntheticJobView:
     job: SyntheticJob
     warning_summary: Mapping[str, object] | None
+
+
+@dataclass(frozen=True)
+class SyntheticReviewResultView:
+    job_id: UUID
+    task: object
+    result: object
 
 
 def _corpus_warning_summary(corpus: CorpusVersion) -> Mapping[str, object]:
@@ -94,6 +102,7 @@ for _view_type in (
     SyntheticAggregateView,
     StyleProfileAggregateView,
     SyntheticJobView,
+    SyntheticReviewResultView,
 ):
     _view_type.__module__ = "geo_core.synthetic_lab.postgres_api_reads"
 
@@ -103,4 +112,5 @@ __all__ = [
     "SyntheticAggregateView",
     "SyntheticApiPage",
     "SyntheticJobView",
+    "SyntheticReviewResultView",
 ]

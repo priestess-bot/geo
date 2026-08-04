@@ -25,11 +25,17 @@ from geo_core.synthetic_lab.collection_execution_contracts import (
     StyleCollectionTask,
     TmpfsCapturePolicy,
 )
+from geo_core.synthetic_lab.channel_styles import (
+    ChannelStyleCalibration,
+    ChannelStyleProvenance,
+    ChannelStyleVersion,
+)
 from geo_core.synthetic_lab.domain import StyleAccessMode, StyleSourceStatus
 from geo_core.synthetic_lab.ports import (
     SyntheticLabIdempotencyConflict,
     SyntheticLabNotFound,
     SyntheticLabPersistenceError,
+    SyntheticLabVersionConflict,
 )
 from geo_core.synthetic_lab.postgres_api_reads import PostgresSyntheticApiReads
 from geo_core.synthetic_lab.postgres_api_resources import (
@@ -78,6 +84,58 @@ class PostgresSyntheticLabApi(PostgresSyntheticResourceApiMixin):
             uow_factory=self._uow_factory,
             reads=self._reads,
             manual_imports=self._manual_imports,
+        )
+
+    def direct_generation_options(self, principal: AccessPrincipal, **values: object):
+        project_id = project(values)
+        domain_principal(principal, project_id)
+        return self._reads.direct_generation_options(project_id)
+
+    def list_channel_styles(self, principal: AccessPrincipal, **values: object):
+        project_id = project(values)
+        domain_principal(principal, project_id)
+        return self._reads.channel_styles(
+            project_id,
+            limit=int_value(values["limit"]),
+            offset=int_value(values["offset"]),
+            channel=str(values["channel"]) if values.get("channel") else None,
+            include_history=bool(values.get("include_history", False)),
+        )
+
+    def create_channel_style(self, principal: AccessPrincipal, **values: object):
+        project_id = project(values)
+        actor = domain_principal(principal, project_id)
+        request = payload(values)
+        channel = str(values["channel"])
+        expected = int(request["expected_current_version"])
+        current = self._reads.current_channel_style(project_id, channel)
+        current_version = current.version_number if current is not None else 0
+        if current_version != expected:
+            raise SyntheticLabVersionConflict("Channel Style changed after it was loaded")
+        version_number = expected + 1
+        style_id = current.style_id if current is not None else stable_id(
+            project_id, channel, "channel-style-identity"
+        )
+        style = ChannelStyleVersion(
+            id=stable_id(project_id, values["idempotency_key"], "channel-style-version"),
+            project_id=project_id,
+            style_id=style_id,
+            version_number=version_number,
+            previous_version_id=current.id if current is not None else None,
+            channel=channel,
+            directive=str(request["directive"]).strip(),
+            provenance=(
+                ChannelStyleProvenance.MANUAL_INITIAL
+                if current is None
+                else ChannelStyleProvenance.MANUAL_EDIT
+            ),
+            calibration_status=ChannelStyleCalibration.PENDING_SAMPLE_CALIBRATION,
+        )
+        return self._resources.create_channel_style(
+            principal=actor,
+            style=style,
+            expected_version=expected,
+            idempotency_key=str(values["idempotency_key"]),
         )
 
     def list_authorizations(self, principal: AccessPrincipal, **values: object):
@@ -310,6 +368,22 @@ class PostgresSyntheticLabApi(PostgresSyntheticResourceApiMixin):
         domain_principal(principal, project_id)
         return self._reads.job_view(project_id, uuid_value(values["job_id"]))
 
+    def list_jobs(self, principal: AccessPrincipal, **values: object):
+        project_id = project(values)
+        domain_principal(principal, project_id)
+        return self._reads.jobs(
+            project_id,
+            limit=int_value(values["limit"]),
+            offset=int_value(values["offset"]),
+            kind=str(values["kind"]) if values.get("kind") is not None else None,
+            status=str(values["status"]) if values.get("status") is not None else None,
+        )
+
+    def get_job_result(self, principal: AccessPrincipal, **values: object):
+        project_id = project(values)
+        domain_principal(principal, project_id)
+        return self._reads.review_result(project_id, uuid_value(values["job_id"]))
+
     def cancel_job(self, principal: AccessPrincipal, **values: object):
         project_id = project(values)
         request = payload(values)
@@ -344,6 +418,23 @@ class PostgresSyntheticLabApi(PostgresSyntheticResourceApiMixin):
             case_id=request["case_id"],
             runtime_selection_id=request["runtime_selection_id"],
             style_pass_threshold=float(request["style_pass_threshold"]),
+            idempotency_key=str(values["idempotency_key"]),
+        )
+
+    def enqueue_direct_generation(self, principal: AccessPrincipal, **values: object):
+        project_id = project(values)
+        request = payload(values)
+        return self._execution_admission.enqueue_direct_generation(
+            principal=domain_principal(principal, project_id),
+            channel=str(request["channel"]),
+            subject_entity_id=request["subject_entity_id"],
+            generation_goal=str(request["generation_goal"]),
+            runtime_selection_id=request["runtime_selection_id"],
+            channel_style_version_id=request["channel_style_version_id"],
+            channel_style_hash=str(request["channel_style_hash"]),
+            knowledge_snapshot_hash=str(request["knowledge_snapshot_hash"]),
+            style_pass_threshold=float(request["style_pass_threshold"]),
+            include_competitor_context=bool(request["include_competitor_context"]),
             idempotency_key=str(values["idempotency_key"]),
         )
 

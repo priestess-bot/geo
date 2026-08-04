@@ -1,128 +1,129 @@
 import { runtimeRequest, type RuntimeResult } from "../../../../runtime";
 import {
-  isAuthorizationPage,
-  isManualImportPreview,
-  isManualImportPreviewPage,
-  isReviewCasePage,
-  isReviewSuitePage,
-  isStyleProfilePage,
-  isStyleLoginSecretPage,
-  isStyleSourcePage,
+  isDirectGenerationOptions,
   isSyntheticJob,
-  isSyntheticResourceInventory,
+  isSyntheticJobPage,
+  isSyntheticReviewResult,
   isSyntheticRuntimeOptions,
-  type CollectionAuthorization,
-  type ManualImportPreview,
-  type ManualImportPreviewSummary,
-  type ReviewCase,
-  type ReviewSuite,
-  type StyleProfile,
-  type StyleLoginSecretPage,
-  type StyleSource,
+  type DirectGenerationOptions,
   type SyntheticJob,
+  type SyntheticLabView,
   type SyntheticLoadProblem,
   type SyntheticPage,
   type SyntheticResourceInventory,
+  type SyntheticReviewResult,
   type SyntheticRuntimeOptions,
   type SyntheticWorkspaceData
 } from "./syntheticLabTypes";
 
 type SearchParams = { [key: string]: string | string[] | undefined };
-const PAGE_SIZE = 100;
+const JOB_PAGE_SIZE = 10;
 
 export async function loadSyntheticLabWorkspace(
   projectId: string,
   query: SearchParams
 ): Promise<SyntheticWorkspaceData> {
   const base = `/v1/projects/${encodeURIComponent(projectId)}/synthetic-lab`;
-  const selectedSuiteId = queryValue(query, "synthetic_suite_id") || null;
+  const currentView = normalizeSyntheticView(queryValue(query, "synthetic_view"));
   const selectedJobId = queryValue(query, "synthetic_job_id") || null;
-  const selectedImportPreviewId = queryValue(query, "synthetic_import_preview_id") || null;
-  const [authorizations, sources, previews, selectedPreview, inventory, runtimes, loginSecrets, profiles, suites, cases, job] = await Promise.all([
-    runtimeRequest<SyntheticPage<CollectionAuthorization>>(`${base}/authorizations`, pageQuery()),
-    runtimeRequest<SyntheticPage<StyleSource>>(`${base}/style-sources`, pageQuery()),
-    runtimeRequest<SyntheticPage<ManualImportPreviewSummary>>(
-      `${base}/sample-import-previews`, pageQuery()
-    ),
-    selectedImportPreviewId
-      ? runtimeRequest<ManualImportPreview>(
-        `${base}/sample-import-previews/${encodeURIComponent(selectedImportPreviewId)}`
-      )
-      : Promise.resolve(null),
-    runtimeRequest<SyntheticResourceInventory>(`${base}/resource-inventory`),
+  const requestedRuntimeId = queryValue(query, "synthetic_runtime_id") || null;
+  const requestedThreshold = Number(queryValue(query, "synthetic_style_threshold"));
+  const jobPage = positivePage(queryValue(query, "synthetic_page"));
+  const [directOptions, runtimes, jobs, job] = await Promise.all([
+    runtimeRequest<DirectGenerationOptions>(`${base}/direct-generation/options`),
     runtimeRequest<SyntheticRuntimeOptions>(
       `/v1/projects/${encodeURIComponent(projectId)}/model-gateway/options`
     ),
-    runtimeRequest<StyleLoginSecretPage>(
-      `/v1/projects/${encodeURIComponent(projectId)}/secrets`, pageQuery()
-    ),
-    runtimeRequest<SyntheticPage<StyleProfile>>(`${base}/style-profiles`, pageQuery()),
-    runtimeRequest<SyntheticPage<ReviewSuite>>(`${base}/review-suites`, pageQuery()),
-    selectedSuiteId
-      ? runtimeRequest<SyntheticPage<ReviewCase>>(
-        `${base}/review-suites/${encodeURIComponent(selectedSuiteId)}/cases`, pageQuery()
-      )
-      : Promise.resolve(null),
+    runtimeRequest<SyntheticPage<SyntheticJob>>(`${base}/jobs`, {
+      query: {
+        kind: "candidate_generation",
+        limit: JOB_PAGE_SIZE,
+        offset: (jobPage - 1) * JOB_PAGE_SIZE
+      }
+    }),
     selectedJobId
       ? runtimeRequest<SyntheticJob>(`${base}/jobs/${encodeURIComponent(selectedJobId)}`)
       : Promise.resolve(null)
   ]);
-  const authorizationValid = authorizations.ok && isAuthorizationPage(authorizations.data);
-  const sourcesValid = sources.ok && isStyleSourcePage(sources.data);
-  const previewsValid = previews.ok && isManualImportPreviewPage(previews.data);
-  const selectedPreviewValid = selectedPreview?.ok && isManualImportPreview(selectedPreview.data);
-  const inventoryValid = inventory.ok && isSyntheticResourceInventory(inventory.data);
+  const directOptionsValid = directOptions.ok
+    && isDirectGenerationOptions(directOptions.data);
   const runtimesValid = runtimes.ok && isSyntheticRuntimeOptions(runtimes.data);
-  const loginSecretsValid = loginSecrets.ok && isStyleLoginSecretPage(loginSecrets.data);
-  const profilesValid = profiles.ok && isStyleProfilePage(profiles.data);
-  const suitesValid = suites.ok && isReviewSuitePage(suites.data);
-  const casesValid = cases?.ok && isReviewCasePage(cases.data);
+  const jobsValid = jobs.ok && isSyntheticJobPage(jobs.data);
   const jobValid = job?.ok && isSyntheticJob(job.data);
+  const shouldLoadResult = Boolean(
+    jobValid && job.data.kind === "candidate_generation" && job.data.status === "succeeded"
+  );
+  const result = selectedJobId && shouldLoadResult
+    ? await runtimeRequest<SyntheticReviewResult>(
+      `${base}/jobs/${encodeURIComponent(selectedJobId)}/result`
+    )
+    : null;
+  const resultValid = result?.ok && isSyntheticReviewResult(result.data);
+
   return {
-    authorizations: authorizationValid ? authorizations.data : emptyPage(),
-    ...(!authorizationValid
-      ? { authorizationsProblem: loadProblem(authorizations, "Authorization 列表加载失败。") }
+    currentView,
+    generationDefaults: {
+      caseId: null,
+      runtimeId: requestedRuntimeId,
+      stylePassThreshold: Number.isFinite(requestedThreshold)
+        && requestedThreshold >= 0 && requestedThreshold <= 5
+        ? requestedThreshold : 4.2
+    },
+    directOptions: directOptionsValid ? directOptions.data : emptyDirectOptions(),
+    ...(!directOptionsValid
+      ? { directOptionsProblem: loadProblem(directOptions, "生成选项加载失败。") }
       : {}),
-    sources: sourcesValid ? sources.data : emptyPage(),
-    ...(!sourcesValid ? { sourcesProblem: loadProblem(sources, "Style Source 列表加载失败。") } : {}),
-    importPreviews: previewsValid ? previews.data : emptyPage(),
-    ...(!previewsValid
-      ? { importPreviewsProblem: loadProblem(previews, "导入预览列表加载失败。") }
-      : {}),
-    selectedImportPreview: selectedPreviewValid ? selectedPreview.data : null,
-    ...(selectedPreview && !selectedPreviewValid
-      ? { importPreviewProblem: loadProblem(selectedPreview, "导入预览详情加载失败。") }
-      : {}),
-    inventory: inventoryValid ? inventory.data : emptyInventory(),
-    ...(!inventoryValid
-      ? { inventoryProblem: loadProblem(inventory, "Synthetic 资源选项加载失败。") }
-      : {}),
+    jobPage,
     runtimeOptions: runtimesValid ? runtimes.data : emptyRuntimeOptions(),
     ...(!runtimesValid
-      ? { runtimeOptionsProblem: loadProblem(runtimes, "已批准模型运行时目录加载失败。") }
+      ? { runtimeOptionsProblem: loadProblem(runtimes, "模型运行时加载失败。") }
       : {}),
-    loginSecrets: loginSecretsValid
-      ? loginSecrets.data.items.filter((item) => item.status === "active"
-        && item.current_version !== null
-        && item.purpose.startsWith("style_collection_login."))
-      : [],
-    ...(!loginSecretsValid
-      ? { loginSecretsProblem: loadProblem(loginSecrets, "Style Collection Secret 列表加载失败。") }
-      : {}),
-    profiles: profilesValid ? profiles.data : emptyPage(),
-    ...(!profilesValid ? { profilesProblem: loadProblem(profiles, "Profile 列表加载失败。") } : {}),
-    suites: suitesValid ? suites.data : emptyPage(),
-    ...(!suitesValid ? { suitesProblem: loadProblem(suites, "Review Suite 列表加载失败。") } : {}),
-    selectedSuiteId,
-    selectedCases: casesValid ? cases.data : emptyPage(),
-    ...(cases && !casesValid ? { casesProblem: loadProblem(cases, "Review Case 列表加载失败。") } : {}),
+    jobs: jobsValid ? jobs.data : emptyPage(JOB_PAGE_SIZE),
+    ...(!jobsValid ? { jobsProblem: loadProblem(jobs, "生成记录加载失败。") } : {}),
     selectedJob: jobValid ? job.data : null,
-    ...(job && !jobValid ? { jobProblem: loadProblem(job, "Synthetic Job 加载失败。") } : {})
+    ...(job && !jobValid ? { jobProblem: loadProblem(job, "生成任务加载失败。") } : {}),
+    selectedResult: resultValid ? result.data : null,
+    ...(result && !resultValid
+      ? { resultProblem: loadProblem(result, "生成结果加载失败。") }
+      : {}),
+
+    // Legacy management data remains available to internal API clients, but is intentionally
+    // not fetched by the direct-generation workspace.
+    authorizations: emptyPage(),
+    sources: emptyPage(),
+    importPreviews: emptyPage(),
+    selectedImportPreview: null,
+    inventory: emptyInventory(),
+    loginSecrets: [],
+    profiles: emptyPage(),
+    suites: emptyPage(),
+    selectedSuiteId: null,
+    selectedCases: emptyPage()
   };
+}
+
+function normalizeSyntheticView(value: string | undefined): SyntheticLabView {
+  return value === "style" ? "style" : "generate";
+}
+
+function positivePage(value: string | undefined): number {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 1;
 }
 
 function emptyRuntimeOptions(): SyntheticRuntimeOptions {
   return { current_manifest_id: null, items: [] };
+}
+
+function emptyDirectOptions(): DirectGenerationOptions {
+  return {
+    synthetic: true,
+    test_only: true,
+    publication_eligible: false,
+    subjects: [],
+    channel_styles: [],
+    has_competitor_knowledge: false
+  };
 }
 
 function emptyInventory(): SyntheticResourceInventory {
@@ -141,18 +142,14 @@ function emptyInventory(): SyntheticResourceInventory {
   };
 }
 
-function pageQuery() {
-  return { query: { limit: PAGE_SIZE, offset: 0 } } as const;
-}
-
-function emptyPage<T>(): SyntheticPage<T> {
+function emptyPage<T>(limit = 100): SyntheticPage<T> {
   return {
     synthetic: true,
     test_only: true,
     publication_eligible: false,
     items: [],
     total: 0,
-    limit: PAGE_SIZE,
+    limit,
     offset: 0
   };
 }
@@ -165,13 +162,17 @@ function loadProblem(
     return {
       ...(response.status === undefined ? {} : { status: response.status }),
       detail: response.error || fallback,
-      ...(response.problem.correlation_id ? { correlationId: response.problem.correlation_id } : {})
+      ...(response.problem.correlation_id
+        ? { correlationId: response.problem.correlation_id }
+        : {})
     };
   }
   return {
     status: 502,
-    detail: "Synthetic Lab 接口返回了不安全或无法识别的响应。",
-    ...(response.response.correlationId ? { correlationId: response.response.correlationId } : {})
+    detail: "合成测评接口返回了无法识别的响应。",
+    ...(response.response.correlationId
+      ? { correlationId: response.response.correlationId }
+      : {})
   };
 }
 

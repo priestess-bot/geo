@@ -8,9 +8,10 @@ from uuid import UUID
 
 from geo_core.prompts.program_contracts import ProgramKind
 from geo_core.synthetic_lab.application_support import canonical_hash
+from geo_core.synthetic_lab.direct_generation import DirectGenerationScenario
 from geo_core.synthetic_lab.evaluation import ClaimAssessment, FactStatus
 from geo_core.synthetic_lab.execution_contracts import (
-    ReviewCaseRunTask,
+    ReviewExecutionTask,
     SyntheticExecutionError,
     SyntheticExecutionResult,
     SyntheticModelResult,
@@ -46,8 +47,14 @@ class _FrozenLineageValues(TypedDict):
     response_hash: str
 
 
-def common_review_input(task: ReviewCaseRunTask) -> dict[str, object]:
-    untrusted_text = task.case.creative_reference or ""
+def common_review_input(task: ReviewExecutionTask) -> dict[str, object]:
+    # Direct goals are authenticated operator instructions. Legacy guided cases
+    # can contain pasted third-party material and remain untrusted by design.
+    untrusted_text = (
+        ""
+        if isinstance(task.case, DirectGenerationScenario)
+        else task.case.creative_reference or ""
+    )
     primary_subject = str(task.subject_id)
     subject_ids = list(
         dict.fromkeys((primary_subject, *(item.subject_id for item in task.evidence)))
@@ -73,7 +80,7 @@ def common_review_input(task: ReviewCaseRunTask) -> dict[str, object]:
 
 
 def frozen_call_lineage(
-    task: ReviewCaseRunTask,
+    task: ReviewExecutionTask,
     result: SyntheticExecutionResult,
     kind: ProgramKind,
 ) -> FrozenExecutionLineage:
@@ -118,7 +125,7 @@ def frozen_call_lineage(
 
 
 def claim_assessments(
-    task: ReviewCaseRunTask,
+    task: ReviewExecutionTask,
     claims: tuple[Mapping[str, object], ...],
     conflict_output: Mapping[str, object],
 ) -> tuple[ClaimAssessment, ...]:
@@ -184,6 +191,9 @@ def claim_assessments(
                     FactStatus.DERIVED_OR_UNKNOWN.value
                     if status is FactStatus.DERIVED_OR_UNKNOWN
                     else None
+                ),
+                evidence_refs=string_tuple(
+                    claim.get("evidence_refs"), "claim evidence refs"
                 ),
             )
         )

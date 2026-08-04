@@ -19,6 +19,12 @@ def test_canonical_runtime_manifest_excludes_non_geo_projects() -> None:
 
 
 def test_stack_entrypoints_are_executable() -> None:
-    for relative in ("scripts/geo-stack.sh", "scripts/geo_migrate.py", "deploy/install.sh"):
+    for relative in ("scripts/geo-stack.sh", "scripts/geo_migrate.py", "scripts/geo_sync.py", "deploy/install.sh"):
         mode = (ROOT / relative).stat().st_mode
         assert mode & 0o111, relative
+
+
+def test_manifest_declares_encrypted_release_transport() -> None:
+    manifest = json.loads((ROOT / "infra/geo-stack-manifest.json").read_text(encoding="utf-8"))
+    assert manifest["migration_entrypoint"] == "scripts/geo_sync.py"
+    assert "private GitHub Release" in manifest["migration_transport"]

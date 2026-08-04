@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from uuid import UUID
 
 from geo_core.synthetic_lab.application_support import (
     assert_runtime_current,
+    assert_runtime_snapshot_current,
     command_identity,
     new_outbox_message,
     new_synthetic_job,
@@ -15,6 +17,7 @@ from geo_core.synthetic_lab.application_support import (
 )
 from geo_core.synthetic_lab.execution_contracts import (
     CorpusFinalizeTask,
+    DirectGenerationTask,
     OfflineExperimentRunTask,
     ReviewCaseRunTask,
     StyleProfileBuildTask,
@@ -31,6 +34,7 @@ from geo_core.synthetic_lab.ports import (
     SyntheticCommandOperation,
     SyntheticJob,
     SyntheticLabUnitOfWorkFactory,
+    VersionedAggregate,
 )
 
 
@@ -49,6 +53,7 @@ class SyntheticExecutionApplication:
         idempotency_key: str,
         recovery_of_attempt_id: UUID | None = None,
         dify_reconciliation_token: str | None = None,
+        supporting_aggregates: tuple[VersionedAggregate, ...] = (),
     ) -> CommandReceipt:
         require_roles(principal, task.project_id, LabRole.OPERATOR, LabRole.REVIEWER)
         if (recovery_of_attempt_id is None) != (dify_reconciliation_token is None):
@@ -65,11 +70,22 @@ class SyntheticExecutionApplication:
             raise SyntheticExecutionError(
                 "Synthetic execution task requester must match the admitting principal"
             )
-        current = assert_runtime_current(
-            task.runtime_inputs,
-            runtime_inputs,
-            require_frozen_profile=not isinstance(task, StyleProfileBuildTask),
-        )
+        if isinstance(task, DirectGenerationTask):
+            if not _contains_direct_snapshot(task, supporting_aggregates):
+                raise SyntheticExecutionError(
+                    "Direct Generation admission requires its exact knowledge snapshot"
+                )
+            current = runtime_inputs.current(task.runtime_inputs)
+            current = assert_runtime_snapshot_current(
+                task.runtime_inputs,
+                replace(current, facts_current_approved=True),
+            )
+        else:
+            current = assert_runtime_current(
+                task.runtime_inputs,
+                runtime_inputs,
+                require_frozen_profile=not isinstance(task, StyleProfileBuildTask),
+            )
         for prompt in prompt_refs(task):
             prompts.assert_current(prompt)
         kind, event_type = _task_kind(task)
@@ -111,6 +127,12 @@ class SyntheticExecutionApplication:
                 },
                 runtime_inputs=current,
             )
+            for aggregate in supporting_aggregates:
+                if aggregate.project_id != task.project_id:
+                    raise SyntheticExecutionError(
+                        "Synthetic supporting aggregate crosses Project scope"
+                    )
+                uow.aggregates.stage(aggregate, expected_version=0)
             uow.jobs.stage(job, expected_version=0)
             uow.execution_tasks.stage(task, expected_job_input_hash=job.input_hash)
             uow.outbox.stage(
@@ -134,13 +156,25 @@ class SyntheticExecutionApplication:
 def _task_kind(task: SyntheticExecutionTask) -> tuple[str, str]:
     if isinstance(task, StyleProfileBuildTask):
         return "style.profile.build", "synthetic.style.profile.build.queued"
-    if isinstance(task, ReviewCaseRunTask):
+    if isinstance(task, (ReviewCaseRunTask, DirectGenerationTask)):
         return "review.case.run", "synthetic.review.case.run.queued"
     if isinstance(task, CorpusFinalizeTask):
         return "corpus.finalize", "synthetic.corpus.finalize.queued"
     if isinstance(task, OfflineExperimentRunTask):
         return "offline_experiment.run", "synthetic.offline_experiment.run.queued"
     raise TypeError("unsupported Synthetic execution task")
+
+
+def _contains_direct_snapshot(
+    task: DirectGenerationTask,
+    aggregates: tuple[VersionedAggregate, ...],
+) -> bool:
+    return any(
+        aggregate.kind == "direct_knowledge_snapshot"
+        and aggregate.resource_id == task.knowledge_snapshot.id
+        and aggregate.payload == task.knowledge_snapshot
+        for aggregate in aggregates
+    )
 
 
 __all__ = ["SyntheticExecutionApplication"]

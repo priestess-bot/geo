@@ -81,6 +81,44 @@
       ]
     }
   ],
+  "channel_styles": [
+    {
+      "channel": "owned_site",
+      "directive": "Write in clear Australian English for an official ADVINSYS page. Be helpful, specific, confident and restrained. Lead with the practical use case, use short paragraphs, and explain product fit in plain language. Make the first-party perspective clear; never impersonate an independent customer. Use only supplied knowledge. Never invent price, rating, discount, stock, delivery, warranty, ownership duration, verification, or unsupported performance. Do not copy source phrasing."
+    },
+    {
+      "channel": "amazon",
+      "directive": "Write in a direct Australian Amazon review or Q&A style, using two to four short paragraphs. Give practical context, concrete supported benefits, and one credible limitation or uncertainty when relevant. Do not claim Verified Purchase, a star rating, an order, delivery experience, ownership duration, price, discount, warranty outcome, or product performance unless the supplied knowledge explicitly supports it. Use only supplied knowledge and do not copy source phrasing."
+    },
+    {
+      "channel": "youtube",
+      "directive": "Write as a concise spoken YouTube review or comment in Australian English. Start with a clear hook, add a practical observation, and finish with a compact takeaway. Use restrained local phrasing rather than exaggerated creator language. Do not invent sponsorship, timestamps, test figures, ownership history, pricing, ratings, or performance. Use only supplied knowledge and do not copy source phrasing."
+    },
+    {
+      "channel": "tiktok",
+      "directive": "Write for a short mobile TikTok caption or voiceover in Australian English. Use an immediate practical hook and two to four compact sentences; at most one restrained colloquial phrase. Avoid hashtag stuffing, emoji decoration, viral claims, superlatives, invented demonstrations, pricing, ratings, ownership, or performance. Use only supplied knowledge and do not copy source phrasing."
+    },
+    {
+      "channel": "instagram",
+      "directive": "Write a visual-first, concise and warm Instagram caption or reply in Australian English. Describe one practical moment and a clear takeaway without sounding like corporate copy. Do not add a hashtag block, forced emojis, invented price or availability, ratings, ownership experience, delivery, warranty, or unsupported performance. Use only supplied knowledge and do not copy source phrasing."
+    },
+    {
+      "channel": "productreview",
+      "directive": "Write a structured Australian consumer review with a short descriptive title, usage context, balanced supported positives, known limitations or uncertainty, and a concise takeaway. Do not include a call to action. Never fabricate verification, star rating, ownership duration, retailer service, faults, price, delivery, warranty, or performance. Use only supplied knowledge and do not copy source phrasing."
+    },
+    {
+      "channel": "reddit",
+      "directive": "Write in candid, specific and slightly informal Australian English suitable for a Reddit discussion. Be sceptical of marketing language, state the practical context, discuss supported trade-offs, and be explicit about uncertainty. Avoid slogans, polished sales copy, fake consensus, votes, subreddit identity, ownership claims, pricing, ratings, or unsupported product history and performance. Use only supplied knowledge and do not copy source phrasing."
+    },
+    {
+      "channel": "ozbargain",
+      "directive": "Write in a direct, value-conscious Australian community style suitable for OzBargain. Mention price or value only when the supplied knowledge verifies it. If there is no verified offer, frame the text as a product discussion rather than a deal. Never invent a deal, coupon, stock level, historical low, merchant status, shipping, urgency, rating, ownership, or performance. Use only supplied knowledge and do not copy source phrasing."
+    },
+    {
+      "channel": "quora",
+      "directive": "Write a direct and helpful Australian English answer. Give the answer first, then concise reasoning in short paragraphs or a small list, and explain who the product may suit. Compare products only when supplied evidence supports the comparison. Do not add a sales call to action or invent credentials, ownership, competitor facts, pricing, ratings, verification, or performance. Use only supplied knowledge and do not copy source phrasing."
+    }
+  ],
   "destinations": [
     {
       "publication_channel": "owned_site",
@@ -228,6 +266,38 @@
       "subject_name": "ADVINSYS Seauto SAT30",
       "subject_role": "product",
       "statement": "ADVINSYS lists the Seauto SAT30 as a cordless robotic pool cleaner with a removable and replaceable battery."
+    }
+  ],
+  "approved_fact_seeds": [
+    {
+      "source_title": "ADVINSYS TerraMow V600 official product page",
+      "subject_name": "ADVINSYS TerraMow V600",
+      "subject_role": "product",
+      "statement": "Triple-Cam AI Vision Robot Mower V600"
+    },
+    {
+      "source_title": "ADVINSYS TerraMow V600 official product page",
+      "subject_name": "ADVINSYS TerraMow V600",
+      "subject_role": "product",
+      "statement": "600 ㎡ (0.15 Acre)"
+    },
+    {
+      "source_title": "ADVINSYS TerraMow V1000 official product page",
+      "subject_name": "ADVINSYS TerraMow V1000",
+      "subject_role": "product",
+      "statement": "Three high-resolution cameras work together to deliver 360° environmental awareness, enabling seamless navigation across any terrain."
+    },
+    {
+      "source_title": "ADVINSYS Seauto SAT30 official product page",
+      "subject_name": "ADVINSYS Seauto SAT30",
+      "subject_role": "product",
+      "statement": "Seauto SAT30"
+    },
+    {
+      "source_title": "ADVINSYS Seauto SAT30 official product page",
+      "subject_name": "ADVINSYS Seauto SAT30",
+      "subject_role": "product",
+      "statement": "Cordless Robotic Pool Vacuum 2026 | Removable & Replaceable Battery"
     }
   ]
 }

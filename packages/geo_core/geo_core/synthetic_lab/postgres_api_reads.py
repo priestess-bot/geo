@@ -7,6 +7,7 @@ from uuid import UUID
 from geo_core.synthetic_lab.authorization import AuthorizationRecord
 from geo_core.synthetic_lab.execution_contracts import (
     CorpusFinalizeOutput,
+    DirectGenerationTask,
     ReviewCaseRunOutput,
     ReviewCaseRunTask,
 )
@@ -28,10 +29,15 @@ from geo_core.synthetic_lab.postgres_api_read_models import (
     SyntheticAggregateView,
     SyntheticApiPage,
 )
+from geo_core.synthetic_lab.postgres_api_direct_reads import (
+    _PostgresSyntheticApiDirectReads,
+)
 from geo_core.synthetic_lab.postgres_api_reads_tail import _PostgresSyntheticApiReadsTail
 
 
-class PostgresSyntheticApiReads(_PostgresSyntheticApiReadsTail):
+class PostgresSyntheticApiReads(
+    _PostgresSyntheticApiDirectReads, _PostgresSyntheticApiReadsTail
+):
     def __init__(self, connection_factory) -> None:
         self._connection_factory = connection_factory
 
@@ -224,7 +230,7 @@ class PostgresSyntheticApiReads(_PostgresSyntheticApiReadsTail):
                     "channel": task.case.channel,
                 }
                 for job_id, task, result in completed
-                if isinstance(task, ReviewCaseRunTask)
+                if isinstance(task, (ReviewCaseRunTask, DirectGenerationTask))
                 and isinstance(result, ReviewCaseRunOutput)
                 and result.resolved_candidate_text is not None
                 and result.resolution.offline_experiment_eligible

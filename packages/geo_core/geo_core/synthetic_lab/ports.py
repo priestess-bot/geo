@@ -86,6 +86,7 @@ class SyntheticCommandOperation(StrEnum):
     CLAIM_COLLECTION = "claim_collection"
     CREATE_STYLE_SOURCE = "create_style_source"
     CREATE_STYLE_PROFILE = "create_style_profile"
+    CREATE_CHANNEL_STYLE = "create_channel_style"
     CREATE_REVIEW_SUITE = "create_review_suite"
     CREATE_REVIEW_CASE = "create_review_case"
     IMPORT_SAMPLES = "import_samples"
@@ -166,6 +167,8 @@ class RuntimeInputSnapshot:
     facts_current_approved: bool
     profile_frozen: bool
     prompt_frozen: bool
+    fact_source_kind: str = "evidence_pack"
+    profile_source_kind: str = "sample_profile"
 
     def __post_init__(self) -> None:
         for value in (
@@ -175,6 +178,10 @@ class RuntimeInputSnapshot:
         ):
             if not _SHA256.fullmatch(value):
                 raise ValueError("Synthetic Lab runtime input hashes must be SHA-256")
+        if self.fact_source_kind not in {"evidence_pack", "direct_knowledge"}:
+            raise ValueError("Synthetic Lab Fact source kind is unsupported")
+        if self.profile_source_kind not in {"sample_profile", "manual_channel_style"}:
+            raise ValueError("Synthetic Lab Profile source kind is unsupported")
 
 
 @dataclass(frozen=True, kw_only=True)

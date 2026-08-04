@@ -24,6 +24,7 @@ from geo_core.synthetic_lab.execution_contracts import (
 from geo_core.synthetic_lab.execution_gateway import PromptProgramExecutionResolver
 from geo_core.workflow_runtime import WorkflowExecutionRequest, WorkflowExecutionResult
 from geo_core.workflow_runtime.contracts import canonical_json_hash as workflow_output_hash
+from geo_core.workflow_runtime.errors import RetryableWorkflowExecutionError
 from tests.unit.synthetic_lab.test_execution_prompt_contracts import (
     _RuntimeApplication,
     _hash,
@@ -171,6 +172,71 @@ def test_hybrid_executor_fails_closed_when_dify_executor_is_unavailable() -> Non
                 workflow_release_hash=_hash("frozen-workflow"),
             )
         )
+
+
+def test_dify_model_semantic_contract_failure_is_bounded_retryable() -> None:
+    runtime, frozen = _runtime(ProgramKind.CLAIM_EXTRACTION)
+    spec = default_prompt_bootstrap_spec(ProgramKind.CLAIM_EXTRACTION)
+    fixture = next(item for item in spec.fixtures if item.expected_valid)
+    structured_input = thaw_mapping(fixture.input_value)
+    prompt = PromptProgramExecutionResolver(_RuntimeApplication(runtime)).resolve(
+        frozen=frozen,
+        structured_input=structured_input,
+        output_schema=spec.schemas.output_schema,
+        application_output_schema=spec.schemas.application_output_schema,
+    )
+
+    class Native:
+        def execute(self, invocation: object) -> None:
+            del invocation
+            raise AssertionError("migrated claim extraction fell back to native")
+
+    class Workflows:
+        release_id = uuid4()
+        release_hash = _hash("dify-release")
+
+        def execute_frozen(
+            self,
+            lease: object,
+            request: WorkflowExecutionRequest,
+            *,
+            release_id,
+            release_hash,
+            validate_output=None,
+        ) -> None:
+            del lease, request
+            assert release_id == self.release_id
+            assert release_hash == self.release_hash
+            output = thaw_mapping(fixture.expected_output)
+            output["claims"][0]["classification"] = "derived_or_unknown"
+            output["claims"][0]["evidence_refs"] = [
+                structured_input["evidence"][0]["ref"]
+            ]
+            assert validate_output is not None
+            validate_output(output)
+
+    workflows = Workflows()
+    invocation = SyntheticModelInvocation(
+        lease=_lease(uuid4(), "synthetic.model.call"),
+        expected_job_version=1,
+        parent_task_input_hash=_hash("parent-task"),
+        runtime_inputs=_runtime_inputs(frozen, profile_id=uuid4()),
+        prompt=prompt,
+        admitted_by=uuid4(),
+        step_key="evaluate:candidate:claims",
+        structured_input=structured_input,
+        execution_backend=SyntheticExecutionBackend.DIFY,
+        workflow_release_id=workflows.release_id,
+        workflow_release_hash=workflows.release_hash,
+    )
+
+    with pytest.raises(RetryableWorkflowExecutionError) as captured:
+        HybridSyntheticModelCallExecutor(native=Native(), workflows=workflows).execute(
+            invocation
+        )
+
+    assert captured.value.code == "synthetic_output_invalid"
+    assert captured.value.retryable is True
 
 
 def test_hybrid_executor_keeps_offline_answer_on_native_runtime() -> None:

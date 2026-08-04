@@ -42,6 +42,10 @@ export function isHash(value: unknown): value is string {
   return typeof value === "string" && HASH_PATTERN.test(value);
 }
 
+export function isUuid(value: unknown): value is string {
+  return typeof value === "string" && UUID_PATTERN.test(value);
+}
+
 export function nullableHash(value: unknown): boolean {
   return value === null || isHash(value);
 }

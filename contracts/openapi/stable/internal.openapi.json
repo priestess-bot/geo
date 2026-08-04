@@ -4412,6 +4412,127 @@
         "title": "ChangeProjectMemberRoleRequest",
         "type": "object"
       },
+      "ChannelStyleResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "calibration_status": {
+            "enum": [
+              "pending_sample_calibration",
+              "sample_calibrated"
+            ],
+            "title": "Calibration Status",
+            "type": "string"
+          },
+          "channel": {
+            "enum": [
+              "owned_site",
+              "amazon",
+              "youtube",
+              "tiktok",
+              "instagram",
+              "productreview",
+              "reddit",
+              "ozbargain",
+              "quora"
+            ],
+            "title": "Channel",
+            "type": "string"
+          },
+          "directive": {
+            "maxLength": 16000,
+            "minLength": 1,
+            "title": "Directive",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "locale": {
+            "const": "en-AU",
+            "title": "Locale",
+            "type": "string"
+          },
+          "previous_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Version Id"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "provenance": {
+            "enum": [
+              "manual_initial",
+              "manual_edit"
+            ],
+            "title": "Provenance",
+            "type": "string"
+          },
+          "publication_eligible": {
+            "const": false,
+            "default": false,
+            "title": "Publication Eligible",
+            "type": "boolean"
+          },
+          "replayed": {
+            "default": false,
+            "title": "Replayed",
+            "type": "boolean"
+          },
+          "style_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Style Hash",
+            "type": "string"
+          },
+          "style_id": {
+            "format": "uuid",
+            "title": "Style Id",
+            "type": "string"
+          },
+          "synthetic": {
+            "const": true,
+            "default": true,
+            "title": "Synthetic",
+            "type": "boolean"
+          },
+          "test_only": {
+            "const": true,
+            "default": true,
+            "title": "Test Only",
+            "type": "boolean"
+          },
+          "version_number": {
+            "minimum": 1.0,
+            "title": "Version Number",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "style_id",
+          "version_number",
+          "channel",
+          "locale",
+          "directive",
+          "provenance",
+          "calibration_status",
+          "style_hash"
+        ],
+        "title": "ChannelStyleResponse",
+        "type": "object"
+      },
       "ClaimView": {
         "additionalProperties": false,
         "properties": {
@@ -6100,6 +6221,28 @@
           "viewport"
         ],
         "title": "CreateBrowserProfileRequest",
+        "type": "object"
+      },
+      "CreateChannelStyleRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "directive": {
+            "maxLength": 16000,
+            "minLength": 1,
+            "title": "Directive",
+            "type": "string"
+          },
+          "expected_current_version": {
+            "minimum": 0.0,
+            "title": "Expected Current Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_current_version",
+          "directive"
+        ],
+        "title": "CreateChannelStyleRequest",
         "type": "object"
       },
       "CreateConnectorConnectionRequest": {
@@ -8646,6 +8789,207 @@
         "title": "DifyUnresolvedAttemptResponse",
         "type": "object"
       },
+      "DirectGenerationOptionsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "channel_styles": {
+            "items": {
+              "$ref": "#/components/schemas/ChannelStyleResponse"
+            },
+            "title": "Channel Styles",
+            "type": "array"
+          },
+          "has_competitor_knowledge": {
+            "title": "Has Competitor Knowledge",
+            "type": "boolean"
+          },
+          "publication_eligible": {
+            "const": false,
+            "default": false,
+            "title": "Publication Eligible",
+            "type": "boolean"
+          },
+          "subjects": {
+            "items": {
+              "$ref": "#/components/schemas/DirectGenerationSubjectResponse"
+            },
+            "title": "Subjects",
+            "type": "array"
+          },
+          "synthetic": {
+            "const": true,
+            "default": true,
+            "title": "Synthetic",
+            "type": "boolean"
+          },
+          "test_only": {
+            "const": true,
+            "default": true,
+            "title": "Test Only",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "subjects",
+          "channel_styles",
+          "has_competitor_knowledge"
+        ],
+        "title": "DirectGenerationOptionsResponse",
+        "type": "object"
+      },
+      "DirectGenerationSubjectResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "canonical_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Url"
+          },
+          "competitor_knowledge_items": {
+            "items": {
+              "$ref": "#/components/schemas/DirectKnowledgeItemResponse"
+            },
+            "title": "Competitor Knowledge Items",
+            "type": "array"
+          },
+          "competitor_knowledge_snapshot_hash": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Competitor Knowledge Snapshot Hash"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "knowledge_items": {
+            "items": {
+              "$ref": "#/components/schemas/DirectKnowledgeItemResponse"
+            },
+            "title": "Knowledge Items",
+            "type": "array"
+          },
+          "knowledge_snapshot_hash": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledge Snapshot Hash"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "knowledge_items"
+        ],
+        "title": "DirectGenerationSubjectResponse",
+        "type": "object"
+      },
+      "DirectKnowledgeItemResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "conflicting": {
+            "default": false,
+            "title": "Conflicting",
+            "type": "boolean"
+          },
+          "evidence_id": {
+            "format": "uuid",
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "approved_fact",
+              "citation"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "matched": {
+            "default": false,
+            "title": "Matched",
+            "type": "boolean"
+          },
+          "snapshot_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Snapshot Hash",
+            "type": "string"
+          },
+          "source_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Title"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "subject_entity_id": {
+            "format": "uuid",
+            "title": "Subject Entity Id",
+            "type": "string"
+          },
+          "subject_name": {
+            "title": "Subject Name",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "trace_href": {
+            "title": "Trace Href",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence_id",
+          "kind",
+          "subject_entity_id",
+          "subject_name",
+          "summary",
+          "snapshot_hash",
+          "trace_href"
+        ],
+        "title": "DirectKnowledgeItemResponse",
+        "type": "object"
+      },
       "DriftReportPageResponse": {
         "additionalProperties": false,
         "properties": {
@@ -9372,6 +9716,80 @@
           "role"
         ],
         "title": "EnqueueCorpusFinalizeRequest",
+        "type": "object"
+      },
+      "EnqueueDirectGenerationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "channel": {
+            "enum": [
+              "owned_site",
+              "amazon",
+              "youtube",
+              "tiktok",
+              "instagram",
+              "productreview",
+              "reddit",
+              "ozbargain",
+              "quora"
+            ],
+            "title": "Channel",
+            "type": "string"
+          },
+          "channel_style_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Channel Style Hash",
+            "type": "string"
+          },
+          "channel_style_version_id": {
+            "format": "uuid",
+            "title": "Channel Style Version Id",
+            "type": "string"
+          },
+          "generation_goal": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Generation Goal",
+            "type": "string"
+          },
+          "include_competitor_context": {
+            "default": false,
+            "title": "Include Competitor Context",
+            "type": "boolean"
+          },
+          "knowledge_snapshot_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Knowledge Snapshot Hash",
+            "type": "string"
+          },
+          "runtime_selection_id": {
+            "format": "uuid",
+            "title": "Runtime Selection Id",
+            "type": "string"
+          },
+          "style_pass_threshold": {
+            "default": 4.2,
+            "maximum": 5.0,
+            "minimum": 0.0,
+            "title": "Style Pass Threshold",
+            "type": "number"
+          },
+          "subject_entity_id": {
+            "format": "uuid",
+            "title": "Subject Entity Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel",
+          "subject_entity_id",
+          "generation_goal",
+          "runtime_selection_id",
+          "channel_style_version_id",
+          "channel_style_hash",
+          "knowledge_snapshot_hash"
+        ],
+        "title": "EnqueueDirectGenerationRequest",
         "type": "object"
       },
       "EnqueueDriftJobRequest": {
@@ -28444,6 +28862,315 @@
         "title": "SurfaceSelectorRequest",
         "type": "object"
       },
+      "SyntheticCandidateEvaluationResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "candidate_id": {
+            "format": "uuid",
+            "title": "Candidate Id",
+            "type": "string"
+          },
+          "candidate_output_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Candidate Output Hash",
+            "type": "string"
+          },
+          "claim_assessments": {
+            "items": {
+              "$ref": "#/components/schemas/SyntheticClaimAssessmentResponse"
+            },
+            "title": "Claim Assessments",
+            "type": "array"
+          },
+          "configured_model": {
+            "title": "Configured Model",
+            "type": "string"
+          },
+          "correctable_issue_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Correctable Issue Codes",
+            "type": "array"
+          },
+          "disposition": {
+            "enum": [
+              "pass",
+              "warning",
+              "revise"
+            ],
+            "title": "Disposition",
+            "type": "string"
+          },
+          "evidence_artifact_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Evidence Artifact Hash",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "soft_issue_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Soft Issue Codes",
+            "type": "array"
+          },
+          "style_passed": {
+            "title": "Style Passed",
+            "type": "boolean"
+          },
+          "style_score": {
+            "maximum": 5.0,
+            "minimum": 0.0,
+            "title": "Style Score",
+            "type": "number"
+          },
+          "warning_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warning Codes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "candidate_id",
+          "candidate_output_hash",
+          "style_score",
+          "style_passed",
+          "disposition",
+          "correctable_issue_codes",
+          "soft_issue_codes",
+          "warning_codes",
+          "claim_assessments",
+          "provider",
+          "configured_model",
+          "evidence_artifact_hash"
+        ],
+        "title": "SyntheticCandidateEvaluationResponse",
+        "type": "object"
+      },
+      "SyntheticCandidateRevisionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "configured_model": {
+            "title": "Configured Model",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "issue_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Issue Codes",
+            "type": "array"
+          },
+          "parent_candidate_id": {
+            "format": "uuid",
+            "title": "Parent Candidate Id",
+            "type": "string"
+          },
+          "parent_output_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Parent Output Hash",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "revised_candidate_id": {
+            "format": "uuid",
+            "title": "Revised Candidate Id",
+            "type": "string"
+          },
+          "revised_output_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Revised Output Hash",
+            "type": "string"
+          },
+          "round_number": {
+            "maximum": 2.0,
+            "minimum": 1.0,
+            "title": "Round Number",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "round_number",
+          "parent_candidate_id",
+          "parent_output_hash",
+          "revised_candidate_id",
+          "revised_output_hash",
+          "issue_codes",
+          "provider",
+          "configured_model"
+        ],
+        "title": "SyntheticCandidateRevisionResponse",
+        "type": "object"
+      },
+      "SyntheticClaimAssessmentResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "claim_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Claim Hash",
+            "type": "string"
+          },
+          "evidence_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "expected_subject_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Subject Id"
+          },
+          "fact_hash": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fact Hash"
+          },
+          "fact_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fact Id"
+          },
+          "observed_subject_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed Subject Id"
+          },
+          "output_annotation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Annotation"
+          },
+          "status": {
+            "enum": [
+              "current_approved",
+              "derived_or_unknown",
+              "explicit_conflict",
+              "subject_mixup"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "claim_hash",
+          "status"
+        ],
+        "title": "SyntheticClaimAssessmentResponse",
+        "type": "object"
+      },
+      "SyntheticGenerationBatchResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "batch_number": {
+            "maximum": 2.0,
+            "minimum": 1.0,
+            "title": "Batch Number",
+            "type": "integer"
+          },
+          "candidate_count": {
+            "minimum": 1.0,
+            "title": "Candidate Count",
+            "type": "integer"
+          },
+          "configured_model": {
+            "title": "Configured Model",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "initial",
+              "regenerated"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "scenario_mode": {
+            "enum": [
+              "autonomous_scenario",
+              "guided_scenario"
+            ],
+            "title": "Scenario Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "batch_number",
+          "kind",
+          "scenario_mode",
+          "candidate_count",
+          "provider",
+          "configured_model"
+        ],
+        "title": "SyntheticGenerationBatchResponse",
+        "type": "object"
+      },
       "SyntheticJobResponse": {
         "additionalProperties": false,
         "properties": {
@@ -28612,6 +29339,59 @@
           "offset"
         ],
         "title": "SyntheticPageResponse[AuthorizationResponse]",
+        "type": "object"
+      },
+      "SyntheticPageResponse_ChannelStyleResponse_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ChannelStyleResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "publication_eligible": {
+            "const": false,
+            "default": false,
+            "title": "Publication Eligible",
+            "type": "boolean"
+          },
+          "synthetic": {
+            "const": true,
+            "default": true,
+            "title": "Synthetic",
+            "type": "boolean"
+          },
+          "test_only": {
+            "const": true,
+            "default": true,
+            "title": "Test Only",
+            "type": "boolean"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "SyntheticPageResponse[ChannelStyleResponse]",
         "type": "object"
       },
       "SyntheticPageResponse_ImportedSampleOptionResponse_": {
@@ -28932,6 +29712,59 @@
         "title": "SyntheticPageResponse[StyleSourceResponse]",
         "type": "object"
       },
+      "SyntheticPageResponse_SyntheticJobResponse_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SyntheticJobResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "minimum": 0.0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "publication_eligible": {
+            "const": false,
+            "default": false,
+            "title": "Publication Eligible",
+            "type": "boolean"
+          },
+          "synthetic": {
+            "const": true,
+            "default": true,
+            "title": "Synthetic",
+            "type": "boolean"
+          },
+          "test_only": {
+            "const": true,
+            "default": true,
+            "title": "Test Only",
+            "type": "boolean"
+          },
+          "total": {
+            "minimum": 0.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "SyntheticPageResponse[SyntheticJobResponse]",
+        "type": "object"
+      },
       "SyntheticResourceInventoryResponse": {
         "additionalProperties": false,
         "properties": {
@@ -29083,6 +29916,323 @@
           "status"
         ],
         "title": "SyntheticResourceOptionResponse",
+        "type": "object"
+      },
+      "SyntheticReviewResultResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "batches": {
+            "items": {
+              "$ref": "#/components/schemas/SyntheticGenerationBatchResponse"
+            },
+            "title": "Batches",
+            "type": "array"
+          },
+          "case_key": {
+            "title": "Case Key",
+            "type": "string"
+          },
+          "channel": {
+            "enum": [
+              "owned_site",
+              "amazon",
+              "youtube",
+              "tiktok",
+              "instagram",
+              "productreview",
+              "reddit",
+              "ozbargain",
+              "quora"
+            ],
+            "title": "Channel",
+            "type": "string"
+          },
+          "channel_style_hash": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Style Hash"
+          },
+          "channel_style_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Style Version Id"
+          },
+          "channel_style_version_number": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Style Version Number"
+          },
+          "competitor_scenario": {
+            "title": "Competitor Scenario",
+            "type": "boolean"
+          },
+          "evaluations": {
+            "items": {
+              "$ref": "#/components/schemas/SyntheticCandidateEvaluationResponse"
+            },
+            "title": "Evaluations",
+            "type": "array"
+          },
+          "fact_snapshot_id": {
+            "format": "uuid",
+            "title": "Fact Snapshot Id",
+            "type": "string"
+          },
+          "failure_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Code"
+          },
+          "final_text": {
+            "anyOf": [
+              {
+                "maxLength": 100000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Text"
+          },
+          "generation_goal": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generation Goal"
+          },
+          "input_snapshot_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Snapshot Id"
+          },
+          "job_id": {
+            "format": "uuid",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "knowledge_context_items": {
+            "items": {
+              "$ref": "#/components/schemas/DirectKnowledgeItemResponse"
+            },
+            "title": "Knowledge Context Items",
+            "type": "array"
+          },
+          "knowledge_snapshot_hash": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledge Snapshot Hash"
+          },
+          "model_call_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Model Call Ids",
+            "type": "array"
+          },
+          "profile_version_id": {
+            "format": "uuid",
+            "title": "Profile Version Id",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "publication_eligible": {
+            "const": false,
+            "default": false,
+            "title": "Publication Eligible",
+            "type": "boolean"
+          },
+          "resolution_candidate_id": {
+            "format": "uuid",
+            "title": "Resolution Candidate Id",
+            "type": "string"
+          },
+          "result_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Result Hash",
+            "type": "string"
+          },
+          "review_case_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Case Id"
+          },
+          "review_run_id": {
+            "format": "uuid",
+            "title": "Review Run Id",
+            "type": "string"
+          },
+          "review_suite_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Suite Version Id"
+          },
+          "revisions": {
+            "items": {
+              "$ref": "#/components/schemas/SyntheticCandidateRevisionResponse"
+            },
+            "title": "Revisions",
+            "type": "array"
+          },
+          "run_origin": {
+            "default": "regression",
+            "enum": [
+              "direct",
+              "regression"
+            ],
+            "title": "Run Origin",
+            "type": "string"
+          },
+          "runtime_selection_id": {
+            "format": "uuid",
+            "title": "Runtime Selection Id",
+            "type": "string"
+          },
+          "scenario_id": {
+            "format": "uuid",
+            "title": "Scenario Id",
+            "type": "string"
+          },
+          "scenario_mode": {
+            "enum": [
+              "autonomous_scenario",
+              "guided_scenario"
+            ],
+            "title": "Scenario Mode",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "passed",
+              "completed_with_warning",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "style_pass_threshold": {
+            "maximum": 5.0,
+            "minimum": 0.0,
+            "title": "Style Pass Threshold",
+            "type": "number"
+          },
+          "synthetic": {
+            "const": true,
+            "default": true,
+            "title": "Synthetic",
+            "type": "boolean"
+          },
+          "test_only": {
+            "const": true,
+            "default": true,
+            "title": "Test Only",
+            "type": "boolean"
+          },
+          "warning_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warning Codes",
+            "type": "array"
+          },
+          "workflow_attempt_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Workflow Attempt Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "job_id",
+          "project_id",
+          "review_run_id",
+          "scenario_id",
+          "case_key",
+          "channel",
+          "scenario_mode",
+          "competitor_scenario",
+          "style_pass_threshold",
+          "runtime_selection_id",
+          "profile_version_id",
+          "fact_snapshot_id",
+          "status",
+          "warning_codes",
+          "resolution_candidate_id",
+          "result_hash",
+          "batches",
+          "evaluations",
+          "revisions",
+          "model_call_ids",
+          "workflow_attempt_ids"
+        ],
+        "title": "SyntheticReviewResultResponse",
         "type": "object"
       },
       "SyntheticWarningSummaryResponse": {
@@ -85331,6 +86481,796 @@
         ]
       }
     },
+    "/v1/projects/{project_id}/synthetic-lab/channel-styles": {
+      "get": {
+        "operationId": "listSyntheticChannelStyles",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "channel",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "owned_site",
+                    "amazon",
+                    "youtube",
+                    "tiktok",
+                    "instagram",
+                    "productreview",
+                    "reddit",
+                    "ozbargain",
+                    "quora"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Channel"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_history",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include History",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyntheticPageResponse_ChannelStyleResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "List Channel Styles",
+        "tags": [
+          "synthetic lab"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/synthetic-lab/channel-styles/{channel}/versions": {
+      "post": {
+        "operationId": "createSyntheticChannelStyleVersion",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "channel",
+            "required": true,
+            "schema": {
+              "enum": [
+                "owned_site",
+                "amazon",
+                "youtube",
+                "tiktok",
+                "instagram",
+                "productreview",
+                "reddit",
+                "ozbargain",
+                "quora"
+              ],
+              "title": "Channel",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "minLength": 8,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateChannelStyleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelStyleResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Create Channel Style",
+        "tags": [
+          "synthetic lab"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/synthetic-lab/direct-generation/options": {
+      "get": {
+        "operationId": "getSyntheticDirectGenerationOptions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectGenerationOptionsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Direct Generation Options",
+        "tags": [
+          "synthetic lab"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/synthetic-lab/jobs": {
+      "get": {
+        "operationId": "listSyntheticLabJobs",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "style_collection",
+                    "style_profile_build",
+                    "candidate_generation",
+                    "candidate_revision",
+                    "corpus_finalize",
+                    "offline_experiment"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "queued",
+                    "running",
+                    "finalizing",
+                    "retry_wait",
+                    "succeeded",
+                    "failed",
+                    "dead_lettered",
+                    "cancelled"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyntheticPageResponse_SyntheticJobResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "List Jobs",
+        "tags": [
+          "synthetic lab"
+        ]
+      }
+    },
     "/v1/projects/{project_id}/synthetic-lab/jobs/corpus": {
       "post": {
         "operationId": "enqueueSyntheticCorpusJob",
@@ -85501,6 +87441,181 @@
           }
         },
         "summary": "Enqueue Corpus",
+        "tags": [
+          "synthetic lab"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/synthetic-lab/jobs/direct-generation": {
+      "post": {
+        "operationId": "enqueueSyntheticDirectGenerationJob",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 256,
+              "minLength": 8,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnqueueDirectGenerationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyntheticJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Enqueue Direct Generation",
         "tags": [
           "synthetic lab"
         ]
@@ -86910,6 +89025,170 @@
           }
         },
         "summary": "Finalize Job",
+        "tags": [
+          "synthetic lab"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/synthetic-lab/jobs/{job_id}/result": {
+      "get": {
+        "operationId": "getSyntheticLabReviewResult",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyntheticReviewResultResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Get Job Result",
         "tags": [
           "synthetic lab"
         ]

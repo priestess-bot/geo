@@ -74,7 +74,7 @@ export function AuthorizationCommands({
   const reassessable = ["assessed_no_basis", "revoked", "expired"]
     .includes(authorization.effective_state);
   return (
-    <details className={styles.inlineDetails}>
+    <details className={styles.inlineDetails} suppressHydrationWarning>
       <summary>决策、撤销与重评</summary>
       <form action={decisionAction} className={styles.writeForm}>
         <CommonHidden idempotencyKey={commandKeys.decide} projectId={projectId} />

@@ -9,6 +9,7 @@ from geo_core.synthetic_lab.application_support import canonical_hash
 if TYPE_CHECKING:
     from geo_core.synthetic_lab.execution_contracts import (
         CorpusFinalizeTask,
+        DirectGenerationTask,
         OfflineExperimentRunTask,
         ReviewCaseRunTask,
         StyleProfileBuildTask,
@@ -44,6 +45,24 @@ def review_task_value(task: ReviewCaseRunTask) -> dict[str, object]:
         "case": task.case,
         "subject_id": task.subject_id,
         "evidence": task.evidence,
+        "style_profile_summary": task.style_profile_summary,
+        "style_pass_threshold": task.style_pass_threshold,
+        "runtime": task.runtime_inputs,
+        "prompts": {kind.value: ref.identity_hash for kind, ref in task.prompts.items()},
+    }
+
+
+def direct_task_value(task: DirectGenerationTask) -> dict[str, object]:
+    return {
+        "project_id": task.project_id,
+        "job_id": task.job_id,
+        "requested_by": task.requested_by,
+        "review_run_id": task.review_run_id,
+        "case": task.case,
+        "subject_id": task.subject_id,
+        "evidence": task.evidence,
+        "knowledge_snapshot": task.knowledge_snapshot,
+        "channel_style": task.channel_style,
         "style_profile_summary": task.style_profile_summary,
         "style_pass_threshold": task.style_pass_threshold,
         "runtime": task.runtime_inputs,
@@ -96,6 +115,7 @@ def offline_task_value(task: OfflineExperimentRunTask) -> dict[str, object]:
 
 __all__ = [
     "corpus_task_value",
+    "direct_task_value",
     "offline_task_value",
     "review_task_value",
     "style_task_value",

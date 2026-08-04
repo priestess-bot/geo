@@ -18,7 +18,7 @@ from geo_core.synthetic_lab.evaluation import CandidateEvaluation, EvaluationDis
 from geo_core.synthetic_lab.execution_contracts import (
     ExecutionCheckpoint,
     ReviewCaseRunOutput,
-    ReviewCaseRunTask,
+    ReviewExecutionTask,
     SyntheticExecutionError,
     SyntheticExecutionResult,
     SyntheticModelCallPort,
@@ -72,7 +72,7 @@ class ReviewCaseExecutor:
         self,
         *,
         lease: WorkerLease,
-        task: ReviewCaseRunTask,
+        task: ReviewExecutionTask,
         checkpoint: ExecutionCheckpoint,
     ) -> ReviewCaseRunOutput:
         model_calls: list[SyntheticExecutionResult] = []
@@ -190,7 +190,7 @@ class ReviewCaseExecutor:
         self,
         *,
         lease: WorkerLease,
-        task: ReviewCaseRunTask,
+        task: ReviewExecutionTask,
         batch_number: int,
         checkpoint: ExecutionCheckpoint,
         model_calls: list[SyntheticExecutionResult],
@@ -258,7 +258,7 @@ class ReviewCaseExecutor:
         self,
         *,
         lease: WorkerLease,
-        task: ReviewCaseRunTask,
+        task: ReviewExecutionTask,
         batch: GenerationBatch,
         texts: Mapping[UUID, str],
         checkpoint: ExecutionCheckpoint,
@@ -287,7 +287,7 @@ class ReviewCaseExecutor:
         self,
         *,
         lease: WorkerLease,
-        task: ReviewCaseRunTask,
+        task: ReviewExecutionTask,
         batch: GenerationBatch,
         work: _CandidateWork,
         round_number: int,
@@ -366,7 +366,7 @@ class ReviewCaseExecutor:
         self,
         *,
         lease: WorkerLease,
-        task: ReviewCaseRunTask,
+        task: ReviewExecutionTask,
         batch: GenerationBatch,
         candidate: GeneratedCandidate | RevisedCandidate,
         text: str,
@@ -478,7 +478,7 @@ class ReviewCaseExecutor:
         self,
         *,
         lease: WorkerLease,
-        task: ReviewCaseRunTask,
+        task: ReviewExecutionTask,
         kind: ProgramKind,
         structured_input: Mapping[str, object],
         step_key: str,
@@ -526,7 +526,7 @@ def _best_complete(items: tuple[_CandidateWork, ...]) -> _CandidateWork | None:
 
 
 def _resolution(
-    task: ReviewCaseRunTask,
+    task: ReviewExecutionTask,
     batch: GenerationBatch,
     work: _CandidateWork,
 ):

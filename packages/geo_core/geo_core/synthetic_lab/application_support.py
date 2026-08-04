@@ -148,7 +148,19 @@ def assert_runtime_current(
     *,
     require_frozen_profile: bool = True,
 ) -> RuntimeInputSnapshot:
-    current = port.current(frozen)
+    return assert_runtime_snapshot_current(
+        frozen,
+        port.current(frozen),
+        require_frozen_profile=require_frozen_profile,
+    )
+
+
+def assert_runtime_snapshot_current(
+    frozen: RuntimeInputSnapshot,
+    current: RuntimeInputSnapshot,
+    *,
+    require_frozen_profile: bool = True,
+) -> RuntimeInputSnapshot:
     frozen_identity = (
         frozen.project_id,
         frozen.fact_snapshot_id,
@@ -157,6 +169,8 @@ def assert_runtime_current(
         frozen.profile_hash,
         frozen.prompt_release_id,
         frozen.prompt_release_hash,
+        frozen.fact_source_kind,
+        frozen.profile_source_kind,
     )
     current_identity = (
         current.project_id,
@@ -166,6 +180,8 @@ def assert_runtime_current(
         current.profile_hash,
         current.prompt_release_id,
         current.prompt_release_hash,
+        current.fact_source_kind,
+        current.profile_source_kind,
     )
     if frozen_identity != current_identity:
         raise SyntheticLabStaleInput("frozen Fact/Profile/Prompt identity or hash changed")

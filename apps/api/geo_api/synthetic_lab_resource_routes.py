@@ -34,6 +34,7 @@ from geo_api.synthetic_lab_contracts import (
     SubmitStyleProfileRequest,
     SyntheticResourceInventoryResponse,
 )
+from geo_api.synthetic_lab_direct_routes import synthetic_lab_direct_resource_router
 from geo_api.synthetic_lab_presenters import (
     case_page,
     case_response,
@@ -62,6 +63,7 @@ from geo_api.synthetic_lab_route_support import (
 
 def synthetic_lab_resource_router() -> APIRouter:
     router = APIRouter()
+    router.include_router(synthetic_lab_direct_resource_router())
 
     @router.get(
         "/resource-inventory",

@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 
 import { runtimeRequest } from "../../../../runtime";
 import {
@@ -24,10 +25,12 @@ import {
 import {
   isManualImportPreview,
   isManualImportResult,
+  isChannelStyle,
   isReviewCase,
   isReviewSuite,
   isStyleProfile,
   isStyleSource,
+  type ChannelStyle,
   type ManualImportPreview,
   type ManualImportResult,
   type ReviewCase,
@@ -39,6 +42,40 @@ import {
 
 const CONTRIBUTORS = ["owner", "admin", "analyst"] as const;
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+
+export async function saveChannelStyleAction(
+  _previous: SyntheticActionState,
+  formData: FormData
+): Promise<SyntheticActionState> {
+  const projectId = field(formData, "project_id");
+  const access = await verifySyntheticActor(projectId, CONTRIBUTORS);
+  if (!access.ok) return access.state;
+  const channel = channelField(formData);
+  const expectedVersion = integerField(formData, "expected_current_version", 0);
+  const directive = requiredField(formData, "directive", 16_000);
+  const key = commandKey(formData);
+  if (!channel || expectedVersion === null || !directive || !key) {
+    return invalid("渠道、当前版本或风格说明无效。");
+  }
+  const response = await runtimeRequest<ChannelStyle>(
+    `${syntheticBase(projectId)}/channel-styles/${encodeURIComponent(channel)}/versions`,
+    {
+      method: "POST",
+      idempotencyKey: key,
+      body: { expected_current_version: expectedVersion, directive }
+    }
+  );
+  if (!response.ok) return commandFailure(response);
+  if (!isChannelStyle(response.data)) {
+    return upstreamInvalid("渠道风格响应不安全或无法识别。");
+  }
+  revalidateProject(projectId);
+  return safeState({
+    kind: "success",
+    message: `渠道风格版本 ${response.data.version_number} 已保存。`,
+    channelStyle: response.data
+  });
+}
 
 export async function createStyleSourceAction(
   _previous: SyntheticActionState,
@@ -72,7 +109,7 @@ export async function createStyleSourceAction(
       source_label: manual ? sourceLabel : null
     }
   });
-  return resourceResult(response, isStyleSource, projectId, "Style Source 已创建。");
+  return resourceResult(response, isStyleSource, projectId, "风格来源已创建。");
 }
 
 export async function createManualImportPreviewAction(
@@ -209,7 +246,7 @@ export async function createStyleProfileAction(
   if (!channel || !promptBindingId || expectedVersion !== 0 || !key || sampleIds.length < 1
     || sampleIds.length > 10_000 || sampleIds.some((value) => !UUID_PATTERN.test(value))
     || sampleIds.length !== new Set(sampleIds).size) {
-    return invalid("请选择同渠道的批准样本和当前冻结 Style Profile Prompt。");
+    return invalid("请选择同渠道的批准样本和当前冻结的风格画像 Prompt。");
   }
   const response = await runtimeRequest<StyleProfile>(`${syntheticBase(projectId)}/style-profiles`, {
     method: "POST",
@@ -222,7 +259,7 @@ export async function createStyleProfileAction(
       approved_sample_ids: sampleIds
     }
   });
-  return resourceResult(response, isStyleProfile, projectId, "Style Profile draft 已创建。");
+  return resourceResult(response, isStyleProfile, projectId, "风格画像草稿已创建。");
 }
 
 export async function createReviewSuiteAction(
@@ -241,7 +278,17 @@ export async function createReviewSuiteAction(
     idempotencyKey: key,
     body: { expected_version: 0, channel, suite_name: suiteName }
   });
-  return resourceResult(response, isReviewSuite, projectId, "Review Suite draft 已创建。");
+  if (!response.ok) return commandFailure(response);
+  if (!isReviewSuite(response.data)) {
+    return upstreamInvalid("测评套件响应不安全或无法识别。");
+  }
+  revalidateProject(projectId);
+  redirect(
+    syntheticHref(projectId, {
+      synthetic_view: "suites",
+      synthetic_suite_id: response.data.id
+    })
+  );
 }
 
 export async function createReviewCaseAction(
@@ -294,7 +341,7 @@ export async function createReviewCaseAction(
       }
     }
   );
-  return resourceResult(response, isReviewCase, projectId, "Review Case 已创建。");
+  return resourceResult(response, isReviewCase, projectId, "测评用例已创建。");
 }
 
 async function resourceResult<T>(

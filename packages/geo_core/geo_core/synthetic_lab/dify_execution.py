@@ -15,7 +15,7 @@ from geo_core.synthetic_lab.execution_contracts import (
     SyntheticWorkflowResult,
 )
 from geo_core.workflow_runtime import WorkflowExecutionRequest, WorkflowExecutor
-from geo_core.workflow_runtime.errors import WorkflowContractError
+from geo_core.workflow_runtime.errors import RetryableWorkflowExecutionError
 
 
 class HybridSyntheticModelCallExecutor:
@@ -62,9 +62,12 @@ class HybridSyntheticModelCallExecutor:
                     output=output,
                 )
             except Exception as exc:
-                raise WorkflowContractError(
+                # The frozen input and workflow release are valid here; only this
+                # stochastic model response violated the application contract.
+                # Let the bounded child Durable Job retry without weakening validation.
+                raise RetryableWorkflowExecutionError(
                     f"Dify synthetic output failed the frozen Prompt contract: {exc}",
-                    code="dify_synthetic_contract_invalid",
+                    code="synthetic_output_invalid",
                 ) from exc
 
         if invocation.workflow_release_id is None or invocation.workflow_release_hash is None:
