@@ -82,6 +82,16 @@ def test_host_archive_allows_internal_symlinks_but_rejects_escape(tmp_path: Path
         names = {member.name for member in payload.getmembers()}
     assert "alias.txt" in names
 
+    (source / "python").symlink_to("/usr/bin/python3.12")
+    runtime_archive = tmp_path / "runtime.tar.gz"
+    _host_tar(source, runtime_archive)
+    restored = tmp_path / "restored"
+    from scripts.geo_migrate import _extract_archive_to_directory
+
+    _extract_archive_to_directory(runtime_archive, restored)
+    assert (restored / "python").is_symlink()
+    assert (restored / "python").readlink() == Path("/usr/bin/python3.12")
+
     (source / "escape.txt").symlink_to("/etc/passwd")
     with pytest.raises(MigrationError, match="unsafe symlink"):
         _host_tar(source, tmp_path / "unsafe.tar.gz")

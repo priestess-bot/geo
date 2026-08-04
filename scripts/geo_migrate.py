@@ -45,6 +45,7 @@ _DIFY_PERSISTENT_DIRECTORIES = (
     ("app-storage", "app/storage"),
     ("plugin-daemon", "plugin_daemon"),
 )
+_SAFE_RUNTIME_ABSOLUTE_SYMLINKS = frozenset({"/usr/bin/python3", "/usr/bin/python3.12"})
 
 
 class MigrationError(RuntimeError):
@@ -204,8 +205,11 @@ def _host_tar(source: Path, destination: Path) -> None:
     with tarfile.open(destination, "w:gz") as archive:
         for item in sorted(source.rglob("*")):
             if item.is_symlink():
-                link_target = (item.parent / os.readlink(item)).resolve(strict=False)
-                if link_target != root and root not in link_target.parents:
+                link_name = os.readlink(item)
+                link_target = (item.parent / link_name).resolve(strict=False)
+                if os.path.isabs(link_name) and link_name not in _SAFE_RUNTIME_ABSOLUTE_SYMLINKS:
+                    raise MigrationError(f"persistent directory contains an unsafe symlink: {item}")
+                if not os.path.isabs(link_name) and link_target != root and root not in link_target.parents:
                     raise MigrationError(f"persistent directory contains an unsafe symlink: {item}")
                 archive.add(item, arcname=item.relative_to(source).as_posix(), recursive=False)
                 continue
@@ -463,7 +467,15 @@ def _extract_archive_to_directory(archive: Path, destination: Path) -> None:
             target = (destination / member.name).resolve()
             if destination not in target.parents:
                 raise MigrationError(f"unsafe state archive member: {member.name}")
-        payload.extractall(destination, filter="data")
+
+        def safe_filter(member: tarfile.TarInfo, path: str) -> tarfile.TarInfo:
+            if member.issym() and os.path.isabs(member.linkname):
+                if member.linkname not in _SAFE_RUNTIME_ABSOLUTE_SYMLINKS:
+                    raise MigrationError(f"unsafe state archive symlink: {member.name}")
+                return member
+            return tarfile.data_filter(member, path)
+
+        payload.extractall(destination, filter=safe_filter)
 
 
 def _copy_runtime_inputs(args: argparse.Namespace, payload: Path) -> list[str]:
