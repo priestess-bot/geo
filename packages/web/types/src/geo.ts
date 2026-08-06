@@ -378,49 +378,78 @@ export interface KnowledgeQuestionDimensionCreate {
   competitor_entity_id?: string | null;
 }
 export interface KnowledgeQuestionGenerationCreate {
+  generation_mode?: "single_scenario" | "coverage_pack";
   configured_model?: "deepseek-v4-flash"; model_call_budget?: number;
-  semantic_duplicate_threshold?: number; fact_candidate_ids: string[];
-  graph_entity_ids: string[]; dimensions: KnowledgeQuestionDimensionCreate[];
+  semantic_duplicate_threshold?: number; fact_candidate_ids?: string[];
+  graph_entity_ids?: string[]; dimensions?: KnowledgeQuestionDimensionCreate[];
+  coverage_profile?: string | null; target_count?: number | null;
+  custom_requirements?: string;
 }
 export interface KnowledgeQuestionGenerationCreated {
   job_id: string; project_id: string; campaign_id: string; status: JobState;
   input_hash: string; dimension_count: number; fact_input_count: number;
-  entity_input_count: number;
+  entity_input_count: number; generation_mode: "single_scenario" | "coverage_pack";
+  coverage_profile: string | null; target_count: number | null;
 }
 export interface KnowledgeQuestionGenerationView {
   job_id: string; project_id: string; campaign_id: string; status: JobState;
   input_hash: string; error_code: string | null; configured_model: string;
-  execution_backend: "dify" | "native" | null; actual_model: string | null;
+  execution_backend: "dify" | "native" | "hybrid" | "deterministic" | null;
+  actual_model: string | null;
   model_call_budget: number; adapter_release: string;
+  generation_mode: "single_scenario" | "coverage_pack"; coverage_profile: string | null;
+  coverage_profile_hash: string | null; target_count: number | null;
+  product_entity_id: string | null; product_category: string | null;
+  product_name_snapshot: string | null;
   semantic_duplicate_threshold: number; artifact_uri: string | null;
   artifact_hash: string | null; dimension_count: number | null;
   candidate_count: number | null; supported_dimension_count: number | null;
   possible_duplicate_count: number | null; generated_at: string | null; created_at: string;
+  batch_count: number; completed_batch_count: number; checkpoint_candidate_count: number;
+}
+export type KnowledgeQuestionCoverageRole =
+  | "category_benchmark" | "product_fit" | "brand_control";
+export interface KnowledgeQuestionCoverageProfileView {
+  project_id: string; key: string; version: number; hash: string; target_count: number;
+  primary_non_brand_count: number; brand_control_count: number; batch_size: number;
+  topic_clusters: Array<{ key: string; label: string; questions: number }>;
 }
 export type KnowledgeQuestionDedupStatus =
   | "unique" | "possible_duplicate" | "exact_duplicate";
 export type KnowledgeQuestionReviewStatus = "pending_review" | "approved" | "rejected";
 export interface KnowledgeQuestionCandidateView {
   id: string; project_id: string; campaign_id: string; generated_by_job_id: string;
-  dimension_key: string; variant_index: number; turn_index: 1 | 2 | 3;
+  dimension_key: string; ordinal: number; variant_index: number; turn_index: 1 | 2 | 3;
   parent_candidate_id: string | null; query_text: string; query_text_hash: string;
+  original_query_text: string; original_query_text_hash: string;
+  revision_id: string | null; revision_number: number | null; was_edited: boolean;
   semantic_fingerprint: string; dedup_status: KnowledgeQuestionDedupStatus;
   nearest_candidate_id: string | null; nearest_similarity: number | null;
   workflow_status: KnowledgeQuestionReviewStatus; review_notes: string | null;
+  brand_scope: KnowledgeQuestionBrandScope; coverage_role: KnowledgeQuestionCoverageRole | null;
+  topic_cluster: string | null; funnel: KnowledgeQuestionFunnel; query_kind: QueryKind;
+  subject: string;
   reviewed_at: string | null; fact_source_ids: string[]; entity_source_ids: string[];
   created_at: string;
 }
 export interface KnowledgeQuestionCandidateReview {
-  decision: "approved" | "rejected"; notes: string;
+  decision: "approved" | "rejected"; notes?: string | null;
 }
+export interface KnowledgeQuestionCandidateEdit { query_text: string; }
 export interface KnowledgeQuestionSetCreate {
   name: string; generation_job_id: string; candidate_ids: string[];
   series_id?: string | null; previous_version_id?: string | null;
+}
+export interface KnowledgeQuestionCoverageFinalize {
+  name: string; generation_job_id: string; included_candidate_ids: string[];
 }
 export interface KnowledgeQuestionSetItemView {
   id: string; ordinal: number; question_candidate_id: string; dimension_key: string;
   query_text_snapshot: string; query_text_hash: string; query_kind_snapshot: QueryKind;
   query_cluster_key: string; source_lineage_hash: string;
+  brand_scope_snapshot: KnowledgeQuestionBrandScope;
+  coverage_role_snapshot: KnowledgeQuestionCoverageRole | null;
+  topic_cluster_snapshot: string | null; funnel_snapshot: KnowledgeQuestionFunnel;
 }
 export interface KnowledgeQuestionSetView {
   id: string; project_id: string; campaign_id: string; series_id: string;

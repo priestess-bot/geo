@@ -1,0 +1,214 @@
+.page {
+  --question-border: #d4dde0;
+  --question-ink: #19282e;
+  --question-muted: #607078;
+  --question-primary: #176b62;
+  color: var(--question-ink);
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.pageToolbar {
+  align-items: end;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(220px, 1fr) minmax(220px, 310px) auto;
+  min-width: 0;
+}
+
+.pageTitle h1 {
+  font-size: 24px;
+  letter-spacing: 0;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.pageTitle p {
+  color: var(--question-muted);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 5px 0 0;
+}
+
+.pageTitle p strong {
+  color: #865d18;
+}
+
+.campaignControl,
+.campaignControl label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.campaignControl label > span {
+  color: var(--question-muted);
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.campaignControl select {
+  background: #fff;
+  border: 1px solid #aebdc3;
+  border-radius: 4px;
+  color: var(--question-ink);
+  font: inherit;
+  min-height: 38px;
+  min-width: 0;
+  padding: 8px 10px;
+  width: 100%;
+}
+
+.primaryAction,
+.simulationLink,
+.nextActionBar > a {
+  align-items: center;
+  background: var(--question-primary);
+  border: 1px solid var(--question-primary);
+  border-radius: 4px;
+  color: #fff;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 800;
+  justify-content: center;
+  min-height: 38px;
+  padding: 8px 14px;
+  text-decoration: none;
+}
+
+.primaryAction:hover,
+.simulationLink:hover,
+.nextActionBar > a:hover {
+  background: #105b53;
+}
+
+.steps {
+  background: #fff;
+  border: 1px solid var(--question-border);
+  border-radius: 6px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  min-width: 0;
+  overflow: hidden;
+}
+
+.step {
+  align-items: center;
+  border-left: 1px solid var(--question-border);
+  color: #4f626a;
+  display: flex;
+  gap: 10px;
+  min-height: 66px;
+  min-width: 0;
+  padding: 10px 16px;
+  text-decoration: none;
+}
+
+.step:first-child {
+  border-left: 0;
+}
+
+.step > span:last-child {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.step strong {
+  color: #31474f;
+  font-size: 13px;
+}
+
+.step small {
+  color: #718087;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.stepNumber {
+  align-items: center;
+  border: 1px solid #aebbc0;
+  border-radius: 50%;
+  display: inline-flex;
+  flex: 0 0 26px;
+  font-size: 12px;
+  font-weight: 850;
+  height: 26px;
+  justify-content: center;
+}
+
+.step.active {
+  background: #edf7f5;
+  box-shadow: inset 0 -3px var(--question-primary);
+}
+
+.step.active .stepNumber,
+.step.done .stepNumber {
+  background: var(--question-primary);
+  border-color: var(--question-primary);
+  color: #fff;
+}
+
+.step.done strong {
+  color: #215e58;
+}
+
+.step.idle {
+  background: #ffffff;
+}
+
+@media (max-width: 900px) {
+  .pageToolbar {
+    align-items: stretch;
+    grid-template-columns: minmax(0, 1fr) minmax(210px, 280px);
+  }
+
+  .pageTitle {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 700px) {
+  .page {
+    gap: 12px;
+  }
+
+  .pageToolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .pageTitle,
+  .campaignControl,
+  .primaryAction {
+    grid-column: auto;
+  }
+
+  .pageTitle h1 {
+    font-size: 21px;
+  }
+
+  .primaryAction {
+    width: 100%;
+  }
+
+  .steps {
+    border-radius: 4px;
+  }
+
+  .step {
+    align-items: flex-start;
+    gap: 6px;
+    min-height: 70px;
+    padding: 9px 7px;
+  }
+
+  .stepNumber {
+    flex-basis: 22px;
+    height: 22px;
+  }
+
+  .step small {
+    display: none;
+  }
+}

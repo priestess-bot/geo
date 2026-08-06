@@ -144,6 +144,7 @@
 }
 
 .resourceSelector input,
+.resourceSelector select,
 .commandForm input {
   background: #ffffff;
   border: 1px solid #aebdc3;
@@ -206,7 +207,7 @@
   padding: 24px clamp(16px, 4vw, 52px) 56px;
 }
 
-.workspace section,
+.workspace:not([data-question-workspace]) section,
 .overviewGrid > section {
   background: #ffffff;
   border: 1px solid #d2dade;
@@ -581,8 +582,7 @@
   .denominatorBand,
   .negativeBand { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .workspace { padding-inline: 12px; }
-  .workspace section,
+  .workspace:not([data-question-workspace]) section,
   .overviewGrid > section { padding: 13px; }
-  .viewTabs { padding-inline: 8px; }
   .sectionHeading { align-items: flex-start; }
 }

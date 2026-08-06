@@ -12,8 +12,10 @@ from geo_core.knowledge.question_domain import (
     QuestionEntityInput,
     QuestionFactInput,
     QuestionGenerationClaim,
+    QuestionCoverageSlotClaim,
     freeze_dimensions,
 )
+from geo_core.knowledge.question_coverage import build_coverage_question_plan
 from geo_core.knowledge.question_worker import KnowledgeQuestionGenerateHandler
 from geo_core.rag import RagSelection
 from geo_core.workflow_runtime import (
@@ -43,10 +45,29 @@ class FakeRepository:
         self.reserve_calls = 0
         self.successes = []
         self.finalized = None
+        self.checkpoints = {}
 
     def load(self, lease):
         assert lease.project_id == self.claim.project_id
         return self.claim
+
+    def load_batch_checkpoint(self, lease, *, batch_index):
+        del lease
+        return self.checkpoints.get(batch_index)
+
+    def save_batch_checkpoint(
+        self,
+        lease,
+        claim,
+        *,
+        batch_index,
+        dimensions,
+        output,
+        execution_backend,
+        actual_model,
+    ):
+        del lease, claim, dimensions
+        self.checkpoints[batch_index] = (output, execution_backend, actual_model)
 
     def reserve_model_call(self, *args, **kwargs):
         del args, kwargs
@@ -133,6 +154,68 @@ class FakeWorkflowExecutor:
         )
 
 
+class CoverageWorkflowExecutor:
+    def __init__(
+        self,
+        *,
+        fail_call: int | None = None,
+        invalid_fact_call: int | None = None,
+        repeat_fingerprints: bool = False,
+    ) -> None:
+        self.fail_call = fail_call
+        self.invalid_fact_call = invalid_fact_call
+        self.repeat_fingerprints = repeat_fingerprints
+        self.requests = []
+
+    def execute_optional(self, lease, request):
+        del lease
+        self.requests.append(request)
+        if self.fail_call == len(self.requests):
+            raise RetryableWorkflowExecutionError("temporary coverage failure")
+        fact_id = request.context["facts"][0]["fact_candidate_id"]
+        if self.invalid_fact_call == len(self.requests):
+            fact_id = str(uuid4())
+        questions = []
+        for dimension in request.context["dimensions"]:
+            ordinal = dimension["ordinal"]
+            topic = dimension["topic_cluster"]
+            if dimension["coverage_role"] == "brand_control":
+                text = f"How suitable is TerraMow V600 for {topic} in Australia?"
+            else:
+                text = f"Which option suits Australian households for {topic} need {ordinal}?"
+            questions.append(
+                {
+                    "candidate_id": f"generated-{ordinal}",
+                    "dimension_key": dimension["dimension_key"],
+                    "variant_index": 1,
+                    "text": text,
+                    "semantic_fingerprint": (
+                        f"{topic} repeated intent"
+                        if self.repeat_fingerprints
+                        else f"{topic} intent {ordinal}"
+                    ),
+                    "supported_fact_ids": [fact_id],
+                    "supported_entity_ids": [],
+                    "parent_candidate_id": None,
+                }
+            )
+        return WorkflowExecutionResult(
+            output={"questions": questions},
+            attempt_id=uuid4(),
+            runtime_release_id=uuid4(),
+            runtime_release_hash="e" * 64,
+            dify_task_id=f"coverage-task-{len(self.requests)}",
+            dify_run_id=f"coverage-run-{len(self.requests)}",
+            configured_model="deepseek-chat",
+            provider_reported_model="deepseek-chat",
+            prompt_tokens=10,
+            completion_tokens=20,
+            total_steps=3,
+            elapsed_seconds=Decimal("0.5"),
+            response_hash="f" * 64,
+        )
+
+
 def _claim_and_output():
     dimension = freeze_dimensions(
         (
@@ -199,6 +282,48 @@ def _lease(claim: QuestionGenerationClaim) -> WorkerLease:
     )
 
 
+def _coverage_claim() -> QuestionGenerationClaim:
+    plan = build_coverage_question_plan(
+        category_key="robotic_lawn_mower",
+        product_name="ADVINSYS TerraMow V600",
+        product_context="marketed lawn area 600 sqm",
+    )
+    dimensions = freeze_dimensions(tuple(slot.dimension for slot in plan.slots))
+    fact_text = "The product is a robotic lawn mower for Australian households."
+    fact = QuestionFactInput(
+        uuid4(), fact_text, hashlib.sha256(fact_text.encode()).hexdigest()
+    )
+    return QuestionGenerationClaim(
+        project_id=uuid4(),
+        campaign_id=uuid4(),
+        input_hash="a" * 64,
+        configured_model="deepseek-v4-flash",
+        model_call_budget=60,
+        adapter_release="project-native-rag-v1",
+        selection_manifest_hash="b" * 64,
+        duplicate_threshold=1.0,
+        dimensions=dimensions,
+        facts=(fact,),
+        entities=(),
+        generation_mode="coverage_pack",
+        coverage_profile=plan.profile_key,
+        coverage_profile_hash=plan.profile_hash,
+        target_count=plan.target_count,
+        product_entity_id=uuid4(),
+        product_category=plan.category_key,
+        product_name=plan.product_name,
+        coverage_slots=tuple(
+            QuestionCoverageSlotClaim(
+                dimension_key=slot.dimension.dimension_key or "",
+                coverage_role=slot.coverage_role,
+                topic_cluster=slot.topic_cluster,
+                planned_query_text=slot.planned_query_text,
+            )
+            for slot in plan.slots
+        ),
+    )
+
+
 def _handler(claim, store, repository, gateway, object_store, workflow):
     return KnowledgeQuestionGenerateHandler(
         store=store,
@@ -258,3 +383,70 @@ def test_question_worker_dify_failure_never_falls_back_to_native_gateway() -> No
     assert repository.reserve_calls == 0
     assert repository.finalized is None
     assert not object_store.keys
+
+
+def test_coverage_worker_resumes_after_last_valid_batch_and_finishes_exactly_100() -> None:
+    claim = _coverage_claim()
+    store = FakeStore()
+    repository = FakeRepository(claim)
+    gateway = FakeGateway()
+    object_store = FakeObjectStore()
+    first_workflow = CoverageWorkflowExecutor(fail_call=2)
+
+    first = _handler(
+        claim, store, repository, gateway, object_store, first_workflow
+    ).handle(_lease(claim))
+
+    assert first["status"] == "retry_wait"
+    assert len(first_workflow.requests) == 2
+    assert list(repository.checkpoints) == [1]
+
+    resumed_workflow = CoverageWorkflowExecutor()
+    resumed = _handler(
+        claim, store, repository, gateway, object_store, resumed_workflow
+    ).handle(_lease(claim))
+
+    assert resumed["status"] == "succeeded"
+    assert len(resumed_workflow.requests) == 9
+    assert len(repository.checkpoints) == 10
+    assert repository.finalized is not None
+    assert len(repository.finalized[0]) == 100
+    assert repository.finalized[2:] == ("hybrid", "deepseek-chat")
+
+
+def test_coverage_worker_replaces_model_fact_ids_with_preassigned_frozen_lineage() -> None:
+    claim = _coverage_claim()
+    store = FakeStore()
+    repository = FakeRepository(claim)
+    workflow = CoverageWorkflowExecutor(invalid_fact_call=2)
+
+    result = _handler(
+        claim, store, repository, FakeGateway(), FakeObjectStore(), workflow
+    ).handle(_lease(claim))
+
+    assert result["status"] == "succeeded"
+    assert not store.failures
+    assert len(workflow.requests) == 10
+    assert repository.finalized is not None
+    frozen_ids = {item.fact_candidate_id for item in claim.facts}
+    assert all(item.fact_source_ids[0] in frozen_ids for item in repository.finalized[0])
+
+
+def test_coverage_worker_preserves_semantic_near_duplicates_for_review() -> None:
+    claim = _coverage_claim()
+    repository = FakeRepository(claim)
+
+    result = _handler(
+        claim,
+        FakeStore(),
+        repository,
+        FakeGateway(),
+        FakeObjectStore(),
+        CoverageWorkflowExecutor(repeat_fingerprints=True),
+    ).handle(_lease(claim))
+
+    assert result["status"] == "succeeded"
+    assert repository.finalized is not None
+    candidates = repository.finalized[0]
+    assert len({item.normalized_text_hash for item in candidates}) == 100
+    assert any(item.dedup_status == "possible_duplicate" for item in candidates)

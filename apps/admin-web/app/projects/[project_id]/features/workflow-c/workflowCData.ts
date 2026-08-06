@@ -58,6 +58,11 @@ import {
   type WorkflowCWorkspaceData,
   type WorkflowView
 } from "./workflowCTypes";
+import {
+  loadQuestionWorkspace,
+  questionSteps,
+  type QuestionStep
+} from "./questionWorkspaceData";
 
 type SearchParams = { [key: string]: string | string[] | undefined };
 type Selection = WorkflowCWorkspaceData["selection"];
@@ -73,6 +78,10 @@ export async function loadWorkflowCWorkspace(
   const selection = validSelection(rawSelection);
   const activeView = normalizeView(queryValue(query, "workflow_view"));
   const base = `/v1/projects/${encodeURIComponent(projectId)}`;
+
+  const questionWorkspaceRequest = activeView === "questions"
+    ? loadQuestionWorkspace(projectId, selection)
+    : Promise.resolve(null);
 
   const identityRequest = runtimeRequest<AuthIdentity>("/v1/auth/me");
   const membersRequest = runtimeRequest<ProjectMemberListResponse>(`${base}/members`, {
@@ -153,7 +162,8 @@ export async function loadWorkflowCWorkspace(
     metrics,
     comparisons,
     drift,
-    notificationResponse
+    notificationResponse,
+    questionWorkspace
   ] = await Promise.all([
     identityRequest,
     membersRequest,
@@ -176,7 +186,8 @@ export async function loadWorkflowCWorkspace(
     metricsRequest,
     comparisonRequest,
     driftRequest,
-    requestedNotifications
+    requestedNotifications,
+    questionWorkspaceRequest
   ]);
 
   const identityValid = identity.ok && isAuthIdentity(identity.data);
@@ -218,8 +229,15 @@ export async function loadWorkflowCWorkspace(
     activeView,
     selection: {
       ...selection,
+      ...(questionWorkspace?.selection.campaignId
+        ? { campaignId: questionWorkspace.selection.campaignId }
+        : {}),
+      ...(questionWorkspace?.selection.questionGenerationJobId
+        ? { questionGenerationJobId: questionWorkspace.selection.questionGenerationJobId }
+        : {}),
       ...(selectedAlertId ? { alertId: selectedAlertId } : {})
     },
+    questionWorkspace,
     suite: runResource.data
       ? { data: runResource.data.suite }
       : suiteResource,
@@ -345,35 +363,62 @@ export function workflowCHref(
     comparison_family: selection.familyHash,
     drift_report: selection.driftHash,
     alert_id: selection.alertId,
-    policy_id: selection.policyId
+    policy_id: selection.policyId,
+    campaign_id: selection.campaignId,
+    question_generation_job_id: selection.questionGenerationJobId,
+    question_step: selection.questionStep
   })) {
     if (value) params.set(key, value);
+  }
+  if (selection.embedded) {
+    params.set("tab", "measurement");
+    return `/projects/${encodeURIComponent(projectId)}?${params.toString()}`;
   }
   return `/projects/${encodeURIComponent(projectId)}/workflow-c?${params.toString()}`;
 }
 
 function selectionFromQuery(query: SearchParams): Selection {
   return {
+    embedded: queryValue(query, "tab") === "measurement",
     ...(queryValue(query, "suite_id") ? { suiteId: queryValue(query, "suite_id") } : {}),
     ...(queryValue(query, "run_id") ? { runId: queryValue(query, "run_id") } : {}),
     ...(queryValue(query, "metric_snapshot") ? { snapshotHash: queryValue(query, "metric_snapshot") } : {}),
     ...(queryValue(query, "comparison_family") ? { familyHash: queryValue(query, "comparison_family") } : {}),
     ...(queryValue(query, "drift_report") ? { driftHash: queryValue(query, "drift_report") } : {}),
     ...(queryValue(query, "alert_id") ? { alertId: queryValue(query, "alert_id") } : {}),
-    ...(queryValue(query, "policy_id") ? { policyId: queryValue(query, "policy_id") } : {})
+    ...(queryValue(query, "policy_id") ? { policyId: queryValue(query, "policy_id") } : {}),
+    ...(queryValue(query, "campaign_id") ? { campaignId: queryValue(query, "campaign_id") } : {}),
+    ...(queryValue(query, "question_generation_job_id")
+      ? { questionGenerationJobId: queryValue(query, "question_generation_job_id") }
+      : {}),
+    ...(normalizeQuestionStep(queryValue(query, "question_step"))
+      ? { questionStep: normalizeQuestionStep(queryValue(query, "question_step")) }
+      : {})
   };
 }
 
 function validSelection(value: Selection): Selection {
   return {
+    embedded: value.embedded,
     ...(value.suiteId && UUID_PATTERN.test(value.suiteId) ? { suiteId: value.suiteId } : {}),
     ...(value.runId && UUID_PATTERN.test(value.runId) ? { runId: value.runId } : {}),
     ...(value.snapshotHash && HASH_PATTERN.test(value.snapshotHash) ? { snapshotHash: value.snapshotHash } : {}),
     ...(value.familyHash && HASH_PATTERN.test(value.familyHash) ? { familyHash: value.familyHash } : {}),
     ...(value.driftHash && HASH_PATTERN.test(value.driftHash) ? { driftHash: value.driftHash } : {}),
     ...(value.alertId && UUID_PATTERN.test(value.alertId) ? { alertId: value.alertId } : {}),
-    ...(value.policyId && UUID_PATTERN.test(value.policyId) ? { policyId: value.policyId } : {})
+    ...(value.policyId && UUID_PATTERN.test(value.policyId) ? { policyId: value.policyId } : {}),
+    ...(value.campaignId && UUID_PATTERN.test(value.campaignId)
+      ? { campaignId: value.campaignId }
+      : {}),
+    ...(value.questionGenerationJobId && UUID_PATTERN.test(value.questionGenerationJobId)
+      ? { questionGenerationJobId: value.questionGenerationJobId }
+      : {}),
+    ...(value.questionStep ? { questionStep: value.questionStep } : {})
   };
+}
+
+function normalizeQuestionStep(value: string | undefined): QuestionStep | undefined {
+  return questionSteps.find((step) => step === value);
 }
 
 function normalizeView(value: string | undefined): WorkflowView {

@@ -2,7 +2,6 @@ import type {
   BriefVersionView, CampaignPlacementReadinessView, CampaignView, ClaimView, DestinationPolicyView,
   DestinationView, EvidenceAttemptView,
   EvidenceItemView, ExportView, JobStatus, MeasurementView, MeasurementWindow, MetricView,
-  KnowledgeQuestionCandidateView, KnowledgeQuestionFactView, KnowledgeQuestionGenerationView,
   KnowledgeQuestionSetView,
   MonitoringObservationView, MonitoringProtocolView, MonitoringQueryView, MonitoringReportView,
   OpportunityPromptReleaseBindingView, OpportunityView, PackageVersionView, PlacementJobEventView,
@@ -20,7 +19,6 @@ export type GeoSelection = {
   skillId?: string; bundleId?: string; jobId?: string; versionId?: string;
   publicationId?: string; submissionId?: string;
   simulationId?: string;
-  questionGenerationJobId?: string;
 };
 export type GeoWorkspaceData = {
   selection: GeoSelection;
@@ -29,9 +27,6 @@ export type GeoWorkspaceData = {
   protocols: Resource<MonitoringProtocolView[]>; metrics: Resource<MetricView[]>;
   reports: Resource<MonitoringReportView[]>; skills: Resource<PromptSkillView[]>;
   simulations: Resource<PromptSimulationView[]>;
-  questionFacts: Resource<KnowledgeQuestionFactView[]>;
-  questionGenerations: Resource<KnowledgeQuestionGenerationView[]>;
-  questionCandidates: Resource<KnowledgeQuestionCandidateView[]>;
   questionSets: Resource<KnowledgeQuestionSetView[]>;
   bindings: Resource<PromptTaskBindingView[]>; queries: Resource<MonitoringQueryView[]>;
   protocolQueries: Resource<ProtocolQueryView[]>;

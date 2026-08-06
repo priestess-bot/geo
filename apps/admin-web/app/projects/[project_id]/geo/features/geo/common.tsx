@@ -17,7 +17,6 @@ export function geoHref(projectId: string, selection: GeoSelection, updates: { [
     bundle_id: selection.bundleId, job_id: selection.jobId, version_id: selection.versionId,
     publication_id: selection.publicationId, submission_id: selection.submissionId,
     simulation_id: selection.simulationId,
-    question_generation_job_id: selection.questionGenerationJobId,
     ...normalizedUpdates
   };
   Object.entries(current).forEach(([key, value]) => { if (value) params.set(key, value); });

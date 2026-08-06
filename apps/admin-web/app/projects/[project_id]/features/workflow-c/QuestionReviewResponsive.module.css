@@ -1,0 +1,161 @@
+@media (max-width: 900px) {
+  .pageToolbar {
+    align-items: stretch;
+    grid-template-columns: minmax(0, 1fr) minmax(210px, 280px);
+  }
+
+  .pageTitle {
+    grid-column: 1 / -1;
+  }
+
+  .candidateRow {
+    grid-template-columns: 28px minmax(0, 1fr);
+  }
+
+  .reviewActions {
+    display: flex;
+    flex-wrap: wrap;
+    grid-column: 2;
+  }
+
+  .reviewActions > details {
+    flex: 1 1 130px;
+  }
+
+  .reviewToolbar {
+    grid-template-columns: minmax(0, 1fr) repeat(2, minmax(140px, 180px));
+  }
+
+  .selectionSummary {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 700px) {
+  .page {
+    gap: 12px;
+  }
+
+  .reviewToolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .selectionSummary {
+    grid-column: auto;
+  }
+
+  .coverageCandidate {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .includeToggle {
+    grid-column: 1;
+  }
+
+  .coverageCandidateBody {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .editButton {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .bulkTools small {
+    flex-basis: 100%;
+    margin-left: 0;
+  }
+
+  .coverageFinalize,
+  .pageToolbar {
+    align-items: stretch;
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .pageTitle,
+  .campaignControl,
+  .primaryAction {
+    grid-column: auto;
+  }
+
+  .pageTitle h1 {
+    font-size: 21px;
+  }
+
+  .primaryAction {
+    width: 100%;
+  }
+
+  .steps {
+    border-radius: 4px;
+  }
+
+  .step {
+    align-items: flex-start;
+    gap: 6px;
+    min-height: 70px;
+    padding: 9px 7px;
+  }
+
+  .stepNumber {
+    flex-basis: 22px;
+    height: 22px;
+  }
+
+  .step small {
+    display: none;
+  }
+
+  .setMetrics {
+    grid-template-columns: 1fr;
+  }
+
+  .candidateRow {
+    gap: 8px;
+    grid-template-columns: 24px minmax(0, 1fr);
+    padding: 13px 11px;
+  }
+
+  .candidateHeading {
+    display: grid;
+  }
+
+  .reviewActions {
+    grid-column: 2;
+  }
+
+  .nextActionBar {
+    align-items: stretch;
+    display: grid;
+    margin: 2px -13px -22px;
+    padding: 12px 13px;
+  }
+
+  .nextActionBar > a,
+  .disabledAction {
+    width: 100%;
+  }
+
+  .createSetSection {
+    padding: 13px;
+  }
+
+  .setRow {
+    padding: 12px;
+  }
+
+  .setActions,
+  .frozenActions {
+    align-items: stretch;
+    display: grid;
+  }
+
+  .setActions :global(form),
+  .frozenActions :global(form),
+  .simulationLink {
+    min-width: 0;
+    width: 100%;
+  }
+}

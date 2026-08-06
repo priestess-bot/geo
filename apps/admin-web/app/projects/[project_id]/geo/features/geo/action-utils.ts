@@ -31,7 +31,11 @@ export function isActionError(value: JsonObject | unknown[] | ActionResult): val
 export function guards(form: FormData) { return { idempotencyKey: value(form, "idempotency_key") || randomUUID() }; }
 export async function client() { return geoClient(); }
 export function finish<T>(projectId: string, result: RuntimeHttpResult<T>, success: string): ActionResult {
-  if (result.ok) { revalidatePath(`/projects/${projectId}`); return { ok: success }; }
+  if (result.ok) {
+    revalidatePath(`/projects/${projectId}`);
+    revalidatePath(`/projects/${projectId}/workflow-c`);
+    return { ok: success };
+  }
   return { error: result.error.detail, status: result.status, code: result.error.code,
     correlationId: result.error.correlation_id || result.response.correlationId,
     retryable: result.error.retryable === true || !result.status || result.status >= 500 };

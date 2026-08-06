@@ -141,7 +141,6 @@ def test_disabled_fact_and_graph_chunks_invalidate_question_sources() -> None:
                 campaign_id=campaign_id,
                 candidate_id=candidate["id"],
                 decision="approved",
-                notes="approved for active Chunk contract",
             )
         question_set = knowledge.create_question_set(
             principal,

@@ -10,6 +10,8 @@ from fastapi import APIRouter, Request, status
 from geo_api.catalog_routes import _principal
 from geo_api.knowledge_question_contracts import (
     CreateQuestionGenerationRequest,
+    EditQuestionCandidateRequest,
+    FinalizeQuestionCoveragePackRequest,
     QuestionCandidateView,
     QuestionGenerationResponse,
     QuestionGenerationView,
@@ -25,6 +27,10 @@ from geo_api.knowledge_routes import (
 )
 from geo_api.stable_routes import PROBLEM_RESPONSES
 from geo_core.knowledge.question_domain import QuestionDimensionDraft
+from geo_core.knowledge.question_coverage import (
+    COVERAGE_PROFILE_KEY,
+    coverage_profile_summary,
+)
 
 
 def knowledge_question_router() -> APIRouter:
@@ -48,6 +54,20 @@ def knowledge_question_router() -> APIRouter:
         idempotency_key: IdempotencyHeader,
         authorization: AuthorizationHeader = None,
     ) -> Any:
+        if payload.generation_mode == "coverage_pack":
+            return _call(
+                lambda: _application(request).create_question_coverage_pack(
+                    _principal(request, authorization),
+                    project_id=project_id,
+                    campaign_id=campaign_id,
+                    configured_model=payload.configured_model,
+                    model_call_budget=payload.model_call_budget,
+                    semantic_duplicate_threshold=payload.semantic_duplicate_threshold,
+                    coverage_profile=payload.coverage_profile or COVERAGE_PROFILE_KEY,
+                    custom_requirements=payload.custom_requirements,
+                    idempotency_key=idempotency_key,
+                )
+            )
         return _call(
             lambda: _application(request).create_question_generation(
                 _principal(request, authorization),
@@ -67,6 +87,20 @@ def knowledge_question_router() -> APIRouter:
         )
 
     @router.get(
+        "/question-coverage-profiles/default",
+        operation_id="getDefaultKnowledgeQuestionCoverageProfile",
+    )
+    def get_default_coverage_profile(
+        project_id: UUID,
+        campaign_id: UUID,
+        request: Request,
+        authorization: AuthorizationHeader = None,
+    ) -> Any:
+        del campaign_id
+        _principal(request, authorization)
+        return {"project_id": project_id, **coverage_profile_summary()}
+
+    @router.get(
         "/question-generations",
         response_model=list[QuestionGenerationView],
         operation_id="listKnowledgeQuestionGenerations",
@@ -82,6 +116,30 @@ def knowledge_question_router() -> APIRouter:
                 _principal(request, authorization),
                 project_id=project_id,
                 campaign_id=campaign_id,
+            )
+        )
+
+    @router.post(
+        "/question-generations/{generation_job_id}/resume",
+        response_model=QuestionGenerationView,
+        status_code=status.HTTP_202_ACCEPTED,
+        operation_id="resumeKnowledgeQuestionCoveragePack",
+    )
+    def resume_coverage_pack(
+        project_id: UUID,
+        campaign_id: UUID,
+        generation_job_id: UUID,
+        request: Request,
+        idempotency_key: IdempotencyHeader,
+        authorization: AuthorizationHeader = None,
+    ) -> Any:
+        return _call(
+            lambda: _application(request).resume_question_coverage_pack(
+                _principal(request, authorization),
+                project_id=project_id,
+                campaign_id=campaign_id,
+                generation_job_id=generation_job_id,
+                idempotency_key=idempotency_key,
             )
         )
 
@@ -129,6 +187,28 @@ def knowledge_question_router() -> APIRouter:
             )
         )
 
+    @router.patch(
+        "/question-candidates/{candidate_id}/text",
+        operation_id="editKnowledgeQuestionCandidate",
+    )
+    def edit_candidate(
+        project_id: UUID,
+        campaign_id: UUID,
+        candidate_id: UUID,
+        payload: EditQuestionCandidateRequest,
+        request: Request,
+        authorization: AuthorizationHeader = None,
+    ) -> Any:
+        return _call(
+            lambda: _application(request).edit_question_candidate(
+                _principal(request, authorization),
+                project_id=project_id,
+                campaign_id=campaign_id,
+                candidate_id=candidate_id,
+                query_text=payload.query_text,
+            )
+        )
+
     @router.post(
         "/question-sets",
         response_model=QuestionSetView,
@@ -153,6 +233,32 @@ def knowledge_question_router() -> APIRouter:
                 candidate_ids=tuple(payload.candidate_ids),
                 series_id=payload.series_id,
                 previous_version_id=payload.previous_version_id,
+                idempotency_key=idempotency_key,
+            )
+        )
+
+    @router.post(
+        "/question-sets/finalize-coverage-pack",
+        response_model=QuestionSetView,
+        status_code=status.HTTP_201_CREATED,
+        operation_id="finalizeKnowledgeQuestionCoveragePack",
+    )
+    def finalize_coverage_pack(
+        project_id: UUID,
+        campaign_id: UUID,
+        payload: FinalizeQuestionCoveragePackRequest,
+        request: Request,
+        idempotency_key: IdempotencyHeader,
+        authorization: AuthorizationHeader = None,
+    ) -> Any:
+        return _call(
+            lambda: _application(request).finalize_question_coverage_pack(
+                _principal(request, authorization),
+                project_id=project_id,
+                campaign_id=campaign_id,
+                name=payload.name,
+                generation_job_id=payload.generation_job_id,
+                included_candidate_ids=tuple(payload.included_candidate_ids),
                 idempotency_key=idempotency_key,
             )
         )

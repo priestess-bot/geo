@@ -46,14 +46,32 @@ class QuestionDimensionRequest(QuestionContract):
 
 
 class CreateQuestionGenerationRequest(QuestionContract):
+    generation_mode: Literal["single_scenario", "coverage_pack"] = "single_scenario"
     configured_model: str = Field(
         default="deepseek-v4-flash", min_length=1, max_length=200
     )
     model_call_budget: int = Field(default=60, ge=1, le=1000)
     semantic_duplicate_threshold: float = Field(default=0.92, ge=0.8, le=1.0)
-    fact_candidate_ids: list[UUID] = Field(min_length=1, max_length=500)
+    fact_candidate_ids: list[UUID] = Field(default_factory=list, max_length=500)
     graph_entity_ids: list[UUID] = Field(default_factory=list, max_length=500)
-    dimensions: list[QuestionDimensionRequest] = Field(min_length=1, max_length=200)
+    dimensions: list[QuestionDimensionRequest] = Field(default_factory=list, max_length=200)
+    coverage_profile: str | None = Field(default=None, min_length=1, max_length=200)
+    target_count: int | None = Field(default=None, ge=1, le=200)
+    custom_requirements: str = Field(default="", max_length=120)
+
+    @model_validator(mode="after")
+    def generation_shape(self) -> "CreateQuestionGenerationRequest":
+        if self.generation_mode == "single_scenario":
+            if not self.fact_candidate_ids or not self.dimensions:
+                raise ValueError("single-scenario generation requires Facts and dimensions")
+            if self.coverage_profile is not None or self.target_count is not None:
+                raise ValueError("single-scenario generation cannot include a coverage profile")
+        else:
+            if self.fact_candidate_ids or self.graph_entity_ids or self.dimensions:
+                raise ValueError("coverage generation resolves dimensions and sources server-side")
+            if self.target_count not in {None, 100}:
+                raise ValueError("current coverage profile produces exactly 100 questions")
+        return self
 
 
 class QuestionGenerationResponse(QuestionContract):
@@ -65,6 +83,9 @@ class QuestionGenerationResponse(QuestionContract):
     dimension_count: int
     fact_input_count: int
     entity_input_count: int
+    generation_mode: Literal["single_scenario", "coverage_pack"]
+    coverage_profile: str | None
+    target_count: int | None
 
 
 class QuestionGenerationView(QuestionContract):
@@ -75,9 +96,16 @@ class QuestionGenerationView(QuestionContract):
     input_hash: str
     error_code: str | None
     configured_model: str
-    execution_backend: Literal["dify", "native"] | None
+    execution_backend: Literal["dify", "native", "hybrid", "deterministic"] | None
     actual_model: str | None
     model_call_budget: int
+    generation_mode: Literal["single_scenario", "coverage_pack"]
+    coverage_profile: str | None
+    coverage_profile_hash: str | None
+    target_count: int | None
+    product_entity_id: UUID | None
+    product_category: str | None
+    product_name_snapshot: str | None
     adapter_release: str
     semantic_duplicate_threshold: float
     artifact_uri: str | None
@@ -88,6 +116,9 @@ class QuestionGenerationView(QuestionContract):
     possible_duplicate_count: int | None
     generated_at: datetime | None
     created_at: datetime
+    batch_count: int
+    completed_batch_count: int
+    checkpoint_candidate_count: int
 
 
 class QuestionCandidateView(QuestionContract):
@@ -96,11 +127,17 @@ class QuestionCandidateView(QuestionContract):
     campaign_id: UUID
     generated_by_job_id: UUID
     dimension_key: str
+    ordinal: int
     variant_index: int
     turn_index: int
     parent_candidate_id: UUID | None
     query_text: str
     query_text_hash: str
+    original_query_text: str
+    original_query_text_hash: str
+    revision_id: UUID | None
+    revision_number: int | None
+    was_edited: bool
     semantic_fingerprint: str
     dedup_status: Literal["unique", "possible_duplicate", "exact_duplicate"]
     nearest_candidate_id: UUID | None
@@ -108,6 +145,12 @@ class QuestionCandidateView(QuestionContract):
     workflow_status: Literal["pending_review", "approved", "rejected"]
     review_notes: str | None
     reviewed_at: datetime | None
+    brand_scope: Literal["brand", "non_brand", "competitor"]
+    coverage_role: Literal["category_benchmark", "product_fit", "brand_control"] | None
+    topic_cluster: str | None
+    funnel: Literal["awareness", "consideration", "decision", "retention"]
+    query_kind: Literal["recommendation", "comparison", "research", "support"]
+    subject: str
     fact_source_ids: list[UUID]
     entity_source_ids: list[UUID]
     created_at: datetime
@@ -115,7 +158,11 @@ class QuestionCandidateView(QuestionContract):
 
 class ReviewQuestionCandidateRequest(QuestionContract):
     decision: Literal["approved", "rejected"]
-    notes: str = Field(default="", max_length=2000)
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+class EditQuestionCandidateRequest(QuestionContract):
+    query_text: str = Field(min_length=1, max_length=2000)
 
 
 class QuestionSetCreateRequest(QuestionContract):
@@ -124,6 +171,12 @@ class QuestionSetCreateRequest(QuestionContract):
     candidate_ids: list[UUID] = Field(min_length=1, max_length=500)
     series_id: UUID | None = None
     previous_version_id: UUID | None = None
+
+
+class FinalizeQuestionCoveragePackRequest(QuestionContract):
+    name: str = Field(min_length=1, max_length=300)
+    generation_job_id: UUID
+    included_candidate_ids: list[UUID] = Field(min_length=90, max_length=100)
 
 
 class QuestionSetItemView(QuestionContract):
@@ -136,6 +189,12 @@ class QuestionSetItemView(QuestionContract):
     query_kind_snapshot: str
     query_cluster_key: str
     source_lineage_hash: str
+    brand_scope_snapshot: Literal["brand", "non_brand", "competitor"]
+    coverage_role_snapshot: Literal[
+        "category_benchmark", "product_fit", "brand_control"
+    ] | None
+    topic_cluster_snapshot: str | None
+    funnel_snapshot: Literal["awareness", "consideration", "decision", "retention"]
 
 
 class QuestionSetView(QuestionContract):

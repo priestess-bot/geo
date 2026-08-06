@@ -11,7 +11,7 @@ import { loadPromptWorkspace } from "./features/prompt-programs/promptProgramDat
 import { loadRecommendationWorkspace } from "./features/recommendations/recommendationData";
 import { loadSecretWorkspace } from "./features/secret-store/secretStoreData";
 import { loadSyntheticLabWorkspace } from "./features/synthetic-lab/syntheticLabData";
-import { loadWorkflowCWorkspace } from "./features/workflow-c/workflowCData";
+import { loadWorkflowCWorkspace, workflowCHref } from "./features/workflow-c/workflowCData";
 import { loadExternalOperations } from "./features/external-operations/externalOperationsData";
 
 // Project workspaces contain per-request identity and membership state.
@@ -32,6 +32,14 @@ export default async function ProjectDetailPage({
     searchParams || Promise.resolve({})
   ]);
   const activeTab = normalizeWorkbenchTab(queryValue(query, "tab"));
+  const legacyQuestionJobId = queryValue(query, "question_generation_job_id");
+  if (activeTab === "geo" && legacyQuestionJobId) {
+    redirect(workflowCHref(projectId, {
+      embedded: true,
+      campaignId: queryValue(query, "campaign_id"),
+      questionGenerationJobId: legacyQuestionJobId
+    }, "questions"));
+  }
   const [catalog, invitations, members, geoData, knowledgeData, promptData, secretData, syntheticData, recommendationData, workflowCData, externalOperationsData] = await Promise.all([
     loadCatalog(projectId),
     loadProjectInvitations(projectId),

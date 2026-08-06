@@ -7227,12 +7227,30 @@
             "title": "Configured Model",
             "type": "string"
           },
+          "coverage_profile": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coverage Profile"
+          },
+          "custom_requirements": {
+            "default": "",
+            "maxLength": 120,
+            "title": "Custom Requirements",
+            "type": "string"
+          },
           "dimensions": {
             "items": {
               "$ref": "#/components/schemas/QuestionDimensionRequest"
             },
             "maxItems": 200,
-            "minItems": 1,
             "title": "Dimensions",
             "type": "array"
           },
@@ -7242,9 +7260,17 @@
               "type": "string"
             },
             "maxItems": 500,
-            "minItems": 1,
             "title": "Fact Candidate Ids",
             "type": "array"
+          },
+          "generation_mode": {
+            "default": "single_scenario",
+            "enum": [
+              "single_scenario",
+              "coverage_pack"
+            ],
+            "title": "Generation Mode",
+            "type": "string"
           },
           "graph_entity_ids": {
             "items": {
@@ -7268,12 +7294,21 @@
             "minimum": 0.8,
             "title": "Semantic Duplicate Threshold",
             "type": "number"
+          },
+          "target_count": {
+            "anyOf": [
+              {
+                "maximum": 200.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Count"
           }
         },
-        "required": [
-          "fact_candidate_ids",
-          "dimensions"
-        ],
         "title": "CreateQuestionGenerationRequest",
         "type": "object"
       },
@@ -9100,6 +9135,22 @@
           "report_hash"
         ],
         "title": "DriftReportResponse",
+        "type": "object"
+      },
+      "EditQuestionCandidateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "query_text": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Query Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query_text"
+        ],
+        "title": "EditQuestionCandidateRequest",
         "type": "object"
       },
       "EgressEndpointResponse": {
@@ -11926,6 +11977,39 @@
           "retired"
         ],
         "title": "FactRefContract",
+        "type": "object"
+      },
+      "FinalizeQuestionCoveragePackRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "generation_job_id": {
+            "format": "uuid",
+            "title": "Generation Job Id",
+            "type": "string"
+          },
+          "included_candidate_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 90,
+            "title": "Included Candidate Ids",
+            "type": "array"
+          },
+          "name": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "generation_job_id",
+          "included_candidate_ids"
+        ],
+        "title": "FinalizeQuestionCoveragePackRequest",
         "type": "object"
       },
       "FinalizeSyntheticJobRequest": {
@@ -22608,10 +22692,35 @@
       "QuestionCandidateView": {
         "additionalProperties": false,
         "properties": {
+          "brand_scope": {
+            "enum": [
+              "brand",
+              "non_brand",
+              "competitor"
+            ],
+            "title": "Brand Scope",
+            "type": "string"
+          },
           "campaign_id": {
             "format": "uuid",
             "title": "Campaign Id",
             "type": "string"
+          },
+          "coverage_role": {
+            "anyOf": [
+              {
+                "enum": [
+                  "category_benchmark",
+                  "product_fit",
+                  "brand_control"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coverage Role"
           },
           "created_at": {
             "format": "date-time",
@@ -22647,6 +22756,16 @@
             "title": "Fact Source Ids",
             "type": "array"
           },
+          "funnel": {
+            "enum": [
+              "awareness",
+              "consideration",
+              "decision",
+              "retention"
+            ],
+            "title": "Funnel",
+            "type": "string"
+          },
           "generated_by_job_id": {
             "format": "uuid",
             "title": "Generated By Job Id",
@@ -22680,6 +22799,18 @@
             ],
             "title": "Nearest Similarity"
           },
+          "ordinal": {
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "original_query_text": {
+            "title": "Original Query Text",
+            "type": "string"
+          },
+          "original_query_text_hash": {
+            "title": "Original Query Text Hash",
+            "type": "string"
+          },
           "parent_candidate_id": {
             "anyOf": [
               {
@@ -22695,6 +22826,16 @@
           "project_id": {
             "format": "uuid",
             "title": "Project Id",
+            "type": "string"
+          },
+          "query_kind": {
+            "enum": [
+              "recommendation",
+              "comparison",
+              "research",
+              "support"
+            ],
+            "title": "Query Kind",
             "type": "string"
           },
           "query_text": {
@@ -22728,9 +22869,47 @@
             ],
             "title": "Reviewed At"
           },
+          "revision_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revision Id"
+          },
+          "revision_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revision Number"
+          },
           "semantic_fingerprint": {
             "title": "Semantic Fingerprint",
             "type": "string"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          },
+          "topic_cluster": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Topic Cluster"
           },
           "turn_index": {
             "title": "Turn Index",
@@ -22739,6 +22918,10 @@
           "variant_index": {
             "title": "Variant Index",
             "type": "integer"
+          },
+          "was_edited": {
+            "title": "Was Edited",
+            "type": "boolean"
           },
           "workflow_status": {
             "enum": [
@@ -22756,11 +22939,17 @@
           "campaign_id",
           "generated_by_job_id",
           "dimension_key",
+          "ordinal",
           "variant_index",
           "turn_index",
           "parent_candidate_id",
           "query_text",
           "query_text_hash",
+          "original_query_text",
+          "original_query_text_hash",
+          "revision_id",
+          "revision_number",
+          "was_edited",
           "semantic_fingerprint",
           "dedup_status",
           "nearest_candidate_id",
@@ -22768,6 +22957,12 @@
           "workflow_status",
           "review_notes",
           "reviewed_at",
+          "brand_scope",
+          "coverage_role",
+          "topic_cluster",
+          "funnel",
+          "query_kind",
+          "subject",
           "fact_source_ids",
           "entity_source_ids",
           "created_at"
@@ -22927,6 +23122,17 @@
             "title": "Campaign Id",
             "type": "string"
           },
+          "coverage_profile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coverage Profile"
+          },
           "dimension_count": {
             "title": "Dimension Count",
             "type": "integer"
@@ -22938,6 +23144,14 @@
           "fact_input_count": {
             "title": "Fact Input Count",
             "type": "integer"
+          },
+          "generation_mode": {
+            "enum": [
+              "single_scenario",
+              "coverage_pack"
+            ],
+            "title": "Generation Mode",
+            "type": "string"
           },
           "input_hash": {
             "title": "Input Hash",
@@ -22956,6 +23170,17 @@
           "status": {
             "title": "Status",
             "type": "string"
+          },
+          "target_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Count"
           }
         },
         "required": [
@@ -22966,7 +23191,10 @@
           "input_hash",
           "dimension_count",
           "fact_input_count",
-          "entity_input_count"
+          "entity_input_count",
+          "generation_mode",
+          "coverage_profile",
+          "target_count"
         ],
         "title": "QuestionGenerationResponse",
         "type": "object"
@@ -23011,6 +23239,10 @@
             ],
             "title": "Artifact Uri"
           },
+          "batch_count": {
+            "title": "Batch Count",
+            "type": "integer"
+          },
           "campaign_id": {
             "format": "uuid",
             "title": "Campaign Id",
@@ -23027,9 +23259,39 @@
             ],
             "title": "Candidate Count"
           },
+          "checkpoint_candidate_count": {
+            "title": "Checkpoint Candidate Count",
+            "type": "integer"
+          },
+          "completed_batch_count": {
+            "title": "Completed Batch Count",
+            "type": "integer"
+          },
           "configured_model": {
             "title": "Configured Model",
             "type": "string"
+          },
+          "coverage_profile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coverage Profile"
+          },
+          "coverage_profile_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coverage Profile Hash"
           },
           "created_at": {
             "format": "date-time",
@@ -23063,7 +23325,9 @@
               {
                 "enum": [
                   "dify",
-                  "native"
+                  "native",
+                  "hybrid",
+                  "deterministic"
                 ],
                 "type": "string"
               },
@@ -23084,6 +23348,14 @@
               }
             ],
             "title": "Generated At"
+          },
+          "generation_mode": {
+            "enum": [
+              "single_scenario",
+              "coverage_pack"
+            ],
+            "title": "Generation Mode",
+            "type": "string"
           },
           "input_hash": {
             "title": "Input Hash",
@@ -23109,6 +23381,40 @@
             ],
             "title": "Possible Duplicate Count"
           },
+          "product_category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Category"
+          },
+          "product_entity_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Entity Id"
+          },
+          "product_name_snapshot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Name Snapshot"
+          },
           "project_id": {
             "format": "uuid",
             "title": "Project Id",
@@ -23132,6 +23438,17 @@
               }
             ],
             "title": "Supported Dimension Count"
+          },
+          "target_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Count"
           }
         },
         "required": [
@@ -23145,6 +23462,13 @@
           "execution_backend",
           "actual_model",
           "model_call_budget",
+          "generation_mode",
+          "coverage_profile",
+          "coverage_profile_hash",
+          "target_count",
+          "product_entity_id",
+          "product_category",
+          "product_name_snapshot",
           "adapter_release",
           "semantic_duplicate_threshold",
           "artifact_uri",
@@ -23154,7 +23478,10 @@
           "supported_dimension_count",
           "possible_duplicate_count",
           "generated_at",
-          "created_at"
+          "created_at",
+          "batch_count",
+          "completed_batch_count",
+          "checkpoint_candidate_count"
         ],
         "title": "QuestionGenerationView",
         "type": "object"
@@ -23303,8 +23630,43 @@
       "QuestionSetItemView": {
         "additionalProperties": false,
         "properties": {
+          "brand_scope_snapshot": {
+            "enum": [
+              "brand",
+              "non_brand",
+              "competitor"
+            ],
+            "title": "Brand Scope Snapshot",
+            "type": "string"
+          },
+          "coverage_role_snapshot": {
+            "anyOf": [
+              {
+                "enum": [
+                  "category_benchmark",
+                  "product_fit",
+                  "brand_control"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coverage Role Snapshot"
+          },
           "dimension_key": {
             "title": "Dimension Key",
+            "type": "string"
+          },
+          "funnel_snapshot": {
+            "enum": [
+              "awareness",
+              "consideration",
+              "decision",
+              "retention"
+            ],
+            "title": "Funnel Snapshot",
             "type": "string"
           },
           "id": {
@@ -23340,6 +23702,17 @@
           "source_lineage_hash": {
             "title": "Source Lineage Hash",
             "type": "string"
+          },
+          "topic_cluster_snapshot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Topic Cluster Snapshot"
           }
         },
         "required": [
@@ -23351,7 +23724,11 @@
           "query_text_hash",
           "query_kind_snapshot",
           "query_cluster_key",
-          "source_lineage_hash"
+          "source_lineage_hash",
+          "brand_scope_snapshot",
+          "coverage_role_snapshot",
+          "topic_cluster_snapshot",
+          "funnel_snapshot"
         ],
         "title": "QuestionSetItemView",
         "type": "object"
@@ -24522,10 +24899,16 @@
             "type": "string"
           },
           "notes": {
-            "default": "",
-            "maxLength": 2000,
-            "title": "Notes",
-            "type": "string"
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
           }
         },
         "required": [
@@ -64308,6 +64691,354 @@
         ]
       }
     },
+    "/v1/projects/{project_id}/knowledge/campaigns/{campaign_id}/question-candidates/{candidate_id}/text": {
+      "patch": {
+        "operationId": "editKnowledgeQuestionCandidate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "campaign_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Campaign Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "candidate_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Candidate Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditQuestionCandidateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Editknowledgequestioncandidate"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Edit Candidate",
+        "tags": [
+          "GEO question sets"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/knowledge/campaigns/{campaign_id}/question-coverage-profiles/default": {
+      "get": {
+        "operationId": "getDefaultKnowledgeQuestionCoverageProfile",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "campaign_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Campaign Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "title": "Response Getdefaultknowledgequestioncoverageprofile"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Get Default Coverage Profile",
+        "tags": [
+          "GEO question sets"
+        ]
+      }
+    },
     "/v1/projects/{project_id}/knowledge/campaigns/{campaign_id}/question-generations": {
       "get": {
         "operationId": "listKnowledgeQuestionGenerations",
@@ -64659,6 +65390,191 @@
         ]
       }
     },
+    "/v1/projects/{project_id}/knowledge/campaigns/{campaign_id}/question-generations/{generation_job_id}/resume": {
+      "post": {
+        "operationId": "resumeKnowledgeQuestionCoveragePack",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "campaign_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Campaign Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "generation_job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Generation Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestionGenerationView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Resume Coverage Pack",
+        "tags": [
+          "GEO question sets"
+        ]
+      }
+    },
     "/v1/projects/{project_id}/knowledge/campaigns/{campaign_id}/question-sets": {
       "get": {
         "operationId": "listKnowledgeQuestionSets",
@@ -65005,6 +65921,191 @@
           }
         },
         "summary": "Create Question Set",
+        "tags": [
+          "GEO question sets"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/knowledge/campaigns/{campaign_id}/question-sets/finalize-coverage-pack": {
+      "post": {
+        "operationId": "finalizeKnowledgeQuestionCoveragePack",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "campaign_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Campaign Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinalizeQuestionCoveragePackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestionSetView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Finalize Coverage Pack",
         "tags": [
           "GEO question sets"
         ]

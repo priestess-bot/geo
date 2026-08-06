@@ -1573,14 +1573,14 @@
               </div>
 
               <section class="lane" aria-labelledby="lane-foundation">
-                <div class="lane-label"><strong id="lane-foundation">项目与知识</strong><span>共同输入</span></div>
+                <div class="lane-label"><strong id="lane-foundation">项目、知识与问题</strong><span>共同输入</span></div>
                 <div class="node-track">
                   <button class="flow-node status-complete" type="button" data-node="project" aria-pressed="false"><strong>项目与市场</strong><small>4 实体 · AU / en-AU</small><span class="node-status"><i class="status-dot complete"></i>已导入</span></button>
                   <button class="flow-node status-warning" type="button" data-node="sources" aria-pressed="false"><strong>知识来源</strong><small>7 ready · 6 archived</small><span class="node-status"><i class="status-dot warning"></i>部分通过</span></button>
                   <button class="flow-node status-warning" type="button" data-node="facts" aria-pressed="true"><strong>事实与证据</strong><small>5 批准 · 571 待审</small><span class="node-status"><i class="status-dot warning"></i>部分已批准</span></button>
-                  <button class="flow-node status-complete" type="button" data-node="campaign" aria-pressed="false"><strong>问题与 Campaign</strong><small>3 Campaign · 6 Query</small><span class="node-status"><i class="status-dot complete"></i>已建立</span></button>
+                  <button class="flow-node status-complete" type="button" data-node="campaign" aria-pressed="false"><strong>Campaign 与监测查询</strong><small>3 Campaign · 6 Query</small><span class="node-status"><i class="status-dot complete"></i>已建立</span></button>
                   <button class="flow-node status-complete" type="button" data-node="dify" aria-pressed="false"><strong>Dify 工作流</strong><small>10 个托管流程</small><span class="node-status"><i class="status-dot complete"></i>已激活</span></button>
-                  <div class="blank-node" aria-hidden="true"></div>
+                  <button class="flow-node status-waiting" type="button" data-node="test-questions" aria-pressed="false"><strong>测试问题与 QuestionSet</strong><small>3 套 100 题 · 300 待审</small><span class="node-status"><i class="status-dot waiting"></i>等待人工确认</span></button>
                   <div class="blank-node" aria-hidden="true"></div>
                 </div>
               </section>
@@ -1664,6 +1664,7 @@
           <select id="trace-select">
             <option value="content">V600 内容生成</option>
             <option value="simulation">V600 仿真消费者短评</option>
+            <option value="test-questions">V600 完整 100 题生成</option>
             <option value="synthetic-direct">V600 合成测评直接生成</option>
             <option value="recommendation">建议生成</option>
             <option value="knowledge">知识 RAG 处理</option>
@@ -1885,7 +1886,7 @@
     </section>
 
     <footer class="page-footer">
-      <p>业务数据来源：<code>docs/operations/advinsys-production-path-validation-2026-07-29.md</code> + 合成测评第 87 次修订实跑收据</p>
+      <p>业务数据来源：<code>docs/operations/advinsys-production-path-validation-2026-07-29.md</code>、<code>docs/operations/GEO-test-question-generation-operator-manual.md</code> + 合成测评实跑收据</p>
       <p>Project <code>6f93ee7b-bd7f-4fca-92b2-0de17254953a</code></p>
     </footer>
   </main>
@@ -1921,11 +1922,11 @@
         evidence: "advinsys-production-path-validation §3 / §4.1", href: `${adminBase}?tab=knowledge&knowledge_tab=facts`
       },
       campaign: {
-        status: "complete", statusText: "已完成", title: "问题与 Campaign",
-        description: "项目已建立三条 Campaign、对应渠道任务以及六条 Monitoring Query。",
+        status: "complete", statusText: "已完成", title: "Campaign 与监测查询",
+        description: "项目已建立三条 Campaign、对应渠道任务以及六条 Monitoring Query；测试问题在测量工作区独立生成和冻结。",
         fact: "3 Campaign、27 Opportunity、6 Monitoring Query",
         executor: "GEO 原生领域服务",
-        next: "在取得真实观测后冻结并执行采样协议",
+        next: "在测量工作区审核测试问题并冻结 QuestionSet",
         evidence: "advinsys-production-path-validation §2", href: `${adminBase}?tab=geo`
       },
       dify: {
@@ -1935,6 +1936,14 @@
         executor: "自托管 Dify 1.16.0 + DeepSeek",
         next: "以真实业务 Job 继续验证 style_profile 与 recommendation 输入",
         evidence: "advinsys-production-path-validation §3 / §4.2", href: `${adminBase}?tab=prompts`
+      },
+      "test-questions": {
+        status: "waiting", statusText: "等待人工确认", title: "测试问题与 QuestionSet",
+        description: "V600、V1000 和 SAT30 已由固定覆盖计划与真实 Dify / DeepSeek 各生成 100 条问题。技术生成成功不等于候选已确认、QuestionSet 已冻结或已经进入采样分母。",
+        fact: "3 个 Coverage Job succeeded；300 pending_review；0 个本批次 QuestionSet",
+        executor: "覆盖计划器 + Durable Question Worker + Dify + PostgreSQL checkpoint",
+        next: "业务审核人编辑或排除疑似重复，每个产品保留 90--100 条，再一次确认并冻结 QuestionSet",
+        evidence: "GEO-test-question-generation-operator-manual §7", href: `${adminBase}?tab=measurement&workflow_view=questions&campaign_id=049efe96-2ef6-4020-885f-df770ce5ab90&question_generation_job_id=0b4f68e1-03ad-5b48-a7e7-71d207bba1ad&question_step=review`
       },
       "content-input": {
         status: "complete", statusText: "已冻结", title: "内容任务输入",
@@ -2137,6 +2146,24 @@
           ["Dify 仿真", "placements.simulation 使用真实 DeepSeek 生成澳洲英文第一人称短评。", "Dify Run 854cc009…947a", "complete"],
           ["质量门禁", "应用校验 Schema、证据引用、第一人称体验 Claim，并拒绝虚构使用效果。", "GEO Runtime", "complete"],
           ["不可变结果", "结果、Claim、输入/输出哈希与模型 lineage 落库；publication_eligible=false。", "97f7ca4b…4c60", "complete"]
+        ]
+      },
+      "test-questions": {
+        object: "TerraMow V600 完整 100 题", techStatus: "完成", businessStatus: "pending_review", id: "0b4f68e1…b1ad",
+        outcomeTitle: "100 条候选已生成，QuestionSet 仍等待人工确认",
+        outcomeCopy: "V600 已形成 50 条类目基准、40 条产品适配和 10 条品牌控制问题；100 条文字均不同，7 条疑似重复被保留并默认排除。当前 93 条默认入选，尚未由业务人员冻结，也未进入采样分母。",
+        outcomeState: "100 条候选 · 93 条默认保留", outcomeTone: "waiting",
+        steps: [
+          ["选择 Campaign", "Admin 只需选择产品活动，可选填写不超过 120 字的本次关注点。", "Admin 13001", "complete"],
+          ["覆盖计划", "服务器从当前产品、官方 URL 和批准 Fact 构建 100 个固定槽位，冻结 50/40/10 配额。", "au-cross-engine-balanced-v1", "complete"],
+          ["入队与分批", "Internal API 原子创建 Durable Job 与 Outbox；Worker 按 10 批、每批 10 题执行。", "PostgreSQL", "complete"],
+          ["固定基准 + Dify", "每批 5 条跨产品固定基准，另 5 条由 knowledge.question_generation 和真实 DeepSeek 生成。", "Dify Release 0fee4695…3d4b", "complete"],
+          ["知识与身份校验", "每个模型槽位预分配冻结 grounding_fact；应用校验非品牌题不泄露产品身份且引用不越界。", "invalid Fact links = 0", "complete"],
+          ["Checkpoint 恢复", "每个有效批次独立保存；V600 从 2/10 和 6/10 两次继续，最终完成而非整套重跑。", "10 / 10 batches", "complete"],
+          ["候选持久化", "100 条不同文字及实际模型、去重、Fact lineage 和工件 hash 原子落库。", "0b4f68e1…b1ad", "complete"],
+          ["人工确认", "业务人员可搜索、按层/主题筛选、编辑或排除；7 条疑似重复默认不纳入。", "93 / 100 默认保留", "waiting"],
+          ["QuestionSet 冻结", "保留 90--100 条后一次确认并创建不可变 QuestionSet；系统不代替业务判断。", "当前 0", "idle"],
+          ["监测方案绑定", "冻结 QuestionSet 绑定 draft 监测方案后才可作为后续采样输入。", "尚未开始", "idle"]
         ]
       },
       "synthetic-direct": {

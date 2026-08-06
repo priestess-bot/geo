@@ -1,0 +1,548 @@
+.candidateList {
+  border: 1px solid var(--question-border);
+  border-radius: 5px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.coverageReview {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.reviewToolbar {
+  align-items: end;
+  background: #f3f6f6;
+  border: 1px solid var(--question-border);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(220px, 1fr) minmax(150px, 190px)
+    minmax(150px, 190px) 92px;
+  padding: 12px;
+}
+
+.reviewToolbar label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.reviewToolbar label > span {
+  color: var(--question-muted);
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.reviewToolbar input,
+.reviewToolbar select {
+  background: #fff;
+  border: 1px solid #aebdc3;
+  border-radius: 4px;
+  color: inherit;
+  font: inherit;
+  min-height: 38px;
+  min-width: 0;
+  padding: 8px 9px;
+  width: 100%;
+}
+
+.selectionSummary {
+  align-items: center;
+  background: #e6f2ef;
+  border: 1px solid #b9d3ce;
+  display: flex;
+  gap: 5px;
+  justify-content: center;
+  min-height: 38px;
+}
+
+.selectionSummary strong {
+  color: #155e55;
+  font-size: 17px;
+}
+
+.selectionSummary span {
+  color: #49635f;
+  font-size: 10px;
+}
+
+.bulkTools {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.bulkTools span,
+.bulkTools small {
+  color: var(--question-muted);
+  font-size: 11px;
+}
+
+.bulkTools small {
+  margin-left: auto;
+}
+
+.bulkTools button,
+.editButton,
+.cancelEdit {
+  background: #fff;
+  border: 1px solid #a9b8bc;
+  border-radius: 4px;
+  color: #285d58;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 750;
+  min-height: 30px;
+  padding: 5px 9px;
+}
+
+.coverageCandidateList {
+  border: 1px solid var(--question-border);
+  min-width: 0;
+}
+
+.coverageCandidate {
+  border-top: 1px solid #dfe6e8;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 132px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 64px minmax(0, 1fr) auto;
+  min-width: 0;
+  padding: 13px 14px;
+}
+
+.coverageCandidate:first-child {
+  border-top: 0;
+}
+
+.includeToggle {
+  align-items: center;
+  color: #445d63;
+  display: flex;
+  font-size: 11px;
+  font-weight: 750;
+  gap: 6px;
+}
+
+.includeToggle input {
+  accent-color: var(--question-primary);
+  height: 16px;
+  width: 16px;
+}
+
+.coverageCandidateBody {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.questionLine {
+  align-items: flex-start;
+  display: flex;
+  gap: 8px;
+}
+
+.questionLine strong {
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.editedBadge {
+  background: #e8f1f0;
+  color: #276159;
+  flex: 0 0 auto;
+  font-size: 10px;
+  padding: 2px 5px;
+}
+
+.coverageMeta,
+.knowledgeLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 9px;
+}
+
+.coverageMeta span {
+  color: #61747b;
+  font-size: 10px;
+}
+
+.knowledgeLinks {
+  background: #f4f7f7;
+  border-left: 2px solid #8ca9a5;
+  padding: 7px 9px;
+}
+
+.knowledgeLinks b,
+.knowledgeLinks span {
+  color: #526970;
+  font-size: 10px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.knowledgeLinks b {
+  color: #344c53;
+}
+
+.coverageCandidateBody :global(form) {
+  display: grid;
+  gap: 8px;
+}
+
+.coverageCandidateBody :global(form) > label {
+  display: grid;
+  gap: 5px;
+}
+
+.coverageCandidateBody textarea {
+  min-height: 76px;
+  resize: vertical;
+}
+
+.coverageCandidateBody :global(form) > button {
+  justify-self: start;
+}
+
+.cancelEdit {
+  justify-self: start;
+}
+
+.coverageFinalize {
+  align-items: center;
+  background: #24383e;
+  color: #fff;
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
+  padding: 14px 16px;
+}
+
+.coverageFinalize > div {
+  display: grid;
+  gap: 3px;
+}
+
+.coverageFinalize strong {
+  font-size: 13px;
+}
+
+.coverageFinalize span {
+  color: #c8d3d5;
+  font-size: 11px;
+}
+
+.coverageFinalize :global(form) {
+  flex: 0 0 auto;
+}
+
+.candidateRow {
+  border-top: 1px solid #dfe6e8;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: 34px minmax(0, 1fr) minmax(112px, 170px);
+  min-width: 0;
+  padding: 17px;
+}
+
+.candidateRow:first-child {
+  border-top: 0;
+}
+
+.candidateNumber {
+  color: #869398;
+  font-size: 11px;
+  font-weight: 800;
+  padding-top: 3px;
+}
+
+.candidateBody {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+}
+
+.candidateHeading {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.candidateHeading h3 {
+  font-size: 15px;
+  font-weight: 750;
+  letter-spacing: 0;
+  line-height: 1.5;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.candidateMeta,
+.sources {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 10px;
+}
+
+.candidateMeta span {
+  color: #687980;
+  font-size: 11px;
+}
+
+.sources {
+  background: #f4f7f7;
+  border-left: 2px solid #8ca9a5;
+  padding: 7px 9px;
+}
+
+.sources strong {
+  color: #41565d;
+  font-size: 11px;
+}
+
+.sources span {
+  color: #526a71;
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.reviewActions {
+  align-content: start;
+  display: grid;
+  gap: 7px;
+}
+
+.reviewedGroup {
+  border-top: 1px solid #dfe6e8;
+}
+
+.reviewedGroup > summary {
+  background: #f7f9f9;
+  padding: 11px 16px;
+}
+
+.reviewedGroup > div .candidateRow:first-child {
+  border-top: 1px solid #dfe6e8;
+}
+
+.nextActionBar {
+  align-items: center;
+  background: #23383e;
+  color: #fff;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+  margin: 4px -24px -28px;
+  padding: 14px 24px;
+  position: static;
+}
+
+.nextActionBar > div {
+  display: grid;
+  gap: 3px;
+}
+
+.nextActionBar strong {
+  font-size: 13px;
+}
+
+.nextActionBar span {
+  color: #c5d0d3;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.disabledAction {
+  align-items: center;
+  background: #526267;
+  border-radius: 4px;
+  color: #d9e0e2 !important;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-weight: 800;
+  min-height: 38px;
+  padding: 8px 14px;
+}
+
+.createSetSection,
+.setVersions {
+  display: grid;
+  gap: 13px;
+}
+
+.createSetSection {
+  background: #f7f9f9;
+  border: 1px solid var(--question-border);
+  border-radius: 5px;
+  padding: 16px;
+}
+
+.createSetSection h3,
+.subheading h3 {
+  font-size: 15px;
+  margin: 0;
+}
+
+.createSetSection :global(form) {
+  max-width: 760px;
+}
+
+.candidatePicker {
+  border: 0 !important;
+  gap: 7px !important;
+  padding: 0 !important;
+}
+
+.candidatePicker > label {
+  background: #fff;
+}
+
+.subheading {
+  align-items: baseline;
+  display: flex;
+  justify-content: space-between;
+}
+
+.subheading span {
+  color: var(--question-muted);
+  font-size: 11px;
+}
+
+.setList {
+  border: 1px solid var(--question-border);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.setRow {
+  border-top: 1px solid #dfe6e8;
+  display: grid;
+  gap: 13px;
+  padding: 15px;
+}
+
+.setRow:first-child {
+  border-top: 0;
+}
+
+.setRow > header {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.setRow > header > div {
+  display: grid;
+  gap: 2px;
+}
+
+.setRow > header strong {
+  font-size: 14px;
+}
+
+.setRow > header span {
+  color: var(--question-muted);
+  font-size: 11px;
+}
+
+.setMetrics {
+  display: grid;
+  gap: 1px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0;
+}
+
+.setMetrics > div {
+  background: #f1f5f5;
+  display: grid;
+  gap: 3px;
+  padding: 9px 10px;
+}
+
+.setMetrics dt {
+  color: var(--question-muted);
+  font-size: 10px;
+}
+
+.setMetrics dd {
+  font-size: 13px;
+  font-weight: 800;
+  margin: 0;
+}
+
+.setQuestionList {
+  border-top: 1px solid #dfe6e8;
+  display: grid;
+  margin-top: 9px;
+}
+
+.setQuestionList > div {
+  border-bottom: 1px solid #e4e9eb;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 24px minmax(0, 1fr);
+  padding: 9px 0;
+}
+
+.setQuestionList > div > span,
+.setQuestionList small {
+  color: var(--question-muted);
+  font-size: 11px;
+}
+
+.setQuestionList > div > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.setQuestionList strong {
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.setActions,
+.frozenActions {
+  align-items: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.setActions :global(form),
+.frozenActions :global(form) {
+  min-width: 220px;
+}
+
+.boundProtocol {
+  align-items: center;
+  background: #edf7f5;
+  border-left: 3px solid var(--question-primary);
+  display: flex;
+  font-size: 12px;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 9px 11px;
+  width: 100%;
+}
+
+.simulationLink {
+  background: #fff;
+  color: var(--question-primary);
+}
+
+.mobileJobSummary {
+  display: none;
+}

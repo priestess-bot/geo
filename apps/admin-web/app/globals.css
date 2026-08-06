@@ -468,6 +468,38 @@ h3 {
 @media (max-width: 620px) {
   .compactProjectHero { align-items: flex-start; flex-direction: column; gap: 10px; }
   .projectTechnical { text-align: left; }
+  .desktopProjectTabs { display: none; }
+  .mobileProjectTabs {
+    background: #ffffff;
+    border: 1px solid #d5dde5;
+    border-radius: 5px 5px 0 0;
+    display: block;
+    margin-top: 14px;
+  }
+  .mobileProjectTabs > summary {
+    color: #294754;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 800;
+    list-style-position: inside;
+    padding: 10px 12px;
+  }
+  .mobileProjectTabs nav {
+    border-top: 1px solid #d5dde5;
+    display: grid;
+  }
+  .mobileProjectTabs a {
+    border-top: 1px solid #e2e7ea;
+    color: #456071;
+    font-size: 13px;
+    font-weight: 750;
+    padding: 10px 12px;
+  }
+  .mobileProjectTabs a:first-child { border-top: 0; }
+  .mobileProjectTabs a[aria-current="page"] {
+    background: #edf7f5;
+    color: #155f57;
+  }
 }
 
 .muted {
@@ -619,6 +651,10 @@ h3 {
   border-color: #d5dde5;
   color: #17232d;
   margin-bottom: -1px;
+}
+
+.mobileProjectTabs {
+  display: none;
 }
 
 .subtabBar {
@@ -2263,6 +2299,11 @@ pre {
   padding: 12px;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+@media (max-width: 620px) {
+  .desktopProjectTabs { display: none; }
+  .mobileProjectTabs { display: block; }
 }
 
 @media (max-width: 900px) {

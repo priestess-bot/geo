@@ -3,9 +3,11 @@ import type {
   StatisticalProtocolPage,
   WorkflowCReportPage
 } from "./workflowCControlTypes";
+import type { QuestionStep, QuestionWorkspaceData } from "./questionWorkspaceData";
 
 export const workflowViews = [
   "overview",
+  "questions",
   "admission",
   "sampling",
   "protocols",
@@ -537,6 +539,7 @@ export type WorkflowCWorkspaceData = Readonly<{
   currentRole: "owner" | "admin" | "analyst" | "viewer" | null;
   activeView: WorkflowView;
   selection: Readonly<{
+    embedded: boolean;
     suiteId?: string;
     runId?: string;
     snapshotHash?: string;
@@ -544,7 +547,11 @@ export type WorkflowCWorkspaceData = Readonly<{
     driftHash?: string;
     alertId?: string;
     policyId?: string;
+    campaignId?: string;
+    questionGenerationJobId?: string;
+    questionStep?: QuestionStep;
   }>;
+  questionWorkspace: QuestionWorkspaceData | null;
   suite: Resource<SamplingSuite>;
   run: Resource<SamplingRunDetail>;
   metrics: Resource<SemanticMetricSnapshot>;

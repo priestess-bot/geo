@@ -1,0 +1,68 @@
+@media (max-width: 900px) {
+  .workArea {
+    grid-template-columns: 210px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .workArea {
+    display: block;
+    min-height: 0;
+    overflow: visible;
+  }
+
+  .jobRail {
+    display: none;
+  }
+
+  .mobileJobSummary {
+    align-items: center;
+    background: #f2f6f5;
+    border-bottom: 1px solid var(--question-border);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    padding: 10px 12px;
+  }
+
+  .mobileJobSummary > span:first-child {
+    color: var(--question-muted);
+    font-size: 11px;
+  }
+
+  .mobileJobSummary strong {
+    font-size: 12px;
+    margin-right: auto;
+  }
+
+  .stepContent {
+    padding: 16px 13px 22px;
+  }
+
+  .coveragePreset {
+    padding: 14px;
+  }
+
+  .presetHeader {
+    align-items: flex-start;
+    display: grid;
+  }
+
+  .presetMetrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .stepHeading {
+    display: grid;
+    gap: 9px;
+  }
+
+  .stepHeading h2 {
+    font-size: 18px;
+  }
+
+  .twoColumns,
+  .factToolbar {
+    grid-template-columns: 1fr;
+  }
+}

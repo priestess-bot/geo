@@ -8,7 +8,7 @@ import json
 import math
 import re
 import unicodedata
-from typing import Mapping, Sequence
+from typing import Literal, Mapping, Sequence
 from uuid import UUID
 
 
@@ -124,6 +124,20 @@ class QuestionEntityInput:
 
 
 @dataclass(frozen=True)
+class QuestionCoverageSlotClaim:
+    dimension_key: str
+    coverage_role: Literal["category_benchmark", "product_fit", "brand_control"]
+    topic_cluster: str
+    planned_query_text: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.dimension_key.strip() or not self.topic_cluster.strip():
+            raise QuestionContractError("question coverage slot identity is incomplete")
+        if self.planned_query_text is not None:
+            normalize_question_text(self.planned_query_text)
+
+
+@dataclass(frozen=True)
 class QuestionCandidateDraft:
     adapter_candidate_id: str
     dimension_key: str
@@ -165,6 +179,14 @@ class QuestionGenerationClaim:
     dimensions: tuple[FrozenQuestionDimension, ...]
     facts: tuple[QuestionFactInput, ...]
     entities: tuple[QuestionEntityInput, ...]
+    generation_mode: Literal["single_scenario", "coverage_pack"] = "single_scenario"
+    coverage_profile: str | None = None
+    coverage_profile_hash: str | None = None
+    target_count: int | None = None
+    product_entity_id: UUID | None = None
+    product_category: str | None = None
+    product_name: str | None = None
+    coverage_slots: tuple[QuestionCoverageSlotClaim, ...] = ()
 
     def __post_init__(self) -> None:
         if not SHA256.fullmatch(self.input_hash) or not SHA256.fullmatch(
@@ -182,6 +204,38 @@ class QuestionGenerationClaim:
             raise QuestionContractError("question duplicate threshold is outside its contract")
         if not self.dimensions or not self.facts:
             raise QuestionContractError("question generation requires dimensions and Facts")
+        if self.generation_mode == "single_scenario":
+            if any(
+                value is not None
+                for value in (
+                    self.coverage_profile,
+                    self.coverage_profile_hash,
+                    self.target_count,
+                    self.product_entity_id,
+                    self.product_category,
+                    self.product_name,
+                )
+            ) or self.coverage_slots:
+                raise QuestionContractError("single-scenario question claim has coverage fields")
+            return
+        if self.generation_mode != "coverage_pack":
+            raise QuestionContractError("question generation mode is unsupported")
+        if (
+            not self.coverage_profile
+            or not self.coverage_profile_hash
+            or not SHA256.fullmatch(self.coverage_profile_hash)
+            or self.target_count != len(self.dimensions)
+            or self.product_entity_id is None
+            or not self.product_category
+            or not self.product_name
+            or len(self.coverage_slots) != len(self.dimensions)
+        ):
+            raise QuestionContractError("question coverage claim is incomplete")
+        dimension_keys = {item.dimension_key for item in self.dimensions}
+        if {item.dimension_key for item in self.coverage_slots} != dimension_keys:
+            raise QuestionContractError("question coverage slots crossed frozen dimensions")
+        if self.target_count != 100:
+            raise QuestionContractError("current question coverage profile requires 100 slots")
 
 
 def canonical_question_artifact(
@@ -206,7 +260,15 @@ def canonical_question_artifact(
         "selection_manifest_hash": claim.selection_manifest_hash,
         "dimension_schema_version": DIMENSION_SCHEMA_VERSION,
         "embedding_model_key": EMBEDDING_MODEL_KEY,
+        "generation_mode": claim.generation_mode,
+        "coverage_profile": claim.coverage_profile,
+        "coverage_profile_hash": claim.coverage_profile_hash,
+        "target_count": claim.target_count,
+        "product_entity_id": str(claim.product_entity_id) if claim.product_entity_id else None,
+        "product_category": claim.product_category,
+        "product_name": claim.product_name,
         "dimensions": [asdict(item) for item in claim.dimensions],
+        "coverage_slots": [asdict(item) for item in claim.coverage_slots],
         "candidates": rows,
     }
     content = (
@@ -531,11 +593,14 @@ def _deduplicate(
             status = "possible_duplicate"
     if nearest is None:
         return candidate
+    persisted_similarity = round(nearest_similarity, 4)
+    if status == "unique" and persisted_similarity >= threshold:
+        status = "possible_duplicate"
     return replace(
         candidate,
         dedup_status=status,
         nearest_adapter_candidate_id=nearest.adapter_candidate_id,
-        nearest_similarity=round(nearest_similarity, 4),
+        nearest_similarity=persisted_similarity,
     )
 
 

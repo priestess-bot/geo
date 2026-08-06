@@ -95,7 +95,12 @@ test("M4-WORKFLOW-C-WEB-00: project workbench embeds one semantic measurement pa
   await expect(page.getByRole("link", { name: "测量与告警" })).toHaveClass(/active/);
   await expect(page.locator("main")).toHaveCount(1);
   await expect(page.getByText("已规划", { exact: true }).first()).toBeVisible();
-  await expect(page.getByRole("link", { name: "采样", exact: true })).toHaveAttribute("href", /\/workflow-c\?/);
+  const samplingHref = await page.getByRole("link", { name: "采样", exact: true }).getAttribute("href");
+  expect(samplingHref).toBeTruthy();
+  const samplingUrl = new URL(samplingHref!, "http://fixture.local");
+  expect(samplingUrl.pathname).toBe(`/projects/${PROJECT_ID}`);
+  expect(samplingUrl.searchParams.get("tab")).toBe("measurement");
+  expect(samplingUrl.searchParams.get("workflow_view")).toBe("sampling");
   expect(runtimeErrors).toEqual([]);
   await page.screenshot({ path: testInfo.outputPath("workflow-c-embedded-desktop.png"), fullPage: true });
 

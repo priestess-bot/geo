@@ -67,6 +67,7 @@ export function WorkbenchShell({
     recommendationData?.listProblem?.status === 503
     || recommendationData?.selectedProblem?.status === 503
   );
+  const activeTabLabel = workbenchTabs.find((tab) => tab.id === activeTab)?.label || "项目工作台";
 
   return (
     <main className="shell">
@@ -85,7 +86,7 @@ export function WorkbenchShell({
         <details className="projectTechnical"><summary>技术信息</summary><code>Tenant {project.tenant_id}</code><code>Project {project.id}</code></details>
       </section>
 
-      <nav className="tabBar" aria-label="项目工作台">
+      <nav className="tabBar desktopProjectTabs" aria-label="项目工作台">
         {workbenchTabs.map((tab) => (
           <a
             className={`tabLink${tab.id === activeTab ? " active" : ""}`}
@@ -96,6 +97,17 @@ export function WorkbenchShell({
           </a>
         ))}
       </nav>
+
+      <details className="mobileProjectTabs">
+        <summary>当前模块：{activeTabLabel}</summary>
+        <nav aria-label="项目工作台">
+          {workbenchTabs.map((tab) => <a
+            aria-current={tab.id === activeTab ? "page" : undefined}
+            href={workbenchHref(project.id, tab.id)}
+            key={tab.id}
+          >{tab.label}</a>)}
+        </nav>
+      </details>
 
       <section className="workspacePanel">
         {activeTab === "basic" ? (

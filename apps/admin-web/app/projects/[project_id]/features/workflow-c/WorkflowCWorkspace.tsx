@@ -8,6 +8,7 @@ import {
   MetricsPanel
 } from "./AnalysisPanels";
 import { SamplingPanel } from "./SamplingPanel";
+import { MeasurementQuestionsView } from "./MeasurementQuestionsView";
 import { ProtocolsPanel, ReportsPanel } from "./WorkflowCControlPanels";
 import { workflowCHref } from "./workflowCData";
 import {
@@ -16,6 +17,7 @@ import {
   type WorkflowView
 } from "./workflowCTypes";
 import styles from "./WorkflowC.module.css";
+import navigationStyles from "./WorkflowCNavigation.module.css";
 import panelStyles from "./WorkflowCPanel.module.css";
 
 export type WorkflowCPanelProps = Readonly<{
@@ -101,19 +103,25 @@ function WorkflowCContents({
     enqueueRun: `workflow-c-run-enqueue-${randomUUID()}`,
     cancelRun: `workflow-c-run-cancel-${randomUUID()}`
   };
+  const isQuestionView = data.activeView === "questions";
+  const workspaceTitle = isQuestionView ? "测量与告警" : "采样、证据与告警";
 
   return (
     <>
-      <header className={standalone ? styles.header : panelStyles.panelHeader}>
+      <header className={`${standalone ? styles.header : panelStyles.panelHeader}${
+        isQuestionView ? ` ${navigationStyles.questionHeader}` : ""
+      }`}>
         <div>
-          <p className={styles.kicker}>GEO 测量控制台</p>
+          {isQuestionView ? null : <p className={styles.kicker}>GEO 测量控制台</p>}
           {standalone
-            ? <h1>采样、证据与告警</h1>
-            : <h2>采样、证据与告警</h2>}
-          <div className={styles.headerMeta}>
-            <span>项目 <code>{projectId}</code></span>
-            <span>{roleLabel(data.currentRole)}</span>
-          </div>
+            ? <h1>{workspaceTitle}</h1>
+            : <h2>{workspaceTitle}</h2>}
+          {isQuestionView
+            ? <p className={navigationStyles.questionSubtitle}>问题、采样、统计与告警</p>
+            : <div className={styles.headerMeta}>
+              <span>项目 <code>{projectId}</code></span>
+              <span>{roleLabel(data.currentRole)}</span>
+            </div>}
         </div>
         {standalone ? (
           <nav className={styles.headerActions} aria-label="页面导航">
@@ -129,26 +137,27 @@ function WorkflowCContents({
         </div>
       ) : null}
 
-      <section className={styles.summaryBand} aria-label="当前运行摘要">
-        <Summary label="已规划" value={assessment?.planned_task_count ?? "-"} />
-        <Summary label="有效" value={assessment?.valid_task_count ?? "-"} tone="good" />
-        <Summary label="无效" value={assessment?.invalid_task_count ?? "-"} tone="bad" />
-        <Summary label="缺失" value={assessment?.missing_task_count ?? "-"} tone="warning" />
-        <Summary
-          label="证据"
-          value={assessment ? evidenceLabel(assessment.status) : "未选择"}
-          tone={assessment?.status === "complete" ? "good" : "warning"}
-        />
-        <Summary
-          label="活动告警"
-          value={data.alerts.data?.items.filter((item) => item.status !== "resolved").length ?? "-"}
-          tone="bad"
-        />
-      </section>
+      {data.activeView === "questions" ? null
+        : <section className={styles.summaryBand} aria-label="当前运行摘要">
+          <Summary label="已规划" value={assessment?.planned_task_count ?? "-"} />
+          <Summary label="有效" value={assessment?.valid_task_count ?? "-"} tone="good" />
+          <Summary label="无效" value={assessment?.invalid_task_count ?? "-"} tone="bad" />
+          <Summary label="缺失" value={assessment?.missing_task_count ?? "-"} tone="warning" />
+          <Summary
+            label="证据"
+            value={assessment ? evidenceLabel(assessment.status) : "未选择"}
+            tone={assessment?.status === "complete" ? "good" : "warning"}
+          />
+          <Summary
+            label="活动告警"
+            value={data.alerts.data?.items.filter((item) => item.status !== "resolved").length ?? "-"}
+            tone="bad"
+          />
+        </section>}
 
-      <ResourceSelector data={data} projectId={projectId} />
+      {data.activeView === "questions" ? null : <ResourceSelector data={data} projectId={projectId} />}
 
-      <nav className={styles.viewTabs} aria-label="测量视图">
+      <nav className={`${styles.viewTabs} ${navigationStyles.desktopViewNav}`} aria-label="测量视图">
         {workflowViews.map((view) => (
           <a
             aria-current={data.activeView === view ? "page" : undefined}
@@ -161,8 +170,25 @@ function WorkflowCContents({
         ))}
       </nav>
 
-      <div className={styles.workspace}>
+      <details className={navigationStyles.mobileViewNav}>
+        <summary>当前视图：{viewLabel(data.activeView)}</summary>
+        <nav aria-label="测量视图">
+          {workflowViews.map((view) => <a
+            aria-current={data.activeView === view ? "page" : undefined}
+            href={workflowCHref(projectId, data.selection, view)}
+            key={view}
+          >{viewLabel(view)}</a>)}
+        </nav>
+      </details>
+
+      <div
+        className={`${styles.workspace}${isQuestionView ? ` ${navigationStyles.questionWorkspace}` : ""}`}
+        data-question-workspace={isQuestionView ? "true" : undefined}
+      >
         {data.activeView === "overview" ? <Overview data={data} /> : null}
+        {data.activeView === "questions" ? (
+          <MeasurementQuestionsView data={data} projectId={projectId} />
+        ) : null}
         {data.activeView === "admission" ? (
           <AdmissionPolicyPanel
             actorId={data.actorId}
@@ -265,7 +291,10 @@ function ResourceSelector({ data, projectId }: { data: WorkflowCWorkspaceData; p
   return (
     <details className={styles.resourceSelector}>
       <summary>资源定位</summary>
-      <form action={`/projects/${encodeURIComponent(projectId)}/workflow-c`} method="get">
+      <form action={data.selection.embedded
+        ? `/projects/${encodeURIComponent(projectId)}`
+        : `/projects/${encodeURIComponent(projectId)}/workflow-c`} method="get">
+        {data.selection.embedded ? <input name="tab" type="hidden" value="measurement" /> : null}
         <input name="workflow_view" type="hidden" value={data.activeView} />
         <ResourceSelect
           defaultValue={data.selection.suiteId}
@@ -408,6 +437,7 @@ export function conclusionLabel(value: string): string {
 function viewLabel(view: WorkflowView): string {
   return {
     overview: "总览",
+    questions: "测试问题",
     admission: "授权策略",
     sampling: "采样",
     protocols: "协议与任务",

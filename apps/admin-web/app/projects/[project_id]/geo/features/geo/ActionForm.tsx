@@ -1,19 +1,57 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useEffect, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import styles from "./GeoWorkspace.module.css";
 
 export type FormResult = { ok?: string; error?: string; status?: number; code?: string; correlationId?: string; retryable?: boolean; nextHref?: string; };
 type FormAction = (state: FormResult, payload: FormData) => Promise<FormResult>;
 
-export function ActionForm({ action, children, submitLabel, pendingLabel = "处理中...", title, disabled = false, danger = false }:
-  { action: FormAction; children: ReactNode; submitLabel: string; pendingLabel?: string; title?: string; disabled?: boolean; danger?: boolean; }) {
-  const [state, formAction, pending] = useActionState(action, {});
+export function ActionForm({ action, children, submitLabel, pendingLabel = "处理中...", title,
+  disabled = false, danger = false, onSuccess, refreshOnSuccess = false }:
+  { action: FormAction; children: ReactNode; submitLabel: string; pendingLabel?: string;
+    title?: string; disabled?: boolean; danger?: boolean;
+    onSuccess?: (result: FormResult) => void; refreshOnSuccess?: boolean; }) {
+  const router = useRouter();
+  const [state, setState] = useState<FormResult>({});
+  const [pending, setPending] = useState(false);
+  const pendingRef = useRef(false);
   const [idempotencyKey, setIdempotencyKey] = useState("");
   useEffect(() => { setIdempotencyKey(browserUuid()); }, []);
-  useEffect(() => { if (state.ok) setIdempotencyKey(browserUuid()); }, [state.ok]);
-  return <form action={formAction} className={styles.form}>
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (disabled || pendingRef.current || !idempotencyKey) return;
+    pendingRef.current = true;
+    setPending(true);
+    setState({});
+    try {
+      const result = await action(state, new FormData(event.currentTarget));
+      setState(result);
+      if (result.ok) {
+        setIdempotencyKey(browserUuid());
+      }
+      // Release the button before refreshing the route. A refresh can take a
+      // separate network round trip and must never leave the action stranded
+      // in its pending presentation when the server action has completed.
+      pendingRef.current = false;
+      setPending(false);
+      if (result.ok) {
+        onSuccess?.(result);
+        if (refreshOnSuccess) router.refresh();
+      }
+    } catch (error) {
+      pendingRef.current = false;
+      setPending(false);
+      setState({
+        error: error instanceof Error ? error.message : "操作失败，请重试。",
+        retryable: true,
+      });
+    }
+  }
+
+  return <form onSubmit={handleSubmit} className={styles.form}>
     {title ? <h3>{title}</h3> : null}
     <input type="hidden" name="idempotency_key" value={idempotencyKey} />
     {children}

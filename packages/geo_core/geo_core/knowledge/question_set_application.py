@@ -15,6 +15,115 @@ from geo_core.knowledge.domain import (
 
 
 class KnowledgeQuestionSetApplicationMixin:
+    def finalize_question_coverage_pack(
+        self,
+        principal: AccessPrincipal,
+        *,
+        project_id: UUID,
+        campaign_id: UUID,
+        name: str,
+        generation_job_id: UUID,
+        included_candidate_ids: Sequence[UUID],
+        idempotency_key: str,
+    ) -> Mapping[str, object]:
+        included = tuple(included_candidate_ids)
+        if len(included) < 90 or len(included) > 100 or len(set(included)) != len(included):
+            raise KnowledgeValidationError(
+                "coverage QuestionSet requires 90 to 100 unique included questions"
+            )
+        with self._connection(  # type: ignore[attr-defined]
+            principal, project_id, manage=True
+        ) as connection:
+            generation = _one(
+                connection.execute(
+                    """SELECT spec.target_count, job.status, result.candidate_count
+                       FROM knowledge_question_generation_specs spec
+                       JOIN durable_jobs job
+                         ON job.id = spec.job_id AND job.project_id = spec.project_id
+                       JOIN knowledge_question_generation_results result
+                         ON result.job_id = spec.job_id AND result.project_id = spec.project_id
+                       WHERE spec.job_id = %s AND spec.project_id = %s
+                         AND spec.campaign_id = %s
+                         AND spec.generation_mode = 'coverage_pack'""",
+                    (generation_job_id, project_id, campaign_id),
+                )
+            )
+            if (
+                generation is None
+                or generation["status"] != "succeeded"
+                or int(generation["candidate_count"]) != int(generation["target_count"])
+                or int(generation["target_count"]) != 100
+            ):
+                raise KnowledgeConflict(
+                    "coverage generation must finish with exactly 100 candidates before finalization"
+                )
+            candidates = _many(
+                connection.execute(
+                    """SELECT id, workflow_status, dedup_status
+                       FROM knowledge_question_candidates
+                       WHERE generated_by_job_id = %s AND project_id = %s AND campaign_id = %s
+                       ORDER BY id FOR UPDATE""",
+                    (generation_job_id, project_id, campaign_id),
+                )
+            )
+            all_ids = {item["id"] for item in candidates}
+            included_set = set(included)
+            if len(candidates) != 100 or not included_set.issubset(all_ids):
+                raise KnowledgeConflict("included questions crossed the completed coverage generation")
+            for candidate in candidates:
+                should_approve = candidate["id"] in included_set
+                expected = "approved" if should_approve else "rejected"
+                if should_approve and candidate["dedup_status"] != "unique":
+                    raise KnowledgeConflict(
+                        "duplicate or near-duplicate questions cannot be finalized"
+                    )
+                if candidate["workflow_status"] not in {"pending_review", expected}:
+                    raise KnowledgeConflict(
+                        "a previously reviewed question conflicts with this final selection"
+                    )
+            connection.execute(
+                """UPDATE knowledge_question_candidates
+                   SET workflow_status = CASE WHEN id = ANY(%s) THEN 'approved' ELSE 'rejected' END,
+                       reviewed_by = %s, reviewed_at = clock_timestamp(),
+                       review_notes = NULL, updated_at = clock_timestamp()
+                   WHERE generated_by_job_id = %s AND project_id = %s AND campaign_id = %s
+                     AND workflow_status = 'pending_review'""",
+                (
+                    list(included),
+                    principal.identity_id,
+                    generation_job_id,
+                    project_id,
+                    campaign_id,
+                ),
+            )
+        created = self.create_question_set(
+            principal,
+            project_id=project_id,
+            campaign_id=campaign_id,
+            name=name,
+            generation_job_id=generation_job_id,
+            candidate_ids=included,
+            series_id=None,
+            previous_version_id=None,
+            idempotency_key=f"{idempotency_key}:set",
+        )
+        if created["status"] == "frozen":
+            return created
+        approved = created
+        if created["status"] == "draft":
+            approved = self.approve_question_set(
+                principal,
+                project_id=project_id,
+                campaign_id=campaign_id,
+                question_set_id=cast(UUID, created["id"]),
+            )
+        return self.freeze_question_set(
+            principal,
+            project_id=project_id,
+            campaign_id=campaign_id,
+            question_set_id=cast(UUID, approved["id"]),
+        )
+
     def create_question_set(
         self,
         principal: AccessPrincipal,
@@ -88,9 +197,14 @@ class KnowledgeQuestionSetApplicationMixin:
             candidates = _many(
                 connection.execute(
                     """SELECT candidate.id, candidate.dimension_key,
-                              candidate.query_text, candidate.query_text_hash,
-                              candidate.normalized_text_hash, candidate.dedup_status,
-                              dimension.query_kind,
+                              COALESCE(revision.query_text, candidate.query_text) AS query_text,
+                              COALESCE(revision.query_text_hash, candidate.query_text_hash)
+                                AS query_text_hash,
+                              COALESCE(revision.normalized_text_hash,
+                                       candidate.normalized_text_hash) AS normalized_text_hash,
+                              candidate.dedup_status, dimension.query_kind,
+                              dimension.brand_scope, dimension.coverage_role,
+                              dimension.topic_cluster, dimension.funnel,
                               geo_question_candidate_source_lineage_hash(candidate.id)
                                 AS source_lineage_hash,
                               geo_question_candidate_sources_current(candidate.id)
@@ -101,6 +215,15 @@ class KnowledgeQuestionSetApplicationMixin:
                         AND dimension.project_id = candidate.project_id
                         AND dimension.campaign_id = candidate.campaign_id
                         AND dimension.dimension_key = candidate.dimension_key
+                       LEFT JOIN LATERAL (
+                         SELECT value.query_text, value.query_text_hash,
+                                value.normalized_text_hash
+                         FROM knowledge_question_candidate_revisions value
+                         WHERE value.candidate_id = candidate.id
+                           AND value.project_id = candidate.project_id
+                           AND value.campaign_id = candidate.campaign_id
+                         ORDER BY value.revision_number DESC LIMIT 1
+                       ) revision ON true
                        WHERE candidate.project_id = %s AND candidate.campaign_id = %s
                          AND candidate.generated_by_job_id = %s
                          AND candidate.id = ANY(%s)
@@ -165,9 +288,10 @@ class KnowledgeQuestionSetApplicationMixin:
                           generated_by_job_id, question_candidate_id, ordinal,
                           dimension_key, query_text_snapshot, query_text_hash,
                           normalized_text_hash, query_kind_snapshot,
-                          query_cluster_key, source_lineage_hash)
+                          query_cluster_key, source_lineage_hash, brand_scope_snapshot,
+                          coverage_role_snapshot, topic_cluster_snapshot, funnel_snapshot)
                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                               %s, %s, %s)""",
+                               %s, %s, %s, %s, %s, %s, %s)""",
                     (
                         uuid5(
                             NAMESPACE_URL,
@@ -184,8 +308,12 @@ class KnowledgeQuestionSetApplicationMixin:
                         candidate["query_text_hash"],
                         candidate["normalized_text_hash"],
                         candidate["query_kind"],
-                        candidate["dimension_key"],
+                        candidate["topic_cluster"] or candidate["dimension_key"],
                         candidate["source_lineage_hash"],
+                        candidate["brand_scope"],
+                        candidate["coverage_role"],
+                        candidate["topic_cluster"],
+                        candidate["funnel"],
                     ),
                 )
             result = _question_set_view(
@@ -340,7 +468,8 @@ def _question_set_view(
         connection.execute(
             """SELECT id, ordinal, question_candidate_id, dimension_key,
                       query_text_snapshot, query_text_hash, query_kind_snapshot,
-                      query_cluster_key, source_lineage_hash
+                      query_cluster_key, source_lineage_hash, brand_scope_snapshot,
+                      coverage_role_snapshot, topic_cluster_snapshot, funnel_snapshot
                FROM knowledge_question_set_items
                WHERE question_set_id = %s AND project_id = %s AND campaign_id = %s
                ORDER BY ordinal""",

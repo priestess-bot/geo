@@ -9,7 +9,7 @@
       "file": "geo-question-generation.yml",
       "model_provider": "langgenius/deepseek/deepseek",
       "purpose": "knowledge.question_generation",
-      "sha256": "9990fd49dc04993880f7b7999fec780712e6137a4a69bb0419d667da8e0d8735"
+      "sha256": "1c9b7e3704968e7121b05d80599b12d29e572f32ca3627b40720012af5402f35"
     },
     {
       "configured_model": "deepseek-chat",

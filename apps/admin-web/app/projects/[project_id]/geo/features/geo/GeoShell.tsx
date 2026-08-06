@@ -28,7 +28,6 @@ export function GeoShell({ projectId, data, catalog }: { projectId: string; data
       protocol_id: undefined, destination_id: undefined, attempt_id: undefined,
       skill_id: undefined, bundle_id: undefined, job_id: undefined, version_id: undefined,
       publication_id: undefined, submission_id: undefined, simulation_id: undefined,
-      question_generation_job_id: undefined,
       placement_stage: "brief", measurement_window: "baseline"
     })
   }));

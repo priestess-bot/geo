@@ -51,6 +51,41 @@ def test_workflow_c_uses_an_independent_internal_admin_route() -> None:
     assert "/attribution" not in data
 
 
+def test_test_question_authoring_belongs_to_measurement_with_legacy_geo_redirect() -> None:
+    project_page = source(PROJECT / "page.tsx")
+    workspace = source(FEATURE / "WorkflowCWorkspace.tsx")
+    question_view = source(FEATURE / "MeasurementQuestionsView.tsx")
+    question_data = source(FEATURE / "questionWorkspaceData.ts")
+    question_links = source(FEATURE / "questionWorkspaceLinks.ts")
+    fact_picker = source(FEATURE / "QuestionFactPicker.tsx")
+    question_styles = source(FEATURE / "QuestionWorkspace.module.css")
+    geo_campaign = source(PROJECT / "geo/features/geo/CampaignWorkspace.tsx")
+    geo_actions = source(PROJECT / "geo/features/geo/action-utils.ts")
+
+    assert 'activeView === "questions"' in workspace
+    assert "MeasurementQuestionsView" in workspace
+    assert 'key: "generate"' in question_view
+    assert 'key: "review"' in question_view
+    assert 'key: "sets"' in question_view
+    assert 'question_step: step' in question_links
+    assert 'type="search"' in fact_picker
+    assert 'name="fact_candidate_ids"' in fact_picker
+    assert "defaultChecked" not in fact_picker
+    assert "max-height: 330px" in question_styles
+    assert "QuestionSetWorkspace" in question_view
+    assert "Promise.all" in question_data
+    assert "listKnowledgeQuestionGenerations" in question_data
+    assert "listKnowledgeQuestionCandidates" in question_data
+    question_workspace = source(PROJECT / "geo/features/geo/QuestionSetWorkspace.tsx")
+    assert 'name="notes"' not in question_workspace
+    assert "确认批准" not in question_workspace
+    assert 'activeTab === "geo" && legacyQuestionJobId' in project_page
+    assert "redirect(workflowCHref" in project_page
+    assert "QuestionSetWorkspace" not in geo_campaign
+    assert "前往测量与告警配置" in geo_campaign
+    assert 'revalidatePath(`/projects/${projectId}/workflow-c`)' in geo_actions
+
+
 def test_sampling_keeps_a_fixed_denominator_and_supported_capture_methods() -> None:
     panel = source(FEATURE / "SamplingPanel.tsx")
     types = source(FEATURE / "workflowCTypes.ts")

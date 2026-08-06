@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any, Mapping, Sequence
 from uuid import NAMESPACE_URL, UUID, uuid5
 
@@ -11,6 +13,7 @@ from geo_core.knowledge.question_domain import (
     FrozenQuestionDimension,
     QuestionCandidateDraft,
     QuestionContractError,
+    QuestionCoverageSlotClaim,
     QuestionEntityInput,
     QuestionFactInput,
     QuestionGenerationClaim,
@@ -34,7 +37,11 @@ class KnowledgeQuestionPostgresRepository:
                     """SELECT spec.campaign_id, spec.configured_model,
                               spec.model_call_budget, spec.adapter_release,
                               spec.selection_manifest_hash,
-                              spec.semantic_duplicate_threshold, job.input_hash
+                              spec.semantic_duplicate_threshold, job.input_hash,
+                              spec.generation_mode, spec.coverage_profile,
+                              spec.coverage_profile_hash, spec.target_count,
+                              spec.product_entity_id, spec.product_category,
+                              spec.product_name_snapshot
                        FROM knowledge_question_generation_specs spec
                        JOIN durable_jobs job
                          ON job.id = spec.job_id AND job.project_id = spec.project_id
@@ -50,7 +57,8 @@ class KnowledgeQuestionPostgresRepository:
                     """SELECT dimension_key, ordinal, turn_index,
                               parent_dimension_key, persona, scenario, intent, funnel,
                               region, language, brand_scope, platform, query_kind,
-                              subject, competitor_entity_id
+                              subject, competitor_entity_id, coverage_role,
+                              topic_cluster, planned_query_text
                        FROM knowledge_question_dimensions
                        WHERE job_id = %s AND project_id = %s AND campaign_id = %s
                        ORDER BY ordinal""",
@@ -130,7 +138,16 @@ class KnowledgeQuestionPostgresRepository:
                 adapter_release=str(row["adapter_release"]),
                 selection_manifest_hash=str(row["selection_manifest_hash"]),
                 duplicate_threshold=float(row["semantic_duplicate_threshold"]),
-                dimensions=tuple(FrozenQuestionDimension(**item) for item in dimensions),
+                dimensions=tuple(
+                    FrozenQuestionDimension(
+                        **{
+                            key: value
+                            for key, value in item.items()
+                            if key not in {"coverage_role", "topic_cluster", "planned_query_text"}
+                        }
+                    )
+                    for item in dimensions
+                ),
                 facts=tuple(
                     QuestionFactInput(
                         fact_candidate_id=item["fact_candidate_id"],
@@ -147,6 +164,23 @@ class KnowledgeQuestionPostgresRepository:
                     )
                     for item in entities
                 ),
+                generation_mode=str(row["generation_mode"]),
+                coverage_profile=row["coverage_profile"],
+                coverage_profile_hash=row["coverage_profile_hash"],
+                target_count=row["target_count"],
+                product_entity_id=row["product_entity_id"],
+                product_category=row["product_category"],
+                product_name=row["product_name_snapshot"],
+                coverage_slots=tuple(
+                    QuestionCoverageSlotClaim(
+                        dimension_key=str(item["dimension_key"]),
+                        coverage_role=item["coverage_role"],
+                        topic_cluster=str(item["topic_cluster"]),
+                        planned_query_text=item["planned_query_text"],
+                    )
+                    for item in dimensions
+                    if item["coverage_role"] is not None
+                ),
             )
             connection.rollback()
             return claim
@@ -155,6 +189,77 @@ class KnowledgeQuestionPostgresRepository:
             raise
         finally:
             connection.close()
+
+    def load_batch_checkpoint(
+        self, lease: WorkerLease, *, batch_index: int
+    ) -> tuple[Mapping[str, object], str, str] | None:
+        connection = self._store.open_project(lease.project_id)
+        try:
+            row = _one(
+                connection.execute(
+                    """SELECT output, execution_backend, actual_model
+                       FROM knowledge_question_generation_batches
+                       WHERE job_id = %s AND project_id = %s AND batch_index = %s""",
+                    (lease.job_id, lease.project_id, batch_index),
+                )
+            )
+            connection.rollback()
+            if row is None:
+                return None
+            return row["output"], str(row["execution_backend"]), str(row["actual_model"])
+        except BaseException:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
+    def save_batch_checkpoint(
+        self,
+        lease: WorkerLease,
+        claim: QuestionGenerationClaim,
+        *,
+        batch_index: int,
+        dimensions: Sequence[FrozenQuestionDimension],
+        output: Mapping[str, object],
+        execution_backend: str,
+        actual_model: str,
+    ) -> None:
+        encoded = json.dumps(
+            output, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
+        )
+        output_hash = hashlib.sha256(encoded.encode()).hexdigest()
+        with self._store.fenced_transaction(lease) as connection:
+            existing = _one(
+                connection.execute(
+                    """SELECT output_hash FROM knowledge_question_generation_batches
+                       WHERE job_id = %s AND project_id = %s AND batch_index = %s""",
+                    (lease.job_id, lease.project_id, batch_index),
+                )
+            )
+            if existing is not None:
+                if existing["output_hash"] != output_hash:
+                    raise QuestionContractError("question batch checkpoint content changed")
+                return
+            connection.execute(
+                """INSERT INTO knowledge_question_generation_batches
+                     (job_id, project_id, campaign_id, batch_index, ordinal_start,
+                      ordinal_end, slot_count, output, output_hash,
+                      execution_backend, actual_model)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s)""",
+                (
+                    lease.job_id,
+                    lease.project_id,
+                    claim.campaign_id,
+                    batch_index,
+                    dimensions[0].ordinal,
+                    dimensions[-1].ordinal,
+                    len(dimensions),
+                    encoded,
+                    output_hash,
+                    execution_backend,
+                    actual_model,
+                ),
+            )
 
     def reserve_model_call(
         self,

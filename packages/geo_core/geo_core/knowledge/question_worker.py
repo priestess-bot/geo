@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass
 from datetime import timedelta
 import hashlib
 import json
-from typing import Literal, Mapping, Protocol, Sequence
+from typing import Literal, Mapping, Protocol, Sequence, cast
 
 from geo_core.jobs.postgres import (
     JobCancellationRequested,
@@ -25,6 +25,7 @@ from geo_core.knowledge.question_domain import (
     parse_question_candidates,
     question_artifact_key,
 )
+from geo_core.knowledge.question_coverage import coverage_question_identity_error
 from geo_core.knowledge.rag_domain import RagModelCallReservation
 from geo_core.model_gateway import (
     ModelCallBudget,
@@ -102,6 +103,17 @@ reference a supplied parent candidate. Do not invent product claims, entities, s
 semantic_fingerprint must be a concise normalized intent, not a new claim.
 """
 
+_COVERAGE_SYSTEM_PROMPT = """Create Australian English consumer search questions for a fixed GEO
+measurement library. Return exactly one question for every supplied dimension and no others. Use
+variant_index 1. Every question must be standalone, natural, and usable unchanged across consumer AI
+search engines. Follow each dimension's distinct scenario and intent; do not repeat one wording pattern
+across the four product-fit slots in a topic. Facts are product context for choosing a realistic search angle; they are not expected
+answers and the question does not need to be answerable from them. Link the one to five context Fact IDs
+that influenced each question. For non_brand dimensions, do not mention the company, brand, product name,
+model name, SKU, or a named competitor. For brand dimensions, explicitly name the supplied product.
+Do not make claims in the question. Return only the declared JSON fields.
+"""
+
 
 @dataclass(frozen=True)
 class StoredQuestionArtifact:
@@ -112,8 +124,12 @@ class StoredQuestionArtifact:
 @dataclass(frozen=True)
 class QuestionBatchResult:
     output: Mapping[str, object]
-    execution_backend: Literal["dify", "native"]
+    execution_backend: Literal["dify", "native", "hybrid", "deterministic"]
     actual_model: str
+
+
+class RetryableQuestionModelOutputError(QuestionContractError):
+    """A provider response violated the frozen contract and may be regenerated."""
 
 
 class StoredObjectLike(Protocol):
@@ -134,6 +150,22 @@ class QuestionArtifactStore(Protocol):
 
 class QuestionWorkerRepository(Protocol):
     def load(self, lease: WorkerLease) -> QuestionGenerationClaim: ...
+
+    def load_batch_checkpoint(
+        self, lease: WorkerLease, *, batch_index: int
+    ) -> tuple[Mapping[str, object], str, str] | None: ...
+
+    def save_batch_checkpoint(
+        self,
+        lease: WorkerLease,
+        claim: QuestionGenerationClaim,
+        *,
+        batch_index: int,
+        dimensions: Sequence[FrozenQuestionDimension],
+        output: Mapping[str, object],
+        execution_backend: str,
+        actual_model: str,
+    ) -> None: ...
 
     def reserve_model_call(
         self,
@@ -169,7 +201,7 @@ class QuestionWorkerRepository(Protocol):
         candidates: Sequence[QuestionCandidateDraft],
         artifact: StoredQuestionArtifact,
         *,
-        execution_backend: Literal["dify", "native"],
+        execution_backend: Literal["dify", "native", "hybrid", "deterministic"],
         actual_model: str,
     ) -> Mapping[str, object]: ...
 
@@ -201,20 +233,36 @@ class KnowledgeQuestionGenerateHandler:
             claim = self._repository.load(lease)
             self._validate_selection(claim)
             candidates: list[QuestionCandidateDraft] = []
-            execution_identities: set[tuple[Literal["dify", "native"], str]] = set()
+            execution_identities: set[
+                tuple[Literal["dify", "native", "hybrid", "deterministic"], str]
+            ] = set()
             with LeaseHeartbeat(
                 self._store,
                 lease,
                 lease_for=self._lease_for,
                 interval=min(self._lease_for / 3, timedelta(seconds=30)),
             ) as heartbeat:
-                for dimensions in _batches_by_turn(claim):
-                    batch = self._generate_batch(lease, claim, dimensions, candidates)
+                for batch_index, dimensions in enumerate(_batches_by_turn(claim), start=1):
+                    checkpoint = self._repository.load_batch_checkpoint(
+                        lease, batch_index=batch_index
+                    )
+                    if checkpoint is None:
+                        batch = self._generate_batch(lease, claim, dimensions, candidates)
+                    else:
+                        output, backend, actual_model = checkpoint
+                        batch = QuestionBatchResult(
+                            output=output,
+                            execution_backend=cast(
+                                Literal["dify", "native", "hybrid", "deterministic"],
+                                backend,
+                            ),
+                            actual_model=actual_model,
+                        )
                     execution_identities.add(
                         (batch.execution_backend, batch.actual_model)
                     )
-                    candidates.extend(
-                        parse_question_candidates(
+                    try:
+                        parsed = parse_question_candidates(
                             batch.output,
                             dimensions=dimensions,
                             facts=claim.facts,
@@ -222,8 +270,26 @@ class KnowledgeQuestionGenerateHandler:
                             duplicate_threshold=claim.duplicate_threshold,
                             prior_candidates=candidates,
                         )
-                    )
+                        if claim.generation_mode == "coverage_pack":
+                            _validate_coverage_batch(claim, dimensions, parsed)
+                    except QuestionContractError as exc:
+                        if checkpoint is not None or batch.execution_backend == "deterministic":
+                            raise
+                        raise RetryableQuestionModelOutputError(str(exc)) from exc
+                    if checkpoint is None:
+                        self._repository.save_batch_checkpoint(
+                            lease,
+                            claim,
+                            batch_index=batch_index,
+                            dimensions=dimensions,
+                            output=batch.output,
+                            execution_backend=batch.execution_backend,
+                            actual_model=batch.actual_model,
+                        )
+                    candidates.extend(parsed)
                     heartbeat.raise_if_stopped()
+                if claim.generation_mode == "coverage_pack":
+                    _validate_complete_coverage_pack(claim, candidates)
                 content, content_hash = canonical_question_artifact(claim, candidates)
                 stored = self._object_store.put_object(
                     key=question_artifact_key(
@@ -269,7 +335,112 @@ class KnowledgeQuestionGenerateHandler:
         dimensions: Sequence[FrozenQuestionDimension],
         prior: Sequence[QuestionCandidateDraft],
     ) -> QuestionBatchResult:
+        if claim.generation_mode == "coverage_pack":
+            return self._generate_coverage_batch(lease, claim, dimensions, prior)
+        return self._generate_model_batch(lease, claim, dimensions, prior)
+
+    def _generate_coverage_batch(
+        self,
+        lease: WorkerLease,
+        claim: QuestionGenerationClaim,
+        dimensions: Sequence[FrozenQuestionDimension],
+        prior: Sequence[QuestionCandidateDraft],
+    ) -> QuestionBatchResult:
+        slots = {item.dimension_key: item for item in claim.coverage_slots}
+        planned: dict[str, Mapping[str, object]] = {}
+        generated_dimensions: list[FrozenQuestionDimension] = []
+        for dimension in dimensions:
+            slot = slots[dimension.dimension_key]
+            if slot.planned_query_text is None:
+                generated_dimensions.append(dimension)
+                continue
+            fact = claim.facts[(dimension.ordinal - 1) % len(claim.facts)]
+            planned[dimension.dimension_key] = {
+                "candidate_id": f"coverage-{dimension.ordinal:03d}",
+                "dimension_key": dimension.dimension_key,
+                "variant_index": 1,
+                "text": slot.planned_query_text,
+                "semantic_fingerprint": (
+                    f"{slot.topic_cluster} {dimension.query_kind} "
+                    f"category benchmark {dimension.ordinal}"
+                ),
+                "supported_fact_ids": [str(fact.fact_candidate_id)],
+                "supported_entity_ids": [],
+                "parent_candidate_id": None,
+            }
+        generated: dict[str, Mapping[str, object]] = {}
+        model_result: QuestionBatchResult | None = None
+        if generated_dimensions:
+            model_result = self._generate_model_batch(
+                lease,
+                claim,
+                generated_dimensions,
+                prior,
+                system_prompt=_COVERAGE_SYSTEM_PROMPT,
+            )
+            values = model_result.output.get("questions")
+            if not isinstance(values, list):
+                raise QuestionContractError("coverage model output has no questions array")
+            for value in values:
+                if not isinstance(value, Mapping):
+                    raise QuestionContractError("coverage model question is not an object")
+                key = value.get("dimension_key")
+                if not isinstance(key, str) or key in generated:
+                    raise QuestionContractError("coverage model duplicated a dimension")
+                dimension = next(
+                    (item for item in generated_dimensions if item.dimension_key == key),
+                    None,
+                )
+                if dimension is None:
+                    raise QuestionContractError(
+                        "coverage model returned a dimension outside the current batch"
+                    )
+                grounding_fact = claim.facts[(dimension.ordinal - 1) % len(claim.facts)]
+                generated[key] = {
+                    **value,
+                    # Coverage questions do not make factual claims. This is the exact
+                    # frozen Fact context assigned to the slot before the model call,
+                    # so lineage remains deterministic even if a model echoes a bad ID.
+                    "supported_fact_ids": [str(grounding_fact.fact_candidate_id)],
+                    "supported_entity_ids": [],
+                }
+            expected = {item.dimension_key for item in generated_dimensions}
+            if set(generated) != expected:
+                raise QuestionContractError("coverage model must return exactly one question per slot")
+        rows = [planned.get(item.dimension_key) or generated[item.dimension_key] for item in dimensions]
+        if model_result is None:
+            return QuestionBatchResult(
+                output={"questions": rows},
+                execution_backend="deterministic",
+                actual_model="coverage-profile-v1",
+            )
+        return QuestionBatchResult(
+            output={"questions": rows},
+            execution_backend="hybrid" if planned else model_result.execution_backend,
+            actual_model=model_result.actual_model,
+        )
+
+    def _generate_model_batch(
+        self,
+        lease: WorkerLease,
+        claim: QuestionGenerationClaim,
+        dimensions: Sequence[FrozenQuestionDimension],
+        prior: Sequence[QuestionCandidateDraft],
+        *,
+        system_prompt: str = _SYSTEM_PROMPT,
+    ) -> QuestionBatchResult:
         dimension_rows = [asdict(value) for value in dimensions]
+        if claim.generation_mode == "coverage_pack":
+            slots = {item.dimension_key: item for item in claim.coverage_slots}
+            for row in dimension_rows:
+                slot = slots[str(row["dimension_key"])]
+                row["coverage_role"] = slot.coverage_role
+                row["topic_cluster"] = slot.topic_cluster
+                grounding_fact = claim.facts[(int(row["ordinal"]) - 1) % len(claim.facts)]
+                row["grounding_fact"] = {
+                    "fact_candidate_id": str(grounding_fact.fact_candidate_id),
+                    "statement": grounding_fact.statement,
+                }
         parent_keys = {
             str(row.get("parent_dimension_key"))
             for row in dimension_rows
@@ -314,7 +485,7 @@ class KnowledgeQuestionGenerateHandler:
                     context=payload,
                     input_hash=request_hash_for_payload(payload),
                     output_schema=QUESTION_GENERATION_OUTPUT_SCHEMA,
-                    system_prompt=_SYSTEM_PROMPT,
+                    system_prompt=system_prompt,
                     user_prompt=json.dumps(
                         payload, ensure_ascii=False, sort_keys=True, default=str
                     ),
@@ -330,7 +501,7 @@ class KnowledgeQuestionGenerateHandler:
                     ),
                 )
         messages = (
-            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {
                 "role": "user",
                 "content": json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str),
@@ -377,7 +548,12 @@ class KnowledgeQuestionGenerateHandler:
     def _fail(self, lease: WorkerLease, error: Exception) -> Mapping[str, object]:
         retryable = isinstance(
             error,
-            (RetryableModelGatewayError, RetryableWorkflowExecutionError, ObjectStoreError),
+            (
+                RetryableModelGatewayError,
+                RetryableQuestionModelOutputError,
+                RetryableWorkflowExecutionError,
+                ObjectStoreError,
+            ),
         )
         status = self._store.fail(
             lease,
@@ -404,6 +580,46 @@ def _batches_by_turn(
     return tuple(batches)
 
 
+def _validate_coverage_batch(
+    claim: QuestionGenerationClaim,
+    dimensions: Sequence[FrozenQuestionDimension],
+    candidates: Sequence[QuestionCandidateDraft],
+) -> None:
+    expected = {item.dimension_key for item in dimensions}
+    if (
+        len(candidates) != len(dimensions)
+        or {item.dimension_key for item in candidates} != expected
+        or any(item.variant_index != 1 for item in candidates)
+        or any(item.dedup_status == "exact_duplicate" for item in candidates)
+    ):
+        raise QuestionContractError(
+            "coverage batch must contain one unique variant for every frozen slot"
+        )
+    slots = {item.dimension_key: item for item in claim.coverage_slots}
+    for candidate in candidates:
+        slot = slots[candidate.dimension_key]
+        identity_error = coverage_question_identity_error(
+            text=candidate.query_text,
+            coverage_role=slot.coverage_role,
+            product_name=claim.product_name or "",
+        )
+        if identity_error:
+            raise QuestionContractError(identity_error)
+
+
+def _validate_complete_coverage_pack(
+    claim: QuestionGenerationClaim, candidates: Sequence[QuestionCandidateDraft]
+) -> None:
+    if (
+        len(candidates) != claim.target_count
+        or len({item.dimension_key for item in candidates}) != claim.target_count
+        or len({item.normalized_text_hash for item in candidates}) != claim.target_count
+    ):
+        raise QuestionContractError(
+            "coverage generation must finish with 100 slots and 100 unique question texts"
+        )
+
+
 def _error_classification(error: Exception) -> str:
     if isinstance(error, WorkflowExecutionError):
         return error.classification
@@ -416,7 +632,11 @@ def _error_classification(error: Exception) -> str:
     if isinstance(error, ModelGatewayError):
         return "permanent"
     if isinstance(error, QuestionContractError):
-        return "contract"
+        return (
+            "retryable_model_output"
+            if isinstance(error, RetryableQuestionModelOutputError)
+            else "contract"
+        )
     if isinstance(error, ObjectStoreError):
         return "retryable"
     return "unknown"

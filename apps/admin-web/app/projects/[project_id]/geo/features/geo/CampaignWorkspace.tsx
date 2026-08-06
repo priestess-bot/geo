@@ -9,7 +9,6 @@ import { ProtocolSourceStratumFields } from "./ObservationSourceFields";
 import { MonitoringMetricSnapshot } from "./MonitoringMetricSnapshot";
 import { sourceStratumHash, sourceStratumLabel } from "./monitoring-statistics";
 import { ProtocolSamplingFields } from "./ProtocolSamplingFields";
-import { QuestionSetWorkspace } from "./QuestionSetWorkspace";
 
 export function CampaignWorkspace({ projectId, data, catalog }: {
   projectId: string; data: GeoWorkspaceData; catalog: CatalogLoadResult;
@@ -50,7 +49,6 @@ export function CampaignWorkspace({ projectId, data, catalog }: {
           opportunity_id: undefined, brief_version_id: undefined, attempt_id: undefined,
           skill_id: undefined, bundle_id: undefined, job_id: undefined, version_id: undefined,
           publication_id: undefined, submission_id: undefined, simulation_id: undefined,
-          question_generation_job_id: undefined,
           placement_stage: "brief", measurement_window: "baseline"
         })}><strong>{item.name}</strong></a><TechnicalInfo><code>{item.id}</code></TechnicalInfo></td>
           <td>{entityName(catalog.entities.data, item.primary_product_entity_id)}</td><td>{marketName(catalog.markets.data, item.market_profile_id)}</td><td><Status value={item.status} /></td></tr>)}
@@ -85,7 +83,20 @@ export function CampaignWorkspace({ projectId, data, catalog }: {
       </section>
     </div>
 
-    {selectedCampaign ? <QuestionSetWorkspace data={data} projectId={projectId} /> : null}
+    {selectedCampaign ? <section className={styles.panel}>
+      <div className={styles.sectionHeader}>
+        <div><p>测量输入</p><h2>测试问题与 QuestionSet</h2></div>
+        <span className={styles.meta}>
+          {data.questionSets.data.filter((item) => item.status === "frozen").length} 个冻结版本
+        </span>
+      </div>
+      <p className={styles.meta}>
+        测试问题的生成、候选审核、问题集冻结和监测方案绑定统一在“测量与告警”中完成。
+      </p>
+      <a className="button secondary" href={measurementQuestionsHref(projectId, selectedCampaign.id)}>
+        前往测量与告警配置
+      </a>
+    </section> : null}
 
     <CommandPanel label="高级运营：查询建议、指标与客户报告">
       <div className={styles.columns}>
@@ -119,3 +130,12 @@ export function CampaignWorkspace({ projectId, data, catalog }: {
 function queryKindLabel(value: string) { return ({ recommendation: "商品推荐", comparison: "产品比较", research: "购买调研", support: "使用支持" } as Record<string, string>)[value] || value; }
 function platformLabel(value: string) { return ({ chatgpt_search: "ChatGPT Search", google_ai_overviews: "Google AI Overviews", google_search: "Google Search", perplexity: "Perplexity", gemini: "Gemini" } as Record<string, string>)[value] || value; }
 function deviceLabel(value: string) { return ({ desktop: "桌面端", mobile: "移动端", tablet: "平板" } as Record<string, string>)[value] || value; }
+
+function measurementQuestionsHref(projectId: string, campaignId: string): string {
+  const params = new URLSearchParams({
+    tab: "measurement",
+    workflow_view: "questions",
+    campaign_id: campaignId
+  });
+  return `/projects/${encodeURIComponent(projectId)}?${params.toString()}`;
+}

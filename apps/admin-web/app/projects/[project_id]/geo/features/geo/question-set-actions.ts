@@ -29,7 +29,7 @@ export async function createQuestionGeneration(
   const factCandidateIds = selected(form, "fact_candidate_ids");
   if (!factCandidateIds.length) {
     return {
-      error: "至少选择一条已批准且仍为 active 的 Fact。",
+      error: "至少选择一条已批准且当前有效的知识事实。",
       status: 422,
       code: "question_fact_required"
     };
@@ -64,22 +64,97 @@ export async function createQuestionGeneration(
   ), "测试问题生成任务已排队");
 }
 
+export async function createQuestionCoveragePack(
+  _state: ActionResult,
+  form: FormData
+): Promise<ActionResult> {
+  const projectId = value(form, "project_id");
+  const api = await client();
+  return finish(projectId, await api.createKnowledgeQuestionGeneration(
+    projectId,
+    value(form, "campaign_id"),
+    {
+      generation_mode: "coverage_pack",
+      configured_model: "deepseek-v4-flash",
+      model_call_budget: numberValue(form, "model_call_budget", 60),
+      semantic_duplicate_threshold: numberValue(
+        form, "semantic_duplicate_threshold", 0.92
+      ),
+      coverage_profile: "au-cross-engine-balanced-v1",
+      target_count: 100,
+      custom_requirements: value(form, "custom_requirements")
+    },
+    guards(form)
+  ), "100 题生成任务已排队；完成的批次会自动保留");
+}
+
+export async function resumeQuestionCoveragePack(
+  _state: ActionResult,
+  form: FormData
+): Promise<ActionResult> {
+  const projectId = value(form, "project_id");
+  const api = await client();
+  return finish(projectId, await api.resumeKnowledgeQuestionCoveragePack(
+    projectId,
+    value(form, "campaign_id"),
+    value(form, "job_id"),
+    guards(form)
+  ), "任务已从保存的批次继续");
+}
+
+export async function editQuestionCandidate(
+  _state: ActionResult,
+  form: FormData
+): Promise<ActionResult> {
+  const projectId = value(form, "project_id");
+  const api = await client();
+  return finish(projectId, await api.editKnowledgeQuestionCandidate(
+    projectId,
+    value(form, "campaign_id"),
+    value(form, "candidate_id"),
+    { query_text: value(form, "query_text") },
+    guards(form)
+  ), "问题文字已更新");
+}
+
+export async function finalizeQuestionCoveragePack(
+  _state: ActionResult,
+  form: FormData
+): Promise<ActionResult> {
+  const projectId = value(form, "project_id");
+  const includedCandidateIds = selected(form, "included_candidate_ids");
+  if (includedCandidateIds.length < 90 || includedCandidateIds.length > 100) {
+    return {
+      error: "请保留 90 至 100 条问题后再冻结。",
+      status: 422,
+      code: "question_coverage_selection_invalid"
+    };
+  }
+  const api = await client();
+  return finish(projectId, await api.finalizeKnowledgeQuestionCoveragePack(
+    projectId,
+    value(form, "campaign_id"),
+    {
+      name: value(form, "name"),
+      generation_job_id: value(form, "generation_job_id"),
+      included_candidate_ids: includedCandidateIds
+    },
+    guards(form)
+  ), `已冻结 ${includedCandidateIds.length} 条测试问题`);
+}
+
 export async function reviewQuestionCandidate(
   _state: ActionResult,
   form: FormData
 ): Promise<ActionResult> {
   const projectId = value(form, "project_id");
   const decision = value(form, "decision") as "approved" | "rejected";
-  const notes = value(form, "notes");
-  if (!notes) {
-    return { error: "人工审核必须填写说明。", status: 422, code: "review_notes_required" };
-  }
   const api = await client();
   return finish(projectId, await api.reviewKnowledgeQuestionCandidate(
     projectId,
     value(form, "campaign_id"),
     value(form, "candidate_id"),
-    { decision, notes },
+    { decision },
     guards(form)
   ), decision === "approved" ? "候选问题已批准" : "候选问题已拒绝");
 }
@@ -105,7 +180,7 @@ export async function createQuestionSet(
       previous_version_id: value(form, "previous_version_id") || null
     },
     guards(form)
-  ), "QuestionSet 草稿已创建");
+  ), "问题清单草稿已创建");
 }
 
 export async function transitionQuestionSet(
@@ -123,7 +198,7 @@ export async function transitionQuestionSet(
   return finish(
     projectId,
     await result,
-    command === "approve" ? "QuestionSet 已批准" : "QuestionSet 已冻结且不可修改"
+    command === "approve" ? "问题清单已批准" : "问题清单已冻结且不可修改"
   );
 }
 
@@ -142,5 +217,5 @@ export async function bindQuestionSetToProtocol(
       confirmed_content_hash: value(form, "confirmed_content_hash")
     },
     guards(form)
-  ), "QuestionSet 已完整绑定到监测方案");
+  ), "问题清单已完整绑定到监测方案");
 }

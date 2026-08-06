@@ -93,24 +93,21 @@ export async function loadGeoWorkspace(
     versionId: one(params.version_id),
     publicationId: one(params.publication_id),
     submissionId: one(params.submission_id),
-    simulationId: one(params.simulation_id),
-    questionGenerationJobId: one(params.question_generation_job_id)
+    simulationId: one(params.simulation_id)
   };
   let invalidDeepLink = false;
   const invalidate = () => { invalidDeepLink = true; };
 
-  const [campaignResult, destinationResult, skillResult, bindingResult, questionFactResult] = await Promise.all([
+  const [campaignResult, destinationResult, skillResult, bindingResult] = await Promise.all([
     client.listCampaigns(projectId),
     client.listDestinations(projectId),
     client.listPromptSkills(projectId),
-    client.listPromptBindings(projectId),
-    client.listKnowledgeQuestionFacts(projectId)
+    client.listPromptBindings(projectId)
   ]);
   const campaigns = resource(campaignResult, []);
   const destinations = resource(destinationResult, []);
   const skills = resource(skillResult, []);
   const bindings = resource(bindingResult, []);
-  const questionFacts = resource(questionFactResult, []);
   const selection: GeoSelection = {
     section: requested.section,
     placementStage: requested.placementStage,
@@ -132,7 +129,6 @@ export async function loadGeoWorkspace(
           optional(campaignId, (id) => client.listOpportunities(projectId, id), []),
           optional(campaignId, (id) => client.getCampaignPlacementReadiness(projectId, id), null),
           optional(campaignId, (id) => client.listPromptSimulations(projectId, id), []),
-          optional(campaignId, (id) => client.listKnowledgeQuestionGenerations(projectId, id), []),
           optional(campaignId, (id) => client.listKnowledgeQuestionSets(projectId, id), [])
         ])
     : Promise.resolve([
@@ -143,7 +139,6 @@ export async function loadGeoWorkspace(
           emptyResource<GeoWorkspaceData["opportunities"]["data"]>([]),
           emptyResource<GeoWorkspaceData["placementReadiness"]["data"]>(null),
           emptyResource<GeoWorkspaceData["simulations"]["data"]>([]),
-          emptyResource<GeoWorkspaceData["questionGenerations"]["data"]>([]),
           emptyResource<GeoWorkspaceData["questionSets"]["data"]>([])
         ] as const);
   const legacySimulationsPromise = client.listPromptSimulations(projectId)
@@ -153,7 +148,7 @@ export async function loadGeoWorkspace(
     legacySimulationsPromise
   ]);
   const [protocols, metrics, reports, queries, opportunities, placementReadiness,
-    currentSimulations, questionGenerations, questionSets] = campaignResources;
+    currentSimulations, questionSets] = campaignResources;
   const simulations = mergeSimulationResources(currentSimulations, legacySimulations);
 
   selection.protocolId = requestedId(requested.protocolId, protocols, invalidate);
@@ -163,9 +158,6 @@ export async function loadGeoWorkspace(
   const selectedSimulationCampaignId = selectedSimulation
     ? selectedSimulation.campaign_id || undefined
     : campaignId;
-  selection.questionGenerationJobId = requested.questionGenerationJobId
-    ? requestedQuestionGeneration(requested.questionGenerationJobId, questionGenerations, invalidate)
-    : questionGenerations.data[0]?.job_id;
   const opportunity = opportunities.data.find((item) => item.id === selection.opportunityId);
   selection.destinationId = opportunity?.destination_id;
   if (requested.destinationId && requested.destinationId !== selection.destinationId) invalidate();
@@ -207,12 +199,6 @@ export async function loadGeoWorkspace(
       []
     )
   ]);
-  const questionCandidates = await optional(
-    selection.questionGenerationJobId,
-    (id) => client.listKnowledgeQuestionCandidates(projectId, campaignId!, id),
-    []
-  );
-
   selection.briefVersionId = requestedId(requested.briefVersionId, briefs, invalidate);
   selection.versionId = requestedId(requested.versionId, packages, invalidate);
   const [attempts, bundles] = await Promise.all([
@@ -273,9 +259,6 @@ export async function loadGeoWorkspace(
     reports,
     skills,
     simulations,
-    questionFacts,
-    questionGenerations,
-    questionCandidates,
     questionSets,
     bindings,
     queries,
@@ -345,22 +328,10 @@ function canonicalHref(projectId: string, selection: GeoSelection): string {
     ["version_id", selection.versionId],
     ["publication_id", selection.publicationId],
     ["submission_id", selection.submissionId],
-    ["simulation_id", selection.simulationId],
-    ["question_generation_job_id", selection.questionGenerationJobId]
+    ["simulation_id", selection.simulationId]
   ];
   for (const [key, value] of optionalParams) {
     if (value) params.set(key, value);
   }
   return `/projects/${encodeURIComponent(projectId)}?${params.toString()}`;
-}
-
-function requestedQuestionGeneration(
-  requested: string,
-  source: Resource<Array<{ job_id: string }>>,
-  invalidate: () => void
-): string | undefined {
-  if (source.failure) return requested;
-  if (source.data.some((item) => item.job_id === requested)) return requested;
-  invalidate();
-  return undefined;
 }

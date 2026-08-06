@@ -91,9 +91,12 @@ let verificationShouldPass = false;
 let verificationAttemptNumber = 0;
 const publicationVerificationAttempts = [];
 let questionGenerationCreated = false;
+let questionGenerationMode = "single_scenario";
 let questionCandidateStatus = "pending_review";
 let questionCandidateNotes = null;
 let questionSetStatus = null;
+let coverageIncludedIds = [];
+const questionCandidateEdits = new Map();
 let questionSimulation = null;
 let questionProtocol;
 let projectExportJobStatus = "succeeded";
@@ -644,28 +647,39 @@ function draftQuestionProtocol() {
 questionProtocol = draftQuestionProtocol();
 
 function questionGeneration(created = false) {
+  const coverage = questionGenerationMode === "coverage_pack";
   const base = {
     job_id: QUESTION_JOB_ID,
     project_id: PROJECT_ID,
     campaign_id: CAMPAIGN_A_ID,
     status: "succeeded",
     input_hash: "1a".repeat(32),
-    dimension_count: 1
+    dimension_count: coverage ? 100 : 1,
+    generation_mode: questionGenerationMode,
+    coverage_profile: coverage ? "au-cross-engine-balanced-v1" : null,
+    target_count: coverage ? 100 : null
   };
   return created ? { ...base, fact_input_count: 1, entity_input_count: 0 } : {
     ...base,
     error_code: null,
     configured_model: "deepseek-v4-flash",
-    execution_backend: "dify",
+    execution_backend: coverage ? "hybrid" : "dify",
     actual_model: "deepseek-chat",
     model_call_budget: 60,
     adapter_release: "project-native-rag-v1",
     semantic_duplicate_threshold: 0.92,
     artifact_uri: `s3://geo-fixture/question-generations/${QUESTION_JOB_ID}.json`,
     artifact_hash: "9a".repeat(32),
-    candidate_count: 2,
-    supported_dimension_count: 1,
-    possible_duplicate_count: 1,
+    product_entity_id: coverage ? PRODUCT_ID : null,
+    product_category: coverage ? "robotic_lawn_mower" : null,
+    product_name_snapshot: coverage ? "Fixture Mower" : null,
+    coverage_profile_hash: coverage ? "8a".repeat(32) : null,
+    candidate_count: coverage ? 100 : 2,
+    supported_dimension_count: coverage ? 100 : 1,
+    possible_duplicate_count: coverage ? 0 : 1,
+    batch_count: coverage ? 10 : 1,
+    completed_batch_count: coverage ? 10 : 1,
+    checkpoint_candidate_count: coverage ? 100 : 2,
     generated_at: NOW,
     created_at: NOW
   };
@@ -677,9 +691,21 @@ function questionCandidates() {
     campaign_id: CAMPAIGN_A_ID,
     generated_by_job_id: QUESTION_JOB_ID,
     dimension_key: "au-homeowner-consideration-chatgpt",
+    ordinal: 1,
     turn_index: 1,
     parent_candidate_id: null,
     query_text_hash: "2a".repeat(32),
+    original_query_text: "Which robotic mower is reliable for a medium Australian lawn?",
+    original_query_text_hash: "2a".repeat(32),
+    revision_id: null,
+    revision_number: null,
+    was_edited: false,
+    brand_scope: "non_brand",
+    coverage_role: null,
+    topic_cluster: null,
+    funnel: "consideration",
+    query_kind: "recommendation",
+    subject: "robotic lawn mower",
     fact_source_ids: [FACT_ID],
     entity_source_ids: [],
     created_at: NOW
@@ -699,8 +725,10 @@ function questionCandidates() {
   }, {
     ...common,
     id: QUESTION_DUPLICATE_ID,
+    ordinal: 1,
     variant_index: 2,
     query_text: "What reliable robot mower suits a medium lawn in Australia?",
+    original_query_text: "What reliable robot mower suits a medium lawn in Australia?",
     query_text_hash: "2b".repeat(32),
     semantic_fingerprint: "reliable robotic mower for medium Australian lawn",
     dedup_status: "possible_duplicate",
@@ -712,8 +740,71 @@ function questionCandidates() {
   }];
 }
 
+const COVERAGE_TOPICS = [
+  "buying_priorities", "property_fit", "setup_installation", "performance",
+  "navigation_coverage", "safety_control", "maintenance", "reliability",
+  "ownership_cost", "local_support"
+];
+
+function coverageCandidates() {
+  return Array.from({ length: 100 }, (_, offset) => {
+    const ordinal = offset + 1;
+    const local = offset % 10;
+    const topic = COVERAGE_TOPICS[Math.floor(offset / 10)];
+    const role = local < 5
+      ? "category_benchmark"
+      : local < 9 ? "product_fit" : "brand_control";
+    const id = `00000000-0000-4000-9000-${String(ordinal).padStart(12, "0")}`;
+    const original = role === "brand_control"
+      ? `How suitable is Fixture Mower for ${topic} in Australia?`
+      : `Which robotic mower option suits ${topic} need ${ordinal} in Australia?`;
+    const edited = questionCandidateEdits.get(id);
+    const text = edited || original;
+    return {
+      id,
+      project_id: PROJECT_ID,
+      campaign_id: CAMPAIGN_A_ID,
+      generated_by_job_id: QUESTION_JOB_ID,
+      dimension_key: `au-cross-engine-balanced-v1:${topic}:${role}:${local + 1}`,
+      ordinal,
+      variant_index: 1,
+      turn_index: 1,
+      parent_candidate_id: null,
+      query_text: text,
+      query_text_hash: `${(ordinal % 10).toString(16)}`.repeat(64),
+      original_query_text: original,
+      original_query_text_hash: "a".repeat(64),
+      revision_id: edited ? `10000000-0000-4000-9000-${String(ordinal).padStart(12, "0")}` : null,
+      revision_number: edited ? 1 : null,
+      was_edited: Boolean(edited),
+      semantic_fingerprint: `${topic} ${ordinal}`,
+      dedup_status: "unique",
+      nearest_candidate_id: null,
+      nearest_similarity: null,
+      workflow_status: "pending_review",
+      review_notes: null,
+      reviewed_at: null,
+      brand_scope: role === "brand_control" ? "brand" : "non_brand",
+      coverage_role: role,
+      topic_cluster: topic,
+      funnel: local === 0 || local === 5 ? "awareness"
+        : local === 4 ? "retention" : local >= 8 ? "decision" : "consideration",
+      query_kind: local < 2 || local === 5 ? "recommendation"
+        : local === 2 || local === 7 ? "comparison" : local === 4 ? "support" : "research",
+      subject: role === "brand_control" ? "Fixture Mower" : "robot lawn mower",
+      fact_source_ids: [FACT_ID],
+      entity_source_ids: [],
+      created_at: NOW
+    };
+  });
+}
+
 function questionSet() {
   if (questionSetStatus === null) return null;
+  const coverage = questionGenerationMode === "coverage_pack";
+  const included = coverage
+    ? coverageCandidates().filter((item) => coverageIncludedIds.includes(item.id))
+    : questionCandidates().slice(0, 1);
   return {
     id: QUESTION_SET_ID,
     project_id: PROJECT_ID,
@@ -724,26 +815,32 @@ function questionSet() {
     generated_by_job_id: QUESTION_JOB_ID,
     name: "AU robotic mower evaluation",
     status: questionSetStatus,
-    dimension_count: 1,
-    covered_dimension_count: 1,
+    dimension_count: coverage ? 100 : 1,
+    covered_dimension_count: included.length,
     possible_duplicate_count: 0,
-    coverage_ratio: 1,
+    coverage_ratio: included.length / (coverage ? 100 : 1),
     duplicate_ratio: 0,
     content_hash: questionSetStatus === "frozen" ? "3a".repeat(32) : null,
     created_at: NOW,
     approved_at: questionSetStatus === "draft" ? null : NOW,
     frozen_at: questionSetStatus === "frozen" ? NOW : null,
-    items: [{
-      id: QUESTION_SET_ITEM_ID,
-      ordinal: 1,
-      question_candidate_id: QUESTION_CANDIDATE_ID,
-      dimension_key: "au-homeowner-consideration-chatgpt",
-      query_text_snapshot: "Which robotic mower is reliable for a medium Australian lawn?",
-      query_text_hash: "2a".repeat(32),
-      query_kind_snapshot: "recommendation",
-      query_cluster_key: "robot-mower-reliability-au",
-      source_lineage_hash: "4a".repeat(32)
-    }]
+    items: included.map((candidate, index) => ({
+      id: coverage
+        ? `20000000-0000-4000-9000-${String(index + 1).padStart(12, "0")}`
+        : QUESTION_SET_ITEM_ID,
+      ordinal: index + 1,
+      question_candidate_id: candidate.id,
+      dimension_key: candidate.dimension_key,
+      query_text_snapshot: candidate.query_text,
+      query_text_hash: candidate.query_text_hash,
+      query_kind_snapshot: candidate.query_kind,
+      query_cluster_key: candidate.topic_cluster || "robot-mower-reliability-au",
+      source_lineage_hash: "4a".repeat(32),
+      brand_scope_snapshot: candidate.brand_scope,
+      coverage_role_snapshot: candidate.coverage_role,
+      topic_cluster_snapshot: candidate.topic_cluster,
+      funnel_snapshot: candidate.funnel
+    }))
   };
 }
 
@@ -1271,9 +1368,12 @@ const server = createServer(async (request, response) => {
       verificationAttemptNumber = 0;
       publicationVerificationAttempts.length = 0;
       questionGenerationCreated = false;
+      questionGenerationMode = "single_scenario";
       questionCandidateStatus = "pending_review";
       questionCandidateNotes = null;
       questionSetStatus = null;
+      coverageIncludedIds = [];
+      questionCandidateEdits.clear();
       questionSimulation = null;
       questionProtocol = draftQuestionProtocol();
       projectExportJobStatus = "succeeded";
@@ -1406,6 +1506,21 @@ const server = createServer(async (request, response) => {
   if (path === `${base}/sampling/admission-policies` && request.method === "GET") return send(response, {
     items: [], total: 0
   });
+  if (request.method === "GET" && new Set([
+    `${base}/alerts`,
+    `${base}/sampling/admission-options`,
+    `${base}/sampling/suite-input-options`,
+    `${base}/sampling/suites`,
+    `${base}/sampling/runs`,
+    `${base}/analysis/semantic-metrics`,
+    `${base}/analysis/metric-protocols`,
+    `${base}/analysis/statistical-protocols`,
+    `${base}/analysis/comparisons`,
+    `${base}/analysis/drift`,
+    `${base}/sampling/manual-evidence-imports`,
+    `${base}/sampling/surface-parser-releases`,
+    `${base}/analysis/reports`
+  ]).has(path)) return send(response, { items: [], total: 0 });
   if (path === `${base}/external-data/operational-alert-inputs` && request.method === "GET") return send(response, [{
     id: "00000000-0000-4000-8000-000000000701",
     source_kind: "browser_surface_drift",
@@ -1973,6 +2088,7 @@ const server = createServer(async (request, response) => {
   if (path === `${questionBase}/question-generations`) {
     if (request.method === "POST") {
       questionGenerationCreated = true;
+      questionGenerationMode = payload?.generation_mode || "single_scenario";
       return send(response, questionGeneration(true), 202);
     }
     return send(response, questionGenerationCreated ? [questionGeneration()] : []);
@@ -1980,12 +2096,19 @@ const server = createServer(async (request, response) => {
   if (path === `${questionBase}/question-candidates`) {
     const generationJobId = url.searchParams.get("generation_job_id");
     return send(response, questionGenerationCreated && generationJobId === QUESTION_JOB_ID
-      ? questionCandidates() : []);
+      ? questionGenerationMode === "coverage_pack" ? coverageCandidates() : questionCandidates()
+      : []);
+  }
+  if (path.match(new RegExp(`${questionBase}/question-candidates/[^/]+/text$`))
+    && request.method === "PATCH") {
+    const candidateId = path.split("/").at(-2);
+    questionCandidateEdits.set(candidateId, payload.query_text);
+    return send(response, { outcome: "revised", query_text: payload.query_text });
   }
   if (path === `${questionBase}/question-candidates/${QUESTION_CANDIDATE_ID}`
     && request.method === "PATCH") {
     questionCandidateStatus = payload.decision;
-    questionCandidateNotes = payload.notes;
+    questionCandidateNotes = payload.notes || null;
     return send(response, questionCandidates()[0]);
   }
   if (path === `${questionBase}/question-candidates/${QUESTION_DUPLICATE_ID}`
@@ -1993,7 +2116,7 @@ const server = createServer(async (request, response) => {
     return send(response, {
       ...questionCandidates()[1],
       workflow_status: payload.decision,
-      review_notes: payload.notes,
+      review_notes: payload.notes || null,
       reviewed_at: NOW
     });
   }
@@ -2004,6 +2127,12 @@ const server = createServer(async (request, response) => {
     }
     const set = questionSet();
     return send(response, set ? [set] : []);
+  }
+  if (path === `${questionBase}/question-sets/finalize-coverage-pack`
+    && request.method === "POST") {
+    coverageIncludedIds = payload.included_candidate_ids;
+    questionSetStatus = "frozen";
+    return send(response, questionSet(), 201);
   }
   if (path === `${questionBase}/question-sets/${QUESTION_SET_ID}/approve`
     && request.method === "POST") {

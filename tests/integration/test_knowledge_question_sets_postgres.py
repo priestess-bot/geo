@@ -20,6 +20,7 @@ from geo_core.catalog.domain import (
     UsageRights,
 )
 from geo_core.knowledge import KnowledgeApplication
+from geo_core.knowledge.domain import KnowledgeValidationError, SourceInput
 from geo_core.knowledge.question_domain import QuestionDimensionDraft
 from geo_core.knowledge.question_postgres import KnowledgeQuestionPostgresRepository
 from geo_core.knowledge.question_worker import KnowledgeQuestionGenerateHandler
@@ -128,6 +129,322 @@ class QuestionGateway:
             finish_reason="stop",
             response_hash=response_hash,
         )
+
+
+class CoverageQuestionGateway:
+    provider = "integration-coverage-question-gateway"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def generate(self, request, *, policy, budget):
+        del policy
+        budget.consume()
+        self.calls += 1
+        payload = json.loads(request.messages[1]["content"])
+        fact_id = payload["facts"][0]["fact_candidate_id"]
+        questions = []
+        for dimension in payload["dimensions"]:
+            topic = str(dimension["topic_cluster"]).replace("_", " ")
+            local_index = str(dimension["dimension_key"]).rsplit(":", 1)[-1]
+            if dimension["coverage_role"] == "brand_control":
+                text = f"How well does {dimension['subject']} support {topic} in Australia?"
+            elif local_index == "1":
+                text = (
+                    f"Which Australian households benefit most from a robot lawn mower "
+                    f"when {topic} matters?"
+                )
+            elif local_index == "2":
+                text = (
+                    f"Which {topic} capabilities should Australians match to their property "
+                    "before choosing a robot lawn mower?"
+                )
+            elif local_index == "3":
+                text = (
+                    f"How should Australians compare robot lawn mower alternatives for {topic}?"
+                )
+            else:
+                text = (
+                    f"What limitations should Australians investigate when assessing "
+                    f"robot lawn mowers for {topic}?"
+                )
+            questions.append(
+                _question(
+                    candidate_id=f"coverage-{dimension['dimension_key']}",
+                    dimension_key=dimension["dimension_key"],
+                    variant_index=1,
+                    text=text,
+                    semantic=(
+                        f"{topic} shared product fit"
+                        if dimension["coverage_role"] == "product_fit"
+                        and dimension["topic_cluster"] == "buying_priorities"
+                        and local_index in {"1", "2"}
+                        else f"{topic} {local_index} {dimension['coverage_role']}"
+                    ),
+                    fact_id=fact_id,
+                    entity_ids=[],
+                )
+            )
+        output = {"questions": questions}
+        response_hash = hashlib.sha256(json.dumps(output, sort_keys=True).encode()).hexdigest()
+        return ModelGatewayResult(
+            output=output,
+            call_log_id=uuid4(),
+            provider_request_id=f"coverage-question-{uuid4()}",
+            configured_model=request.configured_model,
+            provider_reported_model=request.configured_model,
+            prompt_tokens=300,
+            completion_tokens=600,
+            cost_usd=Decimal("0.003"),
+            finish_reason="stop",
+            response_hash=response_hash,
+        )
+
+
+def test_question_coverage_pack_edits_and_freezes_unique_items_idempotently() -> None:
+    suffix = uuid4().hex[:10]
+    app_login, worker_login = f"geo_coverage_app_{suffix}", f"geo_coverage_worker_{suffix}"
+    app_password, worker_password = uuid4().hex, uuid4().hex
+    campaign_id = uuid4()
+    source_url = f"https://example.test/products/v600-{suffix}"
+    with psycopg.connect(ADMIN_URL) as admin:
+        admin.execute(
+            sql.SQL("CREATE ROLE {} LOGIN PASSWORD {} IN ROLE geo_app").format(
+                sql.Identifier(app_login), sql.Literal(app_password)
+            )
+        )
+        admin.execute(
+            sql.SQL("CREATE ROLE {} LOGIN PASSWORD {} IN ROLE geo_worker").format(
+                sql.Identifier(worker_login), sql.Literal(worker_password)
+            )
+        )
+        project = seed_project(admin, suffix=f"coverage-{suffix}")
+        admin.execute(
+            """UPDATE product_entities
+               SET canonical_name = 'ADVINSYS TerraMow V600', canonical_url = %s,
+                   attributes = '{"category":"robotic_lawn_mower"}'::jsonb
+               WHERE id = %s AND project_id = %s""",
+            (source_url, project["entity"], project["project"]),
+        )
+        admin.execute(
+            """INSERT INTO geo_campaigns
+                 (id, project_id, market_profile_id, primary_product_entity_id,
+                  name, status, created_by)
+               VALUES (%s, %s, %s, %s, %s, 'active', %s)""",
+            (
+                campaign_id,
+                project["project"],
+                project["market"],
+                project["entity"],
+                f"Coverage campaign {suffix}",
+                project["owner"],
+            ),
+        )
+        admin.commit()
+
+    app_url = login_url(ADMIN_URL, user=app_login, password=app_password)
+    worker_url = login_url(ADMIN_URL, user=worker_login, password=worker_password)
+    principal = _principal(project, suffix)
+    policy = KnowledgeRagEnqueuePolicy(
+        adapter_release=SELECTION.adapter_release,
+        selection_manifest_hash=SELECTION_HASH,
+        configured_model="deepseek-v4-flash",
+    )
+    knowledge = KnowledgeApplication(app_url, question_policy=policy)
+    try:
+        source = knowledge.create_source(
+            principal,
+            project_id=project["project"],
+            source=SourceInput(
+                "text",
+                "V600 official specification",
+                source_url,
+                "v600.txt",
+                "text/plain",
+                (
+                    "A1 的流量为每分钟 2 升。\n"
+                    "Product A1\n"
+                    "Brand 星澜\n"
+                    "A1 belongs_to 星澜"
+                ).encode(),
+            ),
+            idempotency_key=f"coverage-source-{suffix}",
+        )
+        source_ids = _process_source(
+            _dispatcher(worker_url, suffix), source, project["project"]
+        )
+        fact = next(
+            item
+            for item in knowledge.list_facts(principal, project_id=project["project"])
+            if item["pipeline_run_id"] == source_ids["run_id"]
+        )
+        knowledge.review_fact(
+            principal,
+            project_id=project["project"],
+            fact_id=fact["id"],
+            decision="approved",
+            notes="coverage integration fact",
+        )
+        created = knowledge.create_question_coverage_pack(
+            principal,
+            project_id=project["project"],
+            campaign_id=campaign_id,
+            configured_model="deepseek-v4-flash",
+            model_call_budget=60,
+            semantic_duplicate_threshold=0.92,
+            idempotency_key=f"coverage-generation-{suffix}",
+        )
+        with psycopg.connect(ADMIN_URL) as admin:
+            admin.execute(
+                """UPDATE durable_jobs
+                   SET status = 'dead_lettered', attempt_count = 3, max_attempts = 3,
+                       error_code = 'retryable_model_output',
+                       error_detail = '{"detail":"simulated invalid model batch"}'::jsonb,
+                       completed_at = clock_timestamp(), updated_at = clock_timestamp()
+                   WHERE id = %s AND project_id = %s""",
+                (created["job_id"], project["project"]),
+            )
+            admin.commit()
+        resumed = knowledge.resume_question_coverage_pack(
+            principal,
+            project_id=project["project"],
+            campaign_id=campaign_id,
+            generation_job_id=created["job_id"],
+            idempotency_key=f"coverage-resume-{suffix}",
+        )
+        replayed_resume = knowledge.resume_question_coverage_pack(
+            principal,
+            project_id=project["project"],
+            campaign_id=campaign_id,
+            generation_job_id=created["job_id"],
+            idempotency_key=f"coverage-resume-{suffix}",
+        )
+        assert resumed["status"] == replayed_resume["status"] == "retry_wait"
+        with psycopg.connect(ADMIN_URL) as admin:
+            recovery_counts = admin.execute(
+                """SELECT
+                     (SELECT count(*) FROM job_retry_requests
+                      WHERE project_id = %s AND job_id = %s),
+                     (SELECT count(*) FROM durable_job_events
+                      WHERE project_id = %s AND job_id = %s
+                        AND event_type = 'question_generation_resumed'),
+                     (SELECT count(*) FROM broker_outbox
+                      WHERE project_id = %s AND job_id = %s
+                        AND idempotency_key LIKE 'resume:knowledge-question:%%'),
+                     (SELECT max_attempts FROM durable_jobs
+                      WHERE project_id = %s AND id = %s)""",
+                (
+                    project["project"],
+                    created["job_id"],
+                    project["project"],
+                    created["job_id"],
+                    project["project"],
+                    created["job_id"],
+                    project["project"],
+                    created["job_id"],
+                ),
+            ).fetchone()
+        assert recovery_counts == (1, 1, 1, 4)
+        gateway = CoverageQuestionGateway()
+        result = _question_dispatcher(worker_url, suffix, gateway=gateway).process(
+            job_id=created["job_id"], project_id=project["project"]
+        )
+        if result["status"] != "succeeded":
+            with psycopg.connect(ADMIN_URL) as diagnostic:
+                result = {
+                    **result,
+                    "failure": diagnostic.execute(
+                        "SELECT error_code, error_detail FROM durable_jobs WHERE id = %s",
+                        (created["job_id"],),
+                    ).fetchone(),
+                }
+        assert result["status"] == "succeeded", result
+        assert gateway.calls == 10
+        candidates = knowledge.list_question_candidates(
+            principal,
+            project_id=project["project"],
+            campaign_id=campaign_id,
+            generation_job_id=created["job_id"],
+        )
+        assert len(candidates) == 100
+        assert sum(item["coverage_role"] == "category_benchmark" for item in candidates) == 50
+        assert sum(item["coverage_role"] == "product_fit" for item in candidates) == 40
+        assert sum(item["coverage_role"] == "brand_control" for item in candidates) == 10
+        assert any(
+            item["dedup_status"] == "possible_duplicate"
+            and item["semantic_fingerprint"] == "buying priorities shared product fit"
+            for item in candidates
+        )
+        with pytest.raises(
+            KnowledgeValidationError, match="non-brand coverage question exposed product identity"
+        ):
+            knowledge.edit_question_candidate(
+                principal,
+                project_id=project["project"],
+                campaign_id=campaign_id,
+                candidate_id=candidates[0]["id"],
+                query_text="Should I buy the ADVINSYS TerraMow V600?",
+            )
+        revised_text = "What should Australians compare before choosing a robot lawn mower?"
+        knowledge.edit_question_candidate(
+            principal,
+            project_id=project["project"],
+            campaign_id=campaign_id,
+            candidate_id=candidates[0]["id"],
+            query_text=revised_text,
+        )
+        unique_candidates = tuple(
+            item["id"] for item in candidates if item["dedup_status"] == "unique"
+        )
+        assert 90 <= len(unique_candidates) <= 100
+        included = unique_candidates[:90]
+        frozen = knowledge.finalize_question_coverage_pack(
+            principal,
+            project_id=project["project"],
+            campaign_id=campaign_id,
+            name="AU V600 100-question measurement pack",
+            generation_job_id=created["job_id"],
+            included_candidate_ids=included,
+            idempotency_key=f"coverage-finalize-{suffix}",
+        )
+        replayed = knowledge.finalize_question_coverage_pack(
+            principal,
+            project_id=project["project"],
+            campaign_id=campaign_id,
+            name="AU V600 100-question measurement pack",
+            generation_job_id=created["job_id"],
+            included_candidate_ids=included,
+            idempotency_key=f"coverage-finalize-{suffix}",
+        )
+        assert frozen["status"] == replayed["status"] == "frozen"
+        assert frozen["id"] == replayed["id"]
+        assert frozen["covered_dimension_count"] == len(frozen["items"]) == 90
+        assert frozen["coverage_ratio"] == Decimal("0.9000")
+        assert frozen["items"][0]["query_text_snapshot"] == revised_text
+        with psycopg.connect(ADMIN_URL) as admin:
+            counts = admin.execute(
+                """SELECT
+                     (SELECT count(*) FROM knowledge_question_generation_batches
+                      WHERE job_id = %s),
+                     (SELECT count(*) FROM knowledge_question_candidate_revisions
+                      WHERE generated_by_job_id = %s),
+                     (SELECT count(*) FROM knowledge_question_candidates
+                      WHERE generated_by_job_id = %s AND workflow_status = 'approved'),
+                     (SELECT count(*) FROM knowledge_question_candidates
+                      WHERE generated_by_job_id = %s AND workflow_status = 'rejected')""",
+                (created["job_id"],) * 4,
+            ).fetchone()
+        assert counts == (10, 1, 90, 10)
+    finally:
+        with psycopg.connect(ADMIN_URL) as admin:
+            cleanup_projects(
+                admin,
+                projects=[project],
+                tenant_ids=[project["tenant"]],
+                app_login=app_login,
+                worker_login=worker_login,
+            )
+            admin.commit()
 
 
 def test_f019_int_03_question_candidates_freeze_bind_and_immutable_versions() -> None:
@@ -243,9 +560,6 @@ def test_f019_int_03_question_candidates_freeze_bind_and_immutable_versions() ->
                 campaign_id=campaign_id,
                 candidate_id=candidate["id"],
                 decision="approved",
-                notes="reviewed semantic duplicate"
-                if candidate["dedup_status"] != "unique"
-                else "",
             )
 
         question_set = knowledge.create_question_set(

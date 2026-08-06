@@ -3,10 +3,11 @@ import type {
   CampaignPlacementReadinessView, CampaignView,
   ClaimView, DestinationCreate, DestinationPolicyReviewCreate, DestinationPolicyView, DestinationView,
   EvidenceAttemptView, EvidenceItemView, ExportView, GenerationCreate, JobAccepted, JobStatus,
-  KnowledgeQuestionCandidateReview, KnowledgeQuestionCandidateView,
+  KnowledgeQuestionCandidateEdit, KnowledgeQuestionCandidateReview,
+  KnowledgeQuestionCandidateView, KnowledgeQuestionCoverageProfileView,
   KnowledgeQuestionFactView, KnowledgeQuestionGenerationCreate, KnowledgeQuestionGenerationCreated,
   KnowledgeQuestionGenerationView,
-  KnowledgeQuestionSetCreate, KnowledgeQuestionSetView,
+  KnowledgeQuestionCoverageFinalize, KnowledgeQuestionSetCreate, KnowledgeQuestionSetView,
   MeasurementCollectionTaskView, MeasurementCreate, MeasurementView, MeasurementWindow, MetricCompute, MetricView, MonitoringObservationCreate,
   MonitoringObservationView, MonitoringProtocolCreate, MonitoringProtocolQuestionSetBindingCreate,
   MonitoringProtocolView, MonitoringQueryCreate,
@@ -57,10 +58,14 @@ export class GeoAdminApiClient {
   listKnowledgeQuestionFacts(projectId: string) { return this.request<KnowledgeQuestionFactView[]>(`/v1/projects/${projectId}/knowledge/fact-candidates`); }
   listKnowledgeQuestionGenerations(projectId: string, campaignId: string) { return this.request<KnowledgeQuestionGenerationView[]>(`/v1/projects/${projectId}/knowledge/campaigns/${campaignId}/question-generations`); }
   createKnowledgeQuestionGeneration(projectId: string, campaignId: string, body: KnowledgeQuestionGenerationCreate, guards: RuntimeRequestGuards) { return this.request<KnowledgeQuestionGenerationCreated, KnowledgeQuestionGenerationCreate>(`/v1/projects/${projectId}/knowledge/campaigns/${campaignId}/question-generations`, { method: "POST", body, ...guards }); }
+  resumeKnowledgeQuestionCoveragePack(projectId: string, campaignId: string, generationJobId: string, guards: RuntimeRequestGuards) { return this.request<KnowledgeQuestionGenerationView>(`/v1/projects/${projectId}/knowledge/campaigns/${campaignId}/question-generations/${generationJobId}/resume`, { method: "POST", ...guards }); }
+  getDefaultKnowledgeQuestionCoverageProfile(projectId: string, campaignId: string) { return this.request<KnowledgeQuestionCoverageProfileView>(`/v1/projects/${projectId}/knowledge/campaigns/${campaignId}/question-coverage-profiles/default`); }
   listKnowledgeQuestionCandidates(projectId: string, campaignId: string, generationJobId: string) { return this.request<KnowledgeQuestionCandidateView[]>(`/v1/projects/${projectId}/knowledge/campaigns/${campaignId}/question-candidates`, { query: { generation_job_id: generationJobId } }); }
+  editKnowledgeQuestionCandidate(projectId: string, campaignId: string, candidateId: string, body: KnowledgeQuestionCandidateEdit, guards: RuntimeRequestGuards) { return this.request(`/v1/projects/${projectId}/knowledge/campaigns/${campaignId}/question-candidates/${candidateId}/text`, { method: "PATCH", body, ...guards }); }
   reviewKnowledgeQuestionCandidate(projectId: string, campaignId: string, candidateId: string, body: KnowledgeQuestionCandidateReview, guards: RuntimeRequestGuards) { return this.request<KnowledgeQuestionCandidateView, KnowledgeQuestionCandidateReview>(`/v1/projects/${projectId}/knowledge/campaigns/${campaignId}/question-candidates/${candidateId}`, { method: "PATCH", body, ...guards }); }
   listKnowledgeQuestionSets(projectId: string, campaignId: string) { return this.request<KnowledgeQuestionSetView[]>(`/v1/projects/${projectId}/knowledge/campaigns/${campaignId}/question-sets`); }
   createKnowledgeQuestionSet(projectId: string, campaignId: string, body: KnowledgeQuestionSetCreate, guards: RuntimeRequestGuards) { return this.request<KnowledgeQuestionSetView, KnowledgeQuestionSetCreate>(`/v1/projects/${projectId}/knowledge/campaigns/${campaignId}/question-sets`, { method: "POST", body, ...guards }); }
+  finalizeKnowledgeQuestionCoveragePack(projectId: string, campaignId: string, body: KnowledgeQuestionCoverageFinalize, guards: RuntimeRequestGuards) { return this.request<KnowledgeQuestionSetView, KnowledgeQuestionCoverageFinalize>(`/v1/projects/${projectId}/knowledge/campaigns/${campaignId}/question-sets/finalize-coverage-pack`, { method: "POST", body, ...guards }); }
   approveKnowledgeQuestionSet(projectId: string, campaignId: string, questionSetId: string, guards: RuntimeRequestGuards) { return this.request<KnowledgeQuestionSetView>(`/v1/projects/${projectId}/knowledge/campaigns/${campaignId}/question-sets/${questionSetId}/approve`, { method: "POST", ...guards }); }
   freezeKnowledgeQuestionSet(projectId: string, campaignId: string, questionSetId: string, guards: RuntimeRequestGuards) { return this.request<KnowledgeQuestionSetView>(`/v1/projects/${projectId}/knowledge/campaigns/${campaignId}/question-sets/${questionSetId}/freeze`, { method: "POST", ...guards }); }
 
