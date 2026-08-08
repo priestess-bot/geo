@@ -21,6 +21,7 @@ from geo_api.workflow_c_sampling_contracts import (
     SubmitManualEvidenceRequest,
 )
 from geo_api.workflow_c_sampling_postgres_execution import (
+    PostgresWorkflowCBrowserBulkSamplingControl,
     PostgresWorkflowCProviderBulkSamplingControl,
     PostgresWorkflowCProviderSamplingControl,
 )
@@ -41,7 +42,9 @@ from geo_api.workflow_c_sampling_runtime import (
     SamplingAdmissionPolicyView,
     SamplingRunView,
 )
+from geo_core.browser_capture.bulk_admission import BrowserCaptureBulkAdmissionService
 from geo_core.sampling import (
+    CaptureMethod,
     ManualEvidenceImport,
     PostgresManualEvidenceRepository,
     PostgresProviderSamplingAttemptRepository,
@@ -85,6 +88,7 @@ class PostgresWorkflowCSamplingRuntime:
         runs: PostgresWorkflowCSamplingRunControl,
         provider_attempts: PostgresWorkflowCProviderSamplingControl,
         provider_bulk_attempts: PostgresWorkflowCProviderBulkSamplingControl,
+        browser_bulk_attempts: PostgresWorkflowCBrowserBulkSamplingControl,
         manual: PostgresWorkflowCManualEvidenceControl,
         cancellation: PostgresSamplingCancellationRepository,
         reads: PostgresSamplingReadRepository,
@@ -96,6 +100,7 @@ class PostgresWorkflowCSamplingRuntime:
         self._runs = runs
         self._provider_attempts = provider_attempts
         self._provider_bulk_attempts = provider_bulk_attempts
+        self._browser_bulk_attempts = browser_bulk_attempts
         self.manual = manual
         self._cancellation = cancellation
         self._reads = reads
@@ -279,7 +284,14 @@ class PostgresWorkflowCSamplingRuntime:
         idempotency_key: str,
         payload: EnqueueReadySamplingRunRequest,
     ) -> BulkSamplingEnqueueView:
-        result = self._provider_bulk_attempts.enqueue_ready(
+        run = self._runs.get(project_id=project_id, run_id=run_id)
+        suite = self.get_suite(project_id=project_id, suite_id=run.suite_id)
+        control = (
+            self._browser_bulk_attempts
+            if suite.source_stratum.capture_method is CaptureMethod.AUTOMATED_UI
+            else self._provider_bulk_attempts
+        )
+        result = control.enqueue_ready(
             project_id=project_id,
             run_id=run_id,
             idempotency_key=idempotency_key,
@@ -459,6 +471,12 @@ def build_postgres_workflow_c_sampling_runtime(
         policies=policies,
         clock=clock,
     )
+    browser_bulk_attempts = PostgresWorkflowCBrowserBulkSamplingControl(
+        runs=runs_repository,
+        suites=suites_repository,
+        attempts=BrowserCaptureBulkAdmissionService(connect=connect),
+        clock=clock,
+    )
     manual = PostgresWorkflowCManualEvidenceControl(
         imports=PostgresManualEvidenceRepository(connect=connect),
         runs=runs_repository,
@@ -472,6 +490,7 @@ def build_postgres_workflow_c_sampling_runtime(
         runs=runs,
         provider_attempts=provider_attempts,
         provider_bulk_attempts=provider_bulk_attempts,
+        browser_bulk_attempts=browser_bulk_attempts,
         manual=manual,
         cancellation=PostgresSamplingCancellationRepository(connect=connect),
         reads=PostgresSamplingReadRepository(connect=connect),

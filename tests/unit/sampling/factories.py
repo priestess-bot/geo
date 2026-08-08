@@ -44,19 +44,30 @@ def make_source(
         CaptureMethod.PROVIDER_API,
         CaptureMethod.PROXY_GROUNDED_API,
     }
+    is_automated_ui = capture_method is CaptureMethod.AUTOMATED_UI
     return SamplingSourceStratum(
-        platform="openai" if is_api else "consumer-ui-manual",
-        surface="web_search" if is_api else "manual-search-result",
-        configured_model="gpt-5-mini",
-        reported_model="gpt-5-mini-2026-07-01",
+        platform="openai" if is_api else ("google" if is_automated_ui else "consumer-ui-manual"),
+        surface="web_search" if is_api else (
+            "google_ai_overviews" if is_automated_ui else "manual-search-result"
+        ),
+        configured_model="not_applicable" if is_automated_ui else "gpt-5-mini",
+        reported_model="not_applicable" if is_automated_ui else "gpt-5-mini-2026-07-01",
         capture_method=capture_method,
         adapter_release=adapter_release,
         locale="en-AU",
         region="AU",
         language="en",
         search_mode="enabled",
-        account_cohort="not_applicable" if is_api else "au-clean-account-v1",
-        egress_policy_category=("not_applicable" if is_api else "operator_verified_manual_au"),
+        account_cohort=(
+            "not_applicable" if is_api
+            else "clean_anonymous" if is_automated_ui
+            else "au-clean-account-v1"
+        ),
+        egress_policy_category=(
+            "not_applicable" if is_api
+            else "au_residential_sticky" if is_automated_ui
+            else "operator_verified_manual_au"
+        ),
         location_control=LocationControl.COUNTRY,
         location_evidence_hash=digest("location-evidence:au-country"),
         requested_country="AU",

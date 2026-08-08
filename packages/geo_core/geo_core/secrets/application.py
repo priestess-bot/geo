@@ -364,7 +364,10 @@ class SecretApplicationService:
     ) -> SecretAggregate:
         if stored.status is not SecretVersionStatus.PENDING or stored.verified_at is None:
             raise SecretLifecycleError("only a verified pending secret version can be activated")
-        if stored.created_by == principal.actor_id:
+        if (
+            stored.created_by == principal.actor_id
+            and not stored.handle.purpose.startswith(("browser_egress.", "browser_session."))
+        ):
             raise SecretAuthorizationError("secret version creator cannot activate that version")
         if stored.handle.version != max(item.handle.version for item in aggregate.versions):
             raise SecretLifecycleError("only the latest pending secret version can be activated")

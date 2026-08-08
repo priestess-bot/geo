@@ -19,6 +19,8 @@ import {
   isAdmissionPolicyPage,
   isAdmissionRuntimeOptionPage,
   isAlertPage,
+  isBrowserCaptureInventory,
+  isBrowserCaptureReadiness,
   isComparisonFamily,
   isComparisonFamilyPage,
   isDriftReport,
@@ -39,6 +41,8 @@ import {
   type AdmissionPolicyPage,
   type AdmissionRuntimeOptionPage,
   type AlertPage,
+  type BrowserCaptureInventory,
+  type BrowserCaptureReadiness,
   type ComparisonFamily,
   type ComparisonFamilyPage,
   type DriftReport,
@@ -79,7 +83,7 @@ export async function loadWorkflowCWorkspace(
   const activeView = normalizeView(queryValue(query, "workflow_view"));
   const base = `/v1/projects/${encodeURIComponent(projectId)}`;
 
-  const questionWorkspaceRequest = activeView === "questions"
+  const questionWorkspaceRequest = ["questions", "sampling"].includes(activeView)
     ? loadQuestionWorkspace(projectId, selection)
     : Promise.resolve(null);
 
@@ -118,6 +122,12 @@ export async function loadWorkflowCWorkspace(
   const surfaceParserReleasesRequest = runtimeRequest<SurfaceParserReleasePage>(
     `${base}/sampling/surface-parser-releases`
   );
+  const browserCaptureReadinessRequest = activeView === "sampling"
+    ? runtimeRequest<BrowserCaptureReadiness>(`${base}/browser-capture/readiness`)
+    : Promise.resolve(null);
+  const browserCaptureInventoryRequest = activeView === "sampling"
+    ? runtimeRequest<BrowserCaptureInventory>(`${base}/browser-capture`)
+    : Promise.resolve(null);
   const workflowCReportsRequest = runtimeRequest<WorkflowCReportPage>(
     `${base}/analysis/reports`
   );
@@ -156,6 +166,8 @@ export async function loadWorkflowCWorkspace(
     driftReports,
     manualEvidence,
     surfaceParserReleases,
+    browserCaptureReadiness,
+    browserCaptureInventory,
     workflowCReports,
     suite,
     run,
@@ -180,6 +192,8 @@ export async function loadWorkflowCWorkspace(
     driftReportsRequest,
     manualEvidenceRequest,
     surfaceParserReleasesRequest,
+    browserCaptureReadinessRequest,
+    browserCaptureInventoryRequest,
     workflowCReportsRequest,
     suiteRequest,
     runRequest,
@@ -311,6 +325,16 @@ export async function loadWorkflowCWorkspace(
       surfaceParserReleases,
       isSurfaceParserReleasePage,
       "Consumer surface parser releases 加载失败。"
+    ),
+    browserCaptureReadiness: resource(
+      browserCaptureReadiness,
+      isBrowserCaptureReadiness,
+      "消费者界面采集状态加载失败。"
+    ),
+    browserCaptureInventory: resource(
+      browserCaptureInventory,
+      isBrowserCaptureInventory,
+      "消费者界面采集配置加载失败。"
     ),
     workflowCReports: resource(
       workflowCReports,

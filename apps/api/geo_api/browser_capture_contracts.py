@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import Field, field_validator
+from pydantic import Field, SecretStr, field_validator
 
 from geo_api.contracts import StrictContract
 
@@ -121,6 +121,49 @@ class EgressEndpointResponse(StrictContract):
     disabled_at: datetime | None = None
 
 
+class ConfigureAustralianEgressRequest(StrictContract):
+    name: str = Field(default="澳洲消费者搜索出口", min_length=1, max_length=200)
+    protocol: Literal["http", "https", "socks5"] = "https"
+    endpoint_host: str = Field(min_length=1, max_length=253)
+    endpoint_port: int = Field(ge=1, le=65_535)
+    username_template: str = Field(min_length=3, max_length=1_000)
+    password: SecretStr
+    network_type: Literal["residential", "mobile"] = "residential"
+    expected_region: str | None = Field(default=None, max_length=120)
+    lease_ttl_seconds: int = Field(default=600, ge=60, le=3_600)
+
+    @field_validator("username_template")
+    @classmethod
+    def validate_sticky_username(cls, value: str) -> str:
+        if "{session_id}" not in value:
+            raise ValueError("username_template must contain {session_id}")
+        return value.strip()
+
+
+class AustralianEgressSetupResponse(StrictContract):
+    endpoint: EgressEndpointResponse
+    secret_reference_id: UUID
+    secret_version: int
+    egress_test_required: Literal[True]
+
+
+class ConfigureBrowserSessionRequest(StrictContract):
+    storage_state_json: SecretStr
+
+    @field_validator("storage_state_json")
+    @classmethod
+    def validate_storage_state_size(cls, value: SecretStr) -> SecretStr:
+        if len(value.get_secret_value().encode("utf-8")) > 2_000_000:
+            raise ValueError("storage_state_json exceeds 2 MB")
+        return value
+
+
+class BrowserSessionSetupResponse(StrictContract):
+    profile: BrowserProfileResponse
+    secret_reference_id: UUID
+    secret_version: int
+
+
 class SetEgressEndpointStatusRequest(StrictContract):
     status: Literal["approved", "disabled"]
 
@@ -172,6 +215,36 @@ class BrowserCaptureInventoryResponse(StrictContract):
     drift_events: list[dict[str, object]]
     tasks: list[dict[str, object]]
     sessions: list[dict[str, object]]
+
+
+ConsumerSurfaceValue = Literal[
+    "google_ai_overviews", "google_ai_mode", "bing_copilot"
+]
+
+
+class BootstrapBrowserCaptureRequest(StrictContract):
+    surfaces: list[ConsumerSurfaceValue] = Field(min_length=1, max_length=3)
+    terms_acknowledged: Literal[True]
+
+
+class BrowserCaptureBootstrapResponse(StrictContract):
+    surface_releases: list[SurfaceReleaseResponse]
+    profile: BrowserProfileResponse
+
+
+class BrowserCaptureReadinessItem(StrictContract):
+    surface: ConsumerSurfaceValue
+    state: Literal["blocked", "ready", "live_verified", "fidelity_accepted"]
+    blocking_reasons: list[str]
+    surface_release_id: UUID | None = None
+    release_version: str | None = None
+    profile_version_id: UUID | None = None
+    egress_endpoint_id: UUID | None = None
+    captured_count: int = Field(ge=0)
+
+
+class BrowserCaptureReadinessResponse(StrictContract):
+    items: list[BrowserCaptureReadinessItem]
 
 
 class RegisterBrowserSamplingOptionRequest(StrictContract):

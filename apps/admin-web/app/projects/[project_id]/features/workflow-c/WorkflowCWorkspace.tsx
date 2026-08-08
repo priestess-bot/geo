@@ -206,11 +206,15 @@ function WorkflowCContents({
           <SamplingPanel
             actorId={data.actorId}
             admissionPolicies={data.admissionPolicies}
+            admissionRuntimeOptions={data.admissionRuntimeOptions}
+            browserCaptureInventory={data.browserCaptureInventory}
+            browserCaptureReadiness={data.browserCaptureReadiness}
             canOperate={canOperateSampling}
             canReview={canReviewManualEvidence}
             commandKeys={samplingCommandKeys}
             manualCommandKey={`workflow-c-manual-${randomUUID()}`}
             manualEvidence={data.manualEvidence}
+            questionWorkspace={data.questionWorkspace}
             projectId={projectId}
             requestedNotBefore={localDateTime(now)}
             resource={data.run}

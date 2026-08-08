@@ -42,19 +42,19 @@ class GoogleAiOverviewRequest(SearchAggregationStrictModel):
     query: str = Field(min_length=1, max_length=500)
     location: str | None = Field(
         default=None,
-        description="Full location string for SerpAPI (e.g. 'London, England, United Kingdom').",
+        description="Optional provider location hint.",
     )
     gl: str | None = Field(
         default=None,
-        description="Two-letter country code for SerpAPI gl parameter (e.g. 'us', 'uk').",
+        description="Optional two-letter provider country hint.",
     )
     hl: str | None = Field(
         default=None,
-        description="Language code for SerpAPI hl parameter (e.g. 'en', 'zh-cn').",
+        description="Optional provider language hint.",
     )
     google_domain: str | None = Field(
         default=None,
-        description="Google domain for SerpAPI (e.g. 'google.com', 'google.co.uk').",
+        description="Legacy provider domain hint; not Browser Capture lineage.",
     )
 
 

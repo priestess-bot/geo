@@ -21,6 +21,7 @@ from geo_core.browser_capture.domain import (
     evaluate_egress,
 )
 from geo_core.browser_capture.parsing import Citation, PageSignals
+from geo_core.browser_capture.surface_adapters import block_reason_from_text
 
 
 @dataclass(frozen=True, repr=False)
@@ -60,6 +61,7 @@ class BrowserProfile:
     user_agent: str | None = None
     geolocation: Mapping[str, float] | None = None
     grant_location: bool = False
+    storage_state: Mapping[str, object] | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True)
@@ -72,6 +74,10 @@ class SurfaceSelectors:
     citations: str
     page_location: str
     block_detectors: Mapping[str, str] = field(default_factory=dict)
+    block_text_patterns: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+    adapter_key: str | None = None
+    navigation_mode: str = "form_submit"
+    completion_mode: str = "document_ready"
     ready_timeout_ms: int = 45_000
 
 
@@ -123,6 +129,9 @@ class PlaywrightBrowserDriver:
                     user_agent=profile.user_agent,
                     geolocation=dict(profile.geolocation) if profile.geolocation else None,
                     permissions=["geolocation"] if profile.grant_location else [],
+                    storage_state=(
+                        dict(profile.storage_state) if profile.storage_state else None
+                    ),
                     record_har_path=har_path,
                     record_har_mode="full",
                 )
@@ -237,17 +246,34 @@ class PlaywrightBrowserDriver:
     ) -> tuple[PageSignals, bytes, bytes]:
         page = context.new_page()
         try:
-            page.goto(selectors.entry_url_template, wait_until="domcontentloaded")
-            page.locator(selectors.query_input).fill(query)
-            page.locator(selectors.query_input).press("Enter")
+            target_url = selectors.entry_url_template
+            if selectors.navigation_mode == "direct_query":
+                from urllib.parse import quote_plus
+
+                target_url = target_url.replace("{query}", quote_plus(query.strip()))
+                page.goto(target_url, wait_until="domcontentloaded")
+            else:
+                page.goto(target_url, wait_until="domcontentloaded")
+                page.locator(selectors.query_input).fill(query)
+                page.locator(selectors.query_input).press("Enter")
             timed_out = False
             try:
                 page.locator(selectors.page_complete).wait_for(
                     state="visible", timeout=selectors.ready_timeout_ms
                 )
+                if selectors.completion_mode == "stable_answer":
+                    _wait_for_stable_answer(
+                        page, selectors.answer, timeout_ms=selectors.ready_timeout_ms
+                    )
             except Exception:
                 timed_out = True
             block_reason = _first_block(page, selectors.block_detectors)
+            if block_reason is None and selectors.block_text_patterns:
+                try:
+                    body_text = page.locator("body").inner_text(timeout=5_000)
+                except Exception:
+                    body_text = ""
+                block_reason = block_reason_from_text(body_text, selectors.block_text_patterns)
             detected = (
                 expected_surface
                 if page.locator(selectors.surface_marker).count() > 0
@@ -299,6 +325,25 @@ def _first_block(page: Page, detectors: Mapping[str, str]) -> str | None:
         if page.locator(selector).count() > 0:
             return reason
     return None
+
+
+def _wait_for_stable_answer(page: Page, selector: str, *, timeout_ms: int) -> None:
+    deadline = datetime.now(UTC).timestamp() + timeout_ms / 1_000
+    previous: tuple[str, int] | None = None
+    stable_count = 0
+    while datetime.now(UTC).timestamp() < deadline:
+        locator = page.locator(selector)
+        text = locator.first.inner_text(timeout=2_000).strip() if locator.count() else ""
+        current = (text, len(text))
+        if text and current == previous:
+            stable_count += 1
+            if stable_count >= 2:
+                return
+        else:
+            stable_count = 0
+        previous = current
+        page.wait_for_timeout(750)
+    raise BrowserCaptureError("Consumer surface answer did not reach a stable terminal state")
 
 
 def _country_from_location(value: str | None) -> str | None:

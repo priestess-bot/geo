@@ -1499,6 +1499,13 @@ const server = createServer(async (request, response) => {
     surface_releases: [], egress_endpoints: [], profiles: [], egress_tests: [],
     drift_events: [], tasks: [], sessions: []
   });
+  if (path === `${base}/browser-capture/readiness` && request.method === "GET") return send(response, {
+    items: ["google_ai_overviews", "google_ai_mode", "bing_copilot"].map((surface) => ({
+      surface, state: "blocked", blocking_reasons: ["needs_adapter"],
+      surface_release_id: null, release_version: null, profile_version_id: null,
+      egress_endpoint_id: null, captured_count: 0
+    }))
+  });
   if (path === `${base}/external-data/reports` && request.method === "GET") return send(response, []);
   if (path === `${base}/attribution` && request.method === "GET") return send(response, {
     policies: [], collectors: [], counts: {}, snapshots: []

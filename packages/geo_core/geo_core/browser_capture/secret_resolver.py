@@ -49,6 +49,46 @@ class AuditedBrowserProxySecretResolver:
             raise BrowserProxySecretError(
                 "Browser Capture worker may resolve only browser_egress secrets"
             )
+        return self._resolve_json(
+            project_id=project_id,
+            reference_id=reference_id,
+            purpose=purpose,
+            version=version,
+            idempotency_prefix="browser-proxy-resolve",
+            label="Browser proxy",
+        )
+
+    def resolve_storage_state(
+        self,
+        *,
+        project_id: UUID,
+        reference_id: UUID,
+        purpose: str,
+        version: int,
+    ) -> Mapping[str, object]:
+        if purpose != "browser_session.storage_state":
+            raise BrowserProxySecretError(
+                "Browser Capture worker may resolve only browser_session.storage_state"
+            )
+        return self._resolve_json(
+            project_id=project_id,
+            reference_id=reference_id,
+            purpose=purpose,
+            version=version,
+            idempotency_prefix="browser-session-resolve",
+            label="Browser session storage state",
+        )
+
+    def _resolve_json(
+        self,
+        *,
+        project_id: UUID,
+        reference_id: UUID,
+        purpose: str,
+        version: int,
+        idempotency_prefix: str,
+        label: str,
+    ) -> Mapping[str, object]:
         secret = self._application.resolve(
             ResolveSecretCommand(
                 principal=SecretPrincipal(
@@ -63,17 +103,17 @@ class AuditedBrowserProxySecretResolver:
                     purpose=purpose,
                     version=version,
                 ),
-                idempotency_key=f"browser-proxy-resolve:{uuid4()}",
+                idempotency_key=f"{idempotency_prefix}:{uuid4()}",
             )
         )
         try:
             value = json.loads(secret.reveal_text())
         except (json.JSONDecodeError, UnicodeDecodeError) as error:
-            raise BrowserProxySecretError("Browser proxy Secret must be a JSON object") from error
+            raise BrowserProxySecretError(f"{label} Secret must be a JSON object") from error
         if not isinstance(value, dict) or not value or any(
             not isinstance(key, str) for key in value
         ):
-            raise BrowserProxySecretError("Browser proxy Secret must be a non-empty JSON object")
+            raise BrowserProxySecretError(f"{label} Secret must be a non-empty JSON object")
         return value
 
 

@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from datetime import UTC, datetime
-from typing import Any
+from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 from urllib.parse import urlsplit
 from uuid import UUID, uuid4, uuid5
 
@@ -12,6 +12,10 @@ from psycopg import Error as PsycopgError
 from psycopg.types.json import Jsonb
 
 from geo_core.browser_capture.domain import BrowserCaptureError
+from geo_core.browser_capture.surface_adapters import (
+    BUILTIN_BROWSER_RELEASE,
+    builtin_surface_adapter,
+)
 from geo_core.connectors.contracts import canonical_hash
 from geo_core.project_scope import set_project_scope
 
@@ -110,6 +114,60 @@ class BrowserCaptureAdminService:
                     raise BrowserCaptureError(
                         "Surface release version was reused with different content"
                     )
+        return dict(row)
+
+    def install_builtin_surface_release(
+        self,
+        *,
+        project_id: UUID,
+        actor_id: UUID,
+        surface: str,
+    ) -> Mapping[str, object]:
+        adapter = builtin_surface_adapter(surface)
+        release = self.create_surface_release(
+            project_id=project_id,
+            actor_id=actor_id,
+            platform=adapter.platform,
+            surface=adapter.surface,
+            release_version=adapter.release_version,
+            entry_url_template=adapter.entry_url_template,
+            allowed_hosts=adapter.allowed_hosts,
+            selectors=adapter.selectors(),
+            block_detectors=dict(adapter.block_detectors),
+            parser_release=adapter.parser_release,
+            browser_release=BUILTIN_BROWSER_RELEASE,
+            authorization_track="A",
+            authorization_status="approved",
+            authorization_reference=f"owner-enabled:{adapter.key}",
+            authorization_valid_until=self._clock() + timedelta(days=365),
+            terms_version=f"consumer-public-surface:{adapter.release_version}",
+        )
+        return self.enable_surface_release(
+            project_id=project_id,
+            release_id=UUID(str(release["id"])),
+            actor_id=actor_id,
+        )
+
+    def enable_surface_release(
+        self, *, project_id: UUID, release_id: UUID, actor_id: UUID
+    ) -> Mapping[str, object]:
+        now = self._clock()
+        with self._connect() as connection:
+            set_project_scope(connection, project_id)
+            row = connection.execute(
+                """UPDATE browser_surface_releases
+                      SET status = 'approved', approved_by = %s, approved_at = %s
+                    WHERE project_id = %s AND id = %s
+                      AND status IN ('draft', 'approved')
+                      AND authorization_status = 'approved'
+                      AND authorization_valid_until > %s
+                   RETURNING *""",
+                (actor_id, now, project_id, release_id, now),
+            ).fetchone()
+        if row is None:
+            raise BrowserCaptureError(
+                "Consumer Surface cannot be enabled because its release or terms are stale"
+            )
         return dict(row)
 
 
@@ -212,6 +270,102 @@ class BrowserCaptureAdminService:
         if row is None:
             raise BrowserCaptureError(
                 "Egress Endpoint requires a different reviewer and active exact Secret version"
+            )
+        return dict(row)
+
+    def install_egress_endpoint(
+        self,
+        *,
+        project_id: UUID,
+        actor_id: UUID,
+        name: str,
+        protocol: str,
+        endpoint_host: str,
+        endpoint_port: int,
+        secret_reference_id: UUID,
+        secret_purpose: str,
+        secret_version: int,
+        expected_region: str | None,
+        network_type: str,
+        egress_policy_version: str,
+        egress_cohort_key: str,
+    ) -> Mapping[str, object]:
+        with self._connect() as connection:
+            set_project_scope(connection, project_id)
+            existing = connection.execute(
+                """SELECT * FROM browser_egress_endpoints
+                    WHERE project_id = %s AND name = %s""",
+                (project_id, name.strip()),
+            ).fetchone()
+        if existing is None:
+            endpoint = self.create_egress_endpoint(
+                project_id=project_id,
+                actor_id=actor_id,
+                name=name,
+                protocol=protocol,
+                endpoint_host=endpoint_host,
+                endpoint_port=endpoint_port,
+                secret_reference_id=secret_reference_id,
+                secret_purpose=secret_purpose,
+                secret_version=secret_version,
+                expected_region=expected_region,
+                network_type=network_type,
+                sticky_mode="credential_session",
+                egress_policy_version=egress_policy_version,
+                egress_cohort_key=egress_cohort_key,
+            )
+        else:
+            endpoint = dict(existing)
+            expected = {
+                "protocol": protocol,
+                "endpoint_host": endpoint_host.strip(),
+                "endpoint_port": endpoint_port,
+                "secret_reference_id": secret_reference_id,
+                "secret_purpose": secret_purpose,
+                "secret_version": secret_version,
+                "expected_region": expected_region,
+                "network_type": network_type,
+                "sticky_mode": "credential_session",
+                "egress_policy_version": egress_policy_version,
+                "egress_cohort_key": egress_cohort_key,
+            }
+            if any(endpoint.get(key) != value for key, value in expected.items()):
+                raise BrowserCaptureError(
+                    "An AU proxy with this name already exists with different settings; "
+                    "disable it before replacing the configuration"
+                )
+        return self.enable_egress_endpoint(
+            project_id=project_id,
+            endpoint_id=UUID(str(endpoint["id"])),
+            actor_id=actor_id,
+        )
+
+    def enable_egress_endpoint(
+        self, *, project_id: UUID, endpoint_id: UUID, actor_id: UUID
+    ) -> Mapping[str, object]:
+        now = self._clock()
+        with self._connect() as connection:
+            set_project_scope(connection, project_id)
+            row = connection.execute(
+                """UPDATE browser_egress_endpoints endpoint
+                      SET status = 'approved', approved_by = %s, approved_at = %s,
+                          disabled_at = NULL
+                    WHERE endpoint.project_id = %s AND endpoint.id = %s
+                      AND endpoint.status IN ('draft', 'approved', 'disabled')
+                      AND EXISTS (
+                        SELECT 1 FROM secret_versions secret
+                         WHERE secret.reference_id = endpoint.secret_reference_id
+                           AND secret.project_id = endpoint.project_id
+                           AND secret.purpose = endpoint.secret_purpose
+                           AND secret.version = endpoint.secret_version
+                           AND secret.status = 'active'
+                      )
+                   RETURNING endpoint.*""",
+                (actor_id, now, project_id, endpoint_id),
+            ).fetchone()
+        if row is None:
+            raise BrowserCaptureError(
+                "AU proxy cannot be enabled because its exact Secret version is not active"
             )
         return dict(row)
 
@@ -323,6 +477,189 @@ class BrowserCaptureAdminService:
                 ),
             ).fetchone()
         return dict(row)
+
+    def install_anonymous_profile(
+        self, *, project_id: UUID, actor_id: UUID
+    ) -> Mapping[str, object]:
+        version = "au-anonymous-desktop-2026-08-07.1"
+        with self._connect() as connection:
+            set_project_scope(connection, project_id)
+            existing = connection.execute(
+                """SELECT * FROM browser_profile_versions
+                    WHERE project_id = %s AND version = %s""",
+                (project_id, version),
+            ).fetchone()
+        profile = dict(existing) if existing is not None else self.create_profile(
+            project_id=project_id,
+            actor_id=actor_id,
+            version=version,
+            browser_release=BUILTIN_BROWSER_RELEASE,
+            device_class="desktop",
+            viewport={"width": 1440, "height": 1000},
+            timezone="Australia/Sydney",
+            geolocation=None,
+            location_permission=False,
+            safe_search="moderate",
+            account_cohort="clean_anonymous",
+        )
+        return self.enable_profile(
+            project_id=project_id,
+            profile_id=UUID(str(profile["id"])),
+            actor_id=actor_id,
+        )
+
+    def install_session_profile(
+        self,
+        *,
+        project_id: UUID,
+        actor_id: UUID,
+        storage_secret_reference_id: UUID,
+        storage_secret_version: int,
+    ) -> Mapping[str, object]:
+        version = (
+            f"au-managed-session-{str(storage_secret_reference_id)[:8]}-"
+            f"v{storage_secret_version}"
+        )
+        with self._connect() as connection:
+            set_project_scope(connection, project_id)
+            existing = connection.execute(
+                """SELECT * FROM browser_profile_versions
+                    WHERE project_id = %s AND version = %s""",
+                (project_id, version),
+            ).fetchone()
+        profile = dict(existing) if existing is not None else self.create_profile(
+            project_id=project_id,
+            actor_id=actor_id,
+            version=version,
+            browser_release=BUILTIN_BROWSER_RELEASE,
+            device_class="desktop",
+            viewport={"width": 1440, "height": 1000},
+            timezone="Australia/Sydney",
+            geolocation=None,
+            location_permission=False,
+            safe_search="moderate",
+            account_cohort="managed_test_account",
+            storage_secret_reference_id=storage_secret_reference_id,
+            storage_secret_purpose="browser_session.storage_state",
+            storage_secret_version=storage_secret_version,
+        )
+        return self.enable_profile(
+            project_id=project_id,
+            profile_id=UUID(str(profile["id"])),
+            actor_id=actor_id,
+        )
+
+    def enable_profile(
+        self, *, project_id: UUID, profile_id: UUID, actor_id: UUID
+    ) -> Mapping[str, object]:
+        now = self._clock()
+        with self._connect() as connection:
+            set_project_scope(connection, project_id)
+            row = connection.execute(
+                """UPDATE browser_profile_versions
+                      SET status = 'approved', approved_by = %s, approved_at = %s
+                    WHERE project_id = %s AND id = %s
+                      AND status IN ('draft', 'approved')
+                   RETURNING *""",
+                (actor_id, now, project_id, profile_id),
+            ).fetchone()
+        if row is None:
+            raise BrowserCaptureError("Browser Profile cannot be enabled")
+        return dict(row)
+
+    def bootstrap_builtin_surfaces(
+        self, *, project_id: UUID, actor_id: UUID, surfaces: Sequence[str]
+    ) -> Mapping[str, object]:
+        releases = [
+            self.install_builtin_surface_release(
+                project_id=project_id, actor_id=actor_id, surface=surface
+            )
+            for surface in surfaces
+        ]
+        profile = self.install_anonymous_profile(project_id=project_id, actor_id=actor_id)
+        return {"surface_releases": releases, "profile": profile}
+
+    def readiness(self, *, project_id: UUID) -> Mapping[str, object]:
+        inventory = self.inventory(project_id=project_id)
+        egress_endpoints = cast(
+            list[Mapping[str, object]], inventory["egress_endpoints"]
+        )
+        egress_tests = cast(list[Mapping[str, object]], inventory["egress_tests"])
+        profiles = cast(list[Mapping[str, object]], inventory["profiles"])
+        surface_releases = cast(
+            list[Mapping[str, object]], inventory["surface_releases"]
+        )
+        approved_endpoints = [
+            item for item in egress_endpoints
+            if item["status"] == "approved"
+            and item["network_type"] in {"residential", "mobile"}
+        ]
+        tested_endpoint_ids = {
+            str(item["endpoint_id"])
+            for item in egress_tests
+            if item["status"] == "succeeded" and item.get("eligible") is True
+        }
+        approved_profiles = [
+            item for item in profiles if item["status"] == "approved"
+        ]
+        with self._connect() as connection:
+            set_project_scope(connection, project_id)
+            captured_by_release = {
+                str(row["surface_release_id"]): int(row["captured_count"])
+                for row in connection.execute(
+                    """SELECT surface_release_id, count(*) AS captured_count
+                         FROM browser_parsed_observations
+                        WHERE project_id = %s
+                          AND result_class = 'captured'
+                          AND eligible
+                        GROUP BY surface_release_id""",
+                    (project_id,),
+                ).fetchall()
+            }
+        items = []
+        for surface in (
+            "google_ai_overviews",
+            "google_ai_mode",
+            "bing_copilot",
+        ):
+            releases = [
+                item for item in surface_releases if item["surface"] == surface
+            ]
+            release = releases[0] if releases else None
+            captured_count = (
+                captured_by_release.get(str(release["id"]), 0) if release else 0
+            )
+            blocking_reasons: list[str] = []
+            if release is None:
+                blocking_reasons.append("needs_adapter")
+            elif release["status"] == "suspended":
+                blocking_reasons.append("adapter_drifted")
+            elif release["status"] != "approved":
+                blocking_reasons.append("adapter_not_enabled")
+            if not approved_endpoints:
+                blocking_reasons.append("needs_au_egress")
+            elif not any(str(item["id"]) in tested_endpoint_ids for item in approved_endpoints):
+                blocking_reasons.append("needs_egress_test")
+            if not approved_profiles:
+                blocking_reasons.append("needs_browser_profile")
+            state = "blocked" if blocking_reasons else "ready"
+            if not blocking_reasons and captured_count >= 3:
+                state = "live_verified"
+            if not blocking_reasons and captured_count >= 20:
+                state = "fidelity_accepted"
+            items.append(
+                {
+                    "surface": surface,
+                    "state": state,
+                    "blocking_reasons": blocking_reasons,
+                    "surface_release_id": release["id"] if release else None,
+                    "release_version": release["release_version"] if release else None,
+                    "profile_version_id": approved_profiles[0]["id"] if approved_profiles else None,
+                    "egress_endpoint_id": approved_endpoints[0]["id"] if approved_endpoints else None,
+                    "captured_count": captured_count,
+                }
+            )
+        return {"items": items}
 
     def approve_profile(
         self, *, project_id: UUID, profile_id: UUID, reviewer_id: UUID
@@ -487,7 +824,15 @@ class BrowserCaptureAdminService:
 _REQUIRED_SURFACE_SELECTORS = frozenset(
     {"query_input", "page_complete", "surface_marker", "answer", "citations", "page_location"}
 )
-_OPTIONAL_SURFACE_SELECTORS = frozenset({"ready_timeout_ms"})
+_OPTIONAL_SURFACE_SELECTORS = frozenset(
+    {
+        "adapter_key",
+        "block_text_patterns",
+        "completion_mode",
+        "navigation_mode",
+        "ready_timeout_ms",
+    }
+)
 _BLOCK_DETECTORS = frozenset({"consent", "login", "captcha", "rate_limit", "ban"})
 
 
@@ -527,6 +872,33 @@ def _validate_surface_configuration(
     if isinstance(timeout, bool) or not isinstance(timeout, int) or not 1_000 <= timeout <= 180_000:
         raise BrowserCaptureError("Surface ready_timeout_ms must be between 1000 and 180000")
     frozen_selectors["ready_timeout_ms"] = timeout
+    adapter_key = selectors.get("adapter_key")
+    if adapter_key is not None:
+        if not isinstance(adapter_key, str) or not adapter_key.strip() or len(adapter_key) > 200:
+            raise BrowserCaptureError("Surface adapter_key is invalid")
+        frozen_selectors["adapter_key"] = adapter_key.strip()
+    navigation_mode = selectors.get("navigation_mode", "form_submit")
+    if navigation_mode not in {"form_submit", "direct_query"}:
+        raise BrowserCaptureError("Surface navigation_mode is invalid")
+    if navigation_mode == "direct_query" and "{query}" not in entry_url_template:
+        raise BrowserCaptureError("Direct-query Surface entry URL must contain {query}")
+    frozen_selectors["navigation_mode"] = navigation_mode
+    completion_mode = selectors.get("completion_mode", "document_ready")
+    if completion_mode not in {"document_ready", "stable_answer"}:
+        raise BrowserCaptureError("Surface completion_mode is invalid")
+    frozen_selectors["completion_mode"] = completion_mode
+    text_patterns = selectors.get("block_text_patterns", {})
+    if not isinstance(text_patterns, Mapping) or set(text_patterns) - _BLOCK_DETECTORS:
+        raise BrowserCaptureError("Surface block_text_patterns are invalid")
+    frozen_patterns: dict[str, list[str]] = {}
+    for name, values in text_patterns.items():
+        if not isinstance(values, list) or not values or any(
+            not isinstance(value, str) or not value.strip() or len(value) > 500
+            for value in values
+        ):
+            raise BrowserCaptureError(f"Surface block text patterns for {name} are invalid")
+        frozen_patterns[str(name)] = [value.strip().casefold() for value in values]
+    frozen_selectors["block_text_patterns"] = frozen_patterns
     unknown_blocks = sorted(set(block_detectors) - _BLOCK_DETECTORS)
     if unknown_blocks:
         raise BrowserCaptureError(f"Unsupported Surface block detectors: {unknown_blocks}")

@@ -1,6 +1,7 @@
 """Governed consumer-surface Browser Capture."""
 
 from geo_core.browser_capture.admission import BrowserCaptureAttemptAdmissionService
+from geo_core.browser_capture.bulk_admission import BrowserCaptureBulkAdmissionService
 from geo_core.browser_capture.domain import (
     BrowserCaptureError,
     EgressObservation,
@@ -12,6 +13,7 @@ from geo_core.browser_capture.domain import (
 
 __all__ = [
     "BrowserCaptureAttemptAdmissionService",
+    "BrowserCaptureBulkAdmissionService",
     "BrowserCaptureError",
     "EgressObservation",
     "EgressOutcome",

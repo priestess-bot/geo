@@ -305,8 +305,10 @@ class SamplingSuite:
         if capture in {CaptureMethod.PROVIDER_API, CaptureMethod.PROXY_GROUNDED_API}:
             if self.repetitions != 10:
                 raise SamplingRuleViolation("API sampling freezes exactly 10 default repeats")
-        elif self.repetitions < 3:
-            raise SamplingRuleViolation("UI sampling requires at least three repeats")
+        elif capture is CaptureMethod.MANUAL_UI and self.repetitions < 3:
+            raise SamplingRuleViolation("manual UI sampling requires at least three repeats")
+        elif capture is CaptureMethod.AUTOMATED_UI and self.repetitions < 1:
+            raise SamplingRuleViolation("automated UI sampling requires at least one repeat")
         planned_count = len(questions) * self.repetitions
         minimum_valid = max(3, (4 * self.repetitions + 4) // 5)
         if self.max_planned_tasks < planned_count or self.max_daily_tasks < 1:

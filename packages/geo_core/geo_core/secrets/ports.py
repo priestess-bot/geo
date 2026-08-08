@@ -88,7 +88,11 @@ class StoredSecretVersion:
         if self.status in {SecretVersionStatus.ACTIVE, SecretVersionStatus.SUPERSEDED}:
             if self.verified_at is None or self.activated_at is None:
                 raise SecretContractError("active secret versions require verification and activation")
-        if self.activated_by is not None and self.activated_by == self.created_by:
+        if (
+            self.activated_by is not None
+            and self.activated_by == self.created_by
+            and not self.handle.purpose.startswith(("browser_egress.", "browser_session."))
+        ):
             raise SecretContractError("a secret version creator cannot activate that version")
         if self.status is SecretVersionStatus.REVOKED and self.revoked_at is None:
             raise SecretContractError("revoked secret versions require revocation metadata")

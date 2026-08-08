@@ -42,6 +42,22 @@ PROVIDER_ATTEMPT_SCHEDULE_DOWN = (
 PROVIDER_BULK_ENQUEUE_MIGRATION = ROOT / "infra/db/alembic/versions/0055_provider_bulk_enqueue.py"
 PROVIDER_BULK_ENQUEUE_UP = ROOT / "infra/db/alembic/sql/0055_provider_bulk_enqueue.sql"
 PROVIDER_BULK_ENQUEUE_DOWN = ROOT / "infra/db/alembic/sql/0055_provider_bulk_enqueue.down.sql"
+BROWSER_OWNER_ENABLEMENT_MIGRATION = (
+    ROOT / "infra/db/alembic/versions/0124_browser_capture_owner_enablement.py"
+)
+BROWSER_OWNER_ENABLEMENT_UP = (
+    ROOT / "infra/db/alembic/sql/0124_browser_owner_enable.sql"
+)
+BROWSER_OWNER_ENABLEMENT_DOWN = (
+    ROOT / "infra/db/alembic/sql/0124_browser_owner_enable.down.sql"
+)
+BROWSER_BULK_ENQUEUE_MIGRATION = (
+    ROOT / "infra/db/alembic/versions/0125_browser_capture_bulk_enqueue.py"
+)
+BROWSER_BULK_ENQUEUE_UP = ROOT / "infra/db/alembic/sql/0125_browser_bulk_enqueue.sql"
+BROWSER_BULK_ENQUEUE_DOWN = (
+    ROOT / "infra/db/alembic/sql/0125_browser_bulk_enqueue.down.sql"
+)
 SAMPLING_CANCEL_RESULT_LINEAGE_MIGRATION = (
     ROOT / "infra/db/alembic/versions/0056_sampling_cancel_result_lineage.py"
 )
@@ -532,6 +548,38 @@ def test_provider_bulk_enqueue_is_one_atomic_replayable_database_command() -> No
         in source
     )
     assert "DROP FUNCTION IF EXISTS geo_enqueue_ready_workflow_c_provider_sampling_attempts" in down
+
+
+def test_browser_capture_owner_enablement_stays_scoped_to_browser_secrets() -> None:
+    migration = BROWSER_OWNER_ENABLEMENT_MIGRATION.read_text(encoding="utf-8")
+    source = BROWSER_OWNER_ENABLEMENT_UP.read_text(encoding="utf-8")
+    down = BROWSER_OWNER_ENABLEMENT_DOWN.read_text(encoding="utf-8")
+
+    assert 'revision = "0124_browser_owner_enable"' in migration
+    assert 'down_revision = "0123_question_semantic_dedup"' in migration
+    assert "purpose LIKE 'browser_egress.%'" in source
+    assert "purpose LIKE 'browser_session.%'" in source
+    assert "secret_versions_creator_approval_separation" in down
+    assert "cannot downgrade: one-owner Browser Capture configuration exists" in down
+
+
+def test_browser_capture_bulk_enqueue_is_atomic_and_replayable() -> None:
+    migration = BROWSER_BULK_ENQUEUE_MIGRATION.read_text(encoding="utf-8")
+    source = BROWSER_BULK_ENQUEUE_UP.read_text(encoding="utf-8")
+    down = BROWSER_BULK_ENQUEUE_DOWN.read_text(encoding="utf-8")
+
+    assert 'revision = "0125_browser_bulk_enqueue"' in migration
+    assert 'down_revision = "0124_browser_owner_enable"' in migration
+    assert "geo_enqueue_ready_browser_capture_attempts" in source
+    assert "SECURITY DEFINER" in source and "SET row_security = off" in source
+    assert "ORDER BY task_key" in source and "FOR UPDATE" in source
+    assert "geo_enqueue_browser_capture_attempt" in source
+    assert "Browser Capture bulk items differ from the ready Task slice" in source
+    assert "sampling.browser_attempt.bulk_enqueue" in source
+    assert "jsonb_set(existing.result_payload, '{replayed}', 'true'::jsonb, false)" in source
+    assert "REVOKE ALL ON FUNCTION geo_enqueue_ready_browser_capture_attempts" in source
+    assert "GRANT EXECUTE ON FUNCTION geo_enqueue_ready_browser_capture_attempts" in source
+    assert "DROP FUNCTION IF EXISTS geo_enqueue_ready_browser_capture_attempts" in down
 
 
 def test_sampling_run_cancellation_replay_persists_exact_attempt_lineage() -> None:

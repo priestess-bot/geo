@@ -85,6 +85,27 @@ async function submitAlertCommand(page: Page, buttonName: string, reason: string
 
 test.beforeEach(async ({ request }) => resetFixture(request));
 
+test("M4-WORKFLOW-C-WEB-00A: consumer surface setup bootstraps all three adapters", async ({ page }, testInfo) => {
+  const runtimeErrors = collectRuntimeErrors(page);
+  await page.goto(workspaceUrl("sampling"));
+
+  const setup = page.getByRole("heading", { name: "澳洲真实搜索采样" })
+    .locator("xpath=ancestor::section[1]");
+  await expect(setup.getByText("Google AI Overviews", { exact: true })).toBeVisible();
+  await expect(setup.getByText("Google AI Mode", { exact: true })).toBeVisible();
+  await expect(setup.getByText("Bing Copilot", { exact: true })).toBeVisible();
+  await setup.getByRole("button", { name: "启用三个采集器" }).click();
+  await expect(setup.getByText("需要澳洲粘性代理").first()).toBeVisible();
+  await expect(setup.getByRole("button", { name: "启用三个采集器" })).toHaveCount(0);
+  await expect(setup.getByText("干净匿名会话", { exact: true })).toBeVisible();
+  expect(runtimeErrors).toEqual([]);
+  await page.screenshot({ path: testInfo.outputPath("browser-capture-setup-desktop.png"), fullPage: true });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("browser-capture-setup-mobile.png"), fullPage: true });
+});
+
 test("M4-WORKFLOW-C-WEB-00: project workbench embeds one semantic measurement panel", async ({ page }, testInfo) => {
   const runtimeErrors = collectRuntimeErrors(page);
   await page.goto(embeddedWorkspaceUrl());

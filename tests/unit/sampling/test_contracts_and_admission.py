@@ -48,6 +48,13 @@ def test_manual_suite_requires_at_least_three_repeats() -> None:
     assert suite.minimum_valid_repeats == 3
 
 
+def test_automated_ui_allows_one_repeat_as_insufficient_evidence_smoke() -> None:
+    suite = make_suite(CaptureMethod.AUTOMATED_UI, repetitions=1)
+
+    assert suite.planned_task_count == 1
+    assert suite.minimum_valid_repeats == 3
+
+
 def test_automated_ui_freezes_stable_browser_and_egress_dimensions() -> None:
     source = SamplingSourceStratum(
         platform="google",

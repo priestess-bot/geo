@@ -23,11 +23,8 @@ from geo_api.search_aggregation_contracts import (
 from geo_api.stable_routes import PROBLEM_RESPONSES, authentication_input, services_for_request
 from geo_core.search_aggregation.application import SearchAggregationService
 from geo_core.search_aggregation.domain import AiOverviewQuery, SearchAggregationError
-from geo_core.search_aggregation.mock_adapter import MockSearchProvider
 from geo_core.search_aggregation.openrouter_adapter import OpenRouterWebSearchProvider
 from geo_core.search_aggregation.perplexity_adapter import PerplexityOpenRouterProvider
-from geo_core.search_aggregation.serpapi_adapter import SerpApiSearchProvider
-from geo_core.search_aggregation.serpapi_bing_copilot_adapter import SerpApiBingCopilotProvider
 
 
 _LOGGER = logging.getLogger("geo_api.search_aggregation")
@@ -41,133 +38,6 @@ def search_aggregation_router() -> APIRouter:
         tags=["search"],
         responses=PROBLEM_RESPONSES,
     )
-
-    @router.post(
-        "/google-ai-overview",
-        response_model=GoogleAiOverviewResponse,
-        status_code=status.HTTP_200_OK,
-        operation_id="getGoogleAiOverview",
-    )
-    async def get_google_ai_overview(
-        payload: GoogleAiOverviewRequest,
-        request: Request,
-        authorization: AuthorizationHeader = None,
-    ) -> Any:
-        # Preserve the internal surface authentication convention even though
-        # this endpoint does not need a database transaction.
-        _ = _current_identity(request, authorization)
-
-        provider = _resolve_provider()
-        service = SearchAggregationService(provider)
-        try:
-            result = await service.get_google_ai_overview(_build_query(payload))
-        except SearchAggregationError as exc:
-            raise ApiProblem(
-                status=502,
-                title="Search Provider Error",
-                detail=str(exc),
-                type_uri="urn:geo:problem:search-provider-error",
-            ) from exc
-
-        if not result.blocks:
-            raise ApiProblem(
-                status=404,
-                title="AI Overview Not Available",
-                detail=f"Google did not return an AI Overview for '{payload.query}'.",
-                type_uri="urn:geo:problem:ai-overview-not-available",
-            )
-
-        return _result_to_contract(result)
-
-    @router.post(
-        "/google-raw",
-        status_code=status.HTTP_200_OK,
-        operation_id="getGoogleRawSearch",
-    )
-    async def get_google_raw_search(
-        payload: GoogleAiOverviewRequest,
-        request: Request,
-        authorization: AuthorizationHeader = None,
-    ) -> Any:
-        """Return the raw SerpAPI/Google response for a query.
-
-        This endpoint is intended for debugging and validating what the search
-        provider returns before the AI Overview normalization is applied.
-        """
-        _ = _current_identity(request, authorization)
-
-        provider = _resolve_provider()
-        service = SearchAggregationService(provider)
-        try:
-            return await service.get_google_raw_search(_build_query(payload))
-        except SearchAggregationError as exc:
-            raise ApiProblem(
-                status=502,
-                title="Search Provider Error",
-                detail=str(exc),
-                type_uri="urn:geo:problem:search-provider-error",
-            ) from exc
-
-    @router.post(
-        "/bing-copilot",
-        response_model=GoogleAiOverviewResponse,
-        status_code=status.HTTP_200_OK,
-        operation_id="getBingCopilotOverview",
-    )
-    async def get_bing_copilot_overview(
-        payload: GoogleAiOverviewRequest,
-        request: Request,
-        authorization: AuthorizationHeader = None,
-    ) -> Any:
-        """Return a structured Bing Copilot answer for a search query."""
-        _ = _current_identity(request, authorization)
-
-        provider = _resolve_provider(engine="bing_copilot")
-        service = SearchAggregationService(provider)
-        try:
-            result = await service.get_google_ai_overview(_build_query(payload))
-        except SearchAggregationError as exc:
-            raise ApiProblem(
-                status=502,
-                title="Search Provider Error",
-                detail=str(exc),
-                type_uri="urn:geo:problem:search-provider-error",
-            ) from exc
-
-        if not result.blocks:
-            raise ApiProblem(
-                status=404,
-                title="Bing Copilot Answer Not Available",
-                detail=f"Bing did not return a Copilot answer for '{payload.query}'.",
-                type_uri="urn:geo:problem:bing-copilot-not-available",
-            )
-
-        return _result_to_contract(result)
-
-    @router.post(
-        "/bing-copilot-raw",
-        status_code=status.HTTP_200_OK,
-        operation_id="getBingCopilotRawSearch",
-    )
-    async def get_bing_copilot_raw_search(
-        payload: GoogleAiOverviewRequest,
-        request: Request,
-        authorization: AuthorizationHeader = None,
-    ) -> Any:
-        """Return the raw SerpAPI/Bing Copilot response for debugging."""
-        _ = _current_identity(request, authorization)
-
-        provider = _resolve_provider(engine="bing_copilot")
-        service = SearchAggregationService(provider)
-        try:
-            return await service.get_google_raw_search(_build_query(payload))
-        except SearchAggregationError as exc:
-            raise ApiProblem(
-                status=502,
-                title="Search Provider Error",
-                detail=str(exc),
-                type_uri="urn:geo:problem:search-provider-error",
-            ) from exc
 
     @router.post(
         "/openrouter-openai-web",
@@ -353,15 +223,9 @@ def _build_query(payload: GoogleAiOverviewRequest) -> AiOverviewQuery:
 
 
 def _resolve_provider(
-    engine: str = "google",
-) -> (
-    SerpApiSearchProvider
-    | SerpApiBingCopilotProvider
-    | OpenRouterWebSearchProvider
-    | PerplexityOpenRouterProvider
-    | MockSearchProvider
-):
-    """Choose the provider for the requested engine, or fall back to mock."""
+    engine: str,
+) -> OpenRouterWebSearchProvider | PerplexityOpenRouterProvider:
+    """Choose one explicit API provider; consumer surfaces use Browser Capture."""
     if engine == "openrouter_openai_web_search":
         openrouter_key = _load_openrouter_key()
         if openrouter_key:
@@ -384,29 +248,7 @@ def _resolve_provider(
             )
         raise SearchAggregationError("OpenRouter API key is required for Perplexity.")
 
-    api_key = _load_serpapi_key()
-    if api_key:
-        if engine == "bing_copilot":
-            return SerpApiBingCopilotProvider(api_key=api_key)
-        return SerpApiSearchProvider(api_key=api_key)
-    _LOGGER.warning("No SerpAPI key configured; falling back to mock search provider.")
-    return MockSearchProvider()
-
-
-def _load_serpapi_key() -> str | None:
-    """Load the SerpAPI key from a file or environment variable."""
-    key_file = os.getenv("GEO_SERPAPI_KEY_FILE", "./serpapi_key.txt")
-    try:
-        if os.path.isfile(key_file):
-            with open(key_file, encoding="utf-8") as handle:
-                content = handle.read().strip()
-                if content:
-                    return content
-    except OSError as exc:
-        _LOGGER.warning("Could not read SerpAPI key file %s: %s", key_file, exc)
-
-    env_key = os.getenv("GEO_SERPAPI_KEY", "").strip()
-    return env_key or None
+    raise SearchAggregationError(f"Unsupported search API provider: {engine}")
 
 
 def _load_openrouter_key() -> str | None:

@@ -1519,7 +1519,7 @@
       <div class="project-copy">
         <h2 id="project-title">ADVINSYS Australia</h2>
         <p>一眼区分已经真实执行的路径、仅完成技术验证的路径，以及需要人工或外部凭据才能继续的路径。</p>
-        <span class="snapshot-time">业务验收：2026-08-04 · 运行探针：2026-08-04 05:02 CST</span>
+        <span class="snapshot-time">业务验收：2026-08-04 · 运行探针：2026-08-07 18:06 CST</span>
       </div>
       <div class="summary-rail" aria-label="项目关键状态">
         <div class="summary-item" data-tone="good"><span>本地生产路径</span><strong>GO</strong><small>当前可控链路</small></div>
@@ -1616,7 +1616,7 @@
                 <div class="lane-label"><strong id="lane-observation">观测与建议</strong><span>外部数据闭环</span></div>
                 <div class="node-track">
                   <button class="flow-node status-warning" type="button" data-node="connectors" aria-pressed="false"><strong>Connector Core</strong><small>GSC / GA4 Definition</small><span class="node-status"><i class="status-dot warning"></i>底座可用</span></button>
-                  <button class="flow-node status-blocked" type="button" data-node="external-capture" aria-pressed="false"><strong>Provider 与浏览器</strong><small>0 Capture · 0 Sync</small><span class="node-status"><i class="status-dot blocked"></i>缺凭据与代理</span></button>
+                  <button class="flow-node status-blocked" type="button" data-node="external-capture" aria-pressed="false"><strong>Provider 与浏览器</strong><small>3 Release · 0 Capture</small><span class="node-status"><i class="status-dot blocked"></i>等待澳洲代理</span></button>
                   <button class="flow-node status-blocked" type="button" data-node="sampling" aria-pressed="false"><strong>采样与 Observation</strong><small>真实业务样本不足</small><span class="node-status"><i class="status-dot blocked"></i>无法形成分母</span></button>
                   <button class="flow-node status-idle" type="button" data-node="metrics" aria-pressed="false"><strong>指标、统计与告警</strong><small>等待真实 Observation</small><span class="node-status"><i class="status-dot idle"></i>尚无业务结果</span></button>
                   <button class="flow-node status-warning" type="button" data-node="attribution" aria-pressed="false"><strong>归因账本</strong><small>AUD 0 技术 Canary</small><span class="node-status"><i class="status-dot warning"></i>非业务真相</span></button>
@@ -1666,6 +1666,7 @@
             <option value="simulation">V600 仿真消费者短评</option>
             <option value="test-questions">V600 完整 100 题生成</option>
             <option value="synthetic-direct">V600 合成测评直接生成</option>
+            <option value="browser-setup">消费者界面采集准备</option>
             <option value="recommendation">建议生成</option>
             <option value="knowledge">知识 RAG 处理</option>
           </select>
@@ -1830,7 +1831,7 @@
       <header class="panel-heading">
         <div>
           <h3>当前 staging 部署健康</h3>
-          <p>来自 2026-07-30 16:36 CST 的 Docker 状态与 HTTP 探针；不是持续监控。</p>
+          <p>来自 2026-08-07 18:06 CST 的 Docker 状态与 HTTP 探针；不是持续监控。</p>
         </div>
         <div class="legend" aria-label="健康状态图例"><span><i class="status-dot complete"></i>运行 / Ready</span></div>
       </header>
@@ -2067,12 +2068,12 @@
         evidence: "advinsys-production-path-validation §3 / §5", href: `${adminBase}?tab=external-data`
       },
       "external-capture": {
-        status: "blocked", statusText: "缺凭据与代理", title: "Provider 与消费者界面",
-        description: "五类 Provider 以及 AIO、AI Mode、Copilot 均缺真实凭据、逐 Surface 授权或澳洲 sticky proxy。",
-        fact: "0 Surface Release、0 Egress Endpoint、0 Capture",
+        status: "blocked", statusText: "等待澳洲代理", title: "Provider 与消费者界面",
+        description: "AIO、AI Mode、Copilot 已进入正式 Browser Capture/Sampling 路径；五类 Provider 仍缺真实凭据，三个消费者界面仍缺澳洲 sticky proxy 和 live 证据。旧 SerpAPI 消费者界面路由已退役。",
+        fact: "3 个 approved Surface Release、1 个匿名 en-AU Profile、0 Egress Endpoint、0 Capture",
         executor: "Provider Adapter + Browser Capture Worker",
-        next: "提供 Provider 凭据、Surface 授权、澳洲 sticky proxy 和实测 selector",
-        evidence: "advinsys-production-path-validation §5 / §6", href: `${adminBase}?tab=external-data`
+        next: "在测量与告警中配置 residential/mobile 澳洲 sticky proxy，逐 Surface 完成 3 次 canary，再启动冻结问题集测量",
+        evidence: "外部数据与跨引擎采样实施计划 · 2026-08-07 本地实现证据", href: `${adminBase}?tab=measurement&workflow_view=sampling`
       },
       sampling: {
         status: "blocked", statusText: "无法形成分母", title: "采样与 Observation",
@@ -2180,6 +2181,21 @@
           ["风格与仲裁", "GEO 原生 style_judge 和 arbiter 选择最终候选。", "8 native model calls", "complete"],
           ["必要修订判断", "本次没有 Fact 冲突或主体串用，因此正确跳过 revision；未知推演保留 warning。", "0 revision", "warning"],
           ["结果与追溯", "最终文案、候选评估、Fact hash 和知识追溯链接原子落库。", "Result de0c6f5b…b641", "complete"]
+        ]
+      },
+      "browser-setup": {
+        object: "AIO / AI Mode / Copilot 采集准备", techStatus: "配置完成", businessStatus: "BLOCKED_EXTERNAL", id: "3 Releases / 1 Profile",
+        outcomeTitle: "正式采集链已部署，但还没有任何消费者页面结果",
+        outcomeCopy: "三个 Surface Release 和匿名 en-AU Profile 已真实写入 ADVINSYS 项目；澳洲 Egress Endpoint 与 Capture 仍为 0，不能形成 Observation 或测量分母。",
+        outcomeState: "等待澳洲 sticky proxy", outcomeTone: "warning",
+        steps: [
+          ["Admin 启用", "运营入口一次安装 AIO、AI Mode、Copilot 三个内置采集器。", "Admin 13001", "complete"],
+          ["Release 冻结", "每个 Surface 独立冻结 URL、selector、parser、block detector、浏览器版本和 hash。", "3 approved Releases", "complete"],
+          ["浏览器身份", "创建干净匿名 desktop、en-AU、Australia/Sydney Profile；登录 storage_state 仍为可选。", "1 approved Profile", "complete"],
+          ["原子采样合同", "0125 可按冻结 Run/Task 同事务创建 Attempt、Browser Job、spec、outbox 和预留。", "PostgreSQL 0125", "complete"],
+          ["可靠执行", "Outbox Relay 与 Browser Worker 均有当前 ready heartbeat；页面工件将进入受限 MinIO。", "staging-v2", "complete"],
+          ["澳洲出口", "尚未配置 residential/mobile sticky proxy，无法执行同 lease 的 pre/target/post 地域证明。", "Egress Endpoint 0", "blocked"],
+          ["真实采样", "AIO、AI Mode、Copilot 当前 Capture 均为 0；需每个 Surface 先完成 3 次 canary。", "Capture 0", "idle"]
         ]
       },
       recommendation: {
@@ -2371,7 +2387,7 @@
         runtime: "python -m geo_browser_capture_worker.entrypoint", endpoint: "internal only",
         networks: "geo-advinsys-staging-v2_default", io: "Valkey、PostgreSQL、MinIO、代理出口",
         entry: "apps/browser_capture_worker", source: "infra/compose.browser-capture.yml",
-        note: "当前没有澳洲 sticky proxy、Surface Release 或真实 Capture；进程健康不代表采集完成。"
+        note: "当前已有 3 个 approved Surface Release 和 1 个匿名 Profile，但没有澳洲 sticky proxy 或真实 Capture；进程健康与 bootstrap 不代表采集完成。"
       },
       {
         id: "style-browser-worker", label: "Style Browser Worker", subtitle: "九渠道样本采集", group: "执行器", col: 5, row: 6,
@@ -2431,11 +2447,11 @@
       {
         id: "consumer-surfaces", label: "AIO / AI Mode / Copilot", subtitle: "澳洲消费者界面", group: "外部系统", col: 7, row: 5,
         status: "blocked", tone: "blocked", statusText: "外部缺失", meta: "Capture 0",
-        description: "三个 Surface 需要独立授权、Release、实测 selector/parser 和地域证明。",
+        description: "三个 Surface 已有独立内置 Release、selector/parser 与 Admin 绑定入口；仍需真实澳洲代理下逐 Release 验证页面、答案、引用和地域证明。",
         runtime: "消费者搜索界面", endpoint: "外部浏览器页面",
         networks: "经澳洲 sticky proxy", io: "Browser Capture Worker",
         entry: "Google / Microsoft consumer surfaces", source: "ADVINSYS 真实生产路径验收 §5/§6",
-        note: "现有 30 个 parser fixture 只证明本地解析合同，不是 live 澳洲采集。"
+        note: "3 个 staging Release 与本地 parser/Worker 只证明技术合同，不是 live 澳洲采集；当前 Capture 仍为 0。"
       },
       {
         id: "style-sources", label: "九渠道 Style Sources", subtitle: "公开或授权登录页面", group: "外部系统", col: 7, row: 6,
@@ -2486,7 +2502,7 @@
       { id: "outbox-valkey", from: "outbox-relay", to: "valkey", label: "Dramatiq wake", kind: "event", scenarios: ["async-model", "connector-sync", "browser-capture", "style-collection", "alert-delivery"], description: "Relay 向 Valkey 发布低延迟唤醒。", trigger: "已提交 outbox", recovery: "失败保留 outbox 并重投", truth: "PostgreSQL", availability: "当前可用" },
       { id: "valkey-task", from: "valkey", to: "task-worker", label: "queue wake", kind: "event", scenarios: ["async-model", "alert-delivery"], description: "唤醒 Task Worker 尝试获取对应数据库 Job。", trigger: "Dramatiq 消息", recovery: "无 lease 不执行；可重新唤醒", truth: "PostgreSQL Durable Job", availability: "当前可用" },
       { id: "valkey-connector", from: "valkey", to: "connector-worker", label: "connector queue", kind: "event", scenarios: ["connector-sync"], description: "唤醒 Connector Worker 执行冻结的同步任务。", trigger: "Connector outbox event", recovery: "checkpoint + Durable Job 重试", truth: "PostgreSQL", availability: "进程可用；真实 Connection 0" },
-      { id: "valkey-browser", from: "valkey", to: "browser-capture-worker", label: "capture queue", kind: "event", scenarios: ["browser-capture"], description: "唤醒 Browser Capture Worker 执行冻结 Attempt。", trigger: "Browser capture outbox event", recovery: "Attempt 级重试并重新产生出口证据", truth: "PostgreSQL Attempt", availability: "进程可用；真实 Capture 0" },
+      { id: "valkey-browser", from: "valkey", to: "browser-capture-worker", label: "capture queue", kind: "event", scenarios: ["browser-capture"], description: "唤醒 Browser Capture Worker 执行冻结 Attempt。", trigger: "Browser capture outbox event", recovery: "Attempt 级重试并重新产生出口证据", truth: "PostgreSQL Attempt", availability: "Relay/Worker ready；真实 Capture 0" },
       { id: "valkey-style", from: "valkey", to: "style-browser-worker", label: "style queue", kind: "event", scenarios: ["style-collection"], description: "唤醒隔离 Style Browser Worker 执行采集。", trigger: "Style Collection Task", recovery: "任务级重试，不绕过访问控制", truth: "PostgreSQL", availability: "当前 Worker 未启动" },
       { id: "task-postgres", from: "task-worker", to: "postgres", label: "SQL lease/result", kind: "storage", scenarios: ["async-model", "dify-workflow", "alert-delivery"], description: "Task Worker 获取 lease/fence，并以受控 RPC 写结果和终态。", trigger: "成功获取 Job lease", recovery: "lease 丢失停止提交；按 retry policy 恢复", truth: "PostgreSQL", availability: "当前可用" },
       { id: "task-minio", from: "task-worker", to: "minio", label: "S3 artifact", kind: "storage", scenarios: ["async-model", "dify-workflow"], description: "Task Worker 写入生成、建议或采样相关不可变工件。", trigger: "结构化输出通过校验", recovery: "hash/manifest 对账与受控重试", truth: "PostgreSQL manifest + MinIO object", availability: "当前可用" },
@@ -2499,7 +2515,7 @@
       { id: "browser-postgres", from: "browser-capture-worker", to: "postgres", label: "SQL Attempt", kind: "storage", scenarios: ["browser-capture"], description: "保存 Attempt、出口验证、Observation 和 parser lineage。", trigger: "冻结 Capture Task", recovery: "每次重试创建新的 Attempt evidence", truth: "PostgreSQL", availability: "底座可用；Capture 0" },
       { id: "browser-minio", from: "browser-capture-worker", to: "minio", label: "S3 page bundle", kind: "storage", scenarios: ["browser-capture"], description: "保存加密、受限、按保留策略管理的页面工件。", trigger: "capture 落盘前治理通过", recovery: "bundle hash 与数据库 lineage 对账", truth: "MinIO object + PostgreSQL manifest", availability: "底座可用" },
       { id: "browser-proxy", from: "browser-capture-worker", to: "au-proxy", label: "HTTPS 粘性会话", kind: "external", scenarios: ["browser-capture"], description: "一次 Capture 必须绑定同一澳洲 sticky proxy lease。", trigger: "已批准 Endpoint 与 Surface Release", recovery: "出口变化使 Attempt 失效并重新执行", truth: "代理侧日志 + pre/target/post evidence", availability: "缺真实代理" },
-      { id: "proxy-surfaces", from: "au-proxy", to: "consumer-surfaces", label: "Browser session", kind: "external", scenarios: ["browser-capture"], description: "通过固定澳洲出口访问对应消费者搜索界面。", trigger: "合法授权与未受阻访问", recovery: "验证码、封禁或 drift 进入明确阻断", truth: "Page Artifact Bundle", availability: "缺 live Surface Release" },
+      { id: "proxy-surfaces", from: "au-proxy", to: "consumer-surfaces", label: "Browser session", kind: "external", scenarios: ["browser-capture"], description: "通过固定澳洲出口访问对应消费者搜索界面。", trigger: "已启用 Surface Release、匹配策略与未受阻访问", recovery: "验证码、封禁或 drift 进入明确阻断", truth: "Page Artifact Bundle", availability: "Release 已安装；缺代理与 live Capture" },
       { id: "style-postgres", from: "style-browser-worker", to: "postgres", label: "SQL collection", kind: "storage", scenarios: ["style-collection"], description: "保存 Collection Run、Task、匿名化样本和审核状态。", trigger: "合法 Style Source", recovery: "保留失败原因并可重试合法来源", truth: "PostgreSQL", availability: "Worker 未启动；Sample 0" },
       { id: "style-minio", from: "style-browser-worker", to: "minio", label: "S3 raw/derived", kind: "storage", scenarios: ["style-collection"], description: "分别保存受限 raw 与匿名 derived 工件。", trigger: "落盘前分类和清理通过", recovery: "独立加密域与 retention job", truth: "MinIO + artifact manifest", availability: "配置存在；无真实样本" },
       { id: "style-sources", from: "style-browser-worker", to: "style-sources", label: "Playwright HTTPS", kind: "external", scenarios: ["style-collection"], description: "在 allowlist 内采集公开或授权登录页面。", trigger: "来源授权、账号和访问策略均满足", recovery: "不绕过验证码、封禁或访问控制", truth: "Style Source Revision", availability: "缺合法样本输入" },
@@ -2524,8 +2540,8 @@
         nodes: ["operator", "admin-web", "internal-api", "postgres", "outbox-relay", "valkey", "connector-worker", "minio", "external-data"]
       },
       "browser-capture": {
-        title: "消费者界面采集", copy: "展示 Capture Attempt、页面工件、澳洲 sticky proxy 和消费者 Surface 的完整边界。",
-        outcome: "代理与 live Surface 缺失",
+        title: "消费者界面采集", copy: "展示逐 Surface 输入、原子批量任务、Capture Attempt、页面工件、澳洲 sticky proxy 和消费者 Surface 的完整边界。",
+        outcome: "本地链路已部署；等待澳洲代理与 live Capture",
         nodes: ["operator", "admin-web", "internal-api", "postgres", "outbox-relay", "valkey", "browser-capture-worker", "minio", "au-proxy", "consumer-surfaces"]
       },
       "style-collection": {

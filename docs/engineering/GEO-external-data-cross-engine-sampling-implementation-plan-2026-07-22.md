@@ -1,7 +1,7 @@
 # GEO 外部数据与跨引擎采样加速实施计划
 
 > 计划日期：2026-07-22
-> 修订日期：2026-07-24（第 3 次修订）
+> 修订日期：2026-08-07（第 4 次修订）
 > 计划状态：`PLANNED`
 > 执行周期：与[加速总路线图](GEO-next-phase-six-month-roadmap-2026-07-21.md)的 `T+0`--`T+5` 同步；`M0`--`M6` 仅为稳定 Gate 标签
 > 专项范围：Connector Core、GSC、GA4、Google/Bing 官方报告、五类 Provider/Grounded API、消费者 AI 界面、澳洲代理、Sampling Core 和外部观测交付
@@ -9,6 +9,7 @@
 > 完成原则：真实账号、真实数据、真实页面和不可变证据；fixture 只用于确定性回归和 B 轨完成证据，不冒充 A 轨 live
 > 第 2 次修订变更：Task 改用稳定 egress policy/cohort，实际出口验证下沉到 Attempt/Observation；live UI 强制先授权再 admission；增加 External Data Snapshot/Report/Approval；扩展单项 evidence manifest 与 DoR/DoD applicability
 > 第 3 次修订变更：保持专项范围、来源、样本、授权、安全和验收合同不变，废止六个月/月度排期；所有可由 Agent 完成的实现与自动化验证纳入 `T+0`--`T+5` 连续窗口。真实凭据、授权决定、人工明审、独立 verifier 和 live evidence 于 `T+0` 并行开始，未就绪只阻断对应 Gate，绝不降低或伪造验收。
+> 第 4 次修订变更：AIO、AI Mode、Copilot 的正式 Project-scoped Browser Capture 垂直路径已落地，旧 SerpAPI 消费者界面路由与 mock fallback 退役。ADVINSYS staging 已安装三个 approved Release 和匿名 `en-AU` Profile；澳洲 Egress 与 live Capture 仍为 0，因此所有 live/保真/最终 Gate 保持未完成。
 
 ## 1. 目标、边界和文档职责
 
@@ -383,6 +384,13 @@ authorization gate
 ### 8.2 M1：合同、迁移和骨架
 
 > 2026-07-28 本地实现证据更新：Alembic 单一 head 为 `0115_external_operational_alerts`；`0112` 增加 Connector/Browser Worker fail-closed readiness 与持久 heartbeat，`0113` 增加 durable 澳洲出口自检，`0114` 增加 parser/browser build drift 自动暂停，`0115` 将 Connector error/freshness 与 Surface drift 投影为不可变版本化告警输入，并通过批准规则、Durable Job、告警和三渠道通知的 PostgreSQL 垂直路径。三个 B 领域 PostgreSQL 集成测试、123 项 Connector/Browser/Attribution/Alert 单元测试、稳定 OpenAPI、Admin TypeScript、production build 与 Chromium 页面回归均通过；`staging-v2` 已运行在 `0115`，两个外部 Worker heartbeat 为 `ready`。该证据不替代真实 GSC/GA4、澳洲 residential/mobile proxy、AIO/AI Mode/Copilot live capture、部署层 direct-egress deny、性能或独立 verifier 证据。
+>
+> 2026-08-07 本地实现证据更新：head 已推进至 `0125_browser_bulk_enqueue`。三个内置 Surface Release、匿名/可选受管 Profile、加密 proxy/session Secret、同一 sticky lease 的 pre/target/post 证明、受限页面工件、逐 Surface runtime/policy/input 绑定和 Run 级原子批量入队已接入正式 Admin/Sampling；Outbox Relay 与 Browser Worker 在 staging 为 `ready`。旧 SerpAPI Google/Bing 路由和 mock fallback 已从 OpenAPI/Compose 移除。175 项 Browser/Sampling 单元回归、18 项 Session/配置回归、稳定 OpenAPI、空库迁移、PostgreSQL纵向测试、production build 和桌面/移动 Chromium 通过。ADVINSYS 当前仍为 0 Egress Endpoint、0 Capture，此更新只构成本地实现证据。
+
+- [x] `EXT-LOCAL-UI-01` 三个消费者 Surface 使用独立入口、detector、answer/citation selector、block taxonomy、Release/hash 和 drift 边界；不得跨 Surface 复用统计证据。
+- [x] `EXT-LOCAL-UI-02` Browser Attempt 在一个 sticky lease 内执行 pre/target/post，保存加密 screenshot/DOM/HAR、final URL、parser locator、verification 与 Observation lineage；失败路径不产生 eligible 样本。
+- [x] `EXT-LOCAL-UI-03` Admin 从安装、代理/会话、出口测试到逐 Surface runtime/policy/QuestionSet 绑定形成可操作闭环；批量入队在数据库事务内创建固定分母、Attempt、Job、spec 和 outbox。
+- [ ] `EXT-LOCAL-UI-LIVE-01` 真实 residential/mobile 澳洲代理、三个 Surface 各 3 次 canary、逐 Release 保真和后续 100 题测量尚未执行；等待外部输入，不得以本地测试或 bootstrap 替代。
 
 - [x] `EXT-M1-01` 在线 expand migration 增加 Connector/Sampling/Adapter Release/Authorization/Egress/Browser 及 External Data Snapshot/Report/Approval tables，与精确 project-scoped FK/RLS/index。
 - [x] `EXT-M1-02` 兼容扩展 `automated_ui`、Kimi platform/surface 和 UI SourceStratum 的 egress policy/cohort；实际 verification 仅作 Attempt/Observation lineage，旧 writer/reader 仍可运行，历史值不猜测回填。

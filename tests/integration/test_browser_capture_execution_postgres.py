@@ -21,6 +21,7 @@ from geo_api.workflow_c_sampling_contracts import (
 from geo_api.workflow_c_sampling_postgres_policy import PostgresWorkflowCSamplingPolicyControl
 from geo_core.browser_capture.admin import BrowserCaptureAdminService
 from geo_core.browser_capture.admission import BrowserCaptureAttemptAdmissionService
+from geo_core.browser_capture.bulk_admission import BrowserCaptureBulkAdmissionService
 from geo_core.browser_capture.artifacts import BrowserArtifactBundle
 from geo_core.browser_capture.domain import (
     BrowserCaptureError,
@@ -250,8 +251,8 @@ def test_browser_attempt_commits_one_fenced_sampling_observation() -> None:
                 runtime_authorization_option_key=str(option["option_key"]),
                 purpose="geo_measurement",
                 valid_until=now + timedelta(days=7),
-                quota_remaining=3,
-                daily_task_limit=3,
+                    quota_remaining=4,
+                    daily_task_limit=4,
                 minimum_request_interval_seconds=0,
                 max_concurrency=1,
             ),
@@ -361,10 +362,10 @@ def test_browser_attempt_commits_one_fenced_sampling_observation() -> None:
             admission_policy_hash=input_option.admission_policy_hash,
             questions=input_option.questions,
             source_stratum=source,
-            repetitions=3,
+            repetitions=4,
             statistics_method_version="sampling-statistics-v1",
-            max_planned_tasks=3,
-            max_daily_tasks=3,
+            max_planned_tasks=4,
+            max_daily_tasks=4,
             minimum_request_interval_seconds=0,
             max_concurrency=1,
             frozen_by="integration",
@@ -398,6 +399,63 @@ def test_browser_attempt_commits_one_fenced_sampling_observation() -> None:
         assert listed_before["surface_release_id"] == str(release["id"])
         assert listed_before["egress_endpoint_id"] == str(endpoint["id"])
         assert listed_before["profile_version_id"] == str(profile["id"])
+        assert run.admitted_not_before <= now < run.authorization_valid_until
+        assert policy.status.value == "approved"
+        assert policy.effective_authorization_state(at=now).value == "approved"
+        assert now < policy.valid_until
+        assert release["status"] == "approved"
+        assert release["authorization_status"] == "approved"
+        assert now < release["authorization_valid_until"]
+        assert endpoint["status"] == "approved"
+        assert endpoint["expected_country"] == "AU"
+        assert endpoint["network_type"] == "residential"
+        assert profile["status"] == "approved"
+        assert suite.adapter_release_id == release["id"]
+        assert suite.route_policy_id == endpoint["id"]
+        assert suite.model_release_id == profile["id"]
+        with connect() as connection:
+            set_project_scope(connection, seeded["project"])
+            persisted = connection.execute(
+                """SELECT task.run_id = run.id AS task_run_matches,
+                          task.suite_id = suite.id AS task_suite_matches,
+                          task.status AS task_status,
+                          task.version AS task_version,
+                          task.capture_method AS task_capture_method,
+                          suite.capture_method AS suite_capture_method,
+                          run.status AS run_status,
+                          policy.status AS policy_status,
+                          policy.effective_authorization_state,
+                          secret.status AS secret_status
+                     FROM workflow_c_sampling_tasks task
+                     JOIN workflow_c_sampling_runs run
+                       ON run.project_id = task.project_id AND run.id = task.run_id
+                     JOIN workflow_c_sampling_suites suite
+                       ON suite.project_id = task.project_id AND suite.id = task.suite_id
+                     JOIN workflow_c_sampling_admission_policies policy
+                       ON policy.project_id = run.project_id
+                      AND policy.id = run.admission_policy_id
+                     JOIN browser_egress_endpoints endpoint
+                       ON endpoint.project_id = task.project_id AND endpoint.id = %s
+                     LEFT JOIN secret_versions secret
+                       ON secret.reference_id = endpoint.secret_reference_id
+                      AND secret.project_id = endpoint.project_id
+                      AND secret.purpose = endpoint.secret_purpose
+                      AND secret.version = endpoint.secret_version
+                    WHERE task.project_id = %s AND task.id = %s""",
+                (endpoint["id"], seeded["project"], tasks[0].id),
+            ).fetchone()
+        assert persisted == {
+            "task_run_matches": True,
+            "task_suite_matches": True,
+            "task_status": "planned",
+            "task_version": tasks[0].version,
+            "task_capture_method": "automated_ui",
+            "suite_capture_method": "automated_ui",
+            "run_status": "planned",
+            "policy_status": "approved",
+            "effective_authorization_state": "approved",
+            "secret_status": "active",
+        }
 
         admission = BrowserCaptureAttemptAdmissionService(connect=connect, clock=lambda: now)
         admitted = admission.enqueue(
@@ -650,6 +708,28 @@ def test_browser_attempt_commits_one_fenced_sampling_observation() -> None:
             profile_version_id=profile["id"], requested_not_before=now,
             idempotency_key="browser-runtime-drift",
         )
+        bulk_admission = BrowserCaptureBulkAdmissionService(connect=connect)
+        bulk = bulk_admission.enqueue_ready(
+            project_id=seeded["project"], run_id=run.id,
+            surface_release_id=release["id"], egress_endpoint_id=endpoint["id"],
+            profile_version_id=profile["id"],
+            task_versions=((tasks[3].id, tasks[3].version),),
+            requested_not_before=now, authorization_checked_at=now, max_tasks=1,
+            idempotency_key="browser-bulk-attempts",
+        )
+        assert bulk.enqueued_count == 1
+        assert bulk.skipped_count == 3
+        assert bulk.replayed is False
+        replayed_bulk = bulk_admission.enqueue_ready(
+            project_id=seeded["project"], run_id=run.id,
+            surface_release_id=release["id"], egress_endpoint_id=endpoint["id"],
+            profile_version_id=profile["id"],
+            task_versions=((tasks[3].id, tasks[3].version),),
+            requested_not_before=now, authorization_checked_at=now, max_tasks=1,
+            idempotency_key="browser-bulk-attempts",
+        )
+        assert replayed_bulk.replayed is True
+        assert replayed_bulk.attempts == bulk.attempts
         drift_claim = store.claim(
             job_id=drift_admitted["durable_job_id"], project_id=seeded["project"],
             expected_kind="browser.capture", worker_id="browser-integration",
@@ -737,7 +817,7 @@ def test_browser_attempt_commits_one_fenced_sampling_observation() -> None:
                     WHERE project_id = %s
                       AND kind = 'browser.capture'""",
                 (seeded["project"],),
-            ).fetchone()["count"] == 3
+            ).fetchone()["count"] == 4
             assert connection.execute(
                 """SELECT count(*) FROM durable_jobs
                     WHERE project_id = %s AND kind = 'browser.egress_test'""",
@@ -845,9 +925,11 @@ def _frozen_question(
                id, project_id, campaign_id, question_set_id, generated_by_job_id,
                question_candidate_id, ordinal, dimension_key, query_text_snapshot,
                query_text_hash, normalized_text_hash, query_kind_snapshot,
-               query_cluster_key, source_lineage_hash
+               query_cluster_key, source_lineage_hash, brand_scope_snapshot,
+               coverage_role_snapshot, topic_cluster_snapshot, funnel_snapshot
            ) VALUES (%s, %s, %s, %s, %s, %s, 1, 'browser-integration', %s, %s,
-                     %s, 'recommendation', 'browser-integration', %s)""",
+                     %s, 'recommendation', 'browser-integration', %s, 'brand',
+                     'product_fit', 'browser-integration', 'consideration')""",
         (
             question_id,
             seeded["project"],

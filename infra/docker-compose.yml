@@ -112,7 +112,6 @@ services:
       dockerfile: apps/api/Dockerfile
     environment:
       <<: *api-environment
-      GEO_SERPAPI_KEY_FILE: /run/secrets/serpapi_key
       GEO_OPENROUTER_API_KEY_FILE: /run/secrets/openrouter_key
       GEO_OPENROUTER_MODEL: ${GEO_OPENROUTER_MODEL:-openai/gpt-5.5}
       GEO_OPENROUTER_HTTP_REFERER: ${GEO_OPENROUTER_HTTP_REFERER:-https://geo.local}
@@ -125,7 +124,6 @@ services:
       - ../apps/api:/app/apps/api
       - ../packages/geo_core:/app/packages/geo_core
       - ../prompt:/app/prompt:ro
-      - ${GEO_SERPAPI_KEY_FILE:-../serpapi_key.txt}:/run/secrets/serpapi_key:ro
       - ${GEO_OPENROUTER_API_KEY_FILE:-../openrouter_key.txt}:/run/secrets/openrouter_key:ro
     depends_on:
       migrate:

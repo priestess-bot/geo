@@ -7,8 +7,13 @@ import {
 } from "./WorkflowCWorkspace";
 import { SamplingCommands, type SamplingCommandKeys } from "./SamplingCommands";
 import { ManualEvidenceCommands } from "./ManualEvidenceCommands";
+import { ConsumerSurfaceCaptureSetup } from "./ConsumerSurfaceCaptureSetup";
+import type { QuestionWorkspaceData } from "./questionWorkspaceData";
 import type {
   AdmissionPolicyPage,
+  AdmissionRuntimeOptionPage,
+  BrowserCaptureInventory,
+  BrowserCaptureReadiness,
   ManualEvidenceImportPage,
   Resource,
   SamplingRun,
@@ -21,11 +26,15 @@ import styles from "./WorkflowC.module.css";
 
 export function SamplingPanel({
   admissionPolicies,
+  admissionRuntimeOptions,
+  browserCaptureInventory,
+  browserCaptureReadiness,
   canOperate,
   canReview,
   commandKeys,
   manualCommandKey,
   manualEvidence,
+  questionWorkspace,
   actorId,
   projectId,
   requestedNotBefore,
@@ -37,12 +46,16 @@ export function SamplingPanel({
   suites
 }: {
   admissionPolicies: Resource<AdmissionPolicyPage>;
+  admissionRuntimeOptions: Resource<AdmissionRuntimeOptionPage>;
+  browserCaptureInventory: Resource<BrowserCaptureInventory>;
+  browserCaptureReadiness: Resource<BrowserCaptureReadiness>;
   actorId: string;
   canOperate: boolean;
   canReview: boolean;
   commandKeys: SamplingCommandKeys;
   manualCommandKey: string;
   manualEvidence: Resource<ManualEvidenceImportPage>;
+  questionWorkspace: QuestionWorkspaceData | null;
   projectId: string;
   requestedNotBefore: string;
   resource: Resource<SamplingRunDetail>;
@@ -54,6 +67,16 @@ export function SamplingPanel({
 }) {
   const commands = (
     <>
+      <ConsumerSurfaceCaptureSetup
+        admissionPolicies={admissionPolicies.data?.items || []}
+        admissionRuntimeOptions={admissionRuntimeOptions.data?.items || []}
+        canOperate={canOperate}
+        inventory={browserCaptureInventory}
+        projectId={projectId}
+        questionSets={questionWorkspace?.questionSets.data || []}
+        readiness={browserCaptureReadiness}
+        suiteInputOptions={suiteInputOptions.data?.items || []}
+      />
       <SamplingCommands
         admissionPolicies={admissionPolicies.data?.items || []}
         canOperate={canOperate}

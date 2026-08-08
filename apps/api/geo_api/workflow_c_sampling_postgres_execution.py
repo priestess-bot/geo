@@ -13,6 +13,10 @@ from geo_api.workflow_c_sampling_contracts import (
 )
 from geo_api.workflow_c_sampling_ids import sampling_command_id
 from geo_api.workflow_c_sampling_postgres_policy import PostgresWorkflowCSamplingPolicyControl
+from geo_core.browser_capture.bulk_admission import (
+    BrowserCaptureBulkAdmissionService,
+    BrowserCaptureBulkResult,
+)
 from geo_core.sampling import (
     CaptureMethod,
     PersistentProviderSamplingBulkAttempt,
@@ -215,6 +219,58 @@ class PostgresWorkflowCProviderBulkSamplingControl:
         )
 
 
+class PostgresWorkflowCBrowserBulkSamplingControl:
+    """Build and atomically enqueue the ready automated-UI Task slice."""
+
+    persistence = "durable"
+
+    def __init__(
+        self,
+        *,
+        runs: PostgresSamplingRunRepository,
+        suites: PostgresSamplingSuiteRepository,
+        attempts: BrowserCaptureBulkAdmissionService,
+        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+    ) -> None:
+        self._runs = runs
+        self._suites = suites
+        self._attempts = attempts
+        self._clock = clock
+
+    def enqueue_ready(
+        self,
+        *,
+        project_id: UUID,
+        run_id: UUID,
+        idempotency_key: str,
+        payload: EnqueueReadySamplingRunRequest,
+    ) -> BrowserCaptureBulkResult:
+        run = self._runs.get_run(project_id=project_id, run_id=run_id)
+        suite = self._suites.get_suite(project_id=project_id, suite_id=run.suite_id)
+        if suite.source_stratum.capture_method is not CaptureMethod.AUTOMATED_UI:
+            raise SamplingConflict("Only automated_ui Tasks use Browser Capture bulk enqueue")
+        tasks = tuple(
+            task
+            for task in self._runs.list_tasks(
+                project_id=project_id, run_id=run_id, suite=suite
+            )
+            if task.status is SamplingTaskStatus.PLANNED
+        )[: min(payload.max_tasks, suite.max_daily_tasks)]
+        now = self._clock()
+        return self._attempts.enqueue_ready(
+            project_id=project_id,
+            run_id=run_id,
+            surface_release_id=suite.adapter_release_id,
+            egress_endpoint_id=suite.route_policy_id,
+            profile_version_id=suite.model_release_id,
+            task_versions=tuple((task.id, task.version) for task in tasks),
+            requested_not_before=max(payload.requested_not_before, now),
+            authorization_checked_at=now,
+            max_tasks=payload.max_tasks,
+            idempotency_key=idempotency_key,
+        )
+
+
 def _bulk_item(
     *,
     project_id: UUID,
@@ -298,6 +354,7 @@ def spec_payload(spec: ProviderSamplingWorkerSpec) -> dict[str, object]:
 
 __all__ = [
     "PostgresProviderSamplingEnqueueResult",
+    "PostgresWorkflowCBrowserBulkSamplingControl",
     "PostgresWorkflowCProviderBulkSamplingControl",
     "PostgresWorkflowCProviderSamplingControl",
     "spec_payload",

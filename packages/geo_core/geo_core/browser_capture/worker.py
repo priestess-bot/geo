@@ -23,6 +23,7 @@ from geo_core.browser_capture.playwright_driver import (
     SurfaceSelectors,
 )
 from geo_core.browser_capture.routing import BROWSER_CAPTURE_JOB_KIND
+from geo_core.browser_capture.session_state import validate_browser_storage_state
 from geo_core.connectors.contracts import canonical_hash
 from geo_core.jobs.postgres import LeaseHeartbeat, PostgresDurableJobStore, WorkerLease
 from geo_core.project_scope import set_project_scope
@@ -33,6 +34,10 @@ BROWSER_OBSERVATION_NAMESPACE = UUID("0ad4d6d8-c23d-5e53-9af7-efc3749d7ac8")
 
 class BrowserProxyCredentialResolver(Protocol):
     def resolve(
+        self, *, project_id: UUID, reference_id: UUID, purpose: str, version: int
+    ) -> Mapping[str, object]: ...
+
+    def resolve_storage_state(
         self, *, project_id: UUID, reference_id: UUID, purpose: str, version: int
     ) -> Mapping[str, object]: ...
 
@@ -397,7 +402,10 @@ class BrowserCaptureOperation:
         proxy = build_proxy_lease(endpoint=endpoint, credential=credential, now=self._clock())
         execution = self._repository.start(lease, preparation=preparation, proxy=proxy)
         surface_release, selectors = _surface(preparation.surface)
-        profile = _profile(preparation.profile)
+        storage_state = self._resolve_storage_state(
+            project_id=lease.project_id, profile=preparation.profile
+        )
+        profile = _profile(preparation.profile, storage_state=storage_state)
         with LeaseHeartbeat(
             self._store,
             lease,
@@ -455,6 +463,24 @@ class BrowserCaptureOperation:
             "capture_outcome": parsed.outcome.value,
             "evidence_status": "complete" if parsed.eligible else "ineligible",
         }
+
+    def _resolve_storage_state(
+        self, *, project_id: UUID, profile: Mapping[str, object]
+    ) -> Mapping[str, object] | None:
+        reference_id = profile.get("storage_secret_reference_id")
+        purpose = profile.get("storage_secret_purpose")
+        version = profile.get("storage_secret_version")
+        if reference_id is None and purpose is None and version is None:
+            return None
+        if reference_id is None or purpose is None or version is None:
+            raise BrowserCaptureError("Browser Profile storage Secret reference is incomplete")
+        value = self._credentials.resolve_storage_state(
+            project_id=project_id,
+            reference_id=UUID(str(reference_id)),
+            purpose=str(purpose),
+            version=_positive_int(version, maximum=2_147_483_647),
+        )
+        return validate_browser_storage_state(value)
 
 
 def build_proxy_lease(
@@ -518,6 +544,12 @@ def _surface(value: Mapping[str, object]) -> tuple[SurfaceRelease, SurfaceSelect
         raise BrowserCaptureError("Frozen Surface Release selectors are invalid")
     required = ("query_input", "page_complete", "surface_marker", "answer", "citations", "page_location")
     parsed_selectors = {name: _required_text(selectors.get(name), f"Surface selector {name}") for name in required}
+    text_patterns = selectors.get("block_text_patterns", {})
+    if not isinstance(text_patterns, Mapping) or any(
+        not isinstance(items, list) or any(not isinstance(item, str) for item in items)
+        for items in text_patterns.values()
+    ):
+        raise BrowserCaptureError("Frozen Surface block text patterns are invalid")
     return (
         SurfaceRelease(
             id=UUID(str(value["id"])),
@@ -531,12 +563,21 @@ def _surface(value: Mapping[str, object]) -> tuple[SurfaceRelease, SurfaceSelect
             entry_url_template=_required_text(value.get("entry_url_template"), "Surface entry URL"),
             **parsed_selectors,
             block_detectors={str(key): str(item) for key, item in blocks.items()},
+            block_text_patterns={
+                str(key): tuple(str(item) for item in items)
+                for key, items in text_patterns.items()
+            },
+            adapter_key=_optional_text(selectors.get("adapter_key")),
+            navigation_mode=str(selectors.get("navigation_mode", "form_submit")),
+            completion_mode=str(selectors.get("completion_mode", "document_ready")),
             ready_timeout_ms=_positive_int(selectors.get("ready_timeout_ms", 45_000), maximum=180_000),
         ),
     )
 
 
-def _profile(value: Mapping[str, object]) -> BrowserProfile:
+def _profile(
+    value: Mapping[str, object], *, storage_state: Mapping[str, object] | None = None
+) -> BrowserProfile:
     viewport = value.get("viewport")
     geolocation = value.get("geolocation")
     if not isinstance(viewport, Mapping) or (geolocation is not None and not isinstance(geolocation, Mapping)):
@@ -553,6 +594,7 @@ def _profile(value: Mapping[str, object]) -> BrowserProfile:
             else None
         ),
         grant_location=bool(value["location_permission"]),
+        storage_state=storage_state,
     )
 
 

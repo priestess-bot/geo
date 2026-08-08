@@ -2,17 +2,25 @@
 
 from __future__ import annotations
 
-from typing import Annotated
-from uuid import UUID
+import json
+from typing import Annotated, cast
+from uuid import UUID, uuid5
 
 from fastapi import APIRouter, Header, Request, status
 
 from geo_api.browser_capture_contracts import (
     BrowserCaptureInventoryResponse,
     BrowserCaptureAttemptResponse,
+    AustralianEgressSetupResponse,
+    BrowserCaptureBootstrapResponse,
     BrowserEgressTestResponse,
+    BrowserCaptureReadinessResponse,
     BrowserProfileResponse,
+    BrowserSessionSetupResponse,
     BrowserSamplingOptionResponse,
+    BootstrapBrowserCaptureRequest,
+    ConfigureAustralianEgressRequest,
+    ConfigureBrowserSessionRequest,
     CreateBrowserProfileRequest,
     CreateEgressEndpointRequest,
     CreateSurfaceReleaseRequest,
@@ -31,9 +39,12 @@ from geo_api.stable_routes import PROBLEM_RESPONSES
 from geo_api.workflow_c_runtime import WorkflowCApi
 from geo_api.workflow_c_sampling_catalog import ResolvedSamplingSuiteInputs
 from geo_api.workflow_c_sampling_contracts import SamplingSuiteInputOptionResponse
+from geo_api.secret_store_runtime import SecretStoreApi
 from geo_core.browser_capture import BrowserCaptureAttemptAdmissionService, BrowserCaptureError
 from geo_core.browser_capture.admin import BrowserCaptureAdminService
+from geo_core.browser_capture.session_state import validate_browser_storage_state
 from geo_core.connectors.contracts import canonical_hash
+from geo_core.secrets import SecretStoreError, SecretValue
 from geo_core.sampling import (
     CaptureMethod,
     LocationControl,
@@ -45,6 +56,8 @@ from geo_core.sampling import (
 
 AuthorizationHeader = Annotated[str | None, Header(alias="Authorization")]
 IdempotencyHeader = Annotated[str, Header(alias="Idempotency-Key")]
+_BROWSER_EGRESS_SECRET_NAMESPACE = UUID("6a603035-688c-5b05-b660-58a3d364a40b")
+_BROWSER_SESSION_SECRET_NAMESPACE = UUID("4dc5c7af-34f9-5f85-a798-9f88db96a253")
 
 
 def browser_capture_router() -> APIRouter:
@@ -53,6 +66,221 @@ def browser_capture_router() -> APIRouter:
         tags=["browser capture"],
         responses=PROBLEM_RESPONSES,
     )
+
+    @router.post(
+        "/bootstrap",
+        response_model=BrowserCaptureBootstrapResponse,
+        operation_id="bootstrapBuiltinBrowserCapture",
+    )
+    def bootstrap_builtin_browser_capture(
+        project_id: UUID,
+        payload: BootstrapBrowserCaptureRequest,
+        request: Request,
+        authorization: AuthorizationHeader = None,
+    ) -> BrowserCaptureBootstrapResponse:
+        principal = _require_admin(_principal(request, authorization), project_id)
+        return BrowserCaptureBootstrapResponse.model_validate(
+            _call(
+                lambda: _service(request).bootstrap_builtin_surfaces(
+                    project_id=project_id,
+                    actor_id=principal.identity_id,
+                    surfaces=payload.surfaces,
+                )
+            )
+        )
+
+    @router.get(
+        "/readiness",
+        response_model=BrowserCaptureReadinessResponse,
+        operation_id="getBrowserCaptureReadiness",
+    )
+    def browser_capture_readiness(
+        project_id: UUID,
+        request: Request,
+        authorization: AuthorizationHeader = None,
+    ) -> BrowserCaptureReadinessResponse:
+        _require_admin(_principal(request, authorization), project_id)
+        return BrowserCaptureReadinessResponse.model_validate(
+            _call(lambda: _service(request).readiness(project_id=project_id))
+        )
+
+    @router.post(
+        "/egress-setup",
+        response_model=AustralianEgressSetupResponse,
+        operation_id="configureAustralianBrowserEgress",
+    )
+    def configure_australian_egress(
+        project_id: UUID,
+        payload: ConfigureAustralianEgressRequest,
+        request: Request,
+        idempotency_key: IdempotencyHeader,
+        authorization: AuthorizationHeader = None,
+    ) -> AustralianEgressSetupResponse:
+        principal = _require_admin(_principal(request, authorization), project_id)
+        key = idempotency_key.strip()
+        if len(key) < 8 or len(key) > 240:
+            raise ApiProblem(
+                status=422,
+                title="Invalid Idempotency Key",
+                detail="AU proxy setup needs an Idempotency-Key between 8 and 240 characters.",
+                type_uri="urn:geo:problem:browser-egress-idempotency",
+            )
+        reference_id = uuid5(
+            _BROWSER_EGRESS_SECRET_NAMESPACE, f"{project_id}:{key}:credential"
+        )
+        try:
+            created = _secret_api(request).create(
+                principal,
+                project_id=project_id,
+                reference_id=reference_id,
+                purpose="browser_egress.au",
+                value=SecretValue(
+                    json.dumps(
+                        {
+                            "username_template": payload.username_template,
+                            "password": payload.password.get_secret_value(),
+                            "lease_ttl_seconds": payload.lease_ttl_seconds,
+                        },
+                        ensure_ascii=True,
+                        separators=(",", ":"),
+                    )
+                ),
+                expected_version=0,
+                idempotency_key=f"{key}:secret-create",
+            )
+            verified = _secret_api(request).verify(
+                principal,
+                project_id=project_id,
+                reference_id=reference_id,
+                version=created.version,
+                expected_version=created.aggregate_version,
+                idempotency_key=f"{key}:secret-verify",
+            )
+            activated = _secret_api(request).activate(
+                principal,
+                project_id=project_id,
+                reference_id=reference_id,
+                version=created.version,
+                expected_version=verified.aggregate_version,
+                idempotency_key=f"{key}:secret-activate",
+            )
+        except SecretStoreError as error:
+            raise ApiProblem(
+                status=409,
+                title="AU Proxy Secret Setup Failed",
+                detail=str(error),
+                type_uri="urn:geo:problem:browser-egress-secret",
+            ) from error
+        endpoint = _call(
+            lambda: _service(request).install_egress_endpoint(
+                project_id=project_id,
+                actor_id=principal.identity_id,
+                name=payload.name,
+                protocol=payload.protocol,
+                endpoint_host=payload.endpoint_host,
+                endpoint_port=payload.endpoint_port,
+                secret_reference_id=reference_id,
+                secret_purpose="browser_egress.au",
+                secret_version=activated.version,
+                expected_region=payload.expected_region,
+                network_type=payload.network_type,
+                egress_policy_version="au-consumer-sticky-v1",
+                egress_cohort_key=f"au-{payload.network_type}-consumer",
+            )
+        )
+        return AustralianEgressSetupResponse.model_validate(
+            {
+                "endpoint": endpoint,
+                "secret_reference_id": reference_id,
+                "secret_version": activated.version,
+                "egress_test_required": True,
+            }
+        )
+
+    @router.post(
+        "/session-profile-setup",
+        response_model=BrowserSessionSetupResponse,
+        operation_id="configureBrowserSessionProfile",
+    )
+    def configure_browser_session_profile(
+        project_id: UUID,
+        payload: ConfigureBrowserSessionRequest,
+        request: Request,
+        idempotency_key: IdempotencyHeader,
+        authorization: AuthorizationHeader = None,
+    ) -> BrowserSessionSetupResponse:
+        principal = _require_admin(_principal(request, authorization), project_id)
+        key = idempotency_key.strip()
+        if len(key) < 8 or len(key) > 240:
+            raise ApiProblem(
+                status=422,
+                title="Invalid Idempotency Key",
+                detail="Browser session setup needs an Idempotency-Key between 8 and 240 characters.",
+                type_uri="urn:geo:problem:browser-session-idempotency",
+            )
+        try:
+            raw_state = json.loads(payload.storage_state_json.get_secret_value())
+            storage_state = validate_browser_storage_state(raw_state)
+        except (json.JSONDecodeError, BrowserCaptureError) as error:
+            raise ApiProblem(
+                status=422,
+                title="Invalid Browser Session",
+                detail=str(error),
+                type_uri="urn:geo:problem:browser-session-invalid",
+            ) from error
+        reference_id = uuid5(
+            _BROWSER_SESSION_SECRET_NAMESPACE, f"{project_id}:{key}:storage-state"
+        )
+        try:
+            created = _secret_api(request).create(
+                principal,
+                project_id=project_id,
+                reference_id=reference_id,
+                purpose="browser_session.storage_state",
+                value=SecretValue(
+                    json.dumps(storage_state, ensure_ascii=True, separators=(",", ":"))
+                ),
+                expected_version=0,
+                idempotency_key=f"{key}:secret-create",
+            )
+            verified = _secret_api(request).verify(
+                principal,
+                project_id=project_id,
+                reference_id=reference_id,
+                version=created.version,
+                expected_version=created.aggregate_version,
+                idempotency_key=f"{key}:secret-verify",
+            )
+            activated = _secret_api(request).activate(
+                principal,
+                project_id=project_id,
+                reference_id=reference_id,
+                version=created.version,
+                expected_version=verified.aggregate_version,
+                idempotency_key=f"{key}:secret-activate",
+            )
+        except SecretStoreError as error:
+            raise ApiProblem(
+                status=409,
+                title="Browser Session Secret Setup Failed",
+                detail=str(error),
+                type_uri="urn:geo:problem:browser-session-secret",
+            ) from error
+        profile = _call(
+            lambda: _service(request).install_session_profile(
+                project_id=project_id,
+                actor_id=principal.identity_id,
+                storage_secret_reference_id=reference_id,
+                storage_secret_version=activated.version,
+            )
+        )
+        return BrowserSessionSetupResponse.model_validate(
+            {
+                "profile": profile,
+                "secret_reference_id": reference_id,
+                "secret_version": activated.version,
+            }
+        )
 
     @router.get("", response_model=BrowserCaptureInventoryResponse)
     def inventory(
@@ -360,6 +588,13 @@ def _attempt_service(request: Request) -> BrowserCaptureAttemptAdmissionService:
     if not isinstance(service, BrowserCaptureAttemptAdmissionService):
         raise FoundationServiceUnavailable("Browser Capture admission is unavailable.")
     return service
+
+
+def _secret_api(request: Request) -> SecretStoreApi:
+    application = getattr(request.app.state, "secret_store_application", None)
+    if application is None:
+        raise FoundationServiceUnavailable("Secret Store persistence is unavailable.")
+    return cast(SecretStoreApi, application)
 
 
 def _call(operation):

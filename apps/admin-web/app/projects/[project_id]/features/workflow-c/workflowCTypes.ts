@@ -51,6 +51,51 @@ export type Resource<T> = Readonly<{
   problem?: LoadProblem;
 }>;
 
+export type BrowserCaptureSurface =
+  | "google_ai_overviews"
+  | "google_ai_mode"
+  | "bing_copilot";
+
+export type BrowserCaptureReadinessItem = Readonly<{
+  surface: BrowserCaptureSurface;
+  state: "blocked" | "ready" | "live_verified" | "fidelity_accepted";
+  blocking_reasons: string[];
+  surface_release_id: string | null;
+  release_version: string | null;
+  profile_version_id: string | null;
+  egress_endpoint_id: string | null;
+  captured_count: number;
+}>;
+
+export type BrowserCaptureReadiness = Readonly<{
+  items: BrowserCaptureReadinessItem[];
+}>;
+
+export type BrowserCaptureInventory = Readonly<{
+  egress_endpoints: Array<Readonly<{
+    id: string;
+    name: string;
+    endpoint_host: string;
+    endpoint_port: number;
+    network_type: string;
+    status: string;
+  }>>;
+  egress_tests: Array<Readonly<{
+    id: string;
+    endpoint_id: string;
+    status: string;
+    eligible?: boolean;
+    outcome?: string;
+    error_class?: string;
+  }>>;
+  profiles: Array<Readonly<{
+    id: string;
+    version: string;
+    account_cohort: string;
+    status: string;
+  }>>;
+}>;
+
 export type SamplingSourceStratum = Readonly<{
   platform: string;
   surface: string;
@@ -570,6 +615,8 @@ export type WorkflowCWorkspaceData = Readonly<{
   runs: Resource<SamplingRunPage>;
   manualEvidence: Resource<ManualEvidenceImportPage>;
   surfaceParserReleases: Resource<SurfaceParserReleasePage>;
+  browserCaptureReadiness: Resource<BrowserCaptureReadiness>;
+  browserCaptureInventory: Resource<BrowserCaptureInventory>;
   workflowCReports: Resource<WorkflowCReportPage>;
   notifications: Resource<NotificationProjection[]>;
 }>;

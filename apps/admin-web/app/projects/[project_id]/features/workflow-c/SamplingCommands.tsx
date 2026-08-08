@@ -64,7 +64,7 @@ export function SamplingCommands({
         <form action={suiteAction} className={styles.commandForm}>
           <CommandIdentity commandKey={commandKeys.createSuite} projectId={projectId} />
           <label><span>冻结输入</span><select disabled={suiteDisabled} name="suite_input_option_key" required><option value="">选择发布输入</option>{suiteInputOptions.map((option) => <option key={option.option_key} value={option.option_key}>{option.display_name} · {option.question_count} 个问题</option>)}</select></label>
-          <label><span>每题重复</span><input defaultValue="10" disabled={suiteDisabled} max="100" min="1" name="repetitions" required type="number" /></label>
+          <label><span>每题重复</span><input defaultValue="10" disabled={suiteDisabled} max="100" min="1" name="repetitions" required type="number" /><small>Provider API 固定 10 次；自动界面可用 1 次做技术实跑，但至少 3 次才可能形成统计证据。</small></label>
           <label><span>统计合同</span><select disabled={suiteDisabled} name="statistics_method_version"><option value="paired-bootstrap-holm-v1">配对 Bootstrap + Holm v1</option></select></label>
           <label><span>运行任务上限</span><input defaultValue="1000" disabled={suiteDisabled} min="1" name="max_planned_tasks" required type="number" /></label>
           <label><span>日任务上限</span><input defaultValue="1000" disabled={suiteDisabled} min="1" name="max_daily_tasks" required type="number" /></label>

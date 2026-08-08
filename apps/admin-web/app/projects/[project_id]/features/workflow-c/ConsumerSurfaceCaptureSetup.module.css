@@ -1,0 +1,97 @@
+.setup {
+  background: #f7faf9;
+  border: 1px solid #cfdcda;
+  border-top: 4px solid #1f7068;
+  border-radius: 6px;
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+}
+
+.heading {
+  align-items: flex-start;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+}
+
+.heading p { color: #436a68; font-size: 12px; font-weight: 800; margin: 0; }
+.heading h3 { font-size: 20px; letter-spacing: 0; margin: 3px 0 5px; }
+.heading span { color: #5a6c6c; font-size: 13px; }
+.heading > strong { background: #e4f1ee; color: #185e57; font-size: 13px; padding: 7px 10px; white-space: nowrap; }
+
+.surfaces { display: grid; gap: 10px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.surfaces article { background: #fff; border: 1px solid #d4dfdd; border-left: 4px solid #9aa9a6; border-radius: 5px; display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr) auto; min-width: 0; padding: 12px; }
+.surfaces article[data-state="ready"], .surfaces article[data-state="live_verified"], .surfaces article[data-state="fidelity_accepted"] { border-left-color: #258274; }
+.surfaces strong, .surfaces small { display: block; overflow-wrap: anywhere; }
+.surfaces small { color: #657675; font-size: 11px; margin-top: 4px; }
+.surfaces p { color: #4f6261; font-size: 12px; grid-column: 1 / -1; margin: 0; min-height: 30px; }
+
+.status { align-self: start; background: #edf1f0; color: #526462; font-size: 11px; font-weight: 800; padding: 4px 7px; white-space: nowrap; }
+.status[data-state="ready"], .status[data-state="verified"], .status[data-state="live_verified"], .status[data-state="fidelity_accepted"], .status[data-state="succeeded"] { background: #dff1ec; color: #17685e; }
+.status[data-state="failed"], .status[data-state="blocked"] { background: #f7e6e2; color: #8d392e; }
+.status[data-state="queued"], .status[data-state="running"] { background: #fff0cf; color: #76570d; }
+
+.primaryAction { align-items: center; background: #eaf4f2; border: 1px solid #b9d5d0; display: flex; gap: 14px; justify-content: space-between; padding: 12px; }
+.primaryAction div { display: grid; gap: 2px; }
+.primaryAction span { color: #526866; font-size: 12px; }
+.setup button { background: #196d64; border: 0; border-radius: 4px; color: #fff; cursor: pointer; font: inherit; font-size: 13px; font-weight: 800; min-height: 36px; padding: 8px 13px; }
+.setup button:hover:not(:disabled) { background: #115950; }
+.setup button:disabled { cursor: not-allowed; opacity: .5; }
+
+.steps { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.steps > section { background: #fff; border: 1px solid #d5dfdd; border-radius: 5px; min-width: 0; padding: 14px; }
+.steps > section > header { align-items: center; display: flex; gap: 10px; margin-bottom: 12px; }
+.steps > section > header > span { align-items: center; background: #e7edeb; border-radius: 50%; color: #405654; display: flex; flex: 0 0 28px; font-size: 12px; font-weight: 900; height: 28px; justify-content: center; }
+.steps > section[data-complete="true"] > header > span { background: #dff1ec; color: #17685e; }
+.steps .bindingStep { grid-column: 1 / -1; }
+.steps header strong, .steps header small { display: block; }
+.steps header small { color: #687977; font-size: 11px; margin-top: 2px; overflow-wrap: anywhere; }
+
+.proxyForm summary { color: #2e5d59; cursor: pointer; font-size: 13px; font-weight: 800; }
+.proxyForm form, .bindingForm { display: grid; gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 12px; }
+.proxyForm label, .bindingForm label { display: grid; gap: 5px; min-width: 0; }
+.proxyForm label > span, .bindingForm label > span { color: #445b59; font-size: 12px; font-weight: 800; }
+.proxyForm input, .proxyForm select, .bindingForm select { background: #fff; border: 1px solid #bdcbc8; border-radius: 3px; box-sizing: border-box; font: inherit; min-height: 38px; min-width: 0; padding: 7px 9px; width: 100%; }
+.proxyForm small, .bindingForm small { color: #647573; font-size: 11px; grid-column: 1 / -1; overflow-wrap: anywhere; }
+.proxyForm .wide { grid-column: 1 / -1; }
+.proxyForm button, .bindingForm button { align-self: end; }
+
+.inlineStatus { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; }
+.inlineStatus > span:first-child { color: #4f6462; font-size: 12px; }
+.inlineStatus form { margin-left: auto; }
+.hint { color: #6d5a21; font-size: 12px; margin: 0; }
+.authorizationPrompt { background: #fff7e5; border-left: 4px solid #d2a23d; padding: 10px; }
+.authorizationPrompt p { color: #6a511b; font-size: 12px; margin: 0 0 9px; }
+.authorizationPrompt form { align-items: center; display: flex; flex-wrap: wrap; gap: 9px; }
+.authorizationPrompt a { color: #185f68; font-size: 12px; font-weight: 800; }
+.problem { background: #fae9e6; border: 1px solid #e4b8b0; color: #843b31; font-size: 12px; padding: 9px 11px; }
+.profileStatus { background: #edf5f3; border-left: 3px solid #3d877e; display: grid; gap: 3px; padding: 9px 11px; }
+.profileStatus strong { color: #254f4b; font-size: 13px; }
+.profileStatus span { color: #627572; font-size: 11px; overflow-wrap: anywhere; }
+.sessionForm { margin-top: 12px; }
+.sessionForm summary { color: #2e5d59; cursor: pointer; font-size: 12px; font-weight: 800; }
+.sessionForm p { color: #647573; font-size: 11px; line-height: 1.5; margin: 8px 0; }
+.sessionForm form, .sessionForm label { display: grid; gap: 7px; }
+.sessionForm label span { color: #445b59; font-size: 12px; font-weight: 800; }
+.sessionForm textarea { border: 1px solid #bdcbc8; border-radius: 3px; box-sizing: border-box; font: 12px/1.45 ui-monospace, monospace; max-width: 100%; min-width: 0; padding: 8px; resize: vertical; width: 100%; }
+.sessionForm button { justify-self: start; }
+.surfaceBindings { display: grid; gap: 10px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.surfaceBindings > article { border: 1px solid #d7e0de; border-radius: 4px; min-width: 0; padding: 11px; }
+.surfaceBindings > article > header { align-items: baseline; display: flex; gap: 8px; justify-content: space-between; }
+.surfaceBindings > article > header small { color: #667875; font-size: 11px; }
+.surfaceBindings .bindingForm { grid-template-columns: 1fr; }
+.surfaceBindings > small { color: #6d5a21; font-size: 12px; grid-column: 1 / -1; }
+
+@media (max-width: 900px) {
+  .surfaces, .steps, .surfaceBindings { grid-template-columns: 1fr; }
+  .steps .bindingStep { grid-column: auto; }
+}
+
+@media (max-width: 560px) {
+  .setup { padding: 12px; }
+  .heading, .primaryAction { align-items: stretch; flex-direction: column; }
+  .heading > strong { align-self: start; }
+  .proxyForm form, .bindingForm { grid-template-columns: 1fr; }
+  .proxyForm .wide { grid-column: auto; }
+}

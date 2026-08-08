@@ -4,6 +4,8 @@ import type {
   AdmissionRuntimeOptionPage,
   AlertPage,
   AlertRecord,
+  BrowserCaptureInventory,
+  BrowserCaptureReadiness,
   ComparisonFamily,
   ComparisonFamilyPage,
   DriftReport,
@@ -92,6 +94,40 @@ const outcomeBySurfaceBlockReason = new Map([
   ["invalid_artifact", "parser_failed"],
   ["wrong_surface", "parser_failed"]
 ]);
+
+export function isBrowserCaptureReadiness(
+  value: unknown
+): value is BrowserCaptureReadiness {
+  return record(value) && Array.isArray(value.items) && value.items.every((item) =>
+    record(item)
+    && consumerSurfaces.has(String(item.surface))
+    && ["blocked", "ready", "live_verified", "fidelity_accepted"].includes(
+      String(item.state)
+    )
+    && Array.isArray(item.blocking_reasons)
+    && item.blocking_reasons.every((reason) => typeof reason === "string")
+    && integer(item.captured_count)
+  );
+}
+
+export function isBrowserCaptureInventory(
+  value: unknown
+): value is BrowserCaptureInventory {
+  return record(value)
+    && Array.isArray(value.egress_endpoints)
+    && value.egress_endpoints.every((item) =>
+      record(item) && uuid(item.id) && strings(item, ["name", "endpoint_host", "status"])
+      && integer(item.endpoint_port)
+    )
+    && Array.isArray(value.egress_tests)
+    && value.egress_tests.every((item) =>
+      record(item) && uuid(item.id) && uuid(item.endpoint_id) && typeof item.status === "string"
+    )
+    && Array.isArray(value.profiles)
+    && value.profiles.every((item) =>
+      record(item) && uuid(item.id) && strings(item, ["version", "account_cohort", "status"])
+    );
+}
 
 export function isAdmissionPolicyPage(value: unknown): value is AdmissionPolicyPage {
   return record(value)

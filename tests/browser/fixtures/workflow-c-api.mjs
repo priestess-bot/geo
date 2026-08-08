@@ -46,6 +46,7 @@ let notifications;
 let metricProtocols;
 let statisticalProtocols;
 let workflowCReports;
+let browserCaptureBootstrapped;
 
 function reset() {
   requests = [];
@@ -57,6 +58,40 @@ function reset() {
   metricProtocols = [metricProtocol()];
   statisticalProtocols = [comparisonProtocol(), driftProtocol()];
   workflowCReports = [workflowCReport()];
+  browserCaptureBootstrapped = false;
+}
+
+function browserReadiness() {
+  const surfaces = ["google_ai_overviews", "google_ai_mode", "bing_copilot"];
+  return {
+    items: surfaces.map((surface, index) => ({
+      surface,
+      state: "blocked",
+      blocking_reasons: browserCaptureBootstrapped ? ["needs_au_egress"] : ["needs_adapter"],
+      surface_release_id: browserCaptureBootstrapped ? uuid(810 + index) : null,
+      release_version: browserCaptureBootstrapped ? "2026-08-07.1" : null,
+      profile_version_id: browserCaptureBootstrapped ? uuid(814) : null,
+      egress_endpoint_id: null,
+      captured_count: 0
+    }))
+  };
+}
+
+function browserInventory() {
+  return {
+    surface_releases: [],
+    egress_endpoints: [],
+    profiles: browserCaptureBootstrapped ? [{
+      id: uuid(814),
+      version: "au-anonymous-desktop-2026-08-07.1",
+      account_cohort: "clean_anonymous",
+      status: "approved"
+    }] : [],
+    egress_tests: [],
+    drift_events: [],
+    tasks: [],
+    sessions: []
+  };
 }
 
 const taskKeys = Array.from({ length: 10 }, (_, index) => `fixture-question|repeat-${index + 1}`);
@@ -766,6 +801,29 @@ const server = http.createServer(async (request, response) => {
     total: 1, limit: 100, offset: 0
   });
   if (path === `${base}/sampling/admission-policies`) return send(response, { items: [], total: 0 });
+  if (path === `${base}/browser-capture/readiness` && request.method === "GET") {
+    return send(response, browserReadiness());
+  }
+  if (path === `${base}/browser-capture` && request.method === "GET") {
+    return send(response, browserInventory());
+  }
+  if (path === `${base}/browser-capture/bootstrap` && request.method === "POST") {
+    browserCaptureBootstrapped = true;
+    return send(response, {
+      surface_releases: [],
+      profile: {
+        id: uuid(814), project_id: PROJECT_ID,
+        version: "au-anonymous-desktop-2026-08-07.1",
+        browser_release: "playwright:1.60.0/chromium", device_class: "desktop",
+        viewport: { width: 1440, height: 1000 }, locale: "en-AU",
+        timezone: "Australia/Sydney", geolocation: null, location_permission: false,
+        safe_search: "moderate", account_cohort: "clean_anonymous",
+        storage_secret_reference_id: null, storage_secret_purpose: null,
+        storage_secret_version: null, profile_hash: "1".repeat(64), status: "approved",
+        created_by: IDENTITY_ID, created_at: NOW, approved_by: IDENTITY_ID, approved_at: NOW
+      }
+    });
+  }
   if (path === `${base}/sampling/admission-options`) return send(response, { items: [], total: 0 });
   if (path === `${base}/sampling/suite-input-options`) return send(response, { items: [], total: 0 });
   if (path === `${base}/sampling/suites`) return send(response, { items: [suite, manualSuite], total: 2 });

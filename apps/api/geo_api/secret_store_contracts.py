@@ -20,6 +20,8 @@ class SecretPurposeKey(StrEnum):
     MODEL_PROVIDER_GEMINI = "model_provider.gemini"
     MODEL_PROVIDER_PERPLEXITY = "model_provider.perplexity"
     MODEL_PROVIDER_MICROSOFT = "model_provider.microsoft"
+    BROWSER_EGRESS_AU = "browser_egress.au"
+    BROWSER_SESSION_STORAGE_STATE = "browser_session.storage_state"
     AUSTRALIA_EGRESS_PROXY = "egress.proxy.australia"
     STYLE_PRODUCTREVIEW = "style_collection_login.productreview"
     STYLE_REDDIT = "style_collection_login.reddit"

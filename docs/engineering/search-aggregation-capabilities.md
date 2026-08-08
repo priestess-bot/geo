@@ -1,14 +1,16 @@
-# Search Aggregation 原型能力与路线图
+# Search Aggregation 原型与消费者界面采样边界
 
-> 状态：`PROTOTYPE_ONLY`。本模块是受保护的 Internal API 开发探索能力，
-> 不是 B. 连接器与归因或消费者 UI Sampling 的完成证据。
-> 最后更新：2026-07-24
+> 状态：`PROTOTYPE_ONLY`。本模块只保留 OpenRouter/Perplexity 开发探索能力。
+> Google AI Overviews、Google AI Mode 和 Bing Copilot 已迁移到项目级 Browser Capture。
+> 最后更新：2026-08-07
 
 ---
 
 ## 0. 适用边界与阻断项
 
-本原型提供 SerpAPI 和 OpenRouter 的即时查询与结构化展示，方便开发期检查第三方返回的形状。它不创建 Campaign Monitoring Observation，不保存不可变工件，不进入 Customer 投影，也不代表澳大利亚消费者实际看见的页面。
+本原型提供 OpenRouter 的即时查询与结构化展示，方便开发期检查第三方返回形状。它不创建 Campaign Monitoring Observation，不保存不可变工件，不进入 Customer 投影，也不代表澳大利亚消费者实际看见的页面。
+
+原 `/v1/search/google-ai-overview`、`/v1/search/google-raw`、`/v1/search/bing-copilot` 和 `/v1/search/bing-copilot-raw` 已撤下。正式消费者界面采样必须从“测量与告警 > 采样”进入，使用冻结问题集、内置 Surface Release、澳洲粘性代理、同一会话前后出口验证、Durable Job 和不可变工件链路。
 
 ### 0.1 最小可用原型定义
 
@@ -16,72 +18,55 @@
 
 下列规则是该原型的不可突破边界：
 
-- `ai_overview`、`bing_copilot` 和 OpenRouter/Perplexity 返回必须保留各自来源身份；不得把 SerpAPI、OpenRouter 或模型 API 重命名为消费者浏览器采集。
+- OpenRouter/Perplexity 返回必须保留各自来源身份；不得把模型 API 重命名为消费者浏览器采集。
 - `gl`、`hl`、`location`、`google_domain` 仅是上游请求提示，不能记录为 AU egress、澳洲消费者结果或地域验证。
 - 普通 Google `answer_box`、featured snippet、knowledge panel 和传统 Bing SERP 不是 AI surface；在没有独立 surface detector 与页面证据前，不能作为 AIO/Copilot 成功案例或 fixture 正例。
-- mock、缺失凭据、未授权、空回答、解析失败和上游异常均不是真实成功、有效缺失或可用于验收的样本。
+- mock、缺失凭据、未授权、空回答、解析失败和上游异常均不是真实成功、有效缺失或可用于验收的样本；生产路由不提供 mock 回退。
 - `/v1/search/*-raw` 仅是尚待治理的诊断面，不能被复制到 Customer、导出、日志、工件或推荐证据；其响应不具有留存许可或脱敏保证。
 
 本文件只冻结产品定位和阻断项，不将现有即时路由提升为 production-ready。正式化必须按下列 checklist 逐项完成并经独立验证。
 
 下列项全部关闭前，任何 `/v1/search/*` 返回都必须保持 `prototype/debug` 定位，不得作为 B 的 Adapter Release、Sampling Attempt、eligible Observation、统计分母、告警输入或 Recommendation 证据：
 
-- [ ] `B-SEARCH-PROTOTYPE-01` 将 SerpAPI 与 OpenRouter 凭据迁入 Secret Store，仅以版本化 Secret Reference 在命令中传递；完成项目范围访问、轮换、撤销和审计。
-- [ ] `B-SEARCH-PROTOTYPE-02` 移除生产路径的 mock 成功回退。缺少凭据、授权或真实回答时必须明确失败或产生 ineligible/insufficient-evidence，不得返回伪造 Overview。
+- [ ] `B-SEARCH-PROTOTYPE-01` 将 OpenRouter 凭据迁入 Secret Store，仅以版本化 Secret Reference 在命令中传递；完成项目范围访问、轮换和撤销。
+- [x] `B-SEARCH-PROTOTYPE-02` 已移除消费者搜索生产路径的 mock 成功回退。缺少凭据、授权或真实回答时明确失败。
 - [ ] `B-SEARCH-PROTOTYPE-03` 删除或以受限、脱敏、审计的 artifact viewer 替代 raw 调试接口；不得向 API 返回未分类第三方原始响应。
 - [ ] `B-SEARCH-PROTOTYPE-04` 接入 Project/Campaign 角色、预算、速率限制、幂等和模型/供应商调用审计，禁止任意 Internal 身份消耗共享供应商额度。
 - [ ] `B-SEARCH-PROTOTYPE-05` 建立 Surface Release、授权 A/B 轨、Browser Profile、澳洲 proxy/gateway sticky lease、pre/target/post egress verification，以及隔离 Browser Worker。`gl`、`hl`、`location` 和 `google_domain` 只是供应商请求参数，不是澳洲出口证明。
 - [ ] `B-SEARCH-PROTOTYPE-06` 将执行接入现有 Durable Job、lease/fencing、outbox、MinIO raw-first artifact、Attempt/Observation 及 SourceStratum 合同；重试不得改变 planned denominator。
-- [ ] `B-SEARCH-PROTOTYPE-07` 实现 Google AI Mode，并以独立 Surface Release 验收 Google AI Overviews、Google AI Mode、Bing Copilot；SerpAPI/模型 API 不得冒充消费者 UI capture。
+- [ ] `B-SEARCH-PROTOTYPE-07` 以独立 Surface Release 完成 Google AI Overviews、Google AI Mode、Bing Copilot 的澳洲真实代理验收；模型 API 不得冒充消费者 UI capture。
 - [ ] `B-SEARCH-PROTOTYPE-08` 以冻结的官方 Provider/Grounded API adapter 补齐 OpenAI、Gemini、Perplexity、Microsoft Grounding with Bing 和 Kimi；OpenRouter 代理回答不能替代对应官方 Adapter 的真实 canary。
 - [ ] `B-SEARCH-PROTOTYPE-09` 移除将 `answer_box` 回退解释为 AI Overview 的 parser 行为；分别以 AIO、传统 SERP、有效缺失和阻断页面 fixture 验证，传统结果误标必须为 0。
 
 ## 1. 已实现原型能力
 
-### 1.1 Google AI Overview
+### 1.1 Google AI Overviews / AI Mode
 
 | 项目 | 状态 |
 |------|------|
-| 结构化 AI 概览 | ✅ 已实现 |
-| 原始 SerpAPI 响应（调试） | ✅ 已实现 |
-| 地区/语言/域名模拟 | ✅ 已实现 |
-| Admin Web 搜索框 | ❌ 已移除（仅保留后端能力） |
-
-**后端接口：**
-
-- `POST /v1/search/google-ai-overview`
-- `POST /v1/search/google-raw`
-
-**支持的地区参数：**
-
-- `location`：完整地理位置字符串，如 `New York, NY, United States`
-- `gl`：两位国家代码，如 `us`、`uk`、`au`
-- `hl`：语言代码，如 `en`、`zh-cn`
-- `google_domain`：Google 域名，如 `google.com`、`google.co.uk`
+| 内置 Browser Surface Release | ✅ 已实现 |
+| 澳洲粘性代理与前后出口验证 | ✅ 已实现，等待真实代理凭据验证 |
+| Durable Job / Attempt / Observation | ✅ 已实现 |
+| Admin Web 入口 | ✅ 测量与告警 > 采样 |
 
 **实现位置：**
 
-- Adapter：`packages/geo_core/geo_core/search_aggregation/serpapi_adapter.py`
-- Routes：`apps/api/geo_api/search_aggregation_routes.py`
+- Adapter：`packages/geo_core/geo_core/browser_capture/surface_adapters.py`
+- Routes：`apps/api/geo_api/browser_capture_routes.py`
 
 ### 1.2 Bing Copilot
 
 | 项目 | 状态 |
 |------|------|
-| 结构化 Copilot 回答 | ✅ 已实现 |
-| 原始 SerpAPI 响应（调试） | ✅ 已实现 |
-| 地区/语言模拟 | ✅ 已实现（通过 SerpAPI `cc`/`setlang`） |
-| Admin Web 入口 | ❌ 已移除（仅保留后端能力） |
-
-**后端接口：**
-
-- `POST /v1/search/bing-copilot`
-- `POST /v1/search/bing-copilot-raw`
+| 内置 Browser Surface Release | ✅ 已实现 |
+| 澳洲粘性代理与前后出口验证 | ✅ 已实现，等待真实代理凭据验证 |
+| Durable Job / Attempt / Observation | ✅ 已实现 |
+| Admin Web 入口 | ✅ 测量与告警 > 采样 |
 
 **实现位置：**
 
-- Adapter：`packages/geo_core/geo_core/search_aggregation/serpapi_bing_copilot_adapter.py`
-- Routes：`apps/api/geo_api/search_aggregation_routes.py`
+- Adapter：`packages/geo_core/geo_core/browser_capture/surface_adapters.py`
+- Routes：`apps/api/geo_api/browser_capture_routes.py`
 
 ### 1.3 OpenRouter OpenAI Web Search
 
@@ -124,14 +109,14 @@ Swagger 不会持久保存授权信息。开发调试使用 curl、Postman 或�
 **示例 curl：**
 
 ```bash
-curl -X POST http://localhost:8000/v1/search/google-ai-overview \
+curl -X POST http://localhost:8000/v1/search/openrouter-openai-web \
   -H "Content-Type: application/json" \
   -H "X-GEO-Actor-ID: 30000000-0000-4000-8000-000000000003" \
   -H "X-GEO-Tenant-ID: 10000000-0000-4000-8000-000000000001" \
   -d '{"query":"除草剂"}'
 ```
 
-> 注意：这里认证的是 GEO Internal API 的接口访问权限，不是 SerpAPI/OpenRouter 本身。SerpAPI/OpenRouter 只认各自的 API key。
+> 注意：这里认证的是 GEO Internal API 的接口访问权限，不是 OpenRouter 本身。消费者界面采样不使用这个即时接口。
 
 ### 1.5 Perplexity via OpenRouter
 
@@ -199,9 +184,9 @@ Brave Search API 注册付费账户需要**美国银行卡或 Visa 卡**进行�
 | 传统搜索排名 | ❌ 未实现 |
 | Bing Copilot 回答 | ❌ 不通过此 API 提供 |
 
-**说明：** 当前 Bing Copilot 通过 SerpAPI 实现。Microsoft 官方 Bing Web Search API 只返回传统搜索结果，不包含 Copilot AI 回答。如果需要纯 Bing 搜索排名，可单独申请 Azure Bing Search v7 API。
+**说明：** Bing Copilot 当前通过受控 Browser Capture 采样。Microsoft 官方 Bing Web Search API 只返回传统搜索结果，不包含 Copilot AI 回答。如果需要纯 Bing 搜索排名，可单独申请 Azure Bing Search v7 API。
 
-**优先级：** 低（当前 SerpAPI 已覆盖 Bing Copilot）
+**优先级：** 低（当前消费者界面采样不依赖传统 Bing Search API）
 
 ### 2.3 DuckDuckGo / Yahoo
 
@@ -241,8 +226,6 @@ Perplexity 原本需要直接申请 Perplexity API 并绑定美国银行账户�
 ```text
 packages/geo_core/geo_core/search_aggregation/
   ├── ports.py                    # SearchProvider Protocol（不变）
-  ├── serpapi_adapter.py          # Google
-  ├── serpapi_bing_copilot_adapter.py  # Bing Copilot
   ├── openrouter_adapter.py       # OpenRouter OpenAI Web Search
   └── perplexity_adapter.py       # Perplexity via OpenRouter
 ```
