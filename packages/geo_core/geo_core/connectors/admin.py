@@ -24,6 +24,11 @@ from geo_core.connectors.pyairbyte_source import (
     PYAIRBYTE_RELEASE,
     release_fingerprint,
 )
+from geo_core.connectors.scope import (
+    ConnectorScopeError,
+    connector_secret_purpose,
+    validate_google_scope,
+)
 from geo_core.project_scope import set_project_scope
 
 
@@ -44,7 +49,6 @@ _RELEASES: dict[ConnectorKind, tuple[str, str, tuple[str, ...]]] = {
     ),
 }
 CONNECTOR_CONNECTION_TEST_NAMESPACE = UUID("fcf3f917-b90e-5398-a39d-e9c5630d15b3")
-
 
 class ConnectorAdminService:
     def __init__(
@@ -135,21 +139,38 @@ class ConnectorAdminService:
         definition_id: UUID,
         name: str,
         secret_reference_id: UUID,
-        secret_purpose: str,
         secret_version: int,
+        # Kept for direct callers during the API migration. HTTP clients no
+        # longer send this internal value; when present it is checked against
+        # the definition-derived purpose and never trusted as the source.
+        secret_purpose: str | None = None,
     ) -> Mapping[str, object]:
-        if not name.strip() or not secret_purpose.startswith("connector."):
-            raise ConnectorAdminError("Connection name and Connector secret purpose are required")
+        if not name.strip():
+            raise ConnectorAdminError("Connection name is required")
         connection_id, now = uuid4(), self._clock()
         with self._connect() as connection:
             set_project_scope(connection, project_id)
+            definition = connection.execute(
+                """SELECT kind
+                     FROM connector_definitions
+                    WHERE project_id = %s AND id = %s AND status = 'approved'""",
+                (project_id, definition_id),
+            ).fetchone()
+            if definition is None:
+                raise ConnectorAdminError("Approved Connector definition was not found")
+            try:
+                expected_purpose = connector_secret_purpose(ConnectorKind(definition["kind"]))
+            except (ConnectorScopeError, KeyError, ValueError) as error:
+                raise ConnectorAdminError("Approved Connector definition has no supported Secret purpose") from error
+            if secret_purpose is not None and secret_purpose != expected_purpose:
+                raise ConnectorAdminError("Secret purpose is derived from the selected Connector definition")
             row = connection.execute(
                 """INSERT INTO connector_connections(
                        id, project_id, definition_id, name, secret_reference_id,
                        secret_purpose, secret_version, auth_summary, status,
                        created_by, created_at, updated_at
                    )
-                   SELECT %s, %s, definition.id, %s, %s, %s, %s,
+                     SELECT %s, %s, definition.id, %s, %s, %s, %s,
                           jsonb_build_object('secret_reference_id', %s::text,
                                              'secret_version', %s),
                           'active', %s, %s, %s
@@ -163,7 +184,7 @@ class ConnectorAdminService:
                     project_id,
                     name.strip(),
                     secret_reference_id,
-                    secret_purpose,
+                    expected_purpose,
                     secret_version,
                     secret_reference_id,
                     secret_version,
@@ -217,6 +238,17 @@ class ConnectorAdminService:
             allowed = set(definition["capability"]["streams"])
             if set(streams) != allowed:
                 raise ConnectorAdminError("Scope streams differ from the approved definition")
+            try:
+                identity = validate_google_scope(
+                    kind=ConnectorKind(definition["kind"]),
+                    source_locator=source_locator,
+                    streams=streams,
+                    report_spec=report_spec,
+                    date_policy=date_policy,
+                )
+            except (ConnectorScopeError, ValueError) as error:
+                raise ConnectorAdminError(str(error)) from error
+            scope_value["source_locator"] = identity.source_locator
             row = connection.execute(
                 """INSERT INTO connector_scopes(
                        id, project_id, connection_id, source_locator, streams,
@@ -232,7 +264,7 @@ class ConnectorAdminService:
                     scope_id,
                     project_id,
                     connection_id,
-                    source_locator.strip(),
+                    identity.source_locator,
                     Jsonb(list(streams)),
                     Jsonb(dict(report_spec)),
                     locale.strip(),

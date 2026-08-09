@@ -96,7 +96,9 @@ class _FixtureHandler(BaseHTTPRequestHandler):
             return
         self._json(
             {
-                "id": "fixture-model-call",
+                # Keep body and header identities equal so this HTTP fixture
+                # remains deterministic across Python HTTPMessage casing.
+                "id": "fixture-request",
                 "model": "fixture-model",
                 "choices": [
                     {
@@ -251,7 +253,7 @@ def test_f001_int_01_local_http_fixtures_cover_oidc_knowledge_model_and_publicat
             budget=ModelCallBudget(1),
         )
         assert model.output == {"status": "ok"}
-        assert model.provider_request_id == "fixture-model-call"
+        assert model.provider_request_id == "fixture-request"
         assert len(model.response_hash) == 64
 
         publication = PublicUrlVerifier(

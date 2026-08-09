@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 from pathlib import Path
@@ -17,6 +18,9 @@ from scripts.geo_sync import (
     _chunk,
     _join_chunks,
     _materialize_release,
+    _baseline_stack_environment,
+    _baseline_stack_import_command,
+    _parser,
     _require_delta_parent,
     _require_role,
     _repo_slug,
@@ -150,3 +154,63 @@ def test_delta_parent_identity_is_checked() -> None:
 
 def test_archive_schema_is_distinct_from_package_schema() -> None:
     assert ARCHIVE_SCHEMA != DELTA_SCHEMA
+
+
+def test_baseline_import_uses_canonical_stack_and_forwards_runtime_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stack_env = tmp_path / "production.env"
+    runtime_root = tmp_path / "dify-runtime"
+    state_file = tmp_path / "state" / "geo-dify-state.json"
+    passphrase = tmp_path / "passphrase"
+    secret_root = tmp_path / "secrets"
+    package = tmp_path / "baseline"
+    args = argparse.Namespace(
+        stack_env_file=str(stack_env),
+        stack_mode="production",
+        dify_runtime_root=str(runtime_root),
+        dify_state_file=str(state_file),
+        passphrase_file=str(passphrase),
+        secret_root=str(secret_root),
+        target_project="geo",
+        dify_project="geo-dify",
+    )
+    monkeypatch.setenv("UNRELATED_RUNTIME_VALUE", "retained")
+
+    command = _baseline_stack_import_command(args, package)
+    environment = _baseline_stack_environment(args)
+
+    assert command[0].endswith("/scripts/geo-stack.sh")
+    assert command[1] == "import"
+    assert "--target-empty" in command
+    assert "--confirm" in command
+    assert command[command.index("--target-env-file") + 1] == str(stack_env.resolve())
+    assert environment["GEO_STACK_ENV_FILE"] == str(stack_env.resolve())
+    assert environment["GEO_STACK_MODE"] == "production"
+    assert environment["GEO_DIFY_RUNTIME_ROOT"] == str(runtime_root.resolve())
+    assert environment["GEO_DIFY_STATE_HOST_FILE"] == str(state_file.resolve())
+    assert environment["UNRELATED_RUNTIME_VALUE"] == "retained"
+
+
+def test_baseline_import_defaults_follow_stack_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GEO_STACK_MODE", "production")
+    monkeypatch.setenv("GEO_STACK_ENV_FILE", "/srv/geo/infra/production.env")
+    monkeypatch.setenv("GEO_DIFY_RUNTIME_ROOT", "/srv/geo/.runtime/dify")
+    monkeypatch.setenv("GEO_DIFY_STATE_HOST_FILE", "/srv/geo/.runtime/state.json")
+
+    args = _parser().parse_args(
+        [
+            "import-baseline",
+            "--repo",
+            "priestess-bot/geo",
+            "--passphrase-file",
+            "/srv/geo-secrets/migration-passphrase",
+            "--secret-root",
+            "/srv/geo/.secrets",
+        ]
+    )
+
+    assert args.stack_mode == "production"
+    assert args.stack_env_file is None
+    assert args.dify_runtime_root == "/srv/geo/.runtime/dify"
+    assert args.dify_state_file == "/srv/geo/.runtime/state.json"

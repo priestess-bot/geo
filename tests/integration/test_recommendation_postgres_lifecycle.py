@@ -606,10 +606,12 @@ def _seed_frozen_question(connection: Any, *, seeded: dict[str, UUID]) -> UUID:
                id, project_id, campaign_id, question_set_id, generated_by_job_id,
                question_candidate_id, ordinal, dimension_key, query_text_snapshot,
                query_text_hash, normalized_text_hash, query_kind_snapshot,
-               query_cluster_key, source_lineage_hash
+               query_cluster_key, source_lineage_hash, brand_scope_snapshot,
+               coverage_role_snapshot, topic_cluster_snapshot, funnel_snapshot
            ) SELECT %s, project_id, campaign_id, id, generated_by_job_id, %s, 1,
                     'recommendation-gap', %s, %s, %s, 'recommendation',
-                    'recommendation-gap', %s
+                    'recommendation-gap', %s, 'brand', 'product_fit',
+                    'recommendation-gap', 'consideration'
                 FROM knowledge_question_sets
                WHERE id = %s AND project_id = %s""",
         (

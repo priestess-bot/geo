@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid5
 
 from geo_core.synthetic_lab.channel_styles import ChannelStyleVersion
@@ -12,8 +13,16 @@ from geo_core.synthetic_lab.direct_generation import (
 from geo_core.synthetic_lab.postgres_api_read_models import SyntheticApiPage
 from geo_core.synthetic_lab.postgres_rows import aggregate_from_row
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
 
 class _PostgresSyntheticApiDirectReads:
+    if TYPE_CHECKING:
+        # These members are supplied by ``_PostgresSyntheticApiReadsTail`` at runtime.
+        _connection_factory: Callable[[], Any]
+
+        def _open(self, project_id: UUID) -> Any: ...
     def channel_styles(
         self,
         project_id: UUID,
@@ -31,13 +40,13 @@ class _PostgresSyntheticApiDirectReads:
                    ORDER BY created_at DESC, resource_id""",
                 (project_id,),
             ).fetchall()
-            styles = [aggregate_from_row(dict(row)).payload for row in rows]
-            styles = [
-                item
-                for item in styles
-                if isinstance(item, ChannelStyleVersion)
-                and (channel is None or item.channel == channel)
-            ]
+            styles: list[ChannelStyleVersion] = []
+            for row in rows:
+                item = aggregate_from_row(dict(row)).payload
+                if isinstance(item, ChannelStyleVersion) and (
+                    channel is None or item.channel == channel
+                ):
+                    styles.append(item)
             styles.sort(key=lambda item: (item.channel, -item.version_number))
             if not include_history:
                 current: dict[str, ChannelStyleVersion] = {}
@@ -58,7 +67,8 @@ class _PostgresSyntheticApiDirectReads:
             channel=channel,
             include_history=False,
         )
-        return page.items[0] if page.items else None
+        item = page.items[0] if page.items else None
+        return item if isinstance(item, ChannelStyleVersion) else None
 
     def direct_generation_options(self, project_id: UUID) -> dict[str, object]:
         connection = self._open(project_id)

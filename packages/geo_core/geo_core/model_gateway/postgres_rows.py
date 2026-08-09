@@ -41,6 +41,7 @@ from geo_core.model_gateway.releases import (
     ProviderDataPolicy,
     ReleaseState,
     ReportedModelPolicy,
+    provider_secret_purpose,
 )
 from geo_core.secrets import SecretVersionHandle
 
@@ -327,7 +328,7 @@ def _secret_handle(row: Row) -> SecretVersionHandle:
     handle = SecretVersionHandle(
         reference_id=row["provider_secret_reference_id"],
         project_id=row["project_id"],
-        purpose=f"model_provider.{row['provider']}",
+        purpose=provider_secret_purpose(row["provider"]),
         version=row["provider_secret_version"],
     )
     if canonical_json_hash(handle.as_job_payload()) != row["provider_secret_handle_hash"]:

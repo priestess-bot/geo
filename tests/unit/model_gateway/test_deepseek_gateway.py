@@ -58,7 +58,7 @@ class RecordingTransport:
                 ],
                 "usage": {"prompt_tokens": 120, "completion_tokens": 40, "cost_usd": "0.0042"},
             },
-            headers={"x-request-id": "deepseek-request-1"},
+            headers={"X-Request-ID": "deepseek-request-1"},
         )
 
 

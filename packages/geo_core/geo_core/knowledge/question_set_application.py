@@ -12,6 +12,11 @@ from geo_core.knowledge.domain import (
     KnowledgeNotFound,
     KnowledgeValidationError,
 )
+from geo_core.knowledge.question_set_application_support import effective_dedup_statuses
+
+# Keep the private name available to existing internal callers while the implementation
+# lives in the focused support module.
+_effective_dedup_statuses = effective_dedup_statuses
 
 
 class KnowledgeQuestionSetApplicationMixin:
@@ -25,11 +30,17 @@ class KnowledgeQuestionSetApplicationMixin:
         generation_job_id: UUID,
         included_candidate_ids: Sequence[UUID],
         idempotency_key: str,
+        series_id: UUID | None = None,
+        previous_version_id: UUID | None = None,
     ) -> Mapping[str, object]:
         included = tuple(included_candidate_ids)
-        if len(included) < 90 or len(included) > 100 or len(set(included)) != len(included):
+        if len(included) != 100 or len(set(included)) != len(included):
             raise KnowledgeValidationError(
-                "coverage QuestionSet requires 90 to 100 unique included questions"
+                "coverage QuestionSet requires exactly 100 unique included questions"
+            )
+        if (series_id is None) != (previous_version_id is None):
+            raise KnowledgeValidationError(
+                "QuestionSet series and previous version must be supplied together"
             )
         with self._connection(  # type: ignore[attr-defined]
             principal, project_id, manage=True
@@ -59,10 +70,47 @@ class KnowledgeQuestionSetApplicationMixin:
                 )
             candidates = _many(
                 connection.execute(
-                    """SELECT id, workflow_status, dedup_status
-                       FROM knowledge_question_candidates
-                       WHERE generated_by_job_id = %s AND project_id = %s AND campaign_id = %s
-                       ORDER BY id FOR UPDATE""",
+                    """SELECT candidate.id, candidate.workflow_status, candidate.dedup_status,
+                              candidate.dimension_key, candidate.variant_index,
+                              candidate.turn_index,
+                              candidate.semantic_fingerprint, candidate.query_text,
+                              candidate.normalized_text_hash,
+                              dimension.ordinal AS dimension_ordinal,
+                              dimension.parent_dimension_key, dimension.persona,
+                              dimension.scenario, dimension.intent, dimension.funnel,
+                              dimension.region, dimension.language, dimension.brand_scope,
+                              dimension.platform, dimension.query_kind, dimension.subject,
+                              dimension.competitor_entity_id,
+                              spec.semantic_duplicate_threshold,
+                              COALESCE(revision.query_text, candidate.query_text)
+                                AS effective_query_text,
+                              COALESCE(revision.normalized_text_hash,
+                                       candidate.normalized_text_hash)
+                                AS effective_normalized_text_hash,
+                              revision.id AS effective_revision_id
+                       FROM knowledge_question_candidates candidate
+                       JOIN knowledge_question_generation_specs spec
+                         ON spec.job_id = candidate.generated_by_job_id
+                        AND spec.project_id = candidate.project_id
+                        AND spec.campaign_id = candidate.campaign_id
+                       JOIN knowledge_question_dimensions dimension
+                         ON dimension.job_id = candidate.generated_by_job_id
+                        AND dimension.project_id = candidate.project_id
+                        AND dimension.campaign_id = candidate.campaign_id
+                        AND dimension.dimension_key = candidate.dimension_key
+                       LEFT JOIN LATERAL (
+                         SELECT value.id, value.query_text, value.normalized_text_hash
+                         FROM knowledge_question_candidate_revisions value
+                         WHERE value.candidate_id = candidate.id
+                           AND value.project_id = candidate.project_id
+                           AND value.campaign_id = candidate.campaign_id
+                         ORDER BY value.revision_number DESC LIMIT 1
+                       ) revision ON true
+                       WHERE candidate.generated_by_job_id = %s
+                         AND candidate.project_id = %s
+                         AND candidate.campaign_id = %s
+                       ORDER BY dimension.ordinal, candidate.variant_index, candidate.id
+                       FOR UPDATE OF candidate""",
                     (generation_job_id, project_id, campaign_id),
                 )
             )
@@ -70,12 +118,13 @@ class KnowledgeQuestionSetApplicationMixin:
             included_set = set(included)
             if len(candidates) != 100 or not included_set.issubset(all_ids):
                 raise KnowledgeConflict("included questions crossed the completed coverage generation")
+            effective_statuses = _effective_dedup_statuses(candidates)
             for candidate in candidates:
                 should_approve = candidate["id"] in included_set
                 expected = "approved" if should_approve else "rejected"
-                if should_approve and candidate["dedup_status"] != "unique":
+                if should_approve and effective_statuses[candidate["id"]] != "unique":
                     raise KnowledgeConflict(
-                        "duplicate or near-duplicate questions cannot be finalized"
+                        "duplicate or near-duplicate questions cannot be finalized after effective recheck"
                     )
                 if candidate["workflow_status"] not in {"pending_review", expected}:
                     raise KnowledgeConflict(
@@ -103,8 +152,8 @@ class KnowledgeQuestionSetApplicationMixin:
             name=name,
             generation_job_id=generation_job_id,
             candidate_ids=included,
-            series_id=None,
-            previous_version_id=None,
+            series_id=series_id,
+            previous_version_id=previous_version_id,
             idempotency_key=f"{idempotency_key}:set",
         )
         if created["status"] == "frozen":
@@ -197,26 +246,38 @@ class KnowledgeQuestionSetApplicationMixin:
             candidates = _many(
                 connection.execute(
                     """SELECT candidate.id, candidate.dimension_key,
+                              candidate.variant_index, candidate.turn_index,
+                              candidate.semantic_fingerprint,
                               COALESCE(revision.query_text, candidate.query_text) AS query_text,
                               COALESCE(revision.query_text_hash, candidate.query_text_hash)
                                 AS query_text_hash,
                               COALESCE(revision.normalized_text_hash,
                                        candidate.normalized_text_hash) AS normalized_text_hash,
-                              candidate.dedup_status, dimension.query_kind,
-                              dimension.brand_scope, dimension.coverage_role,
-                              dimension.topic_cluster, dimension.funnel,
+                              revision.id AS effective_revision_id,
+                              candidate.dedup_status, dimension.ordinal AS dimension_ordinal,
+                              dimension.parent_dimension_key, dimension.persona,
+                              dimension.scenario, dimension.intent, dimension.funnel,
+                              dimension.region, dimension.language, dimension.brand_scope,
+                              dimension.platform, dimension.subject, dimension.competitor_entity_id,
+                              spec.semantic_duplicate_threshold,
+                              dimension.query_kind, dimension.coverage_role,
+                              dimension.topic_cluster,
                               geo_question_candidate_source_lineage_hash(candidate.id)
                                 AS source_lineage_hash,
                               geo_question_candidate_sources_current(candidate.id)
                                 AS sources_current
                        FROM knowledge_question_candidates candidate
+                       JOIN knowledge_question_generation_specs spec
+                         ON spec.job_id = candidate.generated_by_job_id
+                        AND spec.project_id = candidate.project_id
+                        AND spec.campaign_id = candidate.campaign_id
                        JOIN knowledge_question_dimensions dimension
                          ON dimension.job_id = candidate.generated_by_job_id
                         AND dimension.project_id = candidate.project_id
                         AND dimension.campaign_id = candidate.campaign_id
                         AND dimension.dimension_key = candidate.dimension_key
                        LEFT JOIN LATERAL (
-                         SELECT value.query_text, value.query_text_hash,
+                         SELECT value.id, value.query_text, value.query_text_hash,
                                 value.normalized_text_hash
                          FROM knowledge_question_candidate_revisions value
                          WHERE value.candidate_id = candidate.id
@@ -254,7 +315,24 @@ class KnowledgeQuestionSetApplicationMixin:
             )
             dimension_count = int(total_row["count"] if total_row else 0)
             covered = len({str(item["dimension_key"]) for item in candidates})
-            possible = sum(item["dedup_status"] == "possible_duplicate" for item in candidates)
+            effective_statuses = _effective_dedup_statuses(candidates)
+            if any(status == "exact_duplicate" for status in effective_statuses.values()):
+                raise KnowledgeConflict("exact duplicate questions cannot enter a QuestionSet")
+            if any(
+                item["effective_revision_id"] is not None
+                and effective_statuses[item["id"]] != "unique"
+                for item in candidates
+            ):
+                raise KnowledgeConflict(
+                    "revised QuestionSet candidates must be unique after deterministic re-check"
+                )
+            # Original evidence remains immutable. A successful revision supersedes its
+            # admission status, while unedited possible duplicates retain the legacy count.
+            possible = sum(
+                item["dedup_status"] == "possible_duplicate"
+                and item["effective_revision_id"] is None
+                for item in candidates
+            )
             coverage = _ratio(covered, dimension_count)
             duplicate = _ratio(possible, len(candidates))
             connection.execute(

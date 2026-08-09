@@ -15,6 +15,7 @@ from geo_core.model_gateway.application_support import (
     RequestIdentity,
     attempt_draft,
     bind_result_artifact_policy,
+    maximum_paid_calls_per_attempt,
     provider_outcome_is_unknown,
     request_identity,
     validate_admission,
@@ -51,6 +52,7 @@ from geo_core.model_gateway.ports import (
 )
 from geo_core.model_gateway.prompt_admission import ModelCallAdmissionMode
 from geo_core.model_gateway.releases import AdapterRelease, ModelRelease, ModelReleaseRegistry
+from geo_core.model_gateway.releases import provider_secret_purpose
 from geo_core.model_gateway.schema_validation import (
     validate_output_schema_pair,
     validate_structured_output,
@@ -104,7 +106,12 @@ class ModelCallApplication:
             return self._replay(command, stored.attempt, identity=identity)
 
         attempt = stored.attempt
-        paid_budget = ModelCallBudget(1)
+        paid_budget = ModelCallBudget(
+            min(
+                maximum_paid_calls_per_attempt(command.route.provider),
+                policy.maximum_paid_calls or 1,
+            )
+        )
         execution_request = replace(
             command.request,
             model_call_job_id=command.job_id,
@@ -140,7 +147,7 @@ class ModelCallApplication:
         except Exception as exc:
             raise ModelCallUnknownOutcome(attempt.spec.id, provider=command.route.provider) from exc
 
-        if paid_budget.consumed_calls != 1:
+        if paid_budget.consumed_calls < 1:
             raise ModelCallUnknownOutcome(attempt.spec.id, provider=command.route.provider)
         try:
             result = bind_result_artifact_policy(
@@ -168,15 +175,22 @@ class ModelCallApplication:
                 sanitized_result,
                 exc,
                 classification=ModelCallFailureClass.APPLICATION_RESULT_CONTRACT,
+                paid_calls=paid_budget.consumed_calls,
             )
             raise
-        self._validate_application_result(command, attempt=attempt, result=result)
+        self._validate_application_result(
+            command,
+            attempt=attempt,
+            result=result,
+            paid_calls=paid_budget.consumed_calls,
+        )
         try:
             event = success_event(
                 event_id=self._id_factory(),
                 occurred_at=self._clock(),
                 attempt=attempt,
                 result=result,
+                paid_calls=paid_budget.consumed_calls,
             )
         except (ValueError, ModelGatewayError) as exc:
             contract_error = ModelIdentityError(
@@ -188,6 +202,7 @@ class ModelCallApplication:
                 result,
                 contract_error,
                 classification=ModelCallFailureClass.APPLICATION_RESULT_CONTRACT,
+                paid_calls=paid_budget.consumed_calls,
             )
             raise contract_error from exc
         self._append_terminal(attempt, event)
@@ -305,7 +320,7 @@ class ModelCallApplication:
         if (
             handle is None
             or handle.project_id != command.project_id
-            or handle.purpose != f"model_provider.{command.route.provider}"
+            or handle.purpose != provider_secret_purpose(command.route.provider)
         ):
             raise ModelCallAdmissionError(
                 "model-call request requires the exact project-scoped provider secret version",
@@ -343,6 +358,7 @@ class ModelCallApplication:
         *,
         attempt: ModelCallAttempt,
         result: ModelGatewayResult,
+        paid_calls: int = 1,
     ) -> None:
         try:
             validate_result_identity(result, command=command)
@@ -352,6 +368,7 @@ class ModelCallApplication:
                 result,
                 exc,
                 classification=ModelCallFailureClass.APPLICATION_RESULT_CONTRACT,
+                paid_calls=paid_calls,
             )
             raise
         try:
@@ -367,6 +384,7 @@ class ModelCallApplication:
                 result,
                 exc,
                 classification=ModelCallFailureClass.APPLICATION_STRUCTURED_OUTPUT,
+                paid_calls=paid_calls,
             )
             raise
 
@@ -395,13 +413,14 @@ class ModelCallApplication:
         error: ModelGatewayError,
         *,
         classification: ModelCallFailureClass,
+        paid_calls: int = 1,
     ) -> None:
         event = failure_event(
             event_id=self._id_factory(),
             occurred_at=self._clock(),
             attempt=attempt,
             error=error,
-            paid_calls=1,
+            paid_calls=paid_calls,
             classification=classification,
             result=result,
         )

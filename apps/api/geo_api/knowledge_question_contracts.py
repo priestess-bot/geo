@@ -176,7 +176,17 @@ class QuestionSetCreateRequest(QuestionContract):
 class FinalizeQuestionCoveragePackRequest(QuestionContract):
     name: str = Field(min_length=1, max_length=300)
     generation_job_id: UUID
-    included_candidate_ids: list[UUID] = Field(min_length=90, max_length=100)
+    included_candidate_ids: list[UUID] = Field(min_length=100, max_length=100)
+    series_id: UUID | None = None
+    previous_version_id: UUID | None = None
+
+    @model_validator(mode="after")
+    def version_shape(self) -> "FinalizeQuestionCoveragePackRequest":
+        if (self.series_id is None) != (self.previous_version_id is None):
+            raise ValueError(
+                "QuestionSet series_id and previous_version_id must be supplied together"
+            )
+        return self
 
 
 class QuestionSetItemView(QuestionContract):

@@ -114,6 +114,7 @@ const suite = {
   admission_policy_id: POLICY_ID,
   admission_policy_hash: "a".repeat(64),
   questions: [{ question_id: "best-accounting-platform-au", question_version: "v1", text_hash: "5".repeat(64) }],
+  question_set_item_ids: ["best-accounting-platform-au"],
   source_stratum: {
     platform: "openai",
     surface: "openai_api",
@@ -150,6 +151,32 @@ const suite = {
   frozen_by: ACTOR_ID,
   frozen_at: NOW,
   suite_hash: HASH.suite
+};
+
+const pilotQuestionIds = Array.from({ length: 100 }, (_, index) => (
+  `pilot-question-${String(index + 1).padStart(3, "0")}`
+));
+const pilotSuiteInputOption = {
+  option_key: "fixture-pilot-100",
+  display_name: "澳洲英文 100 题冻结问题集",
+  question_set_id: QUESTION_SET_ID,
+  question_set_version: "question-set-au-v2",
+  question_set_hash: "4".repeat(64),
+  question_count: pilotQuestionIds.length,
+  question_set_item_ids: pilotQuestionIds,
+  adapter_release_id: ADAPTER_RELEASE_ID,
+  adapter_release_hash: "5".repeat(64),
+  model_release_id: MODEL_RELEASE_ID,
+  model_release_hash: "6".repeat(64),
+  route_policy_id: ROUTE_POLICY_ID,
+  route_policy_hash: "7".repeat(64),
+  runtime_manifest_id: RUNTIME_MANIFEST_ID,
+  runtime_manifest_hash: "8".repeat(64),
+  runtime_option_id: RUNTIME_OPTION_ID,
+  runtime_option_hash: "9".repeat(64),
+  admission_policy_id: POLICY_ID,
+  admission_policy_hash: "a".repeat(64),
+  source_stratum: suite.source_stratum
 };
 
 const tasks = taskKeys.map((taskKey, index) => ({
@@ -825,7 +852,32 @@ const server = http.createServer(async (request, response) => {
     });
   }
   if (path === `${base}/sampling/admission-options`) return send(response, { items: [], total: 0 });
-  if (path === `${base}/sampling/suite-input-options`) return send(response, { items: [], total: 0 });
+  if (path === `${base}/sampling/suite-input-options`) return send(response, { items: [pilotSuiteInputOption], total: 1 });
+  if (path === `${base}/sampling/suites` && request.method === "POST") {
+    if (payload.suite_input_option_key !== pilotSuiteInputOption.option_key) {
+      return problem(response, 422, "Unknown fixture suite input option");
+    }
+    const selectedIds = payload.question_set_item_ids;
+    if (!Array.isArray(selectedIds) || selectedIds.length !== 10 || new Set(selectedIds).size !== 10) {
+      return problem(response, 422, "The pilot must contain ten unique question IDs");
+    }
+    const created = {
+      ...suite,
+      id: uuid(850),
+      question_set_version: pilotSuiteInputOption.question_set_version,
+      question_set_hash: pilotSuiteInputOption.question_set_hash,
+      questions: selectedIds.map((questionId) => ({
+        question_id: questionId,
+        question_version: "v2",
+        text_hash: "5".repeat(64)
+      })),
+      question_set_item_ids: selectedIds,
+      repetitions: payload.repetitions,
+      statistics_method_version: payload.statistics_method_version,
+      suite_hash: "8".repeat(64)
+    };
+    return send(response, created, 201);
+  }
   if (path === `${base}/sampling/suites`) return send(response, { items: [suite, manualSuite], total: 2 });
   if (path === `${base}/sampling/runs`) return send(response, { items: [runDetail.run, manualRunDetail.run], total: 2 });
   if (path === `${base}/sampling/manual-evidence-imports`) return send(response, { items: [manualEvidenceImport], total: 1 });

@@ -23,7 +23,10 @@ from geo_core.model_gateway import (
     PromptReleaseAdmission,
     RequestedModelLocation,
 )
-from geo_core.model_gateway.application_support import ModelCallExecution
+from geo_core.model_gateway.application_support import (
+    ModelCallExecution,
+    maximum_paid_calls_per_attempt,
+)
 from geo_core.model_gateway.artifact_recovery import (
     ProviderArtifactRecoveryPort,
     ProviderArtifactRecoveryRequest,
@@ -49,6 +52,9 @@ from geo_core.sampling.postgres_worker_repository import (
     PostgresWorkflowCSamplingRepository,
     SamplingExecutionState,
     WorkflowCSamplingWorkerError,
+)
+from geo_core.sampling.provider_model_retries import (
+    execute_provider_model_attempt_chain,
 )
 from geo_core.workflow_c_artifacts.reader import (
     PostgresWorkflowCManualArtifactReader,
@@ -183,6 +189,12 @@ class PostgresProviderSamplingOperation:
         state: SamplingExecutionState,
     ) -> ModelCallExecution:
         prompt = spec.prompt.as_provider_prompt()
+        source = state.source.source
+        expected_provider = gateway_provider_for_source(
+            platform=source.platform,
+            surface=source.surface,
+            capture_method=source.capture_method,
+        )
         admission = PromptReleaseAdmission(
             project_id=lease.project_id,
             admission_mode=ModelCallAdmissionMode.RUNTIME_FROZEN,
@@ -197,6 +209,7 @@ class PostgresProviderSamplingOperation:
             test_set_hash=None,
             state_status=PromptAdmissionState.FROZEN,
         )
+        paid_calls_per_attempt = maximum_paid_calls_per_attempt(expected_provider)
         self._model_runtime.load_or_admit_claimed_job(
             NewModelCallJobAdmissionRequest(
                 project_id=lease.project_id,
@@ -212,19 +225,13 @@ class PostgresProviderSamplingOperation:
                 prompt_bundle_hash=prompt.bundle_hash,
                 output_schema_hash=prompt.output_schema_hash,
                 application_output_schema_hash=prompt.application_output_schema_hash,
-                maximum_paid_calls=1,
+                maximum_paid_calls=paid_calls_per_attempt * lease.max_attempts,
                 maximum_concurrent_calls=1,
                 admitted_by=spec.admitted_by,
                 admitted_at=spec.admitted_at,
             )
         )
         runtime = self._model_runtime.load(project_id=lease.project_id, job_id=lease.job_id)
-        source = state.source.source
-        expected_provider = gateway_provider_for_source(
-            platform=source.platform,
-            surface=source.surface,
-            capture_method=source.capture_method,
-        )
         if (
             runtime.job.runtime_option_id != spec.runtime_selection_id
             or runtime.job.route.provider != expected_provider
@@ -235,6 +242,8 @@ class PostgresProviderSamplingOperation:
             or runtime.job.prompt_release_hash != prompt.release_hash
         ):
             raise WorkflowCSamplingWorkerError("frozen model admission differs from sampling Job")
+        idempotency_prefix = f"workflow-c-provider:{spec.attempt_id}"
+        initial_idempotency_key = f"{idempotency_prefix}:initial"
         request = ModelGatewayRequest(
             messages=(
                 {"role": "system", "content": prompt.system_message},
@@ -253,7 +262,7 @@ class PostgresProviderSamplingOperation:
             tool_mode=prompt.tool_mode,
             search_mode=source.search_mode,
             deadline_at=spec.deadline_at,
-            idempotency_key=f"workflow-c-provider:{spec.attempt_id}:initial",
+            idempotency_key=initial_idempotency_key,
             capture_method=ModelCaptureMethod(source.capture_method.value),
             provider_secret_handle=runtime.job.provider_secret_handle,
             requested_location=RequestedModelLocation(
@@ -295,7 +304,13 @@ class PostgresProviderSamplingOperation:
             lease_for=self._lease_for,
             interval=min(self._lease_for / 3, timedelta(seconds=30)),
         ) as heartbeat:
-            execution = runtime.application.execute(command, policy=runtime.policy)
+            execution = execute_provider_model_attempt_chain(
+                application=runtime.application,
+                initial_command=command,
+                policy=runtime.policy,
+                durable_attempt_count=lease.attempt_count,
+                idempotency_prefix=idempotency_prefix,
+            )
             heartbeat.raise_if_stopped()
         return execution
 

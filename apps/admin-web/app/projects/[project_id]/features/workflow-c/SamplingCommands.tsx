@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect, useState } from "react";
 
 import {
   cancelSamplingRunAction,
@@ -53,6 +53,24 @@ export function SamplingCommands({
   const suiteDisabled = !canOperate || suitePending || !suiteInputOptions.length;
   const runDisabled = !canOperate || runPending || !suites.length;
   const selectedRunId = selectedRun?.id || runs[0]?.id || "";
+  const [selectedOptionKey, setSelectedOptionKey] = useState(suiteInputOptions[0]?.option_key || "");
+  const selectedOption = suiteInputOptions.find((option) => option.option_key === selectedOptionKey);
+  const questionIds = selectedOption?.question_set_item_ids || [];
+  const questionIdSignature = questionIds.join("\u0000");
+  const [selectedQuestionIds, setSelectedQuestionIds] = useState<string[]>(() => (
+    defaultPilotSelection(questionIds)
+  ));
+  useEffect(() => {
+    setSelectedQuestionIds(defaultPilotSelection(questionIds));
+  }, [selectedOptionKey, questionIdSignature]);
+  const pilotSelectionRequired = questionIds.length > 10;
+  const pilotSelectionValid = !pilotSelectionRequired
+    || (selectedQuestionIds.length === 10 && new Set(selectedQuestionIds).size === 10);
+  const pilotSelectionError = pilotSelectionRequired && !pilotSelectionValid
+    ? selectedQuestionIds.length !== 10
+      ? "试运行必须选择 10 个问题。"
+      : "试运行的问题不能重复。"
+    : null;
 
   return (
     <section className={styles.commandBand} aria-labelledby="sampling-command-heading">
@@ -63,14 +81,54 @@ export function SamplingCommands({
       <div className={styles.commandGrid}>
         <form action={suiteAction} className={styles.commandForm}>
           <CommandIdentity commandKey={commandKeys.createSuite} projectId={projectId} />
-          <label><span>冻结输入</span><select disabled={suiteDisabled} name="suite_input_option_key" required><option value="">选择发布输入</option>{suiteInputOptions.map((option) => <option key={option.option_key} value={option.option_key}>{option.display_name} · {option.question_count} 个问题</option>)}</select></label>
+          <label><span>冻结输入</span><select disabled={suiteDisabled} name="suite_input_option_key" onChange={(event) => setSelectedOptionKey(event.target.value)} required value={selectedOptionKey}><option value="">选择发布输入</option>{suiteInputOptions.map((option) => <option key={option.option_key} value={option.option_key}>{option.display_name} · {option.question_count} 个问题</option>)}</select></label>
+          {pilotSelectionRequired ? (
+            <fieldset className={styles.pilotSelection}>
+              <legend>试运行问题（10 个）</legend>
+              <p>该输入共有 {questionIds.length} 个已冻结问题。先选出本次试运行的 10 个问题，默认选中第 1、11、21、31、41、51、61、71、81、91 题；创建后选择会随套件冻结。</p>
+              <div className={styles.pilotSelectionGrid}>
+                {selectedQuestionIds.map((selectedId, slot) => (
+                  <label key={`pilot-question-${slot}`}>
+                    <span>问题 {slot + 1}</span>
+                    <select
+                      aria-label={`试运行问题 ${slot + 1}`}
+                      disabled={suiteDisabled}
+                      name="question_set_item_ids"
+                      onChange={(event) => {
+                        const nextId = event.target.value;
+                        setSelectedQuestionIds((current) => current.map((item, index) => (
+                          index === slot ? nextId : item
+                        )));
+                      }}
+                      required
+                      value={selectedId}
+                    >
+                      {questionIds.map((questionId, index) => {
+                        const usedByAnotherSlot = selectedQuestionIds.some((item, selectedIndex) => (
+                          selectedIndex !== slot && item === questionId
+                        ));
+                        return (
+                          <option disabled={usedByAnotherSlot} key={questionId} title={questionId} value={questionId}>
+                            第 {index + 1} 题 · {questionId}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </label>
+                ))}
+              </div>
+              {pilotSelectionError ? <small className={styles.pilotSelectionError}>{pilotSelectionError}</small> : null}
+            </fieldset>
+          ) : selectedOption ? (
+            <small className={styles.compatibilityNote}>该输入包含 {questionIds.length} 个问题，将按兼容模式全部冻结。</small>
+          ) : null}
           <label><span>每题重复</span><input defaultValue="10" disabled={suiteDisabled} max="100" min="1" name="repetitions" required type="number" /><small>Provider API 固定 10 次；自动界面可用 1 次做技术实跑，但至少 3 次才可能形成统计证据。</small></label>
           <label><span>统计合同</span><select disabled={suiteDisabled} name="statistics_method_version"><option value="paired-bootstrap-holm-v1">配对 Bootstrap + Holm v1</option></select></label>
           <label><span>运行任务上限</span><input defaultValue="1000" disabled={suiteDisabled} min="1" name="max_planned_tasks" required type="number" /></label>
           <label><span>日任务上限</span><input defaultValue="1000" disabled={suiteDisabled} min="1" name="max_daily_tasks" required type="number" /></label>
           <label><span>最小间隔（秒）</span><input defaultValue="2" disabled={suiteDisabled} min="0" name="minimum_request_interval_seconds" required type="number" /></label>
           <label><span>最大并发</span><input defaultValue="1" disabled={suiteDisabled} min="1" name="max_concurrency" required type="number" /></label>
-          <button disabled={suiteDisabled} type="submit">{suitePending ? "冻结中..." : "创建采样套件"}</button>
+          <button disabled={suiteDisabled || !pilotSelectionValid} type="submit">{suitePending ? "冻结中..." : "创建采样套件"}</button>
         </form>
 
         <form action={runAction} className={styles.commandForm}>
@@ -128,4 +186,12 @@ function suitePurpose(suite: SamplingSuite, policies: AdmissionPolicy[]): string
   return policy?.authorized_purposes.length === 1
     ? policy.authorized_purposes[0]
     : "用途暂不可用";
+}
+
+function defaultPilotSelection(questionIds: readonly string[]): string[] {
+  if (questionIds.length <= 10) return [...questionIds];
+  if (questionIds.length === 100) {
+    return Array.from({ length: 10 }, (_, index) => questionIds[index * 10]);
+  }
+  return questionIds.slice(0, 10);
 }

@@ -7,10 +7,45 @@ environment dependencies so they can be used from any runtime or test harness.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import StrEnum
+
+
+class SearchAggregationErrorCode(StrEnum):
+    """Actionable failure classes shared by external search providers."""
+
+    CONFIGURATION = "configuration"
+    AUTHENTICATION = "authentication"
+    QUOTA = "quota"
+    RATE_LIMIT = "rate_limit"
+    TIMEOUT = "timeout"
+    NETWORK = "network"
+    PROVIDER_UNAVAILABLE = "provider_unavailable"
+    INVALID_RESPONSE = "invalid_response"
+    PROVIDER_ERROR = "provider_error"
 
 
 class SearchAggregationError(RuntimeError):
-    """Raised when a search aggregation operation cannot be completed."""
+    """Raised when a search aggregation operation cannot be completed.
+
+    The message is deliberately safe for logs. Callers use ``code`` and
+    ``retryable`` to decide whether a durable Attempt may be retried; provider
+    response bodies and credentials never belong in this exception.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: SearchAggregationErrorCode = SearchAggregationErrorCode.PROVIDER_ERROR,
+        retryable: bool = False,
+        status_code: int | None = None,
+        retry_after_seconds: float | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.code = SearchAggregationErrorCode(code)
+        self.retryable = retryable
+        self.status_code = status_code
+        self.retry_after_seconds = retry_after_seconds
 
 
 @dataclass(frozen=True)

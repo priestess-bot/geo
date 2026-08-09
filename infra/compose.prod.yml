@@ -23,6 +23,7 @@ x-service-security: &service-security
 x-api-common-environment: &api-common-environment
   GEO_DEPLOYMENT_ENVIRONMENT: production
   GEO_RELEASE_VERSION: ${GEO_RELEASE_VERSION:?set GEO_RELEASE_VERSION}
+  GEO_RELEASE_COMMIT: ${GEO_RELEASE_COMMIT:?set the current 40-character Git commit}
   GEO_DEV_TOOLS_ENABLED: "0"
   GEO_DB_POOL_ENABLED: "1"
   GEO_DB_POOL_MAX_SIZE: "10"
@@ -353,6 +354,7 @@ services:
     environment:
       GEO_DEPLOYMENT_ENVIRONMENT: production
       GEO_RELEASE_VERSION: ${GEO_RELEASE_VERSION:?set GEO_RELEASE_VERSION}
+      GEO_RELEASE_COMMIT: ${GEO_RELEASE_COMMIT:?set the current 40-character Git commit}
       GEO_DATABASE_URL_FILE: /run/secrets/worker_database_url
       GEO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
       GEO_RUNTIME_HEARTBEAT_INTERVAL_SECONDS: ${GEO_RUNTIME_HEARTBEAT_INTERVAL_SECONDS:-10}
@@ -445,6 +447,7 @@ services:
     environment:
       GEO_DEPLOYMENT_ENVIRONMENT: production
       GEO_RELEASE_VERSION: ${GEO_RELEASE_VERSION:?set GEO_RELEASE_VERSION}
+      GEO_RELEASE_COMMIT: ${GEO_RELEASE_COMMIT:?set the current 40-character Git commit}
       GEO_DATABASE_URL_FILE: /run/secrets/worker_database_url
       GEO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
       GEO_RUNTIME_HEARTBEAT_INTERVAL_SECONDS: ${GEO_RUNTIME_HEARTBEAT_INTERVAL_SECONDS:-10}
@@ -489,6 +492,7 @@ services:
     environment:
       GEO_DEPLOYMENT_ENVIRONMENT: production
       GEO_RELEASE_VERSION: ${GEO_RELEASE_VERSION:?set GEO_RELEASE_VERSION}
+      GEO_RELEASE_COMMIT: ${GEO_RELEASE_COMMIT:?set the current 40-character Git commit}
       GEO_DATABASE_URL_FILE: /run/secrets/worker_database_url
       GEO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
       GEO_RUNTIME_HEARTBEAT_INTERVAL_SECONDS: ${GEO_RUNTIME_HEARTBEAT_INTERVAL_SECONDS:-10}
@@ -550,6 +554,7 @@ services:
     environment:
       GEO_DEPLOYMENT_ENVIRONMENT: production
       GEO_RELEASE_VERSION: ${GEO_RELEASE_VERSION:?set GEO_RELEASE_VERSION}
+      GEO_RELEASE_COMMIT: ${GEO_RELEASE_COMMIT:?set the current 40-character Git commit}
       GEO_DATABASE_URL_FILE: /run/secrets/worker_database_url
       GEO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
       GEO_RUNTIME_HEARTBEAT_INTERVAL_SECONDS: ${GEO_RUNTIME_HEARTBEAT_INTERVAL_SECONDS:-10}
@@ -592,6 +597,7 @@ services:
     environment:
       GEO_DEPLOYMENT_ENVIRONMENT: production
       GEO_RELEASE_VERSION: ${GEO_RELEASE_VERSION:?set GEO_RELEASE_VERSION}
+      GEO_RELEASE_COMMIT: ${GEO_RELEASE_COMMIT:?set the current 40-character Git commit}
       GEO_DATABASE_URL_FILE: /run/secrets/worker_database_url
       GEO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
       GEO_RUNTIME_HEARTBEAT_INTERVAL_SECONDS: ${GEO_RUNTIME_HEARTBEAT_INTERVAL_SECONDS:-10}
@@ -653,6 +659,7 @@ services:
     environment:
       GEO_DEPLOYMENT_ENVIRONMENT: production
       GEO_RELEASE_VERSION: ${GEO_RELEASE_VERSION:?set GEO_RELEASE_VERSION}
+      GEO_RELEASE_COMMIT: ${GEO_RELEASE_COMMIT:?set the current 40-character Git commit}
       GEO_DATABASE_URL_FILE: /run/secrets/worker_database_url
       GEO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
       GEO_RUNTIME_HEARTBEAT_INTERVAL_SECONDS: ${GEO_RUNTIME_HEARTBEAT_INTERVAL_SECONDS:-10}
@@ -722,6 +729,7 @@ services:
     environment:
       GEO_DEPLOYMENT_ENVIRONMENT: production
       GEO_RELEASE_VERSION: ${GEO_RELEASE_VERSION:?set GEO_RELEASE_VERSION}
+      GEO_RELEASE_COMMIT: ${GEO_RELEASE_COMMIT:?set the current 40-character Git commit}
       GEO_DATABASE_URL_FILE: /run/secrets/worker_database_url
       GEO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
       GEO_RUNTIME_HEARTBEAT_INTERVAL_SECONDS: ${GEO_RUNTIME_HEARTBEAT_INTERVAL_SECONDS:-10}
@@ -762,6 +770,7 @@ services:
       API_INTERNAL_BASE_URL: http://internal-api:8000
       GEO_DEPLOYMENT_ENVIRONMENT: production
       GEO_RELEASE_VERSION: ${GEO_RELEASE_VERSION:?set GEO_RELEASE_VERSION}
+      GEO_RELEASE_COMMIT: ${GEO_RELEASE_COMMIT:?set the current 40-character Git commit}
       CUSTOMER_WEB_BASE_URL: ${GEO_CUSTOMER_WEB_BASE_URL:?set GEO_CUSTOMER_WEB_BASE_URL}
       GEO_ADMIN_OIDC_LOGIN_URL: ${GEO_ADMIN_OIDC_LOGIN_URL:?set GEO_ADMIN_OIDC_LOGIN_URL}
       GEO_ADMIN_OIDC_LOGOUT_URL: ${GEO_ADMIN_OIDC_LOGOUT_URL:?set GEO_ADMIN_OIDC_LOGOUT_URL}
@@ -797,6 +806,7 @@ services:
       API_CUSTOMER_BASE_URL: http://customer-api:8000
       GEO_DEPLOYMENT_ENVIRONMENT: production
       GEO_RELEASE_VERSION: ${GEO_RELEASE_VERSION:?set GEO_RELEASE_VERSION}
+      GEO_RELEASE_COMMIT: ${GEO_RELEASE_COMMIT:?set the current 40-character Git commit}
       ADMIN_WEB_BASE_URL: ${GEO_ADMIN_WEB_BASE_URL:?set GEO_ADMIN_WEB_BASE_URL}
       PORT: "3000"
     ports:

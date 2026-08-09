@@ -12,7 +12,12 @@ from geo_core.model_gateway.contracts import ModelCaptureMethod, ModelPolicy, Mo
 from geo_core.model_gateway.identity import canonical_json_hash
 from geo_core.model_gateway.ports import ModelCallJobAdmission, ModelCallUnitOfWorkFactory
 from geo_core.model_gateway.provider_adapters.microsoft import MicrosoftAgentReference
-from geo_core.model_gateway.releases import AdapterRelease, ModelRelease, ModelRoute
+from geo_core.model_gateway.releases import (
+    AdapterRelease,
+    ModelRelease,
+    ModelRoute,
+    provider_secret_purpose,
+)
 from geo_core.model_gateway.runtime_manifest import (
     ModelGatewayRuntimeManifest,
     ProviderRuntimeDefinition,
@@ -103,7 +108,7 @@ class NewModelCallJobSelection:
             raise ValueError("runtime selection must freeze purpose and search-mode allowlists")
         if self.route.provider != self.adapter_release.provider:
             raise ValueError("runtime selection route differs from Adapter Release")
-        if self.provider_secret_handle.purpose != f"model_provider.{self.route.provider}":
+        if self.provider_secret_handle.purpose != provider_secret_purpose(self.route.provider):
             raise ValueError("runtime selection Secret purpose differs from Provider")
 
 

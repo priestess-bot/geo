@@ -24,8 +24,8 @@ from geo_core.model_gateway.provider_adapters import (
     MicrosoftBingGroundingAdapter,
     OpenAIResponsesAdapter,
     PerplexitySonarAdapter,
+    SerpApiGoogleSearchAdapter,
 )
-
 from .provider_adapter_test_support import (
     RecordingJsonTransport,
     RecordingProviderArtifactSink,
@@ -33,6 +33,12 @@ from .provider_adapter_test_support import (
     json_response,
     runtime,
 )
+
+
+class _GetCapableTransport(RecordingJsonTransport):
+    def get(self, *, url, headers, params, timeout_seconds):
+        del url, headers, params, timeout_seconds
+        return json_response({})
 
 
 MODELS = {
@@ -169,6 +175,47 @@ def test_full_composition_binds_six_exact_adapter_types_and_passes_gate() -> Non
         composition.router.bind(_route(config, model)).provider
         == config.runtime.adapter_release.provider
         for config, model in zip(configs, models, strict=True)
+    )
+
+
+def test_optional_serpapi_search_adapter_does_not_change_six_provider_gate() -> None:
+    serp_runtime = runtime(
+        "serpapi",
+        model="google-ai-overview-fixture",
+        search_modes=frozenset({"google_search"}),
+        supports_search=True,
+        purpose="geo_measurement",
+    )
+    serp_config = ExactProviderAdapterConfig(
+        runtime=serp_runtime,
+        secret_reference_id=uuid4(),
+    )
+    serp_model = ModelRelease(
+        provider="serpapi",
+        adapter_release_id=serp_config.runtime.adapter_release.adapter_release_id,
+        model_release_id="serpapi-model-fixture-v1",
+        release_hash=hashlib.sha256(b"serpapi-model-fixture-v1").hexdigest(),
+        configured_model="google-ai-overview-fixture",
+        state=ReleaseState.APPROVED,
+    )
+    configs = tuple(_config(provider) for provider in MODELS) + (serp_config,)
+    models = tuple(_model(config) for config in configs[:-1]) + (serp_model,)
+    composition = build_exact_provider_composition(
+        configs=configs,
+        model_releases=models,
+        credential_resolver=StaticCredentialResolver(),
+        artifact_sink=RecordingProviderArtifactSink(),
+        transport_factory=lambda provider, _release: (
+            _GetCapableTransport(json_response({}))
+            if provider == "serpapi"
+            else RecordingJsonTransport(json_response({}))
+        ),
+    )
+
+    verify_six_provider_completeness(composition)
+    assert isinstance(
+        composition.adapters[("serpapi", serp_config.runtime.adapter_release.adapter_release_id)],
+        SerpApiGoogleSearchAdapter,
     )
 
 

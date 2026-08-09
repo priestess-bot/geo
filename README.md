@@ -19,6 +19,11 @@ GEO Platform 是一个以证据为基础的 AI 搜索监测与渠道投放系统
 这些是 `infra/geo-stack.env.example` 与 canonical 单栈 Compose 的默认端口。端口冲突时可以在
 `infra/geo-stack.env` 覆盖对应变量，但验收证据必须记录实际地址。`make dev-up` 仍可用于
 隔离开发测试（默认 3000/3001/8000/8001），不能与 canonical 单栈同时运行，也不承载迁移目标。
+canonical 项目名固定为 `geo`，Dify 项目名固定为 `geo-dify`；历史
+`geo-advinsys-staging-v2` 只是迁移来源。启动和迁移使用
+[`scripts/geo-stack.sh`](scripts/geo-stack.sh)，发布后必须以 `release-info --require-running`
+核对 Git SHA 与实际容器镜像，详细步骤见
+[`GEO 单栈部署与迁移手册`](docs/operations/geo-deploy-and-migration.md)。
 
 ## 一次启动完整开发栈
 

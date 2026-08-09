@@ -98,21 +98,21 @@ class DirectGenerationScenario(SyntheticOnly):
     content_hash: str = field(init=False)
 
     def __post_init__(self) -> None:
-        for value, label in (
+        for identifier, label in (
             (self.id, "Direct Generation scenario ID"),
             (self.project_id, "Direct Generation Project ID"),
             (self.input_snapshot_id, "Direct Generation input snapshot ID"),
         ):
-            _require_uuid(value, label)
+            _require_uuid(identifier, label)
         if self.channel not in STANDARD_STYLE_CHANNELS:
             raise SyntheticLabContractError("Direct Generation channel is unsupported")
-        for value, label in (
+        for text_value, label in (
             (self.persona, "Direct Generation persona"),
             (self.use_case, "Direct Generation use case"),
             (self.subject, "Direct Generation subject"),
             (self.generation_goal, "Direct Generation goal"),
         ):
-            _require_text(value, label)
+            _require_text(text_value, label)
         if len(self.generation_goal) > 4_000:
             raise SyntheticLabContractError("Direct Generation goal exceeds 4000 characters")
         mode = ScenarioMode(self.mode)

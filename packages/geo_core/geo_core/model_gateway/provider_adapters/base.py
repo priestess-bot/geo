@@ -33,7 +33,7 @@ from geo_core.model_gateway.location import (
     ModelLocationControl,
     uncontrolled_model_location,
 )
-from geo_core.model_gateway.releases import AdapterRelease, ReleaseState
+from geo_core.model_gateway.releases import AdapterRelease, ReleaseState, provider_secret_purpose
 from geo_core.model_gateway.provider_adapters.artifacts import ProviderArtifactSink
 from geo_core.model_gateway.schema_validation import (
     validate_output_schema_definition,
@@ -78,6 +78,19 @@ class JsonTransport(Protocol):
         url: str,
         headers: Mapping[str, str],
         payload: Mapping[str, object],
+        timeout_seconds: float,
+    ) -> JsonResponse: ...
+
+
+class JsonGetTransport(Protocol):
+    """Bounded HTTPS JSON GET used by search providers."""
+
+    def get(
+        self,
+        *,
+        url: str,
+        headers: Mapping[str, str],
+        params: Mapping[str, object],
         timeout_seconds: float,
     ) -> JsonResponse: ...
 
@@ -419,7 +432,7 @@ class ProviderJsonAdapter(ABC):
                 handle is None
                 or handle.reference_id != self.secret_reference_id
                 or handle.project_id != request.project_id
-                or handle.purpose != f"model_provider.{self.provider}"
+                or handle.purpose != provider_secret_purpose(self.provider)
             ):
                 raise SecretContractError(
                     "provider request does not carry the exact approved secret version"
@@ -512,6 +525,7 @@ __all__ = [
     "JsonResponse",
     "JsonResponseInvalid",
     "JsonResponseTooLarge",
+    "JsonGetTransport",
     "JsonTransport",
     "ParsedProviderResponse",
     "ProviderAdapterRuntime",

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from threading import RLock
+from typing import Protocol
 from uuid import UUID
 
 from geo_api.workflow_c_sampling_contracts import CreateSamplingSuiteRequest
@@ -40,6 +41,11 @@ class ResolvedSamplingSuiteInputs:
     admission_policy_hash: str
     source_stratum: SamplingSourceStratum
     provider_execution_input: ProviderSamplingExecutionInput | None = None
+
+
+class SamplingInputQuestions(Protocol):
+    @property
+    def questions(self) -> tuple[SamplingQuestion, ...]: ...
 
 
 class WorkflowCSamplingInputCatalog:
@@ -104,3 +110,36 @@ def _key_from_values(
     resolved: ResolvedSamplingSuiteInputs,
 ) -> tuple[object, ...]:
     return (project_id, resolved.option_key)
+
+
+def select_sampling_questions(
+    resolved: SamplingInputQuestions,
+    requested_item_ids: list[str] | None,
+) -> tuple[tuple[SamplingQuestion, ...], tuple[str, ...] | None]:
+    """Resolve the immutable ten-question pilot against the frozen input.
+
+    The selector is deliberately checked against the server-resolved input,
+    rather than accepting question text or hashes from the caller.  ``None``
+    remains a compatibility path for old fixtures with at most ten questions;
+    a production QuestionSet with more questions must submit the explicit
+    ten IDs exposed by the input-option endpoint.
+    """
+    available = {question.question_id: question for question in resolved.questions}
+    if requested_item_ids is None:
+        if len(available) > 10:
+            raise SamplingConflict(
+                "Sampling Suite must explicitly select exactly 10 QuestionSet item IDs"
+            )
+        selected = tuple(resolved.questions)
+        return selected, tuple(question.question_id for question in selected) if len(selected) == 10 else None
+
+    ids = tuple(item.strip() for item in requested_item_ids)
+    if len(ids) != 10 or any(not item for item in ids) or len(set(ids)) != 10:
+        raise SamplingConflict("Sampling Suite selection must contain 10 unique QuestionSet item IDs")
+    missing = [item for item in ids if item not in available]
+    if missing:
+        raise SamplingConflict(
+            "Sampling Suite selection contains QuestionSet item IDs outside the frozen input"
+        )
+    selected = tuple(available[item] for item in ids)
+    return selected, ids

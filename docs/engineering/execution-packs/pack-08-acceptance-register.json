@@ -6,7 +6,7 @@
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         }
       ],
       "fixture_is_not_live": true,
@@ -15,7 +15,7 @@
       "remaining_requirement": "Instantiate this clause per work package; do not accept it recursively.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 174,
+      "roadmap_line": 181,
       "scope_disposition": "TEMPLATE"
     },
     {
@@ -24,7 +24,7 @@
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         }
       ],
       "fixture_is_not_live": true,
@@ -33,7 +33,7 @@
       "remaining_requirement": "Instantiate this clause per work package; do not accept it recursively.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 175,
+      "roadmap_line": 182,
       "scope_disposition": "TEMPLATE"
     },
     {
@@ -42,79 +42,7 @@
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
-        }
-      ],
-      "fixture_is_not_live": true,
-      "id_kind": "template",
-      "local_controllable_status": "TEMPLATE",
-      "remaining_requirement": "Instantiate this clause per work package; do not accept it recursively.",
-      "roadmap_checkbox_is_not_derived": false,
-      "roadmap_checked": false,
-      "roadmap_line": 176,
-      "scope_disposition": "TEMPLATE"
-    },
-    {
-      "acceptance_status": "TEMPLATE",
-      "check_id": "DOR-04",
-      "evidence_refs": [
-        {
-          "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
-        }
-      ],
-      "fixture_is_not_live": true,
-      "id_kind": "template",
-      "local_controllable_status": "TEMPLATE",
-      "remaining_requirement": "Instantiate this clause per work package; do not accept it recursively.",
-      "roadmap_checkbox_is_not_derived": false,
-      "roadmap_checked": false,
-      "roadmap_line": 177,
-      "scope_disposition": "TEMPLATE"
-    },
-    {
-      "acceptance_status": "TEMPLATE",
-      "check_id": "DOR-05",
-      "evidence_refs": [
-        {
-          "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
-        }
-      ],
-      "fixture_is_not_live": true,
-      "id_kind": "template",
-      "local_controllable_status": "TEMPLATE",
-      "remaining_requirement": "Instantiate this clause per work package; do not accept it recursively.",
-      "roadmap_checkbox_is_not_derived": false,
-      "roadmap_checked": false,
-      "roadmap_line": 178,
-      "scope_disposition": "TEMPLATE"
-    },
-    {
-      "acceptance_status": "TEMPLATE",
-      "check_id": "DOR-06",
-      "evidence_refs": [
-        {
-          "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
-        }
-      ],
-      "fixture_is_not_live": true,
-      "id_kind": "template",
-      "local_controllable_status": "TEMPLATE",
-      "remaining_requirement": "Instantiate this clause per work package; do not accept it recursively.",
-      "roadmap_checkbox_is_not_derived": false,
-      "roadmap_checked": false,
-      "roadmap_line": 179,
-      "scope_disposition": "TEMPLATE"
-    },
-    {
-      "acceptance_status": "TEMPLATE",
-      "check_id": "DOD-01",
-      "evidence_refs": [
-        {
-          "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         }
       ],
       "fixture_is_not_live": true,
@@ -128,11 +56,11 @@
     },
     {
       "acceptance_status": "TEMPLATE",
-      "check_id": "DOD-02",
+      "check_id": "DOR-04",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         }
       ],
       "fixture_is_not_live": true,
@@ -146,11 +74,11 @@
     },
     {
       "acceptance_status": "TEMPLATE",
-      "check_id": "DOD-03",
+      "check_id": "DOR-05",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         }
       ],
       "fixture_is_not_live": true,
@@ -164,11 +92,11 @@
     },
     {
       "acceptance_status": "TEMPLATE",
-      "check_id": "DOD-04",
+      "check_id": "DOR-06",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         }
       ],
       "fixture_is_not_live": true,
@@ -182,11 +110,11 @@
     },
     {
       "acceptance_status": "TEMPLATE",
-      "check_id": "DOD-05",
+      "check_id": "DOD-01",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         }
       ],
       "fixture_is_not_live": true,
@@ -195,7 +123,79 @@
       "remaining_requirement": "Instantiate this clause per work package; do not accept it recursively.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 187,
+      "roadmap_line": 190,
+      "scope_disposition": "TEMPLATE"
+    },
+    {
+      "acceptance_status": "TEMPLATE",
+      "check_id": "DOD-02",
+      "evidence_refs": [
+        {
+          "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
+        }
+      ],
+      "fixture_is_not_live": true,
+      "id_kind": "template",
+      "local_controllable_status": "TEMPLATE",
+      "remaining_requirement": "Instantiate this clause per work package; do not accept it recursively.",
+      "roadmap_checkbox_is_not_derived": false,
+      "roadmap_checked": false,
+      "roadmap_line": 191,
+      "scope_disposition": "TEMPLATE"
+    },
+    {
+      "acceptance_status": "TEMPLATE",
+      "check_id": "DOD-03",
+      "evidence_refs": [
+        {
+          "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
+        }
+      ],
+      "fixture_is_not_live": true,
+      "id_kind": "template",
+      "local_controllable_status": "TEMPLATE",
+      "remaining_requirement": "Instantiate this clause per work package; do not accept it recursively.",
+      "roadmap_checkbox_is_not_derived": false,
+      "roadmap_checked": false,
+      "roadmap_line": 192,
+      "scope_disposition": "TEMPLATE"
+    },
+    {
+      "acceptance_status": "TEMPLATE",
+      "check_id": "DOD-04",
+      "evidence_refs": [
+        {
+          "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
+        }
+      ],
+      "fixture_is_not_live": true,
+      "id_kind": "template",
+      "local_controllable_status": "TEMPLATE",
+      "remaining_requirement": "Instantiate this clause per work package; do not accept it recursively.",
+      "roadmap_checkbox_is_not_derived": false,
+      "roadmap_checked": false,
+      "roadmap_line": 193,
+      "scope_disposition": "TEMPLATE"
+    },
+    {
+      "acceptance_status": "TEMPLATE",
+      "check_id": "DOD-05",
+      "evidence_refs": [
+        {
+          "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
+        }
+      ],
+      "fixture_is_not_live": true,
+      "id_kind": "template",
+      "local_controllable_status": "TEMPLATE",
+      "remaining_requirement": "Instantiate this clause per work package; do not accept it recursively.",
+      "roadmap_checkbox_is_not_derived": false,
+      "roadmap_checked": false,
+      "roadmap_line": 194,
       "scope_disposition": "TEMPLATE"
     },
     {
@@ -204,7 +204,7 @@
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         }
       ],
       "fixture_is_not_live": true,
@@ -213,7 +213,7 @@
       "remaining_requirement": "Instantiate this clause per work package; do not accept it recursively.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 188,
+      "roadmap_line": 195,
       "scope_disposition": "TEMPLATE"
     },
     {
@@ -222,7 +222,7 @@
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         }
       ],
       "fixture_is_not_live": true,
@@ -231,7 +231,7 @@
       "remaining_requirement": "Instantiate this clause per work package; do not accept it recursively.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 189,
+      "roadmap_line": 196,
       "scope_disposition": "TEMPLATE"
     },
     {
@@ -261,7 +261,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 841,
+      "roadmap_line": 848,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -291,7 +291,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 842,
+      "roadmap_line": 849,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -321,7 +321,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 843,
+      "roadmap_line": 850,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -351,7 +351,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 844,
+      "roadmap_line": 851,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -381,7 +381,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 845,
+      "roadmap_line": 852,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -411,7 +411,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 846,
+      "roadmap_line": 853,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -441,7 +441,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 847,
+      "roadmap_line": 854,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -471,7 +471,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 851,
+      "roadmap_line": 858,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -501,7 +501,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 852,
+      "roadmap_line": 859,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -531,7 +531,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 853,
+      "roadmap_line": 860,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -561,7 +561,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 854,
+      "roadmap_line": 861,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -591,7 +591,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 855,
+      "roadmap_line": 862,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -621,7 +621,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 856,
+      "roadmap_line": 863,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -651,7 +651,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 857,
+      "roadmap_line": 864,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -681,7 +681,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 858,
+      "roadmap_line": 865,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -697,9 +697,9 @@
       "id_kind": "acceptance",
       "local_controllable_status": "LOCAL_COMPLETE",
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
-      "roadmap_checkbox_is_not_derived": false,
-      "roadmap_checked": false,
-      "roadmap_line": 862,
+      "roadmap_checkbox_is_not_derived": true,
+      "roadmap_checked": true,
+      "roadmap_line": 869,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -717,7 +717,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 863,
+      "roadmap_line": 870,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -735,7 +735,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 864,
+      "roadmap_line": 871,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -751,9 +751,9 @@
       "id_kind": "acceptance",
       "local_controllable_status": "LOCAL_COMPLETE",
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
-      "roadmap_checkbox_is_not_derived": false,
-      "roadmap_checked": false,
-      "roadmap_line": 865,
+      "roadmap_checkbox_is_not_derived": true,
+      "roadmap_checked": true,
+      "roadmap_line": 872,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -769,9 +769,9 @@
       "id_kind": "acceptance",
       "local_controllable_status": "LOCAL_COMPLETE",
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
-      "roadmap_checkbox_is_not_derived": false,
-      "roadmap_checked": false,
-      "roadmap_line": 866,
+      "roadmap_checkbox_is_not_derived": true,
+      "roadmap_checked": true,
+      "roadmap_line": 873,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -789,7 +789,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 867,
+      "roadmap_line": 874,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -807,7 +807,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 868,
+      "roadmap_line": 875,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -816,7 +816,7 @@
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         }
       ],
       "fixture_is_not_live": true,
@@ -825,7 +825,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": true,
       "roadmap_checked": true,
-      "roadmap_line": 872,
+      "roadmap_line": 879,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -834,7 +834,7 @@
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         }
       ],
       "fixture_is_not_live": true,
@@ -843,7 +843,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": true,
       "roadmap_checked": true,
-      "roadmap_line": 873,
+      "roadmap_line": 880,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -852,7 +852,7 @@
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         }
       ],
       "fixture_is_not_live": true,
@@ -861,7 +861,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": true,
       "roadmap_checked": true,
-      "roadmap_line": 874,
+      "roadmap_line": 881,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -870,7 +870,7 @@
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         }
       ],
       "fixture_is_not_live": true,
@@ -879,7 +879,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": true,
       "roadmap_checked": true,
-      "roadmap_line": 875,
+      "roadmap_line": 882,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -909,7 +909,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 879,
+      "roadmap_line": 886,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -939,7 +939,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 880,
+      "roadmap_line": 887,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -969,7 +969,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 881,
+      "roadmap_line": 888,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -999,7 +999,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 882,
+      "roadmap_line": 889,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -1029,7 +1029,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 883,
+      "roadmap_line": 890,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -1059,7 +1059,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 884,
+      "roadmap_line": 891,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -1077,7 +1077,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 888,
+      "roadmap_line": 895,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -1095,7 +1095,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 889,
+      "roadmap_line": 896,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -1113,7 +1113,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 890,
+      "roadmap_line": 897,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -1131,7 +1131,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 891,
+      "roadmap_line": 898,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -1153,7 +1153,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 917,
+      "roadmap_line": 924,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -1175,7 +1175,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 918,
+      "roadmap_line": 925,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -1197,7 +1197,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 919,
+      "roadmap_line": 926,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -1219,7 +1219,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 920,
+      "roadmap_line": 927,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -1241,7 +1241,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 921,
+      "roadmap_line": 928,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -1263,7 +1263,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 922,
+      "roadmap_line": 929,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -1285,7 +1285,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 923,
+      "roadmap_line": 930,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -1307,7 +1307,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 924,
+      "roadmap_line": 931,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -1329,7 +1329,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 925,
+      "roadmap_line": 932,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -1351,7 +1351,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 926,
+      "roadmap_line": 933,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -1373,7 +1373,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 930,
+      "roadmap_line": 937,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -1395,7 +1395,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 931,
+      "roadmap_line": 938,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -1417,7 +1417,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 932,
+      "roadmap_line": 939,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -1439,7 +1439,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 933,
+      "roadmap_line": 940,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -1461,7 +1461,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 934,
+      "roadmap_line": 941,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -1483,7 +1483,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 935,
+      "roadmap_line": 942,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -1505,7 +1505,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 936,
+      "roadmap_line": 943,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -1527,7 +1527,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 944,
+      "roadmap_line": 951,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -1549,7 +1549,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 945,
+      "roadmap_line": 952,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -1571,7 +1571,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 946,
+      "roadmap_line": 953,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -1593,7 +1593,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 947,
+      "roadmap_line": 954,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -1615,7 +1615,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 948,
+      "roadmap_line": 955,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -1637,7 +1637,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 949,
+      "roadmap_line": 956,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -1659,7 +1659,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 950,
+      "roadmap_line": 957,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -1681,7 +1681,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 951,
+      "roadmap_line": 958,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -1703,7 +1703,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 952,
+      "roadmap_line": 959,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -1725,7 +1725,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 953,
+      "roadmap_line": 960,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -1747,7 +1747,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 957,
+      "roadmap_line": 964,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -1769,7 +1769,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 958,
+      "roadmap_line": 965,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -1791,7 +1791,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 959,
+      "roadmap_line": 966,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -1813,7 +1813,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 960,
+      "roadmap_line": 967,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -1835,7 +1835,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 961,
+      "roadmap_line": 968,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -1857,7 +1857,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 962,
+      "roadmap_line": 969,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -1879,7 +1879,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 963,
+      "roadmap_line": 970,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -1901,7 +1901,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 964,
+      "roadmap_line": 971,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -1923,7 +1923,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 974,
+      "roadmap_line": 981,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -1945,7 +1945,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 975,
+      "roadmap_line": 982,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -1967,7 +1967,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 976,
+      "roadmap_line": 983,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -1989,7 +1989,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": true,
       "roadmap_checked": true,
-      "roadmap_line": 977,
+      "roadmap_line": 984,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -2011,7 +2011,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 978,
+      "roadmap_line": 985,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -2033,7 +2033,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 979,
+      "roadmap_line": 986,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -2055,7 +2055,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 980,
+      "roadmap_line": 987,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -2077,7 +2077,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 984,
+      "roadmap_line": 991,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -2099,7 +2099,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 985,
+      "roadmap_line": 992,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -2121,7 +2121,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": true,
       "roadmap_checked": true,
-      "roadmap_line": 986,
+      "roadmap_line": 993,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -2143,7 +2143,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 987,
+      "roadmap_line": 994,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -2165,7 +2165,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 988,
+      "roadmap_line": 995,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -2187,7 +2187,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 989,
+      "roadmap_line": 996,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -2209,7 +2209,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 990,
+      "roadmap_line": 997,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -2231,7 +2231,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1000,
+      "roadmap_line": 1007,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -2253,7 +2253,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": true,
       "roadmap_checked": true,
-      "roadmap_line": 1001,
+      "roadmap_line": 1008,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -2275,7 +2275,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": true,
       "roadmap_checked": true,
-      "roadmap_line": 1002,
+      "roadmap_line": 1009,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -2297,7 +2297,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": true,
       "roadmap_checked": true,
-      "roadmap_line": 1003,
+      "roadmap_line": 1010,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -2319,7 +2319,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1004,
+      "roadmap_line": 1011,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -2341,7 +2341,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1005,
+      "roadmap_line": 1012,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -2363,7 +2363,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1009,
+      "roadmap_line": 1016,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -2385,7 +2385,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": true,
       "roadmap_checked": true,
-      "roadmap_line": 1010,
+      "roadmap_line": 1017,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -2407,7 +2407,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": true,
       "roadmap_checked": true,
-      "roadmap_line": 1011,
+      "roadmap_line": 1018,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -2429,7 +2429,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": true,
       "roadmap_checked": true,
-      "roadmap_line": 1012,
+      "roadmap_line": 1019,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -2451,7 +2451,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1013,
+      "roadmap_line": 1020,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -2473,7 +2473,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1014,
+      "roadmap_line": 1021,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -2495,7 +2495,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1022,
+      "roadmap_line": 1029,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -2517,7 +2517,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1023,
+      "roadmap_line": 1030,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -2539,7 +2539,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1024,
+      "roadmap_line": 1031,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -2561,7 +2561,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1025,
+      "roadmap_line": 1032,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -2583,7 +2583,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1026,
+      "roadmap_line": 1033,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -2605,7 +2605,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": true,
       "roadmap_checked": true,
-      "roadmap_line": 1027,
+      "roadmap_line": 1034,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -2627,7 +2627,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": true,
       "roadmap_checked": true,
-      "roadmap_line": 1028,
+      "roadmap_line": 1035,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -2649,7 +2649,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1029,
+      "roadmap_line": 1036,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -2671,7 +2671,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1033,
+      "roadmap_line": 1040,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -2693,7 +2693,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1034,
+      "roadmap_line": 1041,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -2715,7 +2715,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1035,
+      "roadmap_line": 1042,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -2737,7 +2737,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1036,
+      "roadmap_line": 1043,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -2759,7 +2759,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1037,
+      "roadmap_line": 1044,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -2781,7 +2781,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": true,
       "roadmap_checked": true,
-      "roadmap_line": 1038,
+      "roadmap_line": 1045,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -2803,7 +2803,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1039,
+      "roadmap_line": 1046,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -2825,7 +2825,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": true,
       "roadmap_checked": true,
-      "roadmap_line": 1047,
+      "roadmap_line": 1054,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -2847,7 +2847,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": true,
       "roadmap_checked": true,
-      "roadmap_line": 1048,
+      "roadmap_line": 1055,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -2869,7 +2869,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": true,
       "roadmap_checked": true,
-      "roadmap_line": 1049,
+      "roadmap_line": 1056,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -2891,7 +2891,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": true,
       "roadmap_checked": true,
-      "roadmap_line": 1050,
+      "roadmap_line": 1057,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -2913,7 +2913,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1051,
+      "roadmap_line": 1058,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -2935,7 +2935,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1052,
+      "roadmap_line": 1059,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -2957,7 +2957,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1053,
+      "roadmap_line": 1060,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -2979,7 +2979,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1054,
+      "roadmap_line": 1061,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -3001,7 +3001,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": true,
       "roadmap_checked": true,
-      "roadmap_line": 1058,
+      "roadmap_line": 1065,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -3023,7 +3023,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": true,
       "roadmap_checked": true,
-      "roadmap_line": 1059,
+      "roadmap_line": 1066,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -3045,7 +3045,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": true,
       "roadmap_checked": true,
-      "roadmap_line": 1060,
+      "roadmap_line": 1067,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -3067,7 +3067,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": true,
       "roadmap_checked": true,
-      "roadmap_line": 1061,
+      "roadmap_line": 1068,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -3089,7 +3089,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": true,
       "roadmap_checked": true,
-      "roadmap_line": 1062,
+      "roadmap_line": 1069,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -3111,7 +3111,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1063,
+      "roadmap_line": 1070,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -3133,7 +3133,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1064,
+      "roadmap_line": 1071,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -3155,7 +3155,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1065,
+      "roadmap_line": 1072,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -3177,7 +3177,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1075,
+      "roadmap_line": 1082,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -3199,7 +3199,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1076,
+      "roadmap_line": 1083,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -3221,7 +3221,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1077,
+      "roadmap_line": 1084,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -3243,7 +3243,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1078,
+      "roadmap_line": 1085,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -3265,7 +3265,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1079,
+      "roadmap_line": 1086,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -3287,7 +3287,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1080,
+      "roadmap_line": 1087,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -3309,7 +3309,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1081,
+      "roadmap_line": 1088,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -3331,7 +3331,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1082,
+      "roadmap_line": 1089,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -3353,7 +3353,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1083,
+      "roadmap_line": 1090,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -3375,7 +3375,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1084,
+      "roadmap_line": 1091,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -3397,7 +3397,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1085,
+      "roadmap_line": 1092,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -3419,7 +3419,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1086,
+      "roadmap_line": 1093,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -3441,7 +3441,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1090,
+      "roadmap_line": 1097,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -3463,7 +3463,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1091,
+      "roadmap_line": 1098,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -3485,7 +3485,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1092,
+      "roadmap_line": 1099,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -3507,7 +3507,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1093,
+      "roadmap_line": 1100,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -3529,7 +3529,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1094,
+      "roadmap_line": 1101,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -3551,7 +3551,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1095,
+      "roadmap_line": 1102,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -3573,7 +3573,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1096,
+      "roadmap_line": 1103,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -3595,7 +3595,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1097,
+      "roadmap_line": 1104,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -3617,7 +3617,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1098,
+      "roadmap_line": 1105,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -3635,7 +3635,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1104,
+      "roadmap_line": 1111,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -3653,7 +3653,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1105,
+      "roadmap_line": 1112,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -3671,7 +3671,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1106,
+      "roadmap_line": 1113,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -3689,7 +3689,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1107,
+      "roadmap_line": 1114,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -3707,7 +3707,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1121,
+      "roadmap_line": 1128,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -3725,7 +3725,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1122,
+      "roadmap_line": 1129,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -3743,7 +3743,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1123,
+      "roadmap_line": 1130,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -3761,7 +3761,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": true,
       "roadmap_checked": true,
-      "roadmap_line": 1124,
+      "roadmap_line": 1131,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -3779,7 +3779,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": true,
       "roadmap_checked": true,
-      "roadmap_line": 1125,
+      "roadmap_line": 1132,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -3809,7 +3809,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1131,
+      "roadmap_line": 1138,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -3839,7 +3839,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1132,
+      "roadmap_line": 1139,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -3869,7 +3869,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1133,
+      "roadmap_line": 1140,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -3899,7 +3899,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1134,
+      "roadmap_line": 1141,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -3929,7 +3929,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1135,
+      "roadmap_line": 1142,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -3959,7 +3959,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1136,
+      "roadmap_line": 1143,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -3989,7 +3989,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1142,
+      "roadmap_line": 1149,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -4019,7 +4019,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1143,
+      "roadmap_line": 1150,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -4049,7 +4049,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1144,
+      "roadmap_line": 1151,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -4079,7 +4079,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1145,
+      "roadmap_line": 1152,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -4109,7 +4109,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1146,
+      "roadmap_line": 1153,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -4139,7 +4139,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1150,
+      "roadmap_line": 1157,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -4169,7 +4169,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1151,
+      "roadmap_line": 1158,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -4199,7 +4199,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1152,
+      "roadmap_line": 1159,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -4229,7 +4229,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1153,
+      "roadmap_line": 1160,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -4259,7 +4259,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1154,
+      "roadmap_line": 1161,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -4289,7 +4289,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1155,
+      "roadmap_line": 1162,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -4319,7 +4319,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1156,
+      "roadmap_line": 1163,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -4349,7 +4349,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1157,
+      "roadmap_line": 1164,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -4379,7 +4379,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1158,
+      "roadmap_line": 1165,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -4388,7 +4388,7 @@
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         }
       ],
       "fixture_is_not_live": true,
@@ -4397,7 +4397,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1162,
+      "roadmap_line": 1169,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -4406,7 +4406,7 @@
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         }
       ],
       "fixture_is_not_live": true,
@@ -4415,7 +4415,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1163,
+      "roadmap_line": 1170,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -4424,7 +4424,7 @@
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         }
       ],
       "fixture_is_not_live": true,
@@ -4433,7 +4433,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1164,
+      "roadmap_line": 1171,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -4442,7 +4442,7 @@
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         }
       ],
       "fixture_is_not_live": true,
@@ -4451,7 +4451,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1165,
+      "roadmap_line": 1172,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -4469,7 +4469,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1166,
+      "roadmap_line": 1173,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -4487,7 +4487,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1167,
+      "roadmap_line": 1174,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -4505,7 +4505,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1168,
+      "roadmap_line": 1175,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -4531,7 +4531,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1174,
+      "roadmap_line": 1181,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -4557,7 +4557,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1175,
+      "roadmap_line": 1182,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -4583,7 +4583,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1176,
+      "roadmap_line": 1183,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -4609,7 +4609,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1177,
+      "roadmap_line": 1184,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -4635,7 +4635,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1178,
+      "roadmap_line": 1185,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -4661,7 +4661,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1179,
+      "roadmap_line": 1186,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -4687,7 +4687,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1180,
+      "roadmap_line": 1187,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -4713,7 +4713,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1181,
+      "roadmap_line": 1188,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -4739,7 +4739,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1201,
+      "roadmap_line": 1208,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -4765,7 +4765,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1202,
+      "roadmap_line": 1209,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -4791,7 +4791,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1203,
+      "roadmap_line": 1210,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -4817,7 +4817,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1204,
+      "roadmap_line": 1211,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -4839,7 +4839,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": true,
       "roadmap_checked": true,
-      "roadmap_line": 1300,
+      "roadmap_line": 1307,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -4861,7 +4861,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1301,
+      "roadmap_line": 1308,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -4883,7 +4883,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1302,
+      "roadmap_line": 1309,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -4905,7 +4905,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1303,
+      "roadmap_line": 1310,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -4927,7 +4927,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1304,
+      "roadmap_line": 1311,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -4949,7 +4949,7 @@
       "remaining_requirement": "Applicable live/human evidence and an independent verifier are still required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1308,
+      "roadmap_line": 1315,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
@@ -4971,7 +4971,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1309,
+      "roadmap_line": 1316,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -4993,7 +4993,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1310,
+      "roadmap_line": 1317,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -5015,7 +5015,7 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1311,
+      "roadmap_line": 1318,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
     },
     {
@@ -5037,7 +5037,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1312,
+      "roadmap_line": 1319,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -5059,7 +5059,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1313,
+      "roadmap_line": 1320,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -5081,7 +5081,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1317,
+      "roadmap_line": 1324,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -5103,7 +5103,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1318,
+      "roadmap_line": 1325,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -5125,7 +5125,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1319,
+      "roadmap_line": 1326,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -5147,7 +5147,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1320,
+      "roadmap_line": 1327,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -5169,7 +5169,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1321,
+      "roadmap_line": 1328,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -5191,7 +5191,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1322,
+      "roadmap_line": 1329,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -5213,7 +5213,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1326,
+      "roadmap_line": 1333,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -5235,7 +5235,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1327,
+      "roadmap_line": 1334,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -5257,7 +5257,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1328,
+      "roadmap_line": 1335,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -5279,7 +5279,7 @@
       "remaining_requirement": "The non-B sub-scope is locally complete; the atomic ID still needs its excluded-B dependency, applicable live evidence and independent signature.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1329,
+      "roadmap_line": 1336,
       "scope_disposition": "MIXED_ATOMIC"
     },
     {
@@ -5288,139 +5288,7 @@
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
-        },
-        {
-          "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
-          "sha256": "15eb5108e5802f2977b754cc967d69ce2de53a03d0173f4da3cdf2e2362a0e39"
-        }
-      ],
-      "fixture_is_not_live": true,
-      "id_kind": "implementation_ledger",
-      "local_controllable_status": "LOCAL_COMPLETE",
-      "remaining_requirement": "Independent verifier must review the current source-bound evidence.",
-      "roadmap_checkbox_is_not_derived": true,
-      "roadmap_checked": true,
-      "roadmap_line": 1382,
-      "scope_disposition": "INCLUDED_NON_B"
-    },
-    {
-      "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-MIGRATION-2026-07-23",
-      "evidence_refs": [
-        {
-          "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
-        },
-        {
-          "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
-          "sha256": "15eb5108e5802f2977b754cc967d69ce2de53a03d0173f4da3cdf2e2362a0e39"
-        }
-      ],
-      "fixture_is_not_live": true,
-      "id_kind": "implementation_ledger",
-      "local_controllable_status": "LOCAL_COMPLETE",
-      "remaining_requirement": "Independent verifier must review the current source-bound evidence.",
-      "roadmap_checkbox_is_not_derived": true,
-      "roadmap_checked": true,
-      "roadmap_line": 1383,
-      "scope_disposition": "INCLUDED_NON_B"
-    },
-    {
-      "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-SYNTHETIC-POSTGRES-CONTRACT-2026-07-23",
-      "evidence_refs": [
-        {
-          "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
-        },
-        {
-          "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
-          "sha256": "15eb5108e5802f2977b754cc967d69ce2de53a03d0173f4da3cdf2e2362a0e39"
-        }
-      ],
-      "fixture_is_not_live": true,
-      "id_kind": "implementation_ledger",
-      "local_controllable_status": "LOCAL_COMPLETE",
-      "remaining_requirement": "Independent verifier must review the current source-bound evidence.",
-      "roadmap_checkbox_is_not_derived": true,
-      "roadmap_checked": true,
-      "roadmap_line": 1384,
-      "scope_disposition": "INCLUDED_NON_B"
-    },
-    {
-      "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-SYNTHETIC-RETENTION-POSTGRES-2026-07-23",
-      "evidence_refs": [
-        {
-          "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
-        },
-        {
-          "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
-          "sha256": "15eb5108e5802f2977b754cc967d69ce2de53a03d0173f4da3cdf2e2362a0e39"
-        }
-      ],
-      "fixture_is_not_live": true,
-      "id_kind": "implementation_ledger",
-      "local_controllable_status": "LOCAL_COMPLETE",
-      "remaining_requirement": "Independent verifier must review the current source-bound evidence.",
-      "roadmap_checkbox_is_not_derived": true,
-      "roadmap_checked": true,
-      "roadmap_line": 1385,
-      "scope_disposition": "INCLUDED_NON_B"
-    },
-    {
-      "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKER-COMPOSITION-2026-07-23",
-      "evidence_refs": [
-        {
-          "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
-        },
-        {
-          "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
-          "sha256": "15eb5108e5802f2977b754cc967d69ce2de53a03d0173f4da3cdf2e2362a0e39"
-        }
-      ],
-      "fixture_is_not_live": true,
-      "id_kind": "implementation_ledger",
-      "local_controllable_status": "LOCAL_COMPLETE",
-      "remaining_requirement": "Independent verifier must review the current source-bound evidence.",
-      "roadmap_checkbox_is_not_derived": true,
-      "roadmap_checked": true,
-      "roadmap_line": 1387,
-      "scope_disposition": "INCLUDED_NON_B"
-    },
-    {
-      "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-PRODUCER-ATOMIC-2026-07-23",
-      "evidence_refs": [
-        {
-          "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
-        },
-        {
-          "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
-          "sha256": "15eb5108e5802f2977b754cc967d69ce2de53a03d0173f4da3cdf2e2362a0e39"
-        }
-      ],
-      "fixture_is_not_live": true,
-      "id_kind": "implementation_ledger",
-      "local_controllable_status": "LOCAL_COMPLETE",
-      "remaining_requirement": "Independent verifier must review the current source-bound evidence.",
-      "roadmap_checkbox_is_not_derived": true,
-      "roadmap_checked": true,
-      "roadmap_line": 1388,
-      "scope_disposition": "INCLUDED_NON_B"
-    },
-    {
-      "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-JOB-SPECS-2026-07-23",
-      "evidence_refs": [
-        {
-          "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -5438,11 +5306,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-JOB-SPECS-SENSITIVE-BOUNDARY-2026-07-23",
+      "check_id": "IMPL-MIGRATION-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -5460,11 +5328,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-SAMPLING-ADMISSION-POSTGRES-2026-07-23",
+      "check_id": "IMPL-SYNTHETIC-POSTGRES-CONTRACT-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -5482,11 +5350,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-SAMPLING-SUITE-POSTGRES-2026-07-23",
+      "check_id": "IMPL-SYNTHETIC-RETENTION-POSTGRES-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -5504,33 +5372,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-SAMPLING-RUN-POSTGRES-2026-07-23",
+      "check_id": "IMPL-WORKER-COMPOSITION-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
-        },
-        {
-          "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
-          "sha256": "15eb5108e5802f2977b754cc967d69ce2de53a03d0173f4da3cdf2e2362a0e39"
-        }
-      ],
-      "fixture_is_not_live": true,
-      "id_kind": "implementation_ledger",
-      "local_controllable_status": "LOCAL_COMPLETE",
-      "remaining_requirement": "Independent verifier must review the current source-bound evidence.",
-      "roadmap_checkbox_is_not_derived": true,
-      "roadmap_checked": true,
-      "roadmap_line": 1393,
-      "scope_disposition": "INCLUDED_NON_B"
-    },
-    {
-      "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-SAMPLING-ATTEMPT-PRODUCER-2026-07-23",
-      "evidence_refs": [
-        {
-          "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -5548,11 +5394,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-SAMPLING-ATTEMPT-CLAIM-2026-07-23",
+      "check_id": "IMPL-WORKFLOW-C-PRODUCER-ATOMIC-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -5570,11 +5416,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-SAMPLING-CANCEL-POSTGRES-2026-07-23",
+      "check_id": "IMPL-WORKFLOW-C-JOB-SPECS-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -5592,11 +5438,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-SAMPLING-TERMINAL-RECONCILIATION-2026-07-23",
+      "check_id": "IMPL-WORKFLOW-C-JOB-SPECS-SENSITIVE-BOUNDARY-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -5613,12 +5459,12 @@
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
-      "acceptance_status": "BLOCKED_EXTERNAL",
-      "check_id": "IMPL-WORKFLOW-C-PROVIDER-EXECUTION-INPUT-2026-07-23",
+      "acceptance_status": "READY_FOR_REVIEW",
+      "check_id": "IMPL-WORKFLOW-C-SAMPLING-ADMISSION-POSTGRES-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -5628,19 +5474,19 @@
       "fixture_is_not_live": true,
       "id_kind": "implementation_ledger",
       "local_controllable_status": "LOCAL_COMPLETE",
-      "remaining_requirement": "Real live/production identity evidence and independent verification are required.",
-      "roadmap_checkbox_is_not_derived": false,
-      "roadmap_checked": false,
+      "remaining_requirement": "Independent verifier must review the current source-bound evidence.",
+      "roadmap_checkbox_is_not_derived": true,
+      "roadmap_checked": true,
       "roadmap_line": 1398,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-PROVIDER-EXECUTION-INPUT-FOUNDATION-2026-07-23",
+      "check_id": "IMPL-WORKFLOW-C-SAMPLING-SUITE-POSTGRES-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -5658,11 +5504,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-PROVIDER-EXECUTION-INPUT-RETIREMENT-2026-07-23",
+      "check_id": "IMPL-WORKFLOW-C-SAMPLING-RUN-POSTGRES-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -5680,11 +5526,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-PROVIDER-ENQUEUE-CONTROL-2026-07-23",
+      "check_id": "IMPL-WORKFLOW-C-SAMPLING-ATTEMPT-PRODUCER-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -5702,11 +5548,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-SAMPLING-POSTGRES-READS-2026-07-23",
+      "check_id": "IMPL-WORKFLOW-C-SAMPLING-ATTEMPT-CLAIM-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -5724,11 +5570,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-PROVIDER-BULK-ENQUEUE-2026-07-23",
+      "check_id": "IMPL-WORKFLOW-C-SAMPLING-CANCEL-POSTGRES-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -5746,11 +5592,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-SAMPLING-CANCEL-LINEAGE-2026-07-23",
+      "check_id": "IMPL-WORKFLOW-C-SAMPLING-TERMINAL-RECONCILIATION-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -5767,12 +5613,12 @@
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
-      "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-SAMPLING-DURABLE-COMPOSITION-2026-07-23",
+      "acceptance_status": "BLOCKED_EXTERNAL",
+      "check_id": "IMPL-WORKFLOW-C-PROVIDER-EXECUTION-INPUT-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -5782,19 +5628,19 @@
       "fixture_is_not_live": true,
       "id_kind": "implementation_ledger",
       "local_controllable_status": "LOCAL_COMPLETE",
-      "remaining_requirement": "Independent verifier must review the current source-bound evidence.",
-      "roadmap_checkbox_is_not_derived": true,
-      "roadmap_checked": true,
+      "remaining_requirement": "Real live/production identity evidence and independent verification are required.",
+      "roadmap_checkbox_is_not_derived": false,
+      "roadmap_checked": false,
       "roadmap_line": 1405,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-ALERT-CONTROL-POSTGRES-2026-07-23",
+      "check_id": "IMPL-WORKFLOW-C-PROVIDER-EXECUTION-INPUT-FOUNDATION-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -5811,12 +5657,12 @@
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
-      "acceptance_status": "BLOCKED_EXTERNAL",
-      "check_id": "IMPL-WORKFLOW-C-SAMPLING-WORKER-2026-07-23",
+      "acceptance_status": "READY_FOR_REVIEW",
+      "check_id": "IMPL-WORKFLOW-C-PROVIDER-EXECUTION-INPUT-RETIREMENT-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -5826,19 +5672,41 @@
       "fixture_is_not_live": true,
       "id_kind": "implementation_ledger",
       "local_controllable_status": "LOCAL_COMPLETE",
-      "remaining_requirement": "Real live/production identity evidence and independent verification are required.",
-      "roadmap_checkbox_is_not_derived": false,
-      "roadmap_checked": false,
+      "remaining_requirement": "Independent verifier must review the current source-bound evidence.",
+      "roadmap_checkbox_is_not_derived": true,
+      "roadmap_checked": true,
       "roadmap_line": 1407,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-MANUAL-ARTIFACT-PERSISTENCE-2026-07-23",
+      "check_id": "IMPL-WORKFLOW-C-PROVIDER-ENQUEUE-CONTROL-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
+        },
+        {
+          "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
+          "sha256": "15eb5108e5802f2977b754cc967d69ce2de53a03d0173f4da3cdf2e2362a0e39"
+        }
+      ],
+      "fixture_is_not_live": true,
+      "id_kind": "implementation_ledger",
+      "local_controllable_status": "LOCAL_COMPLETE",
+      "remaining_requirement": "Independent verifier must review the current source-bound evidence.",
+      "roadmap_checkbox_is_not_derived": true,
+      "roadmap_checked": true,
+      "roadmap_line": 1408,
+      "scope_disposition": "INCLUDED_NON_B"
+    },
+    {
+      "acceptance_status": "READY_FOR_REVIEW",
+      "check_id": "IMPL-WORKFLOW-C-SAMPLING-POSTGRES-READS-2026-07-23",
+      "evidence_refs": [
+        {
+          "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -5856,11 +5724,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-MANUAL-EVIDENCE-ADMISSION-2026-07-23",
+      "check_id": "IMPL-WORKFLOW-C-PROVIDER-BULK-ENQUEUE-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -5878,11 +5746,33 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-DURABLE-LEASE-FENCE-2026-07-23",
+      "check_id": "IMPL-WORKFLOW-C-SAMPLING-CANCEL-LINEAGE-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
+        },
+        {
+          "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
+          "sha256": "15eb5108e5802f2977b754cc967d69ce2de53a03d0173f4da3cdf2e2362a0e39"
+        }
+      ],
+      "fixture_is_not_live": true,
+      "id_kind": "implementation_ledger",
+      "local_controllable_status": "LOCAL_COMPLETE",
+      "remaining_requirement": "Independent verifier must review the current source-bound evidence.",
+      "roadmap_checkbox_is_not_derived": true,
+      "roadmap_checked": true,
+      "roadmap_line": 1411,
+      "scope_disposition": "INCLUDED_NON_B"
+    },
+    {
+      "acceptance_status": "READY_FOR_REVIEW",
+      "check_id": "IMPL-WORKFLOW-C-SAMPLING-DURABLE-COMPOSITION-2026-07-23",
+      "evidence_refs": [
+        {
+          "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -5900,11 +5790,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-API-TERMINAL-STATUS-2026-07-23",
+      "check_id": "IMPL-WORKFLOW-C-ALERT-CONTROL-POSTGRES-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -5917,16 +5807,16 @@
       "remaining_requirement": "Independent verifier must review the current source-bound evidence.",
       "roadmap_checkbox_is_not_derived": true,
       "roadmap_checked": true,
-      "roadmap_line": 1414,
+      "roadmap_line": 1413,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
       "acceptance_status": "BLOCKED_EXTERNAL",
-      "check_id": "IMPL-WORKFLOW-C-METRIC-WORKER-2026-07-23",
+      "check_id": "IMPL-WORKFLOW-C-SAMPLING-WORKER-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -5939,16 +5829,16 @@
       "remaining_requirement": "Real live/production identity evidence and independent verification are required.",
       "roadmap_checkbox_is_not_derived": false,
       "roadmap_checked": false,
-      "roadmap_line": 1415,
+      "roadmap_line": 1414,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-CUSTOMER-LIFECYCLE-2026-07-23",
+      "check_id": "IMPL-WORKFLOW-C-MANUAL-ARTIFACT-PERSISTENCE-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -5966,11 +5856,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-RECOMMENDATION-POSTGRES-LIFECYCLE-2026-07-23",
+      "check_id": "IMPL-WORKFLOW-C-MANUAL-EVIDENCE-ADMISSION-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -5988,11 +5878,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-RECOMMENDATION-GENERATION-POSTGRES-ENQUEUE-2026-07-23",
+      "check_id": "IMPL-DURABLE-LEASE-FENCE-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6005,16 +5895,16 @@
       "remaining_requirement": "Independent verifier must review the current source-bound evidence.",
       "roadmap_checkbox_is_not_derived": true,
       "roadmap_checked": true,
-      "roadmap_line": 1418,
+      "roadmap_line": 1419,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-ARTIFACT-CONCURRENT-SEED-2026-07-23",
+      "check_id": "IMPL-WORKFLOW-C-API-TERMINAL-STATUS-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6031,12 +5921,12 @@
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
-      "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-ARTIFACT-EXPIRY-MINIO-2026-07-23",
+      "acceptance_status": "BLOCKED_EXTERNAL",
+      "check_id": "IMPL-WORKFLOW-C-METRIC-WORKER-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6046,19 +5936,19 @@
       "fixture_is_not_live": true,
       "id_kind": "implementation_ledger",
       "local_controllable_status": "LOCAL_COMPLETE",
-      "remaining_requirement": "Independent verifier must review the current source-bound evidence.",
-      "roadmap_checkbox_is_not_derived": true,
-      "roadmap_checked": true,
+      "remaining_requirement": "Real live/production identity evidence and independent verification are required.",
+      "roadmap_checkbox_is_not_derived": false,
+      "roadmap_checked": false,
       "roadmap_line": 1422,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-ARTIFACT-FAULT-RECOVERY-2026-07-23",
+      "check_id": "IMPL-WORKFLOW-C-CUSTOMER-LIFECYCLE-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6076,11 +5966,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-ARTIFACT-LEGAL-HOLD-LIFECYCLE-2026-07-23",
+      "check_id": "IMPL-RECOMMENDATION-POSTGRES-LIFECYCLE-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6098,11 +5988,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-SYNTHETIC-FIVE-BUCKET-RESTORE-2026-07-23",
+      "check_id": "IMPL-RECOMMENDATION-GENERATION-POSTGRES-ENQUEUE-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6119,56 +6009,12 @@
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
-      "acceptance_status": "BLOCKED_EXTERNAL",
-      "check_id": "IMPL-SYNTHETIC-RETENTION-PROJECT-SCOPE-2026-07-23",
-      "evidence_refs": [
-        {
-          "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
-        },
-        {
-          "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
-          "sha256": "15eb5108e5802f2977b754cc967d69ce2de53a03d0173f4da3cdf2e2362a0e39"
-        }
-      ],
-      "fixture_is_not_live": true,
-      "id_kind": "implementation_ledger",
-      "local_controllable_status": "LOCAL_COMPLETE",
-      "remaining_requirement": "Real live/production identity evidence and independent verification are required.",
-      "roadmap_checkbox_is_not_derived": false,
-      "roadmap_checked": false,
-      "roadmap_line": 1426,
-      "scope_disposition": "INCLUDED_NON_B"
-    },
-    {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-SYNTHETIC-RETENTION-CONCURRENT-WAKE-2026-07-23",
+      "check_id": "IMPL-WORKFLOW-C-ARTIFACT-CONCURRENT-SEED-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
-        },
-        {
-          "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
-          "sha256": "15eb5108e5802f2977b754cc967d69ce2de53a03d0173f4da3cdf2e2362a0e39"
-        }
-      ],
-      "fixture_is_not_live": true,
-      "id_kind": "implementation_ledger",
-      "local_controllable_status": "LOCAL_COMPLETE",
-      "remaining_requirement": "Independent verifier must review the current source-bound evidence.",
-      "roadmap_checkbox_is_not_derived": true,
-      "roadmap_checked": true,
-      "roadmap_line": 1427,
-      "scope_disposition": "INCLUDED_NON_B"
-    },
-    {
-      "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-SYNTHETIC-PARENT-TRIGGER-SCOPE-2026-07-23",
-      "evidence_refs": [
-        {
-          "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6186,11 +6032,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-NONB-API-CONTRACT-2026-07-23",
+      "check_id": "IMPL-WORKFLOW-C-ARTIFACT-EXPIRY-MINIO-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6208,11 +6054,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-NONB-QUALITY-GATE-2026-07-23",
+      "check_id": "IMPL-WORKFLOW-C-ARTIFACT-FAULT-RECOVERY-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6230,11 +6076,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-NONB-BROWSER-PORT-ISOLATION-2026-07-23",
+      "check_id": "IMPL-WORKFLOW-C-ARTIFACT-LEGAL-HOLD-LIFECYCLE-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6252,11 +6098,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-NONB-INFRA-RUNTIME-2026-07-23",
+      "check_id": "IMPL-SYNTHETIC-FIVE-BUCKET-RESTORE-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6273,12 +6119,12 @@
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
-      "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-NONB-RELEASE-CONTRACTS-2026-07-23",
+      "acceptance_status": "BLOCKED_EXTERNAL",
+      "check_id": "IMPL-SYNTHETIC-RETENTION-PROJECT-SCOPE-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6288,19 +6134,19 @@
       "fixture_is_not_live": true,
       "id_kind": "implementation_ledger",
       "local_controllable_status": "LOCAL_COMPLETE",
-      "remaining_requirement": "Independent verifier must review the current source-bound evidence.",
-      "roadmap_checkbox_is_not_derived": true,
-      "roadmap_checked": true,
+      "remaining_requirement": "Real live/production identity evidence and independent verification are required.",
+      "roadmap_checkbox_is_not_derived": false,
+      "roadmap_checked": false,
       "roadmap_line": 1433,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-ANALYSIS-PROJECTION-PROJECT-SCOPE-2026-07-23",
+      "check_id": "IMPL-SYNTHETIC-RETENTION-CONCURRENT-WAKE-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6318,11 +6164,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-NONB-REQUIRED-NON-LIVE-REGRESSION-2026-07-23",
+      "check_id": "IMPL-SYNTHETIC-PARENT-TRIGGER-SCOPE-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6340,11 +6186,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-METRIC-TERMINAL-RPC-2026-07-23",
+      "check_id": "IMPL-NONB-API-CONTRACT-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6362,11 +6208,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-METRIC-CHILD-RECONCILIATION-2026-07-23",
+      "check_id": "IMPL-NONB-QUALITY-GATE-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6384,11 +6230,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-METRIC-JUDGE-AGREEMENT-2026-07-23",
+      "check_id": "IMPL-NONB-BROWSER-PORT-ISOLATION-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6406,11 +6252,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-METRIC-OUTPUT-PROJECTION-2026-07-23",
+      "check_id": "IMPL-NONB-INFRA-RUNTIME-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6428,11 +6274,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-METRIC-TASK-FACTORY-2026-07-23",
+      "check_id": "IMPL-NONB-RELEASE-CONTRACTS-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6450,11 +6296,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-METRIC-SELECTED-READER-2026-07-23",
+      "check_id": "IMPL-WORKFLOW-C-ANALYSIS-PROJECTION-PROJECT-SCOPE-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6472,11 +6318,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-METRIC-PARENT-MERGE-CONTRACT-2026-07-23",
+      "check_id": "IMPL-NONB-REQUIRED-NON-LIVE-REGRESSION-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6494,11 +6340,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-METRIC-PROGRAM-INPUT-2026-07-23",
+      "check_id": "IMPL-WORKFLOW-C-METRIC-TERMINAL-RPC-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6516,11 +6362,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-METRIC-PARENT-ADMISSION-2026-07-23",
+      "check_id": "IMPL-WORKFLOW-C-METRIC-CHILD-RECONCILIATION-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6538,11 +6384,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-METRIC-ARBITER-PREPARATION-2026-07-23",
+      "check_id": "IMPL-WORKFLOW-C-METRIC-JUDGE-AGREEMENT-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6560,11 +6406,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-METRIC-ARBITER-ADMISSION-2026-07-23",
+      "check_id": "IMPL-WORKFLOW-C-METRIC-OUTPUT-PROJECTION-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6582,11 +6428,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-METRIC-PARENT-PROGRESS-2026-07-24",
+      "check_id": "IMPL-WORKFLOW-C-METRIC-TASK-FACTORY-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6604,11 +6450,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-METRIC-SNAPSHOT-PERSISTENCE-2026-07-24",
+      "check_id": "IMPL-WORKFLOW-C-METRIC-SELECTED-READER-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6626,11 +6472,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-COMPARISON-DRIFT-PERSISTENCE-2026-07-24",
+      "check_id": "IMPL-WORKFLOW-C-METRIC-PARENT-MERGE-CONTRACT-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6648,11 +6494,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-COMPARISON-DRIFT-ADMISSION-2026-07-24",
+      "check_id": "IMPL-WORKFLOW-C-METRIC-PROGRAM-INPUT-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6670,11 +6516,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-ANALYSIS-DURABLE-READ-MODEL-2026-07-24",
+      "check_id": "IMPL-WORKFLOW-C-METRIC-PARENT-ADMISSION-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6692,11 +6538,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-DURABLE-GLOBAL-COMPOSITION-2026-07-24",
+      "check_id": "IMPL-WORKFLOW-C-METRIC-ARBITER-PREPARATION-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6714,11 +6560,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-SEMANTIC-V2-VERTICAL-2026-07-24",
+      "check_id": "IMPL-WORKFLOW-C-METRIC-ARBITER-ADMISSION-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6736,11 +6582,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-STAT-ALERT-REPORT-VERTICAL-2026-07-24",
+      "check_id": "IMPL-WORKFLOW-C-METRIC-PARENT-PROGRESS-2026-07-24",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6758,11 +6604,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-FIVE-PROVIDER-CANARY-LOCAL-2026-07-24",
+      "check_id": "IMPL-WORKFLOW-C-METRIC-SNAPSHOT-PERSISTENCE-2026-07-24",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6780,11 +6626,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-SYNTHETIC-PACK-04-LOCAL-2026-07-24",
+      "check_id": "IMPL-WORKFLOW-C-COMPARISON-DRIFT-PERSISTENCE-2026-07-24",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6802,11 +6648,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-SURFACE-PARSER-PACK-05-LOCAL-2026-07-24",
+      "check_id": "IMPL-WORKFLOW-C-COMPARISON-DRIFT-ADMISSION-2026-07-24",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6824,11 +6670,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-PROMPT-RECOMMENDATION-PACK-06-LOCAL-2026-07-24",
+      "check_id": "IMPL-WORKFLOW-C-ANALYSIS-DURABLE-READ-MODEL-2026-07-24",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6846,11 +6692,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-PROMPT-EDITOR-WORKSPACE-2026-07-25",
+      "check_id": "IMPL-WORKFLOW-C-DURABLE-GLOBAL-COMPOSITION-2026-07-24",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6868,11 +6714,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-PROMPT-LEGACY-FLOW-MIGRATION-2026-07-26",
+      "check_id": "IMPL-WORKFLOW-C-SEMANTIC-V2-VERTICAL-2026-07-24",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6890,11 +6736,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-NONB-MIGRATION-CUTOVER-PACK-07-LOCAL-2026-07-25",
+      "check_id": "IMPL-WORKFLOW-C-STAT-ALERT-REPORT-VERTICAL-2026-07-24",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6912,11 +6758,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-NONB-AUTHENTICATED-RESTORE-PACK-07-LOCAL-2026-07-25",
+      "check_id": "IMPL-WORKFLOW-C-FIVE-PROVIDER-CANARY-LOCAL-2026-07-24",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6934,11 +6780,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-NONB-FAULT-PACK-07-LOCAL-2026-07-25",
+      "check_id": "IMPL-SYNTHETIC-PACK-04-LOCAL-2026-07-24",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6956,11 +6802,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-NONB-PERFORMANCE-CONTRACT-PACK-07-LOCAL-2026-07-25",
+      "check_id": "IMPL-SURFACE-PARSER-PACK-05-LOCAL-2026-07-24",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6977,12 +6823,12 @@
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
-      "acceptance_status": "EXCLUDED_B_FOR_CURRENT_ITERATION",
-      "check_id": "IMPL-B-SEARCH-AGGREGATION-PROTOTYPE-2026-07-24",
+      "acceptance_status": "READY_FOR_REVIEW",
+      "check_id": "IMPL-PROMPT-RECOMMENDATION-PACK-06-LOCAL-2026-07-24",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -6991,42 +6837,42 @@
       ],
       "fixture_is_not_live": true,
       "id_kind": "implementation_ledger",
-      "local_controllable_status": "EXCLUDED",
-      "remaining_requirement": "Implement and accept under the independent Board B plan.",
-      "roadmap_checkbox_is_not_derived": false,
-      "roadmap_checked": false,
-      "roadmap_line": 1465,
-      "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
-    },
-    {
-      "acceptance_status": "EXCLUDED_B_FOR_CURRENT_ITERATION",
-      "check_id": "IMPL-B-CORE-MVP-LOCAL-2026-07-28",
-      "evidence_refs": [
-        {
-          "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
-        },
-        {
-          "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
-          "sha256": "15eb5108e5802f2977b754cc967d69ce2de53a03d0173f4da3cdf2e2362a0e39"
-        }
-      ],
-      "fixture_is_not_live": true,
-      "id_kind": "implementation_ledger",
-      "local_controllable_status": "EXCLUDED",
-      "remaining_requirement": "Implement and accept under the independent Board B plan.",
+      "local_controllable_status": "LOCAL_COMPLETE",
+      "remaining_requirement": "Independent verifier must review the current source-bound evidence.",
       "roadmap_checkbox_is_not_derived": true,
       "roadmap_checked": true,
-      "roadmap_line": 1466,
-      "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
+      "roadmap_line": 1465,
+      "scope_disposition": "INCLUDED_NON_B"
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-NONB-CROSS-WORKFLOW-QUALITY-2026-07-23",
+      "check_id": "IMPL-PROMPT-EDITOR-WORKSPACE-2026-07-25",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
+        },
+        {
+          "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
+          "sha256": "15eb5108e5802f2977b754cc967d69ce2de53a03d0173f4da3cdf2e2362a0e39"
+        }
+      ],
+      "fixture_is_not_live": true,
+      "id_kind": "implementation_ledger",
+      "local_controllable_status": "LOCAL_COMPLETE",
+      "remaining_requirement": "Independent verifier must review the current source-bound evidence.",
+      "roadmap_checkbox_is_not_derived": true,
+      "roadmap_checked": true,
+      "roadmap_line": 1466,
+      "scope_disposition": "INCLUDED_NON_B"
+    },
+    {
+      "acceptance_status": "READY_FOR_REVIEW",
+      "check_id": "IMPL-PROMPT-LEGACY-FLOW-MIGRATION-2026-07-26",
+      "evidence_refs": [
+        {
+          "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -7044,11 +6890,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-WORKFLOW-C-METRIC-IMPORT-ORDER-2026-07-23",
+      "check_id": "IMPL-NONB-MIGRATION-CUTOVER-PACK-07-LOCAL-2026-07-25",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -7066,11 +6912,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-NONB-INFRA-RUNTIME-0065-2026-07-23",
+      "check_id": "IMPL-NONB-AUTHENTICATED-RESTORE-PACK-07-LOCAL-2026-07-25",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -7088,11 +6934,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-NONB-AUTHENTICATED-RESTORE-2026-07-23",
+      "check_id": "IMPL-NONB-FAULT-PACK-07-LOCAL-2026-07-25",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -7110,11 +6956,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-FIVE-BUCKET-MINIO-LEAST-PRIVILEGE-2026-07-23",
+      "check_id": "IMPL-NONB-PERFORMANCE-CONTRACT-PACK-07-LOCAL-2026-07-25",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -7131,12 +6977,56 @@
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
-      "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-DIFY-SOLE-PROMPT-SOURCE-2026-07-27",
+      "acceptance_status": "EXCLUDED_B_FOR_CURRENT_ITERATION",
+      "check_id": "IMPL-B-SEARCH-AGGREGATION-PROTOTYPE-RETIRED-2026-08-07",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
+        },
+        {
+          "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
+          "sha256": "15eb5108e5802f2977b754cc967d69ce2de53a03d0173f4da3cdf2e2362a0e39"
+        }
+      ],
+      "fixture_is_not_live": true,
+      "id_kind": "implementation_ledger",
+      "local_controllable_status": "EXCLUDED",
+      "remaining_requirement": "Implement and accept under the independent Board B plan.",
+      "roadmap_checkbox_is_not_derived": true,
+      "roadmap_checked": true,
+      "roadmap_line": 1472,
+      "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
+    },
+    {
+      "acceptance_status": "EXCLUDED_B_FOR_CURRENT_ITERATION",
+      "check_id": "IMPL-B-CORE-MVP-LOCAL-2026-07-28",
+      "evidence_refs": [
+        {
+          "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
+        },
+        {
+          "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
+          "sha256": "15eb5108e5802f2977b754cc967d69ce2de53a03d0173f4da3cdf2e2362a0e39"
+        }
+      ],
+      "fixture_is_not_live": true,
+      "id_kind": "implementation_ledger",
+      "local_controllable_status": "EXCLUDED",
+      "remaining_requirement": "Implement and accept under the independent Board B plan.",
+      "roadmap_checkbox_is_not_derived": true,
+      "roadmap_checked": true,
+      "roadmap_line": 1473,
+      "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
+    },
+    {
+      "acceptance_status": "READY_FOR_REVIEW",
+      "check_id": "IMPL-B-CONSUMER-BROWSER-CAPTURE-LOCAL-2026-08-07",
+      "evidence_refs": [
+        {
+          "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -7149,16 +7039,38 @@
       "remaining_requirement": "Independent verifier must review the current source-bound evidence.",
       "roadmap_checkbox_is_not_derived": true,
       "roadmap_checked": true,
+      "roadmap_line": 1474,
+      "scope_disposition": "INCLUDED_NON_B"
+    },
+    {
+      "acceptance_status": "READY_FOR_REVIEW",
+      "check_id": "IMPL-B-CONSUMER-BROWSER-CAPTURE-LIVE-AU-2026-08-07",
+      "evidence_refs": [
+        {
+          "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
+        },
+        {
+          "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
+          "sha256": "15eb5108e5802f2977b754cc967d69ce2de53a03d0173f4da3cdf2e2362a0e39"
+        }
+      ],
+      "fixture_is_not_live": true,
+      "id_kind": "implementation_ledger",
+      "local_controllable_status": "LOCAL_COMPLETE",
+      "remaining_requirement": "Independent verifier must review the current source-bound evidence.",
+      "roadmap_checkbox_is_not_derived": false,
+      "roadmap_checked": false,
       "roadmap_line": 1475,
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-DIFY-0094-FINAL-GATE-2026-07-27",
+      "check_id": "IMPL-NONB-CROSS-WORKFLOW-QUALITY-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -7176,11 +7088,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-DIFY-TEST-RUN-AUTO-INPUT-2026-07-27",
+      "check_id": "IMPL-WORKFLOW-C-METRIC-IMPORT-ORDER-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -7198,11 +7110,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-DIFY-SYNTHETIC-REVIEW-CLOSED-LOOP-2026-07-27",
+      "check_id": "IMPL-NONB-INFRA-RUNTIME-0065-2026-07-23",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -7220,15 +7132,33 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-DIFY-STYLE-PROFILE-RECOMMENDATION-2026-07-28",
+      "check_id": "IMPL-NONB-AUTHENTICATED-RESTORE-2026-07-23",
       "evidence_refs": [
         {
-          "path": "docs/engineering/execution-packs/pack-09-dify-style-recommendation-evidence.md",
-          "sha256": "59cae5abd01993c4fc16397eb4316a8f1e7b2c38015885f42b053493b90a6e8a"
+          "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
+          "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
+          "sha256": "15eb5108e5802f2977b754cc967d69ce2de53a03d0173f4da3cdf2e2362a0e39"
+        }
+      ],
+      "fixture_is_not_live": true,
+      "id_kind": "implementation_ledger",
+      "local_controllable_status": "LOCAL_COMPLETE",
+      "remaining_requirement": "Independent verifier must review the current source-bound evidence.",
+      "roadmap_checkbox_is_not_derived": true,
+      "roadmap_checked": true,
+      "roadmap_line": 1479,
+      "scope_disposition": "INCLUDED_NON_B"
+    },
+    {
+      "acceptance_status": "READY_FOR_REVIEW",
+      "check_id": "IMPL-FIVE-BUCKET-MINIO-LEAST-PRIVILEGE-2026-07-23",
+      "evidence_refs": [
+        {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -7246,15 +7176,11 @@
     },
     {
       "acceptance_status": "READY_FOR_REVIEW",
-      "check_id": "IMPL-ADVINSYS-NONB-PATHS-LOCAL-2026-07-29",
+      "check_id": "IMPL-DIFY-SOLE-PROMPT-SOURCE-2026-07-27",
       "evidence_refs": [
         {
-          "path": "docs/operations/advinsys-production-path-validation-2026-07-29.md",
-          "sha256": "2236e0bbe57ad818a3a1c3e206a56a6c471ed8f1df75f86971ab0c6f2ad9314e"
-        },
-        {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -7271,12 +7197,130 @@
       "scope_disposition": "INCLUDED_NON_B"
     },
     {
+      "acceptance_status": "READY_FOR_REVIEW",
+      "check_id": "IMPL-DIFY-0094-FINAL-GATE-2026-07-27",
+      "evidence_refs": [
+        {
+          "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
+        },
+        {
+          "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
+          "sha256": "15eb5108e5802f2977b754cc967d69ce2de53a03d0173f4da3cdf2e2362a0e39"
+        }
+      ],
+      "fixture_is_not_live": true,
+      "id_kind": "implementation_ledger",
+      "local_controllable_status": "LOCAL_COMPLETE",
+      "remaining_requirement": "Independent verifier must review the current source-bound evidence.",
+      "roadmap_checkbox_is_not_derived": true,
+      "roadmap_checked": true,
+      "roadmap_line": 1485,
+      "scope_disposition": "INCLUDED_NON_B"
+    },
+    {
+      "acceptance_status": "READY_FOR_REVIEW",
+      "check_id": "IMPL-DIFY-TEST-RUN-AUTO-INPUT-2026-07-27",
+      "evidence_refs": [
+        {
+          "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
+        },
+        {
+          "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
+          "sha256": "15eb5108e5802f2977b754cc967d69ce2de53a03d0173f4da3cdf2e2362a0e39"
+        }
+      ],
+      "fixture_is_not_live": true,
+      "id_kind": "implementation_ledger",
+      "local_controllable_status": "LOCAL_COMPLETE",
+      "remaining_requirement": "Independent verifier must review the current source-bound evidence.",
+      "roadmap_checkbox_is_not_derived": true,
+      "roadmap_checked": true,
+      "roadmap_line": 1486,
+      "scope_disposition": "INCLUDED_NON_B"
+    },
+    {
+      "acceptance_status": "READY_FOR_REVIEW",
+      "check_id": "IMPL-DIFY-SYNTHETIC-REVIEW-CLOSED-LOOP-2026-07-27",
+      "evidence_refs": [
+        {
+          "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
+        },
+        {
+          "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
+          "sha256": "15eb5108e5802f2977b754cc967d69ce2de53a03d0173f4da3cdf2e2362a0e39"
+        }
+      ],
+      "fixture_is_not_live": true,
+      "id_kind": "implementation_ledger",
+      "local_controllable_status": "LOCAL_COMPLETE",
+      "remaining_requirement": "Independent verifier must review the current source-bound evidence.",
+      "roadmap_checkbox_is_not_derived": true,
+      "roadmap_checked": true,
+      "roadmap_line": 1487,
+      "scope_disposition": "INCLUDED_NON_B"
+    },
+    {
+      "acceptance_status": "READY_FOR_REVIEW",
+      "check_id": "IMPL-DIFY-STYLE-PROFILE-RECOMMENDATION-2026-07-28",
+      "evidence_refs": [
+        {
+          "path": "docs/engineering/execution-packs/pack-09-dify-style-recommendation-evidence.md",
+          "sha256": "59cae5abd01993c4fc16397eb4316a8f1e7b2c38015885f42b053493b90a6e8a"
+        },
+        {
+          "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
+        },
+        {
+          "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
+          "sha256": "15eb5108e5802f2977b754cc967d69ce2de53a03d0173f4da3cdf2e2362a0e39"
+        }
+      ],
+      "fixture_is_not_live": true,
+      "id_kind": "implementation_ledger",
+      "local_controllable_status": "LOCAL_COMPLETE",
+      "remaining_requirement": "Independent verifier must review the current source-bound evidence.",
+      "roadmap_checkbox_is_not_derived": true,
+      "roadmap_checked": true,
+      "roadmap_line": 1489,
+      "scope_disposition": "INCLUDED_NON_B"
+    },
+    {
+      "acceptance_status": "READY_FOR_REVIEW",
+      "check_id": "IMPL-ADVINSYS-NONB-PATHS-LOCAL-2026-07-29",
+      "evidence_refs": [
+        {
+          "path": "docs/operations/advinsys-production-path-validation-2026-07-29.md",
+          "sha256": "2236e0bbe57ad818a3a1c3e206a56a6c471ed8f1df75f86971ab0c6f2ad9314e"
+        },
+        {
+          "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
+        },
+        {
+          "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
+          "sha256": "15eb5108e5802f2977b754cc967d69ce2de53a03d0173f4da3cdf2e2362a0e39"
+        }
+      ],
+      "fixture_is_not_live": true,
+      "id_kind": "implementation_ledger",
+      "local_controllable_status": "LOCAL_COMPLETE",
+      "remaining_requirement": "Independent verifier must review the current source-bound evidence.",
+      "roadmap_checkbox_is_not_derived": true,
+      "roadmap_checked": true,
+      "roadmap_line": 1493,
+      "scope_disposition": "INCLUDED_NON_B"
+    },
+    {
       "acceptance_status": "EXCLUDED_B_FOR_CURRENT_ITERATION",
       "check_id": "IMPL-B-ADVINSYS-VALIDATION-CANARY-2026-07-29",
       "evidence_refs": [
         {
           "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-          "sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b"
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
         },
         {
           "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
@@ -7289,30 +7333,162 @@
       "remaining_requirement": "Implement and accept under the independent Board B plan.",
       "roadmap_checkbox_is_not_derived": true,
       "roadmap_checked": true,
-      "roadmap_line": 1485,
+      "roadmap_line": 1494,
       "scope_disposition": "EXCLUDED_B_FOR_CURRENT_ITERATION"
+    },
+    {
+      "acceptance_status": "READY_FOR_REVIEW",
+      "check_id": "IMPL-SYNTHETIC-ADMIN-WORKSPACE-2026-08-03",
+      "evidence_refs": [
+        {
+          "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
+        },
+        {
+          "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
+          "sha256": "15eb5108e5802f2977b754cc967d69ce2de53a03d0173f4da3cdf2e2362a0e39"
+        }
+      ],
+      "fixture_is_not_live": true,
+      "id_kind": "implementation_ledger",
+      "local_controllable_status": "LOCAL_COMPLETE",
+      "remaining_requirement": "Independent verifier must review the current source-bound evidence.",
+      "roadmap_checkbox_is_not_derived": true,
+      "roadmap_checked": true,
+      "roadmap_line": 1495,
+      "scope_disposition": "INCLUDED_NON_B"
+    },
+    {
+      "acceptance_status": "READY_FOR_REVIEW",
+      "check_id": "IMPL-SYNTHETIC-SUITE-INPLACE-UX-2026-08-03",
+      "evidence_refs": [
+        {
+          "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
+        },
+        {
+          "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
+          "sha256": "15eb5108e5802f2977b754cc967d69ce2de53a03d0173f4da3cdf2e2362a0e39"
+        }
+      ],
+      "fixture_is_not_live": true,
+      "id_kind": "implementation_ledger",
+      "local_controllable_status": "LOCAL_COMPLETE",
+      "remaining_requirement": "Independent verifier must review the current source-bound evidence.",
+      "roadmap_checkbox_is_not_derived": true,
+      "roadmap_checked": true,
+      "roadmap_line": 1496,
+      "scope_disposition": "INCLUDED_NON_B"
+    },
+    {
+      "acceptance_status": "READY_FOR_REVIEW",
+      "check_id": "IMPL-SYNTHETIC-DIRECT-WORKBENCH-2026-08-04",
+      "evidence_refs": [
+        {
+          "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
+        },
+        {
+          "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
+          "sha256": "15eb5108e5802f2977b754cc967d69ce2de53a03d0173f4da3cdf2e2362a0e39"
+        }
+      ],
+      "fixture_is_not_live": true,
+      "id_kind": "implementation_ledger",
+      "local_controllable_status": "LOCAL_COMPLETE",
+      "remaining_requirement": "Independent verifier must review the current source-bound evidence.",
+      "roadmap_checkbox_is_not_derived": true,
+      "roadmap_checked": true,
+      "roadmap_line": 1497,
+      "scope_disposition": "INCLUDED_NON_B"
+    },
+    {
+      "acceptance_status": "READY_FOR_REVIEW",
+      "check_id": "IMPL-GEO-ENCRYPTED-GITHUB-MIGRATION-2026-08-04",
+      "evidence_refs": [
+        {
+          "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
+        },
+        {
+          "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
+          "sha256": "15eb5108e5802f2977b754cc967d69ce2de53a03d0173f4da3cdf2e2362a0e39"
+        }
+      ],
+      "fixture_is_not_live": true,
+      "id_kind": "implementation_ledger",
+      "local_controllable_status": "LOCAL_COMPLETE",
+      "remaining_requirement": "Independent verifier must review the current source-bound evidence.",
+      "roadmap_checkbox_is_not_derived": true,
+      "roadmap_checked": true,
+      "roadmap_line": 1498,
+      "scope_disposition": "INCLUDED_NON_B"
+    },
+    {
+      "acceptance_status": "READY_FOR_REVIEW",
+      "check_id": "IMPL-MEASUREMENT-QUESTION-WORKSPACE-2026-08-04",
+      "evidence_refs": [
+        {
+          "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
+        },
+        {
+          "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
+          "sha256": "15eb5108e5802f2977b754cc967d69ce2de53a03d0173f4da3cdf2e2362a0e39"
+        }
+      ],
+      "fixture_is_not_live": true,
+      "id_kind": "implementation_ledger",
+      "local_controllable_status": "LOCAL_COMPLETE",
+      "remaining_requirement": "Independent verifier must review the current source-bound evidence.",
+      "roadmap_checkbox_is_not_derived": true,
+      "roadmap_checked": true,
+      "roadmap_line": 1499,
+      "scope_disposition": "INCLUDED_NON_B"
+    },
+    {
+      "acceptance_status": "READY_FOR_REVIEW",
+      "check_id": "IMPL-MEASUREMENT-QUESTION-COVERAGE-100-2026-08-06",
+      "evidence_refs": [
+        {
+          "path": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
+          "sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7"
+        },
+        {
+          "path": "docs/engineering/execution-packs/GEO-non-B-execution-index-2026-07-24.md",
+          "sha256": "15eb5108e5802f2977b754cc967d69ce2de53a03d0173f4da3cdf2e2362a0e39"
+        }
+      ],
+      "fixture_is_not_live": true,
+      "id_kind": "implementation_ledger",
+      "local_controllable_status": "LOCAL_COMPLETE",
+      "remaining_requirement": "Independent verifier must review the current source-bound evidence.",
+      "roadmap_checkbox_is_not_derived": true,
+      "roadmap_checked": true,
+      "roadmap_line": 1500,
+      "scope_disposition": "INCLUDED_NON_B"
     }
   ],
   "classification": "contracts/roadmap/non-b-acceptance-classification-v1.json",
-  "classification_sha256": "2ebfa2bc74c523eb83ce0b72b200bf15e02782bb20309b1676361fe93254a110",
-  "generated_at": "2026-07-29T11:31:23+00:00",
-  "register_hash": "d8f057f5f52f636095d9b95bcc04d05909252123f48adc1c7d97b7d0a3aab12a",
+  "classification_sha256": "6537fa667849758e465d98317282c97e5f3256bfefabe0352c32e7691859206b",
+  "generated_at": "2026-08-09T14:32:11+00:00",
+  "register_hash": "897354074ced34c3391e0fcbbdd43580062d9f733165aa4b49a2aebe1c75e26a",
   "roadmap": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
-  "roadmap_sha256": "0f7154cc7d246d343cf39293970f49bf3de73104d1583ec33a315ad26c8ff16b",
+  "roadmap_sha256": "3b57c0d4b787ca49cc17b3458391a4dd49055827d2e4915d1c1b5a345c2f71d7",
   "schema_version": "non-b-acceptance-register-v2",
   "source_identity": {
-    "file_count": "2307",
+    "file_count": "2404",
     "identity_method": "repository-content-v2",
-    "tree_fingerprint": "43896b9ebc6dc561e49f6aa5a131368c33bbb39d1a0a5b88a4b122007b9d77df"
+    "tree_fingerprint": "dfc7df605aef56ed39c14bde536521e3f99f4a0e3466b2299935c97ac9914404"
   },
   "summary": {
-    "all": 322,
+    "all": 330,
     "blocked_external": 176,
     "excluded_b": 49,
-    "included_non_b": 260,
+    "included_non_b": 268,
     "local_gap": 0,
     "mixed_atomic": 68,
-    "ready_for_review": 84,
+    "ready_for_review": 92,
     "templates": 13
   }
 }

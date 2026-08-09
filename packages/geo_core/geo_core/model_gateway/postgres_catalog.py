@@ -25,6 +25,7 @@ from geo_core.model_gateway.releases import (
     AdapterRelease,
     ModelRelease,
     ModelReleaseRegistry,
+    provider_secret_purpose,
 )
 from geo_core.model_gateway.runtime_errors import ModelCallJobAdmissionNotFound
 from geo_core.project_scope import set_project_scope
@@ -339,7 +340,7 @@ class PostgresModelGatewayPersistence:
         provider: str,
         reference_id: UUID,
     ) -> SecretVersionHandle:
-        purpose = f"model_provider.{provider.strip()}"
+        purpose = provider_secret_purpose(provider)
         if not provider.strip():
             raise ModelCallPersistenceError("Model Gateway Provider Secret is unavailable")
         with self._project_connection(project_id) as connection:

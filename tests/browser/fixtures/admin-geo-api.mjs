@@ -75,6 +75,8 @@ const PROMPT_BINDING_ID = "00000000-0000-4000-8000-000000000506";
 const PROMPT_RUNTIME_SELECTION_ID = "00000000-0000-4000-8000-000000000510";
 const SECRET_REFERENCE_ID = "00000000-0000-4000-8000-000000000601";
 const SECRET_ACTOR_B_ID = "00000000-0000-4000-8000-000000000602";
+const CONNECTOR_GSC_DEFINITION_ID = "00000000-0000-4000-8000-000000000611";
+const CONNECTOR_GA4_DEFINITION_ID = "00000000-0000-4000-8000-000000000612";
 
 const requests = [];
 const observations = [];
@@ -121,6 +123,7 @@ let secretCurrentVersion = null;
 const secretVersions = [];
 const secretAudits = [];
 let difyRuntimeScenario = "default";
+let connectorConnections = [];
 
 function secretReferenceView() {
   if (!secretReference) return null;
@@ -778,10 +781,12 @@ function coverageCandidates() {
       revision_number: edited ? 1 : null,
       was_edited: Boolean(edited),
       semantic_fingerprint: `${topic} ${ordinal}`,
-      dedup_status: "unique",
-      nearest_candidate_id: null,
-      nearest_similarity: null,
-      workflow_status: "pending_review",
+      dedup_status: ordinal === 2 ? "possible_duplicate" : "unique",
+      nearest_candidate_id: ordinal === 2
+        ? "00000000-0000-4000-9000-000000000001"
+        : null,
+      nearest_similarity: ordinal === 2 ? 0.9472 : null,
+      workflow_status: ordinal === 2 && !edited ? "rejected" : "pending_review",
       review_notes: null,
       reviewed_at: null,
       brand_scope: role === "brand_control" ? "brand" : "non_brand",
@@ -1398,6 +1403,7 @@ const server = createServer(async (request, response) => {
       secretVersions.length = 0;
       secretAudits.length = 0;
       difyRuntimeScenario = "default";
+      connectorConnections = [];
       resetSyntheticLabFixture();
       resetRecommendationFixture();
       resetPromptBootstrapFixture();
@@ -1493,8 +1499,38 @@ const server = createServer(async (request, response) => {
   if (path === `${base}/members`) return send(response, { items: [{ membership_id: "00000000-0000-4000-8000-000000000004", project_id: PROJECT_ID, identity_id: secretActorId, issuer: "browser-fixture", subject: secretActorId, email: "owner@example.test", display_name: "Fixture Owner", role: secretRole, status: "active", created_at: NOW }], total: 1, limit: 100, offset: 0 });
   if (path === "/v1/auth/me") return send(response, { actor_id: secretActorId, tenant_id: TENANT_ID, project_ids: [PROJECT_ID], roles: [secretRole] });
   if (path === `${base}/connectors` && request.method === "GET") return send(response, {
-    definitions: [], connections: [], scopes: [], runs: [], connection_tests: []
+    definitions: [
+      {
+        id: CONNECTOR_GSC_DEFINITION_ID, kind: "google_search_console",
+        adapter_release: "source-google-search-console:2.1.5",
+        runtime_release: "pyairbyte:0.31.0", status: "approved"
+      },
+      {
+        id: CONNECTOR_GA4_DEFINITION_ID, kind: "google_analytics_4",
+        adapter_release: "source-google-analytics-data-api:2.1.5",
+        runtime_release: "pyairbyte:0.31.0", status: "approved"
+      }
+    ], connections: connectorConnections, scopes: [], runs: [], connection_tests: []
   });
+  if (path === `${base}/connectors/connections` && request.method === "POST") {
+    const kind = payload?.definition_id === CONNECTOR_GA4_DEFINITION_ID
+      ? "google_analytics_4" : payload?.definition_id === CONNECTOR_GSC_DEFINITION_ID
+        ? "google_search_console" : null;
+    const expectedPurpose = kind === "google_analytics_4" ? "connector.ga4"
+      : kind === "google_search_console" ? "connector.gsc" : null;
+    if (!expectedPurpose || payload?.secret_purpose !== expectedPurpose) {
+      return send(response, { detail: "Secret purpose must match the selected Connector definition" }, 409);
+    }
+    const connection = {
+      id: `00000000-0000-4000-8000-${String(620 + connectorConnections.length).padStart(12, "0")}`,
+      definition_id: payload.definition_id, name: payload.name,
+      secret_reference_id: payload.secret_reference_id,
+      secret_purpose: payload.secret_purpose, secret_version: payload.secret_version,
+      status: "active", version: 1
+    };
+    connectorConnections.unshift(connection);
+    return send(response, connection, 201);
+  }
   if (path === `${base}/browser-capture` && request.method === "GET") return send(response, {
     surface_releases: [], egress_endpoints: [], profiles: [], egress_tests: [],
     drift_events: [], tasks: [], sessions: []

@@ -50,7 +50,7 @@ def main() -> int:
         parser.error("--manifest is required for verify/register")
     manifest = _load_manifest(args.manifest)
     providers = {item.adapter_release.provider for item in manifest.provider_runtimes}
-    if args.require_six_providers and providers != set(KNOWN_MODEL_PROVIDERS):
+    if args.require_six_providers and not set(KNOWN_MODEL_PROVIDERS).issubset(providers):
         missing = sorted(set(KNOWN_MODEL_PROVIDERS) - providers)
         raise SystemExit(f"six-provider Gate is incomplete; missing={missing}")
 

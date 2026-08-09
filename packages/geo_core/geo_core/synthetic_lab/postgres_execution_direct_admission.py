@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from geo_core.placements.execution_eligibility import approved_fact_evidence_is_current
@@ -28,8 +29,33 @@ from geo_core.synthetic_lab.ports import (
 from geo_core.synthetic_lab.postgres_api_support import stable_id
 from geo_core.synthetic_lab.review_programs import REVIEW_PROGRAM_KINDS
 
+if TYPE_CHECKING:
+    from geo_core.synthetic_lab.execution_application import SyntheticExecutionApplication
+    from geo_core.synthetic_lab.execution_contracts import FrozenPromptRef
+    from geo_core.synthetic_lab.execution_gateway import PromptProgramExecutionResolver
+    from geo_core.synthetic_lab.postgres_api_reads import PostgresSyntheticApiReads
+    from geo_core.synthetic_lab.postgres_execution_runtime import (
+        PostgresSyntheticRuntimeInputPort,
+    )
+
 
 class _PostgresSyntheticDirectGenerationAdmission:
+    if TYPE_CHECKING:
+        # These members are supplied by ``PostgresSyntheticExecutionAdmission``.
+        _reads: PostgresSyntheticApiReads
+        _application: SyntheticExecutionApplication
+        _runtime_inputs: PostgresSyntheticRuntimeInputPort
+        _prompt_resolver: PromptProgramExecutionResolver
+
+        def _open(self, project_id: UUID) -> Any: ...
+
+        def _prompt(
+            self,
+            *,
+            project_id: UUID,
+            kind: ProgramKind,
+            runtime_selection_id: UUID,
+        ) -> FrozenPromptRef: ...
     def enqueue_direct_generation(
         self,
         *,

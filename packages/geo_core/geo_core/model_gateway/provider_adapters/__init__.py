@@ -12,6 +12,7 @@ from geo_core.model_gateway.provider_adapters.artifacts import (
 )
 from geo_core.model_gateway.provider_adapters.base import (
     CredentialResolver,
+    JsonGetTransport,
     JsonResponse,
     JsonTransport,
     ProviderAdapterRuntime,
@@ -36,6 +37,7 @@ from geo_core.model_gateway.provider_adapters.microsoft import (
 )
 from geo_core.model_gateway.provider_adapters.openai import OpenAIResponsesAdapter
 from geo_core.model_gateway.provider_adapters.perplexity import PerplexitySonarAdapter
+from geo_core.model_gateway.provider_adapters.serpapi import SerpApiGoogleSearchAdapter
 
 __all__ = [
     "CredentialResolver",
@@ -45,6 +47,7 @@ __all__ = [
     "GeminiGenerateContentAdapter",
     "IndependentProviderArtifactEncryptor",
     "JsonResponse",
+    "JsonGetTransport",
     "JsonTransport",
     "KimiChatCompletionsAdapter",
     "MicrosoftAgentReference",
@@ -52,6 +55,7 @@ __all__ = [
     "MinioProviderArtifactSink",
     "OpenAIResponsesAdapter",
     "PerplexitySonarAdapter",
+    "SerpApiGoogleSearchAdapter",
     "ProviderArtifactBundle",
     "ProviderArtifactError",
     "ProviderArtifactKeyVault",

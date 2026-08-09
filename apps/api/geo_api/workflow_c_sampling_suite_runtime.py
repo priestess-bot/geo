@@ -9,6 +9,7 @@ from uuid import UUID
 from geo_api.workflow_c_sampling_catalog import (
     ResolvedSamplingSuiteInputs,
     WorkflowCSamplingInputCatalog,
+    select_sampling_questions,
 )
 from geo_api.workflow_c_sampling_contracts import CreateSamplingSuiteRequest
 from geo_api.workflow_c_sampling_ids import sampling_command_id
@@ -59,6 +60,9 @@ class WorkflowCSamplingSuiteControl:
             or policy_record.location_evidence_hash != source.location_evidence_hash
         ):
             raise SamplingConflict("Suite catalog target differs from admission policy")
+        questions, _ = select_sampling_questions(
+            resolved, payload.question_set_item_ids
+        )
         suite = SamplingSuite(
             id=sampling_command_id(project_id, "suite", idempotency_key),
             project_id=project_id,
@@ -77,7 +81,7 @@ class WorkflowCSamplingSuiteControl:
             runtime_option_hash=resolved.runtime_option_hash,
             admission_policy_id=resolved.admission_policy_id,
             admission_policy_hash=resolved.admission_policy_hash,
-            questions=resolved.questions,
+            questions=questions,
             source_stratum=source,
             repetitions=payload.repetitions,
             statistics_method_version=payload.statistics_method_version,

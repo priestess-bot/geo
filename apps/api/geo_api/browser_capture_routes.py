@@ -59,7 +59,6 @@ IdempotencyHeader = Annotated[str, Header(alias="Idempotency-Key")]
 _BROWSER_EGRESS_SECRET_NAMESPACE = UUID("6a603035-688c-5b05-b660-58a3d364a40b")
 _BROWSER_SESSION_SECRET_NAMESPACE = UUID("4dc5c7af-34f9-5f85-a798-9f88db96a253")
 
-
 def browser_capture_router() -> APIRouter:
     router = APIRouter(
         prefix="/v1/projects/{project_id}/browser-capture",
@@ -529,6 +528,7 @@ def browser_capture_router() -> APIRouter:
             "question_set_version": resolved.question_set_version,
             "question_set_hash": resolved.question_set_hash,
             "question_count": len(questions),
+            "question_set_item_ids": [question.question_id for question in questions],
             "adapter_release_id": resolved.adapter_release_id,
             "adapter_release_hash": resolved.adapter_release_hash,
             "model_release_id": resolved.model_release_id,

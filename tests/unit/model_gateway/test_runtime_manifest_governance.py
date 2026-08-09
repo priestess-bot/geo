@@ -34,6 +34,58 @@ def test_six_provider_template_is_strictly_parseable_and_freezes_au_microsoft_ag
     assert len({item.option_hash for item in options}) == 6
 
 
+def test_optional_serpapi_runtime_manifest_entry_keeps_six_provider_template_contract() -> None:
+    document = deepcopy(runtime_manifest_six_provider_template())
+    providers = document["provider_runtimes"]
+    models = document["model_releases"]
+    policy = document["project_policy"]
+    assert isinstance(providers, list)
+    assert isinstance(models, list)
+    assert isinstance(policy, dict)
+    serp_provider = deepcopy(providers[1])
+    assert isinstance(serp_provider, dict)
+    serp_provider.update(
+        {
+            "provider": "serpapi",
+            "adapter_release_id": "serpapi-approved-v1",
+            "allowed_search_modes": ["google_search"],
+            "secret_reference_id": "94000000-0000-0000-0000-000000000007",
+        }
+    )
+    providers.append(serp_provider)
+    serp_model = deepcopy(models[1])
+    assert isinstance(serp_model, dict)
+    serp_model.update(
+        {
+            "provider": "serpapi",
+            "adapter_release_id": "serpapi-approved-v1",
+            "model_release_id": "serpapi-google-search-v1",
+            "configured_model": "google-ai-overview",
+        }
+    )
+    models.append(serp_model)
+    allowed_providers = policy["allowed_providers"]
+    allowed_adapters = policy["allowed_adapter_release_ids"]
+    assert isinstance(allowed_providers, list)
+    assert isinstance(allowed_adapters, list)
+    allowed_providers.append("serpapi")
+    allowed_adapters.append("serpapi-approved-v1")
+
+    manifest = parse_runtime_manifest(document)
+
+    assert len(manifest.provider_runtimes) == 7
+    assert {item.adapter_release.provider for item in manifest.provider_runtimes} == {
+        "deepseek",
+        "openai",
+        "kimi",
+        "gemini",
+        "perplexity",
+        "microsoft",
+        "serpapi",
+    }
+    assert len(runtime_options_for_manifest(manifest)) == 7
+
+
 def test_runtime_manifest_rejects_self_approval() -> None:
     document = runtime_manifest_six_provider_template()
     document["approved_by"] = document["prepared_by"]

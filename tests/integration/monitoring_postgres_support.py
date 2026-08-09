@@ -503,7 +503,7 @@ def isolated_minio_store() -> Iterator[S3CompatibleObjectStore]:
             try:
                 store.ensure_bucket()
                 break
-            except ObjectStoreError:
+            except (ObjectStoreError, OSError):
                 if time.monotonic() >= deadline:
                     raise
                 time.sleep(0.25)

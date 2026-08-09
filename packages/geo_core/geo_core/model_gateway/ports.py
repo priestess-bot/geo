@@ -428,8 +428,8 @@ class ModelCallTerminalEvent:
         _require_aware(self.occurred_at, "model-call event time")
         _require_text(self.configured_model, "model-call configured model")
         _require_hash(self.input_hash, "model-call input")
-        if self.paid_call_count not in {0, 1}:
-            raise ValueError("a model-call attempt can consume zero or one paid call")
+        if self.paid_call_count < 0:
+            raise ValueError("model-call paid call count cannot be negative")
         for count_value, label in (
             (self.prompt_tokens, "prompt token count"),
             (self.completion_tokens, "completion token count"),
@@ -458,8 +458,8 @@ class ModelCallTerminalEvent:
         if status is ModelCallTerminalStatus.SUCCEEDED:
             if self.output_hash is None or self.response_hash is None:
                 raise ValueError("successful model-call events require output and response hashes")
-            if self.paid_call_count != 1:
-                raise ValueError("successful model-call events require one paid call")
+            if self.paid_call_count < 1:
+                raise ValueError("successful model-call events require at least one paid call")
             if self.error_code is not None or self.error_retryable is not None:
                 raise ValueError("successful model-call events cannot contain error details")
         else:

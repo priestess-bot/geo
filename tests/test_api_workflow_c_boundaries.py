@@ -142,6 +142,7 @@ def test_workflow_c_openapi_accepts_automated_ui_but_excludes_b_workflow_command
     )
     assert set(suite_request) == {
         "suite_input_option_key",
+        "question_set_item_ids",
         "repetitions",
         "statistics_method_version",
         "max_planned_tasks",

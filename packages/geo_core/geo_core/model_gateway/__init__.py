@@ -74,12 +74,14 @@ from geo_core.model_gateway.provider_adapters import (
     GeminiGenerateContentAdapter,
     IndependentProviderArtifactEncryptor,
     JsonTransport,
+    JsonGetTransport,
     KimiChatCompletionsAdapter,
     MicrosoftAgentReference,
     MicrosoftBingGroundingAdapter,
     MinioProviderArtifactSink,
     OpenAIResponsesAdapter,
     PerplexitySonarAdapter,
+    SerpApiGoogleSearchAdapter,
     ProviderAdapterRuntime,
     ProviderArtifactBundle,
     ProviderArtifactError,
@@ -95,6 +97,7 @@ from geo_core.model_gateway.provider_adapters import (
 )
 from geo_core.model_gateway.releases import (
     KNOWN_MODEL_PROVIDERS,
+    KNOWN_SEARCH_PROVIDERS,
     AdapterRelease,
     DataUseDecision,
     ModelRelease,
@@ -104,6 +107,7 @@ from geo_core.model_gateway.releases import (
     ReleaseState,
     ReportedModelPolicy,
     draft_provider_adapter_releases,
+    provider_secret_purpose,
 )
 from geo_core.model_gateway.router import BoundModelGateway, ModelGatewayRouter, ProviderAdapter
 from geo_core.model_gateway.runtime_catalog import (
@@ -151,9 +155,11 @@ __all__ = [
     "GeminiGenerateContentAdapter",
     "IndependentProviderArtifactEncryptor",
     "JsonTransport",
+    "JsonGetTransport",
     "KimiChatCompletionsAdapter",
     "LoadedModelCallRuntime",
     "KNOWN_MODEL_PROVIDERS",
+    "KNOWN_SEARCH_PROVIDERS",
     "InMemoryModelCallStore",
     "ModelCallAdmissionError",
     "ModelCallAdmissionMode",
@@ -227,6 +233,7 @@ __all__ = [
     "PromptAdmissionState",
     "ReconcileModelCall",
     "PerplexitySonarAdapter",
+    "SerpApiGoogleSearchAdapter",
     "ReleaseState",
     "ReportedModelPolicy",
     "RetryableModelGatewayError",
@@ -239,6 +246,7 @@ __all__ = [
     "hash_secret_identifier",
     "parse_runtime_manifest",
     "provider_http_error",
+    "provider_secret_purpose",
     "project_provider_output_schema",
     "register_runtime_manifest",
     "select_approved_runtime",

@@ -37,6 +37,7 @@ from geo_core.model_gateway.provider_adapters.microsoft import (
 )
 from geo_core.model_gateway.releases import (
     KNOWN_MODEL_PROVIDERS,
+    KNOWN_SEARCH_PROVIDERS,
     AdapterRelease,
     DataUseDecision,
     ModelRelease,
@@ -267,7 +268,7 @@ def _parse_provider_runtime(value: object) -> ProviderRuntimeDefinition:
         },
     )
     provider = _text(item["provider"], "provider")
-    if provider not in KNOWN_MODEL_PROVIDERS:
+    if provider not in (*KNOWN_MODEL_PROVIDERS, *KNOWN_SEARCH_PROVIDERS):
         raise RuntimeManifestError(f"unsupported runtime manifest Provider: {provider}")
     capabilities = _parse_capabilities(item["capabilities"], provider=provider)
     data_policy = _parse_data_policy(item["data_policy"])

@@ -285,6 +285,42 @@
   cursor: not-allowed;
 }
 
+.pilotSelection {
+  border: 1px solid #b9ccce;
+  border-radius: 4px;
+  display: grid;
+  gap: 8px;
+  grid-column: 1 / -1;
+  margin: 0;
+  min-width: 0;
+  padding: 10px;
+}
+
+.pilotSelection legend {
+  color: #285a5a;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 0 5px;
+}
+
+.pilotSelection p,
+.compatibilityNote,
+.pilotSelectionError {
+  color: #536972;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.pilotSelectionGrid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.pilotSelectionError { color: #8a3d32; font-weight: 750; }
+
 .actionFeedback {
   border: 1px solid;
   border-radius: 5px;
@@ -309,7 +345,8 @@
 @media (max-width: 620px) {
   .keyValues dl,
   .commandGrid,
-  .parseSummary dl { grid-template-columns: 1fr; }
+  .parseSummary dl,
+  .pilotSelectionGrid { grid-template-columns: 1fr; }
   .notificationList footer { align-items: flex-start; flex-direction: column; }
   .notificationList footer code { max-width: 100%; }
 }

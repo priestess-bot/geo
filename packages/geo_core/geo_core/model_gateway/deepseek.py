@@ -166,7 +166,7 @@ class DeepSeekGateway:
         response_hash = hashlib.sha256(canonical.encode()).hexdigest()
         usage_value = response.body.get("usage")
         usage: dict[str, object] = usage_value if isinstance(usage_value, dict) else {}
-        provider_request_id = response.headers.get("x-request-id") or _optional_text(
+        provider_request_id = _header(response.headers, "x-request-id") or _optional_text(
             response.body.get("id")
         )
         call_log_id = uuid5(
@@ -291,6 +291,14 @@ def _retry_after_seconds(error: HTTPError) -> float | None:
 
 def _optional_text(value: object) -> str | None:
     return str(value) if value not in (None, "") else None
+
+
+def _header(headers: dict[str, str], name: str) -> str | None:
+    expected = name.casefold()
+    return next(
+        (value for key, value in headers.items() if key.casefold() == expected and value),
+        None,
+    )
 
 
 def _optional_int(value: object) -> int | None:

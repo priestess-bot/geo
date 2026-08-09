@@ -16,9 +16,9 @@ class TestFindOverviewPayload:
         payload = {"ai_overview": {"text_blocks": []}, "answer_box": {"answer": "x"}}
         assert _find_overview_payload(payload) == {"text_blocks": []}
 
-    def test_falls_back_to_answer_box(self) -> None:
+    def test_rejects_answer_box_as_a_different_surface(self) -> None:
         payload = {"answer_box": {"answer": "42"}}
-        assert _find_overview_payload(payload) == {"answer": "42"}
+        assert _find_overview_payload(payload) is None
 
     def test_returns_none_when_missing(self) -> None:
         assert _find_overview_payload({}) is None

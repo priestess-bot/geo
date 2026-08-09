@@ -118,3 +118,24 @@ def test_transport_exception_is_sanitized_without_request_headers_or_body() -> N
     assert "fixture-secret" not in rendered
     assert "fixture-body-secret" not in rendered
     assert str(captured.value) == "provider request timed out"
+
+
+def test_get_transport_rejects_non_scalar_query_parameters_before_io() -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(200, json={"ok": True})
+
+    transport = SecureHttpxJsonTransport(transport_factory=_factory(handler))
+
+    with pytest.raises(ValueError, match="must be a scalar"):
+        transport.get(
+            url="https://provider.example.test/search",
+            headers={},
+            params={"nested": {"not": "allowed"}},
+            timeout_seconds=3,
+        )
+
+    assert calls == 0

@@ -1,4 +1,5 @@
 import { ActionForm } from "../../geo/features/geo/ActionForm";
+import { ConnectorConnectionForm } from "./ConnectorConnectionForm";
 import { externalOperation } from "./externalOperationsActions";
 import type { ExternalOperationsData, LoadProblem } from "./externalOperationsTypes";
 import styles from "./ExternalOperations.module.css";
@@ -48,10 +49,7 @@ function ConnectorSection({ data, projectId }: { data: ExternalOperationsData; p
           <label>数据源<select name="kind" defaultValue="google_search_console"><option value="google_search_console">Google Search Console</option><option value="google_analytics_4">Google Analytics 4</option></select></label>
         </ActionForm>
         <Rows empty="尚未安装连接器定义。" items={data.connectors.definitions.map((item) => <div className={styles.row} key={item.id}><span><strong>{connectorLabel(item.kind)}</strong><small>{item.adapter_release}</small></span><Status value={item.status} />{item.status === "draft" ? <ActionForm action={externalOperation} submitLabel="批准"><Hidden projectId={projectId} command="approve_definition" /><input name="definition_id" type="hidden" value={item.id} /></ActionForm> : null}</div>)} />
-        <ActionForm action={externalOperation} submitLabel="创建连接" disabled={!approved.length}><Hidden projectId={projectId} command="create_connection" />
-          <label>已批准定义<select name="definition_id" required>{approved.map((item) => <option key={item.id} value={item.id}>{connectorLabel(item.kind)}</option>)}</select></label>
-          <label>连接名称<input name="name" required /></label><label>密钥引用 ID<input name="secret_reference_id" required /></label><label>密钥用途<input name="secret_purpose" defaultValue="connector.google" required /></label><label>密钥版本<input name="secret_version" type="number" min="1" defaultValue="1" required /></label>
-        </ActionForm>
+        <ConnectorConnectionForm approved={approved} projectId={projectId} />
         <Rows empty="尚未创建数据连接。" items={data.connectors.connections.map((item) => <div className={styles.row} key={item.id}>
           <span><strong>{item.name}</strong><small>{item.secret_purpose} · 密钥 v{item.secret_version}</small></span><Status value={item.status} />
           {item.status !== "revoked" ? <ActionForm action={externalOperation} submitLabel={item.status === "active" ? "停用" : "启用"}><Hidden projectId={projectId} command="set_connection_status" /><input name="connection_id" type="hidden" value={item.id} /><input name="expected_version" type="hidden" value={item.version} /><input name="status" type="hidden" value={item.status === "active" ? "disabled" : "active"} /></ActionForm> : null}

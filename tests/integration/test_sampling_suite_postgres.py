@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
+import hashlib
+import json
 import os
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
@@ -16,7 +18,10 @@ import pytest
 from geo_core.jobs.postgres import LostJobLease, PostgresDurableJobStore
 from geo_core.jobs.outbox import PostgresOutboxStore
 from geo_core.project_scope import set_project_scope
-from geo_api.workflow_c_sampling_contracts import EnqueueSamplingAttemptRequest, StartSamplingRunRequest
+from geo_api.workflow_c_sampling_contracts import (
+    EnqueueSamplingAttemptRequest,
+    StartSamplingRunRequest,
+)
 from geo_api.workflow_c_sampling_postgres_execution import (
     PostgresWorkflowCProviderSamplingControl,
 )
@@ -103,9 +108,7 @@ def test_sampling_suite_input_and_suite_are_fenced_and_project_scoped() -> None:
             _seed_runtime_option(admin, project_id=second["project"], marker="second")
 
         app_url = login_url(database_url, user=app_login, password=app_password)
-        worker_url = login_url(
-            database_url, user=worker_login, password=worker_password
-        )
+        worker_url = login_url(database_url, user=worker_login, password=worker_password)
         policies = PostgresWorkflowCSamplingPolicyControl(
             repository=PostgresSamplingAdmissionRepository(
                 connect=lambda: psycopg.connect(app_url, row_factory=dict_row),
@@ -117,7 +120,9 @@ def test_sampling_suite_input_and_suite_are_fenced_and_project_scoped() -> None:
         repository = PostgresSamplingSuiteRepository(
             connect=lambda: psycopg.connect(app_url, row_factory=dict_row)
         )
-        input_option = _input(project_id=first["project"], policy_id=policy.id, policy_hash=policy.definition_hash)
+        input_option = _input(
+            project_id=first["project"], policy_id=policy.id, policy_hash=policy.definition_hash
+        )
         _assert_canonical_payload_hash(app_url, first["project"], input_option)
 
         created_input = repository.register_input(
@@ -128,17 +133,23 @@ def test_sampling_suite_input_and_suite_are_fenced_and_project_scoped() -> None:
         )
         assert created_input == input_option
         assert replayed_input == input_option
-        assert repository.resolve_input(
-            project_id=first["project"], option_key=input_option.option_key
-        ) == input_option
+        assert (
+            repository.resolve_input(
+                project_id=first["project"], option_key=input_option.option_key
+            )
+            == input_option
+        )
         execution_repository = PostgresProviderSamplingExecutionInputRepository(
             connect=lambda: psycopg.connect(app_url, row_factory=dict_row)
         )
         execution_input = _provider_execution_input(input_option)
-        assert execution_repository.register(
-            execution_input,
-            idempotency_key="sampling-provider-execution-input:first",
-        ) == execution_input
+        assert (
+            execution_repository.register(
+                execution_input,
+                idempotency_key="sampling-provider-execution-input:first",
+            )
+            == execution_input
+        )
 
         suite = _suite(input_option)
         created_suite = repository.create_suite(
@@ -153,6 +164,33 @@ def test_sampling_suite_input_and_suite_are_fenced_and_project_scoped() -> None:
         )
         assert created_suite == suite
         assert replayed_suite == suite
+        with psycopg.connect(app_url, row_factory=dict_row) as connection:
+            set_project_scope(connection, first["project"])
+            ledger_row = connection.execute(
+                """SELECT input_hash
+                     FROM workflow_c_command_ledger
+                    WHERE project_id = %s
+                      AND command_scope = 'sampling.suite.create'
+                      AND aggregate_id = %s
+                      AND idempotency_key_hash = %s""",
+                (
+                    first["project"],
+                    suite.id,
+                    _hash_key("sampling-suite:first"),
+                ),
+            ).fetchone()
+        assert ledger_row is not None
+        # This is the exact command shape used before 0126. A legacy Suite
+        # replay must keep this input hash instead of hashing a null selector.
+        assert ledger_row["input_hash"] == _json_hash(
+            {
+                "operation": "create",
+                "suite_id": str(suite.id),
+                "suite_hash": suite.suite_hash,
+                "input_option_hash": input_option.option_hash,
+                "frozen_by": suite.frozen_by,
+            }
+        )
         assert repository.get_suite(project_id=first["project"], suite_id=suite.id) == suite
         assert repository.list_suites(project_id=first["project"]) == (suite,)
 
@@ -195,12 +233,14 @@ def test_sampling_suite_input_and_suite_are_fenced_and_project_scoped() -> None:
         assert created_run == replayed_run
         assert created_tasks == replayed_tasks
         assert run_repository.get_run(project_id=first["project"], run_id=run_id) == created_run
-        assert run_repository.list_tasks(
-            project_id=first["project"], run_id=run_id, suite=suite
-        ) == created_tasks
-        assert run_repository.reservation(
-            project_id=first["project"], run_id=run_id
-        ).unused_task_count == suite.planned_task_count
+        assert (
+            run_repository.list_tasks(project_id=first["project"], run_id=run_id, suite=suite)
+            == created_tasks
+        )
+        assert (
+            run_repository.reservation(project_id=first["project"], run_id=run_id).unused_task_count
+            == suite.planned_task_count
+        )
         task = created_tasks[0]
         attempt_repository = PostgresProviderSamplingAttemptRepository(
             connect=lambda: psycopg.connect(app_url, row_factory=dict_row)
@@ -280,17 +320,24 @@ def test_sampling_suite_input_and_suite_are_fenced_and_project_scoped() -> None:
         assert len(persisted_attempts) == 1
         assert persisted_attempts[0].id == attempt_id
         assert persisted_attempts[0].job.status.value == "queued"
-        assert read_repository.observations_for_run(
-            project_id=first["project"],
-            run_id=run_id,
-            source=suite.source_stratum,
-        ) == ()
-        assert run_repository.reservation(
-            project_id=first["project"], run_id=run_id
-        ).unused_task_count == suite.planned_task_count - 1
-        assert run_repository.list_tasks(
-            project_id=first["project"], run_id=run_id, suite=suite
-        )[0].version == task.version + 1
+        assert (
+            read_repository.observations_for_run(
+                project_id=first["project"],
+                run_id=run_id,
+                source=suite.source_stratum,
+            )
+            == ()
+        )
+        assert (
+            run_repository.reservation(project_id=first["project"], run_id=run_id).unused_task_count
+            == suite.planned_task_count - 1
+        )
+        assert (
+            run_repository.list_tasks(project_id=first["project"], run_id=run_id, suite=suite)[
+                0
+            ].version
+            == task.version + 1
+        )
         with pytest.raises(SamplingConflict, match="quota"):
             run_repository.create_run(
                 suite=suite,
@@ -311,9 +358,10 @@ def test_sampling_suite_input_and_suite_are_fenced_and_project_scoped() -> None:
             first_attempt_version=first_attempt.attempt_version,
             now=NOW,
         )
-        assert run_repository.get_run(
-            project_id=first["project"], run_id=run_id
-        ).status.value == "cancelled"
+        assert (
+            run_repository.get_run(project_id=first["project"], run_id=run_id).status.value
+            == "cancelled"
+        )
         replacement_run, replacement_tasks = run_repository.create_run(
             suite=suite,
             grant=grant,
@@ -328,7 +376,10 @@ def test_sampling_suite_input_and_suite_are_fenced_and_project_scoped() -> None:
         )
         queued_attempt_id = uuid4()
         queued_task = replacement_tasks[0]
-        scheduled_at = datetime.now(UTC) + timedelta(minutes=5)
+        # `NOW` is the frozen clock used when the seven-day authorization
+        # window is admitted; wall-clock time would make this fixture
+        # invalid once the test data's historical window has elapsed.
+        scheduled_at = NOW + timedelta(minutes=5)
         queued_attempt = attempt_repository.enqueue(
             ProviderSamplingAttemptAdmission(
                 project_id=first["project"],
@@ -432,12 +483,15 @@ def test_sampling_suite_input_and_suite_are_fenced_and_project_scoped() -> None:
                 lease_for=timedelta(minutes=2),
             )
             assert claim.disposition == "claimed" and claim.lease is not None
-            assert recovery_store.fail(
-                claim.lease,
-                error_code="unexpected_worker_failure",
-                details={"sampling_status": "worker_unhandled"},
-                retry_delay=timedelta(0),
-            ) == expected_status
+            assert (
+                recovery_store.fail(
+                    claim.lease,
+                    error_code="unexpected_worker_failure",
+                    details={"sampling_status": "worker_unhandled"},
+                    retry_delay=timedelta(0),
+                )
+                == expected_status
+            )
         assert _sampling_attempt_state(
             worker_url=worker_url,
             project_id=first["project"],
@@ -529,10 +583,7 @@ def test_sampling_suite_input_and_suite_are_fenced_and_project_scoped() -> None:
             lease_for=timedelta(minutes=2),
         )
         assert recovered_lease.disposition == "claimed" and recovered_lease.lease is not None
-        assert (
-            recovered_lease.lease.fencing_generation
-            == first_lease.lease.fencing_generation + 1
-        )
+        assert recovered_lease.lease.fencing_generation == first_lease.lease.fencing_generation + 1
         worker_repository = PostgresWorkflowCSamplingRepository(
             lambda: psycopg.connect(worker_url, row_factory=dict_row)
         )
@@ -601,6 +652,18 @@ def test_sampling_suite_input_and_suite_are_fenced_and_project_scoped() -> None:
                 server.execute(
                     sql.SQL("DROP ROLE IF EXISTS {}").format(sql.Identifier(worker_login))
                 )
+
+
 def _database_url(admin_url: str, database_name: str) -> str:
     parsed = urlsplit(admin_url)
     return urlunsplit((parsed.scheme, parsed.netloc, f"/{database_name}", "", ""))
+
+
+def _hash_key(value: str) -> str:
+    return _json_hash({"idempotency_key": value.strip()})
+
+
+def _json_hash(value: object) -> str:
+    return hashlib.sha256(
+        json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    ).hexdigest()

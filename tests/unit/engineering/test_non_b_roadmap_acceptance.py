@@ -23,13 +23,13 @@ def test_classification_resolves_every_roadmap_id_without_local_gaps() -> None:
     register = build_register(policy_path=DEFAULT_POLICY, output=DEFAULT_OUTPUT)
 
     assert register["summary"] == {
-        "all": 322,
+        "all": 330,
         "templates": 13,
         "excluded_b": 49,
         "mixed_atomic": 68,
-        "included_non_b": 260,
+        "included_non_b": 268,
         "local_gap": 0,
-        "ready_for_review": 84,
+        "ready_for_review": 92,
         "blocked_external": 176,
     }
     checks = {item["check_id"]: item for item in register["checks"]}
@@ -65,7 +65,7 @@ def test_exported_register_is_source_and_hash_bound(tmp_path: Path) -> None:
     verified = verify_register(policy_path=DEFAULT_POLICY, register_path=output)
 
     assert verified["register_hash"] == written["register_hash"]
-    assert verified["check_count"] == 322
+    assert verified["check_count"] == 330
     assert len(written["source_identity"]["tree_fingerprint"]) == 64
 
 

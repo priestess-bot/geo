@@ -145,6 +145,7 @@ export type SamplingSuite = Readonly<{
     question_version: string;
     text_hash: string;
   }>>;
+  question_set_item_ids: string[];
   source_stratum: SamplingSourceStratum;
   repetitions: number;
   statistics_method_version: string;
@@ -235,7 +236,11 @@ export type AdmissionRuntimeOptionPage = Readonly<{
 export type SamplingSuiteInputOption = Readonly<{
   option_key: string;
   display_name: string;
+  question_set_id: string;
+  question_set_version: string;
+  question_set_hash: string;
   question_count: number;
+  question_set_item_ids: string[];
   admission_policy_id: string;
   admission_policy_hash: string;
   source_stratum: SamplingSourceStratum;
@@ -577,50 +582,7 @@ export type NotificationProjection = Readonly<{
 }>;
 
 export type AlertPage = Readonly<{ items: AlertRecord[]; total: number }>;
-
-export type WorkflowCWorkspaceData = Readonly<{
-  actorId: string;
-  currentIdentityId: string | null;
-  currentRole: "owner" | "admin" | "analyst" | "viewer" | null;
-  activeView: WorkflowView;
-  selection: Readonly<{
-    embedded: boolean;
-    suiteId?: string;
-    runId?: string;
-    snapshotHash?: string;
-    familyHash?: string;
-    driftHash?: string;
-    alertId?: string;
-    policyId?: string;
-    campaignId?: string;
-    questionGenerationJobId?: string;
-    questionStep?: QuestionStep;
-  }>;
-  questionWorkspace: QuestionWorkspaceData | null;
-  suite: Resource<SamplingSuite>;
-  run: Resource<SamplingRunDetail>;
-  metrics: Resource<SemanticMetricSnapshot>;
-  metricSnapshots: Resource<SemanticMetricSnapshotPage>;
-  metricProtocols: Resource<MetricProtocolPage>;
-  statisticalProtocols: Resource<StatisticalProtocolPage>;
-  comparisons: Resource<ComparisonFamily>;
-  comparisonFamilies: Resource<ComparisonFamilyPage>;
-  drift: Resource<DriftReport>;
-  driftReports: Resource<DriftReportPage>;
-  alerts: Resource<AlertPage>;
-  admissionPolicies: Resource<AdmissionPolicyPage>;
-  admissionRuntimeOptions: Resource<AdmissionRuntimeOptionPage>;
-  suiteInputOptions: Resource<SamplingSuiteInputOptionPage>;
-  suites: Resource<SamplingSuitePage>;
-  runs: Resource<SamplingRunPage>;
-  manualEvidence: Resource<ManualEvidenceImportPage>;
-  surfaceParserReleases: Resource<SurfaceParserReleasePage>;
-  browserCaptureReadiness: Resource<BrowserCaptureReadiness>;
-  browserCaptureInventory: Resource<BrowserCaptureInventory>;
-  workflowCReports: Resource<WorkflowCReportPage>;
-  notifications: Resource<NotificationProjection[]>;
-}>;
-
+export type { WorkflowCWorkspaceData } from "./workflowCWorkspaceTypes";
 export type WorkflowCActionState = Readonly<{
   kind: "idle" | "success" | "error";
   message?: string;

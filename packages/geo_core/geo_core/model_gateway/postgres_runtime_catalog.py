@@ -19,7 +19,12 @@ from geo_core.model_gateway.postgres_rows import (
     project_policy_from_row,
 )
 from geo_core.model_gateway.provider_adapters.microsoft import MicrosoftAgentReference
-from geo_core.model_gateway.releases import AdapterRelease, ModelRelease, ModelRoute
+from geo_core.model_gateway.releases import (
+    AdapterRelease,
+    ModelRelease,
+    ModelRoute,
+    provider_secret_purpose,
+)
 from geo_core.model_gateway.runtime_catalog import (
     ApprovedRuntimeOption,
     ApprovedRuntimeOptions,
@@ -272,7 +277,7 @@ class PostgresRuntimeCatalog:
             provider_secret_handle=SecretVersionHandle(
                 reference_id=row["secret_reference_id"],
                 project_id=project_id,
-                purpose=f"model_provider.{row['provider']}",
+                purpose=provider_secret_purpose(row["provider"]),
                 version=row["secret_version"],
             ),
             adapter_release=adapter,

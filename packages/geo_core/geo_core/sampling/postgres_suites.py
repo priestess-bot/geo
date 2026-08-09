@@ -176,24 +176,39 @@ class PostgresSamplingSuiteRepository:
         *,
         input_option: PersistentSamplingSuiteInput,
         idempotency_key: str,
+        selected_question_set_item_ids: tuple[str, ...] | None = None,
     ) -> SamplingSuite:
         if suite.project_id != input_option.project_id:
             raise PostgresSamplingSuiteError("Sampling Suite input Project differs")
-        command_hash = _hash(
-            {
-                "operation": "create",
-                "suite_id": str(suite.id),
-                "suite_hash": suite.suite_hash,
-                "input_option_hash": input_option.option_hash,
-                "frozen_by": suite.frozen_by,
-            }
-        )
+        command_value: dict[str, object] = {
+            "operation": "create",
+            "suite_id": str(suite.id),
+            "suite_hash": suite.suite_hash,
+            "input_option_hash": input_option.option_hash,
+            "frozen_by": suite.frozen_by,
+        }
         payload = {
             "schema_version": 1,
             "suite": suite.canonical_value(),
             "frozen_by": suite.frozen_by,
             "frozen_at": suite.frozen_at.isoformat(),
         }
+        if selected_question_set_item_ids is not None:
+            selected = tuple(selected_question_set_item_ids)
+            if len(selected) != 10 or len(set(selected)) != 10:
+                raise PostgresSamplingSuiteError(
+                    "Sampling Suite selection must contain 10 unique QuestionSet item IDs"
+                )
+            if set(selected) != {question.question_id for question in suite.questions}:
+                raise PostgresSamplingSuiteError(
+                    "Sampling Suite selection differs from its frozen questions"
+                )
+            payload["question_set_item_ids"] = list(selected)
+            command_value["question_set_item_ids"] = list(selected)
+        # Keep the pre-0126 command shape byte-for-byte stable for legacy Suite
+        # replays. The selection key is part of the command only when the
+        # caller explicitly opts into the ten-question pilot contract.
+        command_hash = _hash(command_value)
         return self._call_suite(
             project_id=suite.project_id,
             statement="""SELECT * FROM geo_create_workflow_c_sampling_suite(
@@ -376,11 +391,28 @@ def _input(row: Mapping[str, object]) -> PersistentSamplingSuiteInput:
 
 def _suite(row: Mapping[str, object]) -> SamplingSuite:
     payload = _json(row, "payload")
-    if set(payload) != {"schema_version", "suite", "frozen_by", "frozen_at"} or (
-        payload.get("schema_version") != 1
+    expected_payload_keys = {"schema_version", "suite", "frozen_by", "frozen_at"}
+    if (
+        not set(payload).issubset(expected_payload_keys | {"question_set_item_ids"})
+        or (not expected_payload_keys.issubset(payload))
+        or (payload.get("schema_version") != 1)
     ):
         raise PostgresSamplingSuiteError("Sampling Suite payload schema is invalid")
     value = _mapping(payload.get("suite"))
+    if "question_set_item_ids" in payload:
+        selected = payload.get("question_set_item_ids")
+        if (
+            not isinstance(selected, list)
+            or len(selected) != 10
+            or any(not isinstance(item, str) or not item.strip() for item in selected)
+            or len(set(selected)) != 10
+        ):
+            raise PostgresSamplingSuiteError("Sampling Suite question selection is invalid")
+        raw_questions = value.get("questions")
+        if not isinstance(raw_questions, list) or {
+            _text(_mapping(item), "question_id") for item in raw_questions
+        } != set(selected):
+            raise PostgresSamplingSuiteError("Sampling Suite question selection is corrupt")
     suite = SamplingSuite(
         id=_uuid(row, "id"),
         project_id=_uuid(row, "project_id"),

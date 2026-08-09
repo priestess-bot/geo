@@ -7,7 +7,16 @@ from typing import Any
 
 _SHA256 = "^[0-9a-f]{64}$"
 _EVIDENCE_URI = "^(?:https|minio|s3)://[^\\s?#]+(?:#[^\\s]*)?$"
-_PROVIDERS = ["deepseek", "openai", "kimi", "gemini", "perplexity", "microsoft"]
+_PROVIDERS = [
+    "deepseek",
+    "openai",
+    "kimi",
+    "gemini",
+    "perplexity",
+    "microsoft",
+    "serpapi",
+]
+_SIX_PROVIDERS = _PROVIDERS[:-1]
 
 
 def runtime_manifest_json_schema() -> dict[str, Any]:
@@ -48,7 +57,7 @@ def runtime_manifest_json_schema() -> dict[str, Any]:
             "provider_runtimes": {
                 "type": "array",
                 "minItems": 1,
-                "maxItems": 6,
+                "maxItems": 7,
                 "items": {"$ref": "#/$defs/provider_runtime"},
             },
             "model_releases": {
@@ -276,11 +285,12 @@ def runtime_manifest_six_provider_template() -> dict[str, Any]:
         "gemini": ("provider_api", ["disabled", "google_search"], True),
         "perplexity": ("provider_api", ["web"], True),
         "microsoft": ("proxy_grounded_api", ["bing_grounding"], True),
+        "serpapi": ("provider_api", ["google_search"], True),
     }
     providers: list[dict[str, Any]] = []
     models: list[dict[str, Any]] = []
     adapters: list[str] = []
-    for index, provider in enumerate(_PROVIDERS, start=1):
+    for index, provider in enumerate(_SIX_PROVIDERS, start=1):
         capture_method, search_modes, supports_search = settings[provider]
         adapter_id = f"{provider}-replace-with-approved-adapter-v1"
         model_id = f"{provider}-replace-with-approved-model-v1"
@@ -371,7 +381,7 @@ def runtime_manifest_six_provider_template() -> dict[str, Any]:
             "previous_version_id": None,
             "external_training_allowed": False,
             "structured_output_required": True,
-            "allowed_providers": _PROVIDERS,
+            "allowed_providers": _SIX_PROVIDERS,
             "allowed_adapter_release_ids": adapters,
             "maximum_paid_calls": 1000,
             "maximum_concurrent_calls": 8,

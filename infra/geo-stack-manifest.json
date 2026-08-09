@@ -2,12 +2,35 @@
   "schema_version": "geo-stack-runtime-manifest-v1",
   "canonical_project": "geo",
   "canonical_mode": "internal",
+  "supported_modes": ["internal", "production"],
   "compose_files": [
     "infra/docker-compose.yml",
     "infra/compose.staging-operator.yml",
     "infra/dify/compose.geo-runtime.yml"
   ],
+  "production_compose_files": [
+    "infra/compose.prod.yml",
+    "infra/compose.style-collection.yml",
+    "infra/compose.connector.yml",
+    "infra/compose.browser-capture.yml",
+    "infra/dify/compose.production-runtime.yml"
+  ],
   "dify_project": "geo-dify",
+  "dify_required_services": [
+    "agent_backend",
+    "api",
+    "db_postgres",
+    "local_sandbox",
+    "nginx",
+    "plugin_daemon",
+    "redis",
+    "sandbox",
+    "ssrf_proxy",
+    "weaviate",
+    "web",
+    "worker",
+    "worker_beat"
+  ],
   "migration_transport": "private GitHub Release encrypted assets",
   "migration_entrypoint": "scripts/geo_sync.py",
   "ports": {
@@ -34,8 +57,39 @@
     "admin-web",
     "customer-web"
   ],
+  "release_tracked_services": {
+    "internal": [
+      "internal-api",
+      "customer-api",
+      "task-worker",
+      "outbox-relay",
+      "connector-worker",
+      "browser-capture-worker",
+      "admin-web",
+      "customer-web",
+      "alert-smtp-relay",
+      "alert-webhook-sink"
+    ],
+    "production": [
+      "internal-api",
+      "customer-api",
+      "task-worker",
+      "workflow-c-maintenance-scheduler",
+      "workflow-c-maintenance-worker",
+      "recommendation-artifact-maintenance-scheduler",
+      "recommendation-artifact-maintenance-worker",
+      "synthetic-artifact-maintenance-worker",
+      "outbox-relay",
+      "admin-web",
+      "customer-web",
+      "style-browser-worker",
+      "style-browser-runtime",
+      "connector-worker",
+      "browser-capture-worker"
+    ]
+  },
   "dify_databases": ["dify", "dify_plugin"],
-  "legacy_projects": ["geo-development", "geo-advinsys-staging"],
+  "legacy_projects": ["geo-development", "geo-advinsys-staging", "geo-advinsys-staging-v2"],
   "excluded_projects": [
     "assetgraph",
     "sub2api",

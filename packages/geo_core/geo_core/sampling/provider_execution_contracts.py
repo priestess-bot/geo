@@ -10,6 +10,7 @@ from types import MappingProxyType
 from uuid import UUID
 
 from geo_core.model_gateway import ModelCaptureMethod, ModelRoute, canonical_json_hash
+from geo_core.model_gateway.releases import provider_secret_purpose
 from geo_core.model_gateway.schema_validation import validate_output_schema_pair
 from geo_core.secrets import SecretVersionHandle
 from geo_core.sampling.contracts import SamplingRuleViolation
@@ -114,7 +115,7 @@ class ExecuteProviderSampling:
             raise ValueError("Provider Sampling question text cannot be empty")
         if (
             self.provider_secret_handle.project_id != self.project_id
-            or self.provider_secret_handle.purpose != f"model_provider.{self.route.provider}"
+            or self.provider_secret_handle.purpose != provider_secret_purpose(self.route.provider)
         ):
             raise ValueError("Provider Sampling secret handle does not match project/provider")
 

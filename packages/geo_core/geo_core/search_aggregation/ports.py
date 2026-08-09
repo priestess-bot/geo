@@ -5,6 +5,14 @@ from __future__ import annotations
 from typing import Any, Protocol
 
 from geo_core.search_aggregation.domain import AiOverviewQuery, AiOverviewResult
+from geo_core.secrets.models import SecretValue, SecretVersionHandle
+
+
+class SearchCredentialResolver(Protocol):
+    """Resolve one immutable Secret Store version for an immediate API call."""
+
+    def resolve(self, handle: SecretVersionHandle) -> SecretValue:
+        """Return transient plaintext for the provider request only."""
 
 
 class SearchProvider(Protocol):

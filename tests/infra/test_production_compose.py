@@ -675,6 +675,7 @@ def test_artifact_keyrings_and_style_runtime_have_least_privilege_mounts() -> No
         "infra/compose.style-collection.yml",
         "infra/compose.connector.yml",
         "infra/compose.browser-capture.yml",
+        "infra/dify/compose.production-runtime.yml",
     ):
         assert f"-f {compose_file}" in makefile
 

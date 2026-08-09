@@ -442,6 +442,7 @@ export interface KnowledgeQuestionSetCreate {
 }
 export interface KnowledgeQuestionCoverageFinalize {
   name: string; generation_job_id: string; included_candidate_ids: string[];
+  series_id?: string | null; previous_version_id?: string | null;
 }
 export interface KnowledgeQuestionSetItemView {
   id: string; ordinal: number; question_candidate_id: string; dimension_key: string;

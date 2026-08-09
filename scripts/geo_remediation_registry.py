@@ -49,6 +49,7 @@ def missing_target(reason: str) -> EvidenceTarget:
 
 
 ADMIN_SPEC = "tests/browser/admin-geo-context.spec.ts"
+ADMIN_PROMPT_BINDING_SPEC = "tests/browser/admin-geo-prompt-binding.spec.ts"
 CUSTOMER_SPEC = "tests/browser/customer-geo-portal.spec.ts"
 ADMIN_CONFIG = "playwright.config.ts"
 CUSTOMER_CONFIG = "playwright.customer.config.ts"
@@ -292,7 +293,7 @@ TEST_EVIDENCE: dict[str, tuple[EvidenceTarget, ...]] = {
             "test_campaign_readiness_has_exactly_nine_ordered_channels"
         ),
     ),
-    "F014-WEB-01": (playwright_target(ADMIN_SPEC, F014_TITLE),),
+    "F014-WEB-01": (playwright_target(ADMIN_PROMPT_BINDING_SPEC, F014_TITLE),),
     "F013-DOMAIN-01": (
         pytest_target(
             "tests/unit/knowledge/test_evidence_request.py::"
@@ -556,7 +557,7 @@ TEST_EVIDENCE: dict[str, tuple[EvidenceTarget, ...]] = {
     ),
     "F025-WEB-01": (
         playwright_target(ADMIN_SPEC, F012_TITLE),
-        playwright_target(ADMIN_SPEC, F014_TITLE),
+        playwright_target(ADMIN_PROMPT_BINDING_SPEC, F014_TITLE),
         playwright_target(ADMIN_SPEC, F011_TITLE),
     ),
     "F025-WEB-02": (

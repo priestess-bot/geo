@@ -274,6 +274,7 @@ def suite_response(item: SamplingSuite) -> SamplingSuiteResponse:
             )
             for question in item.questions
         ],
+        question_set_item_ids=[question.question_id for question in item.questions],
         source_stratum=SamplingSourceStratumContract.model_validate(
             {**source.canonical_value(), "stratum_hash": source.stratum_hash}
         ),
@@ -310,6 +311,7 @@ def suite_input_option_page_response(
                 question_set_version=item.question_set_version,
                 question_set_hash=item.question_set_hash,
                 question_count=len(item.questions),
+                question_set_item_ids=[question.question_id for question in item.questions],
                 adapter_release_id=item.adapter_release_id,
                 adapter_release_hash=item.adapter_release_hash,
                 model_release_id=item.model_release_id,

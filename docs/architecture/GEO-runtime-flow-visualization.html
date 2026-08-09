@@ -1580,7 +1580,7 @@
                   <button class="flow-node status-warning" type="button" data-node="facts" aria-pressed="true"><strong>事实与证据</strong><small>5 批准 · 571 待审</small><span class="node-status"><i class="status-dot warning"></i>部分已批准</span></button>
                   <button class="flow-node status-complete" type="button" data-node="campaign" aria-pressed="false"><strong>Campaign 与监测查询</strong><small>3 Campaign · 6 Query</small><span class="node-status"><i class="status-dot complete"></i>已建立</span></button>
                   <button class="flow-node status-complete" type="button" data-node="dify" aria-pressed="false"><strong>Dify 工作流</strong><small>10 个托管流程</small><span class="node-status"><i class="status-dot complete"></i>已激活</span></button>
-                  <button class="flow-node status-waiting" type="button" data-node="test-questions" aria-pressed="false"><strong>测试问题与 QuestionSet</strong><small>3 套 100 题 · 300 待审</small><span class="node-status"><i class="status-dot waiting"></i>等待人工确认</span></button>
+                  <button class="flow-node status-waiting" type="button" data-node="test-questions" aria-pressed="false"><strong>测试问题与 QuestionSet</strong><small>3 套 100 题 · 后继修订</small><span class="node-status"><i class="status-dot waiting"></i>等待人工确认</span></button>
                   <div class="blank-node" aria-hidden="true"></div>
                 </div>
               </section>
@@ -1718,6 +1718,7 @@
               <option value="async-model">异步模型任务</option>
               <option value="dify-workflow">Dify 工作流</option>
               <option value="connector-sync">连接器同步</option>
+              <option value="provider-sampling">Provider API 采样</option>
               <option value="browser-capture">消费者界面采集</option>
               <option value="style-collection">合成样本采集</option>
               <option value="customer-read">客户只读查询</option>
@@ -1814,7 +1815,7 @@
               <div><dt id="topology-detail-label-3">网络</dt><dd id="topology-detail-value-3">GEO default + geo-dify-runtime</dd></div>
               <div><dt id="topology-detail-label-4">读写</dt><dd id="topology-detail-value-4">PostgreSQL、MinIO、Valkey readiness、Dify API</dd></div>
               <div><dt id="topology-detail-label-5">代码入口</dt><dd id="topology-detail-value-5">apps/api/geo_api/internal_app.py</dd></div>
-              <div><dt id="topology-detail-label-6">配置来源</dt><dd id="topology-detail-value-6">infra/compose.prod.yml + staging/Dify overlays</dd></div>
+              <div><dt id="topology-detail-label-6">配置来源</dt><dd id="topology-detail-value-6">internal staging bundle；production 独立 bundle + Dify bridge</dd></div>
             </dl>
             <div class="topology-detail-note" id="topology-detail-note">当前 staging 实际加入 GEO 默认网络与 geo-dify-runtime；这里不借用生产网络名称。</div>
             <section class="topology-dify-services" id="topology-dify-services" hidden>
@@ -1940,10 +1941,10 @@
       },
       "test-questions": {
         status: "waiting", statusText: "等待人工确认", title: "测试问题与 QuestionSet",
-        description: "V600、V1000 和 SAT30 已由固定覆盖计划与真实 Dify / DeepSeek 各生成 100 条问题。技术生成成功不等于候选已确认、QuestionSet 已冻结或已经进入采样分母。",
-        fact: "3 个 Coverage Job succeeded；300 pending_review；0 个本批次 QuestionSet",
+        description: "V600、V1000 和 SAT30 已有各 100 条候选。当前实现支持保留原始疑似重复证据、修订后创建同一 series 的恰好 100 条后继版本；技术生成成功不等于人工确认、QuestionSet 冻结或进入采样分母。",
+        fact: "3 个 Coverage Job succeeded；300 pending_review；当前批次 0 个冻结 QuestionSet；后继路径要求 exact 100",
         executor: "覆盖计划器 + Durable Question Worker + Dify + PostgreSQL checkpoint",
-        next: "业务审核人编辑或排除疑似重复，每个产品保留 90--100 条，再一次确认并冻结 QuestionSet",
+        next: "业务审核人修订全部疑似重复并提交后继版本；服务端确定性复核恰好 100 条后再冻结 QuestionSet",
         evidence: "GEO-test-question-generation-operator-manual §7", href: `${adminBase}?tab=measurement&workflow_view=questions&campaign_id=049efe96-2ef6-4020-885f-df770ce5ab90&question_generation_job_id=0b4f68e1-03ad-5b48-a7e7-71d207bba1ad&question_step=review`
       },
       "content-input": {
@@ -2061,27 +2062,27 @@
       },
       connectors: {
         status: "warning", statusText: "底座可用", title: "Connector Core",
-        description: "连接器定义、同步、游标、工件和投影底座可运行，但没有真实账号连接。",
-        fact: "GSC / GA4 Definition 为 draft；0 Connection、0 Sync",
+        description: "连接器定义、scope 校验、同步、游标、工件和投影底座可运行；GSC/GA4 canary 入口已就绪，但没有真实账号连接。",
+        fact: "GSC / GA4 Definition 为 draft；scope 可校验；0 Connection、0 Sync",
         executor: "Connector Worker + PyAirbyte",
-        next: "将真实授权凭据写入 Secret Store，再批准 Definition 与 Connection",
+        next: "提供真实 GSC/GA4 property 凭据和 scope 授权，写入 Secret Store 后再批准 Definition 与 Connection",
         evidence: "advinsys-production-path-validation §3 / §5", href: `${adminBase}?tab=external-data`
       },
       "external-capture": {
         status: "blocked", statusText: "等待澳洲代理", title: "Provider 与消费者界面",
-        description: "AIO、AI Mode、Copilot 已进入正式 Browser Capture/Sampling 路径；五类 Provider 仍缺真实凭据，三个消费者界面仍缺澳洲 sticky proxy 和 live 证据。旧 SerpAPI 消费者界面路由已退役。",
-        fact: "3 个 approved Surface Release、1 个匿名 en-AU Profile、0 Egress Endpoint、0 Capture",
+        description: "AIO、AI Mode、Copilot 已进入正式 Browser Capture/Sampling 路径；正式 SerpAPI provider adapter/canary 已恢复但缺 Secret Store 凭据，五类计划 Provider 也仍缺真实凭据；三个消费者界面仍缺澳洲 sticky proxy 和 live 证据。旧 SerpAPI 消费者界面路由已退役。",
+        fact: "SerpAPI live Observation 0；3 个 approved Surface Release、1 个匿名 en-AU Profile、0 Egress Endpoint、0 Capture",
         executor: "Provider Adapter + Browser Capture Worker",
-        next: "在测量与告警中配置 residential/mobile 澳洲 sticky proxy，逐 Surface 完成 3 次 canary，再启动冻结问题集测量",
-        evidence: "外部数据与跨引擎采样实施计划 · 2026-08-07 本地实现证据", href: `${adminBase}?tab=measurement&workflow_view=sampling`
+        next: "先写入 SerpAPI Secret reference 和其他真实 Provider 凭据；再配置 residential/mobile 澳洲 sticky proxy，逐 Surface 完成 3 次 canary，最后启动冻结问题集测量",
+        evidence: "外部数据与跨引擎采样实施计划 · 2026-08-10 本地实现证据", href: `${adminBase}?tab=measurement&workflow_view=sampling`
       },
       sampling: {
         status: "blocked", statusText: "无法形成分母", title: "采样与 Observation",
-        description: "没有真实 Provider、消费者界面或官方报告样本，不能形成可验收的采样分母。",
-        fact: "真实 ADVINSYS Sampling Observation 不足",
+        description: "Suite 创建已支持对冻结输入持久化恰好 10 个唯一问题选择，后续 Task 只从该 pilot 选择派生；但没有真实 Provider、消费者界面或官方报告样本，仍不能形成可验收的采样分母。",
+        fact: "10 题 pilot 选择合同已通过；真实 ADVINSYS Sampling Observation 仍为 0/不足",
         executor: "Workflow C Sampling Suite / Run / Task",
-        next: "按 source mode 分层执行真实重复采样，不混合分母",
-        evidence: "外部数据与跨引擎采样实施计划", href: `${adminBase}?tab=measurement`
+        next: "先冻结 QuestionSet 后选择 10 题 pilot；补齐 Provider/代理/连接器凭据，再按 source mode 分层执行真实重复采样",
+        evidence: "外部数据与跨引擎采样实施计划 §5.2 / §8.2", href: `${adminBase}?tab=measurement`
       },
       metrics: {
         status: "idle", statusText: "尚无业务结果", title: "指标、统计与告警",
@@ -2151,9 +2152,9 @@
       },
       "test-questions": {
         object: "TerraMow V600 完整 100 题", techStatus: "完成", businessStatus: "pending_review", id: "0b4f68e1…b1ad",
-        outcomeTitle: "100 条候选已生成，QuestionSet 仍等待人工确认",
-        outcomeCopy: "V600 已形成 50 条类目基准、40 条产品适配和 10 条品牌控制问题；100 条文字均不同，7 条疑似重复被保留并默认排除。当前 93 条默认入选，尚未由业务人员冻结，也未进入采样分母。",
-        outcomeState: "100 条候选 · 93 条默认保留", outcomeTone: "waiting",
+        outcomeTitle: "100 条候选已生成，后继版本仍等待人工确认",
+        outcomeCopy: "V600 已形成 50 条类目基准、40 条产品适配和 10 条品牌控制问题；100 条文字均不同，7 条疑似重复保留为不可变原始证据。当前 93 条默认保留，业务人员必须修订待修题并提交恰好 100 条后继 QuestionSet；尚未进入采样分母。",
+        outcomeState: "100 条候选 · 93 条默认保留 · 后继 exact 100", outcomeTone: "waiting",
         steps: [
           ["选择 Campaign", "Admin 只需选择产品活动，可选填写不超过 120 字的本次关注点。", "Admin 13001", "complete"],
           ["覆盖计划", "服务器从当前产品、官方 URL 和批准 Fact 构建 100 个固定槽位，冻结 50/40/10 配额。", "au-cross-engine-balanced-v1", "complete"],
@@ -2162,8 +2163,8 @@
           ["知识与身份校验", "每个模型槽位预分配冻结 grounding_fact；应用校验非品牌题不泄露产品身份且引用不越界。", "invalid Fact links = 0", "complete"],
           ["Checkpoint 恢复", "每个有效批次独立保存；V600 从 2/10 和 6/10 两次继续，最终完成而非整套重跑。", "10 / 10 batches", "complete"],
           ["候选持久化", "100 条不同文字及实际模型、去重、Fact lineage 和工件 hash 原子落库。", "0b4f68e1…b1ad", "complete"],
-          ["人工确认", "业务人员可搜索、按层/主题筛选、编辑或排除；7 条疑似重复默认不纳入。", "93 / 100 默认保留", "waiting"],
-          ["QuestionSet 冻结", "保留 90--100 条后一次确认并创建不可变 QuestionSet；系统不代替业务判断。", "当前 0", "idle"],
+          ["人工确认", "业务人员可搜索、按层/主题筛选并修订疑似重复；原始重复证据不被覆盖。", "7 条待修", "waiting"],
+          ["QuestionSet 冻结", "后继版本必须绑定 series/previous version，并经服务端确定性复核恰好 100 条后创建不可变 QuestionSet。", "当前 0", "idle"],
           ["监测方案绑定", "冻结 QuestionSet 绑定 draft 监测方案后才可作为后续采样输入。", "尚未开始", "idle"]
         ]
       },
@@ -2242,12 +2243,12 @@
         note: "浏览器不直接访问 PostgreSQL、Valkey、MinIO 或 Worker。"
       },
       {
-        id: "deployment-tooling", label: "单栈部署工具", subtitle: "install + lifecycle + doctor", group: "部署与迁移", col: 1, row: 4,
-        status: "running", tone: "complete", statusText: "已验证", meta: "宿主机 CLI",
-        description: "统一入口负责配置、启动、停止、健康检查、旧栈清理和迁移包导入导出。",
-        runtime: "bash + Python 3", endpoint: "宿主机命令行", networks: "Docker Engine / Compose", io: "Compose bundle、Secret、迁移包",
-        entry: "scripts/geo-stack.sh + deploy/install.sh + scripts/geo_migrate.py + scripts/geo_sync.py", source: "单栈部署与跨服务器迁移指南",
-        note: "初始基线从本机导出；切换后新服务器是唯一 primary，本机只作为可覆盖的 test-replica。"
+        id: "deployment-tooling", label: "单栈部署工具", subtitle: "mode + preflight + release receipt", group: "部署与迁移", col: 1, row: 4,
+        status: "configured", tone: "warning", statusText: "合同通过；待切换", meta: "宿主机 CLI",
+        description: "统一入口显式选择 internal 或 production，负责配置、启动、停止、健康检查、旧栈清理、迁移和非敏感发布回执。",
+        runtime: "bash + Python 3", endpoint: "宿主机命令行", networks: "Docker Engine / Compose", io: "Compose bundle、Secret reference、迁移包、镜像 digest",
+        entry: "scripts/geo-stack.sh + deploy/install.sh + scripts/geo_release_receipt.py + scripts/geo_migrate.py + scripts/geo_sync.py", source: "单栈部署与跨服务器迁移指南",
+        note: "二次安装保留历史 keyring；production 缺 digest/OIDC/Secret 时失败。当前 staging-v2 的容器 SHA 与源码不一致，canonical geo 尚未切换。"
       },
       {
         id: "customer", label: "客户用户", subtitle: "只读批准结果", group: "访问者", col: 1, row: 2,
@@ -2436,13 +2437,22 @@
         note: "这里只证明既有 canary 与 V600 生成调用，不代表其他 Provider 凭据已经具备。"
       },
       {
+        id: "serpapi-provider", label: "SerpAPI Provider", subtitle: "正式 provider_api 适配器", group: "外部系统", col: 7, row: 2,
+        status: "blocked", tone: "blocked", statusText: "等待 Secret", meta: "Observation 0",
+        description: "正式注册表、Secret Store handle、响应归一化、错误分类和 canary CLI 已接入；没有 search.serpapi Secret reference 时不发起真实调用。",
+        runtime: "SerpAPI Google Search API", endpoint: "https://serpapi.com/search.json",
+        networks: "Task Worker 外部 HTTPS", io: "Sampling Attempt / Observation",
+        entry: "geo_core.search_aggregation.registry + scripts/serpapi_provider_canary.py", source: "外部数据与跨引擎采样实施计划 · 2026-08-10",
+        note: "缺凭据时 canary 明确 skipped；不使用 SERPAPI_API_KEY 环境变量，也不把旧消费者 UI 路由当作正式路径。"
+      },
+      {
         id: "external-data", label: "GSC / GA4 / 官方报告", subtitle: "真实外部数据源", group: "外部系统", col: 7, row: 4,
         status: "blocked", tone: "blocked", statusText: "外部缺失", meta: "Sync 0",
-        description: "连接器底座已运行，但缺真实 Property、授权与 Secret Reference。",
+        description: "连接器底座、GSC/GA4 scope 校验和 canary/readiness 入口已运行，但缺真实 Property、授权与 Secret Reference。",
         runtime: "Google API / 报告导入", endpoint: "外部 HTTPS",
         networks: "Connector Worker egress", io: "Connector Worker",
         entry: "PyAirbyte source adapters", source: "ADVINSYS 真实生产路径验收 §3/§5",
-        note: "Definition 存在不等于 Connection 或 Sync 已经完成。"
+        note: "Definition 和 scope 校验存在不等于真实 Connection 或 Sync 已完成；当前 GSC/GA4 均为 0。"
       },
       {
         id: "consumer-surfaces", label: "AIO / AI Mode / Copilot", subtitle: "澳洲消费者界面", group: "外部系统", col: 7, row: 5,
@@ -2481,9 +2491,9 @@
     ];
 
     const topologyEdges = [
-      { id: "operator-admin", from: "operator", to: "admin-web", label: "HTTP :13001", kind: "http", scenarios: ["async-model", "dify-workflow", "connector-sync", "browser-capture", "style-collection", "alert-delivery"], description: "运营人员通过浏览器访问 Admin。", trigger: "页面访问或操作", recovery: "浏览器重试；不改变已提交命令", truth: "Internal API / PostgreSQL", availability: "当前可用" },
-      { id: "operator-deployment", from: "operator", to: "deployment-tooling", label: "CLI / SSH", kind: "http", scenarios: ["deployment-migration"], description: "部署人员在目标 Linux 主机执行一键安装、迁移和 doctor。", trigger: "显式部署或恢复命令", recovery: "按命令输出修复依赖后可重试", truth: "宿主机命令 + evidence manifest", availability: "当前可用" },
-      { id: "deployment-compose", from: "deployment-tooling", to: "admin-web", label: "Compose up/down", kind: "event", scenarios: ["deployment-migration"], description: "统一脚本用同一组 Compose 文件启动 GEO、Worker 和 Dify bridge。", trigger: "stack up 或 install.sh", recovery: "doctor 检查失败时不宣称部署完成", truth: "Docker Compose config + health", availability: "当前可用" },
+      { id: "operator-admin", from: "operator", to: "admin-web", label: "HTTP :13001", kind: "http", scenarios: ["async-model", "dify-workflow", "connector-sync", "provider-sampling", "browser-capture", "style-collection", "alert-delivery"], description: "运营人员通过浏览器访问 Admin。", trigger: "页面访问或操作", recovery: "浏览器重试；不改变已提交命令", truth: "Internal API / PostgreSQL", availability: "当前可用" },
+      { id: "operator-deployment", from: "operator", to: "deployment-tooling", label: "CLI / SSH", kind: "http", scenarios: ["deployment-migration"], description: "部署人员在目标 Linux 主机执行安装、迁移、doctor 和 release-info。", trigger: "显式部署或恢复命令", recovery: "按错误码修复依赖后可重试；已有 keyring 不被覆盖", truth: "宿主机命令 + migration/release receipt", availability: "合同与定向测试通过" },
+      { id: "deployment-compose", from: "deployment-tooling", to: "admin-web", label: "Compose up/down", kind: "event", scenarios: ["deployment-migration"], description: "internal 保持当前端口；production 使用 digest/OIDC/Secret preflight 和独立 Dify bridge。", trigger: "stack up 或 install.sh", recovery: "config、doctor 或运行时 SHA 不一致时不宣称部署完成", truth: "Compose config + health + release receipt", availability: "配置接线完成；canonical geo 尚未启动" },
       { id: "deployment-package", from: "deployment-tooling", to: "migration-package", label: "baseline / delta", kind: "storage", scenarios: ["deployment-migration"], description: "源机短暂停写生成压缩加密基线；primary 后续生成带 parent 的组件增量。", trigger: "维护窗口或主服务器同步命令", recovery: "hash/父链/restore receipt 失败则不覆盖副本", truth: "manifest + restore receipt", availability: "本地合同与单元测试通过；live GitHub 需授权" },
       { id: "deployment-github", from: "deployment-tooling", to: "github-archive", label: "Release upload/download", kind: "http", scenarios: ["deployment-migration"], description: "同步器检查 private 仓库并上传/下载加密分片。", trigger: "gh auth + 显式同步命令", recovery: "网络/授权失败可重试，不改变数据库", truth: "archive-manifest + chunk hash", availability: "代码路径已实现；等待真实私有仓库验收" },
       { id: "github-package", from: "github-archive", to: "migration-package", label: "encrypted chunks", kind: "storage", scenarios: ["deployment-migration"], description: "Release 资产在本机重组为完整加密包，随后才进入 GPG 解密和恢复。", trigger: "下载完成且分片连续", recovery: "缺片/错 hash 立即停止", truth: "payload sha256", availability: "本地单测通过" },
@@ -2492,21 +2502,22 @@
       { id: "package-minio", from: "migration-package", to: "minio", label: "MinIO archive", kind: "storage", scenarios: ["deployment-migration"], description: "迁移包恢复 GEO MinIO 对象和 Dify Weaviate/状态数据。", trigger: "停止对应 stateful service", recovery: "安全解包、权限修复、重启后 hash 对账", truth: "MinIO/Weaviate archives", availability: "真实包已生成；目标机待导入" },
       { id: "customer-web", from: "customer", to: "customer-web", label: "HTTP :13000", kind: "http", scenarios: ["customer-read"], description: "客户通过浏览器访问 Customer 门户。", trigger: "页面访问", recovery: "浏览器重试", truth: "Customer API 投影", availability: "当前可用" },
       { id: "operator-dify", from: "operator", to: "dify-console", label: "HTTP :15000", kind: "http", scenarios: ["dify-workflow"], description: "运营人员进入 Dify 控制台编辑和测试托管工作流。", trigger: "显式打开 Dify", recovery: "浏览器重试", truth: "Dify metadata store", availability: "当前可用" },
-      { id: "admin-internal", from: "admin-web", to: "internal-api", label: "HTTP API", kind: "http", scenarios: ["async-model", "dify-workflow", "connector-sync", "browser-capture", "style-collection", "alert-delivery"], description: "Admin Web 将内部命令和查询转发给 Internal API。", trigger: "用户操作", recovery: "HTTP 合同返回可行动错误", truth: "PostgreSQL", availability: "当前可用" },
+      { id: "admin-internal", from: "admin-web", to: "internal-api", label: "HTTP API", kind: "http", scenarios: ["async-model", "dify-workflow", "connector-sync", "provider-sampling", "browser-capture", "style-collection", "alert-delivery"], description: "Admin Web 将内部命令和查询转发给 Internal API。", trigger: "用户操作", recovery: "HTTP 合同返回可行动错误", truth: "PostgreSQL", availability: "当前可用" },
       { id: "customer-customer-api", from: "customer-web", to: "customer-api", label: "HTTP API", kind: "http", scenarios: ["customer-read"], description: "Customer Web 只调用独立 Customer API。", trigger: "客户查询", recovery: "只读请求可重试", truth: "批准投影", availability: "当前可用" },
-      { id: "internal-postgres", from: "internal-api", to: "postgres", label: "SQL / Job+Outbox", kind: "storage", scenarios: ["async-model", "connector-sync", "browser-capture", "style-collection", "alert-delivery"], description: "Internal API 在同一事务写业务命令、Durable Job、immutable spec 和 outbox。", trigger: "受治理命令准入", recovery: "幂等键重放；事务失败零写入", truth: "PostgreSQL", availability: "当前可用" },
+      { id: "internal-postgres", from: "internal-api", to: "postgres", label: "SQL / Job+Outbox", kind: "storage", scenarios: ["async-model", "connector-sync", "provider-sampling", "browser-capture", "style-collection", "alert-delivery"], description: "Internal API 在同一事务写业务命令、Durable Job、immutable spec 和 outbox。", trigger: "受治理命令准入", recovery: "幂等键重放；事务失败零写入", truth: "PostgreSQL", availability: "当前可用" },
       { id: "internal-minio", from: "internal-api", to: "minio", label: "S3 governed write", kind: "storage", scenarios: ["connector-sync", "browser-capture"], description: "Internal API 仅在受治理入口写入允许的 restricted/manual 工件。", trigger: "已通过 admission 的工件提交", recovery: "提交收据与 hash 对账", truth: "PostgreSQL manifest + MinIO object", availability: "当前可用" },
       { id: "internal-dify", from: "internal-api", to: "dify-runtime", label: "Dify API :5001", kind: "http", scenarios: ["dify-workflow"], description: "Internal API 通过 geo-dify-runtime 读取和管理托管工作流元数据。", trigger: "Prompt/Dify 页面请求", recovery: "超时返回明确不可用状态", truth: "Dify API + GEO binding", availability: "当前可用" },
       { id: "customer-postgres", from: "customer-api", to: "postgres", label: "SQL read-only", kind: "storage", scenarios: ["customer-read"], description: "Customer API 只读取批准且未失效的项目投影。", trigger: "客户查询", recovery: "只读查询可重试", truth: "PostgreSQL approved snapshot", availability: "当前可用；ADVINSYS 报告数为 0" },
-      { id: "postgres-outbox", from: "postgres", to: "outbox-relay", label: "SQL poll", kind: "event", scenarios: ["async-model", "connector-sync", "browser-capture", "style-collection", "alert-delivery"], description: "Relay 读取已经提交且尚未投递的 outbox。", trigger: "事务提交后的待投递事件", recovery: "租约到期后重投", truth: "PostgreSQL outbox", availability: "当前可用" },
-      { id: "outbox-valkey", from: "outbox-relay", to: "valkey", label: "Dramatiq wake", kind: "event", scenarios: ["async-model", "connector-sync", "browser-capture", "style-collection", "alert-delivery"], description: "Relay 向 Valkey 发布低延迟唤醒。", trigger: "已提交 outbox", recovery: "失败保留 outbox 并重投", truth: "PostgreSQL", availability: "当前可用" },
-      { id: "valkey-task", from: "valkey", to: "task-worker", label: "queue wake", kind: "event", scenarios: ["async-model", "alert-delivery"], description: "唤醒 Task Worker 尝试获取对应数据库 Job。", trigger: "Dramatiq 消息", recovery: "无 lease 不执行；可重新唤醒", truth: "PostgreSQL Durable Job", availability: "当前可用" },
+      { id: "postgres-outbox", from: "postgres", to: "outbox-relay", label: "SQL poll", kind: "event", scenarios: ["async-model", "connector-sync", "provider-sampling", "browser-capture", "style-collection", "alert-delivery"], description: "Relay 读取已经提交且尚未投递的 outbox。", trigger: "事务提交后的待投递事件", recovery: "租约到期后重投", truth: "PostgreSQL outbox", availability: "当前可用" },
+      { id: "outbox-valkey", from: "outbox-relay", to: "valkey", label: "Dramatiq wake", kind: "event", scenarios: ["async-model", "connector-sync", "provider-sampling", "browser-capture", "style-collection", "alert-delivery"], description: "Relay 向 Valkey 发布低延迟唤醒。", trigger: "已提交 outbox", recovery: "失败保留 outbox 并重投", truth: "PostgreSQL", availability: "当前可用" },
+      { id: "valkey-task", from: "valkey", to: "task-worker", label: "queue wake", kind: "event", scenarios: ["async-model", "provider-sampling", "alert-delivery"], description: "唤醒 Task Worker 尝试获取对应数据库 Job。", trigger: "Dramatiq 消息", recovery: "无 lease 不执行；可重新唤醒", truth: "PostgreSQL Durable Job", availability: "当前可用" },
       { id: "valkey-connector", from: "valkey", to: "connector-worker", label: "connector queue", kind: "event", scenarios: ["connector-sync"], description: "唤醒 Connector Worker 执行冻结的同步任务。", trigger: "Connector outbox event", recovery: "checkpoint + Durable Job 重试", truth: "PostgreSQL", availability: "进程可用；真实 Connection 0" },
       { id: "valkey-browser", from: "valkey", to: "browser-capture-worker", label: "capture queue", kind: "event", scenarios: ["browser-capture"], description: "唤醒 Browser Capture Worker 执行冻结 Attempt。", trigger: "Browser capture outbox event", recovery: "Attempt 级重试并重新产生出口证据", truth: "PostgreSQL Attempt", availability: "Relay/Worker ready；真实 Capture 0" },
       { id: "valkey-style", from: "valkey", to: "style-browser-worker", label: "style queue", kind: "event", scenarios: ["style-collection"], description: "唤醒隔离 Style Browser Worker 执行采集。", trigger: "Style Collection Task", recovery: "任务级重试，不绕过访问控制", truth: "PostgreSQL", availability: "当前 Worker 未启动" },
-      { id: "task-postgres", from: "task-worker", to: "postgres", label: "SQL lease/result", kind: "storage", scenarios: ["async-model", "dify-workflow", "alert-delivery"], description: "Task Worker 获取 lease/fence，并以受控 RPC 写结果和终态。", trigger: "成功获取 Job lease", recovery: "lease 丢失停止提交；按 retry policy 恢复", truth: "PostgreSQL", availability: "当前可用" },
-      { id: "task-minio", from: "task-worker", to: "minio", label: "S3 artifact", kind: "storage", scenarios: ["async-model", "dify-workflow"], description: "Task Worker 写入生成、建议或采样相关不可变工件。", trigger: "结构化输出通过校验", recovery: "hash/manifest 对账与受控重试", truth: "PostgreSQL manifest + MinIO object", availability: "当前可用" },
+      { id: "task-postgres", from: "task-worker", to: "postgres", label: "SQL lease/result", kind: "storage", scenarios: ["async-model", "dify-workflow", "provider-sampling", "alert-delivery"], description: "Task Worker 获取 lease/fence，并以受控 RPC 写结果和终态。", trigger: "成功获取 Job lease", recovery: "lease 丢失停止提交；按 retry policy 恢复", truth: "PostgreSQL", availability: "当前可用" },
+      { id: "task-minio", from: "task-worker", to: "minio", label: "S3 artifact", kind: "storage", scenarios: ["async-model", "dify-workflow", "provider-sampling"], description: "Task Worker 写入生成、建议或采样相关不可变工件。", trigger: "结构化输出通过校验", recovery: "hash/manifest 对账与受控重试", truth: "PostgreSQL manifest + MinIO object", availability: "当前可用" },
       { id: "task-dify", from: "task-worker", to: "dify-runtime", label: "Dify API :5001", kind: "http", scenarios: ["async-model", "dify-workflow"], description: "Task Worker 使用冻结 workflow release 调用 Dify API。", trigger: "持有有效 lease 的模型任务", recovery: "180 秒超时；Durable Job policy 决定重试", truth: "GEO Job + Dify run lineage", availability: "当前可用" },
+      { id: "task-serpapi", from: "task-worker", to: "serpapi-provider", label: "HTTPS / provider_api", kind: "external", scenarios: ["provider-sampling"], description: "Task Worker 使用冻结的 SerpAPI registry、Secret Store handle 和采样输入执行一次 provider_api Attempt。", trigger: "持久化 Suite 选择、有效 Secret reference 和 lease", recovery: "缺 Secret 或 provider 错误时明确 skipped/failed，不创建成功 Observation", truth: "Provider response + Sampling Attempt", availability: "适配器已接入；缺 Secret，Observation 0" },
       { id: "dify-console-runtime", from: "dify-console", to: "dify-runtime", label: "Nginx / API", kind: "http", scenarios: ["dify-workflow"], description: "Dify Console 经 Nginx 访问 Web 与 API。", trigger: "控制台操作", recovery: "Dify HTTP 错误反馈", truth: "Dify PostgreSQL", availability: "当前可用" },
       { id: "dify-deepseek", from: "dify-runtime", to: "deepseek", label: "HTTPS model", kind: "external", scenarios: ["async-model", "dify-workflow"], description: "Dify 执行冻结工作流并调用 DeepSeek。", trigger: "Dify workflow node", recovery: "Dify/GEO 超时和 Job retry；不泄露凭据", truth: "Dify run + GEO model lineage", availability: "真实 canary 已通过" },
       { id: "connector-postgres", from: "connector-worker", to: "postgres", label: "SQL checkpoint", kind: "storage", scenarios: ["connector-sync"], description: "Connector Worker 保存 Connection、Checkpoint、Sync Run、Schema 和 Projection。", trigger: "冻结 Connector task", recovery: "按 checkpoint 增量继续或受控回刷", truth: "PostgreSQL", availability: "底座可用；真实 Sync 0" },
@@ -2539,6 +2550,11 @@
         outcome: "底座运行，真实 Sync 为 0",
         nodes: ["operator", "admin-web", "internal-api", "postgres", "outbox-relay", "valkey", "connector-worker", "minio", "external-data"]
       },
+      "provider-sampling": {
+        title: "Provider API 采样", copy: "从持久化 10 题 pilot 选择到 Durable Job、SerpAPI provider_api Attempt 和 Observation。",
+        outcome: "SerpAPI adapter 已接入；等待 Secret，真实 Observation 为 0",
+        nodes: ["operator", "admin-web", "internal-api", "postgres", "outbox-relay", "valkey", "task-worker", "minio", "serpapi-provider"]
+      },
       "browser-capture": {
         title: "消费者界面采集", copy: "展示逐 Surface 输入、原子批量任务、Capture Attempt、页面工件、澳洲 sticky proxy 和消费者 Surface 的完整边界。",
         outcome: "本地链路已部署；等待澳洲代理与 live Capture",
@@ -2560,8 +2576,8 @@
         nodes: ["operator", "admin-web", "internal-api", "postgres", "outbox-relay", "valkey", "task-worker", "alert-smtp", "alert-webhook"]
       },
       "deployment-migration": {
-        title: "部署与迁移", copy: "本机生成加密基线并上传私有 Release，新服务器恢复后成为唯一 primary；本机只接受可覆盖增量。",
-        outcome: "全量/增量合同已实现；真实 GitHub Release 和跨主机恢复仍需凭据验收",
+        title: "部署与迁移", copy: "本机生成加密基线；新服务器按 internal/production 显式模式恢复，发布回执再核对 Git、Compose、Alembic 与容器镜像。",
+        outcome: "配置与回执门禁已实现；canonical 切换、真实 GitHub Release 和跨主机恢复仍未完成",
         nodes: ["operator", "deployment-tooling", "github-archive", "migration-package", "test-replica", "postgres", "minio", "dify-runtime"]
       }
     };

@@ -152,6 +152,15 @@ class AdmissionRuntimeOptionPageResponse(StrictModel):
 
 class CreateSamplingSuiteRequest(StrictModel):
     suite_input_option_key: str = Field(min_length=1, max_length=200)
+    # A production Suite is a ten-question pilot selected from the frozen
+    # QuestionSet input.  Keep this optional only for legacy fixtures whose
+    # frozen input contains fewer than ten questions; production inputs with
+    # more than ten questions must provide the explicit selection.
+    question_set_item_ids: list[str] | None = Field(
+        default=None,
+        min_length=10,
+        max_length=10,
+    )
     repetitions: int = Field(ge=1, le=100)
     statistics_method_version: str = Field(min_length=1, max_length=200)
     max_planned_tasks: int = Field(ge=1, le=100_000)
@@ -179,6 +188,7 @@ class SamplingSuiteResponse(StrictModel):
     admission_policy_id: UUID
     admission_policy_hash: str
     questions: list[SamplingQuestionContract]
+    question_set_item_ids: list[str]
     source_stratum: SamplingSourceStratumContract
     repetitions: int
     statistics_method_version: str
@@ -205,6 +215,7 @@ class SamplingSuiteInputOptionResponse(StrictModel):
     question_set_version: str
     question_set_hash: str
     question_count: int
+    question_set_item_ids: list[str]
     adapter_release_id: UUID
     adapter_release_hash: str
     model_release_id: UUID

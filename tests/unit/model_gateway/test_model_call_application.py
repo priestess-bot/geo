@@ -21,6 +21,7 @@ from geo_core.model_gateway.application import (
     ModelCallUnknownOutcome,
     ReconcileModelCall,
 )
+from geo_core.model_gateway.application_support import maximum_paid_calls_per_attempt
 from geo_core.model_gateway.ports import (
     ModelCallAttemptKind,
     ModelCallFailureClass,
@@ -40,6 +41,12 @@ from .model_call_application_test_support import (
     application_fixture,
     empty_lineage_for,
 )
+
+
+def test_attempt_paid_call_ceiling_is_provider_specific() -> None:
+    assert maximum_paid_calls_per_attempt("serpapi") == 2
+    assert maximum_paid_calls_per_attempt("openai") == 1
+    assert maximum_paid_calls_per_attempt("gemini") == 1
 
 
 def test_prompt_release_test_freezes_current_draft_set_and_case_on_attempt() -> None:

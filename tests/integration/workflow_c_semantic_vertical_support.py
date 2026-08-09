@@ -267,6 +267,8 @@ def _assert_outbox_relayed_through_valkey(
         workflow_c_maintenance: bool,
         recommendation_artifact_maintenance: bool,
         synthetic_artifact_maintenance: bool,
+        connector_sync: bool,
+        browser_capture: bool,
     ) -> None:
         assert not any(
             (
@@ -274,6 +276,8 @@ def _assert_outbox_relayed_through_valkey(
                 workflow_c_maintenance,
                 recommendation_artifact_maintenance,
                 synthetic_artifact_maintenance,
+                connector_sync,
+                browser_capture,
             )
         )
         broker.enqueue(
@@ -292,7 +296,7 @@ def _assert_outbox_relayed_through_valkey(
         worker_id="semantic-vertical-relay",
         batch_size=20,
     )
-    assert delivered == 4
+    assert delivered == 4, f"expected three manual capture jobs plus semantic job, got {delivered}"
 
     consumer = broker.consume("durable-jobs", prefetch=20, timeout=500)
     received: set[tuple[str, str]] = set()

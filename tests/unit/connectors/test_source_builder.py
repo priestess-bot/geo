@@ -8,7 +8,10 @@ import pytest
 
 from geo_core.connectors import ConnectorKind, ConnectorSyncMode, ConnectorSyncPlan
 from geo_core.connectors.jobs import ConnectorJobSpec
-from geo_core.connectors.source_builder import build_pyairbyte_source
+from geo_core.connectors.source_builder import (
+    build_pyairbyte_connection_test_source,
+    build_pyairbyte_source,
+)
 from geo_core.connectors.worker import ConnectorExecutionState, ConnectorWorkerError
 
 
@@ -54,3 +57,25 @@ def test_builder_accepts_only_the_frozen_gsc_release_and_streams() -> None:
         build_pyairbyte_source(replace(state, plan=drifted_plan), {"key": "value"})
     with pytest.raises(ConnectorWorkerError, match="streams"):
         build_pyairbyte_source(replace(state, streams=("unexpected",)), {"key": "value"})
+
+
+def test_connection_test_builder_projects_the_frozen_ga4_scope() -> None:
+    source = build_pyairbyte_connection_test_source(
+        connector_kind=ConnectorKind.GOOGLE_ANALYTICS_4,
+        adapter_release="source-google-analytics-data-api:2.9.43",
+        credential={"credentials": {"client_email": "runtime-only"}},
+        source_locator="properties/123456789",
+        streams=("reports",),
+        report_spec={"dimensions": ["date"], "metrics": ["sessions"]},
+        date_policy={"start_date": "2026-08-01", "end_date": "2026-08-07"},
+    )
+
+    assert source._config["property_ids"] == ["123456789"]
+    assert source._config["custom_reports_array"] == [{
+        "name": "reports",
+        "dimensions": ["date"],
+        "metrics": ["sessions"],
+    }]
+    assert source._config["date_ranges_start_date"] == "2026-08-01"
+    assert source._config["date_ranges_end_date"] == "2026-08-07"
+    assert source._config["credentials"] == {"client_email": "runtime-only"}

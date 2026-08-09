@@ -259,6 +259,8 @@ def knowledge_question_router() -> APIRouter:
                 name=payload.name,
                 generation_job_id=payload.generation_job_id,
                 included_candidate_ids=tuple(payload.included_candidate_ids),
+                series_id=payload.series_id,
+                previous_version_id=payload.previous_version_id,
                 idempotency_key=idempotency_key,
             )
         )

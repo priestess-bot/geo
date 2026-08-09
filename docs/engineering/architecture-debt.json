@@ -1,8 +1,15 @@
 {
+  "apps/api/geo_api/browser_capture_routes.py": 612,
   "apps/api/geo_worker/tasks.py": 626,
   "packages/geo_core/geo_core/alerts/evaluation.py": 632,
   "packages/geo_core/geo_core/attribution/application.py": 774,
-  "packages/geo_core/geo_core/browser_capture/worker.py": 615,
+  "packages/geo_core/geo_core/browser_capture/admin.py": 913,
+  "packages/geo_core/geo_core/browser_capture/worker.py": 657,
+  "packages/geo_core/geo_core/knowledge/question_application.py": 1006,
+  "packages/geo_core/geo_core/knowledge/question_domain.py": 642,
+  "packages/geo_core/geo_core/knowledge/question_worker.py": 654,
   "tests/infra/test_production_preflight.py": 809,
-  "tests/integration/test_browser_capture_execution_postgres.py": 870
+  "tests/integration/test_browser_capture_execution_postgres.py": 952,
+  "tests/integration/test_knowledge_question_sets_postgres.py": 1078,
+  "tests/test_workflow_c_migration.py": 823
 }

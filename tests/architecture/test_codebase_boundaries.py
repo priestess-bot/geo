@@ -22,7 +22,10 @@ def test_product_modules_stay_within_size_budget() -> None:
         for path in root.rglob("*"):
             if path.suffix not in SOURCE_SUFFIXES or not path.is_file():
                 continue
-            if any(part in {"node_modules", ".next", "__pycache__"} for part in path.parts):
+            if any(
+                part in {"node_modules", ".next", "__pycache__", ".venv"}
+                for part in path.parts
+            ):
                 continue
             relative = path.relative_to(ROOT).as_posix()
             limit = 800 if relative.startswith("tests/") else 600
@@ -152,7 +155,8 @@ def test_active_product_identifiers_use_geo_name() -> None:
     for root in roots:
         for path in root.rglob("*"):
             if not path.is_file() or any(
-                part in {"node_modules", ".next", "__pycache__"} for part in path.parts
+                part in {"node_modules", ".next", "__pycache__", ".venv"}
+                for part in path.parts
             ):
                 continue
             try:

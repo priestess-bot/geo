@@ -48,6 +48,8 @@ services:
       context: ..
       dockerfile: apps/api/Dockerfile
     command: ["python", "scripts/staging_alert_smtp_sink.py"]
+    environment:
+      GEO_RELEASE_COMMIT: ${GEO_RELEASE_COMMIT:-0000000000000000000000000000000000000000}
     healthcheck:
       test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8025), 2).close()"]
       interval: 5s
@@ -61,6 +63,7 @@ services:
     user: "${GEO_DEV_HOST_UID:-1000}:${GEO_DEV_HOST_GID:-1000}"
     command: ["python", "scripts/staging_alert_webhook_sink.py"]
     environment:
+      GEO_RELEASE_COMMIT: ${GEO_RELEASE_COMMIT:-0000000000000000000000000000000000000000}
       GEO_STAGING_ALERT_WEBHOOK_TLS_CERT_FILE: /run/geo-staging-secrets/alert-webhook-ca.pem
       GEO_STAGING_ALERT_WEBHOOK_TLS_KEY_FILE: /run/geo-staging-secrets/alert-webhook-tls-key.pem
     volumes:

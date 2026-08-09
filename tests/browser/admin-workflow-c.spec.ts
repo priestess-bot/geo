@@ -106,6 +106,47 @@ test("M4-WORKFLOW-C-WEB-00A: consumer surface setup bootstraps all three adapter
   await page.screenshot({ path: testInfo.outputPath("browser-capture-setup-mobile.png"), fullPage: true });
 });
 
+test("M4-WORKFLOW-C-WEB-00B: ten-question pilot selection is explicit and unique", async ({ page, request }) => {
+  const runtimeErrors = collectRuntimeErrors(page);
+  await page.goto(workspaceUrl("sampling"));
+
+  const suiteForm = page.getByRole("button", { name: "创建采样套件", exact: true })
+    .locator("xpath=ancestor::form[1]");
+  const questionSelects = suiteForm.locator('select[name="question_set_item_ids"]');
+  await expect(suiteForm.getByLabel("冻结输入")).toHaveValue("fixture-pilot-100");
+  await expect(questionSelects).toHaveCount(10);
+  for (const [index, expected] of [1, 11, 21, 31, 41, 51, 61, 71, 81, 91].entries()) {
+    await expect(questionSelects.nth(index)).toHaveValue(
+      `pilot-question-${String(expected).padStart(3, "0")}`
+    );
+  }
+
+  await questionSelects.nth(0).selectOption("pilot-question-002");
+  await expect(questionSelects.nth(1).locator('option[value="pilot-question-002"]')).toHaveAttribute("disabled", "");
+  await questionSelects.nth(0).selectOption("pilot-question-001");
+  await suiteForm.getByRole("button", { name: "创建采样套件", exact: true }).click();
+  await expect(page.getByText(/Sampling Suite .*已冻结/)).toBeVisible();
+
+  const logged = await (await request.get(`${FIXTURE_API}/__requests`)).json();
+  const createRequests = logged.filter((item: { method: string; path: string }) => (
+    item.method === "POST" && item.path === `/v1/projects/${PROJECT_ID}/sampling/suites`
+  ));
+  expect(createRequests).toHaveLength(1);
+  expect(createRequests[0].payload.question_set_item_ids).toEqual([
+    "pilot-question-001",
+    "pilot-question-011",
+    "pilot-question-021",
+    "pilot-question-031",
+    "pilot-question-041",
+    "pilot-question-051",
+    "pilot-question-061",
+    "pilot-question-071",
+    "pilot-question-081",
+    "pilot-question-091"
+  ]);
+  expect(runtimeErrors).toEqual([]);
+});
+
 test("M4-WORKFLOW-C-WEB-00: project workbench embeds one semantic measurement panel", async ({ page }, testInfo) => {
   const runtimeErrors = collectRuntimeErrors(page);
   await page.goto(embeddedWorkspaceUrl());
@@ -326,8 +367,8 @@ test("M5-SURFACE-PARSER-WEB-01: manual parser selection and review stay explicit
   await expect(manualEvidence.getByText("人工界面", { exact: true })).toBeVisible();
   await expect(manualEvidence.getByText("非实时", { exact: true })).toBeVisible();
   await expect(manualEvidence.getByText("已采集", { exact: true })).toBeVisible();
-  await expect(page.getByText("137", { exact: true })).toBeVisible();
-  await expect(page.getByText("3", { exact: true })).toBeVisible();
+  await expect(manualEvidence.getByText("137", { exact: true })).toBeVisible();
+  await expect(manualEvidence.getByText("3", { exact: true })).toBeVisible();
   await expect(page.locator("body")).not.toContainText("fixture answer must remain encrypted");
   await expect(page.locator("body")).not.toContainText("https://example.test/citation");
   expect(runtimeErrors).toEqual([]);

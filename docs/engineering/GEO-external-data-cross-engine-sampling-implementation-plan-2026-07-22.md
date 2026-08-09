@@ -1,7 +1,7 @@
 # GEO 外部数据与跨引擎采样加速实施计划
 
 > 计划日期：2026-07-22
-> 修订日期：2026-08-07（第 4 次修订）
+> 修订日期：2026-08-10（第 5 次修订）
 > 计划状态：`PLANNED`
 > 执行周期：与[加速总路线图](GEO-next-phase-six-month-roadmap-2026-07-21.md)的 `T+0`--`T+5` 同步；`M0`--`M6` 仅为稳定 Gate 标签
 > 专项范围：Connector Core、GSC、GA4、Google/Bing 官方报告、五类 Provider/Grounded API、消费者 AI 界面、澳洲代理、Sampling Core 和外部观测交付
@@ -10,6 +10,7 @@
 > 第 2 次修订变更：Task 改用稳定 egress policy/cohort，实际出口验证下沉到 Attempt/Observation；live UI 强制先授权再 admission；增加 External Data Snapshot/Report/Approval；扩展单项 evidence manifest 与 DoR/DoD applicability
 > 第 3 次修订变更：保持专项范围、来源、样本、授权、安全和验收合同不变，废止六个月/月度排期；所有可由 Agent 完成的实现与自动化验证纳入 `T+0`--`T+5` 连续窗口。真实凭据、授权决定、人工明审、独立 verifier 和 live evidence 于 `T+0` 并行开始，未就绪只阻断对应 Gate，绝不降低或伪造验收。
 > 第 4 次修订变更：AIO、AI Mode、Copilot 的正式 Project-scoped Browser Capture 垂直路径已落地，旧 SerpAPI 消费者界面路由与 mock fallback 退役。ADVINSYS staging 已安装三个 approved Release 和匿名 `en-AU` Profile；澳洲 Egress 与 live Capture 仍为 0，因此所有 live/保真/最终 Gate 保持未完成。
+> 第 5 次修订变更：Sampling Suite 对超过 10 条冻结输入强制持久化恰好 10 个唯一问题选择；新增正式 SerpAPI `provider_api` registry/canary 和 GSC/GA4 scope/canary readiness 记录。两者均保持真实凭据缺失阻塞，不把本地 adapter、scope 校验或 fixture 当作 live Observation/Sync。
 
 ## 1. 目标、边界和文档职责
 
@@ -29,7 +30,7 @@
 
 - GSC 和 GA4 在一个真实 property 上完成首次、增量、回刷、撤权恢复和 freshness 验收。
 - Google/Bing 官方报告以真实文件完成 immutable import、schema version、typed projection 和重复检测；没有单次回答时不伪造 Observation。
-- OpenAI Web Search、Gemini Grounding、Perplexity、Microsoft Grounding with Bing、Kimi API 五类 adapter 使用真实凭据完成独立 live canary；Kimi 的 Search 能力按发布时官方能力显式冻结，不能靠名称推断。
+- OpenAI Web Search、Gemini Grounding、Perplexity、Microsoft Grounding with Bing、Kimi API 五类 adapter 使用真实凭据完成独立 live canary；Kimi 的 Search 能力按发布时官方能力显式冻结，不能靠名称推断。SerpAPI 作为额外的正式 `provider_api` 兼容适配器单独验收，不替代上述五类，也不冒充任何消费者 UI。
 - Google AI Overviews、Google AI Mode、Bing Copilot 三个首批消费者 surface 各有独立 Surface Release；按授权结论完成 A 轨 live automated capture 或 B 轨 fixture + manual UI。
 - 用户提供的澳洲代理/网关可通过 Secret Reference 使用；每次 eligible capture 都能证明目标页面与前后验证使用同一 sticky lease 的澳洲出口。
 - `official_report_import`、`provider_api`、`proxy_grounded_api`、`manual_ui`、`automated_ui` 和 `synthetic` 始终保持不同身份、工件、资格规则和分母。
@@ -96,6 +97,7 @@
 | Perplexity API | `provider_api` | `perplexity/perplexity_api` | 每题 10 | 真实 API live | Perplexity consumer UI |
 | Microsoft Grounding with Bing | `proxy_grounded_api` | `microsoft/microsoft_foundry_bing_grounding` | 每题 10 | 真实 Foundry live | Bing Copilot consumer UI |
 | Kimi API | `provider_api` | `kimi/kimi_api` | 每题 10 | 真实 API live；原生 Search 若不可证明则 `search_mode=disabled` | Kimi consumer UI 或自建检索结果 |
+| SerpAPI Google Search | `provider_api` | `serpapi/google_search` | 每题 10 | 真实 API live；当前缺 `search.serpapi` Secret reference | Google AIO/AI Mode 或 Bing Copilot 消费者 UI |
 | Google AI Overviews | `automated_ui` 或 `manual_ui` | `google/google_ai_overviews` | auto 默认 5，manual 最低 3 | 按 A/B 轨逐 release | Gemini API |
 | Google AI Mode | `automated_ui` 或 `manual_ui` | `google/google_ai_mode` | auto 默认 5，manual 最低 3 | 按 A/B 轨逐 release | Gemini API/AIO |
 | Bing Copilot | `automated_ui` 或 `manual_ui` | `microsoft/bing_copilot` | auto 默认 5，manual 最低 3 | 按 A/B 轨逐 release | Bing Grounding API |
@@ -184,6 +186,8 @@ suite_version + platform + surface + capture_method
 - `egress_policy_version` 和 `egress_cohort_key` 在 Suite/Task 创建前存在并参与幂等与分层；cohort 可冻结一个 Endpoint，或冻结具有同地域/network type 的 approved pool release。
 - `egress_verification_id`、实际 Endpoint/lease/IP/ASN 在 Attempt 后产生，不能进入 Task idempotency key 或 SourceStratum canonical hash。每次 retry 生成新验证证据并链接到同一 planned slot；胜出 Observation 指向唯一 winning Attempt/Verification。
 - pool 内 Endpoint 变化不拆分基础分母，但报告必须显示实际 Endpoint/network composition；实际地域或 network type 偏离 cohort 时 Attempt ineligible。需要按 Endpoint 比较时必须事前把 Endpoint ID 冻结为 cohort 维度并创建新版 Suite。
+
+当前本地 pilot 合同：当冻结 QuestionSet 超过 10 条时，Suite 创建请求必须携带恰好 10 个唯一 `question_set_item_ids`；服务端验证这些 ID 属于同一冻结输入，并把选择写入不可变 Suite input。后续 Task、Attempt 和 Observation 只从该持久化选择派生，页面重试、任务重试或重新读取 QuestionSet 都不能改变 pilot 分母。冻结输入不超过 10 条时保留旧兼容路径，但正式 ADVINSYS pilot 使用 10 条显式选择。
 
 ### 5.3 Raw Artifact 和派生投影
 
@@ -386,11 +390,13 @@ authorization gate
 > 2026-07-28 本地实现证据更新：Alembic 单一 head 为 `0115_external_operational_alerts`；`0112` 增加 Connector/Browser Worker fail-closed readiness 与持久 heartbeat，`0113` 增加 durable 澳洲出口自检，`0114` 增加 parser/browser build drift 自动暂停，`0115` 将 Connector error/freshness 与 Surface drift 投影为不可变版本化告警输入，并通过批准规则、Durable Job、告警和三渠道通知的 PostgreSQL 垂直路径。三个 B 领域 PostgreSQL 集成测试、123 项 Connector/Browser/Attribution/Alert 单元测试、稳定 OpenAPI、Admin TypeScript、production build 与 Chromium 页面回归均通过；`staging-v2` 已运行在 `0115`，两个外部 Worker heartbeat 为 `ready`。该证据不替代真实 GSC/GA4、澳洲 residential/mobile proxy、AIO/AI Mode/Copilot live capture、部署层 direct-egress deny、性能或独立 verifier 证据。
 >
 > 2026-08-07 本地实现证据更新：head 已推进至 `0125_browser_bulk_enqueue`。三个内置 Surface Release、匿名/可选受管 Profile、加密 proxy/session Secret、同一 sticky lease 的 pre/target/post 证明、受限页面工件、逐 Surface runtime/policy/input 绑定和 Run 级原子批量入队已接入正式 Admin/Sampling；Outbox Relay 与 Browser Worker 在 staging 为 `ready`。旧 SerpAPI Google/Bing 路由和 mock fallback 已从 OpenAPI/Compose 移除。175 项 Browser/Sampling 单元回归、18 项 Session/配置回归、稳定 OpenAPI、空库迁移、PostgreSQL纵向测试、production build 和桌面/移动 Chromium 通过。ADVINSYS 当前仍为 0 Egress Endpoint、0 Capture，此更新只构成本地实现证据。
+>
+> 2026-08-10 本地实现证据更新：`0126_sampling_question_selection` 将超过 10 条的冻结 Suite 输入收敛为服务端验证并持久化的恰好 10 个唯一问题 ID；Admin 默认提供 10 个可编辑选择槽位，后续 Task 只使用已冻结选择。SerpAPI 已恢复为正式 `provider_api` registry，使用 `search.serpapi` Secret Store handle、结构化响应/错误分类和显式 canary CLI；当前缺 Secret reference，canary 只能明确 `skipped`，真实 Provider Observation 为 0。GSC/GA4 已增加 property/report scope 校验、PyAirbyte 配置映射和 `check/test/sync` canary 入口；当前没有真实 property 凭据、Connection 或 Sync。相关 unit、OpenAPI、migration 和定向 Chromium 证据只证明本地合同，不能提前勾选 `EXT-PROV-*`、`EXT-CONN-*` 或 live Gate。
 
 - [x] `EXT-LOCAL-UI-01` 三个消费者 Surface 使用独立入口、detector、answer/citation selector、block taxonomy、Release/hash 和 drift 边界；不得跨 Surface 复用统计证据。
 - [x] `EXT-LOCAL-UI-02` Browser Attempt 在一个 sticky lease 内执行 pre/target/post，保存加密 screenshot/DOM/HAR、final URL、parser locator、verification 与 Observation lineage；失败路径不产生 eligible 样本。
-- [x] `EXT-LOCAL-UI-03` Admin 从安装、代理/会话、出口测试到逐 Surface runtime/policy/QuestionSet 绑定形成可操作闭环；批量入队在数据库事务内创建固定分母、Attempt、Job、spec 和 outbox。
-- [ ] `EXT-LOCAL-UI-LIVE-01` 真实 residential/mobile 澳洲代理、三个 Surface 各 3 次 canary、逐 Release 保真和后续 100 题测量尚未执行；等待外部输入，不得以本地测试或 bootstrap 替代。
+- [x] `EXT-LOCAL-UI-03` Admin 从安装、代理/会话、出口测试到逐 Surface runtime/policy/QuestionSet 绑定形成可操作闭环；对超过 10 条冻结输入的 pilot，界面提交恰好 10 个唯一问题 ID，服务端把选择写入不可变 Suite input，批量入队再从该选择创建固定分母、Attempt、Job、spec 和 outbox。
+- [ ] `EXT-LOCAL-UI-LIVE-01` 真实 residential/mobile 澳洲代理、三个 Surface 各 3 次 canary、逐 Release 保真和后续 100 题测量尚未执行；SerpAPI 仍缺 `search.serpapi` Secret reference，GSC/GA4 仍缺真实 property 凭据/Connection。等待外部输入，不得以本地测试、scope/canary readiness 或 bootstrap 替代。
 
 - [x] `EXT-M1-01` 在线 expand migration 增加 Connector/Sampling/Adapter Release/Authorization/Egress/Browser 及 External Data Snapshot/Report/Approval tables，与精确 project-scoped FK/RLS/index。
 - [x] `EXT-M1-02` 兼容扩展 `automated_ui`、Kimi platform/surface 和 UI SourceStratum 的 egress policy/cohort；实际 verification 仅作 Attempt/Observation lineage，旧 writer/reader 仍可运行，历史值不猜测回填。
@@ -448,7 +454,7 @@ authorization gate
 
 **`EXT-GATE-M3`**
 
-- [ ] `EXT-PROV-AC-01` 五类 adapter 各有真实 credential live run、provider request ID、configured/reported model、raw/retention 证据和完整错误分类。
+- [ ] `EXT-PROV-AC-01` 五类计划 adapter 各有真实 credential live run、provider request ID、configured/reported model、raw/retention 证据和完整错误分类；额外的 SerpAPI `provider_api` release 也必须单独完成同等 canary，缺 Secret reference 时保持阻塞。
 - [ ] `EXT-PROV-AC-02` Provider/Grounded API 均不使用 ChatGPT/AIO/AI Mode/Copilot consumer UI 标签；Microsoft Grounding 不冒名 `provider_api`。
 - [ ] `EXT-PROV-AC-03` auth/quota/rate/timeout/refusal/schema/partial/cancel 映射稳定；重试新 attempt，不重复有效样本。
 - [ ] `EXT-UI-AC-02` 每个 Surface Release 自身达到分类 `>=95%`、传统结果误标 0、answer `>=99%`、citation `100%`。
@@ -523,7 +529,7 @@ authorization gate
 
 ### 9.2 Provider 和 Grounded API
 
-- [ ] `EXT-PROV-FINAL-01` 五 adapter 都有 request/result/error contract、fixture、live canary、retention/display review 和 rollback release。
+- [ ] `EXT-PROV-FINAL-01` 五类计划 adapter 都有 request/result/error contract、fixture、live canary、retention/display review 和 rollback release；额外 SerpAPI release 具备独立 contract、Secret lineage、live canary 和 rollback release。
 - [ ] `EXT-PROV-FINAL-02` citations 可回指 provider response 的 URL/title/order/span；不可获得的字段明确 unavailable，不猜测。
 - [ ] `EXT-PROV-FINAL-03` configured/reported model、search mode、usage、provider request ID、latency 和 finish/refusal reason 完整。
 - [ ] `EXT-PROV-FINAL-04` 供应商静默 model change、schema change 或 search tool 未实际调用可检测并形成 drift/eligibility 决定。
@@ -685,7 +691,7 @@ manifest 不保存 token、账号邮箱、proxy password、Cookie、参与者 PI
 - [x] `EXT-PLAN-TIME-01` 本专项与总路线图均使用 `T+0`--`T+5` 连续交付窗口；`M0`--`M6`、所有 `EXT-GATE-*`、样本量和证据门槛保持不变。
 - [ ] `EXT-FINAL-01` `EXT-GATE-M0` 至 `EXT-GATE-M6` 全部 `ACCEPTED`，无跳过波次或用后续证据倒填未发生的验收。
 - [ ] `EXT-FINAL-02` Connector、Provider、Surface、Egress、Sampling、安全/恢复的所有 `*-FINAL-*` 项均已签字。
-- [ ] `EXT-FINAL-03` 五类 API、真实 GSC/GA4、真实官方报告和三个消费者 surface 当前轨道均有最终 Gate 时有效的证据。
+- [ ] `EXT-FINAL-03` 五类计划 API、额外 SerpAPI `provider_api`、真实 GSC/GA4、真实官方报告和三个消费者 surface 当前轨道均有最终 Gate 时有效的证据。
 - [ ] `EXT-FINAL-04` 每个 Adapter/Surface Release 的授权、条款、保留、SDK/browser/parser、fixture/live hash 和 rollback release 可查。
 - [ ] `EXT-FINAL-05` 所有来源在 Admin、Customer、API、export、Metric input 中使用同一身份和 eligibility；GSC/GA4/official-report 只经 approved External Data Report 可见，零绕过批准或跨分母污染。
 - [ ] `EXT-FINAL-06` 澳洲出口证据能逐 Attempt 证明 sticky pre/target/post 同源；没有把裸 IP、周期健康检查或供应商地区声明当成页面真实性。

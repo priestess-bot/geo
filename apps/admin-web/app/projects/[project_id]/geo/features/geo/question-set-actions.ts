@@ -123,9 +123,9 @@ export async function finalizeQuestionCoveragePack(
 ): Promise<ActionResult> {
   const projectId = value(form, "project_id");
   const includedCandidateIds = selected(form, "included_candidate_ids");
-  if (includedCandidateIds.length < 90 || includedCandidateIds.length > 100) {
+  if (includedCandidateIds.length !== 100) {
     return {
-      error: "请保留 90 至 100 条问题后再冻结。",
+      error: "必须先修正完整 100 条问题，才能冻结测量清单。",
       status: 422,
       code: "question_coverage_selection_invalid"
     };
@@ -137,10 +137,12 @@ export async function finalizeQuestionCoveragePack(
     {
       name: value(form, "name"),
       generation_job_id: value(form, "generation_job_id"),
-      included_candidate_ids: includedCandidateIds
+      included_candidate_ids: includedCandidateIds,
+      series_id: value(form, "series_id") || null,
+      previous_version_id: value(form, "previous_version_id") || null
     },
     guards(form)
-  ), `已冻结 ${includedCandidateIds.length} 条测试问题`);
+  ), "完整 100 题测量清单已冻结");
 }
 
 export async function reviewQuestionCandidate(

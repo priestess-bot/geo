@@ -41,6 +41,12 @@ from geo_core.model_gateway.releases import AdapterRelease, DataUseDecision, Mod
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
+def maximum_paid_calls_per_attempt(provider: str) -> int:
+    """Return the explicit Provider HTTP-call ceiling for one logical attempt."""
+
+    return 2 if provider == "serpapi" else 1
+
+
 class ModelCallAdmissionError(ModelGatewayError):
     """Frozen Job, Prompt, release, purpose, or schema lineage did not match."""
 

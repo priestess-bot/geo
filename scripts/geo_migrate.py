@@ -24,11 +24,21 @@ import sys
 import tarfile
 import tempfile
 from typing import Iterable
+from uuid import UUID
+
+from alembic.config import Config
+from alembic.script import ScriptDirectory
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from infra.db.alembic.checksums import sql_hashes
 
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = "geo-runtime-migration-v2"
 LEGACY_SCHEMA = "geo-runtime-migration-v1"
+VERIFY_RECEIPT_SCHEMA = "geo-runtime-migration-verification-receipt-v1"
 DEFAULT_SOURCE_PROJECT = "geo-advinsys-staging-v2"
 DEFAULT_TARGET_PROJECT = "geo"
 DEFAULT_DIFY_PROJECT = "geo-dify"
@@ -46,6 +56,19 @@ _DIFY_PERSISTENT_DIRECTORIES = (
     ("plugin-daemon", "plugin_daemon"),
 )
 _SAFE_RUNTIME_ABSOLUTE_SYMLINKS = frozenset({"/usr/bin/python3", "/usr/bin/python3.12"})
+
+_IDENTITY_BINDING_FIELDS = {
+    "admin_actor": "GEO_ADMIN_ACTOR_ID",
+    "admin_tenant": "GEO_ADMIN_TENANT_ID",
+    "model_gateway_worker": "GEO_MODEL_GATEWAY_WORKER_SERVICE_IDENTITY_ID",
+    "connector_worker": "GEO_CONNECTOR_SERVICE_IDENTITY_ID",
+    "browser_capture_worker": "GEO_BROWSER_CAPTURE_SERVICE_IDENTITY_ID",
+}
+_SERVICE_IDENTITY_NAMES = {
+    "model_gateway_worker": "model_gateway_worker",
+    "connector_worker": "connector_worker",
+    "browser_capture_worker": "browser_capture_worker",
+}
 
 
 class MigrationError(RuntimeError):
@@ -318,15 +341,74 @@ def _restore_archive_to_mount(container: str, destination: str, archive: Path, *
     )
 
 
-def _restore_host_archive(archive: Path, destination: Path, *, clear: bool) -> None:
-    """Restore a bind-mounted Dify directory after validating its archive."""
+def _restore_host_archive(
+    archive: Path,
+    destination: Path,
+    *,
+    allowed_root: Path,
+    clear: bool,
+) -> None:
+    """Restore a root-owned Dify bind mount through an audited Docker helper.
 
-    if destination == Path("/") or len(destination.parts) < 3:
-        raise MigrationError(f"refusing to restore into an unsafe directory: {destination}")
-    destination.mkdir(parents=True, exist_ok=True, mode=0o700)
-    if clear:
-        _clear_directory(destination)
-    _extract_archive_to_directory(archive, destination)
+    The operator running the migration need not have permission to remove the
+    existing bind-mounted files.  Docker performs the write as root inside a
+    pinned, network-isolated helper container.  Only the two fixed Dify
+    persistent roots pass ``allowed_root``; no user-controlled destination is
+    interpolated into the helper shell.
+    """
+
+    archive = archive.resolve()
+    if archive.is_symlink() or not archive.is_file():
+        raise MigrationError(f"Dify restore archive is not a regular file: {archive}")
+    if not archive.name or any(
+        character not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-"
+        for character in archive.name
+    ):
+        raise MigrationError(f"Dify restore archive name is unsafe: {archive.name!r}")
+    root = allowed_root.resolve()
+    target = destination.resolve(strict=False)
+    if root == Path("/") or len(root.parts) < 3:
+        raise MigrationError(f"refusing to use an unsafe Dify restore root: {root}")
+    try:
+        relative = target.relative_to(root)
+    except ValueError as error:
+        raise MigrationError(
+            f"Dify restore destination escapes its allowed root: {destination}"
+        ) from error
+    if not relative.parts or any(part in {"", ".", ".."} for part in relative.parts):
+        raise MigrationError(f"Dify restore destination is unsafe: {destination}")
+    if destination.exists() and destination.is_symlink():
+        raise MigrationError(f"Dify restore destination must not be a symlink: {destination}")
+
+    helper_script = (
+        "set -eu; "
+        "case \"$1\" in clear) find /target -mindepth 1 -maxdepth 1 "
+        "-exec rm -rf -- {} + ;; keep) ;; *) exit 64 ;; esac; "
+        "case \"$2\" in ''|*/*|*\\\\*) exit 64 ;; esac; "
+        "test -f \"/source/$2\"; tar -xzf \"/source/$2\" -C /target"
+    )
+    _run(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "--network",
+            "none",
+            "--user",
+            "0:0",
+            "-v",
+            f"{target}:/target",
+            "-v",
+            f"{archive.parent}:/source:ro",
+            "busybox:1.36",
+            "sh",
+            "-ceu",
+            helper_script,
+            "geo-migrate-restore",
+            "clear" if clear else "keep",
+            archive.name,
+        ]
+    )
 
 
 def _restore_file_to_mount(container: str, destination: str, source: Path, *, clear: bool) -> None:
@@ -393,12 +475,12 @@ def _files(root: Path, *, exclude: set[str] | None = None) -> list[dict[str, obj
 def _verify_payload(root: Path, entries: list[dict[str, object]]) -> None:
     expected = {str(item["path"]): str(item["sha256"]) for item in entries}
     actual = {
-        item["path"]: item["sha256"]
+        str(item["path"]): str(item["sha256"])
         for item in _files(root, exclude={"payload-manifest.json"})
     }
     if actual != expected:
-        missing = sorted(set(expected) - set(actual))
-        extra = sorted(set(actual) - set(expected))
+        missing = sorted(set(expected.keys()) - set(actual.keys()))
+        extra = sorted(set(actual.keys()) - set(expected.keys()))
         raise MigrationError(f"payload hash mismatch; missing={missing[:3]} extra={extra[:3]}")
 
 
@@ -451,28 +533,62 @@ def _decrypt(source: Path, destination: Path, key_file: Path) -> None:
     )
 
 
+def _validate_archive_member(
+    member: tarfile.TarInfo,
+    *,
+    allow_symlink: bool,
+    description: str,
+) -> None:
+    """Validate tar metadata before any filesystem operation is attempted."""
+
+    # Tar archives conventionally contain a directory entry named ``./`` for
+    # their root.  It is harmless and must be accepted, while every other
+    # member still has to be a relative path without parent traversal.
+    name = member.name
+    if name not in {"", ".", "./"}:
+        normalized = Path(name)
+        if normalized.is_absolute() or ".." in normalized.parts:
+            raise MigrationError(f"unsafe archive member ({description}): {name}")
+    if member.islnk():
+        raise MigrationError(f"unsafe {description} hardlink: {name}")
+    if member.issym():
+        if not allow_symlink:
+            raise MigrationError(f"unsafe {description} symlink: {name}")
+        return
+    if not (member.isdir() or member.isreg()):
+        raise MigrationError(f"unsupported {description} archive member: {name}")
+
+
 def _extract_safe(archive: Path, destination: Path) -> None:
     with tarfile.open(archive, "r") as payload:
         for member in payload.getmembers():
+            _validate_archive_member(member, allow_symlink=False, description="payload")
             target = (destination / member.name).resolve()
-            if destination.resolve() not in target.parents:
+            if target != destination.resolve() and destination.resolve() not in target.parents:
                 raise MigrationError(f"unsafe archive member: {member.name}")
-        payload.extractall(destination, filter="data")
+
+        def safe_filter(member: tarfile.TarInfo, path: str) -> tarfile.TarInfo:
+            _validate_archive_member(member, allow_symlink=False, description="payload")
+            return tarfile.data_filter(member, path)
+
+        payload.extractall(destination, filter=safe_filter)
 
 
 def _extract_archive_to_directory(archive: Path, destination: Path) -> None:
     destination = destination.resolve()
     with tarfile.open(archive, "r") as payload:
         for member in payload.getmembers():
+            _validate_archive_member(member, allow_symlink=True, description="state")
             target = (destination / member.name).resolve()
             if member.issym():
                 link_target = (destination / member.name).parent / member.linkname
                 if link_target.resolve(strict=False).as_posix() in _SAFE_RUNTIME_ABSOLUTE_SYMLINKS:
                     continue
-            if destination not in target.parents:
+            if target != destination and destination not in target.parents:
                 raise MigrationError(f"unsafe state archive member: {member.name}")
 
         def safe_filter(member: tarfile.TarInfo, path: str) -> tarfile.TarInfo:
+            _validate_archive_member(member, allow_symlink=True, description="state")
             if member.issym():
                 link_target = (Path(path) / member.name).parent / member.linkname
                 if link_target.resolve(strict=False).as_posix() in _SAFE_RUNTIME_ABSOLUTE_SYMLINKS:
@@ -531,6 +647,14 @@ def export_package(args: argparse.Namespace) -> Path:
         dify_pg = _resolve_container(args.dify_project, "db_postgres")
         dify_redis = _resolve_container(args.dify_project, "redis")
         dify_weaviate = _resolve_container(args.dify_project, "weaviate")
+        source_identity_values = _identity_values(
+            env_file=getattr(args, "source_env_file", None), role="source"
+        )
+        source_identity_database = _query_identity_bindings(geo_pg, source_identity_values)
+        _assert_identity_bindings(source_identity_values, source_identity_database, role="source")
+        identity_bindings = _identity_binding_manifest(
+            source_identity_values, source_identity_database
+        )
         if args.quiesce:
             stopped = _quiesce([args.source_project, args.dify_project])
         _dump_postgres(geo_pg, "geo", payload_root / "geo" / "postgres.dump")
@@ -551,6 +675,7 @@ def export_package(args: argparse.Namespace) -> Path:
             "source_environment": args.source_environment,
             "source_role": args.source_role,
             "source_git": git_metadata,
+            "identity_bindings": identity_bindings,
             "created_at": datetime.now(UTC).isoformat(),
             "quiesced": bool(args.quiesce),
             "excluded_secret_files": excluded_secret_files,
@@ -582,6 +707,7 @@ def export_package(args: argparse.Namespace) -> Path:
             "source_environment": args.source_environment,
             "source_role": args.source_role,
             "source_git": git_metadata,
+            "identity_bindings": identity_bindings,
             "excluded_secret_files": excluded_secret_files,
             "source_containers": {
                 "geo_postgres": geo_pg,
@@ -637,6 +763,42 @@ def _payload_path(package: Path, manifest: dict[str, object]) -> Path:
     return package / str(payload["path"])
 
 
+def _manifest_identity_bindings(manifest: dict[str, object]) -> dict[str, object]:
+    value = manifest.get("identity_bindings")
+    if not isinstance(value, dict) or value.get("schema_version") != "geo-runtime-identity-bindings-v1":
+        raise MigrationError(
+            "migration manifest has no identity bindings; re-export with the current geo_migrate.py"
+        )
+    bindings = value.get("bindings")
+    database = value.get("database")
+    if not isinstance(bindings, dict) or not isinstance(database, dict):
+        raise MigrationError("migration identity bindings are malformed")
+    for name, env_name in _IDENTITY_BINDING_FIELDS.items():
+        row = bindings.get(name)
+        if not isinstance(row, dict) or row.get("env_name") != env_name:
+            raise MigrationError(f"migration identity binding {name} is malformed")
+        try:
+            parsed = UUID(str(row.get("identity_id", "")))
+        except ValueError as error:
+            raise MigrationError(f"migration identity binding {name} is not a UUID") from error
+        if parsed.int == 0:
+            raise MigrationError(f"migration identity binding {name} cannot be the nil UUID")
+    return value
+
+
+def _identity_values_from_manifest(bindings: dict[str, object]) -> dict[str, str]:
+    rows = bindings.get("bindings")
+    if not isinstance(rows, dict):
+        raise MigrationError("migration identity bindings are malformed")
+    values: dict[str, str] = {}
+    for name, env_name in _IDENTITY_BINDING_FIELDS.items():
+        row = rows.get(name)
+        if not isinstance(row, dict):
+            raise MigrationError(f"migration identity binding {name} is malformed")
+        values[env_name] = str(row["identity_id"])
+    return values
+
+
 def _restore_pg(container: str, database: str, dump: Path) -> None:
     user = "postgres" if database in {"dify", "dify_plugin"} else "geo_installer"
     if database in {"dify", "dify_plugin"}:
@@ -673,7 +835,82 @@ def _validate_custom_dump(container: str, dump: Path) -> None:
         _docker("exec", container, "rm", "-f", remote)
 
 
-def _verify_pg(container: str, database: str) -> dict[str, object]:
+def _current_alembic_script() -> ScriptDirectory:
+    configuration = Config(str(ROOT / "alembic.ini"))
+    return ScriptDirectory.from_config(configuration)
+
+
+def _current_alembic_head() -> str:
+    heads = _current_alembic_script().get_heads()
+    if len(heads) != 1:
+        raise MigrationError(
+            "current repository must expose exactly one Alembic head; "
+            f"found {', '.join(sorted(heads)) or 'none'}"
+        )
+    return str(heads[0])
+
+
+def _verify_checksum_ledger(container: str, database: str, *, head: str) -> dict[str, object]:
+    user = "postgres" if database in {"dify", "dify_plugin"} else "geo_installer"
+    raw = _docker(
+        "exec",
+        container,
+        "psql",
+        "-U",
+        user,
+        "-d",
+        database,
+        "-X",
+        "-qAt",
+        "-F",
+        "\t",
+        "-c",
+        "SELECT revision, upgrade_sha256, downgrade_sha256 "
+        "FROM public.alembic_sql_checksum_ledger ORDER BY revision;",
+    ).decode("utf-8", errors="replace")
+    rows: dict[str, tuple[str, str]] = {}
+    for line in raw.splitlines():
+        parts = line.split("\t")
+        if len(parts) != 3 or any(not part for part in parts):
+            raise MigrationError("Alembic checksum ledger returned an invalid row")
+        rows[parts[0]] = (parts[1], parts[2])
+    script = _current_alembic_script()
+    expected_revisions = [str(revision.revision) for revision in reversed(list(script.walk_revisions()))]
+    sql_directory = ROOT / "infra" / "db" / "alembic" / "sql"
+    expected = {revision: sql_hashes(sql_directory, revision) for revision in expected_revisions}
+    if rows != expected:
+        missing = sorted(set(expected) - set(rows))
+        extra = sorted(set(rows) - set(expected))
+        drift = sorted(revision for revision in set(rows) & set(expected) if rows[revision] != expected[revision])
+        raise MigrationError(
+            "restored Alembic checksum ledger does not match current code: "
+            f"missing={missing[:3]} extra={extra[:3]} drift={drift[:3]}"
+        )
+    return {
+        "head": head,
+        "revision_count": len(rows),
+        "sha256": hashlib.sha256(_canonical_json(rows)).hexdigest(),
+    }
+
+
+def _upgrade_restored_geo_database(project: str) -> None:
+    """Run the image's migration command after restoring the GEO dump."""
+
+    migrate = _resolve_container(project, "migrate")
+    if _running(migrate):
+        _docker("exec", migrate, "alembic", "-c", "/app/alembic.ini", "upgrade", "head")
+    else:
+        # The canonical Compose migrate service is a one-shot container.  A
+        # start/attach reruns its image-pinned command against the restored DB.
+        _docker("start", "-a", migrate)
+
+
+def _verify_pg(
+    container: str,
+    database: str,
+    *,
+    require_current_head: bool = False,
+) -> dict[str, object]:
     user = "postgres" if database in {"dify", "dify_plugin"} else "geo_installer"
     has_alembic = _docker(
         "exec", container, "psql", "-U", user, "-d", database, "-X", "-qAt", "-c",
@@ -690,7 +927,21 @@ def _verify_pg(container: str, database: str) -> dict[str, object]:
         "exec", container, "psql", "-U", user, "-d", database, "-X", "-qAt", "-c",
         "SELECT count(*) FROM pg_class WHERE relkind IN ('r','p');",
     ).decode("utf-8", errors="replace").strip()
-    return {"migration_revision": revision, "relation_count": int(count or "0")}
+    result: dict[str, object] = {
+        "migration_revision": revision,
+        "relation_count": int(count or "0"),
+    }
+    if require_current_head:
+        expected_head = _current_alembic_head()
+        if revision != expected_head:
+            raise MigrationError(
+                "restored GEO database is not at the current Alembic head: "
+                f"database={revision or 'missing'} expected={expected_head}"
+            )
+        result["checksum_ledger"] = _verify_checksum_ledger(
+            container, database, head=expected_head
+        )
+    return result
 
 
 def _scalar(container: str, database: str, user: str, sql: str) -> str:
@@ -707,6 +958,175 @@ def _scalar(container: str, database: str, user: str, sql: str) -> str:
         "-c",
         sql,
     ).decode("utf-8", errors="replace").strip()
+
+
+def _read_env_assignments(path: Path) -> dict[str, str]:
+    """Read only simple ``KEY=value`` entries from an operator env file.
+
+    This helper is intentionally not a shell evaluator.  Migration identity
+    bindings are UUIDs and do not need command substitution or interpolation;
+    treating the file as data prevents an export/import check from executing
+    arbitrary env-file content.
+    """
+
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError as error:
+        raise MigrationError(f"identity binding env file is unreadable: {path}") from error
+    values: dict[str, str] = {}
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[7:].lstrip()
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if key not in _IDENTITY_BINDING_FIELDS.values():
+            continue
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+            value = value[1:-1]
+        values[key] = value
+    return values
+
+
+def _identity_values(*, env_file: str | Path | None, role: str) -> dict[str, str]:
+    """Resolve the five non-secret identity bindings used by a GEO stack."""
+
+    values: dict[str, str] = {}
+    if env_file:
+        path = Path(env_file).expanduser().resolve()
+        if not path.is_file():
+            raise MigrationError(f"{role} identity binding env file is missing: {path}")
+        values.update(_read_env_assignments(path))
+    for field in _IDENTITY_BINDING_FIELDS.values():
+        configured = os.getenv(field, "").strip()
+        if configured:
+            values[field] = configured
+    missing = [field for field in _IDENTITY_BINDING_FIELDS.values() if not values.get(field)]
+    if missing:
+        raise MigrationError(
+            f"{role} identity bindings are incomplete: missing {', '.join(missing)}; "
+            "provide the stack env file or set these non-secret UUID variables"
+        )
+    for field, value in values.items():
+        try:
+            parsed = UUID(value)
+        except ValueError as error:
+            raise MigrationError(f"{role} identity binding {field} must be a UUID") from error
+        if parsed.int == 0:
+            raise MigrationError(f"{role} identity binding {field} cannot be the nil UUID")
+        values[field] = str(parsed)
+    return values
+
+
+def _identity_binding_manifest(values: dict[str, str], database: dict[str, object]) -> dict[str, object]:
+    """Build the public/non-secret identity section stored in both manifests."""
+
+    bindings = {
+        name: {"env_name": env_name, "identity_id": values[env_name]}
+        for name, env_name in _IDENTITY_BINDING_FIELDS.items()
+    }
+    return {
+        "schema_version": "geo-runtime-identity-bindings-v1",
+        "bindings": bindings,
+        "database": database,
+    }
+
+
+def _query_identity_bindings(container: str, values: dict[str, str]) -> dict[str, object]:
+    """Read identity/service binding status without exposing login attributes."""
+
+    actor = values["GEO_ADMIN_ACTOR_ID"]
+    tenant = values["GEO_ADMIN_TENANT_ID"]
+    model_gateway = values["GEO_MODEL_GATEWAY_WORKER_SERVICE_IDENTITY_ID"]
+    connector = values["GEO_CONNECTOR_SERVICE_IDENTITY_ID"]
+    browser = values["GEO_BROWSER_CAPTURE_SERVICE_IDENTITY_ID"]
+    # All interpolated values have passed UUID validation in _identity_values.
+    query = f"""
+SELECT json_build_object(
+  'admin_actor', COALESCE((
+    SELECT json_build_object(
+      'identity_id', i.id::text,
+      'status', i.status,
+      'tenant_membership', EXISTS (
+        SELECT 1 FROM project_memberships pm
+        WHERE pm.identity_id = i.id AND pm.tenant_id = '{tenant}'::uuid
+          AND pm.status = 'active'
+      )
+    ) FROM identities i WHERE i.id = '{actor}'::uuid
+  ), '{{}}'::json),
+  'admin_tenant', COALESCE((
+    SELECT json_build_object('tenant_id', t.id::text, 'status', t.status)
+    FROM tenants t WHERE t.id = '{tenant}'::uuid
+  ), '{{}}'::json),
+  'services', COALESCE((
+    SELECT json_object_agg(s.service_name, json_build_object(
+      'identity_id', s.identity_id::text,
+      'service_status', s.status,
+      'identity_status', i.status,
+      'issuer', i.issuer,
+      'subject', i.subject
+    ) ORDER BY s.service_name)
+    FROM service_identities s
+    JOIN identities i ON i.id = s.identity_id
+    WHERE s.identity_id IN (
+      '{model_gateway}'::uuid, '{connector}'::uuid, '{browser}'::uuid
+    )
+  ), '{{}}'::json)
+)::text;
+"""
+    raw = _scalar(container, "geo", "geo_installer", query)
+    try:
+        result = json.loads(raw)
+    except json.JSONDecodeError as error:
+        raise MigrationError("identity binding query returned invalid JSON") from error
+    if not isinstance(result, dict):
+        raise MigrationError("identity binding query returned an invalid object")
+    return result
+
+
+def _assert_identity_bindings(
+    values: dict[str, str], database: dict[str, object], *, role: str
+) -> None:
+    """Fail closed if UUIDs, active status, or service names drift."""
+
+    actor = database.get("admin_actor")
+    if not isinstance(actor, dict) or actor.get("identity_id") != values["GEO_ADMIN_ACTOR_ID"]:
+        raise MigrationError(f"{role} database admin identity does not match its env binding")
+    if actor.get("status") != "active" or actor.get("tenant_membership") is not True:
+        raise MigrationError(f"{role} database admin identity is not active in the configured tenant")
+    configured_tenant = database.get("admin_tenant")
+    if not isinstance(configured_tenant, dict) or configured_tenant.get("tenant_id") != values["GEO_ADMIN_TENANT_ID"]:
+        raise MigrationError(f"{role} database tenant does not match its env binding")
+    if configured_tenant.get("status") != "active":
+        raise MigrationError(f"{role} configured tenant is not active")
+    services = database.get("services")
+    if not isinstance(services, dict):
+        raise MigrationError(f"{role} database has no service identity bindings")
+    for name, env_name in _IDENTITY_BINDING_FIELDS.items():
+        if name in {"admin_actor", "admin_tenant"}:
+            continue
+        service = services.get(_SERVICE_IDENTITY_NAMES[name])
+        if not isinstance(service, dict):
+            raise MigrationError(f"{role} database is missing service identity {name}")
+        if service.get("identity_id") != values[env_name]:
+            raise MigrationError(f"{role} database service identity {name} does not match its env binding")
+        if service.get("service_status") != "active" or service.get("identity_status") != "active":
+            raise MigrationError(f"{role} service identity {name} is not active")
+        expected_service = _SERVICE_IDENTITY_NAMES[name]
+        if service.get("issuer") != "geo.service" or service.get("subject") != expected_service:
+            raise MigrationError(f"{role} service identity {name} has an unexpected service subject")
+
+
+def _target_identity_bindings(container: str, env_file: str | Path | None) -> dict[str, object]:
+    values = _identity_values(env_file=env_file, role="target")
+    database = _query_identity_bindings(container, values)
+    _assert_identity_bindings(values, database, role="target")
+    return _identity_binding_manifest(values, database)
 
 
 def _assert_target_empty(target_pg: str, dify_pg: str, target_minio: str) -> None:
@@ -795,6 +1215,7 @@ def _verify_secret_store(container: str) -> dict[str, object]:
 def import_package(args: argparse.Namespace) -> Path:
     package = Path(args.package).resolve()
     manifest = _read_manifest(package)
+    expected_identity_bindings = _manifest_identity_bindings(manifest)
     if not args.confirm:
         raise MigrationError("import requires --confirm; use --dry-run to validate without changing data")
     if args.target_empty is not True and args.replace_test_replica is not True:
@@ -808,6 +1229,20 @@ def import_package(args: argparse.Namespace) -> Path:
     dify_pg = _resolve_container(args.dify_project, "db_postgres")
     dify_redis = _resolve_container(args.dify_project, "redis")
     dify_weaviate = _resolve_container(args.dify_project, "weaviate")
+    target_identity_values = _identity_values(
+        env_file=getattr(args, "target_env_file", None), role="target"
+    )
+    expected_identity_values = _identity_values_from_manifest(expected_identity_bindings)
+    if target_identity_values != expected_identity_values:
+        mismatched = sorted(
+            name
+            for name in target_identity_values
+            if target_identity_values[name] != expected_identity_values.get(name)
+        )
+        raise MigrationError(
+            "target environment identity bindings do not match the migration manifest: "
+            + ", ".join(mismatched)
+        )
     if args.target_empty:
         _assert_target_empty(target_pg, dify_pg, target_minio)
     stopped: list[str] = []
@@ -826,11 +1261,23 @@ def import_package(args: argparse.Namespace) -> Path:
             entries = payload_manifest.get("files")
             if not isinstance(entries, list):
                 raise MigrationError("payload manifest has no file entries")
+            payload_identity_bindings = _manifest_identity_bindings(payload_manifest)
+            if payload_identity_bindings != expected_identity_bindings:
+                raise MigrationError(
+                    "outer and encrypted payload identity bindings do not match"
+                )
             _verify_payload(extracted, entries)
             _validate_custom_dump(target_pg, extracted / "geo" / "postgres.dump")
             _validate_custom_dump(dify_pg, extracted / "dify" / "postgres-dify.dump")
             _validate_custom_dump(dify_pg, extracted / "dify" / "postgres-dify_plugin.dump")
             _restore_pg(target_pg, "geo", extracted / "geo" / "postgres.dump")
+            # A logical dump can have been produced by an older checkout.  It
+            # is never receipt-eligible until this checkout's migration image
+            # upgrades it to the current head and its SQL ledger is verified.
+            _upgrade_restored_geo_database(args.target_project)
+            geo_postgres_check = _verify_pg(
+                target_pg, "geo", require_current_head=True
+            )
             _restore_pg(dify_pg, "dify", extracted / "dify" / "postgres-dify.dump")
             _restore_pg(dify_pg, "dify_plugin", extracted / "dify" / "postgres-dify_plugin.dump")
             _docker("stop", target_minio)
@@ -852,6 +1299,7 @@ def import_package(args: argparse.Namespace) -> Path:
                 _restore_host_archive(
                     dify_payload / f"{archive_name}.tar.gz",
                     volumes_root / relative_root,
+                    allowed_root=volumes_root,
                     clear=True,
                 )
             runtime_root.joinpath("docker").mkdir(parents=True, exist_ok=True)
@@ -865,10 +1313,19 @@ def import_package(args: argparse.Namespace) -> Path:
             secret_root = Path(args.secret_root).resolve()
             _copy_regular_tree(extracted / "secrets", secret_root)
             checks = {
-                "geo_postgres": _verify_pg(target_pg, "geo"),
+                "geo_postgres": geo_postgres_check,
                 "dify_postgres": _verify_pg(dify_pg, "dify"),
                 "dify_plugin_postgres": _verify_pg(dify_pg, "dify_plugin"),
                 "payload_files": len(entries),
+            }
+            target_identity_bindings = _target_identity_bindings(
+                target_pg, getattr(args, "target_env_file", None)
+            )
+            checks["identity_bindings"] = {
+                "source": expected_identity_bindings,
+                "target": target_identity_bindings,
+                "match": target_identity_bindings["bindings"]
+                == expected_identity_bindings["bindings"],
             }
         # The canary runs inside the application image so it uses the exact
         # target DATABASE_URL and mounted keyring that production workers use.
@@ -901,9 +1358,49 @@ def import_package(args: argparse.Namespace) -> Path:
             _refresh_dify_gateway(args.dify_project)
 
 
+def _write_verification_receipt(
+    package: Path,
+    manifest: dict[str, object],
+    identity_bindings: dict[str, object],
+    entries: list[dict[str, object]],
+) -> Path:
+    """Persist a hash-bound receipt for destructive legacy-volume cleanup."""
+
+    manifest_path = package / "manifest.json"
+    payload = manifest.get("payload")
+    if not isinstance(payload, dict) or not isinstance(payload.get("sha256"), str):
+        raise MigrationError("migration manifest payload checksum is missing")
+    receipt = {
+        "schema_version": VERIFY_RECEIPT_SCHEMA,
+        "status": "verified-package",
+        "verified_at": datetime.now(UTC).isoformat(),
+        "manifest_sha256": _sha256(manifest_path),
+        "payload_sha256": payload["sha256"],
+        "migration_schema": manifest["schema_version"],
+        "current_schema": SCHEMA,
+        "identity_bindings_sha256": hashlib.sha256(
+            _canonical_json(identity_bindings)
+        ).hexdigest(),
+        "payload_file_count": len(entries),
+    }
+    path = package / "verification-receipt.json"
+    temporary = package / ".verification-receipt.json.tmp"
+    temporary.write_bytes(_canonical_json(receipt))
+    os.chmod(temporary, 0o600)
+    os.replace(temporary, path)
+    os.chmod(path, 0o600)
+    return path
+
+
 def verify_package(args: argparse.Namespace) -> None:
     package = Path(args.package).resolve()
     manifest = _read_manifest(package)
+    identity_bindings = _manifest_identity_bindings(manifest)
+    if getattr(args, "require_current_schema", False) and manifest.get("schema_version") != SCHEMA:
+        raise MigrationError(
+            f"migration package schema is not current: expected {SCHEMA}, "
+            f"received {manifest.get('schema_version')!r}"
+        )
     with tempfile.TemporaryDirectory(prefix="geo-verify-") as temporary:
         decrypted = Path(temporary) / "payload.tar"
         _decrypt(_payload_path(package, manifest), decrypted, Path(args.encryption_key_file).resolve())
@@ -913,6 +1410,8 @@ def verify_package(args: argparse.Namespace) -> None:
         payload_manifest = json.loads(
             (extracted / "payload-manifest.json").read_text(encoding="utf-8")
         )
+        if _manifest_identity_bindings(payload_manifest) != _manifest_identity_bindings(manifest):
+            raise MigrationError("outer and encrypted payload identity bindings do not match")
         entries = payload_manifest.get("files")
         if not isinstance(entries, list):
             raise MigrationError("payload manifest has no file entries")
@@ -924,9 +1423,15 @@ def verify_package(args: argparse.Namespace) -> None:
                 "dify/postgres-dify_plugin.dump",
             ):
                 _validate_custom_dump(args.postgres_container, extracted / relative)
+    if getattr(args, "write_receipt", False):
+        receipt = _write_verification_receipt(package, manifest, identity_bindings, entries)
+        print(f"verification receipt: {receipt}")
+    payload = manifest.get("payload")
+    if not isinstance(payload, dict) or not isinstance(payload.get("sha256"), str):
+        raise MigrationError("migration manifest payload checksum is missing")
     print(
         f"verified migration package: source={manifest['source_project']} "
-        f"files={len(entries)} payload_sha256={manifest['payload']['sha256']}"
+        f"files={len(entries)} payload_sha256={payload['sha256']}"
     )
 
 
@@ -939,6 +1444,7 @@ def dry_run(args: argparse.Namespace) -> None:
         return
     package = Path(args.package).resolve()
     manifest = _read_manifest(package)
+    _manifest_identity_bindings(manifest)
     _secure_file(Path(args.encryption_key_file).resolve())
     with tempfile.TemporaryDirectory(prefix="geo-import-dry-run-") as temporary:
         decrypted = Path(temporary) / "payload.tar"
@@ -949,6 +1455,8 @@ def dry_run(args: argparse.Namespace) -> None:
         payload_manifest = json.loads(
             (extracted / "payload-manifest.json").read_text(encoding="utf-8")
         )
+        if _manifest_identity_bindings(payload_manifest) != _manifest_identity_bindings(manifest):
+            raise MigrationError("outer and encrypted payload identity bindings do not match")
         entries = payload_manifest.get("files")
         if not isinstance(entries, list):
             raise MigrationError("payload manifest has no file entries")
@@ -964,6 +1472,11 @@ def build_parser() -> argparse.ArgumentParser:
     export.add_argument("--source-project", default=os.getenv("GEO_SOURCE_PROJECT", DEFAULT_SOURCE_PROJECT))
     export.add_argument("--source-environment", default=os.getenv("GEO_SOURCE_ENVIRONMENT", "staging"))
     export.add_argument("--source-role", default=os.getenv("GEO_SOURCE_ROLE", "source"))
+    export.add_argument(
+        "--source-env-file",
+        default=os.getenv("GEO_STACK_ENV_FILE", ""),
+        help="stack env file containing the non-secret identity bindings",
+    )
     export.add_argument("--dify-project", default=DEFAULT_DIFY_PROJECT)
     export.add_argument("--output-root", required=True)
     export.add_argument("--encryption-key-file", required=True)
@@ -977,6 +1490,11 @@ def build_parser() -> argparse.ArgumentParser:
     imp.add_argument("--repo-root", default=str(ROOT))
     imp.add_argument("--package", required=True)
     imp.add_argument("--target-project", default=os.getenv("GEO_TARGET_PROJECT", DEFAULT_TARGET_PROJECT))
+    imp.add_argument(
+        "--target-env-file",
+        default=os.getenv("GEO_STACK_ENV_FILE", ""),
+        help="target stack env file whose non-secret identity bindings must match the package",
+    )
     imp.add_argument("--dify-project", default=DEFAULT_DIFY_PROJECT)
     imp.add_argument("--encryption-key-file", required=True)
     imp.add_argument("--secret-root", required=True)
@@ -991,6 +1509,16 @@ def build_parser() -> argparse.ArgumentParser:
     verify.add_argument("--package", required=True)
     verify.add_argument("--encryption-key-file", required=True)
     verify.add_argument("--postgres-container", default="")
+    verify.add_argument(
+        "--require-current-schema",
+        action="store_true",
+        help="reject legacy migration schemas",
+    )
+    verify.add_argument(
+        "--write-receipt",
+        action="store_true",
+        help="write a hash-bound verification-receipt.json after full verification",
+    )
     return parser
 
 

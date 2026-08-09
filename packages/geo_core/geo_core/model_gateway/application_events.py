@@ -90,6 +90,7 @@ def success_event(
     occurred_at: datetime,
     attempt: ModelCallAttempt,
     result: ModelGatewayResult,
+    paid_calls: int = 1,
 ) -> ModelCallTerminalEvent:
     if (
         result.requested_location != attempt.spec.requested_location
@@ -106,7 +107,7 @@ def success_event(
         attempt_id=attempt.spec.id,
         status=ModelCallTerminalStatus.SUCCEEDED,
         occurred_at=occurred_at,
-        paid_call_count=1,
+        paid_call_count=paid_calls,
         gateway_call_log_id=result.call_log_id,
         configured_model=result.configured_model,
         provider_reported_model=result.provider_reported_model,

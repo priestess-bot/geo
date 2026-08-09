@@ -461,6 +461,12 @@ def test_f019_int_01_02_governed_rag_revision_archive_and_project_isolation() ->
         with psycopg.connect(ADMIN_URL) as admin:
             admin.execute(
                 """UPDATE knowledge_sources
+                   SET status = 'queued', error_code = NULL, error_detail = NULL
+                   WHERE id = %s AND project_id = %s""",
+                (first_ids["source_id"], primary["project"]),
+            )
+            admin.execute(
+                """UPDATE knowledge_sources
                    SET status = 'failed', error_code = 'KnowledgeSourceRevisionRequired',
                        error_detail = 'source content changed'
                    WHERE id = %s AND project_id = %s""",
@@ -501,8 +507,11 @@ def test_f019_int_01_02_governed_rag_revision_archive_and_project_isolation() ->
                     (primary["project"], first_ids["source_id"]),
                 ).fetchall()
             )
+            # A failed predecessor is already excluded from active source
+            # consumption; the RAG worker archives only ready predecessors.
+            # Preserve its failure reason while the successor becomes ready.
             assert source_statuses == {
-                first_ids["source_id"]: "archived",
+                first_ids["source_id"]: "failed",
                 second_ids["source_id"]: "ready",
             }
             assert (

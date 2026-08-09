@@ -2,6 +2,7 @@ name: geo-development
 
 x-api-environment: &api-environment
   GEO_DEPLOYMENT_ENVIRONMENT: development
+  GEO_RELEASE_COMMIT: ${GEO_RELEASE_COMMIT:-0000000000000000000000000000000000000000}
   GEO_AUTH_MODE: development
   GEO_AUTH_TOKEN_SECRET: geo-development-auth-token-secret-change-me
   GEO_DEV_TOOLS_ENABLED: ${GEO_DEV_TOOLS_ENABLED:-0}
@@ -269,6 +270,7 @@ services:
       dockerfile: apps/api/Dockerfile
     environment:
       GEO_DEPLOYMENT_ENVIRONMENT: development
+      GEO_RELEASE_COMMIT: ${GEO_RELEASE_COMMIT:-0000000000000000000000000000000000000000}
       GEO_DATABASE_URL: postgresql://geo_worker_dev:geo_worker_dev@postgres:5432/geo
       GEO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
     command: ["python", "-m", "geo_worker.relay"]
@@ -289,6 +291,7 @@ services:
     environment:
       API_INTERNAL_BASE_URL: http://internal-api:8000
       GEO_DEPLOYMENT_ENVIRONMENT: development
+      GEO_RELEASE_COMMIT: ${GEO_RELEASE_COMMIT:-0000000000000000000000000000000000000000}
       GEO_AUTH_MODE: development
       GEO_ADMIN_ACTOR_ID: 30000000-0000-4000-8000-000000000003
       GEO_ADMIN_TENANT_ID: 10000000-0000-4000-8000-000000000001
@@ -307,6 +310,7 @@ services:
     environment:
       API_CUSTOMER_BASE_URL: http://customer-api:8000
       GEO_DEPLOYMENT_ENVIRONMENT: development
+      GEO_RELEASE_COMMIT: ${GEO_RELEASE_COMMIT:-0000000000000000000000000000000000000000}
       NEXT_PUBLIC_API_BASE_URL: http://localhost:${GEO_CUSTOMER_API_HOST_PORT:-8001}
       ADMIN_WEB_BASE_URL: http://localhost:${GEO_ADMIN_WEB_HOST_PORT:-3001}
       PORT: "3000"

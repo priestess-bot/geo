@@ -22,6 +22,7 @@ type Props = Readonly<{
   factLabels: Readonly<Record<string, string>>;
   generationJobId: string;
   projectId: string;
+  predecessor?: Readonly<{ id: string; seriesId: string }>;
   setsHref: string;
 }>;
 
@@ -31,16 +32,14 @@ export function QuestionCoverageReview({
   candidates,
   factLabels,
   generationJobId,
+  predecessor,
   projectId,
   setsHref
 }: Props) {
   const router = useRouter();
   const eligible = useMemo(
-    () => candidates.filter((item) => item.dedup_status === "unique"),
+    () => candidates.filter((item) => item.dedup_status === "unique" || item.was_edited),
     [candidates]
-  );
-  const [included, setIncluded] = useState(
-    () => new Set(eligible.filter((item) => item.workflow_status !== "rejected").map((item) => item.id))
   );
   const [search, setSearch] = useState("");
   const [role, setRole] = useState("all");
@@ -59,17 +58,11 @@ export function QuestionCoverageReview({
       return matchesSearch && matchesRole && matchesTopic;
     });
   }, [candidates, role, search, topic]);
-  const selectedCount = included.size;
-  const validSelection = selectedCount >= 90 && selectedCount <= 100;
-
-  function toggle(id: string, checked: boolean) {
-    setIncluded((current) => {
-      const next = new Set(current);
-      if (checked) next.add(id);
-      else next.delete(id);
-      return next;
-    });
-  }
+  const readyIds = eligible
+    .filter((item) => item.workflow_status !== "rejected")
+    .map((item) => item.id);
+  const readyCount = readyIds.length;
+  const validSelection = candidates.length === 100 && readyCount === 100;
 
   return <div className={styles.coverageReview}>
     <div className={styles.reviewToolbar}>
@@ -101,35 +94,26 @@ export function QuestionCoverageReview({
         </select>
       </label>
       <div className={styles.selectionSummary}>
-        <strong>{selectedCount}</strong><span>条将冻结</span>
+        <strong>{readyCount}/100</strong><span>条可冻结</span>
       </div>
     </div>
 
     <div className={styles.bulkTools}>
       <span>当前显示 {filtered.length} / {candidates.length} 条</span>
-      <button type="button" onClick={() => setIncluded(new Set(eligible.map((item) => item.id)))}>
-        全部保留
-      </button>
-      <button type="button" onClick={() => setIncluded(new Set())}>全部排除</button>
-      <small>为保证覆盖率，冻结时需保留至少 90 条。</small>
+      <small>完整测量库必须冻结 100 条；疑似重复项修改后会在服务端重新执行确定性去重。</small>
     </div>
 
     <div className={styles.coverageCandidateList}>
       {filtered.map((candidate) => {
         const isEditing = editingId === candidate.id;
-        const canSelect = candidate.dedup_status === "unique"
+        const ready = (candidate.dedup_status === "unique" || candidate.was_edited)
           && candidate.workflow_status !== "rejected";
         return <article className={styles.coverageCandidate}
           data-testid="question-coverage-candidate" key={candidate.id}>
-          <label className={styles.includeToggle}>
-            <input
-              checked={included.has(candidate.id)}
-              disabled={!canSelect}
-              onChange={(event) => toggle(candidate.id, event.target.checked)}
-              type="checkbox"
-            />
-            <span>{candidate.ordinal}. {included.has(candidate.id) ? "保留" : "排除"}</span>
-          </label>
+          <div className={ready ? styles.readyLabel : styles.repairLabel}>
+            <span>{candidate.ordinal}.</span>
+            <strong>{ready ? "可冻结" : "需修改"}</strong>
+          </div>
           <div className={styles.coverageCandidateBody}>
             {isEditing ? <ActionForm
               action={editQuestionCandidate}
@@ -157,7 +141,10 @@ export function QuestionCoverageReview({
                 <span>{topicLabel(candidate.topic_cluster || "")}</span>
                 <span>{queryKindLabel(candidate.query_kind)}</span>
                 <span>{funnelLabel(candidate.funnel)}</span>
-                {candidate.dedup_status !== "unique" ? <span>疑似重复，需排除</span> : null}
+                {candidate.dedup_status !== "unique" && !candidate.was_edited
+                  ? <span>疑似重复，请修改为语义独立的问题</span> : null}
+                {candidate.dedup_status !== "unique" && candidate.was_edited
+                  ? <span>已修改，冻结时重新检查</span> : null}
               </div>
               <div className={styles.knowledgeLinks}>
                 <b>生成时参考</b>
@@ -167,7 +154,9 @@ export function QuestionCoverageReview({
               </div>
             </>}
           </div>
-          {!isEditing && candidate.workflow_status === "pending_review"
+          {!isEditing && (candidate.workflow_status === "pending_review"
+            || (candidate.workflow_status === "rejected"
+              && candidate.dedup_status === "possible_duplicate"))
             ? <button className={styles.editButton} onClick={() => setEditingId(candidate.id)}
               type="button">编辑</button>
             : null}
@@ -177,8 +166,8 @@ export function QuestionCoverageReview({
 
     <div className={styles.coverageFinalize}>
       <div>
-        <strong>{validSelection ? `准备冻结 ${selectedCount} 条问题` : "保留数量需在 90–100 条之间"}</strong>
-        <span>类别基准、产品适配与品牌控制会作为独立分层保存。</span>
+        <strong>{validSelection ? "准备冻结完整 100 条问题" : `还需修正 ${100 - readyCount} 条问题`}</strong>
+        <span>100 条全部通过后形成新版本；类别基准、产品适配与品牌控制继续独立分层。</span>
       </div>
       <ActionForm
         action={finalizeQuestionCoveragePack}
@@ -186,13 +175,17 @@ export function QuestionCoverageReview({
         onSuccess={() => router.push(setsHref)}
         pendingLabel="正在确认并冻结..."
         refreshOnSuccess
-        submitLabel={`确认并冻结 ${selectedCount} 条`}
+        submitLabel="确认并冻结 100 条"
       >
         <input name="project_id" type="hidden" value={projectId} />
         <input name="campaign_id" type="hidden" value={campaignId} />
         <input name="generation_job_id" type="hidden" value={generationJobId} />
         <input name="name" type="hidden" value={`${campaignName} · 100 题测量清单`} />
-        {Array.from(included).map((id) => <input
+        {predecessor ? <>
+          <input name="series_id" type="hidden" value={predecessor.seriesId} />
+          <input name="previous_version_id" type="hidden" value={predecessor.id} />
+        </> : null}
+        {readyIds.map((id) => <input
           key={id}
           name="included_candidate_ids"
           type="hidden"

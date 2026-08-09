@@ -37,6 +37,10 @@ export async function createSamplingSuiteAction(
   const command = baseCommand(formData);
   if (!command.ok) return command.state;
   const optionKey = field(formData, "suite_input_option_key");
+  const questionSetItemIds = formData.getAll("question_set_item_ids")
+    .map(String)
+    .map((item) => item.trim())
+    .filter(Boolean);
   const statisticsMethod = field(formData, "statistics_method_version");
   const numbers = {
     repetitions: positiveInteger(formData, "repetitions"),
@@ -51,6 +55,10 @@ export async function createSamplingSuiteAction(
   if (!optionKey || optionKey.length > 200 || !statisticsMethod || statisticsMethod.length > 200) {
     return invalid("Suite 输入选项或统计方法无效。");
   }
+  if (questionSetItemIds.length > 0
+    && (questionSetItemIds.length !== 10 || new Set(questionSetItemIds).size !== 10)) {
+    return invalid("试运行必须选择恰好 10 个不重复的问题。");
+  }
   if (Object.values(numbers).some((value) => value === null)) {
     return invalid("重复数、任务上限、频率或并发设置无效。");
   }
@@ -63,6 +71,7 @@ export async function createSamplingSuiteAction(
       idempotencyKey: command.idempotencyKey,
       body: {
         suite_input_option_key: optionKey,
+        ...(questionSetItemIds.length ? { question_set_item_ids: questionSetItemIds } : {}),
         statistics_method_version: statisticsMethod,
         ...numbers
       }

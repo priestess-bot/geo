@@ -32,7 +32,11 @@ class CreateConnectorConnectionRequest(StrictContract):
     definition_id: UUID
     name: str = Field(min_length=1, max_length=200)
     secret_reference_id: UUID
-    secret_purpose: str = Field(pattern=r"^connector\.[a-z0-9_.-]+$", max_length=128)
+    # Kept optional for older clients. The server derives and verifies this
+    # value from the approved definition; the Admin UI renders it read-only.
+    secret_purpose: str | None = Field(
+        default=None, pattern=r"^connector\.[a-z0-9_.-]+$", max_length=128
+    )
     secret_version: int = Field(ge=1)
 
 

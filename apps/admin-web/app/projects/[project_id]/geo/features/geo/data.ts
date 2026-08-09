@@ -66,7 +66,14 @@ function requestedId<T extends { id: string }>(
   invalidate: () => void
 ): string | undefined {
   if (!requested) return undefined;
-  if (source.failure) return requested;
+  // A deep-link value is only safe to preserve after the backing collection
+  // has confirmed it. Keeping an unverified value during a transient failure
+  // lets an invalid URL survive the canonical redirect and can select the
+  // wrong descendant after the request recovers.
+  if (source.failure) {
+    invalidate();
+    return undefined;
+  }
   if (source.data.some((item) => item.id === requested)) return requested;
   invalidate();
   return undefined;
@@ -238,6 +245,10 @@ export async function loadGeoWorkspace(
       null
     )
   ]);
+  if (selection.jobId && !job.data) {
+    selection.jobId = undefined;
+    invalidate();
+  }
   selection.publicationId = requestedId(requested.publicationId, publications, invalidate);
   const submissions = await optional(
     selection.publicationId,

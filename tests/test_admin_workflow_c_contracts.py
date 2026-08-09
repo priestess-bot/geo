@@ -77,6 +77,7 @@ def test_test_question_authoring_belongs_to_measurement_with_legacy_geo_redirect
     assert "listKnowledgeQuestionGenerations" in question_data
     assert "listKnowledgeQuestionCandidates" in question_data
     question_workspace = source(PROJECT / "geo/features/geo/QuestionSetWorkspace.tsx")
+    assert "data.questionSets.failure ? <FailureNotice" in question_workspace
     assert 'name="notes"' not in question_workspace
     assert "确认批准" not in question_workspace
     assert 'activeTab === "geo" && legacyQuestionJobId' in project_page
@@ -112,6 +113,12 @@ def test_sampling_keeps_a_fixed_denominator_and_supported_capture_methods() -> N
     assert "fencing_generation" not in panel
     assert "answer_text" not in panel
     assert "derived_summary" in panel
+
+
+def test_coverage_review_can_repair_legacy_rejected_possible_duplicates() -> None:
+    review = source(FEATURE / "QuestionCoverageReview.tsx")
+    assert 'candidate.workflow_status === "rejected"' in review
+    assert 'candidate.dedup_status === "possible_duplicate"' in review
 
 
 def test_manual_consumer_surface_parsers_stay_non_live_and_text_free() -> None:

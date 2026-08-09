@@ -10,6 +10,7 @@ import httpx
 
 from geo_core.model_gateway.contracts import ProviderPolicyViolation
 from geo_core.model_gateway.provider_adapters.base import (
+    JsonGetTransport,
     JsonResponse,
     JsonResponseInvalid,
     JsonResponseTooLarge,
@@ -27,7 +28,7 @@ _SAFE_RESPONSE_HEADERS = frozenset(
 )
 
 
-class SecureHttpxJsonTransport:
+class SecureHttpxJsonTransport(JsonGetTransport):
     """One-shot TLS transport; it never follows redirects or trusts host proxy env."""
 
     def __init__(
@@ -78,6 +79,56 @@ class SecureHttpxJsonTransport:
             raise TimeoutError("provider request timed out") from None
         except httpx.TransportError:
             raise ConnectionError("provider request failed") from None
+
+    def get(
+        self,
+        *,
+        url: str,
+        headers: Mapping[str, str],
+        params: Mapping[str, object],
+        timeout_seconds: float,
+    ) -> JsonResponse:
+        """Perform one bounded GET without redirects or inherited proxy state."""
+        _validate_url(url)
+        if timeout_seconds <= 0:
+            raise ValueError("provider timeout must be positive")
+        transport = self._transport_factory() if self._transport_factory is not None else None
+        try:
+            with httpx.Client(
+                transport=transport,
+                trust_env=False,
+                follow_redirects=False,
+                timeout=httpx.Timeout(timeout_seconds),
+            ) as client:
+                query_params = _httpx_query_params(params)
+                with client.stream(
+                    "GET", url, headers=dict(headers), params=query_params
+                ) as response:
+                    content = _bounded_content(response, maximum=self.max_response_bytes)
+                    body = _json_body(content, successful=200 <= response.status_code < 300)
+                    safe_headers = {
+                        name.lower(): value
+                        for name, value in response.headers.items()
+                        if name.lower() in _SAFE_RESPONSE_HEADERS
+                    }
+                    return JsonResponse(response.status_code, body, safe_headers)
+        except (JsonResponseInvalid, JsonResponseTooLarge):
+            raise
+        except httpx.TimeoutException:
+            raise TimeoutError("provider request timed out") from None
+        except httpx.TransportError:
+            raise ConnectionError("provider request failed") from None
+
+
+def _httpx_query_params(
+    params: Mapping[str, object],
+) -> dict[str, str | int | float | bool | None]:
+    normalized: dict[str, str | int | float | bool | None] = {}
+    for name, value in params.items():
+        if value is not None and not isinstance(value, (str, int, float, bool)):
+            raise ValueError(f"provider query parameter {name!r} must be a scalar")
+        normalized[name] = value
+    return normalized
 
 
 def _validate_url(url: str) -> None:

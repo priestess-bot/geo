@@ -188,6 +188,9 @@ export function isSamplingSuite(value: unknown): value is SamplingSuite {
     && strings(source, ["platform", "surface", "configured_model", "reported_model", "adapter_release", "locale", "region", "stratum_hash", "location_control", "location_evidence_hash", "requested_locale", "requested_language"])
     && Array.isArray(value.questions)
     && value.questions.every((item) => record(item) && strings(item, ["question_id", "question_version", "text_hash"]))
+    && Array.isArray(value.question_set_item_ids)
+    && value.question_set_item_ids.length === value.questions.length
+    && value.question_set_item_ids.every((item) => typeof item === "string" && item.length > 0)
     && integer(value.repetitions)
     && integer(value.minimum_valid_repeats)
     && integer(value.planned_task_count)
@@ -204,9 +207,19 @@ export function isSamplingSuiteInputOptionPage(
 ): value is SamplingSuiteInputOptionPage {
   return record(value) && integer(value.total) && Array.isArray(value.items)
     && value.items.every((item) => record(item)
-      && strings(item, ["option_key", "display_name", "admission_policy_hash"])
+      && strings(item, [
+        "option_key",
+        "display_name",
+        "question_set_id",
+        "question_set_version",
+        "question_set_hash",
+        "admission_policy_hash"
+      ])
       && uuid(item.admission_policy_id)
       && integer(item.question_count)
+      && Array.isArray(item.question_set_item_ids)
+      && item.question_set_item_ids.length === item.question_count
+      && item.question_set_item_ids.every((questionId) => typeof questionId === "string" && questionId.length > 0)
       && record(item.source_stratum)
       && captureMethods.has(String(item.source_stratum.capture_method)));
 }

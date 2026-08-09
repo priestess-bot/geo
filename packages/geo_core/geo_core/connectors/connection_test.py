@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import hmac
+import re
 from typing import Any, Protocol
 from uuid import UUID
 
@@ -25,8 +26,23 @@ class CheckableConnectorSource(Protocol):
 class ConnectionTestSourceBuilder(Protocol):
     def __call__(
         self, *, connector_kind: ConnectorKind, adapter_release: str,
-        credential: Mapping[str, object]
+        credential: Mapping[str, object], source_locator: str,
+        streams: Sequence[str], report_spec: Mapping[str, object],
+        date_policy: Mapping[str, object]
     ) -> CheckableConnectorSource: ...
+
+
+@dataclass(frozen=True)
+class ConnectorConnectionTestScope:
+    """The non-secret Scope identity frozen into a connection-test Job."""
+
+    id: UUID
+    version: int
+    scope_hash: str
+    source_locator: str
+    streams: tuple[str, ...]
+    report_spec: Mapping[str, object]
+    date_policy: Mapping[str, object]
 
 
 @dataclass(frozen=True)
@@ -38,6 +54,7 @@ class ConnectorConnectionTestState:
     secret_reference_id: UUID
     secret_purpose: str
     secret_version: int
+    scopes: tuple[ConnectorConnectionTestScope, ...]
 
 
 class PostgresConnectorConnectionTestRepository:
@@ -87,7 +104,15 @@ class PostgresConnectorConnectionTestRepository:
                 raise ConnectorWorkerError("Connector connection test spec was not found")
             payload = row["spec_payload"]
             if not isinstance(payload, Mapping) or (
-                payload.get("kind") != CONNECTOR_CONNECTION_TEST_JOB_KIND
+                payload.get("schema_version") != 2
+                or set(payload) != {
+                    "schema_version", "kind", "project_id", "test_id",
+                    "connection_id", "connection_version", "definition_id",
+                    "connector_kind", "adapter_release", "secret_reference_id",
+                    "secret_purpose", "secret_version", "scopes",
+                }
+                or not _scope_payload_is_valid(payload.get("scopes"))
+                or payload.get("kind") != CONNECTOR_CONNECTION_TEST_JOB_KIND
                 or str(payload.get("project_id")) != str(lease.project_id)
                 or str(payload.get("test_id")) != str(row["id"])
                 or str(payload.get("connection_id")) != str(row["connection_id"])
@@ -99,6 +124,21 @@ class PostgresConnectorConnectionTestRepository:
                 or not hmac.compare_digest(row["spec_hash"], row["input_hash"])
             ):
                 raise ConnectorWorkerError("Connector connection test frozen identity changed")
+            scopes = _parse_scopes(payload["scopes"])
+            scope_rows = connection.execute(
+                """SELECT id, connection_id, version, scope_hash, source_locator,
+                          streams, report_spec, date_policy
+                     FROM connector_scopes
+                    WHERE project_id = %s AND connection_id = %s
+                      AND status = 'active' AND id = ANY(%s::uuid[])
+                    FOR SHARE""",
+                (lease.project_id, row["connection_id"], [scope.id for scope in scopes]),
+            ).fetchall()
+            actual_scopes = {scope_row["id"]: scope_row for scope_row in scope_rows}
+            if len(actual_scopes) != len(scopes) or any(
+                not _scope_matches(scope, actual_scopes.get(scope.id)) for scope in scopes
+            ):
+                raise ConnectorWorkerError("Connector connection-test Scope changed or is disabled")
             if row["connection_status"] != "active" or row["definition_status"] != "approved":
                 raise ConnectorWorkerError("Connector Connection or Definition is disabled")
             if row["status"] == "queued":
@@ -122,6 +162,7 @@ class PostgresConnectorConnectionTestRepository:
                 adapter_release=row["adapter_release"],
                 secret_reference_id=row["secret_reference_id"],
                 secret_purpose=row["secret_purpose"], secret_version=row["secret_version"],
+                scopes=scopes,
             )
 
 
@@ -149,15 +190,25 @@ class ConnectorConnectionTestOperation:
             purpose=state.secret_purpose, version=state.secret_version,
         )
         self._store.heartbeat(lease, lease_for=self._lease_for)
-        self._sources(
-            connector_kind=state.connector_kind,
-            adapter_release=state.adapter_release,
-            credential=credential,
-        ).check_connection()
+        for scope in state.scopes:
+            self._store.heartbeat(lease, lease_for=self._lease_for)
+            self._sources(
+                connector_kind=state.connector_kind,
+                adapter_release=state.adapter_release,
+                credential=credential,
+                source_locator=scope.source_locator,
+                streams=scope.streams,
+                report_spec=scope.report_spec,
+                date_policy=scope.date_policy,
+            ).check_connection()
         finished_at = self._clock()
         result_hash = canonical_hash({
             "test_id": str(state.test_id), "connector_kind": state.connector_kind.value,
             "adapter_release": state.adapter_release, "outcome": "connected",
+            "scopes": [
+                {"id": str(scope.id), "scope_hash": scope.scope_hash}
+                for scope in state.scopes
+            ],
         })
         with self._store.fenced_transaction(lease) as connection:
             set_project_scope(connection, lease.project_id)
@@ -184,6 +235,81 @@ class ConnectorConnectionTestOperation:
 
 __all__ = [
     "CONNECTOR_CONNECTION_TEST_JOB_KIND",
+    "ConnectorConnectionTestScope",
     "ConnectorConnectionTestOperation",
     "PostgresConnectorConnectionTestRepository",
 ]
+
+
+_SCOPE_KEYS = {
+    "id", "version", "scope_hash", "source_locator", "streams",
+    "report_spec", "date_policy",
+}
+_HASH = re.compile(r"^[0-9a-f]{64}$")
+
+
+def _scope_payload_is_valid(value: object) -> bool:
+    if not isinstance(value, list) or not value:
+        return False
+    ids: list[str] = []
+    for item in value:
+        if not isinstance(item, Mapping) or set(item) != _SCOPE_KEYS:
+            return False
+        try:
+            ids.append(str(UUID(str(item["id"]))))
+            if int(item["version"]) < 1:
+                return False
+        except (TypeError, ValueError):
+            return False
+        if not isinstance(item["scope_hash"], str) or not _HASH.fullmatch(item["scope_hash"]):
+            return False
+        if not isinstance(item["source_locator"], str) or not item["source_locator"].strip():
+            return False
+        streams = item["streams"]
+        if (
+            not isinstance(streams, list)
+            or not streams
+            or any(not isinstance(stream, str) or not stream.strip() for stream in streams)
+        ):
+            return False
+        if not isinstance(item["report_spec"], Mapping) or not isinstance(
+            item["date_policy"], Mapping
+        ):
+            return False
+    return len(ids) == len(set(ids)) and ids == sorted(ids)
+
+
+def _parse_scopes(value: object) -> tuple[ConnectorConnectionTestScope, ...]:
+    if not _scope_payload_is_valid(value):
+        raise ConnectorWorkerError("Connector connection-test Scope snapshot is invalid")
+    assert isinstance(value, list)
+    return tuple(
+        ConnectorConnectionTestScope(
+            id=UUID(str(item["id"])),
+            version=int(item["version"]),
+            scope_hash=str(item["scope_hash"]),
+            source_locator=str(item["source_locator"]),
+            streams=tuple(str(stream) for stream in item["streams"]),
+            report_spec=dict(item["report_spec"]),
+            date_policy=dict(item["date_policy"]),
+        )
+        for item in value
+        if isinstance(item, Mapping)
+    )
+
+
+def _scope_matches(
+    expected: ConnectorConnectionTestScope, actual: Mapping[str, object] | None
+) -> bool:
+    if actual is None:
+        return False
+    streams = actual.get("streams")
+    return (
+        actual.get("connection_id") is not None
+        and actual.get("version") == expected.version
+        and actual.get("scope_hash") == expected.scope_hash
+        and actual.get("source_locator") == expected.source_locator
+        and streams == list(expected.streams)
+        and actual.get("report_spec") == dict(expected.report_spec)
+        and actual.get("date_policy") == dict(expected.date_policy)
+    )

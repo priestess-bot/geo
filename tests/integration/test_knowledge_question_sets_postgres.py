@@ -59,6 +59,10 @@ from tests.integration.placement_worker_support import (
     MemoryArtifactStore,
     seed_project,
 )
+from tests.integration.question_set_postgres_support import (
+    CoverageQuestionGateway,
+    revise_possible_duplicate_candidates,
+)
 from tests.integration.test_knowledge_rag_postgres import (
     SELECTION,
     SELECTION_HASH,
@@ -121,76 +125,6 @@ class QuestionGateway:
             output=output,
             call_log_id=uuid4(),
             provider_request_id=f"question-{uuid4()}",
-            configured_model=request.configured_model,
-            provider_reported_model=request.configured_model,
-            prompt_tokens=300,
-            completion_tokens=600,
-            cost_usd=Decimal("0.003"),
-            finish_reason="stop",
-            response_hash=response_hash,
-        )
-
-
-class CoverageQuestionGateway:
-    provider = "integration-coverage-question-gateway"
-
-    def __init__(self) -> None:
-        self.calls = 0
-
-    def generate(self, request, *, policy, budget):
-        del policy
-        budget.consume()
-        self.calls += 1
-        payload = json.loads(request.messages[1]["content"])
-        fact_id = payload["facts"][0]["fact_candidate_id"]
-        questions = []
-        for dimension in payload["dimensions"]:
-            topic = str(dimension["topic_cluster"]).replace("_", " ")
-            local_index = str(dimension["dimension_key"]).rsplit(":", 1)[-1]
-            if dimension["coverage_role"] == "brand_control":
-                text = f"How well does {dimension['subject']} support {topic} in Australia?"
-            elif local_index == "1":
-                text = (
-                    f"Which Australian households benefit most from a robot lawn mower "
-                    f"when {topic} matters?"
-                )
-            elif local_index == "2":
-                text = (
-                    f"Which {topic} capabilities should Australians match to their property "
-                    "before choosing a robot lawn mower?"
-                )
-            elif local_index == "3":
-                text = (
-                    f"How should Australians compare robot lawn mower alternatives for {topic}?"
-                )
-            else:
-                text = (
-                    f"What limitations should Australians investigate when assessing "
-                    f"robot lawn mowers for {topic}?"
-                )
-            questions.append(
-                _question(
-                    candidate_id=f"coverage-{dimension['dimension_key']}",
-                    dimension_key=dimension["dimension_key"],
-                    variant_index=1,
-                    text=text,
-                    semantic=(
-                        f"{topic} shared product fit"
-                        if dimension["coverage_role"] == "product_fit"
-                        and dimension["topic_cluster"] == "buying_priorities"
-                        and local_index in {"1", "2"}
-                        else f"{topic} {local_index} {dimension['coverage_role']}"
-                    ),
-                    fact_id=fact_id,
-                    entity_ids=[],
-                )
-            )
-        output = {"questions": questions}
-        response_hash = hashlib.sha256(json.dumps(output, sort_keys=True).encode()).hexdigest()
-        return ModelGatewayResult(
-            output=output,
-            call_log_id=uuid4(),
-            provider_request_id=f"coverage-question-{uuid4()}",
             configured_model=request.configured_model,
             provider_reported_model=request.configured_model,
             prompt_tokens=300,
@@ -385,19 +319,58 @@ def test_question_coverage_pack_edits_and_freezes_unique_items_idempotently() ->
                 candidate_id=candidates[0]["id"],
                 query_text="Should I buy the ADVINSYS TerraMow V600?",
             )
-        revised_text = "What should Australians compare before choosing a robot lawn mower?"
-        knowledge.edit_question_candidate(
+        repair_candidates = tuple(
+            candidate
+            for candidate in candidates
+            if candidate["dedup_status"] == "possible_duplicate"
+        )
+        for candidate in repair_candidates:
+            knowledge.review_question_candidate(
+                principal,
+                project_id=project["project"],
+                campaign_id=campaign_id,
+                candidate_id=candidate["id"],
+                decision="rejected",
+            )
+        with pytest.raises(
+            KnowledgeValidationError,
+            match="rejected duplicate repair must change the effective question",
+        ):
+            knowledge.edit_question_candidate(
+                principal,
+                project_id=project["project"],
+                campaign_id=campaign_id,
+                candidate_id=repair_candidates[0]["id"],
+                query_text=repair_candidates[0]["query_text"],
+            )
+        with psycopg.connect(ADMIN_URL) as admin:
+            with pytest.raises(
+                psycopg.errors.CheckViolation,
+                match="invalid Question candidate repair transition",
+            ):
+                admin.execute(
+                    """UPDATE knowledge_question_candidates
+                          SET workflow_status = 'pending_review', reviewed_by = NULL,
+                              review_notes = NULL, reviewed_at = NULL,
+                              updated_at = clock_timestamp()
+                        WHERE id = %s AND project_id = %s AND campaign_id = %s""",
+                    (
+                        repair_candidates[0]["id"],
+                        project["project"],
+                        campaign_id,
+                    ),
+                )
+            admin.rollback()
+        revised_questions = revise_possible_duplicate_candidates(
+            knowledge,
             principal,
             project_id=project["project"],
             campaign_id=campaign_id,
-            candidate_id=candidates[0]["id"],
-            query_text=revised_text,
+            candidates=candidates,
         )
-        unique_candidates = tuple(
-            item["id"] for item in candidates if item["dedup_status"] == "unique"
-        )
-        assert 90 <= len(unique_candidates) <= 100
-        included = unique_candidates[:90]
+        unique_candidates = tuple(item["id"] for item in candidates if item["dedup_status"] == "unique")
+        assert len(unique_candidates) == 90
+        included = tuple(item["id"] for item in candidates)
         frozen = knowledge.finalize_question_coverage_pack(
             principal,
             project_id=project["project"],
@@ -418,9 +391,18 @@ def test_question_coverage_pack_edits_and_freezes_unique_items_idempotently() ->
         )
         assert frozen["status"] == replayed["status"] == "frozen"
         assert frozen["id"] == replayed["id"]
-        assert frozen["covered_dimension_count"] == len(frozen["items"]) == 90
-        assert frozen["coverage_ratio"] == Decimal("0.9000")
-        assert frozen["items"][0]["query_text_snapshot"] == revised_text
+        assert frozen["covered_dimension_count"] == len(frozen["items"]) == 100
+        assert frozen["coverage_ratio"] == Decimal("1.0000")
+        assert frozen["possible_duplicate_count"] == 0
+        assert frozen["duplicate_ratio"] == Decimal("0.0000")
+        frozen_questions = {
+            item["question_candidate_id"]: item["query_text_snapshot"]
+            for item in frozen["items"]
+        }
+        assert all(
+            frozen_questions[candidate_id] == revised_text
+            for candidate_id, revised_text in revised_questions.items()
+        )
         with psycopg.connect(ADMIN_URL) as admin:
             counts = admin.execute(
                 """SELECT
@@ -434,7 +416,7 @@ def test_question_coverage_pack_edits_and_freezes_unique_items_idempotently() ->
                       WHERE generated_by_job_id = %s AND workflow_status = 'rejected')""",
                 (created["job_id"],) * 4,
             ).fetchone()
-        assert counts == (10, 1, 90, 10)
+        assert counts == (10, len(repair_candidates), 100, 0)
     finally:
         with psycopg.connect(ADMIN_URL) as admin:
             cleanup_projects(

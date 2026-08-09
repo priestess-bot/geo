@@ -9,8 +9,13 @@ readonly DEFAULT_REPO_URL="https://github.com/priestess-bot/geo.git"
 INSTALL_ROOT="${GEO_INSTALL_ROOT:-${SOURCE_ROOT}}"
 REPO_URL="${GEO_REPO_URL:-${DEFAULT_REPO_URL}}"
 RELEASE_REF="${GEO_RELEASE_REF:-main}"
+STACK_MODE="${GEO_STACK_MODE:-internal}"
 SECRET_ROOT="${GEO_SECRET_ROOT:-${INSTALL_ROOT}/.secrets}"
-ENV_FILE="${GEO_STACK_ENV_FILE:-${INSTALL_ROOT}/infra/geo-stack.env}"
+if [[ "${STACK_MODE}" == "production" ]]; then
+  ENV_FILE="${GEO_STACK_ENV_FILE:-${INSTALL_ROOT}/infra/production.env}"
+else
+  ENV_FILE="${GEO_STACK_ENV_FILE:-${INSTALL_ROOT}/infra/geo-stack.env}"
+fi
 DIFY_ROOT="${GEO_DIFY_RUNTIME_ROOT:-${INSTALL_ROOT}/.runtime/dify-1.16.0}"
 STATE_FILE="${GEO_DIFY_STATE_HOST_FILE:-${INSTALL_ROOT}/.runtime/geo-dify-state.json}"
 DEEPSEEK_KEY_FILE="${GEO_DEEPSEEK_API_KEY_FILE:-}"
@@ -18,6 +23,8 @@ DEEPSEEK_KEY_FILE="${GEO_DEEPSEEK_API_KEY_FILE:-}"
 fail() { echo "geo install error: $*" >&2; exit 2; }
 
 require_tools() {
+  [[ "${STACK_MODE}" == "internal" || "${STACK_MODE}" == "production" ]] \
+    || fail "GEO_STACK_MODE must be internal or production"
   command -v git >/dev/null || fail "git is required"
   command -v docker >/dev/null || fail "docker is required"
   docker compose version >/dev/null 2>&1 || fail "Docker Compose v2 is required"
@@ -47,10 +54,52 @@ prepare_repo() {
 write_keyring() {
   local destination="$1"; local synthetic="$2"
   python3 - "$destination" "$synthetic" <<'PY'
-import base64, json, os, pathlib, stat, sys
+import base64, binascii, json, os, pathlib, stat, sys
 destination = pathlib.Path(sys.argv[1])
 synthetic = sys.argv[2] == "1"
 destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+
+def fail(message):
+    raise SystemExit(f"geo install error: {destination}: {message}")
+
+def validate_existing():
+    if destination.is_symlink() or not destination.is_file():
+        fail("existing keyring must be a regular, non-symlink file")
+    metadata = destination.stat()
+    if metadata.st_uid != os.geteuid():
+        fail("existing keyring is not owned by the installing user")
+    if stat.S_IMODE(metadata.st_mode) & 0o077:
+        fail("existing keyring permissions must not grant group or other access")
+    try:
+        value = json.loads(destination.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        fail(f"existing keyring is unreadable or invalid JSON ({error})")
+    expected_format = None if synthetic else "geo-master-keyring-v1"
+    if synthetic:
+        if value.get("schema_version") != 1:
+            fail("synthetic keyring schema_version must be 1")
+        active = str(value.get("active_version", ""))
+    else:
+        if value.get("format") != expected_format:
+            fail(f"keyring format must be {expected_format}")
+        active = str(value.get("active_version", ""))
+    keys = value.get("keys")
+    if not isinstance(keys, dict) or not keys or active not in keys:
+        fail("keyring must contain its active key version")
+    for version, encoded_key in keys.items():
+        if not isinstance(version, str) or not isinstance(encoded_key, str):
+            fail("key versions and values must be strings")
+        try:
+            decoded = base64.b64decode(encoded_key, validate=True)
+        except (ValueError, binascii.Error) as error:
+            fail(f"key version {version} is not valid base64 ({error})")
+        if len(decoded) != 32:
+            fail(f"key version {version} must decode to 32 bytes")
+
+if destination.exists() or destination.is_symlink():
+    validate_existing()
+    raise SystemExit(0)
+
 def encoded(): return base64.b64encode(os.urandom(32)).decode("ascii")
 if synthetic:
     value = {"schema_version": 1, "active_version": "2", "keys": {"1": encoded(), "2": encoded()}}
@@ -87,12 +136,17 @@ prepare_secrets() {
   write_secret "${SECRET_ROOT}/workflow-c-artifact-reader-access-key" 18
   write_secret "${SECRET_ROOT}/workflow-c-artifact-reader-secret-key" 32
   write_secret "${SECRET_ROOT}/alert-webhook-signing-secret" 32
-  if [[ ! -f "${SECRET_ROOT}/alert-webhook-ca.pem" || ! -f "${SECRET_ROOT}/alert-webhook-tls-key.pem" ]]; then
+  local alert_ca="${SECRET_ROOT}/alert-webhook-ca.pem"
+  local alert_key="${SECRET_ROOT}/alert-webhook-tls-key.pem"
+  if [[ -e "${alert_ca}" && ! -e "${alert_key}" ]] || [[ ! -e "${alert_ca}" && -e "${alert_key}" ]]; then
+    fail "alert webhook certificate pair is incomplete; restore both files instead of regenerating either one"
+  fi
+  if [[ ! -f "${alert_ca}" && ! -f "${alert_key}" ]]; then
     openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
-      -keyout "${SECRET_ROOT}/alert-webhook-tls-key.pem" \
-      -out "${SECRET_ROOT}/alert-webhook-ca.pem" \
+      -keyout "${alert_key}" \
+      -out "${alert_ca}" \
       -subj "/CN=geo-internal-alert-sink" >/dev/null 2>&1
-    chmod 0600 "${SECRET_ROOT}/alert-webhook-ca.pem" "${SECRET_ROOT}/alert-webhook-tls-key.pem"
+    chmod 0600 "${alert_ca}" "${alert_key}"
   fi
   [[ -n "${DEEPSEEK_KEY_FILE}" ]] || fail "set GEO_DEEPSEEK_API_KEY_FILE before installing"
   [[ -f "${DEEPSEEK_KEY_FILE}" ]] || fail "DeepSeek key file is missing: ${DEEPSEEK_KEY_FILE}"
@@ -110,11 +164,13 @@ import sys
 path, release, secret_root, state_file, deepseek = map(Path, sys.argv[1:])
 values = {
     "GEO_RELEASE_COMMIT": release.name,
+    "GEO_DIFY_STATE_HOST_FILE": str(state_file),
+    "GEO_DEEPSEEK_API_KEY_FILE": str(deepseek),
+}
+identity_defaults = {
     "GEO_ADMIN_ACTOR_ID": "30000000-0000-4000-8000-000000000003",
     "GEO_ADMIN_TENANT_ID": "10000000-0000-4000-8000-000000000001",
     "GEO_MODEL_GATEWAY_WORKER_SERVICE_IDENTITY_ID": "40000000-0000-4000-8000-000000000006",
-    "GEO_DIFY_STATE_HOST_FILE": str(state_file),
-    "GEO_DEEPSEEK_API_KEY_FILE": str(deepseek),
 }
 for name in (
     "GEO_SECRET_STORE_MASTER_KEYRING_FILE", "GEO_STAGING_SECRET_STORE_MASTER_KEYRING_FILE",
@@ -150,9 +206,15 @@ for line in lines:
     if key in values:
         output.append(f"{key}={values[key]}")
         seen.add(key)
+    elif key in identity_defaults:
+        output.append(line)
+        seen.add(key)
     else:
         output.append(line)
 for key, value in values.items():
+    if key not in seen:
+        output.append(f"{key}={value}")
+for key, value in identity_defaults.items():
     if key not in seen:
         output.append(f"{key}={value}")
 path.write_text("\n".join(output) + "\n", encoding="utf-8")
@@ -160,13 +222,47 @@ PY
 }
 
 main() {
+  local prepare_only=0
+  while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+      --prepare-only) prepare_only=1 ;;
+      -h|--help)
+        cat <<'EOF'
+usage: deploy/install.sh [--prepare-only]
+
+  --prepare-only  Prepare the checkout, environment and internal secrets but
+                  do not start or configure Dify or GEO services.
+EOF
+        return 0
+        ;;
+      *) fail "unsupported option: $1 (use --prepare-only or --help)" ;;
+    esac
+    shift
+  done
   require_tools
   prepare_repo
+  if [[ "${STACK_MODE}" == "production" ]]; then
+    [[ -f "${ENV_FILE}" ]] || fail "production mode requires a pre-provisioned env file: ${ENV_FILE}"
+    export GEO_STACK_MODE="${STACK_MODE}"
+    export GEO_STACK_ENV_FILE="${ENV_FILE}"
+    "${INSTALL_ROOT}/scripts/geo-stack.sh" config
+    if (( prepare_only )); then
+      echo "Production preparation is valid; no Dify or GEO services were started or configured."
+    else
+      echo "Production configuration is valid. Run scripts/geo-stack.sh up after the reviewed secrets and OIDC endpoints are ready."
+    fi
+    return
+  fi
   prepare_secrets
   write_env
   export GEO_STACK_ENV_FILE="${ENV_FILE}"
+  export GEO_STACK_MODE="${STACK_MODE}"
   export GEO_DIFY_RUNTIME_ROOT="${DIFY_ROOT}"
   export GEO_DIFY_STATE_HOST_FILE="${STATE_FILE}"
+  if (( prepare_only )); then
+    echo "GEO preparation complete at ${INSTALL_ROOT} (commit ${RELEASE_SHA}); no Dify or GEO services were started or configured."
+    return
+  fi
   "${INSTALL_ROOT}/scripts/bootstrap_dify_runtime.sh" up
   uv run python "${INSTALL_ROOT}/scripts/configure_dify_runtime.py" \
     --base-url "http://127.0.0.1:${GEO_DIFY_HOST_PORT:-15000}" \
@@ -181,4 +277,6 @@ main() {
   echo "Dify: http://127.0.0.1:15000"
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

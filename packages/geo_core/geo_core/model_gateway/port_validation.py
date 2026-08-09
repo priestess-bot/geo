@@ -7,6 +7,7 @@ import re
 from uuid import UUID
 
 from geo_core.secrets.models import SecretVersionHandle
+from geo_core.model_gateway.releases import provider_secret_purpose
 
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -42,7 +43,7 @@ def require_provider_secret_handle(
         raise ValueError("provider secret handle must be an immutable SecretVersionHandle")
     if handle.project_id != project_id:
         raise ValueError("provider secret handle project does not match model-call project")
-    if handle.purpose != f"model_provider.{provider}":
+    if handle.purpose != provider_secret_purpose(provider):
         raise ValueError("provider secret handle purpose does not match model route")
 
 

@@ -119,19 +119,27 @@
   border-top: 0;
 }
 
-.includeToggle {
+.readyLabel,
+.repairLabel {
   align-items: center;
-  color: #445d63;
-  display: flex;
+  display: grid;
   font-size: 11px;
   font-weight: 750;
-  gap: 6px;
+  gap: 3px;
+  justify-items: start;
 }
 
-.includeToggle input {
-  accent-color: var(--question-primary);
-  height: 16px;
-  width: 16px;
+.readyLabel span,
+.repairLabel span {
+  color: #61747b;
+}
+
+.readyLabel strong {
+  color: #16705f;
+}
+
+.repairLabel strong {
+  color: #a33d2d;
 }
 
 .coverageCandidateBody {

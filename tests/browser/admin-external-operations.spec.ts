@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
+const FIXTURE_API = process.env.PLAYWRIGHT_FIXTURE_API_URL || "http://127.0.0.1:3199";
 const PROJECT_ID = "00000000-0000-4000-8000-000000000001";
 
 test("EXT-ADMIN-ALERT-01: external operations renders actionable drift input", async ({ page }) => {
@@ -45,4 +46,35 @@ test("EXT-ADMIN-SURFACE-01: a new consumer surface starts fail-closed", async ({
     "placeholder", /实测 CSS 选择器/
   );
   await expect(page.getByRole("button", { name: "批准版本" })).toHaveCount(0);
+});
+
+test("EXT-ADMIN-CONNECTOR-01: Secret purpose follows the selected GSC/GA4 definition", async ({ page, request }) => {
+  const response = await page.goto(
+    `/projects/${PROJECT_ID}?tab=external-data`,
+    { waitUntil: "networkidle" }
+  );
+
+  expect(response?.ok()).toBe(true);
+  const form = page.getByRole("button", { name: "创建连接" }).locator("xpath=ancestor::form");
+  const definition = form.getByTestId("connector-definition-select");
+  const purpose = form.getByTestId("connector-secret-purpose");
+  await expect(definition).toHaveValue("00000000-0000-4000-8000-000000000611");
+  await expect(purpose).toHaveValue("connector.gsc");
+  await expect(purpose).toHaveAttribute("readonly", "");
+
+  await definition.selectOption("00000000-0000-4000-8000-000000000612");
+  await expect(purpose).toHaveValue("connector.ga4");
+  await form.getByLabel("连接名称").fill("GA4 浏览器合同测试");
+  await form.getByLabel("密钥引用 ID").fill("00000000-0000-4000-8000-000000000601");
+  await form.getByRole("button", { name: "创建连接" }).click();
+  await expect(form.getByRole("status")).toContainText("连接已创建");
+
+  const logged = await (await request.get(`${FIXTURE_API}/__requests`)).json();
+  const create = logged.find((item: { path?: string }) => item.path === `${
+    "/v1/projects/00000000-0000-4000-8000-000000000001"
+  }/connectors/connections`);
+  expect(create?.body).toMatchObject({
+    definition_id: "00000000-0000-4000-8000-000000000612",
+    secret_purpose: "connector.ga4"
+  });
 });

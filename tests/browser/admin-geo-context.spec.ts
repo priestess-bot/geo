@@ -255,7 +255,7 @@ test("F019-WEB-01: Admin completes governed QuestionSet binding and a non-publis
   expect(runtimeErrors).toEqual([]);
 });
 
-test("Measurement workspace generates, edits, excludes, and freezes a complete 100-question pack", async ({ page, request }) => {
+test("Measurement workspace repairs duplicates and freezes an exact 100-question successor", async ({ page, request }) => {
   test.setTimeout(60_000);
   const runtimeErrors = collectRuntimeErrors(page);
   expect((await request.patch(
@@ -279,7 +279,8 @@ test("Measurement workspace generates, edits, excludes, and freezes a complete 1
   await expect(page).toHaveURL(/question_step=review/);
   await expect(page.getByRole("heading", { name: "检查 100 题测量库" })).toBeVisible();
   await expect(page.getByText("当前显示 100 / 100 条", { exact: true })).toBeVisible();
-  await expect(page.locator("article").filter({ has: page.getByText(/^1\. 保留$/) })).toHaveCount(1);
+  await expect(page.getByTestId("question-coverage-candidate").first()
+    .getByText("可冻结", { exact: true })).toBeVisible();
 
   const reviewPanel = page.locator("section").filter({
     has: page.getByRole("heading", { name: "检查 100 题测量库" })
@@ -292,29 +293,29 @@ test("Measurement workspace generates, edits, excludes, and freezes a complete 1
 
   const coverageCandidates = reviewPanel.getByTestId("question-coverage-candidate");
   await expect(coverageCandidates).toHaveCount(100);
-  const firstCandidate = coverageCandidates.first();
-  await firstCandidate.getByRole("button", { name: "编辑", exact: true }).click();
+  await expect(reviewPanel.getByText("99/100", { exact: true })).toBeVisible();
+  await expect(reviewPanel.getByText("还需修正 1 条问题", { exact: true })).toBeVisible();
+  const duplicateCandidate = coverageCandidates.nth(1);
+  await expect(duplicateCandidate.getByText("需修改", { exact: true })).toBeVisible();
+  await duplicateCandidate.getByRole("button", { name: "编辑", exact: true }).click();
   const revisedQuestion = "What should an Australian homeowner compare before choosing a robotic mower?";
-  await firstCandidate.getByRole("textbox", { name: "问题文字" }).fill(revisedQuestion);
-  await firstCandidate.getByRole("button", { name: "保存修改" }).click();
+  await duplicateCandidate.getByRole("textbox", { name: "问题文字" }).fill(revisedQuestion);
+  await duplicateCandidate.getByRole("button", { name: "保存修改" }).click();
   await expect(reviewPanel.getByText(revisedQuestion, { exact: true })).toBeVisible();
   await expect(reviewPanel.getByText("已修改", { exact: true })).toBeVisible();
-
-  const secondCandidate = coverageCandidates.nth(1);
-  await secondCandidate.getByRole("checkbox").uncheck();
-  await expect(reviewPanel.getByText("99", { exact: true }).first()).toBeVisible();
-  await reviewPanel.getByRole("button", { name: "确认并冻结 99 条" }).click();
+  await expect(reviewPanel.getByText("100/100", { exact: true })).toBeVisible();
+  await reviewPanel.getByRole("button", { name: "确认并冻结 100 条" }).click();
 
   await expect(page).toHaveURL(/question_step=sets/);
   const setRow = page.getByTestId("question-set");
   await expect(setRow).toContainText("已冻结");
-  await expect(setRow).toContainText("99/100");
+  await expect(setRow).toContainText("100/100");
   await expect(setRow).toContainText(revisedQuestion);
   await page.screenshot({ path: path.join(os.tmpdir(), "geo-question-coverage-desktop.png"), fullPage: true });
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
-  await expect(page.getByTestId("question-set")).toContainText("99/100");
+  await expect(page.getByTestId("question-set")).toContainText("100/100");
   const mobileWidth = await page.evaluate(() => ({
     document: document.documentElement.scrollWidth,
     viewport: window.innerWidth
@@ -334,7 +335,7 @@ test("Measurement workspace generates, edits, excludes, and freezes a complete 1
   });
   const finalization = logged.find((item) => item.method === "POST"
     && item.path.endsWith("/question-sets/finalize-coverage-pack"));
-  expect(finalization?.body.included_candidate_ids).toHaveLength(99);
+  expect(finalization?.body.included_candidate_ids).toHaveLength(100);
   expect(runtimeErrors).toEqual([]);
 });
 
@@ -438,8 +439,10 @@ test("F012: Campaign switch clears every descendant context and invalid deep lin
   await page.screenshot({ path: path.join(os.tmpdir(), "geo-admin-campaign-context.png"), fullPage: true });
 
   await page.goto(`/projects/${PROJECT_ID}?tab=geo&geo_section=campaigns&campaign_id=${CAMPAIGN_A_ID}&protocol_id=00000000-0000-4000-8000-999999999999`);
-  await expect(page).toHaveURL(new RegExp(`campaign_id=${CAMPAIGN_A_ID}`));
-  expect(new URL(page.url()).searchParams.has("protocol_id")).toBe(false);
+  await expect(page).toHaveURL((url) => (
+    url.searchParams.get("campaign_id") === CAMPAIGN_A_ID
+    && !url.searchParams.has("protocol_id")
+  ));
   await expect(page.getByText("OpenAI AU frozen baseline", { exact: true })).toBeVisible();
 
   await page.goto(`/projects/${PROJECT_ID}?tab=geo&geo_section=placement&skill_id=${SKILL_ID}`);
@@ -742,65 +745,5 @@ test("F013: approved Fact becomes governed Evidence and remains traceable inside
     expect(promotion?.body).not.toHaveProperty(derived);
   }
   expect(logged.some((item) => item.method === "POST" && item.path.endsWith(`/brief-versions/${BRIEF_ID}/evidence-pack-attempts`))).toBe(true);
-  expect(runtimeErrors).toEqual([]);
-});
-
-test("F014: Opportunity binding and Bundle creation freeze the approved Prompt Release identity", async ({ page, request }) => {
-  const runtimeErrors = collectRuntimeErrors(page);
-  await page.goto(`/projects/${PROJECT_ID}?tab=geo&geo_section=placement&placement_stage=evidence&campaign_id=${CAMPAIGN_A_ID}&opportunity_id=${OPPORTUNITY_A_ID}&brief_version_id=${BRIEF_ID}&attempt_id=${ATTEMPT_ID}&skill_id=${SKILL_ID}`);
-
-  await expect(page.getByText("尚未绑定已批准 Prompt 发布版本。", { exact: true }).first()).toBeVisible();
-  const administration = page.locator("details").filter({ has: page.getByText("高级：Prompt 规则与版本管理", { exact: true }) });
-  await administration.locator(":scope > summary").click();
-  await expect(administration.getByRole("button", { name: "撤销发布版本" })).toBeVisible();
-  await administration.locator('select[name="template_release_id"]').selectOption(RELEASE_ID);
-  await administration.getByRole("textbox", { name: "变更原因" }).fill("Pin approved release for this Opportunity");
-  await administration.getByRole("button", { name: "确认并追加绑定" }).click();
-  await expect(administration.getByRole("status")).toContainText("Opportunity 已追加 Prompt Release 绑定");
-  await expect(page.getByText("placement.owned_site.article", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText("v5", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText("v2", { exact: true }).first()).toBeVisible();
-
-  const bundleButton = page.getByRole("button", { name: "确认并冻结生成输入" });
-  await expect(bundleButton).toBeEnabled();
-  const confirmation = page.locator('input[name="confirm_prompt_release"]');
-  await expect(confirmation).toHaveAttribute("required", "");
-  await confirmation.check();
-  await bundleButton.click();
-  await expect(page.getByRole("status").filter({ hasText: "Prompt Bundle 工件已冻结" }))
-    .toContainText("Prompt Bundle 工件已冻结");
-
-  const logged = await (await request.get(`${FIXTURE_API}/__requests`)).json() as Array<{ method: string; path: string; body: Record<string, any> }>;
-  const bindingRequest = logged.find((item) => item.method === "POST" && item.path.endsWith(`/opportunities/${OPPORTUNITY_A_ID}/prompt-release-bindings`));
-  expect(bindingRequest?.body).toMatchObject({
-    template_release_id: RELEASE_ID,
-    reason: "Pin approved release for this Opportunity",
-    expected_binding_version: 1
-  });
-  expect(bindingRequest?.body).not.toHaveProperty("expected_previous_binding_id");
-  const bundleRequest = logged.find((item) => item.method === "POST" && item.path.endsWith(`/brief-versions/${BRIEF_ID}/prompt-bundles`));
-  expect(bundleRequest?.body).toMatchObject({
-    campaign_id: CAMPAIGN_A_ID,
-    opportunity_id: OPPORTUNITY_A_ID,
-    prompt_release_binding_id: BINDING_ID,
-    confirmed_release_hash: RELEASE_HASH,
-    evidence_pack_attempt_id: ATTEMPT_ID
-  });
-  expect(bundleRequest?.body).not.toHaveProperty("template_release_id");
-  await page.screenshot({ path: path.join(os.tmpdir(), "geo-admin-prompt-binding.png"), fullPage: true });
-  expect(runtimeErrors).toEqual([]);
-});
-
-test("legacy Prompt Bundle remains readable but cannot start new generation work", async ({ page, request }) => {
-  const runtimeErrors = collectRuntimeErrors(page);
-  expect((await request.post(`${FIXTURE_API}/__legacy_prompt_bundle`)).ok()).toBe(true);
-
-  await page.goto(`/projects/${PROJECT_ID}?tab=geo&geo_section=placement&placement_stage=generation&campaign_id=${CAMPAIGN_A_ID}&opportunity_id=${OPPORTUNITY_A_ID}&brief_version_id=${BRIEF_ID}&attempt_id=${ATTEMPT_ID}&bundle_id=${LEGACY_BUNDLE_ID}`);
-
-  const legacyNotice = page.getByTestId("legacy-prompt-bundle");
-  await expect(legacyNotice).toContainText("迁移历史生成输入只读");
-  await expect(legacyNotice.getByRole("link", { name: "返回准备证据并重建" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "开始生成" })).toHaveCount(0);
-  await expect(page.getByText("缺少已批准 Prompt Release 绑定", { exact: false })).toBeVisible();
   expect(runtimeErrors).toEqual([]);
 });

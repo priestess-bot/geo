@@ -12,6 +12,7 @@ import argparse
 from datetime import UTC, datetime
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -48,7 +49,12 @@ class SyncError(RuntimeError):
     """An archive cannot be uploaded, downloaded, or applied safely."""
 
 
-def _run(command: list[str], *, cwd: Path | None = None) -> bytes:
+def _run(
+    command: list[str],
+    *,
+    cwd: Path | None = None,
+    env: dict[str, str] | None = None,
+) -> bytes:
     try:
         result = subprocess.run(
             command,
@@ -56,6 +62,7 @@ def _run(command: list[str], *, cwd: Path | None = None) -> bytes:
             check=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            env=env,
         )
     except FileNotFoundError as error:
         raise SyncError(f"required command is unavailable: {command[0]}") from error
@@ -63,6 +70,52 @@ def _run(command: list[str], *, cwd: Path | None = None) -> bytes:
         detail = error.stderr.decode("utf-8", errors="replace").strip()
         raise SyncError(f"command failed ({command[0]}): {detail[-600:] or 'no detail'}") from error
     return result.stdout
+
+
+def _stack_env_file(args: argparse.Namespace) -> Path:
+    configured = args.stack_env_file or os.environ.get("GEO_STACK_ENV_FILE")
+    if configured:
+        return Path(configured).expanduser().resolve()
+    filename = "production.env" if args.stack_mode == "production" else "geo-stack.env"
+    return (ROOT / "infra" / filename).resolve()
+
+
+def _baseline_stack_environment(args: argparse.Namespace) -> dict[str, str]:
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "GEO_STACK_ENV_FILE": str(_stack_env_file(args)),
+            "GEO_STACK_MODE": args.stack_mode,
+            "GEO_DIFY_RUNTIME_ROOT": str(Path(args.dify_runtime_root).expanduser().resolve()),
+            "GEO_DIFY_STATE_HOST_FILE": str(Path(args.dify_state_file).expanduser().resolve()),
+        }
+    )
+    return environment
+
+
+def _baseline_stack_import_command(args: argparse.Namespace, package: Path) -> list[str]:
+    return [
+        str(ROOT / "scripts" / "geo-stack.sh"),
+        "import",
+        "--package",
+        str(package.resolve()),
+        "--encryption-key-file",
+        str(Path(args.passphrase_file).expanduser().resolve()),
+        "--secret-root",
+        str(Path(args.secret_root).expanduser().resolve()),
+        "--dify-runtime-root",
+        str(Path(args.dify_runtime_root).expanduser().resolve()),
+        "--dify-state-file",
+        str(Path(args.dify_state_file).expanduser().resolve()),
+        "--target-project",
+        args.target_project,
+        "--dify-project",
+        args.dify_project,
+        "--target-env-file",
+        str(_stack_env_file(args)),
+        "--target-empty",
+        "--confirm",
+    ]
 
 
 def _sha256(path: Path) -> str:
@@ -288,7 +341,21 @@ def _extract_package(package: Path, passphrase: Path, destination: Path) -> dict
 def _write_payload_manifest(payload: Path) -> None:
     entries = _files(payload, exclude={"payload-manifest.json"})
     path = payload / "payload-manifest.json"
-    path.write_bytes(_canonical_json({"schema_version": "geo-runtime-payload-v2", "files": entries}))
+    existing: dict[str, Any] = {}
+    if path.is_file():
+        try:
+            candidate = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            raise SyncError("existing payload manifest is unreadable") from error
+        if isinstance(candidate, dict):
+            existing = candidate
+    manifest: dict[str, Any] = {
+        "schema_version": "geo-runtime-payload-v2",
+        "files": entries,
+    }
+    if isinstance(existing.get("identity_bindings"), dict):
+        manifest["identity_bindings"] = existing["identity_bindings"]
+    path.write_bytes(_canonical_json(manifest))
     path.chmod(0o600)
 
 
@@ -482,6 +549,8 @@ def _command_export(args: argparse.Namespace) -> Path:
         args.source_environment,
         "--source-role",
         args.source_role,
+        "--source-env-file",
+        args.source_env_file,
         "--dify-project",
         args.dify_project,
         "--output-root",
@@ -523,6 +592,10 @@ def _parser() -> argparse.ArgumentParser:
     export.add_argument("--source-project", default="geo-advinsys-staging-v2")
     export.add_argument("--source-environment", default="staging")
     export.add_argument("--source-role", default="source")
+    export.add_argument(
+        "--source-env-file",
+        default=os.environ.get("GEO_STACK_ENV_FILE", ""),
+    )
     export.add_argument("--dify-project", default="geo-dify")
     export.add_argument("--release")
     export.add_argument("--allow-dirty", action="store_true")
@@ -545,10 +618,23 @@ def _parser() -> argparse.ArgumentParser:
     restore.add_argument("--release")
     restore.add_argument("--download-root", default=".runtime/geo-sync-cache")
     restore.add_argument("--secret-root", required=True)
-    restore.add_argument("--dify-runtime-root", default=str(ROOT / ".runtime" / "dify-1.16.0"))
-    restore.add_argument("--dify-state-file", default=str(ROOT / ".runtime" / "geo-dify-state.json"))
+    restore.add_argument(
+        "--dify-runtime-root",
+        default=os.environ.get("GEO_DIFY_RUNTIME_ROOT") or str(ROOT / ".runtime" / "dify-1.16.0"),
+    )
+    restore.add_argument(
+        "--dify-state-file",
+        default=os.environ.get("GEO_DIFY_STATE_HOST_FILE")
+        or str(ROOT / ".runtime" / "geo-dify-state.json"),
+    )
     restore.add_argument("--target-project", default="geo")
     restore.add_argument("--dify-project", default="geo-dify")
+    restore.add_argument("--stack-env-file")
+    restore.add_argument(
+        "--stack-mode",
+        choices=("internal", "production"),
+        default=os.environ.get("GEO_STACK_MODE", "internal"),
+    )
     restore.add_argument("--target-empty", action="store_true")
     restore.add_argument("--confirm", action="store_true")
 
@@ -563,6 +649,10 @@ def _parser() -> argparse.ArgumentParser:
     incremental.add_argument("--source-project", default="geo")
     incremental.add_argument("--source-environment", default="production")
     incremental.add_argument("--source-role", default="primary")
+    incremental.add_argument(
+        "--source-env-file",
+        default=os.environ.get("GEO_STACK_ENV_FILE", ""),
+    )
     incremental.add_argument("--dify-project", default="geo-dify")
     incremental.add_argument("--release")
     incremental.add_argument("--allow-dirty", action="store_true")
@@ -578,6 +668,10 @@ def _parser() -> argparse.ArgumentParser:
     apply_delta.add_argument("--dify-state-file", default=str(ROOT / ".runtime" / "geo-dify-state.json"))
     apply_delta.add_argument("--target-project", default="geo")
     apply_delta.add_argument("--dify-project", default="geo-dify")
+    apply_delta.add_argument(
+        "--target-env-file",
+        default=os.environ.get("GEO_STACK_ENV_FILE", ""),
+    )
     apply_delta.add_argument("--overwrite-test-replica", action="store_true")
 
     return parser
@@ -604,35 +698,18 @@ def main(argv: list[str] | None = None) -> int:
                 raise SyncError("baseline import requires --target-empty; refuse to overwrite an unknown target")
             if not args.confirm:
                 raise SyncError("baseline import requires --confirm")
-            package = args.package
+            package_value = args.package
             if args.release:
-                package = str(download_package(repo, args.release, Path(args.download_root) / args.release))
-            if not package:
+                package_value = str(download_package(repo, args.release, Path(args.download_root) / args.release))
+            if not package_value:
                 raise SyncError("import-baseline requires --package or --release")
-            baseline_manifest = _package_manifest(Path(package).resolve())
+            package = Path(package_value).resolve()
+            baseline_manifest = _package_manifest(package)
             _require_role(baseline_manifest, {"source", "primary"}, operation="baseline import")
             _run(
-                [
-                    sys.executable,
-                    str(ROOT / "scripts" / "geo_migrate.py"),
-                    "import",
-                    "--package",
-                    package,
-                    "--encryption-key-file",
-                    args.passphrase_file,
-                    "--secret-root",
-                    args.secret_root,
-                    "--dify-runtime-root",
-                    args.dify_runtime_root,
-                    "--dify-state-file",
-                    args.dify_state_file,
-                    "--target-project",
-                    args.target_project,
-                    "--dify-project",
-                    args.dify_project,
-                    "--target-empty",
-                    "--confirm",
-                ]
+                _baseline_stack_import_command(args, package),
+                cwd=ROOT,
+                env=_baseline_stack_environment(args),
             )
         elif args.command == "export-incremental-upload":
             if args.source_role != "primary" or args.source_environment != "production":
@@ -694,6 +771,8 @@ def main(argv: list[str] | None = None) -> int:
                         args.target_project,
                         "--dify-project",
                         args.dify_project,
+                        "--target-env-file",
+                        args.target_env_file,
                         "--replace-test-replica",
                         "--confirm",
                     ]

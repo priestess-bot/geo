@@ -2,14 +2,14 @@
   "schema_version": "non-b-acceptance-classification-v1",
   "roadmap": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
   "expected_counts": {
-    "all": 322,
+    "all": 330,
     "templates": 13,
     "acceptance": 218,
-    "implementation_ledger": 91,
-    "roadmap_checked": 113,
+    "implementation_ledger": 99,
+    "roadmap_checked": 124,
     "excluded_b": 49,
     "mixed_atomic": 68,
-    "included_non_b": 260
+    "included_non_b": 268
   },
   "excluded_b_ids": [
     "B-CONTRACT-01",
@@ -58,7 +58,7 @@
     "STAT-UI-AC-01",
     "PLAN-FINAL-02",
     "PLAN-FINAL-06",
-    "IMPL-B-SEARCH-AGGREGATION-PROTOTYPE-2026-07-24",
+    "IMPL-B-SEARCH-AGGREGATION-PROTOTYPE-RETIRED-2026-08-07",
     "IMPL-B-CORE-MVP-LOCAL-2026-07-28",
     "IMPL-B-ADVINSYS-VALIDATION-CANARY-2026-07-29"
   ],

@@ -2141,6 +2141,36 @@
         "title": "AttributionTraceCreatedResponse",
         "type": "object"
       },
+      "AustralianEgressSetupResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "egress_test_required": {
+            "const": true,
+            "title": "Egress Test Required",
+            "type": "boolean"
+          },
+          "endpoint": {
+            "$ref": "#/components/schemas/EgressEndpointResponse"
+          },
+          "secret_reference_id": {
+            "format": "uuid",
+            "title": "Secret Reference Id",
+            "type": "string"
+          },
+          "secret_version": {
+            "title": "Secret Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "endpoint",
+          "secret_reference_id",
+          "secret_version",
+          "egress_test_required"
+        ],
+        "title": "AustralianEgressSetupResponse",
+        "type": "object"
+      },
       "AuthIdentity": {
         "additionalProperties": false,
         "properties": {
@@ -2441,6 +2471,36 @@
           "confirmed_content_hash"
         ],
         "title": "BindQuestionSetRequest",
+        "type": "object"
+      },
+      "BootstrapBrowserCaptureRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "surfaces": {
+            "items": {
+              "enum": [
+                "google_ai_overviews",
+                "google_ai_mode",
+                "bing_copilot"
+              ],
+              "type": "string"
+            },
+            "maxItems": 3,
+            "minItems": 1,
+            "title": "Surfaces",
+            "type": "array"
+          },
+          "terms_acknowledged": {
+            "const": true,
+            "title": "Terms Acknowledged",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "surfaces",
+          "terms_acknowledged"
+        ],
+        "title": "BootstrapBrowserCaptureRequest",
         "type": "object"
       },
       "BootstrapCaseEvaluationResponse": {
@@ -3383,6 +3443,27 @@
         "title": "BrowserCaptureAttemptResponse",
         "type": "object"
       },
+      "BrowserCaptureBootstrapResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "profile": {
+            "$ref": "#/components/schemas/BrowserProfileResponse"
+          },
+          "surface_releases": {
+            "items": {
+              "$ref": "#/components/schemas/SurfaceReleaseResponse"
+            },
+            "title": "Surface Releases",
+            "type": "array"
+          }
+        },
+        "required": [
+          "surface_releases",
+          "profile"
+        ],
+        "title": "BrowserCaptureBootstrapResponse",
+        "type": "object"
+      },
       "BrowserCaptureInventoryResponse": {
         "additionalProperties": false,
         "properties": {
@@ -3450,6 +3531,114 @@
           "sessions"
         ],
         "title": "BrowserCaptureInventoryResponse",
+        "type": "object"
+      },
+      "BrowserCaptureReadinessItem": {
+        "additionalProperties": false,
+        "properties": {
+          "blocking_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Blocking Reasons",
+            "type": "array"
+          },
+          "captured_count": {
+            "minimum": 0.0,
+            "title": "Captured Count",
+            "type": "integer"
+          },
+          "egress_endpoint_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Egress Endpoint Id"
+          },
+          "profile_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Version Id"
+          },
+          "release_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Version"
+          },
+          "state": {
+            "enum": [
+              "blocked",
+              "ready",
+              "live_verified",
+              "fidelity_accepted"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "surface": {
+            "enum": [
+              "google_ai_overviews",
+              "google_ai_mode",
+              "bing_copilot"
+            ],
+            "title": "Surface",
+            "type": "string"
+          },
+          "surface_release_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Surface Release Id"
+          }
+        },
+        "required": [
+          "surface",
+          "state",
+          "blocking_reasons",
+          "captured_count"
+        ],
+        "title": "BrowserCaptureReadinessItem",
+        "type": "object"
+      },
+      "BrowserCaptureReadinessResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BrowserCaptureReadinessItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "BrowserCaptureReadinessResponse",
         "type": "object"
       },
       "BrowserEgressTestResponse": {
@@ -3700,6 +3889,30 @@
           "allowed_purposes"
         ],
         "title": "BrowserSamplingOptionResponse",
+        "type": "object"
+      },
+      "BrowserSessionSetupResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "profile": {
+            "$ref": "#/components/schemas/BrowserProfileResponse"
+          },
+          "secret_reference_id": {
+            "format": "uuid",
+            "title": "Secret Reference Id",
+            "type": "string"
+          },
+          "secret_version": {
+            "title": "Secret Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "profile",
+          "secret_reference_id",
+          "secret_version"
+        ],
+        "title": "BrowserSessionSetupResponse",
         "type": "object"
       },
       "BusinessEventResponse": {
@@ -5059,6 +5272,104 @@
         "title": "ComputeSemanticMetricsRequest",
         "type": "object"
       },
+      "ConfigureAustralianEgressRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "endpoint_host": {
+            "maxLength": 253,
+            "minLength": 1,
+            "title": "Endpoint Host",
+            "type": "string"
+          },
+          "endpoint_port": {
+            "maximum": 65535.0,
+            "minimum": 1.0,
+            "title": "Endpoint Port",
+            "type": "integer"
+          },
+          "expected_region": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Region"
+          },
+          "lease_ttl_seconds": {
+            "default": 600,
+            "maximum": 3600.0,
+            "minimum": 60.0,
+            "title": "Lease Ttl Seconds",
+            "type": "integer"
+          },
+          "name": {
+            "default": "澳洲消费者搜索出口",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "network_type": {
+            "default": "residential",
+            "enum": [
+              "residential",
+              "mobile"
+            ],
+            "title": "Network Type",
+            "type": "string"
+          },
+          "password": {
+            "format": "password",
+            "title": "Password",
+            "type": "string",
+            "writeOnly": true
+          },
+          "protocol": {
+            "default": "https",
+            "enum": [
+              "http",
+              "https",
+              "socks5"
+            ],
+            "title": "Protocol",
+            "type": "string"
+          },
+          "username_template": {
+            "maxLength": 1000,
+            "minLength": 3,
+            "title": "Username Template",
+            "type": "string"
+          }
+        },
+        "required": [
+          "endpoint_host",
+          "endpoint_port",
+          "username_template",
+          "password"
+        ],
+        "title": "ConfigureAustralianEgressRequest",
+        "type": "object"
+      },
+      "ConfigureBrowserSessionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "storage_state_json": {
+            "format": "password",
+            "title": "Storage State Json",
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "storage_state_json"
+        ],
+        "title": "ConfigureBrowserSessionRequest",
+        "type": "object"
+      },
       "ConnectorConnectionResponse": {
         "additionalProperties": false,
         "properties": {
@@ -6260,10 +6571,17 @@
             "type": "string"
           },
           "secret_purpose": {
-            "maxLength": 128,
-            "pattern": "^connector\\.[a-z0-9_.-]+$",
-            "title": "Secret Purpose",
-            "type": "string"
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "pattern": "^connector\\.[a-z0-9_.-]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secret Purpose"
           },
           "secret_reference_id": {
             "format": "uuid",
@@ -6280,7 +6598,6 @@
           "definition_id",
           "name",
           "secret_reference_id",
-          "secret_purpose",
           "secret_version"
         ],
         "title": "CreateConnectorConnectionRequest",
@@ -7562,6 +7879,22 @@
             "minimum": 0.0,
             "title": "Minimum Request Interval Seconds",
             "type": "integer"
+          },
+          "question_set_item_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 10,
+                "minItems": 10,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question Set Item Ids"
           },
           "repetitions": {
             "maximum": 100.0,
@@ -11993,7 +12326,7 @@
               "type": "string"
             },
             "maxItems": 100,
-            "minItems": 90,
+            "minItems": 100,
             "title": "Included Candidate Ids",
             "type": "array"
           },
@@ -12002,6 +12335,30 @@
             "minLength": 1,
             "title": "Name",
             "type": "string"
+          },
+          "previous_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Version Id"
+          },
+          "series_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Series Id"
           }
         },
         "required": [
@@ -12443,7 +12800,7 @@
                 "type": "null"
               }
             ],
-            "description": "Two-letter country code for SerpAPI gl parameter (e.g. 'us', 'uk').",
+            "description": "Optional two-letter provider country hint.",
             "title": "Gl"
           },
           "google_domain": {
@@ -12455,7 +12812,7 @@
                 "type": "null"
               }
             ],
-            "description": "Google domain for SerpAPI (e.g. 'google.com', 'google.co.uk').",
+            "description": "Legacy provider domain hint; not Browser Capture lineage.",
             "title": "Google Domain"
           },
           "hl": {
@@ -12467,7 +12824,7 @@
                 "type": "null"
               }
             ],
-            "description": "Language code for SerpAPI hl parameter (e.g. 'en', 'zh-cn').",
+            "description": "Optional provider language hint.",
             "title": "Hl"
           },
           "location": {
@@ -12479,7 +12836,7 @@
                 "type": "null"
               }
             ],
-            "description": "Full location string for SerpAPI (e.g. 'London, England, United Kingdom').",
+            "description": "Optional provider location hint.",
             "title": "Location"
           },
           "query": {
@@ -26265,6 +26622,13 @@
             "title": "Question Set Id",
             "type": "string"
           },
+          "question_set_item_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Question Set Item Ids",
+            "type": "array"
+          },
           "question_set_version": {
             "title": "Question Set Version",
             "type": "string"
@@ -26307,6 +26671,7 @@
           "question_set_version",
           "question_set_hash",
           "question_count",
+          "question_set_item_ids",
           "adapter_release_id",
           "adapter_release_hash",
           "model_release_id",
@@ -26428,6 +26793,13 @@
             "title": "Question Set Id",
             "type": "string"
           },
+          "question_set_item_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Question Set Item Ids",
+            "type": "array"
+          },
           "question_set_version": {
             "title": "Question Set Version",
             "type": "string"
@@ -26501,6 +26873,7 @@
           "admission_policy_id",
           "admission_policy_hash",
           "questions",
+          "question_set_item_ids",
           "source_stratum",
           "repetitions",
           "statistics_method_version",
@@ -26896,6 +27269,8 @@
           "model_provider.gemini",
           "model_provider.perplexity",
           "model_provider.microsoft",
+          "browser_egress.au",
+          "browser_session.storage_state",
           "egress.proxy.australia",
           "style_collection_login.productreview",
           "style_collection_login.reddit",
@@ -43335,6 +43710,170 @@
         ]
       }
     },
+    "/v1/projects/{project_id}/browser-capture/bootstrap": {
+      "post": {
+        "operationId": "bootstrapBuiltinBrowserCapture",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BootstrapBrowserCaptureRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserCaptureBootstrapResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Bootstrap Builtin Browser Capture",
+        "tags": [
+          "browser capture"
+        ]
+      }
+    },
     "/v1/projects/{project_id}/browser-capture/egress-endpoints": {
       "post": {
         "operationId": "create_egress_endpoint_v1_projects__project_id__browser_capture_egress_endpoints_post",
@@ -44010,6 +44549,179 @@
         ]
       }
     },
+    "/v1/projects/{project_id}/browser-capture/egress-setup": {
+      "post": {
+        "operationId": "configureAustralianBrowserEgress",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigureAustralianEgressRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AustralianEgressSetupResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Configure Australian Egress",
+        "tags": [
+          "browser capture"
+        ]
+      }
+    },
     "/v1/projects/{project_id}/browser-capture/profiles": {
       "post": {
         "operationId": "create_profile_v1_projects__project_id__browser_capture_profiles_post",
@@ -44333,6 +45045,160 @@
           }
         },
         "summary": "Approve Profile",
+        "tags": [
+          "browser capture"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/browser-capture/readiness": {
+      "get": {
+        "operationId": "getBrowserCaptureReadiness",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserCaptureReadinessResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Browser Capture Readiness",
         "tags": [
           "browser capture"
         ]
@@ -44854,6 +45720,179 @@
           }
         },
         "summary": "Register Sampling Suite Input",
+        "tags": [
+          "browser capture"
+        ]
+      }
+    },
+    "/v1/projects/{project_id}/browser-capture/session-profile-setup": {
+      "post": {
+        "operationId": "configureBrowserSessionProfile",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigureBrowserSessionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrowserSessionSetupResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Configure Browser Session Profile",
         "tags": [
           "browser capture"
         ]
@@ -93667,625 +94706,6 @@
         "summary": "Create Style Source",
         "tags": [
           "synthetic lab"
-        ]
-      }
-    },
-    "/v1/search/bing-copilot": {
-      "post": {
-        "description": "Return a structured Bing Copilot answer for a search query.",
-        "operationId": "getBingCopilotOverview",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "Authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/GoogleAiOverviewRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GoogleAiOverviewResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Bad Request"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Conflict"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Validation Error"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Service Unavailable"
-          }
-        },
-        "summary": "Get Bing Copilot Overview",
-        "tags": [
-          "search"
-        ]
-      }
-    },
-    "/v1/search/bing-copilot-raw": {
-      "post": {
-        "description": "Return the raw SerpAPI/Bing Copilot response for debugging.",
-        "operationId": "getBingCopilotRawSearch",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "Authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/GoogleAiOverviewRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "title": "Response Getbingcopilotrawsearch"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Bad Request"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Conflict"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Validation Error"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Service Unavailable"
-          }
-        },
-        "summary": "Get Bing Copilot Raw Search",
-        "tags": [
-          "search"
-        ]
-      }
-    },
-    "/v1/search/google-ai-overview": {
-      "post": {
-        "operationId": "getGoogleAiOverview",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "Authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/GoogleAiOverviewRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GoogleAiOverviewResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Bad Request"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Conflict"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Validation Error"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Service Unavailable"
-          }
-        },
-        "summary": "Get Google Ai Overview",
-        "tags": [
-          "search"
-        ]
-      }
-    },
-    "/v1/search/google-raw": {
-      "post": {
-        "description": "Return the raw SerpAPI/Google response for a query.\n\nThis endpoint is intended for debugging and validating what the search\nprovider returns before the AI Overview normalization is applied.",
-        "operationId": "getGoogleRawSearch",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "Authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/GoogleAiOverviewRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "title": "Response Getgooglerawsearch"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Bad Request"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Conflict"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Validation Error"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Service Unavailable"
-          }
-        },
-        "summary": "Get Google Raw Search",
-        "tags": [
-          "search"
         ]
       }
     },

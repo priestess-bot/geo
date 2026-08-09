@@ -1,0 +1,33 @@
+services:
+  internal-api:
+    environment:
+      GEO_DIFY_CONSOLE_URL: ${GEO_DIFY_CONSOLE_URL:?set the operator-visible Dify console URL}
+      GEO_DIFY_CONSOLE_INTERNAL_URL: http://dify-api:5001
+      GEO_DIFY_API_URL: http://dify-api:5001
+      GEO_DIFY_STATE_FILE: /run/geo-dify/geo-dify-state.json
+      GEO_WORKFLOW_RUNTIME_BACKEND: dify
+    volumes:
+      - ${GEO_DIFY_STATE_HOST_FILE:?set the private Dify state path}:/run/geo-dify/geo-dify-state.json:ro
+    networks:
+      backend: {}
+      egress: {}
+      geo_dify_runtime: {}
+
+  task-worker:
+    environment:
+      GEO_WORKFLOW_RUNTIME_BACKEND: dify
+      GEO_DIFY_API_URL: http://dify-api:5001
+      GEO_DIFY_CONSOLE_URL: http://dify-api:5001
+      GEO_DIFY_STATE_FILE: /run/geo-dify/geo-dify-state.json
+      GEO_DIFY_TIMEOUT_SECONDS: ${GEO_DIFY_TIMEOUT_SECONDS:-180}
+    volumes:
+      - ${GEO_DIFY_STATE_HOST_FILE:?set the private Dify state path}:/run/geo-dify/geo-dify-state.json:ro
+    networks:
+      backend: {}
+      egress: {}
+      geo_dify_runtime: {}
+
+networks:
+  geo_dify_runtime:
+    name: geo-dify-runtime
+    external: true

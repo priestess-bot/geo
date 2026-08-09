@@ -28,6 +28,7 @@ from geo_core.model_gateway.ports import (
     ModelCallJobAdmission,
     canonical_json_hash,
 )
+from geo_core.model_gateway.releases import provider_secret_purpose
 from geo_core.model_gateway.prompt_admission import (
     ModelCallAdmissionMode,
     PromptAdmissionState,
@@ -168,6 +169,7 @@ def execution_fixture(
     adapter_release: AdapterRelease | None = None,
     model_release: ModelRelease | None = None,
     gateway_factory: Callable[[ModelRoute], ExactModelGatewayPort] | None = None,
+    maximum_paid_calls: int = 1,
 ) -> ProviderExecutionFixture:
     adapter = adapter_release or runtime(
         identity.provider,
@@ -228,7 +230,7 @@ def execution_fixture(
     secret_handle = SecretVersionHandle(
         reference_id=SECRET_REFERENCE_ID,
         project_id=suite.project_id,
-        purpose=f"model_provider.{identity.provider}",
+        purpose=provider_secret_purpose(identity.provider),
         version=1,
     )
     policy = replace(
@@ -294,7 +296,7 @@ def execution_fixture(
         allowed_providers=frozenset({identity.provider}),
         allowed_adapter_release_ids=frozenset({adapter.adapter_release_id}),
         policy_version_id=uuid4(),
-        maximum_paid_calls=1,
+        maximum_paid_calls=maximum_paid_calls,
         maximum_concurrent_calls=1,
     )
     assert model_policy.policy_version_id is not None
@@ -347,7 +349,7 @@ def execution_fixture(
             application_output_schema_hash=canonical_json_hash(OUTPUT_SCHEMA),
             policy_version_id=model_policy.policy_version_id,
             policy_version_hash=model_policy.policy_version_hash,
-            maximum_paid_calls=1,
+            maximum_paid_calls=maximum_paid_calls,
             maximum_concurrent_calls=1,
             raw_artifact_policy_hash=adapter.data_policy_hash,
             raw_artifact_storage_decision=adapter.data_policy.storage.value,

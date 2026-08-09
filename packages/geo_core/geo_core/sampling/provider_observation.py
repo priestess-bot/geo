@@ -64,6 +64,8 @@ def map_provider_success(
         "citation_lineage_hash": event.lineage.citation_lineage_hash,
         "search_event_count": event.lineage.search_event_count,
         "search_lineage_hash": event.lineage.search_lineage_hash,
+        "paid_call_count": event.paid_call_count,
+        "usage_details_hash": event.lineage.usage_details_hash,
         "requested_location": requested_location.canonical_value(),
         "effective_location": effective_location.canonical_value(),
     }

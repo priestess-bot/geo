@@ -22,6 +22,7 @@ services:
     environment:
       GEO_DEPLOYMENT_ENVIRONMENT: production
       GEO_RELEASE_VERSION: ${GEO_RELEASE_VERSION:?set GEO_RELEASE_VERSION}
+      GEO_RELEASE_COMMIT: ${GEO_RELEASE_COMMIT:?set the current 40-character Git commit}
       GEO_STYLE_BROWSER_IMAGE_REFERENCE: ${GEO_STYLE_BROWSER_IMAGE:?set a digest-pinned GEO_STYLE_BROWSER_IMAGE}
       GEO_DATABASE_URL_FILE: /run/secrets/style_browser_worker_database_url
       GEO_TASK_QUEUE_BROKER_URL: redis://valkey:6379/0
@@ -116,6 +117,7 @@ services:
       - /tmp:size=256m,mode=0700,nosuid,nodev
     environment:
       HOME: /tmp
+      GEO_RELEASE_COMMIT: ${GEO_RELEASE_COMMIT:?set the current 40-character Git commit}
     command: ["playwright", "run-server", "--host", "0.0.0.0", "--port", "9222"]
     networks:
       - style-browser-control

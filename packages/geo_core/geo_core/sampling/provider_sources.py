@@ -54,6 +54,12 @@ _IDENTITIES = (
         surface="kimi_api",
         capture_method=CaptureMethod.PROVIDER_API,
     ),
+    ProviderSourceIdentity(
+        gateway_provider="serpapi",
+        platform="serpapi",
+        surface="google_search",
+        capture_method=CaptureMethod.PROVIDER_API,
+    ),
 )
 
 PROVIDER_SOURCES_BY_GATEWAY: Mapping[str, ProviderSourceIdentity] = MappingProxyType(

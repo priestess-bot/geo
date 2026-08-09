@@ -23,6 +23,7 @@ from geo_core.sampling.provider_sources import (
             CaptureMethod.PROXY_GROUNDED_API,
         ),
         ("kimi", "kimi", "kimi_api", CaptureMethod.PROVIDER_API),
+        ("serpapi", "serpapi", "google_search", CaptureMethod.PROVIDER_API),
     ),
 )
 def test_five_provider_sources_keep_gateway_routing_out_of_metric_identity(
