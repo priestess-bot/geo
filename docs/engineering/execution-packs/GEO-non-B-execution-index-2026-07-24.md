@@ -12,6 +12,12 @@ This index records the autonomous-agent execution packs that originally covered 
 - Recommendation attribution consumes the local attribution contract when evidence exists and records an explicit `unavailable` reference otherwise; no real Session-to-Revenue journey has been accepted.
 - User-supplied credentials, accounts and approvals are collected as non-blocking requirements and requested together after all locally controllable work is complete.
 
+## Current convergence evidence
+
+- Commit `1877b29d779dcbc102d44ba03d6e23b16e91b6b7` is the current canonical source and runtime release identity. GitHub Actions run `31351738043` completed all four jobs successfully; the local v3 release receipt reports a clean source, exact GEO/Dify Compose identity, all required running/healthy/completed services, database head `0130_serpapi_secret_purpose` and content-addressed images.
+- Private Release `geo-migration-geo-runtime-20260810T031448Z` contains the source-bound encrypted canonical GEO + Dify baseline. Its 28,863,108-byte payload was downloaded again from GitHub, reassembled and successfully decrypted/verified on this host; the payload SHA-256 is `22cea592a2ac0f62d19f724357ce9c2447a8b11034937ceb81ef1f6f12a543a1`.
+- This source-side export/transport proof does not satisfy the target-host gate. A new empty primary host, historical keyring restore, live Secret canary and explicit post-restore business checks are still required.
+
 | Pack | Budget | Scope | Status | Reviewable outcome |
 |---|---:|---|---|---|
 | 01 | 12h | Semantic metric durable vertical | LOCAL_COMPLETE / BLOCKED_EXTERNAL | Approved protocol and frozen manifest produce a fenced metric snapshot through Durable Job; live input and independent verification remain external |

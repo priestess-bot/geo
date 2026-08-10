@@ -1519,7 +1519,7 @@
       <div class="project-copy">
         <h2 id="project-title">ADVINSYS Australia</h2>
         <p>一眼区分已经真实执行的路径、仅完成技术验证的路径，以及需要人工或外部凭据才能继续的路径。</p>
-        <span class="snapshot-time">业务验收：2026-08-10 · canonical 运行探针：2026-08-10 07:35 CST</span>
+        <span class="snapshot-time">业务验收：2026-08-10 · canonical 运行探针：2026-08-10 11:20 CST</span>
       </div>
       <div class="summary-rail" aria-label="项目关键状态">
         <div class="summary-item" data-tone="good"><span>canonical 栈</span><strong>READY</strong><small>外部 live 仍阻塞</small></div>
@@ -2341,19 +2341,19 @@
       },
       {
         id: "migration-package", label: "加密迁移包", subtitle: "基线 + 父归档增量", group: "状态与队列", col: 4, row: 7,
-        status: "configured", tone: "warning", statusText: "已验证；待目标机", meta: "AES-256 + hash",
+        status: "configured", tone: "warning", statusText: "基线已验证；待目标机", meta: "AES-256 · 28.9 MB",
         description: "基线和组件增量覆盖 GEO/Dify 数据、MinIO、Weaviate、Dify app/storage、plugin_daemon、状态和 keyring。",
         runtime: "geo_migrate.py + geo_sync.py", endpoint: "宿主机文件系统（600）", networks: "不加入 Docker 网络", io: "gzip + GPG payload + manifest + restore receipt",
         entry: "scripts/geo_migrate.py export/import/verify; scripts/geo_sync.py upload/download/apply", source: "docs/operations/geo-deploy-and-migration.md",
-        note: "GitHub 只存私有 Release 加密分片；新主服务器唯一写入，本机测试写入会在增量覆盖时消失。"
+        note: "canonical 基线已上传并从 GitHub 回读解密验证；新主服务器尚未导入。切换后新主服务器唯一写入，本机测试写入会在增量覆盖时消失。"
       },
       {
         id: "github-archive", label: "GitHub 加密归档", subtitle: "私有 Release transport", group: "部署与迁移", col: 5, row: 7,
-        status: "configured", tone: "warning", statusText: "需 gh 授权", meta: "45 MiB 分片",
+        status: "running", tone: "complete", statusText: "已上传并回读", meta: "私有 Release · 28.9 MB",
         description: "GitHub Release 只作为加密 payload 的版本化传输层，不保存明文数据库、知识或 Dify 文件。",
         runtime: "gh release upload/download", endpoint: "GitHub private repository", networks: "外部 HTTPS", io: "archive-manifest + encrypted chunks",
         entry: "scripts/geo_sync.py", source: "单栈部署与跨服务器迁移指南",
-        note: "仓库必须为 private；缺父归档、分片 hash 不一致或公开仓库都会 fail closed。"
+        note: "Release geo-migration-geo-runtime-20260810T031448Z 已绑定 commit 1877b29，远端分片经重新下载、重组、hash 和解密验证；仓库保持 private。"
       },
       {
         id: "test-replica", label: "本机 Test Replica", subtitle: "主服务器增量覆盖目标", group: "部署与迁移", col: 5, row: 8,
@@ -2494,9 +2494,9 @@
       { id: "operator-admin", from: "operator", to: "admin-web", label: "HTTP :13001", kind: "http", scenarios: ["async-model", "dify-workflow", "connector-sync", "provider-sampling", "browser-capture", "style-collection", "alert-delivery"], description: "运营人员通过浏览器访问 Admin。", trigger: "页面访问或操作", recovery: "浏览器重试；不改变已提交命令", truth: "Internal API / PostgreSQL", availability: "当前可用" },
       { id: "operator-deployment", from: "operator", to: "deployment-tooling", label: "CLI / SSH", kind: "http", scenarios: ["deployment-migration"], description: "部署人员在目标 Linux 主机执行安装、迁移、doctor 和 release-info。", trigger: "显式部署或恢复命令", recovery: "按错误码修复依赖后可重试；已有 keyring 不被覆盖", truth: "宿主机命令 + migration/release receipt", availability: "合同与定向测试通过" },
       { id: "deployment-compose", from: "deployment-tooling", to: "admin-web", label: "Compose up/down", kind: "event", scenarios: ["deployment-migration"], description: "internal 保持当前端口；production 使用 digest/OIDC/Secret preflight 和独立 Dify bridge。", trigger: "stack up 或 install.sh", recovery: "任一必需服务未运行/不健康、一次性初始化非 exit 0、数据库 head、config 或运行时 SHA 不一致时不宣称部署完成", truth: "Compose config + health + completed services + database head + release receipt", availability: "canonical geo 已启动并通过 doctor；目标机恢复待执行" },
-      { id: "deployment-package", from: "deployment-tooling", to: "migration-package", label: "baseline / delta", kind: "storage", scenarios: ["deployment-migration"], description: "源机短暂停写生成压缩加密基线；primary 后续生成带 parent 的组件增量。", trigger: "维护窗口或主服务器同步命令", recovery: "hash/父链/restore receipt 失败则不覆盖副本", truth: "manifest + restore receipt", availability: "本地合同与单元测试通过；live GitHub 需授权" },
-      { id: "deployment-github", from: "deployment-tooling", to: "github-archive", label: "Release upload/download", kind: "http", scenarios: ["deployment-migration"], description: "同步器检查 private 仓库并上传/下载加密分片。", trigger: "gh auth + 显式同步命令", recovery: "网络/授权失败可重试，不改变数据库", truth: "archive-manifest + chunk hash", availability: "代码路径已实现；等待真实私有仓库验收" },
-      { id: "github-package", from: "github-archive", to: "migration-package", label: "encrypted chunks", kind: "storage", scenarios: ["deployment-migration"], description: "Release 资产在本机重组为完整加密包，随后才进入 GPG 解密和恢复。", trigger: "下载完成且分片连续", recovery: "缺片/错 hash 立即停止", truth: "payload sha256", availability: "本地单测通过" },
+      { id: "deployment-package", from: "deployment-tooling", to: "migration-package", label: "baseline / delta", kind: "storage", scenarios: ["deployment-migration"], description: "源机短暂停写生成压缩加密基线；primary 后续生成带 parent 的组件增量。", trigger: "维护窗口或主服务器同步命令", recovery: "hash/父链/restore receipt 失败则不覆盖副本", truth: "manifest + remote verify receipt", availability: "canonical 基线已真实导出；目标机尚未导入" },
+      { id: "deployment-github", from: "deployment-tooling", to: "github-archive", label: "Release upload/download", kind: "http", scenarios: ["deployment-migration"], description: "同步器检查 private 仓库并上传/下载加密分片。", trigger: "gh auth + 显式同步命令", recovery: "网络/授权失败可重试，不改变数据库", truth: "archive-manifest + chunk hash", availability: "私有 Release 上传与回读已通过" },
+      { id: "github-package", from: "github-archive", to: "migration-package", label: "encrypted chunks", kind: "storage", scenarios: ["deployment-migration"], description: "Release 资产在本机重组为完整加密包，随后才进入 GPG 解密和恢复。", trigger: "下载完成且分片连续", recovery: "缺片/错 hash 立即停止", truth: "payload sha256", availability: "28.9 MB 远端分片已重组并解密验证" },
       { id: "package-replica", from: "migration-package", to: "test-replica", label: "overwrite test state", kind: "storage", scenarios: ["deployment-migration"], description: "主服务器增量父链物化为完整状态，覆盖本机测试副本。", trigger: "显式 --overwrite-test-replica", recovery: "未指定覆盖参数或父链错误则不写入", truth: "materialized restore receipt", availability: "父链逻辑已实现；等待真实增量演练" },
       { id: "package-postgres", from: "migration-package", to: "postgres", label: "pg_dump / restore", kind: "storage", scenarios: ["deployment-migration"], description: "迁移包恢复 GEO、Dify 和插件数据库逻辑备份。", trigger: "目标为空且通过确认", recovery: "先 pg_restore --list，再恢复并核对 revision/relations", truth: "PostgreSQL dumps", availability: "真实 dump verify 已通过" },
       { id: "package-minio", from: "migration-package", to: "minio", label: "MinIO archive", kind: "storage", scenarios: ["deployment-migration"], description: "迁移包恢复 GEO MinIO 对象和 Dify Weaviate/状态数据。", trigger: "停止对应 stateful service", recovery: "安全解包、权限修复、重启后 hash 对账", truth: "MinIO/Weaviate archives", availability: "真实包已生成；目标机待导入" },
@@ -2577,7 +2577,7 @@
       },
       "deployment-migration": {
         title: "部署与迁移", copy: "本机生成加密基线；新服务器按 internal/production 显式模式恢复，发布回执再核对 Git、Compose、Alembic 与容器镜像。",
-        outcome: "canonical 切换与本机回执已完成；加密归档刷新和跨主机恢复仍待完成",
+        outcome: "canonical 切换、绿色 CI、发布回执和私有加密基线回读已完成；跨主机恢复仍待执行",
         nodes: ["operator", "deployment-tooling", "github-archive", "migration-package", "test-replica", "postgres", "minio", "dify-runtime"]
       }
     };
