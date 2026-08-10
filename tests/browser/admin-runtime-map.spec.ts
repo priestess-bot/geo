@@ -31,8 +31,8 @@ test("Admin 运行地图嵌入唯一架构快照并支持四个视图和独立�
   const detailLink = map.getByRole("link", { name: "打开对应工作区" });
   await expect(detailLink).toHaveAttribute("href", /^\/projects\//);
   await map.getByRole("button", { name: /测试问题与 QuestionSet/ }).click();
-  await expect(map.locator("#detail-status")).toContainText("等待人工确认");
-  await expect(map.locator("#detail-fact")).toContainText("300 pending_review");
+  await expect(map.locator("#detail-status")).toContainText("SAT30 已冻结");
+  await expect(map.locator("#detail-fact")).toContainText("SAT30 v2 frozen：100/100");
   await expect(detailLink).toHaveAttribute("href", /tab=measurement.*workflow_view=questions/);
 
   await page.screenshot({ path: testInfo.outputPath("runtime-map-business-desktop.png"), fullPage: true });
@@ -40,7 +40,7 @@ test("Admin 运行地图嵌入唯一架构快照并支持四个视图和独立�
   await map.getByRole("tab", { name: "任务链路" }).click();
   await expect(map.getByLabel("所选任务摘要")).toBeVisible();
   await map.getByLabel("选择真实运行").selectOption("test-questions");
-  await expect(map.locator("#trace-business-status")).toHaveText("pending_review");
+  await expect(map.locator("#trace-business-status")).toHaveText("frozen");
   await expect(map.locator("#trace-grid")).toContainText("QuestionSet 冻结");
   await expect(map.locator("#trace-grid .trace-step")).toHaveCount(10);
   await page.screenshot({ path: testInfo.outputPath("runtime-map-question-trace-desktop.png"), fullPage: true });

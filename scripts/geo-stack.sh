@@ -268,6 +268,13 @@ doctor() {
     echo "dify web endpoint: unavailable (${dify_root_status})" >&2
     bad=1
   fi
+  if release_info --require-running \
+    --output "${REPO_ROOT}/.runtime/geo-doctor-release-receipt.json" >/dev/null; then
+    echo "release identity, health, initialization and database head: ok"
+  else
+    echo "release identity, health, initialization or database head: invalid" >&2
+    bad=1
+  fi
   return "$bad"
 }
 

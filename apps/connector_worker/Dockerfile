@@ -22,5 +22,9 @@ RUN --mount=type=cache,id=geo-connector-worker-uv,target=/root/.cache/uv \
 COPY --chown=10001:10001 packages/geo_core ./packages/geo_core
 COPY --chown=10001:10001 apps/connector_worker ./apps/connector_worker
 
+# Catch host-virtualenv leakage and missing runtime dependencies while the
+# image is built, before Compose can report a superficially successful start.
+RUN python -c "import dramatiq, psycopg; import geo_connector_worker.entrypoint"
+
 USER 10001:10001
 CMD ["python", "-m", "geo_connector_worker.entrypoint"]

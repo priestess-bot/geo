@@ -16,11 +16,37 @@ def test_canonical_runtime_manifest_excludes_non_geo_projects() -> None:
     assert {"api", "web", "worker", "db_postgres", "weaviate"} <= set(
         manifest["dify_required_services"]
     )
+    assert set(manifest["dify_required_healthy_services"]) == {
+        "api",
+        "db_postgres",
+        "local_sandbox",
+        "redis",
+        "sandbox",
+    }
     assert "geo-development" in manifest["legacy_projects"]
     assert "geo-advinsys-staging-v2" in manifest["legacy_projects"]
     assert "assetgraph" in manifest["excluded_projects"]
     assert manifest["ports"]["admin_web"] == 13001
     assert "postgres" in manifest["required_services"]
+    assert {"postgres", "minio", "valkey", "connector-worker"} <= set(
+        manifest["required_running_services"]["internal"]
+    )
+    assert "alert-smtp-relay" in manifest["required_running_services"]["production"]
+    assert "alert-smtp-relay" in manifest["release_tracked_services"]["production"]
+    assert set(manifest["required_healthy_services"]["production"]) == set(
+        manifest["required_running_services"]["production"]
+    )
+    assert {"postgres", "minio", "valkey"} <= set(
+        manifest["required_healthy_services"]["internal"]
+    )
+    assert manifest["required_completed_services"]["internal"] == ["migrate", "minio-init"]
+    assert {
+        "migrate",
+        "minio-bootstrap",
+        "connector-artifact-bootstrap",
+        "browser-capture-artifact-bootstrap",
+    } == set(manifest["required_completed_services"]["production"])
+    assert "minio-init" not in manifest["required_running_services"]["internal"]
     assert manifest["dify_databases"] == ["dify", "dify_plugin"]
 
 
@@ -28,6 +54,14 @@ def test_stack_entrypoints_are_executable() -> None:
     for relative in ("scripts/geo-stack.sh", "scripts/geo_migrate.py", "scripts/geo_sync.py", "deploy/install.sh"):
         mode = (ROOT / relative).stat().st_mode
         assert mode & 0o111, relative
+
+
+def test_connector_image_cannot_copy_a_host_virtualenv() -> None:
+    dockerignore = (ROOT / ".dockerignore").read_text(encoding="utf-8").splitlines()
+    dockerfile = (ROOT / "apps/connector_worker/Dockerfile").read_text(encoding="utf-8")
+
+    assert "**/.venv" in dockerignore
+    assert 'RUN python -c "import dramatiq, psycopg; import geo_connector_worker.entrypoint"' in dockerfile
 
 
 def test_manifest_declares_encrypted_release_transport() -> None:
@@ -54,6 +88,7 @@ def test_installer_and_stack_mode_fail_closed() -> None:
     assert 'run_with_profiles up -d --build' in stack
     assert 'command -v python3' in stack
     assert 'run_dify up' in stack
+    assert 'release_info --require-running' in stack
     assert 'startswith("GEO_DIFY_")' in stack
     assert 'label=com.docker.compose.project=${project}' in stack
     assert '|| true' not in stack.split('cleanup_legacy()', 1)[1].split('delegate_migration()', 1)[0]

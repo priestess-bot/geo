@@ -31,6 +31,13 @@
     "worker",
     "worker_beat"
   ],
+  "dify_required_healthy_services": [
+    "api",
+    "db_postgres",
+    "local_sandbox",
+    "redis",
+    "sandbox"
+  ],
   "migration_transport": "private GitHub Release encrypted assets",
   "migration_entrypoint": "scripts/geo_sync.py",
   "ports": {
@@ -57,6 +64,88 @@
     "admin-web",
     "customer-web"
   ],
+  "required_running_services": {
+    "internal": [
+      "postgres",
+      "minio",
+      "valkey",
+      "internal-api",
+      "customer-api",
+      "task-worker",
+      "outbox-relay",
+      "connector-worker",
+      "browser-capture-worker",
+      "admin-web",
+      "customer-web",
+      "alert-smtp-relay",
+      "alert-webhook-sink"
+    ],
+    "production": [
+      "postgres",
+      "minio",
+      "valkey",
+      "internal-api",
+      "customer-api",
+      "task-worker",
+      "workflow-c-maintenance-scheduler",
+      "workflow-c-maintenance-worker",
+      "recommendation-artifact-maintenance-scheduler",
+      "recommendation-artifact-maintenance-worker",
+      "synthetic-artifact-maintenance-worker",
+      "outbox-relay",
+      "admin-web",
+      "customer-web",
+      "style-browser-worker",
+      "style-browser-runtime",
+      "connector-worker",
+      "browser-capture-worker",
+      "alert-smtp-relay"
+    ]
+  },
+  "required_healthy_services": {
+    "internal": [
+      "postgres",
+      "minio",
+      "valkey",
+      "connector-worker",
+      "browser-capture-worker",
+      "alert-smtp-relay",
+      "alert-webhook-sink"
+    ],
+    "production": [
+      "postgres",
+      "minio",
+      "valkey",
+      "internal-api",
+      "customer-api",
+      "task-worker",
+      "workflow-c-maintenance-scheduler",
+      "workflow-c-maintenance-worker",
+      "recommendation-artifact-maintenance-scheduler",
+      "recommendation-artifact-maintenance-worker",
+      "synthetic-artifact-maintenance-worker",
+      "outbox-relay",
+      "admin-web",
+      "customer-web",
+      "style-browser-worker",
+      "style-browser-runtime",
+      "connector-worker",
+      "browser-capture-worker",
+      "alert-smtp-relay"
+    ]
+  },
+  "required_completed_services": {
+    "internal": [
+      "migrate",
+      "minio-init"
+    ],
+    "production": [
+      "migrate",
+      "minio-bootstrap",
+      "connector-artifact-bootstrap",
+      "browser-capture-artifact-bootstrap"
+    ]
+  },
   "release_tracked_services": {
     "internal": [
       "internal-api",
@@ -85,7 +174,8 @@
       "style-browser-worker",
       "style-browser-runtime",
       "connector-worker",
-      "browser-capture-worker"
+      "browser-capture-worker",
+      "alert-smtp-relay"
     ]
   },
   "dify_databases": ["dify", "dify_plugin"],

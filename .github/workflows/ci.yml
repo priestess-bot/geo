@@ -15,10 +15,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+          run_install: false
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.12"
           enable-cache: true
+      - run: pnpm install --frozen-lockfile
       - run: uv sync --frozen
       - name: Ruff
         run: make lint
@@ -152,6 +157,8 @@ jobs:
         run: make test-production-network
       - name: API image builds
         run: docker build -f apps/api/Dockerfile -t geo-api:ci .
+      - name: Connector worker image builds
+        run: docker build -f apps/connector_worker/Dockerfile -t geo-connector-worker:ci .
       - name: Admin image builds
         run: docker build -f apps/admin-web/Dockerfile -t geo-admin-web:ci .
       - name: Customer image builds

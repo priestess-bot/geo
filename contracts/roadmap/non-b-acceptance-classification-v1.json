@@ -2,14 +2,14 @@
   "schema_version": "non-b-acceptance-classification-v1",
   "roadmap": "docs/engineering/GEO-next-phase-six-month-roadmap-2026-07-21.md",
   "expected_counts": {
-    "all": 330,
+    "all": 331,
     "templates": 13,
     "acceptance": 218,
-    "implementation_ledger": 99,
-    "roadmap_checked": 124,
+    "implementation_ledger": 100,
+    "roadmap_checked": 125,
     "excluded_b": 49,
     "mixed_atomic": 68,
-    "included_non_b": 268
+    "included_non_b": 269
   },
   "excluded_b_ids": [
     "B-CONTRACT-01",

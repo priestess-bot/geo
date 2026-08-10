@@ -51,6 +51,33 @@ def test_frontend_contract_gate_executes_auth_bff_behavior() -> None:
     assert "run: make web-contracts" in workflow
 
 
+def test_python_quality_installs_node_contract_dependencies() -> None:
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    python_job = workflow.split("  python-quality:\n", 1)[1].split(
+        "\n  postgres-integration:", 1
+    )[0]
+
+    assert "pnpm/action-setup@v4" in python_job
+    assert "pnpm install --frozen-lockfile" in python_job
+    assert python_job.index("pnpm install --frozen-lockfile") < python_job.index(
+        "make test-migrated"
+    )
+
+
+def test_deployment_gate_builds_the_connector_worker_image() -> None:
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    deployment_job = workflow.split("  deployment-contracts:\n", 1)[1]
+
+    assert "docker build -f apps/connector_worker/Dockerfile" in deployment_job
+
+
+def test_production_smtp_relay_exposes_release_identity() -> None:
+    compose = (ROOT / "infra/compose.prod.yml").read_text(encoding="utf-8")
+    service = compose.split("  alert-smtp-relay:\n", 1)[1].split("\n  internal-api:", 1)[0]
+
+    assert "GEO_RELEASE_COMMIT:" in service
+
+
 def test_required_integration_gate_rejects_missing_environment() -> None:
     environment = os.environ.copy()
     for name in REQUIRED_INTEGRATION_ENV:

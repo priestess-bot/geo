@@ -1,8 +1,8 @@
 # GEO 外部数据与跨引擎采样加速实施计划
 
 > 计划日期：2026-07-22
-> 修订日期：2026-08-10（第 5 次修订）
-> 计划状态：`PLANNED`
+> 修订日期：2026-08-10（第 6 次修订）
+> 计划状态：`LOCAL_IMPLEMENTATION_READY / BLOCKED_EXTERNAL_INPUT`
 > 执行周期：与[加速总路线图](GEO-next-phase-six-month-roadmap-2026-07-21.md)的 `T+0`--`T+5` 同步；`M0`--`M6` 仅为稳定 Gate 标签
 > 专项范围：Connector Core、GSC、GA4、Google/Bing 官方报告、五类 Provider/Grounded API、消费者 AI 界面、澳洲代理、Sampling Core 和外部观测交付
 > 上位合同：总路线图第 2、3、4、6.1、6.2、7.1、7.2、9、10、11 节
@@ -11,6 +11,7 @@
 > 第 3 次修订变更：保持专项范围、来源、样本、授权、安全和验收合同不变，废止六个月/月度排期；所有可由 Agent 完成的实现与自动化验证纳入 `T+0`--`T+5` 连续窗口。真实凭据、授权决定、人工明审、独立 verifier 和 live evidence 于 `T+0` 并行开始，未就绪只阻断对应 Gate，绝不降低或伪造验收。
 > 第 4 次修订变更：AIO、AI Mode、Copilot 的正式 Project-scoped Browser Capture 垂直路径已落地，旧 SerpAPI 消费者界面路由与 mock fallback 退役。ADVINSYS staging 已安装三个 approved Release 和匿名 `en-AU` Profile；澳洲 Egress 与 live Capture 仍为 0，因此所有 live/保真/最终 Gate 保持未完成。
 > 第 5 次修订变更：Sampling Suite 对超过 10 条冻结输入强制持久化恰好 10 个唯一问题选择；新增正式 SerpAPI `provider_api` registry/canary 和 GSC/GA4 scope/canary readiness 记录。两者均保持真实凭据缺失阻塞，不把本地 adapter、scope 校验或 fixture 当作 live Observation/Sync。
+> 第 6 次修订变更：canonical Compose 项目 `geo` 已运行至 `0130_serpapi_secret_purpose`，Connector Worker 镜像与运行依赖已通过构建时导入和实际 heartbeat 验证；ADVINSYS SAT30 exact-100 QuestionSet v2 已冻结，可作为服务端选择 10 题 pilot 的合法输入。SerpAPI 仍没有 `search.serpapi` Secret reference，GSC/GA4 仍没有 Connection、Scope 或 property 凭据，澳洲 residential/mobile sticky Egress Endpoint 仍为 0；因此 Provider Observation、Connector Sync、AIO/AI Mode/Copilot Capture 和所有 live Gate 均保持未完成。
 
 ## 1. 目标、边界和文档职责
 
@@ -391,12 +392,13 @@ authorization gate
 >
 > 2026-08-07 本地实现证据更新：head 已推进至 `0125_browser_bulk_enqueue`。三个内置 Surface Release、匿名/可选受管 Profile、加密 proxy/session Secret、同一 sticky lease 的 pre/target/post 证明、受限页面工件、逐 Surface runtime/policy/input 绑定和 Run 级原子批量入队已接入正式 Admin/Sampling；Outbox Relay 与 Browser Worker 在 staging 为 `ready`。旧 SerpAPI Google/Bing 路由和 mock fallback 已从 OpenAPI/Compose 移除。175 项 Browser/Sampling 单元回归、18 项 Session/配置回归、稳定 OpenAPI、空库迁移、PostgreSQL纵向测试、production build 和桌面/移动 Chromium 通过。ADVINSYS 当前仍为 0 Egress Endpoint、0 Capture，此更新只构成本地实现证据。
 >
-> 2026-08-10 本地实现证据更新：`0126_sampling_question_selection` 将超过 10 条的冻结 Suite 输入收敛为服务端验证并持久化的恰好 10 个唯一问题 ID；Admin 默认提供 10 个可编辑选择槽位，后续 Task 只使用已冻结选择。SerpAPI 已恢复为正式 `provider_api` registry，使用 `search.serpapi` Secret Store handle、结构化响应/错误分类和显式 canary CLI；当前缺 Secret reference，canary 只能明确 `skipped`，真实 Provider Observation 为 0。GSC/GA4 已增加 property/report scope 校验、PyAirbyte 配置映射和 `check/test/sync` canary 入口；当前没有真实 property 凭据、Connection 或 Sync。相关 unit、OpenAPI、migration 和定向 Chromium 证据只证明本地合同，不能提前勾选 `EXT-PROV-*`、`EXT-CONN-*` 或 live Gate。
+> 2026-08-10 本地实现证据更新：canonical `geo` 已从迁移 `0102` 连续升级至 `0130_serpapi_secret_purpose`；Connector Worker 在排除宿主机嵌套 `.venv` 后通过镜像构建导入断言、实际启动和 heartbeat，13 个 GEO 运行单元由 `doctor` 与 release receipt 共同核对，且声明健康的服务、一次性初始化 exit code 和数据库实际 Alembic head 均 fail closed。`0126_sampling_question_selection` 将超过 10 条的冻结 Suite 输入收敛为服务端验证并持久化的恰好 10 个唯一问题 ID；ADVINSYS SAT30 exact-100 v2 `5b1583c1-efe6-5a01-8025-6709f07dbf46` 已冻结，原 98 条 v1 保持不可变。SerpAPI 已恢复为正式 `provider_api` registry，使用 `search.serpapi` Secret Store handle、结构化响应/错误分类、确定性 retry budget 和显式 canary CLI；当前缺 Secret reference，canary 只能明确 `skipped`，真实 Provider Observation 为 0。GSC/GA4 已增加 property/report scope 校验、PyAirbyte 配置映射和 `check/test/sync` canary 入口；当前没有真实 property 凭据、Connection 或 Sync。相关 unit、OpenAPI、migration、canonical runtime 和 Chromium 证据只证明本地合同，不能提前勾选 `EXT-PROV-*`、`EXT-CONN-*` 或 live Gate。
 
 - [x] `EXT-LOCAL-UI-01` 三个消费者 Surface 使用独立入口、detector、answer/citation selector、block taxonomy、Release/hash 和 drift 边界；不得跨 Surface 复用统计证据。
 - [x] `EXT-LOCAL-UI-02` Browser Attempt 在一个 sticky lease 内执行 pre/target/post，保存加密 screenshot/DOM/HAR、final URL、parser locator、verification 与 Observation lineage；失败路径不产生 eligible 样本。
 - [x] `EXT-LOCAL-UI-03` Admin 从安装、代理/会话、出口测试到逐 Surface runtime/policy/QuestionSet 绑定形成可操作闭环；对超过 10 条冻结输入的 pilot，界面提交恰好 10 个唯一问题 ID，服务端把选择写入不可变 Suite input，批量入队再从该选择创建固定分母、Attempt、Job、spec 和 outbox。
-- [ ] `EXT-LOCAL-UI-LIVE-01` 真实 residential/mobile 澳洲代理、三个 Surface 各 3 次 canary、逐 Release 保真和后续 100 题测量尚未执行；SerpAPI 仍缺 `search.serpapi` Secret reference，GSC/GA4 仍缺真实 property 凭据/Connection。等待外部输入，不得以本地测试、scope/canary readiness 或 bootstrap 替代。
+- [x] `EXT-LOCAL-PROVIDER-01` SerpAPI 已作为独立 `serpapi/google_search` `provider_api` 接入 registry、Secret Store purpose、冻结 request/result/error contract、分层 retry budget、canary CLI 和无凭据时的显式 `skipped` 结果；本项只表示本地正式适配层可审查，不是 live canary 或 Observation 完成证据。
+- [ ] `EXT-LOCAL-UI-LIVE-01` 真实 residential/mobile 澳洲代理、三个 Surface 各 3 次 canary、逐 Release 保真和后续真实测量尚未执行；SAT30 exact-100 v2 已冻结但尚未选择并执行 10 题 pilot。SerpAPI 仍缺 `search.serpapi` Secret reference，GSC/GA4 仍缺真实 property 凭据/Connection。等待外部输入，不得以本地测试、scope/canary readiness 或 bootstrap 替代。
 
 - [x] `EXT-M1-01` 在线 expand migration 增加 Connector/Sampling/Adapter Release/Authorization/Egress/Browser 及 External Data Snapshot/Report/Approval tables，与精确 project-scoped FK/RLS/index。
 - [x] `EXT-M1-02` 兼容扩展 `automated_ui`、Kimi platform/surface 和 UI SourceStratum 的 egress policy/cohort；实际 verification 仅作 Attempt/Observation lineage，旧 writer/reader 仍可运行，历史值不猜测回填。
