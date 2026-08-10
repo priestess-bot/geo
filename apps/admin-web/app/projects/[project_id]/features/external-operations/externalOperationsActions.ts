@@ -127,10 +127,6 @@ function buildRequest(base: string, command: string, form: FormData) {
       terms_version: field(form, "terms_version")
     }
   };
-  if (command === "approve_egress") return {
-    path: `${base}/browser-capture/egress-endpoints/${id(form, "endpoint_id")}/approve`,
-    method: "POST"
-  };
   if (command === "set_egress_status") return {
     path: `${base}/browser-capture/egress-endpoints/${id(form, "endpoint_id")}/status`,
     method: "POST", body: { status: field(form, "status") }
@@ -151,18 +147,6 @@ function buildRequest(base: string, command: string, form: FormData) {
       device_class: field(form, "device_class"), viewport: json(form, "viewport"),
       timezone: "Australia/Sydney", location_permission: false, safe_search: "moderate",
       account_cohort: "clean_anonymous"
-    }
-  };
-  if (command === "create_egress") return {
-    path: `${base}/browser-capture/egress-endpoints`, method: "POST", body: {
-      name: field(form, "name"), protocol: field(form, "protocol"),
-      endpoint_host: field(form, "endpoint_host"), endpoint_port: integer(form, "endpoint_port"),
-      secret_reference_id: id(form, "secret_reference_id"),
-      secret_purpose: field(form, "secret_purpose"),
-      secret_version: integer(form, "secret_version"), expected_region: optional(form, "expected_region"),
-      network_type: field(form, "network_type"), sticky_mode: field(form, "sticky_mode"),
-      egress_policy_version: field(form, "egress_policy_version"),
-      egress_cohort_key: field(form, "egress_cohort_key")
     }
   };
   if (command === "register_browser_sampling_input") return {
@@ -265,12 +249,11 @@ function successLabel(command: string): string {
     cancel_sync: "同步取消请求已提交。",
     create_collector: "一方事件采集端已创建。", create_snapshot: "归因快照已生成。",
     create_surface: "消费者界面版本已创建。",
-    approve_surface: "消费者界面版本已批准。", approve_egress: "澳洲出口已批准。",
+    approve_surface: "消费者界面版本已批准。",
     retire_surface: "消费者界面版本已停用；请发布新版本后恢复采集。",
     set_egress_status: "澳洲出口状态已更新。",
     test_egress: "澳洲出口测试已进入队列。",
     approve_profile: "浏览器画像已批准。", create_profile: "浏览器画像已创建。",
-    create_egress: "澳洲出口已创建。",
     register_browser_sampling_input: "消费者界面采样输入已注册，可在观测与统计中创建 Suite。",
     register_browser_runtime_option: "消费者界面运行选项已注册，请在观测与统计中创建并批准准入策略。",
     enqueue_browser_capture: "消费者界面采集已进入队列。",

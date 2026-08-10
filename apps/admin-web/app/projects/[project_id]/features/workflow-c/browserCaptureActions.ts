@@ -42,7 +42,7 @@ export async function bootstrapBrowserCaptureAction(
   return { kind: "success", message: "三个消费者界面采集器和匿名澳洲浏览器配置已启用。" };
 }
 
-export async function configureAustralianEgressAction(
+export async function configureLokiProxyPoolAction(
   _previous: WorkflowCActionState,
   formData: FormData
 ): Promise<WorkflowCActionState> {
@@ -53,7 +53,9 @@ export async function configureAustralianEgressAction(
   const usernameTemplate = field(formData, "username_template");
   const password = field(formData, "password");
   const protocol = field(formData, "protocol");
-  const networkType = field(formData, "network_type");
+  const poolProduct = field(formData, "pool_product");
+  const sessionTtlSeconds = Number(field(formData, "session_ttl_seconds"));
+  const maxConcurrency = Number(field(formData, "max_concurrency"));
   if (!endpointHost || endpointHost.length > 253
     || !Number.isSafeInteger(endpointPort) || endpointPort < 1 || endpointPort > 65535) {
     return invalid("请填写有效的代理主机和端口。");
@@ -62,33 +64,45 @@ export async function configureAustralianEgressAction(
     return invalid("粘性用户名模板必须包含 {session_id}。");
   }
   if (!password || password.length > 4000) return invalid("请填写有效的代理密码。");
-  if (!new Set(["http", "https", "socks5"]).has(protocol)
-    || !new Set(["residential", "mobile"]).has(networkType)) {
-    return invalid("代理协议或网络类型无效。");
+  if (!new Set(["http", "https"]).has(protocol)
+    || !new Set(["rotating_residential", "mobile"]).has(poolProduct)) {
+    return invalid("请选择 LokiProxy 支持的浏览器代理协议和产品类型。");
+  }
+  if (!Number.isSafeInteger(sessionTtlSeconds)
+    || sessionTtlSeconds < 300 || sessionTtlSeconds > 10_800) {
+    return invalid("粘性会话时长必须在 5 至 180 分钟之间。");
+  }
+  if (!Number.isSafeInteger(maxConcurrency)
+    || maxConcurrency < 1 || maxConcurrency > 100) {
+    return invalid("并发上限必须在 1 至 100 之间。");
   }
   const access = await verifyWorkflowCActor(command.projectId, OPERATORS);
   if (!access.ok) return access.state;
   const response = await runtimeRequest<unknown>(
-    `/v1/projects/${encodeURIComponent(command.projectId)}/browser-capture/egress-setup`,
+    `/v1/projects/${encodeURIComponent(command.projectId)}/browser-capture/lokiproxy-pool`,
     {
       method: "POST",
       idempotencyKey: command.idempotencyKey,
       body: {
-        name: "澳洲消费者搜索出口",
+        name: "LokiProxy 澳洲消费者搜索 IP 池",
         protocol,
         endpoint_host: endpointHost,
         endpoint_port: endpointPort,
         username_template: usernameTemplate,
         password,
-        network_type: networkType,
+        pool_product: poolProduct,
         expected_region: optional(formData, "expected_region"),
-        lease_ttl_seconds: 600
+        session_ttl_seconds: sessionTtlSeconds,
+        max_concurrency: maxConcurrency
       }
     }
   );
-  if (!response.ok) return commandFailure(response, "澳洲粘性代理配置失败。");
+  if (!response.ok) return commandFailure(
+    response,
+    "LokiProxy IP 池保存失败。请核对 Host、Port、用户名模板和套餐类型后重试。"
+  );
   refresh(command.projectId);
-  return { kind: "success", message: "代理凭据已加密保存；请执行一次澳洲出口测试。" };
+  return { kind: "success", message: "LokiProxy 凭据已加密保存；下一步测试真实澳洲出口。" };
 }
 
 export async function testAustralianEgressAction(

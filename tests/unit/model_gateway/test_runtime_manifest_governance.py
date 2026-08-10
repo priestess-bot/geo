@@ -34,7 +34,7 @@ def test_six_provider_template_is_strictly_parseable_and_freezes_au_microsoft_ag
     assert len({item.option_hash for item in options}) == 6
 
 
-def test_optional_serpapi_runtime_manifest_entry_keeps_six_provider_template_contract() -> None:
+def test_runtime_manifest_rejects_retired_serpapi_provider() -> None:
     document = deepcopy(runtime_manifest_six_provider_template())
     providers = document["provider_runtimes"]
     models = document["model_releases"]
@@ -71,19 +71,8 @@ def test_optional_serpapi_runtime_manifest_entry_keeps_six_provider_template_con
     allowed_providers.append("serpapi")
     allowed_adapters.append("serpapi-approved-v1")
 
-    manifest = parse_runtime_manifest(document)
-
-    assert len(manifest.provider_runtimes) == 7
-    assert {item.adapter_release.provider for item in manifest.provider_runtimes} == {
-        "deepseek",
-        "openai",
-        "kimi",
-        "gemini",
-        "perplexity",
-        "microsoft",
-        "serpapi",
-    }
-    assert len(runtime_options_for_manifest(manifest)) == 7
+    with pytest.raises(RuntimeManifestError):
+        parse_runtime_manifest(document)
 
 
 def test_runtime_manifest_rejects_self_approval() -> None:

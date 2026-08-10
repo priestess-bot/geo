@@ -14,9 +14,8 @@ _PROVIDERS = [
     "gemini",
     "perplexity",
     "microsoft",
-    "serpapi",
 ]
-_SIX_PROVIDERS = _PROVIDERS[:-1]
+_SIX_PROVIDERS = _PROVIDERS
 
 
 def runtime_manifest_json_schema() -> dict[str, Any]:
@@ -57,7 +56,7 @@ def runtime_manifest_json_schema() -> dict[str, Any]:
             "provider_runtimes": {
                 "type": "array",
                 "minItems": 1,
-                "maxItems": 7,
+                "maxItems": 6,
                 "items": {"$ref": "#/$defs/provider_runtime"},
             },
             "model_releases": {
@@ -285,7 +284,6 @@ def runtime_manifest_six_provider_template() -> dict[str, Any]:
         "gemini": ("provider_api", ["disabled", "google_search"], True),
         "perplexity": ("provider_api", ["web"], True),
         "microsoft": ("proxy_grounded_api", ["bing_grounding"], True),
-        "serpapi": ("provider_api", ["google_search"], True),
     }
     providers: list[dict[str, Any]] = []
     models: list[dict[str, Any]] = []

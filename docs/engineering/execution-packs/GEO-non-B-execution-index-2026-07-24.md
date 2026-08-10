@@ -14,9 +14,10 @@ This index records the autonomous-agent execution packs that originally covered 
 
 ## Current convergence evidence
 
-- Commit `1877b29d779dcbc102d44ba03d6e23b16e91b6b7` is the current canonical source and runtime release identity. GitHub Actions run `31351738043` completed all four jobs successfully; the local v3 release receipt reports a clean source, exact GEO/Dify Compose identity, all required running/healthy/completed services, database head `0130_serpapi_secret_purpose` and content-addressed images.
+- Commit `1877b29d779dcbc102d44ba03d6e23b16e91b6b7` is the last committed canonical source and runtime release identity. GitHub Actions run `31351738043` completed all four jobs successfully; the local v3 release receipt reports a clean source, exact GEO/Dify Compose identity, all required running/healthy/completed services, database head `0130_serpapi_secret_purpose` and content-addressed images. `0130` is retained as historical release evidence; the current source adds `0131_lokiproxy_pool` and requires a fresh canonical migration/release receipt before the pool contract can be called deployed.
 - Private Release `geo-migration-geo-runtime-20260810T031448Z` contains the source-bound encrypted canonical GEO + Dify baseline. Its 28,863,108-byte payload was downloaded again from GitHub, reassembled and successfully decrypted/verified on this host; the payload SHA-256 is `22cea592a2ac0f62d19f724357ce9c2447a8b11034937ceb81ef1f6f12a543a1`.
 - This source-side export/transport proof does not satisfy the target-host gate. A new empty primary host, historical keyring restore, live Secret canary and explicit post-restore business checks are still required.
+- Current external status remains `0` LokiProxy pool and `0` live Browser Capture. AIO, AI Mode and Copilot must each obtain an approved Surface decision and independent live evidence; a local pool contract, fixture, health check or technical canary does not count.
 
 | Pack | Budget | Scope | Status | Reviewable outcome |
 |---|---:|---|---|---|

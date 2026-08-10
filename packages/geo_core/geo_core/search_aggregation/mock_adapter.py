@@ -1,6 +1,6 @@
 """In-memory mock provider for search aggregation.
 
-Useful for local development and tests when a real SerpAPI key is unavailable.
+Useful for local development and deterministic search-aggregation tests.
 """
 
 from __future__ import annotations

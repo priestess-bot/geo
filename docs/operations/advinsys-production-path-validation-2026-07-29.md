@@ -47,7 +47,7 @@
 | 建议业务判断 | 正确阻断 | 类型 `insufficient_evidence`、状态 `draft`、0 个下游草稿；输入中没有可批准的真实 Observation/Statistic/Fact/Rule |
 | 合成测评实验室 | 未开始真实实验 | 0 Sample、0 Style Collection Task、0 Profile Build、0 Execution Task、0 Terminal Result |
 | Connector Core | 底座可用 | GSC 和 GA4 两个 Definition 为 `draft`；0 Connection、0 Sync，不批准定义、不伪造 Secret |
-| 澳洲消费者界面 | 底座可用 | 0 Surface Release、0 Egress Endpoint、0 Capture；缺真实授权、澳洲 sticky proxy 和实测选择器 |
+| 澳洲消费者界面 | 底座可用 | 3 个 Surface Release、0 LokiProxy pool、0 live Capture；缺真实授权、澳洲 residential/mobile sticky pool、代理侧 session/出口证明和逐 Surface 实测选择器 |
 | 归因账本 | 技术路径通过 | Session→Touch→Lead→Stage→Conversion→Deal→Revenue→Snapshot lineage 完整 |
 | 真实业务归因 | 未通过 | 当前唯一旅程明确分类为 `validation_canary_not_business_truth`，金额 AUD 0 |
 | 外部数据报告 | 审核边界通过 | Report `d6a109bb-f878-4c65-b2d9-d018122ffdaa` 为 `in_review`，没有自动批准 |
@@ -96,7 +96,7 @@ ADVINSYS 实跑结果为 `insufficient_evidence`，这是当前输入下的正�
 2. 正式 Fact 与内容发布：941 个 Fact Candidate、V600 生成内容均需要业务审核人决定。
 3. GSC/GA4：缺对应 Property 权限和 Secret Store 中的真实 OAuth/service-account 凭据。
 4. Provider API：缺 OpenAI、Gemini Grounding、Perplexity、Microsoft Bing Grounding 和 Kimi 的可用凭据及预算。
-5. 澳洲消费者界面：缺经授权的 Surface 决策、住宅或移动 sticky proxy、代理侧会话证明、登录账号和逐 Surface 实测选择器。
+5. 澳洲消费者界面：缺经授权的 Surface 决策、LokiProxy residential/mobile sticky pool、每次 Attempt 的 session/代理侧出口证明、登录账号和逐 Surface 实测选择器。
 6. 真实业务归因：缺一条经同意的真实 UTM/trace→Session→Conversion→Deal→Revenue 旅程。
 7. 最终签字：缺独立 verifier 对 live staging evidence manifest 的复核。
 
@@ -107,7 +107,7 @@ ADVINSYS 实跑结果为 `insufficient_evidence`，这是当前输入下的正�
 - Fact、V600 内容和外部报告的人工审核决定，以及至少一名独立审核人身份。
 - 九个平台各自合法样本来源、最低 200 条匿名化样本和人工明审结果。
 - GSC/GA4 授权账号、Property/Scope，以及五类 Provider API 凭据和预算上限。
-- 澳洲 residential/mobile sticky proxy；需要可绑定每次 capture 的 pre/target/post 出口证明或可信供应商连接日志。
+- LokiProxy residential/mobile provider-managed sticky pool；需要可绑定每次 capture 的唯一 session lease、pre/target/post 出口证明或可信供应商连接日志。单独提供澳洲 IP 不满足条件。
 - Google AI Overviews、Google AI Mode、Bing Copilot 各自的授权评估、账号条件、入口和实测 selector/parser release。
 - 一条可用于 staging 的真实业务归因旅程及其收入确认口径。
 - 独立 verifier 身份与最终验收窗口。
@@ -122,7 +122,7 @@ ADVINSYS 实跑结果为 `insufficient_evidence`，这是当前输入下的正�
 
 - 人工批准的 Fact、内容、Style Profile/Corpus 和报告均具备可追溯版本。
 - GSC、GA4、五类 Provider 和三个消费者 Surface 分别取得真实成功与失败样本。
-- 每个消费者 Surface Release 独立满足 capture fidelity 门槛，并绑定同一 sticky proxy lease 的地域证明。
+- 每个消费者 Surface Release 独立满足 capture fidelity 门槛，并绑定同一 LokiProxy sticky session lease 的地域证明；AIO、AI Mode、Copilot 不得互相借用分母。
 - 真实业务旅程能够从 UTM/trace 回溯到 Revenue 和 GEO 内容版本。
 - Customer 只读取已批准且未失效的不可变投影。
 - 当前数据库 head 的认证空环境恢复、质量、构建、Chromium 和独立复核全部通过。

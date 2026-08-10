@@ -77,7 +77,7 @@ pytestmark = [
 
 class _ProxyCredentials:
     def resolve(self, **_: object) -> dict[str, object]:
-        return {"lease_id": "egress-test-sticky", "lease_ttl_seconds": 600}
+        return {"provider": "lokiproxy", "pool_product": "rotating_residential", "username": "loki-account", "password": "test-secret", "username_template": "{username}-session-{session_id}", "lease_ttl_seconds": 600}
 
 
 class _EgressDriver:
@@ -162,7 +162,7 @@ def test_browser_attempt_commits_one_fenced_sampling_observation() -> None:
             release_id=release["id"],
             reviewer_id=seeded["reviewer"],
         )
-        endpoint = browser.create_egress_endpoint(
+        endpoint = browser.install_egress_endpoint(
             project_id=seeded["project"],
             actor_id=seeded["owner"],
             name="AU integration proxy",
@@ -170,18 +170,14 @@ def test_browser_attempt_commits_one_fenced_sampling_observation() -> None:
             endpoint_host="proxy.example.test",
             endpoint_port=443,
             secret_reference_id=secret_id,
-            secret_purpose="browser_egress.integration",
+            secret_purpose="browser_egress.lokiproxy",
             secret_version=1,
             expected_region="NSW",
             network_type="residential",
-            sticky_mode="provider_lease",
+            provider="lokiproxy",
             egress_policy_version="integration-v1",
             egress_cohort_key="au-residential-integration",
-        )
-        endpoint = browser.approve_egress_endpoint(
-            project_id=seeded["project"],
-            endpoint_id=endpoint["id"],
-            reviewer_id=seeded["reviewer"],
+            pool_product="rotating_residential", session_ttl_seconds=600,
         )
         egress_test = browser.test_egress_endpoint(
             project_id=seeded["project"], actor_id=seeded["owner"],
@@ -215,6 +211,7 @@ def test_browser_attempt_commits_one_fenced_sampling_observation() -> None:
         assert tested["outcome"] == "au_consumer_representative"
         assert tested["eligible"] is True
         assert tested["verification_hash"]
+        assert browser.inventory(project_id=seeded["project"])["egress_endpoints"][0]["health_status"] == "healthy"
         profile = browser.create_profile(
             project_id=seeded["project"],
             actor_id=seeded["owner"],
@@ -678,29 +675,26 @@ def test_browser_attempt_commits_one_fenced_sampling_observation() -> None:
             "task_status": "failed",
             "sessions": ["orphaned", "orphaned"],
         }
-        disabled_endpoint = browser.set_egress_endpoint_status(
-            project_id=seeded["project"], endpoint_id=endpoint["id"], status="disabled"
-        )
-        assert disabled_endpoint["status"] == "disabled"
-        assert disabled_endpoint["disabled_at"] == now
+        disabled_endpoint = browser.set_egress_endpoint_status(project_id=seeded["project"], endpoint_id=endpoint["id"], status="disabled")
+        assert disabled_endpoint["status"] == "disabled" and disabled_endpoint["disabled_at"] == now
         with pytest.raises(BrowserCaptureError, match="not active"):
-            browser.test_egress_endpoint(
-                project_id=seeded["project"], actor_id=seeded["owner"],
-                endpoint_id=endpoint["id"], idempotency_key="disabled-egress-test",
-            )
+            browser.test_egress_endpoint(project_id=seeded["project"], actor_id=seeded["owner"], endpoint_id=endpoint["id"], idempotency_key="disabled-egress-test")
         with pytest.raises(BrowserCaptureError, match="stale"):
             admission.enqueue(
                 project_id=seeded["project"], run_id=run.id, task_id=tasks[2].id,
-                expected_task_version=tasks[2].version,
-                surface_release_id=release["id"], egress_endpoint_id=endpoint["id"],
-                profile_version_id=profile["id"], requested_not_before=now,
-                idempotency_key="browser-disabled-egress",
+                expected_task_version=tasks[2].version, surface_release_id=release["id"],
+                egress_endpoint_id=endpoint["id"], profile_version_id=profile["id"],
+                requested_not_before=now, idempotency_key="browser-disabled-egress",
             )
-        enabled_endpoint = browser.set_egress_endpoint_status(
-            project_id=seeded["project"], endpoint_id=endpoint["id"], status="approved"
+        enabled_endpoint = browser.set_egress_endpoint_status(project_id=seeded["project"], endpoint_id=endpoint["id"], status="approved")
+        assert enabled_endpoint["status"] == "approved" and enabled_endpoint["disabled_at"] is None
+        recheck = browser.test_egress_endpoint(project_id=seeded["project"], actor_id=seeded["owner"], endpoint_id=endpoint["id"], idempotency_key="enabled-egress-recheck")
+        recheck_claim = store.claim(
+            job_id=recheck["job_id"], project_id=seeded["project"], expected_kind="browser.egress_test",
+            worker_id="egress-test-worker", lease_for=timedelta(minutes=5),
         )
-        assert enabled_endpoint["status"] == "approved"
-        assert enabled_endpoint["disabled_at"] is None
+        assert recheck_claim.lease is not None
+        assert operation.execute(recheck_claim.lease)["eligible"] is True
         drift_admitted = admission.enqueue(
             project_id=seeded["project"], run_id=run.id, task_id=tasks[2].id,
             expected_task_version=tasks[2].version,
@@ -822,7 +816,7 @@ def test_browser_attempt_commits_one_fenced_sampling_observation() -> None:
                 """SELECT count(*) FROM durable_jobs
                     WHERE project_id = %s AND kind = 'browser.egress_test'""",
                 (seeded["project"],),
-            ).fetchone()["count"] == 1
+            ).fetchone()["count"] == 2
     finally:
         if created:
             with psycopg.connect(ADMIN_URL, autocommit=True) as server:
@@ -846,7 +840,7 @@ def _active_proxy_secret(connection, *, seeded: dict[str, UUID], now: datetime) 
         """INSERT INTO secret_references(
                id, project_id, purpose, aggregate_version, current_version,
                created_by, created_at, updated_at
-           ) VALUES (%s, %s, 'browser_egress.integration', 1, NULL, %s, %s, %s)""",
+           ) VALUES (%s, %s, 'browser_egress.lokiproxy', 1, NULL, %s, %s, %s)""",
         (reference_id, seeded["project"], seeded["owner"], now, now),
     )
     connection.execute(
@@ -854,7 +848,7 @@ def _active_proxy_secret(connection, *, seeded: dict[str, UUID], now: datetime) 
                reference_id, project_id, purpose, version, ciphertext, data_nonce,
                wrapped_data_key, wrap_nonce, master_key_version, algorithm,
                created_at, status, created_by
-           ) VALUES (%s, %s, 'browser_egress.integration', 1, %s, %s, %s, %s, 1,
+           ) VALUES (%s, %s, 'browser_egress.lokiproxy', 1, %s, %s, %s, %s, 1,
                      'AES-256-GCM', %s, 'pending', %s)""",
         (
             reference_id,

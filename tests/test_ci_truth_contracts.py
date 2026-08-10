@@ -239,20 +239,10 @@ def test_admin_next_types_do_not_depend_on_the_playwright_build_directory() -> N
     assert "writeFileSync(adminNextEnvironment" in browser_runner
 
 
-def test_serpapi_live_target_requires_the_governed_workflow_c_path() -> None:
+def test_serpapi_live_target_is_retired() -> None:
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
-    target = makefile.split("serpapi-live:\n", 1)[1].split("\ngoogle-connectors-live:", 1)[0]
-
-    assert "scripts/workflow_c_provider_canary.py execute" in target
-    assert "scripts/serpapi_provider_canary.py" not in target
-    for required in (
-        "SERPAPI_PROVIDER_RELEASE_FILE",
-        "SERPAPI_SAMPLING_SUITE_ID",
-        "SERPAPI_LIVE_REQUESTED_NOT_BEFORE",
-        "SERPAPI_LIVE_IDEMPOTENCY_PREFIX",
-        "GEO_CANARY_DATABASE_URL",
-    ):
-        assert required in target
+    assert "serpapi-live:" not in makefile
+    assert "scripts/serpapi_provider_canary.py" not in makefile
 
 
 def test_browser_configs_allow_isolated_local_server_ports() -> None:

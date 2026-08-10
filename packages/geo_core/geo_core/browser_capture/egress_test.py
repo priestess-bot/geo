@@ -95,8 +95,33 @@ class PostgresBrowserEgressTestRepository:
                 or not hmac.compare_digest(row["spec_hash"], row["input_hash"])
             ):
                 raise BrowserCaptureError("Browser Egress test frozen identity changed")
+            frozen_endpoint_fields = (
+                "protocol",
+                "endpoint_host",
+                "endpoint_port",
+                "network_type",
+                "sticky_mode",
+                "expected_country",
+                "expected_region",
+                "egress_policy_version",
+                "egress_cohort_key",
+                "provider",
+                "pool_product",
+                "session_ttl_seconds",
+                "max_concurrency",
+            )
+            if any(
+                payload.get(field) != endpoint.get(field)
+                for field in frozen_endpoint_fields
+            ):
+                raise BrowserCaptureError(
+                    "Browser Egress test frozen pool profile changed"
+                )
             if row["endpoint_status"] != "approved":
                 raise BrowserCaptureError("Browser Egress Endpoint is disabled")
+            cooldown_until = endpoint.get("cooldown_until")
+            if isinstance(cooldown_until, datetime) and cooldown_until > started_at:
+                raise BrowserCaptureError("LokiProxy pool is in cooldown")
             if row["status"] == "queued":
                 updated = connection.execute(
                     """UPDATE browser_egress_tests

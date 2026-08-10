@@ -80,3 +80,62 @@ def test_admin_rejects_unknown_selector_before_database_access() -> None:
 
     with pytest.raises(BrowserCaptureError, match="unknown"):
         service.create_surface_release(project_id=uuid4(), actor_id=uuid4(), **value)
+
+
+class _Result:
+    def __init__(self, row=None) -> None:
+        self._row = row
+
+    def fetchone(self):
+        return self._row
+
+
+class _PoolReplayConnection:
+    def __init__(self, row: dict[str, object]) -> None:
+        self.row = row
+        self.statements: list[str] = []
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args) -> None:
+        return None
+
+    def execute(self, query, _params=None):
+        normalized = " ".join(str(query).split())
+        self.statements.append(normalized)
+        if "set_config('geo.project_id'" in normalized or "pg_advisory_xact_lock" in normalized:
+            return _Result()
+        if normalized.startswith("SELECT * FROM browser_egress_endpoints"):
+            return _Result(self.row)
+        raise AssertionError(f"pool replay attempted a write: {normalized}")
+
+
+def test_lokiproxy_pool_replay_preserves_healthy_profile_without_writes() -> None:
+    project_id, actor_id, secret_id = uuid4(), uuid4(), uuid4()
+    existing = {
+        "id": uuid4(), "status": "approved", "health_status": "healthy",
+        "protocol": "http", "endpoint_host": "au.gateway.test", "endpoint_port": 8080,
+        "secret_reference_id": secret_id, "secret_purpose": "browser_egress.lokiproxy",
+        "secret_version": 1, "expected_region": "NSW", "network_type": "residential",
+        "sticky_mode": "credential_session", "egress_policy_version": "lokiproxy-v1",
+        "egress_cohort_key": "lokiproxy-au", "provider": "lokiproxy",
+        "pool_product": "rotating_residential", "session_ttl_seconds": 600,
+        "max_concurrency": 3,
+    }
+    connection = _PoolReplayConnection(existing)
+    service = BrowserCaptureAdminService(connect=lambda: connection)
+
+    replay = service.install_egress_endpoint(
+        project_id=project_id, actor_id=actor_id, name="LokiProxy AU", protocol="http",
+        endpoint_host="au.gateway.test", endpoint_port=8080,
+        secret_reference_id=secret_id, secret_purpose="browser_egress.lokiproxy",
+        secret_version=1, expected_region="NSW", network_type="residential",
+        egress_policy_version="lokiproxy-v1", egress_cohort_key="lokiproxy-au",
+        provider="lokiproxy", pool_product="rotating_residential",
+        session_ttl_seconds=600, max_concurrency=3,
+    )
+
+    assert replay["id"] == existing["id"]
+    assert replay["health_status"] == "healthy"
+    assert not any(statement.startswith(("INSERT", "UPDATE")) for statement in connection.statements)

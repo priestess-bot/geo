@@ -106,6 +106,60 @@ test("M4-WORKFLOW-C-WEB-00A: consumer surface setup bootstraps all three adapter
   await page.screenshot({ path: testInfo.outputPath("browser-capture-setup-mobile.png"), fullPage: true });
 });
 
+test("M4-WORKFLOW-C-WEB-00C: LokiProxy pool setup is guided and keeps the password hidden", async ({ page, request }, testInfo) => {
+  const runtimeErrors = collectRuntimeErrors(page);
+  await page.goto(workspaceUrl("sampling"));
+  const setup = page.getByRole("heading", { name: "澳洲真实搜索采样" })
+    .locator("xpath=ancestor::section[1]");
+  const form = setup.getByRole("button", { name: "保存 IP 池", exact: true })
+    .locator("xpath=ancestor::form[1]");
+
+  await expect(form.getByLabel("产品类型")).toHaveValue("rotating_residential");
+  await form.getByLabel("Host").fill("au.gateway.example.test");
+  await form.getByLabel("Port").fill("8080");
+  await form.getByLabel("粘性 Username 模板").fill("customer-au-session-{session_id}");
+  await form.getByLabel("Password").fill("fixture-only-password");
+  await form.getByLabel("州/地区（可选）").fill("New South Wales");
+  await form.getByRole("button", { name: "保存 IP 池", exact: true }).click();
+
+  await expect(setup.getByText("au.gateway.example.test:8080", { exact: true })).toBeVisible();
+  await expect(setup.getByText("未测试", { exact: true })).toBeVisible();
+  await expect(setup.getByRole("button", { name: "测试澳洲出口", exact: true })).toBeVisible();
+  await expect(setup).not.toContainText("fixture-only-password");
+  const logged = await (await request.get(`${FIXTURE_API}/__requests`)).json();
+  const setupRequest = logged.find((item: { path: string }) => (
+    item.path === `/v1/projects/${PROJECT_ID}/browser-capture/lokiproxy-pool`
+  ));
+  expect(setupRequest.payload).toMatchObject({
+    endpoint_host: "au.gateway.example.test",
+    endpoint_port: 8080,
+    pool_product: "rotating_residential",
+    session_ttl_seconds: 600,
+    max_concurrency: 3
+  });
+  await setup.getByRole("button", { name: "测试澳洲出口", exact: true }).click();
+  await expect(setup.getByText("最近失败：ProxyAuthenticationError", { exact: false })).toBeVisible();
+  await setup.getByRole("button", { name: "重新测试澳洲出口", exact: true }).click();
+  await expect.poll(async () => {
+    const loggedRequests = await (await request.get(`${FIXTURE_API}/__requests`)).json();
+    return loggedRequests.filter((item: { path: string }) => (
+      item.path.includes("/browser-capture/egress-endpoints/") && item.path.endsWith("/tests")
+    )).length;
+  }).toBe(2);
+  const retried = await (await request.get(`${FIXTURE_API}/__requests`)).json();
+  const testRequests = retried.filter((item: { path: string }) => (
+    item.path.includes("/browser-capture/egress-endpoints/") && item.path.endsWith("/tests")
+  ));
+  expect(testRequests).toHaveLength(2);
+  expect(testRequests[0].idempotency_key).not.toBe(testRequests[1].idempotency_key);
+  expect(runtimeErrors).toEqual([]);
+  await page.screenshot({ path: testInfo.outputPath("lokiproxy-pool-desktop.png"), fullPage: true });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("lokiproxy-pool-mobile.png"), fullPage: true });
+});
+
 test("M4-WORKFLOW-C-WEB-00B: ten-question pilot selection is explicit and unique", async ({ page, request }) => {
   const runtimeErrors = collectRuntimeErrors(page);
   await page.goto(workspaceUrl("sampling"));

@@ -14,6 +14,7 @@ from psycopg.types.json import Jsonb
 
 from geo_core.browser_capture.artifacts import EncryptedBrowserArtifactWriter
 from geo_core.browser_capture.domain import BrowserCaptureError, NetworkType
+from geo_core.browser_capture.lokiproxy import require_healthy_pool, validate_lokiproxy_lease
 from geo_core.browser_capture.parsing import SurfaceRelease, parse_capture
 from geo_core.browser_capture.playwright_driver import (
     BrowserProfile,
@@ -114,7 +115,7 @@ class PostgresBrowserCaptureWorkerRepository:
             spec_hash=row["spec_hash"],
             question_text=row["question_text"],
             surface=_mapping_value(row["surface"], "Surface Release"),
-            endpoint=_mapping_value(row["endpoint"], "Egress Endpoint"),
+            endpoint=require_healthy_pool(_mapping_value(row["endpoint"], "Egress Endpoint")),
             profile=_mapping_value(row["profile"], "Browser Profile"),
         )
 
@@ -483,9 +484,7 @@ class BrowserCaptureOperation:
         return validate_browser_storage_state(value)
 
 
-def build_proxy_lease(
-    *, endpoint: Mapping[str, object], credential: Mapping[str, object], now: datetime
-) -> ProxyLease:
+def build_proxy_lease(*, endpoint: Mapping[str, object], credential: Mapping[str, object], now: datetime) -> ProxyLease:
     if now.tzinfo is None or now.utcoffset() is None:
         raise BrowserCaptureError("Proxy lease time must be timezone-aware")
     username = _optional_text(credential.get("username"))
@@ -515,20 +514,20 @@ def build_proxy_lease(
         )
     if (connection_reference is None) != (connection_hash is None):
         raise BrowserCaptureError("Proxy connection log reference and hash must be paired")
-    ttl = _positive_int(credential.get("lease_ttl_seconds", 300), maximum=3600)
-    expires_at = now + timedelta(seconds=ttl)
+    ttl = _positive_int(credential.get("lease_ttl_seconds", 300), maximum=10_800)
     protocol = str(endpoint.get("protocol", ""))
     host = str(endpoint.get("endpoint_host", "")).strip()
     port = _positive_int(endpoint.get("endpoint_port", 0), maximum=65_535)
     if protocol not in {"http", "https", "socks5"} or not host or not 1 <= port <= 65535:
         raise BrowserCaptureError("Frozen proxy endpoint is invalid")
+    validate_lokiproxy_lease(endpoint, credential, sticky_mode, protocol, ttl)
     return ProxyLease(
         server=f"{protocol}://{host}:{port}",
         username=username,
         password=password,
         lease_id=lease_id,
         started_at=now,
-        expires_at=expires_at,
+        expires_at=now + timedelta(seconds=ttl),
         network_type=NetworkType(str(endpoint["network_type"])),
         expected_region=_optional_text(endpoint.get("expected_region")),
         connection_log_reference=connection_reference,

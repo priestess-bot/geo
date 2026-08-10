@@ -2141,36 +2141,6 @@
         "title": "AttributionTraceCreatedResponse",
         "type": "object"
       },
-      "AustralianEgressSetupResponse": {
-        "additionalProperties": false,
-        "properties": {
-          "egress_test_required": {
-            "const": true,
-            "title": "Egress Test Required",
-            "type": "boolean"
-          },
-          "endpoint": {
-            "$ref": "#/components/schemas/EgressEndpointResponse"
-          },
-          "secret_reference_id": {
-            "format": "uuid",
-            "title": "Secret Reference Id",
-            "type": "string"
-          },
-          "secret_version": {
-            "title": "Secret Version",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "endpoint",
-          "secret_reference_id",
-          "secret_version",
-          "egress_test_required"
-        ],
-        "title": "AustralianEgressSetupResponse",
-        "type": "object"
-      },
       "AuthIdentity": {
         "additionalProperties": false,
         "properties": {
@@ -5272,7 +5242,23 @@
         "title": "ComputeSemanticMetricsRequest",
         "type": "object"
       },
-      "ConfigureAustralianEgressRequest": {
+      "ConfigureBrowserSessionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "storage_state_json": {
+            "format": "password",
+            "title": "Storage State Json",
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "storage_state_json"
+        ],
+        "title": "ConfigureBrowserSessionRequest",
+        "type": "object"
+      },
+      "ConfigureLokiProxyPoolRequest": {
         "additionalProperties": false,
         "properties": {
           "endpoint_host": {
@@ -5299,27 +5285,18 @@
             ],
             "title": "Expected Region"
           },
-          "lease_ttl_seconds": {
-            "default": 600,
-            "maximum": 3600.0,
-            "minimum": 60.0,
-            "title": "Lease Ttl Seconds",
+          "max_concurrency": {
+            "default": 3,
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Max Concurrency",
             "type": "integer"
           },
           "name": {
-            "default": "澳洲消费者搜索出口",
+            "default": "LokiProxy 澳洲住宅 IP 池",
             "maxLength": 200,
             "minLength": 1,
             "title": "Name",
-            "type": "string"
-          },
-          "network_type": {
-            "default": "residential",
-            "enum": [
-              "residential",
-              "mobile"
-            ],
-            "title": "Network Type",
             "type": "string"
           },
           "password": {
@@ -5328,15 +5305,30 @@
             "type": "string",
             "writeOnly": true
           },
+          "pool_product": {
+            "default": "rotating_residential",
+            "enum": [
+              "rotating_residential",
+              "mobile"
+            ],
+            "title": "Pool Product",
+            "type": "string"
+          },
           "protocol": {
-            "default": "https",
+            "default": "http",
             "enum": [
               "http",
-              "https",
-              "socks5"
+              "https"
             ],
             "title": "Protocol",
             "type": "string"
+          },
+          "session_ttl_seconds": {
+            "default": 600,
+            "maximum": 10800.0,
+            "minimum": 300.0,
+            "title": "Session Ttl Seconds",
+            "type": "integer"
           },
           "username_template": {
             "maxLength": 1000,
@@ -5351,23 +5343,7 @@
           "username_template",
           "password"
         ],
-        "title": "ConfigureAustralianEgressRequest",
-        "type": "object"
-      },
-      "ConfigureBrowserSessionRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "storage_state_json": {
-            "format": "password",
-            "title": "Storage State Json",
-            "type": "string",
-            "writeOnly": true
-          }
-        },
-        "required": [
-          "storage_state_json"
-        ],
-        "title": "ConfigureBrowserSessionRequest",
+        "title": "ConfigureLokiProxyPoolRequest",
         "type": "object"
       },
       "ConnectorConnectionResponse": {
@@ -6684,112 +6660,6 @@
           "streams"
         ],
         "title": "CreateConnectorScopeRequest",
-        "type": "object"
-      },
-      "CreateEgressEndpointRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "egress_cohort_key": {
-            "maxLength": 200,
-            "minLength": 1,
-            "title": "Egress Cohort Key",
-            "type": "string"
-          },
-          "egress_policy_version": {
-            "maxLength": 100,
-            "minLength": 1,
-            "title": "Egress Policy Version",
-            "type": "string"
-          },
-          "endpoint_host": {
-            "maxLength": 253,
-            "minLength": 1,
-            "title": "Endpoint Host",
-            "type": "string"
-          },
-          "endpoint_port": {
-            "maximum": 65535.0,
-            "minimum": 1.0,
-            "title": "Endpoint Port",
-            "type": "integer"
-          },
-          "expected_region": {
-            "anyOf": [
-              {
-                "maxLength": 120,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Expected Region"
-          },
-          "name": {
-            "maxLength": 200,
-            "minLength": 1,
-            "title": "Name",
-            "type": "string"
-          },
-          "network_type": {
-            "enum": [
-              "residential",
-              "mobile",
-              "datacenter",
-              "unknown"
-            ],
-            "title": "Network Type",
-            "type": "string"
-          },
-          "protocol": {
-            "enum": [
-              "http",
-              "https",
-              "socks5"
-            ],
-            "title": "Protocol",
-            "type": "string"
-          },
-          "secret_purpose": {
-            "maxLength": 128,
-            "pattern": "^browser_egress\\.[a-z0-9_.-]+$",
-            "title": "Secret Purpose",
-            "type": "string"
-          },
-          "secret_reference_id": {
-            "format": "uuid",
-            "title": "Secret Reference Id",
-            "type": "string"
-          },
-          "secret_version": {
-            "minimum": 1.0,
-            "title": "Secret Version",
-            "type": "integer"
-          },
-          "sticky_mode": {
-            "enum": [
-              "provider_lease",
-              "credential_session",
-              "trusted_connection_log"
-            ],
-            "title": "Sticky Mode",
-            "type": "string"
-          }
-        },
-        "required": [
-          "name",
-          "protocol",
-          "endpoint_host",
-          "endpoint_port",
-          "secret_reference_id",
-          "secret_purpose",
-          "secret_version",
-          "network_type",
-          "sticky_mode",
-          "egress_policy_version",
-          "egress_cohort_key"
-        ],
-        "title": "CreateEgressEndpointRequest",
         "type": "object"
       },
       "CreateEntityRequest": {
@@ -9513,6 +9383,22 @@
             ],
             "title": "Approved By"
           },
+          "consecutive_failures": {
+            "title": "Consecutive Failures",
+            "type": "integer"
+          },
+          "cooldown_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cooldown Until"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -9567,10 +9453,41 @@
             ],
             "title": "Expected Region"
           },
+          "health_status": {
+            "title": "Health Status",
+            "type": "string"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "last_checked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Checked At"
+          },
+          "last_error_class": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error Class"
+          },
+          "max_concurrency": {
+            "title": "Max Concurrency",
+            "type": "integer"
           },
           "name": {
             "title": "Name",
@@ -9580,6 +9497,10 @@
             "title": "Network Type",
             "type": "string"
           },
+          "pool_product": {
+            "title": "Pool Product",
+            "type": "string"
+          },
           "project_id": {
             "format": "uuid",
             "title": "Project Id",
@@ -9587,6 +9508,10 @@
           },
           "protocol": {
             "title": "Protocol",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
             "type": "string"
           },
           "secret_purpose": {
@@ -9600,6 +9525,10 @@
           },
           "secret_version": {
             "title": "Secret Version",
+            "type": "integer"
+          },
+          "session_ttl_seconds": {
+            "title": "Session Ttl Seconds",
             "type": "integer"
           },
           "status": {
@@ -9626,6 +9555,12 @@
           "sticky_mode",
           "egress_policy_version",
           "egress_cohort_key",
+          "provider",
+          "pool_product",
+          "session_ttl_seconds",
+          "max_concurrency",
+          "health_status",
+          "consecutive_failures",
           "status",
           "created_by",
           "created_at"
@@ -14151,6 +14086,36 @@
           }
         },
         "title": "LogoutResult",
+        "type": "object"
+      },
+      "LokiProxyPoolSetupResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "egress_test_required": {
+            "const": true,
+            "title": "Egress Test Required",
+            "type": "boolean"
+          },
+          "endpoint": {
+            "$ref": "#/components/schemas/EgressEndpointResponse"
+          },
+          "secret_reference_id": {
+            "format": "uuid",
+            "title": "Secret Reference Id",
+            "type": "string"
+          },
+          "secret_version": {
+            "title": "Secret Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "endpoint",
+          "secret_reference_id",
+          "secret_version",
+          "egress_test_required"
+        ],
+        "title": "LokiProxyPoolSetupResponse",
         "type": "object"
       },
       "ManualEvidenceImportPageResponse": {
@@ -27269,6 +27234,7 @@
           "model_provider.gemini",
           "model_provider.perplexity",
           "model_provider.microsoft",
+          "browser_egress.lokiproxy",
           "browser_egress.au",
           "browser_session.storage_state",
           "egress.proxy.australia",
@@ -43874,334 +43840,6 @@
         ]
       }
     },
-    "/v1/projects/{project_id}/browser-capture/egress-endpoints": {
-      "post": {
-        "operationId": "create_egress_endpoint_v1_projects__project_id__browser_capture_egress_endpoints_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "project_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Project Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "Authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateEgressEndpointRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EgressEndpointResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Bad Request"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Conflict"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Validation Error"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Service Unavailable"
-          }
-        },
-        "summary": "Create Egress Endpoint",
-        "tags": [
-          "browser capture"
-        ]
-      }
-    },
-    "/v1/projects/{project_id}/browser-capture/egress-endpoints/{endpoint_id}/approve": {
-      "post": {
-        "operationId": "approve_egress_endpoint_v1_projects__project_id__browser_capture_egress_endpoints__endpoint_id__approve_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "project_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Project Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "endpoint_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Endpoint Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "header",
-            "name": "Authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EgressEndpointResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Bad Request"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Conflict"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Validation Error"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              },
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            },
-            "description": "Service Unavailable"
-          }
-        },
-        "summary": "Approve Egress Endpoint",
-        "tags": [
-          "browser capture"
-        ]
-      }
-    },
     "/v1/projects/{project_id}/browser-capture/egress-endpoints/{endpoint_id}/status": {
       "post": {
         "operationId": "set_egress_endpoint_status_v1_projects__project_id__browser_capture_egress_endpoints__endpoint_id__status_post",
@@ -44549,9 +44187,9 @@
         ]
       }
     },
-    "/v1/projects/{project_id}/browser-capture/egress-setup": {
+    "/v1/projects/{project_id}/browser-capture/lokiproxy-pool": {
       "post": {
-        "operationId": "configureAustralianBrowserEgress",
+        "operationId": "configureLokiProxyPool",
         "parameters": [
           {
             "in": "path",
@@ -44593,7 +44231,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ConfigureAustralianEgressRequest"
+                "$ref": "#/components/schemas/ConfigureLokiProxyPoolRequest"
               }
             }
           },
@@ -44604,7 +44242,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AustralianEgressSetupResponse"
+                  "$ref": "#/components/schemas/LokiProxyPoolSetupResponse"
                 }
               }
             },
@@ -44716,7 +44354,7 @@
             "description": "Service Unavailable"
           }
         },
-        "summary": "Configure Australian Egress",
+        "summary": "Configure Lokiproxy Pool",
         "tags": [
           "browser capture"
         ]

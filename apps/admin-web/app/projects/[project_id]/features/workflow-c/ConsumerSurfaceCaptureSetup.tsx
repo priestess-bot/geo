@@ -6,7 +6,7 @@ import { useActionState } from "react";
 import {
   bootstrapBrowserCaptureAction,
   configureBrowserSessionAction,
-  configureAustralianEgressAction,
+  configureLokiProxyPoolAction,
   registerBrowserRuntimeOptionAction,
   registerBrowserSamplingInputAction,
   testAustralianEgressAction
@@ -55,7 +55,7 @@ export function ConsumerSurfaceCaptureSetup({
     initialWorkflowCActionState
   );
   const [proxyState, proxyAction, proxyPending] = useActionState(
-    configureAustralianEgressAction,
+    configureLokiProxyPoolAction,
     initialWorkflowCActionState
   );
   const [testState, testAction, testPending] = useActionState(
@@ -80,11 +80,20 @@ export function ConsumerSurfaceCaptureSetup({
     item.blocking_reasons.includes("needs_adapter")
   );
   const activeEndpointId = items.find((item) => item.egress_endpoint_id)?.egress_endpoint_id;
-  const endpoint = inventory.data?.egress_endpoints.find((item) => item.id === activeEndpointId);
+  const latestLokiEndpoint = inventory.data?.egress_endpoints.find((item) =>
+    item.provider === "lokiproxy"
+  );
+  const endpoint = inventory.data?.egress_endpoints.find((item) => item.id === activeEndpointId)
+    || inventory.data?.egress_endpoints.find((item) =>
+      item.provider === "lokiproxy" && item.status === "approved"
+    );
   const latestTest = endpoint
     ? inventory.data?.egress_tests.find((item) => item.endpoint_id === endpoint.id)
     : undefined;
-  const egressVerified = latestTest?.status === "succeeded" && latestTest.eligible === true;
+  const egressVerified = endpoint?.health_status === "healthy"
+    && latestTest?.status === "succeeded"
+    && latestTest.eligible === true;
+  const egressTestInFlight = latestTest?.status === "queued" || latestTest?.status === "running";
   const frozenQuestionSets = questionSets.filter((item) => item.status === "frozen");
   const approvedPolicies = admissionPolicies.filter((item) =>
     item.capture_method === "automated_ui"
@@ -102,7 +111,7 @@ export function ConsumerSurfaceCaptureSetup({
         <div>
           <p>消费者 AI 界面</p>
           <h3 id="consumer-capture-heading">澳洲真实搜索采样</h3>
-          <span>通过同一粘性代理会话访问、前后验证出口，并保存答案与引用。</span>
+          <span>LokiProxy 分配澳洲出口；每次采样固定一个粘性会话并验证前后 IP。</span>
         </div>
         <strong>{items.filter((item) => item.state !== "blocked").length}/3 可运行</strong>
       </header>
@@ -127,37 +136,54 @@ export function ConsumerSurfaceCaptureSetup({
       ) : null}
 
       <div className={styles.steps}>
-        <section data-complete={Boolean(endpoint)}>
-          <header><span>1</span><div><strong>澳洲粘性代理</strong><small>{endpoint ? `${endpoint.endpoint_host}:${endpoint.endpoint_port}` : "尚未配置"}</small></div></header>
+        <section data-complete={egressVerified}>
+          <header><span>1</span><div><strong>LokiProxy 澳洲 IP 池</strong><small>{endpoint ? `${endpoint.endpoint_host}:${endpoint.endpoint_port}` : "尚未配置"}</small></div></header>
           {endpoint ? (
-            <div className={styles.inlineStatus}>
-              <span>{endpoint.network_type === "residential" ? "住宅网络" : endpoint.network_type}</span>
-              <Status value={egressVerified ? "verified" : latestTest?.status || "untested"} />
+            <div className={styles.poolStatus}>
+              <div className={styles.inlineStatus}>
+                <span>{endpoint.pool_product === "mobile" ? "移动网络" : "旋转住宅网络"}</span>
+                <span>{Math.round(endpoint.session_ttl_seconds / 60)} 分钟粘性</span>
+                <span>并发 {endpoint.max_concurrency}</span>
+                <Status value={egressVerified ? "verified" : endpoint.health_status} />
+              </div>
+              {endpoint.last_error_class ? (
+                <p className={styles.poolProblem}>最近失败：{endpoint.last_error_class}。{endpoint.health_status === "cooldown" ? "冷却结束后可重新测试。" : "核对连接、认证和澳洲地域后重试。"}</p>
+              ) : null}
+              {endpoint.cooldown_until ? <small>冷却至 {formatTime(endpoint.cooldown_until)}</small> : null}
               {!egressVerified ? (
                 <form action={testAction}>
-                  <CommandFields keyValue={`browser-egress-test-${endpoint.id}`} projectId={projectId} />
+                  <CommandFields
+                    keyValue={`browser-egress-test-${endpoint.id}:${latestTest?.id || "initial"}`}
+                    projectId={projectId}
+                  />
                   <input name="endpoint_id" type="hidden" value={endpoint.id} />
-                  <button disabled={!canOperate || testPending} type="submit">
-                    {testPending ? "测试中..." : "测试澳洲出口"}
+                  <button
+                    disabled={!canOperate || testPending || egressTestInFlight || cooldownActive(endpoint.cooldown_until)}
+                    type="submit"
+                  >
+                    {testPending || egressTestInFlight
+                      ? "测试中..."
+                      : latestTest ? "重新测试澳洲出口" : "测试澳洲出口"}
                   </button>
                 </form>
               ) : null}
+              <LokiProxyPoolForm
+                action={proxyAction}
+                canOperate={canOperate}
+                idempotencyKey={`browser-proxy-${projectId}:${latestLokiEndpoint?.id || "initial"}`}
+                pending={proxyPending}
+                projectId={projectId}
+                reconfigure
+              />
             </div>
           ) : (
-            <details className={styles.proxyForm} open>
-              <summary>填写代理连接信息</summary>
-              <form action={proxyAction}>
-                <CommandFields keyValue={`browser-proxy-${projectId}`} projectId={projectId} />
-                <label><span>协议</span><select name="protocol"><option value="https">HTTPS</option><option value="http">HTTP</option><option value="socks5">SOCKS5</option></select></label>
-                <label><span>代理主机</span><input name="endpoint_host" placeholder="au.proxy.example.com" required /></label>
-                <label><span>端口</span><input max="65535" min="1" name="endpoint_port" placeholder="443" required type="number" /></label>
-                <label className={styles.wide}><span>粘性用户名模板</span><input name="username_template" placeholder="customer-zone-au-session-{session_id}" required /><small>保留 <code>{"{session_id}"}</code>，每次采集会自动替换为独立会话 ID。</small></label>
-                <label><span>代理密码</span><input autoComplete="new-password" name="password" required type="password" /></label>
-                <label><span>网络类型</span><select name="network_type"><option value="residential">住宅</option><option value="mobile">移动</option></select></label>
-                <label><span>州/地区（可选）</span><input name="expected_region" placeholder="New South Wales" /></label>
-                <button disabled={!canOperate || proxyPending} type="submit">{proxyPending ? "正在保存..." : "保存并启用代理"}</button>
-              </form>
-            </details>
+            <LokiProxyPoolForm
+              action={proxyAction}
+              canOperate={canOperate}
+              idempotencyKey={`browser-proxy-${projectId}:${latestLokiEndpoint?.id || "initial"}`}
+              pending={proxyPending}
+              projectId={projectId}
+            />
           )}
         </section>
 
@@ -199,6 +225,42 @@ export function ConsumerSurfaceCaptureSetup({
       </div>
       <WorkflowCActionFeedback state={feedback} />
     </section>
+  );
+}
+
+function LokiProxyPoolForm({
+  action,
+  canOperate,
+  idempotencyKey,
+  pending,
+  projectId,
+  reconfigure = false
+}: {
+  action: (payload: FormData) => void;
+  canOperate: boolean;
+  idempotencyKey: string;
+  pending: boolean;
+  projectId: string;
+  reconfigure?: boolean;
+}) {
+  return (
+    <details className={styles.proxyForm} open={!reconfigure}>
+      <summary>{reconfigure ? "更换连接信息" : "填写 LokiProxy Dashboard 生成的连接信息"}</summary>
+      <form action={action}>
+        <CommandFields keyValue={idempotencyKey} projectId={projectId} />
+        <label><span>产品类型</span><select name="pool_product"><option value="rotating_residential">旋转住宅代理</option><option value="mobile">移动代理</option></select></label>
+        <label><span>协议</span><select name="protocol"><option value="http">HTTP（推荐）</option><option value="https">HTTPS</option></select></label>
+        <label><span>Host</span><input name="endpoint_host" placeholder="从 LokiProxy 复制" required /></label>
+        <label><span>Port</span><input max="65535" min="1" name="endpoint_port" placeholder="从 LokiProxy 复制" required type="number" /></label>
+        <label className={styles.wide}><span>粘性 Username 模板</span><input name="username_template" placeholder="粘贴生成的 Username，并用 {session_id} 替换会话值" required /><small>必须保留 <code>{"{session_id}"}</code>；系统不会猜测 LokiProxy 的用户名格式。</small></label>
+        <label><span>Password</span><input autoComplete="new-password" name="password" required type="password" /></label>
+        <label><span>粘性时长</span><select defaultValue="600" name="session_ttl_seconds"><option value="300">5 分钟</option><option value="600">10 分钟</option><option value="1800">30 分钟</option><option value="3600">60 分钟</option><option value="7200">120 分钟</option><option value="10800">180 分钟</option></select></label>
+        <label><span>最大并发</span><input defaultValue="3" max="100" min="1" name="max_concurrency" required type="number" /></label>
+        <label><span>州/地区（可选）</span><input name="expected_region" placeholder="New South Wales" /></label>
+        <a href="https://docs.lokiproxy.com/configure-proxies/rotating-residential-proxy" rel="noreferrer" target="_blank">打开 LokiProxy 配置文档</a>
+        <button disabled={!canOperate || pending} type="submit">{pending ? "正在保存..." : reconfigure ? "保存并切换 IP 池" : "保存 IP 池"}</button>
+      </form>
+    </details>
   );
 }
 
@@ -323,6 +385,10 @@ function statusLabel(value: string): string {
     fidelity_accepted: "保真验收",
     verified: "澳洲已验证",
     untested: "未测试",
+    healthy: "健康",
+    degraded: "连接异常",
+    cooldown: "冷却中",
+    disabled: "已停用",
     queued: "排队中",
     running: "测试中",
     succeeded: "已完成",
@@ -336,4 +402,12 @@ function surfaceLabel(value: string): string {
 
 function formatDate(value: string): string {
   return new Date(value).toLocaleDateString("zh-CN");
+}
+
+function formatTime(value: string): string {
+  return new Date(value).toLocaleString("zh-CN", { hour12: false });
+}
+
+function cooldownActive(value?: string | null): boolean {
+  return Boolean(value && new Date(value).getTime() > Date.now());
 }

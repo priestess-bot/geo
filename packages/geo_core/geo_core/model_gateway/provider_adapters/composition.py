@@ -26,8 +26,6 @@ from geo_core.model_gateway.provider_adapters.microsoft import (
 )
 from geo_core.model_gateway.provider_adapters.openai import OpenAIResponsesAdapter
 from geo_core.model_gateway.provider_adapters.perplexity import PerplexitySonarAdapter
-from geo_core.model_gateway.provider_adapters.serpapi import SerpApiGoogleSearchAdapter
-from geo_core.model_gateway.releases import KNOWN_SEARCH_PROVIDERS
 from geo_core.model_gateway.releases import (
     KNOWN_MODEL_PROVIDERS,
     ModelRelease,
@@ -100,9 +98,7 @@ def build_exact_provider_composition(
     by_provider = {config.runtime.adapter_release.provider: config for config in configs}
     if len(by_provider) != len(configs):
         raise ModelRouteError("provider composition contains duplicate providers")
-    extra = sorted(
-        set(by_provider) - set(KNOWN_MODEL_PROVIDERS) - set(KNOWN_SEARCH_PROVIDERS)
-    )
+    extra = sorted(set(by_provider) - set(KNOWN_MODEL_PROVIDERS))
     if extra:
         raise ModelRouteError(f"provider composition contains unknown providers: {extra}")
     adapter_releases = tuple(config.runtime.adapter_release for config in configs)
@@ -113,10 +109,7 @@ def build_exact_provider_composition(
     )
     factory = transport_factory or _secure_transport
     adapters: dict[tuple[str, str], ProviderAdapter] = {}
-    for provider in (
-        *tuple(item for item in KNOWN_MODEL_PROVIDERS if item in by_provider),
-        *tuple(item for item in KNOWN_SEARCH_PROVIDERS if item in by_provider),
-    ):
+    for provider in tuple(item for item in KNOWN_MODEL_PROVIDERS if item in by_provider):
         config = by_provider[provider]
         release = config.runtime.adapter_release
         transport = factory(provider, release.adapter_release_id)
@@ -200,20 +193,6 @@ def _adapter(
             artifact_sink=artifact_sink,
             timeout_seconds=config.timeout_seconds,
         )
-    if provider == "serpapi":
-        # The formal search adapter is the only provider that uses the GET
-        # transport.  The composition type remains provider-neutral while the
-        # runtime contract rejects a transport without that capability.
-        if not hasattr(transport, "get"):
-            raise ModelRouteError("SerpAPI adapter requires an HTTPS GET transport")
-        return SerpApiGoogleSearchAdapter(
-            runtime=config.runtime,
-            secret_reference_id=config.secret_reference_id,
-            credential_resolver=credential_resolver,
-            transport=transport,  # type: ignore[arg-type]
-            artifact_sink=artifact_sink,
-            timeout_seconds=config.timeout_seconds,
-        )
     raise ModelRouteError(f"unsupported exact provider adapter: {provider}")
 
 
@@ -226,9 +205,7 @@ def verify_six_provider_completeness(composition: ExactProviderComposition) -> N
     """Fail an M3 release Gate unless every planned provider is bound exactly once."""
     configured = {provider for provider, _ in composition.adapters}
     missing = sorted(set(KNOWN_MODEL_PROVIDERS) - configured)
-    extra = sorted(
-        configured - set(KNOWN_MODEL_PROVIDERS) - set(KNOWN_SEARCH_PROVIDERS)
-    )
+    extra = sorted(configured - set(KNOWN_MODEL_PROVIDERS))
     if missing or extra:
         raise ModelRouteError(
             f"six-provider Gate is incomplete; missing={missing}, extra={extra}"

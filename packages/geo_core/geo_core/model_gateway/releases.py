@@ -26,18 +26,12 @@ KNOWN_MODEL_PROVIDERS = (
     "microsoft",
 )
 
-# Search providers are deliberately separate from the six model-provider gate.
-# They can be admitted as an optional runtime-manifest entry without changing
-# the completeness contract for the six model adapters.
-KNOWN_SEARCH_PROVIDERS = ("serpapi",)
-
-
 def provider_secret_purpose(provider: str) -> str:
     """Return the frozen Secret Store purpose for a Gateway provider."""
 
     normalized = provider.strip()
-    if normalized in KNOWN_SEARCH_PROVIDERS:
-        return f"search.{normalized}"
+    if normalized not in KNOWN_MODEL_PROVIDERS:
+        raise ModelRouteError(f"unsupported Gateway provider: {normalized}")
     return f"model_provider.{normalized}"
 
 

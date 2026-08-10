@@ -147,7 +147,7 @@ def test_database_head_is_read_from_the_running_postgres_container(monkeypatch) 
 
     def fake_run(command, *, cwd, check=True):
         commands.append(list(command))
-        return "0130_serpapi_secret_purpose\n"
+        return "0131_lokiproxy_pool\n"
 
     monkeypatch.setattr(geo_release_receipt, "run", fake_run)
     heads = geo_release_receipt.database_alembic_heads(
@@ -162,7 +162,7 @@ def test_database_head_is_read_from_the_running_postgres_container(monkeypatch) 
         repo_root=ROOT,
     )
 
-    assert heads == ["0130_serpapi_secret_purpose"]
+    assert heads == ["0131_lokiproxy_pool"]
     assert commands[0][:3] == ["docker", "exec", "geo-postgres-1"]
 
 

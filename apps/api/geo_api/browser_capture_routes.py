@@ -11,7 +11,6 @@ from fastapi import APIRouter, Header, Request, status
 from geo_api.browser_capture_contracts import (
     BrowserCaptureInventoryResponse,
     BrowserCaptureAttemptResponse,
-    AustralianEgressSetupResponse,
     BrowserCaptureBootstrapResponse,
     BrowserEgressTestResponse,
     BrowserCaptureReadinessResponse,
@@ -19,19 +18,20 @@ from geo_api.browser_capture_contracts import (
     BrowserSessionSetupResponse,
     BrowserSamplingOptionResponse,
     BootstrapBrowserCaptureRequest,
-    ConfigureAustralianEgressRequest,
+    ConfigureLokiProxyPoolRequest,
     ConfigureBrowserSessionRequest,
     CreateBrowserProfileRequest,
-    CreateEgressEndpointRequest,
     CreateSurfaceReleaseRequest,
     EnqueueBrowserCaptureAttemptRequest,
     EgressEndpointResponse,
+    LokiProxyPoolSetupResponse,
     RegisterBrowserSamplingOptionRequest,
     RegisterBrowserSuiteInputRequest,
     SetEgressEndpointStatusRequest,
     SurfaceReleaseResponse,
 )
 from geo_api.catalog_routes import _principal
+from geo_api.browser_capture_lokiproxy import configure_lokiproxy_pool as _configure_loki_pool
 from geo_api.connector_routes import _require_admin
 from geo_api.foundation_services import FoundationServiceUnavailable
 from geo_api.problems import ApiProblem
@@ -56,7 +56,6 @@ from geo_core.sampling import (
 
 AuthorizationHeader = Annotated[str | None, Header(alias="Authorization")]
 IdempotencyHeader = Annotated[str, Header(alias="Idempotency-Key")]
-_BROWSER_EGRESS_SECRET_NAMESPACE = UUID("6a603035-688c-5b05-b660-58a3d364a40b")
 _BROWSER_SESSION_SECRET_NAMESPACE = UUID("4dc5c7af-34f9-5f85-a798-9f88db96a253")
 
 def browser_capture_router() -> APIRouter:
@@ -104,96 +103,24 @@ def browser_capture_router() -> APIRouter:
         )
 
     @router.post(
-        "/egress-setup",
-        response_model=AustralianEgressSetupResponse,
-        operation_id="configureAustralianBrowserEgress",
+        "/lokiproxy-pool",
+        response_model=LokiProxyPoolSetupResponse,
+        operation_id="configureLokiProxyPool",
     )
-    def configure_australian_egress(
+    def configure_lokiproxy_pool(
         project_id: UUID,
-        payload: ConfigureAustralianEgressRequest,
+        payload: ConfigureLokiProxyPoolRequest,
         request: Request,
         idempotency_key: IdempotencyHeader,
         authorization: AuthorizationHeader = None,
-    ) -> AustralianEgressSetupResponse:
+    ) -> LokiProxyPoolSetupResponse:
         principal = _require_admin(_principal(request, authorization), project_id)
-        key = idempotency_key.strip()
-        if len(key) < 8 or len(key) > 240:
-            raise ApiProblem(
-                status=422,
-                title="Invalid Idempotency Key",
-                detail="AU proxy setup needs an Idempotency-Key between 8 and 240 characters.",
-                type_uri="urn:geo:problem:browser-egress-idempotency",
+        return _call(
+            lambda: _configure_loki_pool(
+                project_id=project_id, payload=payload, principal=principal,
+                idempotency_key=idempotency_key, service=_service(request),
+                secrets=_secret_api(request),
             )
-        reference_id = uuid5(
-            _BROWSER_EGRESS_SECRET_NAMESPACE, f"{project_id}:{key}:credential"
-        )
-        try:
-            created = _secret_api(request).create(
-                principal,
-                project_id=project_id,
-                reference_id=reference_id,
-                purpose="browser_egress.au",
-                value=SecretValue(
-                    json.dumps(
-                        {
-                            "username_template": payload.username_template,
-                            "password": payload.password.get_secret_value(),
-                            "lease_ttl_seconds": payload.lease_ttl_seconds,
-                        },
-                        ensure_ascii=True,
-                        separators=(",", ":"),
-                    )
-                ),
-                expected_version=0,
-                idempotency_key=f"{key}:secret-create",
-            )
-            verified = _secret_api(request).verify(
-                principal,
-                project_id=project_id,
-                reference_id=reference_id,
-                version=created.version,
-                expected_version=created.aggregate_version,
-                idempotency_key=f"{key}:secret-verify",
-            )
-            activated = _secret_api(request).activate(
-                principal,
-                project_id=project_id,
-                reference_id=reference_id,
-                version=created.version,
-                expected_version=verified.aggregate_version,
-                idempotency_key=f"{key}:secret-activate",
-            )
-        except SecretStoreError as error:
-            raise ApiProblem(
-                status=409,
-                title="AU Proxy Secret Setup Failed",
-                detail=str(error),
-                type_uri="urn:geo:problem:browser-egress-secret",
-            ) from error
-        endpoint = _call(
-            lambda: _service(request).install_egress_endpoint(
-                project_id=project_id,
-                actor_id=principal.identity_id,
-                name=payload.name,
-                protocol=payload.protocol,
-                endpoint_host=payload.endpoint_host,
-                endpoint_port=payload.endpoint_port,
-                secret_reference_id=reference_id,
-                secret_purpose="browser_egress.au",
-                secret_version=activated.version,
-                expected_region=payload.expected_region,
-                network_type=payload.network_type,
-                egress_policy_version="au-consumer-sticky-v1",
-                egress_cohort_key=f"au-{payload.network_type}-consumer",
-            )
-        )
-        return AustralianEgressSetupResponse.model_validate(
-            {
-                "endpoint": endpoint,
-                "secret_reference_id": reference_id,
-                "secret_version": activated.version,
-                "egress_test_required": True,
-            }
         )
 
     @router.post(
@@ -330,35 +257,6 @@ def browser_capture_router() -> APIRouter:
         return SurfaceReleaseResponse.model_validate(_call(
             lambda: _service(request).retire_surface_release(
                 project_id=project_id, release_id=release_id,
-            )
-        ))
-
-    @router.post(
-        "/egress-endpoints", response_model=EgressEndpointResponse,
-        status_code=status.HTTP_201_CREATED,
-    )
-    def create_egress_endpoint(
-        project_id: UUID, payload: CreateEgressEndpointRequest, request: Request,
-        authorization: AuthorizationHeader = None,
-    ) -> EgressEndpointResponse:
-        principal = _require_admin(_principal(request, authorization), project_id)
-        return EgressEndpointResponse.model_validate(_call(
-            lambda: _service(request).create_egress_endpoint(
-                project_id=project_id, actor_id=principal.identity_id,
-                **payload.model_dump(),
-            )
-        ))
-
-    @router.post("/egress-endpoints/{endpoint_id}/approve", response_model=EgressEndpointResponse)
-    def approve_egress_endpoint(
-        project_id: UUID, endpoint_id: UUID, request: Request,
-        authorization: AuthorizationHeader = None,
-    ) -> EgressEndpointResponse:
-        principal = _require_admin(_principal(request, authorization), project_id)
-        return EgressEndpointResponse.model_validate(_call(
-            lambda: _service(request).approve_egress_endpoint(
-                project_id=project_id, endpoint_id=endpoint_id,
-                reviewer_id=principal.identity_id,
             )
         ))
 

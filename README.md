@@ -146,7 +146,7 @@ docs/                 当前架构、ADR、操作手册、工程治理和两份�
 以下能力已明确列为当前效果优先原型之后的必做目标，不因本阶段采用人工流程而取消：
 
 1. **完整连接器平台（F-006）**：建立统一的连接定义、项目级授权、secret reference、同步游标、限流重试、原始工件、schema/version、freshness 和运行状态；优先交付 GSC、GA4 与官方 Google/Bing AI 报告文件导入，再按价值扩展 Bing Webmaster、Clarity、CRM、CMS 和 warehouse。
-2. **完整跨引擎观测平台（F-009）**：建设 Sampling Suite/Run/Task、官方 API adapter、官方报告导入、受控人工 UI 抽样、运行进度和不可变原始工件；严格区分 official report、manual UI、provider API、proxy grounded API、automated browser capture 和 synthetic。对没有公开合规 API 的 Google AI Overviews/AI Mode、Bing Copilot 等消费者 Surface，在逐 Surface 授权通过后使用澳洲 sticky egress、同一代理租约的 pre/target/post 地域证明和受控 Browser Capture Connector；未通过授权的 Surface 只允许合规人工导入，且绝不与自动采样合并分母。
+2. **完整跨引擎观测平台（F-009）**：建设 Sampling Suite/Run/Task、官方 API adapter、官方报告导入、受控人工 UI 抽样、运行进度和不可变原始工件；严格区分 official report、manual UI、provider API、proxy grounded API、automated browser capture 和 synthetic。对没有公开合规 API 的 Google AI Overviews/AI Mode、Bing Copilot 等消费者 Surface，在逐 Surface 授权通过后使用 LokiProxy 供应商托管的澳洲 residential/mobile sticky pool；每个 Browser Capture Attempt 创建独立 session lease，并用同一 lease 完成 pre/target/post 地域证明。未通过授权的 Surface 只允许合规人工导入，且绝不与自动采样合并分母。GEO 不维护第二套 IP 列表或猜测 LokiProxy 管理 API，实际出口和会话由 LokiProxy 提供，凭据只通过 Secret Store 引用。
 3. **完整实验统计与告警平台（F-021）**：实现自动重复采样、按 engine/model/source/locale/region/query cluster 分层、区间、胜平负、最差结果、跨查询负收益、模型/来源漂移、阈值与基线告警及处置记录；样本不足不得形成稳定结论，不同来源不得合并分母。
 4. **业务结果与 AI referral 归因（F-007）**：串联 AI referrer/UTM、landing page、session、conversion/key event、qualified lead、CRM stage 和 revenue，并回溯到 Campaign、问题、内容、engine/source mode 与版本；明确 last-click、assisted attribution、零点击影响和非因果边界。
 5. **可解释建议与不修改机制（F-020）**：用问题、证据等级、影响链、页面/问题簇、风险、工作量、业务价值、置信度和验证计划形成可回溯建议；支持 blocker、gap、experiment、optional、`no_change` 和 `insufficient_evidence`，并保留人工审批。

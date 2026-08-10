@@ -1616,7 +1616,7 @@
                 <div class="lane-label"><strong id="lane-observation">观测与建议</strong><span>外部数据闭环</span></div>
                 <div class="node-track">
                   <button class="flow-node status-warning" type="button" data-node="connectors" aria-pressed="false"><strong>Connector Core</strong><small>GSC / GA4 Definition</small><span class="node-status"><i class="status-dot warning"></i>底座可用</span></button>
-                  <button class="flow-node status-blocked" type="button" data-node="external-capture" aria-pressed="false"><strong>Provider 与浏览器</strong><small>3 Release · 0 Capture</small><span class="node-status"><i class="status-dot blocked"></i>等待澳洲代理</span></button>
+                  <button class="flow-node status-blocked" type="button" data-node="external-capture" aria-pressed="false"><strong>Provider 与浏览器</strong><small>0 LokiProxy Pool · 0 Capture</small><span class="node-status"><i class="status-dot blocked"></i>等待 LokiProxy</span></button>
                   <button class="flow-node status-blocked" type="button" data-node="sampling" aria-pressed="false"><strong>采样与 Observation</strong><small>真实业务样本不足</small><span class="node-status"><i class="status-dot blocked"></i>无法形成分母</span></button>
                   <button class="flow-node status-idle" type="button" data-node="metrics" aria-pressed="false"><strong>指标、统计与告警</strong><small>等待真实 Observation</small><span class="node-status"><i class="status-dot idle"></i>尚无业务结果</span></button>
                   <button class="flow-node status-warning" type="button" data-node="attribution" aria-pressed="false"><strong>归因账本</strong><small>AUD 0 技术 Canary</small><span class="node-status"><i class="status-dot warning"></i>非业务真相</span></button>
@@ -1944,7 +1944,7 @@
         description: "V600、V1000 和 SAT30 已有各 100 条候选。SAT30 两条待修题已通过正式编辑 API 保留 revision lineage，原 98 条 v1 不变，同一 series 的 exact-100 v2 已冻结；V600/V1000 仍等待业务审核。冻结输入就绪不等于已经形成真实采样分母。",
         fact: "SAT30 v2 frozen：100/100、覆盖率 1、重复 0；V600/V1000 共 200 条 pending_review；真实 Observation 0",
         executor: "覆盖计划器 + Durable Question Worker + Dify + PostgreSQL checkpoint",
-        next: "从 SAT30 v2 选择 10 题 pilot；补齐 SerpAPI 或澳洲 Surface 外部输入后再创建真实 Sampling Run，同时继续审核 V600/V1000",
+        next: "从 SAT30 v2 选择 10 题 pilot；补齐计划 Provider 凭据或 LokiProxy 澳洲 Surface 输入后再创建真实 Sampling Run，同时继续审核 V600/V1000",
         evidence: "GEO-test-question-generation-operator-manual §7", href: `${adminBase}?tab=measurement&workflow_view=questions&campaign_id=92b215a8-f1eb-434d-9de8-afcf5a769639&question_generation_job_id=b41101f3-0d48-5757-a5de-b824ec5d54a2&question_step=sets`
       },
       "content-input": {
@@ -2069,11 +2069,11 @@
         evidence: "advinsys-production-path-validation §3 / §5", href: `${adminBase}?tab=external-data`
       },
       "external-capture": {
-        status: "blocked", statusText: "等待澳洲代理", title: "Provider 与消费者界面",
-        description: "AIO、AI Mode、Copilot 已进入正式 Browser Capture/Sampling 路径；正式 SerpAPI provider adapter/canary 已恢复但缺 Secret Store 凭据，五类计划 Provider 也仍缺真实凭据；三个消费者界面仍缺澳洲 sticky proxy 和 live 证据。旧 SerpAPI 消费者界面路由已退役。",
-        fact: "SerpAPI live Observation 0；3 个 approved Surface Release、1 个匿名 en-AU Profile、0 Egress Endpoint、0 Capture",
+        status: "blocked", statusText: "等待 LokiProxy", title: "Provider 与消费者界面",
+        description: "AIO、AI Mode、Copilot 已进入正式 Browser Capture/Sampling 路径；LokiProxy 作为供应商托管的澳洲 residential/mobile sticky pool，每个 Attempt 使用独立 session，并以同一会话完成 pre/target/post 出口证明。五类计划 Provider 仍保持独立 API 来源身份，当前也缺真实凭据。",
+        fact: "3 个 approved Surface Release、1 个匿名 en-AU Profile、0 LokiProxy Pool、0 live Capture；计划 Provider Observation 0",
         executor: "Provider Adapter + Browser Capture Worker",
-        next: "先写入 SerpAPI Secret reference 和其他真实 Provider 凭据；再配置 residential/mobile 澳洲 sticky proxy，逐 Surface 完成 3 次 canary，最后启动冻结问题集测量",
+        next: "在采样向导写入 LokiProxy Dashboard 连接信息并通过澳洲出口测试；再逐 Surface 完成独立 live canary，同时另行提供计划 Provider 凭据",
         evidence: "外部数据与跨引擎采样实施计划 · 2026-08-10 本地实现证据", href: `${adminBase}?tab=measurement&workflow_view=sampling`
       },
       sampling: {
@@ -2153,7 +2153,7 @@
       "test-questions": {
         object: "Seauto SAT30 exact-100 QuestionSet", techStatus: "完成", businessStatus: "frozen", id: "5b1583c1…bf46",
         outcomeTitle: "SAT30 后继版本已冻结恰好 100 题",
-        outcomeCopy: "SAT30 原 v1 保持 98 条且不可变；两条疑似重复通过正式编辑 API 生成 revision lineage，同一 series 的 v2 经服务端复核后冻结 100 条。当前只证明采样输入合法，尚无 SerpAPI、消费者界面或官方报告 Observation。",
+        outcomeCopy: "SAT30 原 v1 保持 98 条且不可变；两条疑似重复通过正式编辑 API 生成 revision lineage，同一 series 的 v2 经服务端复核后冻结 100 条。当前只证明采样输入合法，尚无计划 Provider、消费者界面或官方报告 Observation。",
         outcomeState: "v2 frozen · 100 / 100 · Observation 0", outcomeTone: "warning",
         steps: [
           ["选择 Campaign", "Admin 只需选择产品活动，可选填写不超过 120 字的本次关注点。", "Admin 13001", "complete"],
@@ -2187,15 +2187,15 @@
       "browser-setup": {
         object: "AIO / AI Mode / Copilot 采集准备", techStatus: "配置完成", businessStatus: "BLOCKED_EXTERNAL", id: "3 Releases / 1 Profile",
         outcomeTitle: "正式采集链已部署，但还没有任何消费者页面结果",
-        outcomeCopy: "三个 Surface Release 和匿名 en-AU Profile 已真实写入 ADVINSYS 项目；澳洲 Egress Endpoint 与 Capture 仍为 0，不能形成 Observation 或测量分母。",
-        outcomeState: "等待澳洲 sticky proxy", outcomeTone: "warning",
+        outcomeCopy: "三个 Surface Release 和匿名 en-AU Profile 已真实写入 ADVINSYS 项目；LokiProxy Pool 与 Capture 仍为 0，不能形成 Observation 或测量分母。",
+        outcomeState: "等待 LokiProxy 澳洲 sticky pool", outcomeTone: "warning",
         steps: [
           ["Admin 启用", "运营入口一次安装 AIO、AI Mode、Copilot 三个内置采集器。", "Admin 13001", "complete"],
           ["Release 冻结", "每个 Surface 独立冻结 URL、selector、parser、block detector、浏览器版本和 hash。", "3 approved Releases", "complete"],
           ["浏览器身份", "创建干净匿名 desktop、en-AU、Australia/Sydney Profile；登录 storage_state 仍为可选。", "1 approved Profile", "complete"],
-          ["原子采样合同", "0130 可按冻结 Run/Task 同事务创建 Attempt、Browser Job、spec、outbox 和预留。", "PostgreSQL 0130", "complete"],
+          ["原子配置与采样", "0131 在项目级事务锁内创建或切换唯一 LokiProxy 池；同一配置重放不重置健康状态，失败后的重试创建新出口测试。0125 再按冻结 Run/Task 同事务创建 Attempt、Browser Job、spec、outbox 和预留。", "PostgreSQL 0125 / 0131", "complete"],
           ["可靠执行", "Outbox Relay 与 Browser Worker 均在 canonical 栈运行；页面工件将进入受限 MinIO。", "canonical geo", "complete"],
-          ["澳洲出口", "尚未配置 residential/mobile sticky proxy，无法执行同 lease 的 pre/target/post 地域证明。", "Egress Endpoint 0", "blocked"],
+          ["澳洲出口", "尚未配置 LokiProxy residential/mobile 池，无法执行同 sticky session 的 pre/target/post 地域证明。", "LokiProxy Pool 0", "blocked"],
           ["真实采样", "AIO、AI Mode、Copilot 当前 Capture 均为 0；需每个 Surface 先完成 3 次 canary。", "Capture 0", "idle"]
         ]
       },
@@ -2388,7 +2388,7 @@
         runtime: "python -m geo_browser_capture_worker.entrypoint", endpoint: "internal only",
         networks: "geo_default", io: "Valkey、PostgreSQL、MinIO、代理出口",
         entry: "apps/browser_capture_worker", source: "infra/compose.browser-capture.yml",
-        note: "当前已有 3 个 approved Surface Release 和 1 个匿名 Profile，但没有澳洲 sticky proxy 或真实 Capture；进程健康与 bootstrap 不代表采集完成。"
+        note: "当前已有 3 个 approved Surface Release 和 1 个匿名 Profile，但没有 LokiProxy 澳洲池或真实 Capture；进程健康与 bootstrap 不代表采集完成。"
       },
       {
         id: "style-browser-worker", label: "Style Browser Worker", subtitle: "九渠道样本采集", group: "执行器", col: 5, row: 6,
@@ -2419,13 +2419,13 @@
         note: "它是内网验收 Sink，不代表外部业务 Webhook 已配置。"
       },
       {
-        id: "au-proxy", label: "澳洲粘性代理", subtitle: "同一次采集的固定出口", group: "Dify / 代理", col: 6, row: 5,
-        status: "blocked", tone: "blocked", statusText: "外部缺失", meta: "Endpoint 0",
-        description: "Browser Capture 需要绑定同一 sticky lease 的 pre/target/post 澳洲出口证明。",
-        runtime: "尚未提供", endpoint: "尚无可用代理 Endpoint",
+        id: "lokiproxy-pool", label: "LokiProxy 澳洲 IP 池", subtitle: "供应商托管 · Attempt 粘性会话", group: "Dify / 代理", col: 6, row: 5,
+        status: "blocked", tone: "blocked", statusText: "等待配置", meta: "Pool 0",
+        description: "GEO 不保存真实 IP 列表；每个 Browser Capture Attempt 从 LokiProxy 托管池创建唯一 session_id，并在同一 BrowserContext 内完成 pre/target/post 澳洲出口证明。",
+        runtime: "尚未配置", endpoint: "LokiProxy HTTP(S) gateway",
         networks: "外部 HTTPS egress", io: "Browser Capture Worker → Consumer Surfaces",
-        entry: "外部供应商", source: "ADVINSYS 真实生产路径验收 §5/§6",
-        note: "普通轮换代理不能证明目标页面与地域检查使用同一出口。"
+        entry: "Admin 采样向导 + Secret Store", source: "0131_lokiproxy_pool + LokiProxy 官方配置文档",
+        note: "密码和 Username 模板只进入 Secret Store；真实 IP、session 和 verification 只进入 Attempt/Observation lineage。"
       },
       {
         id: "deepseek", label: "DeepSeek API", subtitle: "Dify 当前模型 Provider", group: "外部系统", col: 7, row: 1,
@@ -2437,13 +2437,13 @@
         note: "这里只证明既有 canary 与 V600 生成调用，不代表其他 Provider 凭据已经具备。"
       },
       {
-        id: "serpapi-provider", label: "SerpAPI Provider", subtitle: "正式 provider_api 适配器", group: "外部系统", col: 7, row: 2,
-        status: "blocked", tone: "blocked", statusText: "等待 Secret", meta: "Observation 0",
-        description: "正式注册表、Secret Store handle、响应归一化、错误分类和 canary CLI 已接入；没有 search.serpapi Secret reference 时不发起真实调用。",
-        runtime: "SerpAPI Google Search API", endpoint: "https://serpapi.com/search.json",
+        id: "provider-apis", label: "计划 Provider APIs", subtitle: "OpenAI / Gemini / Perplexity / Microsoft / Kimi", group: "外部系统", col: 7, row: 2,
+        status: "blocked", tone: "blocked", statusText: "等待真实凭据", meta: "Observation 0",
+        description: "五类回答型 Provider API 使用各自冻结的 adapter、模型身份和 SourceStratum；它们与消费者浏览器界面始终分开统计。",
+        runtime: "外部回答型 API", endpoint: "各 Provider HTTPS endpoint",
         networks: "Task Worker 外部 HTTPS", io: "Sampling Attempt / Observation",
-        entry: "geo_core.search_aggregation.registry + scripts/serpapi_provider_canary.py", source: "外部数据与跨引擎采样实施计划 · 2026-08-10",
-        note: "缺凭据时 canary 明确 skipped；不使用 SERPAPI_API_KEY 环境变量，也不把旧消费者 UI 路由当作正式路径。"
+        entry: "geo_core.model_gateway.provider_adapters", source: "外部数据与跨引擎采样实施计划",
+        note: "本地 adapter 合同不等于真实 Observation；每类 Provider 必须使用真实凭据独立验收。"
       },
       {
         id: "external-data", label: "GSC / GA4 / 官方报告", subtitle: "真实外部数据源", group: "外部系统", col: 7, row: 4,
@@ -2459,7 +2459,7 @@
         status: "blocked", tone: "blocked", statusText: "外部缺失", meta: "Capture 0",
         description: "三个 Surface 已有独立内置 Release、selector/parser 与 Admin 绑定入口；仍需真实澳洲代理下逐 Release 验证页面、答案、引用和地域证明。",
         runtime: "消费者搜索界面", endpoint: "外部浏览器页面",
-        networks: "经澳洲 sticky proxy", io: "Browser Capture Worker",
+        networks: "经 LokiProxy 澳洲 sticky session", io: "Browser Capture Worker",
         entry: "Google / Microsoft consumer surfaces", source: "ADVINSYS 真实生产路径验收 §5/§6",
         note: "3 个 approved Surface Release 与本地 parser/Worker 只证明技术合同，不是 live 澳洲采集；当前 Capture 仍为 0。"
       },
@@ -2517,7 +2517,7 @@
       { id: "task-postgres", from: "task-worker", to: "postgres", label: "SQL lease/result", kind: "storage", scenarios: ["async-model", "dify-workflow", "provider-sampling", "alert-delivery"], description: "Task Worker 获取 lease/fence，并以受控 RPC 写结果和终态。", trigger: "成功获取 Job lease", recovery: "lease 丢失停止提交；按 retry policy 恢复", truth: "PostgreSQL", availability: "当前可用" },
       { id: "task-minio", from: "task-worker", to: "minio", label: "S3 artifact", kind: "storage", scenarios: ["async-model", "dify-workflow", "provider-sampling"], description: "Task Worker 写入生成、建议或采样相关不可变工件。", trigger: "结构化输出通过校验", recovery: "hash/manifest 对账与受控重试", truth: "PostgreSQL manifest + MinIO object", availability: "当前可用" },
       { id: "task-dify", from: "task-worker", to: "dify-runtime", label: "Dify API :5001", kind: "http", scenarios: ["async-model", "dify-workflow"], description: "Task Worker 使用冻结 workflow release 调用 Dify API。", trigger: "持有有效 lease 的模型任务", recovery: "180 秒超时；Durable Job policy 决定重试", truth: "GEO Job + Dify run lineage", availability: "当前可用" },
-      { id: "task-serpapi", from: "task-worker", to: "serpapi-provider", label: "HTTPS / provider_api", kind: "external", scenarios: ["provider-sampling"], description: "Task Worker 使用冻结的 SerpAPI registry、Secret Store handle 和采样输入执行一次 provider_api Attempt。", trigger: "持久化 Suite 选择、有效 Secret reference 和 lease", recovery: "缺 Secret 或 provider 错误时明确 skipped/failed，不创建成功 Observation", truth: "Provider response + Sampling Attempt", availability: "适配器已接入；缺 Secret，Observation 0" },
+      { id: "task-provider-apis", from: "task-worker", to: "provider-apis", label: "HTTPS / provider_api", kind: "external", scenarios: ["provider-sampling"], description: "Task Worker 使用冻结的 Provider adapter、Secret Reference 和采样输入执行一次 provider_api Attempt。", trigger: "持久化 Suite 选择、有效 Secret reference 和 lease", recovery: "缺 Secret 或 Provider 错误时明确 skipped/failed，不创建成功 Observation", truth: "Provider response + Sampling Attempt", availability: "本地合同存在；真实凭据与 Observation 均为 0" },
       { id: "dify-console-runtime", from: "dify-console", to: "dify-runtime", label: "Nginx / API", kind: "http", scenarios: ["dify-workflow"], description: "Dify Console 经 Nginx 访问 Web 与 API。", trigger: "控制台操作", recovery: "Dify HTTP 错误反馈", truth: "Dify PostgreSQL", availability: "当前可用" },
       { id: "dify-deepseek", from: "dify-runtime", to: "deepseek", label: "HTTPS model", kind: "external", scenarios: ["async-model", "dify-workflow"], description: "Dify 执行冻结工作流并调用 DeepSeek。", trigger: "Dify workflow node", recovery: "Dify/GEO 超时和 Job retry；不泄露凭据", truth: "Dify run + GEO model lineage", availability: "真实 canary 已通过" },
       { id: "connector-postgres", from: "connector-worker", to: "postgres", label: "SQL checkpoint", kind: "storage", scenarios: ["connector-sync"], description: "Connector Worker 保存 Connection、Checkpoint、Sync Run、Schema 和 Projection。", trigger: "冻结 Connector task", recovery: "按 checkpoint 增量继续或受控回刷", truth: "PostgreSQL", availability: "底座可用；真实 Sync 0" },
@@ -2525,8 +2525,8 @@
       { id: "connector-external", from: "connector-worker", to: "external-data", label: "HTTPS / OAuth", kind: "external", scenarios: ["connector-sync"], description: "Connector Worker 调用 GSC、GA4 或导入官方报告。", trigger: "已批准 Connection + Secret Reference", recovery: "限流退避、checkpoint、撤权失败闭合", truth: "外部 API + raw artifact", availability: "缺真实授权" },
       { id: "browser-postgres", from: "browser-capture-worker", to: "postgres", label: "SQL Attempt", kind: "storage", scenarios: ["browser-capture"], description: "保存 Attempt、出口验证、Observation 和 parser lineage。", trigger: "冻结 Capture Task", recovery: "每次重试创建新的 Attempt evidence", truth: "PostgreSQL", availability: "底座可用；Capture 0" },
       { id: "browser-minio", from: "browser-capture-worker", to: "minio", label: "S3 page bundle", kind: "storage", scenarios: ["browser-capture"], description: "保存加密、受限、按保留策略管理的页面工件。", trigger: "capture 落盘前治理通过", recovery: "bundle hash 与数据库 lineage 对账", truth: "MinIO object + PostgreSQL manifest", availability: "底座可用" },
-      { id: "browser-proxy", from: "browser-capture-worker", to: "au-proxy", label: "HTTPS 粘性会话", kind: "external", scenarios: ["browser-capture"], description: "一次 Capture 必须绑定同一澳洲 sticky proxy lease。", trigger: "已批准 Endpoint 与 Surface Release", recovery: "出口变化使 Attempt 失效并重新执行", truth: "代理侧日志 + pre/target/post evidence", availability: "缺真实代理" },
-      { id: "proxy-surfaces", from: "au-proxy", to: "consumer-surfaces", label: "Browser session", kind: "external", scenarios: ["browser-capture"], description: "通过固定澳洲出口访问对应消费者搜索界面。", trigger: "已启用 Surface Release、匹配策略与未受阻访问", recovery: "验证码、封禁或 drift 进入明确阻断", truth: "Page Artifact Bundle", availability: "Release 已安装；缺代理与 live Capture" },
+      { id: "browser-proxy", from: "browser-capture-worker", to: "lokiproxy-pool", label: "HTTPS 粘性会话", kind: "external", scenarios: ["browser-capture"], description: "一次 Capture 绑定唯一 LokiProxy session_id，并在整个 BrowserContext 保持同一出口。", trigger: "健康的已批准 Pool、Surface Release 与冻结 Attempt", recovery: "连接失败可重测；出口变化使 Attempt 失效，不在同一 Attempt 内换 IP", truth: "pre/target/post evidence + Attempt lineage", availability: "Pool 0；等待真实连接配置" },
+      { id: "proxy-surfaces", from: "lokiproxy-pool", to: "consumer-surfaces", label: "Browser session", kind: "external", scenarios: ["browser-capture"], description: "通过已验证的固定澳洲出口访问对应消费者搜索界面。", trigger: "已启用 Surface Release、匹配策略与未受阻访问", recovery: "验证码、封禁或 drift 进入明确阻断，不绕过访问控制", truth: "Page Artifact Bundle", availability: "Release 已安装；缺 LokiProxy 与 live Capture" },
       { id: "style-postgres", from: "style-browser-worker", to: "postgres", label: "SQL collection", kind: "storage", scenarios: ["style-collection"], description: "保存 Collection Run、Task、匿名化样本和审核状态。", trigger: "合法 Style Source", recovery: "保留失败原因并可重试合法来源", truth: "PostgreSQL", availability: "Worker 未启动；Sample 0" },
       { id: "style-minio", from: "style-browser-worker", to: "minio", label: "S3 raw/derived", kind: "storage", scenarios: ["style-collection"], description: "分别保存受限 raw 与匿名 derived 工件。", trigger: "落盘前分类和清理通过", recovery: "独立加密域与 retention job", truth: "MinIO + artifact manifest", availability: "配置存在；无真实样本" },
       { id: "style-sources", from: "style-browser-worker", to: "style-sources", label: "Playwright HTTPS", kind: "external", scenarios: ["style-collection"], description: "在 allowlist 内采集公开或授权登录页面。", trigger: "来源授权、账号和访问策略均满足", recovery: "不绕过验证码、封禁或访问控制", truth: "Style Source Revision", availability: "缺合法样本输入" },
@@ -2551,14 +2551,14 @@
         nodes: ["operator", "admin-web", "internal-api", "postgres", "outbox-relay", "valkey", "connector-worker", "minio", "external-data"]
       },
       "provider-sampling": {
-        title: "Provider API 采样", copy: "从持久化 10 题 pilot 选择到 Durable Job、SerpAPI provider_api Attempt 和 Observation。",
-        outcome: "SerpAPI adapter 已接入；等待 Secret，真实 Observation 为 0",
-        nodes: ["operator", "admin-web", "internal-api", "postgres", "outbox-relay", "valkey", "task-worker", "minio", "serpapi-provider"]
+        title: "Provider API 采样", copy: "从持久化 10 题 pilot 选择到 Durable Job、各回答型 Provider Attempt 和 Observation。",
+        outcome: "五类计划 Provider 等待真实凭据，Observation 为 0",
+        nodes: ["operator", "admin-web", "internal-api", "postgres", "outbox-relay", "valkey", "task-worker", "minio", "provider-apis"]
       },
       "browser-capture": {
-        title: "消费者界面采集", copy: "展示逐 Surface 输入、原子批量任务、Capture Attempt、页面工件、澳洲 sticky proxy 和消费者 Surface 的完整边界。",
-        outcome: "本地链路已部署；等待澳洲代理与 live Capture",
-        nodes: ["operator", "admin-web", "internal-api", "postgres", "outbox-relay", "valkey", "browser-capture-worker", "minio", "au-proxy", "consumer-surfaces"]
+        title: "消费者界面采集", copy: "展示逐 Surface 输入、原子批量任务、Capture Attempt、页面工件、LokiProxy sticky session 和消费者 Surface 的完整边界。",
+        outcome: "本地链路已实现；等待 LokiProxy 真实配置与 live Capture",
+        nodes: ["operator", "admin-web", "internal-api", "postgres", "outbox-relay", "valkey", "browser-capture-worker", "minio", "lokiproxy-pool", "consumer-surfaces"]
       },
       "style-collection": {
         title: "合成样本采集", copy: "从合法 Style Source 到隔离浏览器、受限 raw 工件和匿名化样本。",

@@ -1,7 +1,7 @@
 # GEO 外部数据与跨引擎采样加速实施计划
 
 > 计划日期：2026-07-22
-> 修订日期：2026-08-10（第 6 次修订）
+> 修订日期：2026-08-10（第 7 次修订）
 > 计划状态：`LOCAL_IMPLEMENTATION_READY / BLOCKED_EXTERNAL_INPUT`
 > 执行周期：与[加速总路线图](GEO-next-phase-six-month-roadmap-2026-07-21.md)的 `T+0`--`T+5` 同步；`M0`--`M6` 仅为稳定 Gate 标签
 > 专项范围：Connector Core、GSC、GA4、Google/Bing 官方报告、五类 Provider/Grounded API、消费者 AI 界面、澳洲代理、Sampling Core 和外部观测交付
@@ -10,8 +10,9 @@
 > 第 2 次修订变更：Task 改用稳定 egress policy/cohort，实际出口验证下沉到 Attempt/Observation；live UI 强制先授权再 admission；增加 External Data Snapshot/Report/Approval；扩展单项 evidence manifest 与 DoR/DoD applicability
 > 第 3 次修订变更：保持专项范围、来源、样本、授权、安全和验收合同不变，废止六个月/月度排期；所有可由 Agent 完成的实现与自动化验证纳入 `T+0`--`T+5` 连续窗口。真实凭据、授权决定、人工明审、独立 verifier 和 live evidence 于 `T+0` 并行开始，未就绪只阻断对应 Gate，绝不降低或伪造验收。
 > 第 4 次修订变更：AIO、AI Mode、Copilot 的正式 Project-scoped Browser Capture 垂直路径已落地，旧 SerpAPI 消费者界面路由与 mock fallback 退役。ADVINSYS staging 已安装三个 approved Release 和匿名 `en-AU` Profile；澳洲 Egress 与 live Capture 仍为 0，因此所有 live/保真/最终 Gate 保持未完成。
-> 第 5 次修订变更：Sampling Suite 对超过 10 条冻结输入强制持久化恰好 10 个唯一问题选择；新增正式 SerpAPI `provider_api` registry/canary 和 GSC/GA4 scope/canary readiness 记录。两者均保持真实凭据缺失阻塞，不把本地 adapter、scope 校验或 fixture 当作 live Observation/Sync。
-> 第 6 次修订变更：canonical Compose 项目 `geo` 已运行至 `0130_serpapi_secret_purpose`，Connector Worker 镜像与运行依赖已通过构建时导入和实际 heartbeat 验证；ADVINSYS SAT30 exact-100 QuestionSet v2 已冻结，可作为服务端选择 10 题 pilot 的合法输入。SerpAPI 仍没有 `search.serpapi` Secret reference，GSC/GA4 仍没有 Connection、Scope 或 property 凭据，澳洲 residential/mobile sticky Egress Endpoint 仍为 0；因此 Provider Observation、Connector Sync、AIO/AI Mode/Copilot Capture 和所有 live Gate 均保持未完成。
+> 第 5 次修订变更（历史记录，已撤销）：Sampling Suite 对超过 10 条冻结输入强制持久化恰好 10 个唯一问题选择；当时曾新增 SerpAPI `provider_api` registry/canary 和 GSC/GA4 scope/canary readiness 记录。SerpAPI 方案已退役，不再属于当前正式路径。
+> 第 6 次修订变更：canonical Compose 项目 `geo` 已运行至 `0130_serpapi_secret_purpose`，Connector Worker 镜像与运行依赖已通过构建时导入和实际 heartbeat 验证；ADVINSYS SAT30 exact-100 QuestionSet v2 已冻结，可作为服务端选择 10 题 pilot 的合法输入。SerpAPI 仍没有 `search.serpapi` Secret reference，GSC/GA4 仍没有 Connection、Scope 或 property 凭据，澳洲 residential/mobile sticky Egress Endpoint 仍为 0；因此 Provider Observation、Connector Sync、AIO/AI Mode/Copilot Capture 和所有 live Gate 均保持未完成。（历史记录；SerpAPI 后续已退役，`0130` 仅保留为历史迁移。）
+> 第 7 次修订变更：SerpAPI 不再是当前正式方案，相关 provider registry、Secret purpose、canary 和旧消费者 UI 路由均退役；`0130_serpapi_secret_purpose` 仅保留为历史迁移记录。当前出口方案改为 LokiProxy provider-managed pool：GEO 只保存一个版本化池配置和 Secret Reference，每个 Browser Capture Attempt 生成独立 `session_id` sticky lease，并将真实出口验证绑定到 Attempt/Observation lineage。迁移 `0131_lokiproxy_pool` 增加 pool health、冷却、产品类型和并发合同。当前 ADVINSYS 仍为 0 个 LokiProxy pool、0 个 live Capture；AIO、AI Mode、Copilot 必须分别完成授权、sticky lease 的 pre/target/post 证明和独立 Surface Release 验收，不能用 fixture、技术 canary、其他 Surface 或裸 IP 代替。
 
 ## 1. 目标、边界和文档职责
 
@@ -31,7 +32,7 @@
 
 - GSC 和 GA4 在一个真实 property 上完成首次、增量、回刷、撤权恢复和 freshness 验收。
 - Google/Bing 官方报告以真实文件完成 immutable import、schema version、typed projection 和重复检测；没有单次回答时不伪造 Observation。
-- OpenAI Web Search、Gemini Grounding、Perplexity、Microsoft Grounding with Bing、Kimi API 五类 adapter 使用真实凭据完成独立 live canary；Kimi 的 Search 能力按发布时官方能力显式冻结，不能靠名称推断。SerpAPI 作为额外的正式 `provider_api` 兼容适配器单独验收，不替代上述五类，也不冒充任何消费者 UI。
+- OpenAI Web Search、Gemini Grounding、Perplexity、Microsoft Grounding with Bing、Kimi API 五类 adapter 使用真实凭据完成独立 live canary；Kimi 的 Search 能力按发布时官方能力显式冻结，不能靠名称推断。LokiProxy 只作为消费者 UI Browser Capture 的澳洲出口依赖，不是回答型 Provider，不进入 Provider API 分母，也不替代上述五类或任何消费者 UI。
 - Google AI Overviews、Google AI Mode、Bing Copilot 三个首批消费者 surface 各有独立 Surface Release；按授权结论完成 A 轨 live automated capture 或 B 轨 fixture + manual UI。
 - 用户提供的澳洲代理/网关可通过 Secret Reference 使用；每次 eligible capture 都能证明目标页面与前后验证使用同一 sticky lease 的澳洲出口。
 - `official_report_import`、`provider_api`、`proxy_grounded_api`、`manual_ui`、`automated_ui` 和 `synthetic` 始终保持不同身份、工件、资格规则和分母。
@@ -98,12 +99,13 @@
 | Perplexity API | `provider_api` | `perplexity/perplexity_api` | 每题 10 | 真实 API live | Perplexity consumer UI |
 | Microsoft Grounding with Bing | `proxy_grounded_api` | `microsoft/microsoft_foundry_bing_grounding` | 每题 10 | 真实 Foundry live | Bing Copilot consumer UI |
 | Kimi API | `provider_api` | `kimi/kimi_api` | 每题 10 | 真实 API live；原生 Search 若不可证明则 `search_mode=disabled` | Kimi consumer UI 或自建检索结果 |
-| SerpAPI Google Search | `provider_api` | `serpapi/google_search` | 每题 10 | 真实 API live；当前缺 `search.serpapi` Secret reference | Google AIO/AI Mode 或 Bing Copilot 消费者 UI |
 | Google AI Overviews | `automated_ui` 或 `manual_ui` | `google/google_ai_overviews` | auto 默认 5，manual 最低 3 | 按 A/B 轨逐 release | Gemini API |
 | Google AI Mode | `automated_ui` 或 `manual_ui` | `google/google_ai_mode` | auto 默认 5，manual 最低 3 | 按 A/B 轨逐 release | Gemini API/AIO |
 | Bing Copilot | `automated_ui` 或 `manual_ui` | `microsoft/bing_copilot` | auto 默认 5，manual 最低 3 | 按 A/B 轨逐 release | Bing Grounding API |
 
 相同问题可以在多来源执行，但每一行都有独立 planned denominator、completion、interval 和 release lineage。跨来源对比是二级展示，不改变任何原始分母。
+
+消费者 UI 的澳洲出口不是独立回答来源：当前唯一正式实现是 LokiProxy provider-managed residential/mobile pool。池配置冻结 `provider=lokiproxy`、产品/网络类型、HTTP(S) gateway、sticky TTL、并发上限和 Secret Reference；每次 Attempt 使用唯一 `session_id`，真实出口 IP/ASN/地域验证只写 Attempt/Observation lineage，不参与 Task identity 或 SourceStratum 分母。当前没有配置 LokiProxy pool，也没有 live Capture。
 
 Kimi 当前发布合同以官方 Chat API 为最低可依赖能力。若目标账号/模型在实施时提供官方原生 Search，Adapter Release 必须保存官方依据、请求字段、tool event/citation 和 live 响应证据；若没有，则仍可作为 `provider_api + search_mode=disabled` 的独立模型分层采样。通过自定义 function tool 接入自建检索时必须另标实际检索 provider 和 `proxy_grounded_api`，不能命名为 Kimi Search。
 
@@ -232,17 +234,17 @@ Customer latest 只从 `approved` External Data Report 投影读取，按 `Proje
 
 ### 6.1 用户提供出口的输入合同
 
-系统接受以下两类可用出口：
+当前正式出口方案只有 LokiProxy provider-managed pool。GEO 不建设第二个 IP 代理池、不抓取公开代理列表，也不猜测供应商的管理 API；GEO 保存版本化 pool profile，LokiProxy 负责出口分配和会话粘性，Browser Capture Worker 只通过 Secret Reference 连接供应商提供的 HTTP(S) gateway。
 
-1. Playwright/Chromium 可连接的 HTTP CONNECT、HTTPS 或 SOCKS5 proxy：`protocol + host + port + optional username/password secret`。
-2. 受控网络网关：由部署层把 browser-capture-worker 的 default route 送入该网关，并能提供连接/出口审计。
+同一 Project 的 pool profile 创建、启用和旧 pool 停用使用同一个数据库事务与项目级锁。网络重放同一幂等命令返回原记录且保留已有健康状态；显式更换凭据才创建新 profile 并原子停用旧 profile。出口测试排队或运行时 Admin 禁止重复提交；失败、地域不符或冷却结束后的“重新测试”使用关联上一条测试的新幂等键创建新 Job，不得重放旧失败结果冒充重试。
 
-仅提供一个公网 IP 字符串、但没有监听的代理/隧道或路由能力，不构成可用出口。Admin 创建 Egress Endpoint 时必须记录：
+LokiProxy pool 至少必须支持 rotating residential 或 mobile 产品、澳洲 country/state/city 定位、每次 Attempt 独立 `session_id` sticky lease，以及可审计的连接/出口信息。LokiProxy 的 sticky 会话期限、区域和并发约束以供应商当前合同为准，写入 pool profile；GEO 实现将可配置期限限制为 5--180 分钟并在每次任务中冻结。
 
-- endpoint display name、operator、protocol、host/port、secret reference。
-- expected country=`AU`、可选 state/city、network type 声明和供应商/线路标识。
-- sticky 模式：fixed endpoint、username/session token、API lease 或 gateway connection lease。
-- 最长 sticky duration、并发、配额、允许目标、到期日和停用原因。
+仅提供一个公网 IP 字符串、但没有可连接 gateway、sticky session 和出口审计能力，不构成可用出口。Admin 配置 LokiProxy pool 时必须记录：
+
+- provider=`lokiproxy`、pool display name、HTTP/HTTPS gateway host/port 和 Secret Reference；密码不写入 Job、日志或工件。
+- pool product=`rotating_residential` 或 `mobile`、expected country=`AU`、可选 state/city、network type 和供应商线路标识。
+- sticky 模式为每次 Attempt 唯一 `session_id`；username template、session TTL、并发、配额、允许目标、到期日和停用原因进入不可变 pool profile。
 - authorization 与 data-processing reference；代理可用不等于 surface 自动采集获准。
 
 ### 6.2 网络隔离和粘性会话
@@ -253,7 +255,7 @@ Customer latest 只从 `approved` External Data Report 投影读取，按 `Proje
 - 普通公网 direct egress 默认拒绝；只允许 proxy/gateway、最小地域验证源、对象存储/数据库/队列和内部控制端点。
 - BrowserContext 的 proxy bypass 为空；目标 HTTP(S)、WebSocket 和可观察 DNS/CONNECT 流必须从所选出口离开。
 - 通过 deny test、连接日志或网络 capture 证明断开代理后目标页无法访问；宿主机可直连不能成为容器旁路。
-- Endpoint failure 只能由运营显式切换到另一个已批准 Endpoint。CAPTCHA、rate limit、ban 或 policy block 不触发自动换代理。
+- LokiProxy pool failure 只能由健康门禁和运营显式切换到另一个已批准 pool profile；GEO 不在 Attempt 失败时自行轮换 IP 或猜测供应商会话。CAPTCHA、rate limit、ban 或 policy block 不触发自动换代理。
 
 每个 Browser Session 申请一个 sticky lease，保存 lease ID、申请/到期、承诺出口和不含 secret 的配置 hash。一个 Capture Attempt 的顺序必须是：
 
@@ -392,13 +394,13 @@ authorization gate
 >
 > 2026-08-07 本地实现证据更新：head 已推进至 `0125_browser_bulk_enqueue`。三个内置 Surface Release、匿名/可选受管 Profile、加密 proxy/session Secret、同一 sticky lease 的 pre/target/post 证明、受限页面工件、逐 Surface runtime/policy/input 绑定和 Run 级原子批量入队已接入正式 Admin/Sampling；Outbox Relay 与 Browser Worker 在 staging 为 `ready`。旧 SerpAPI Google/Bing 路由和 mock fallback 已从 OpenAPI/Compose 移除。175 项 Browser/Sampling 单元回归、18 项 Session/配置回归、稳定 OpenAPI、空库迁移、PostgreSQL纵向测试、production build 和桌面/移动 Chromium 通过。ADVINSYS 当前仍为 0 Egress Endpoint、0 Capture，此更新只构成本地实现证据。
 >
-> 2026-08-10 本地实现证据更新：canonical `geo` 已从迁移 `0102` 连续升级至 `0130_serpapi_secret_purpose`；Connector Worker 在排除宿主机嵌套 `.venv` 后通过镜像构建导入断言、实际启动和 heartbeat，13 个 GEO 运行单元由 `doctor` 与 release receipt 共同核对，且声明健康的服务、一次性初始化 exit code 和数据库实际 Alembic head 均 fail closed。`0126_sampling_question_selection` 将超过 10 条的冻结 Suite 输入收敛为服务端验证并持久化的恰好 10 个唯一问题 ID；ADVINSYS SAT30 exact-100 v2 `5b1583c1-efe6-5a01-8025-6709f07dbf46` 已冻结，原 98 条 v1 保持不可变。SerpAPI 已恢复为正式 `provider_api` registry，使用 `search.serpapi` Secret Store handle、结构化响应/错误分类、确定性 retry budget 和显式 canary CLI；当前缺 Secret reference，canary 只能明确 `skipped`，真实 Provider Observation 为 0。GSC/GA4 已增加 property/report scope 校验、PyAirbyte 配置映射和 `check/test/sync` canary 入口；当前没有真实 property 凭据、Connection 或 Sync。相关 unit、OpenAPI、migration、canonical runtime 和 Chromium 证据只证明本地合同，不能提前勾选 `EXT-PROV-*`、`EXT-CONN-*` 或 live Gate。
+> 2026-08-10 本地实现证据更新：源码迁移已从 `0102` 连续推进至 `0131_lokiproxy_pool`；`0130_serpapi_secret_purpose` 只作为历史迁移保留，SerpAPI provider 正式路径已从当前代码和 OpenAPI 退役。`0131` 为 LokiProxy provider-managed pool 增加产品类型、sticky TTL、并发、健康/冷却和成功出口测试触发器；Worker 每个 Attempt 绑定唯一 session lease，HTTP(S) 代理的 pre/target/post 证据仍须在真实运行中取得。Connector Worker 的镜像导入、启动和 heartbeat，以及 `0126_sampling_question_selection` 的恰好 10 个唯一问题选择均有本地合同；ADVINSYS SAT30 exact-100 v2 `5b1583c1-efe6-5a01-8025-6709f07dbf46` 已冻结。当前数据库/运行实例尚未产生 LokiProxy pool 或 live Capture，计数仍为 `0/0`；GSC/GA4 仍没有真实 property 凭据、Connection 或 Sync。相关 unit、OpenAPI、migration 和 Chromium 证据只证明本地合同，不能提前勾选 `EXT-PROV-*`、`EXT-CONN-*`、`EXT-EGR-*`、`EXT-UI-*` 或 live Gate。
 
 - [x] `EXT-LOCAL-UI-01` 三个消费者 Surface 使用独立入口、detector、answer/citation selector、block taxonomy、Release/hash 和 drift 边界；不得跨 Surface 复用统计证据。
 - [x] `EXT-LOCAL-UI-02` Browser Attempt 在一个 sticky lease 内执行 pre/target/post，保存加密 screenshot/DOM/HAR、final URL、parser locator、verification 与 Observation lineage；失败路径不产生 eligible 样本。
 - [x] `EXT-LOCAL-UI-03` Admin 从安装、代理/会话、出口测试到逐 Surface runtime/policy/QuestionSet 绑定形成可操作闭环；对超过 10 条冻结输入的 pilot，界面提交恰好 10 个唯一问题 ID，服务端把选择写入不可变 Suite input，批量入队再从该选择创建固定分母、Attempt、Job、spec 和 outbox。
-- [x] `EXT-LOCAL-PROVIDER-01` SerpAPI 已作为独立 `serpapi/google_search` `provider_api` 接入 registry、Secret Store purpose、冻结 request/result/error contract、分层 retry budget、canary CLI 和无凭据时的显式 `skipped` 结果；本项只表示本地正式适配层可审查，不是 live canary 或 Observation 完成证据。
-- [ ] `EXT-LOCAL-UI-LIVE-01` 真实 residential/mobile 澳洲代理、三个 Surface 各 3 次 canary、逐 Release 保真和后续真实测量尚未执行；SAT30 exact-100 v2 已冻结但尚未选择并执行 10 题 pilot。SerpAPI 仍缺 `search.serpapi` Secret reference，GSC/GA4 仍缺真实 property 凭据/Connection。等待外部输入，不得以本地测试、scope/canary readiness 或 bootstrap 替代。
+- [x] `EXT-LOCAL-EGRESS-01` LokiProxy provider-managed pool 已形成本地合同：`provider=lokiproxy`、rotating residential/mobile 产品、HTTP(S) gateway、Secret Reference、5--180 分钟 sticky TTL、并发上限、健康/冷却状态、项目级原子配置切换、可实际恢复的出口测试重试，以及每 Attempt 唯一 `session_id` 和 pre/target/post 出口验证 lineage；这只表示代码/迁移/fixture 可审查，不是 LokiProxy pool 已配置或 live Capture 完成证据。
+- [ ] `EXT-LOCAL-UI-LIVE-01` 当前 ADVINSYS 为 `0` 个 LokiProxy pool、`0` 个 live Capture；真实 residential/mobile 澳洲代理、三个 Surface 各 3 次 canary、逐 Release 保真和后续真实测量尚未执行。SAT30 exact-100 v2 已冻结但尚未选择并执行 10 题 pilot，等待 LokiProxy 凭据、代理连接日志/出口证明和逐 Surface 授权；不得以本地测试、scope/canary readiness、fixture 或裸 IP 替代。
 
 - [x] `EXT-M1-01` 在线 expand migration 增加 Connector/Sampling/Adapter Release/Authorization/Egress/Browser 及 External Data Snapshot/Report/Approval tables，与精确 project-scoped FK/RLS/index。
 - [x] `EXT-M1-02` 兼容扩展 `automated_ui`、Kimi platform/surface 和 UI SourceStratum 的 egress policy/cohort；实际 verification 仅作 Attempt/Observation lineage，旧 writer/reader 仍可运行，历史值不猜测回填。
@@ -426,7 +428,7 @@ authorization gate
 - [ ] `EXT-M2-02` 固定 GA4 connector/report release，完成真实只读 Connection、scope、initial、incremental、backfill 和 freshness；明确只做聚合对账。
 - [x] `EXT-M2-03` 完成 Google/Bing 官方报告原文件上传、parser release、schema fingerprint、typed projection、duplicate/replay 和可解释空文件路径。
 - [x] `EXT-M2-04` 完成 Sampling Suite 冻结、Task admission/not_before、manual UI import、raw answer/citation 和 SourceStratum projection。
-- [ ] `EXT-M2-05` 完成澳洲 proxy/gateway 连接、sticky lease、双源 pre/post、network type 和 browser profile Beta。
+- [ ] `EXT-M2-05` 完成 LokiProxy provider-managed 澳洲 residential/mobile pool 连接、每 Attempt 独立 sticky session、双源 pre/post、network type 和 browser profile Beta。
 - [ ] `EXT-M2-07` 在任何 live UI enqueue 前完成 AIO/AI Mode/Copilot 授权决策，逐项记录 `approved` 或 `assessed_no_basis`、用途、频率、到期和后续证据门槛；申请中按 B 轨限制。
 - [ ] `EXT-M2-06` 仅在 `EXT-M2-07` 完成并通过 admission 后，对 A 轨 surface 至少执行一个真实 AU successful capture；对 B 轨 surface 只完成全链 fixture + manual baseline。
 - [x] `EXT-M2-08` Admin 完成 Connection test/rotate/disable、checkpoint/freshness、Egress test/disable、Surface Run、阻断原因和受控证据查看。
@@ -456,7 +458,7 @@ authorization gate
 
 **`EXT-GATE-M3`**
 
-- [ ] `EXT-PROV-AC-01` 五类计划 adapter 各有真实 credential live run、provider request ID、configured/reported model、raw/retention 证据和完整错误分类；额外的 SerpAPI `provider_api` release 也必须单独完成同等 canary，缺 Secret reference 时保持阻塞。
+- [ ] `EXT-PROV-AC-01` 五类计划 adapter 各有真实 credential live run、provider request ID、configured/reported model、raw/retention 证据和完整错误分类；消费者 UI 的 LokiProxy 出口不属于 Provider API，不得借用或计入此项分母。
 - [ ] `EXT-PROV-AC-02` Provider/Grounded API 均不使用 ChatGPT/AIO/AI Mode/Copilot consumer UI 标签；Microsoft Grounding 不冒名 `provider_api`。
 - [ ] `EXT-PROV-AC-03` auth/quota/rate/timeout/refusal/schema/partial/cancel 映射稳定；重试新 attempt，不重复有效样本。
 - [ ] `EXT-UI-AC-02` 每个 Surface Release 自身达到分类 `>=95%`、传统结果误标 0、answer `>=99%`、citation `100%`。
@@ -501,11 +503,11 @@ authorization gate
 ### 8.7 M6：生产等价和最终专项验收
 
 - [ ] `EXT-M6-01` 以真实 GSC/GA4、两类真实官方报告、五类真实 API 和三个 surface 对应轨道执行统一 staging Suite。
-- [ ] `EXT-M6-02` 使用真实澳洲 residential/ISP/mobile proxy/gateway 完成 A 轨 capture；B 轨执行冻结 fixture + manual 对照。
+- [ ] `EXT-M6-02` 使用真实 LokiProxy residential/mobile pool 完成 A 轨 capture；B 轨执行冻结 fixture + manual 对照。AIO、AI Mode、Copilot 的 A 轨 evidence 必须按 Surface Release 分开，不能用一个 Surface 的样本替代另一个。
 - [ ] `EXT-M6-03` 在生产等价拓扑执行 2 个并发 Connector x 250,000 raw records、4 个 Sampling Run x 1,000 Task 和至少 20 GiB page artifact 负载。
 - [ ] `EXT-M6-04` 演练 auth revoke、quota/rate、schema/API/DOM drift、proxy expiry/IP change、Worker/Relay/DB/MinIO/Valkey failure、cancel/lease/fencing。
 - [ ] `EXT-M6-05` 执行在线迁移追尾/对账/rollback window，旧 Observation/source label/hash 和 Customer projection 保持。
-- [ ] `EXT-M6-06` 空环境恢复 Connector/Sampling/Browser、External Data Snapshot/Report/Approval、raw manifest、历史 keyring 和代表性 Connector/Provider/Egress secret。
+- [ ] `EXT-M6-06` 空环境恢复 Connector/Sampling/Browser、External Data Snapshot/Report/Approval、raw manifest、历史 keyring 和代表性 Connector/Provider/LokiProxy Egress secret。
 - [ ] `EXT-M6-07` 汇总全部 adapter release、authorization、live run、manual review、test/perf/failure/restore 证据到最终 manifest。
 
 **`EXT-GATE-M6`**
@@ -531,7 +533,7 @@ authorization gate
 
 ### 9.2 Provider 和 Grounded API
 
-- [ ] `EXT-PROV-FINAL-01` 五类计划 adapter 都有 request/result/error contract、fixture、live canary、retention/display review 和 rollback release；额外 SerpAPI release 具备独立 contract、Secret lineage、live canary 和 rollback release。
+- [ ] `EXT-PROV-FINAL-01` 五类计划 adapter 都有 request/result/error contract、fixture、live canary、retention/display review 和 rollback release；LokiProxy 只按 `EXT-EGR-FINAL-*` 和 `EXT-UI-FINAL-*` 验收，不得伪装成回答型 Provider。
 - [ ] `EXT-PROV-FINAL-02` citations 可回指 provider response 的 URL/title/order/span；不可获得的字段明确 unavailable，不猜测。
 - [ ] `EXT-PROV-FINAL-03` configured/reported model、search mode、usage、provider request ID、latency 和 finish/refusal reason 完整。
 - [ ] `EXT-PROV-FINAL-04` 供应商静默 model change、schema change 或 search tool 未实际调用可检测并形成 drift/eligibility 决定。
@@ -543,7 +545,7 @@ authorization gate
 - [ ] `EXT-UI-FINAL-02` 每 Attempt 的 screenshot/DOM/HAR/final URL/parsed locator 与 pre/post egress evidence 属于同一 Session/lease。
 - [ ] `EXT-UI-FINAL-03` clean anonymous 与 managed account、desktop 与 mobile、profile/release/region 任一不同不会静默混分母。
 - [ ] `EXT-UI-FINAL-04` CAPTCHA/login/consent/rate/ban/geo/parser/timeout 都是明确 ineligible reason，不触发 stealth、解码或代理轮换。
-- [ ] `EXT-EGR-FINAL-01` HTTP CONNECT/HTTPS/SOCKS5 中实际启用的每种协议覆盖 success/auth failure/timeout/sticky expiry/IP change/direct deny。
+- [ ] `EXT-EGR-FINAL-01` LokiProxy 实际启用的 HTTP/HTTPS gateway 覆盖 success/auth failure/timeout/sticky expiry/IP change/direct deny；rotating residential 与 mobile 产品若同时启用，必须分别留存证据，不得互相借样本。
 - [ ] `EXT-EGR-FINAL-02` 双地域源、ASN、network type、页面 detected location 和代理连接日志（适用时）可交叉复核。
 - [ ] `EXT-EGR-FINAL-03` datacenter 出口只能标 `au_geo_verified`；只有验证的 residential/ISP/mobile 才标消费者代表性。
 
@@ -563,7 +565,7 @@ authorization gate
 - [ ] `EXT-SEC-FINAL-03` authorization expired/revoked 与 secret revoked 是独立门禁，任一失败都禁止新自动任务。
 - [ ] `EXT-CUST-FINAL-01` Customer latest 只读取 approved Monitoring Report 或 approved External Data Report；无法直接读取 Connector/official raw projection、未批准 snapshot 或 raw evidence URI 的受限内容/签名下载链接。
 - [ ] `EXT-CUST-FINAL-02` GSC/GA4/official-report 的 draft -> review -> approve -> stale/supersede/revoke 和并发幂等行为通过；Adapter Release approval 无法提升数据可见性。
-- [ ] `EXT-RESTORE-FINAL-01` PostgreSQL、MinIO、历史 keyring 恢复后，不仅 row/hash 一致，而且 Connection/Provider/Egress 可以执行不泄密 canary。
+- [ ] `EXT-RESTORE-FINAL-01` PostgreSQL、MinIO、历史 keyring 恢复后，不仅 row/hash 一致，而且 Connection/Provider/LokiProxy Egress 可以执行不泄密 canary。
 
 ## 10. Evidence manifest 模板
 
@@ -693,7 +695,7 @@ manifest 不保存 token、账号邮箱、proxy password、Cookie、参与者 PI
 - [x] `EXT-PLAN-TIME-01` 本专项与总路线图均使用 `T+0`--`T+5` 连续交付窗口；`M0`--`M6`、所有 `EXT-GATE-*`、样本量和证据门槛保持不变。
 - [ ] `EXT-FINAL-01` `EXT-GATE-M0` 至 `EXT-GATE-M6` 全部 `ACCEPTED`，无跳过波次或用后续证据倒填未发生的验收。
 - [ ] `EXT-FINAL-02` Connector、Provider、Surface、Egress、Sampling、安全/恢复的所有 `*-FINAL-*` 项均已签字。
-- [ ] `EXT-FINAL-03` 五类计划 API、额外 SerpAPI `provider_api`、真实 GSC/GA4、真实官方报告和三个消费者 surface 当前轨道均有最终 Gate 时有效的证据。
+- [ ] `EXT-FINAL-03` 五类计划 API、真实 GSC/GA4、真实官方报告，以及 AIO、AI Mode、Copilot 三个消费者 Surface 各自的当前轨道均有最终 Gate 时有效的证据；LokiProxy pool 只提供逐 Attempt 的澳洲出口证明，不进入回答型 Provider 分母。
 - [ ] `EXT-FINAL-04` 每个 Adapter/Surface Release 的授权、条款、保留、SDK/browser/parser、fixture/live hash 和 rollback release 可查。
 - [ ] `EXT-FINAL-05` 所有来源在 Admin、Customer、API、export、Metric input 中使用同一身份和 eligibility；GSC/GA4/official-report 只经 approved External Data Report 可见，零绕过批准或跨分母污染。
 - [ ] `EXT-FINAL-06` 澳洲出口证据能逐 Attempt 证明 sticky pre/target/post 同源；没有把裸 IP、周期健康检查或供应商地区声明当成页面真实性。
@@ -713,6 +715,9 @@ manifest 不保存 token、账号邮箱、proxy password、Cookie、参与者 PI
 - [Perplexity API](https://docs.perplexity.ai/docs/getting-started/overview)
 - [Microsoft Grounding with Bing Search](https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/tools/bing-tools)
 - [Kimi Chat API](https://platform.kimi.ai/docs/api/chat)
+- [LokiProxy rotating residential proxy](https://docs.lokiproxy.com/configure-proxies/rotating-residential-proxy)
+- [LokiProxy username/password authentication](https://docs.lokiproxy.com/features/username-password)
+- [LokiProxy rotating residential FAQ](https://docs.lokiproxy.com/faq/rotating-residential-proxy)
 - [Playwright BrowserContext](https://playwright.dev/docs/api/class-browser#browser-new-context)
 - [Google 搜索位置说明](https://support.google.com/websearch/answer/179386)
 - [Google machine-generated traffic 政策](https://developers.google.com/search/docs/essentials/spam-policies#machine-generated-traffic)

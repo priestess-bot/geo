@@ -39,13 +39,15 @@ The following are tracked in
 current non-B coding scope:
 
 - Connector Core and PyAirbyte execution, GSC/GA4 accounts and Google/Bing official-report imports.
-- Australian sticky residential/mobile proxy endpoints, Browser Capture Connector, consumer-surface
-  automated authorization and pre/target/post egress proof.
+- LokiProxy provider-managed sticky residential/mobile pool, Browser Capture Connector,
+  consumer-surface automated authorization and per-Attempt pre/target/post egress proof.
 - First-party event intake, Session/Touch/Lead/Conversion/Deal/Revenue ledger and one consented real
   attribution journey.
 
-These inputs must not be substituted with SerpAPI/OpenRouter responses, manual UI artifacts, fixtures,
-GA4 aggregate reports, synthetic results or a generic Australian IP. Their related IDs remain
+These inputs must not be substituted with another Provider API response, manual UI artifacts, fixtures,
+GA4 aggregate reports, synthetic results or a generic Australian IP. A LokiProxy gateway must be a
+real provider-managed residential/mobile sticky pool with a per-Attempt session lease; a bare IP is
+not an acceptable substitute. Their related IDs remain
 `EXCLUDED_B_FOR_CURRENT_ITERATION` or blocked in the independent external plan.
 
 ## Unblock protocol

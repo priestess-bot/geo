@@ -43,8 +43,8 @@ from .model_call_application_test_support import (
 )
 
 
-def test_attempt_paid_call_ceiling_is_provider_specific() -> None:
-    assert maximum_paid_calls_per_attempt("serpapi") == 2
+def test_attempt_paid_call_ceiling_is_one_for_supported_providers() -> None:
+    assert maximum_paid_calls_per_attempt("deepseek") == 1
     assert maximum_paid_calls_per_attempt("openai") == 1
     assert maximum_paid_calls_per_attempt("gemini") == 1
 

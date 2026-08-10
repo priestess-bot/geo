@@ -81,7 +81,6 @@ from geo_core.model_gateway.provider_adapters import (
     MinioProviderArtifactSink,
     OpenAIResponsesAdapter,
     PerplexitySonarAdapter,
-    SerpApiGoogleSearchAdapter,
     ProviderAdapterRuntime,
     ProviderArtifactBundle,
     ProviderArtifactError,
@@ -97,7 +96,6 @@ from geo_core.model_gateway.provider_adapters import (
 )
 from geo_core.model_gateway.releases import (
     KNOWN_MODEL_PROVIDERS,
-    KNOWN_SEARCH_PROVIDERS,
     AdapterRelease,
     DataUseDecision,
     ModelRelease,
@@ -159,7 +157,6 @@ __all__ = [
     "KimiChatCompletionsAdapter",
     "LoadedModelCallRuntime",
     "KNOWN_MODEL_PROVIDERS",
-    "KNOWN_SEARCH_PROVIDERS",
     "InMemoryModelCallStore",
     "ModelCallAdmissionError",
     "ModelCallAdmissionMode",
@@ -233,7 +230,6 @@ __all__ = [
     "PromptAdmissionState",
     "ReconcileModelCall",
     "PerplexitySonarAdapter",
-    "SerpApiGoogleSearchAdapter",
     "ReleaseState",
     "ReportedModelPolicy",
     "RetryableModelGatewayError",

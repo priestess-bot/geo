@@ -47,6 +47,8 @@ let metricProtocols;
 let statisticalProtocols;
 let workflowCReports;
 let browserCaptureBootstrapped;
+let lokiproxyPool;
+let egressTests;
 
 function reset() {
   requests = [];
@@ -59,6 +61,8 @@ function reset() {
   statisticalProtocols = [comparisonProtocol(), driftProtocol()];
   workflowCReports = [workflowCReport()];
   browserCaptureBootstrapped = false;
+  lokiproxyPool = null;
+  egressTests = [];
 }
 
 function browserReadiness() {
@@ -80,14 +84,14 @@ function browserReadiness() {
 function browserInventory() {
   return {
     surface_releases: [],
-    egress_endpoints: [],
+    egress_endpoints: lokiproxyPool ? [lokiproxyPool] : [],
     profiles: browserCaptureBootstrapped ? [{
       id: uuid(814),
       version: "au-anonymous-desktop-2026-08-07.1",
       account_cohort: "clean_anonymous",
       status: "approved"
     }] : [],
-    egress_tests: [],
+    egress_tests: egressTests,
     drift_events: [],
     tasks: [],
     sessions: []
@@ -850,6 +854,55 @@ const server = http.createServer(async (request, response) => {
         created_by: IDENTITY_ID, created_at: NOW, approved_by: IDENTITY_ID, approved_at: NOW
       }
     });
+  }
+  if (path === `${base}/browser-capture/lokiproxy-pool` && request.method === "POST") {
+    lokiproxyPool = {
+      id: uuid(815), project_id: PROJECT_ID,
+      name: payload.name, protocol: payload.protocol,
+      endpoint_host: payload.endpoint_host, endpoint_port: payload.endpoint_port,
+      secret_reference_id: uuid(816), secret_purpose: "browser_egress.lokiproxy",
+      secret_version: 1, expected_country: "AU",
+      expected_region: payload.expected_region, network_type: "residential",
+      sticky_mode: "credential_session", egress_policy_version: "lokiproxy-au-sticky-v1",
+      egress_cohort_key: "lokiproxy-au-rotating_residential",
+      provider: "lokiproxy", pool_product: payload.pool_product,
+      session_ttl_seconds: payload.session_ttl_seconds,
+      max_concurrency: payload.max_concurrency, health_status: "untested",
+      consecutive_failures: 0, last_checked_at: null, cooldown_until: null,
+      last_error_class: null, status: "approved", created_by: IDENTITY_ID,
+      created_at: NOW, approved_by: IDENTITY_ID, approved_at: NOW, disabled_at: null
+    };
+    return send(response, {
+      endpoint: lokiproxyPool, secret_reference_id: uuid(816),
+      secret_version: 1, egress_test_required: true
+    });
+  }
+  const egressTestMatch = path.match(
+    new RegExp(`^${base}/browser-capture/egress-endpoints/([^/]+)/tests$`)
+  );
+  if (egressTestMatch && request.method === "POST") {
+    const index = egressTests.length + 1;
+    const testId = uuid(816 + index);
+    egressTests = [{
+      id: testId, project_id: PROJECT_ID, endpoint_id: egressTestMatch[1],
+      durable_job_id: uuid(826 + index), secret_reference_id: uuid(816),
+      secret_purpose: "browser_egress.lokiproxy", secret_version: 1,
+      status: "failed", version: 3, requested_by: IDENTITY_ID,
+      requested_at: NOW, started_at: NOW, finished_at: NOW,
+      outcome: null, eligible: false, verification_hash: null,
+      pre_observations: [], post_observations: [],
+      error_class: "ProxyAuthenticationError"
+    }, ...egressTests];
+    lokiproxyPool = {
+      ...lokiproxyPool,
+      health_status: "degraded",
+      consecutive_failures: index,
+      last_checked_at: NOW,
+      last_error_class: "ProxyAuthenticationError"
+    };
+    return send(response, {
+      test_id: testId, job_id: uuid(826 + index), status: "queued", replayed: false
+    }, 202);
   }
   if (path === `${base}/sampling/admission-options`) return send(response, { items: [], total: 0 });
   if (path === `${base}/sampling/suite-input-options`) return send(response, { items: [pilotSuiteInputOption], total: 1 });

@@ -116,8 +116,18 @@ export function isBrowserCaptureInventory(
   return record(value)
     && Array.isArray(value.egress_endpoints)
     && value.egress_endpoints.every((item) =>
-      record(item) && uuid(item.id) && strings(item, ["name", "endpoint_host", "status"])
+      record(item) && uuid(item.id) && strings(item, [
+        "name",
+        "endpoint_host",
+        "status",
+        "provider",
+        "pool_product",
+        "health_status"
+      ])
       && integer(item.endpoint_port)
+      && integer(item.session_ttl_seconds)
+      && integer(item.max_concurrency)
+      && integer(item.consecutive_failures)
     )
     && Array.isArray(value.egress_tests)
     && value.egress_tests.every((item) =>

@@ -37,7 +37,6 @@ from geo_core.model_gateway.provider_adapters.microsoft import (
 )
 from geo_core.model_gateway.provider_adapters.openai import OpenAIResponsesAdapter
 from geo_core.model_gateway.provider_adapters.perplexity import PerplexitySonarAdapter
-from geo_core.model_gateway.provider_adapters.serpapi import SerpApiGoogleSearchAdapter
 
 __all__ = [
     "CredentialResolver",
@@ -55,7 +54,6 @@ __all__ = [
     "MinioProviderArtifactSink",
     "OpenAIResponsesAdapter",
     "PerplexitySonarAdapter",
-    "SerpApiGoogleSearchAdapter",
     "ProviderArtifactBundle",
     "ProviderArtifactError",
     "ProviderArtifactKeyVault",

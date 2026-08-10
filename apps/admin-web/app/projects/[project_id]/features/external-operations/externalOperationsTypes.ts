@@ -37,6 +37,9 @@ export type SurfaceRelease = Readonly<{
 export type EgressEndpoint = Readonly<{
   id: string; name: string; endpoint_host: string; endpoint_port: number; network_type: string;
   sticky_mode: string; expected_country: string; status: string;
+  provider: string; pool_product: string; session_ttl_seconds: number;
+  max_concurrency: number; health_status: string; consecutive_failures: number;
+  last_checked_at?: string; cooldown_until?: string; last_error_class?: string;
 }>;
 export type BrowserProfile = Readonly<{
   id: string; version: string; browser_release: string; device_class: string; locale: string;

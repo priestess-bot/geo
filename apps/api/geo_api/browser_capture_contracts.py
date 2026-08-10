@@ -82,21 +82,6 @@ class SurfaceReleaseResponse(StrictContract):
     suspension_reason: str | None = None
 
 
-class CreateEgressEndpointRequest(StrictContract):
-    name: str = Field(min_length=1, max_length=200)
-    protocol: Literal["http", "https", "socks5"]
-    endpoint_host: str = Field(min_length=1, max_length=253)
-    endpoint_port: int = Field(ge=1, le=65_535)
-    secret_reference_id: UUID
-    secret_purpose: str = Field(pattern=r"^browser_egress\.[a-z0-9_.-]+$", max_length=128)
-    secret_version: int = Field(ge=1)
-    expected_region: str | None = Field(default=None, max_length=120)
-    network_type: Literal["residential", "mobile", "datacenter", "unknown"]
-    sticky_mode: Literal["provider_lease", "credential_session", "trusted_connection_log"]
-    egress_policy_version: str = Field(min_length=1, max_length=100)
-    egress_cohort_key: str = Field(min_length=1, max_length=200)
-
-
 class EgressEndpointResponse(StrictContract):
     id: UUID
     project_id: UUID
@@ -113,6 +98,15 @@ class EgressEndpointResponse(StrictContract):
     sticky_mode: str
     egress_policy_version: str
     egress_cohort_key: str
+    provider: str
+    pool_product: str
+    session_ttl_seconds: int
+    max_concurrency: int
+    health_status: str
+    consecutive_failures: int
+    last_checked_at: datetime | None = None
+    cooldown_until: datetime | None = None
+    last_error_class: str | None = None
     status: str
     created_by: UUID
     created_at: datetime
@@ -121,16 +115,17 @@ class EgressEndpointResponse(StrictContract):
     disabled_at: datetime | None = None
 
 
-class ConfigureAustralianEgressRequest(StrictContract):
-    name: str = Field(default="澳洲消费者搜索出口", min_length=1, max_length=200)
-    protocol: Literal["http", "https", "socks5"] = "https"
+class ConfigureLokiProxyPoolRequest(StrictContract):
+    name: str = Field(default="LokiProxy 澳洲住宅 IP 池", min_length=1, max_length=200)
+    protocol: Literal["http", "https"] = "http"
     endpoint_host: str = Field(min_length=1, max_length=253)
     endpoint_port: int = Field(ge=1, le=65_535)
     username_template: str = Field(min_length=3, max_length=1_000)
     password: SecretStr
-    network_type: Literal["residential", "mobile"] = "residential"
+    pool_product: Literal["rotating_residential", "mobile"] = "rotating_residential"
     expected_region: str | None = Field(default=None, max_length=120)
-    lease_ttl_seconds: int = Field(default=600, ge=60, le=3_600)
+    session_ttl_seconds: int = Field(default=600, ge=300, le=10_800)
+    max_concurrency: int = Field(default=3, ge=1, le=100)
 
     @field_validator("username_template")
     @classmethod
@@ -140,7 +135,7 @@ class ConfigureAustralianEgressRequest(StrictContract):
         return value.strip()
 
 
-class AustralianEgressSetupResponse(StrictContract):
+class LokiProxyPoolSetupResponse(StrictContract):
     endpoint: EgressEndpointResponse
     secret_reference_id: UUID
     secret_version: int

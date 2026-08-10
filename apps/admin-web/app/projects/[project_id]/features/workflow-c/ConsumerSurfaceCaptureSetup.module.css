@@ -29,8 +29,9 @@
 
 .status { align-self: start; background: #edf1f0; color: #526462; font-size: 11px; font-weight: 800; padding: 4px 7px; white-space: nowrap; }
 .status[data-state="ready"], .status[data-state="verified"], .status[data-state="live_verified"], .status[data-state="fidelity_accepted"], .status[data-state="succeeded"] { background: #dff1ec; color: #17685e; }
-.status[data-state="failed"], .status[data-state="blocked"] { background: #f7e6e2; color: #8d392e; }
+.status[data-state="failed"], .status[data-state="blocked"], .status[data-state="degraded"] { background: #f7e6e2; color: #8d392e; }
 .status[data-state="queued"], .status[data-state="running"] { background: #fff0cf; color: #76570d; }
+.status[data-state="cooldown"] { background: #fff0cf; color: #76570d; }
 
 .primaryAction { align-items: center; background: #eaf4f2; border: 1px solid #b9d5d0; display: flex; gap: 14px; justify-content: space-between; padding: 12px; }
 .primaryAction div { display: grid; gap: 2px; }
@@ -59,7 +60,10 @@
 
 .inlineStatus { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; }
 .inlineStatus > span:first-child { color: #4f6462; font-size: 12px; }
-.inlineStatus form { margin-left: auto; }
+.poolStatus { display: grid; gap: 9px; }
+.poolStatus form { justify-self: start; }
+.poolStatus > small { color: #6d5a21; font-size: 11px; }
+.poolProblem { background: #fae9e6; border-left: 3px solid #c86b5d; color: #843b31; font-size: 12px; margin: 0; padding: 8px 10px; }
 .hint { color: #6d5a21; font-size: 12px; margin: 0; }
 .authorizationPrompt { background: #fff7e5; border-left: 4px solid #d2a23d; padding: 10px; }
 .authorizationPrompt p { color: #6a511b; font-size: 12px; margin: 0 0 9px; }

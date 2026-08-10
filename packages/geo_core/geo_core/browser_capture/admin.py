@@ -12,6 +12,10 @@ from psycopg import Error as PsycopgError
 from psycopg.types.json import Jsonb
 
 from geo_core.browser_capture.domain import BrowserCaptureError
+from geo_core.browser_capture.lokiproxy import (
+    CREATE_ENDPOINT_SQL, ENABLE_ENDPOINT_SQL, SET_ENDPOINT_STATUS_SQL,
+    install_pool_profile, reactivate_expired_cooldown, select_pool_candidates,
+)
 from geo_core.browser_capture.surface_adapters import (
     BUILTIN_BROWSER_RELEASE,
     builtin_surface_adapter,
@@ -226,22 +230,21 @@ class BrowserCaptureAdminService:
         sticky_mode: str,
         egress_policy_version: str,
         egress_cohort_key: str,
+        provider: str = "manual",
+        pool_product: str = "manual",
+        session_ttl_seconds: int = 600,
+        max_concurrency: int = 1,
     ) -> Mapping[str, object]:
         with self._connect() as connection:
             set_project_scope(connection, project_id)
             row = connection.execute(
-                """INSERT INTO browser_egress_endpoints(
-                       id, project_id, name, protocol, endpoint_host, endpoint_port,
-                       secret_reference_id, secret_purpose, secret_version,
-                       expected_country, expected_region, network_type, sticky_mode,
-                       egress_policy_version, egress_cohort_key, status, created_by, created_at
-                   ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'AU', %s,
-                             %s, %s, %s, %s, 'draft', %s, %s) RETURNING *""",
+                CREATE_ENDPOINT_SQL,
                 (
                     uuid4(), project_id, name.strip(), protocol, endpoint_host.strip(),
                     endpoint_port, secret_reference_id, secret_purpose, secret_version,
                     expected_region, network_type, sticky_mode, egress_policy_version,
-                    egress_cohort_key, actor_id, self._clock(),
+                    egress_cohort_key, provider, pool_product, session_ttl_seconds,
+                    max_concurrency, actor_id, self._clock(),
                 ),
             ).fetchone()
         return dict(row)
@@ -289,55 +292,22 @@ class BrowserCaptureAdminService:
         network_type: str,
         egress_policy_version: str,
         egress_cohort_key: str,
+        provider: str = "manual",
+        pool_product: str = "manual",
+        session_ttl_seconds: int = 600,
+        max_concurrency: int = 1,
     ) -> Mapping[str, object]:
-        with self._connect() as connection:
-            set_project_scope(connection, project_id)
-            existing = connection.execute(
-                """SELECT * FROM browser_egress_endpoints
-                    WHERE project_id = %s AND name = %s""",
-                (project_id, name.strip()),
-            ).fetchone()
-        if existing is None:
-            endpoint = self.create_egress_endpoint(
-                project_id=project_id,
-                actor_id=actor_id,
-                name=name,
-                protocol=protocol,
-                endpoint_host=endpoint_host,
-                endpoint_port=endpoint_port,
-                secret_reference_id=secret_reference_id,
-                secret_purpose=secret_purpose,
-                secret_version=secret_version,
-                expected_region=expected_region,
-                network_type=network_type,
-                sticky_mode="credential_session",
-                egress_policy_version=egress_policy_version,
-                egress_cohort_key=egress_cohort_key,
-            )
-        else:
-            endpoint = dict(existing)
-            expected = {
-                "protocol": protocol,
-                "endpoint_host": endpoint_host.strip(),
-                "endpoint_port": endpoint_port,
-                "secret_reference_id": secret_reference_id,
-                "secret_purpose": secret_purpose,
-                "secret_version": secret_version,
-                "expected_region": expected_region,
-                "network_type": network_type,
-                "sticky_mode": "credential_session",
-                "egress_policy_version": egress_policy_version,
-                "egress_cohort_key": egress_cohort_key,
-            }
-            if any(endpoint.get(key) != value for key, value in expected.items()):
-                raise BrowserCaptureError(
-                    "An AU proxy with this name already exists with different settings; "
-                    "disable it before replacing the configuration"
-                )
-        return self.enable_egress_endpoint(
-            project_id=project_id,
-            endpoint_id=UUID(str(endpoint["id"])),
-            actor_id=actor_id,
+        if provider != "lokiproxy":
+            raise BrowserCaptureError("Only LokiProxy pool profiles use the install command")
+        return install_pool_profile(
+            connect=self._connect, project_id=project_id, actor_id=actor_id, name=name,
+            protocol=protocol, endpoint_host=endpoint_host, endpoint_port=endpoint_port,
+            secret_reference_id=secret_reference_id, secret_purpose=secret_purpose,
+            secret_version=secret_version, expected_region=expected_region,
+            network_type=network_type, egress_policy_version=egress_policy_version,
+            egress_cohort_key=egress_cohort_key, pool_product=pool_product,
+            session_ttl_seconds=session_ttl_seconds, max_concurrency=max_concurrency,
+            activated_at=self._clock(),
         )
 
     def enable_egress_endpoint(
@@ -347,20 +317,7 @@ class BrowserCaptureAdminService:
         with self._connect() as connection:
             set_project_scope(connection, project_id)
             row = connection.execute(
-                """UPDATE browser_egress_endpoints endpoint
-                      SET status = 'approved', approved_by = %s, approved_at = %s,
-                          disabled_at = NULL
-                    WHERE endpoint.project_id = %s AND endpoint.id = %s
-                      AND endpoint.status IN ('draft', 'approved', 'disabled')
-                      AND EXISTS (
-                        SELECT 1 FROM secret_versions secret
-                         WHERE secret.reference_id = endpoint.secret_reference_id
-                           AND secret.project_id = endpoint.project_id
-                           AND secret.purpose = endpoint.secret_purpose
-                           AND secret.version = endpoint.secret_version
-                           AND secret.status = 'active'
-                      )
-                   RETURNING endpoint.*""",
+                ENABLE_ENDPOINT_SQL,
                 (actor_id, now, project_id, endpoint_id),
             ).fetchone()
         if row is None:
@@ -378,24 +335,11 @@ class BrowserCaptureAdminService:
         with self._connect() as connection:
             set_project_scope(connection, project_id)
             row = connection.execute(
-                """UPDATE browser_egress_endpoints endpoint
-                      SET status = %s,
-                          disabled_at = CASE WHEN %s = 'disabled' THEN %s ELSE NULL END
-                    WHERE endpoint.project_id = %s AND endpoint.id = %s
-                      AND endpoint.status IN ('approved', 'disabled')
-                      AND endpoint.status <> %s
-                      AND (
-                        %s = 'disabled' OR EXISTS (
-                          SELECT 1 FROM secret_versions secret
-                           WHERE secret.reference_id = endpoint.secret_reference_id
-                             AND secret.project_id = endpoint.project_id
-                             AND secret.purpose = endpoint.secret_purpose
-                             AND secret.version = endpoint.secret_version
-                             AND secret.status = 'active'
-                        )
-                      )
-                   RETURNING endpoint.*""",
-                (status, status, now, project_id, endpoint_id, status, status),
+                SET_ENDPOINT_STATUS_SQL,
+                (
+                    status, status, now, status, status, status,
+                    project_id, endpoint_id, status, status,
+                ),
             ).fetchone()
         if row is None:
             raise BrowserCaptureError(
@@ -414,6 +358,10 @@ class BrowserCaptureAdminService:
         try:
             with self._connect() as connection:
                 set_project_scope(connection, project_id)
+                reactivate_expired_cooldown(
+                    connection, project_id=project_id, endpoint_id=endpoint_id,
+                    now=self._clock(),
+                )
                 row = connection.execute(
                     """SELECT * FROM geo_enqueue_browser_egress_test(
                            %s, %s, %s, %s, %s
@@ -589,11 +537,7 @@ class BrowserCaptureAdminService:
         surface_releases = cast(
             list[Mapping[str, object]], inventory["surface_releases"]
         )
-        approved_endpoints = [
-            item for item in egress_endpoints
-            if item["status"] == "approved"
-            and item["network_type"] in {"residential", "mobile"}
-        ]
+        approved_endpoints, ready_endpoints = select_pool_candidates(egress_endpoints)
         tested_endpoint_ids = {
             str(item["endpoint_id"])
             for item in egress_tests
@@ -638,7 +582,9 @@ class BrowserCaptureAdminService:
                 blocking_reasons.append("adapter_not_enabled")
             if not approved_endpoints:
                 blocking_reasons.append("needs_au_egress")
-            elif not any(str(item["id"]) in tested_endpoint_ids for item in approved_endpoints):
+            elif not ready_endpoints or not any(
+                str(item["id"]) in tested_endpoint_ids for item in ready_endpoints
+            ):
                 blocking_reasons.append("needs_egress_test")
             if not approved_profiles:
                 blocking_reasons.append("needs_browser_profile")
@@ -655,7 +601,7 @@ class BrowserCaptureAdminService:
                     "surface_release_id": release["id"] if release else None,
                     "release_version": release["release_version"] if release else None,
                     "profile_version_id": approved_profiles[0]["id"] if approved_profiles else None,
-                    "egress_endpoint_id": approved_endpoints[0]["id"] if approved_endpoints else None,
+                    "egress_endpoint_id": ready_endpoints[0]["id"] if ready_endpoints else None,
                     "captured_count": captured_count,
                 }
             )
@@ -782,7 +728,9 @@ class BrowserCaptureAdminService:
             ).fetchone()
             endpoint = connection.execute(
                 """SELECT * FROM browser_egress_endpoints
-                    WHERE project_id = %s AND id = %s AND status = 'approved'""",
+                    WHERE project_id = %s AND id = %s AND status = 'approved'
+                      AND provider = 'lokiproxy' AND health_status = 'healthy'
+                      AND cooldown_until IS NULL""",
                 (project_id, egress_endpoint_id),
             ).fetchone()
             profile = connection.execute(

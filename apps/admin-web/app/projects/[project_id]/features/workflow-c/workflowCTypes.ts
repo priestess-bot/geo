@@ -73,12 +73,13 @@ export type BrowserCaptureReadiness = Readonly<{
 
 export type BrowserCaptureInventory = Readonly<{
   egress_endpoints: Array<Readonly<{
-    id: string;
-    name: string;
-    endpoint_host: string;
+    id: string; name: string; endpoint_host: string;
     endpoint_port: number;
-    network_type: string;
-    status: string;
+    network_type: string; provider: string; pool_product: string;
+    session_ttl_seconds: number; max_concurrency: number;
+    health_status: string; consecutive_failures: number;
+    last_checked_at?: string | null; cooldown_until?: string | null;
+    last_error_class?: string | null; status: string;
   }>>;
   egress_tests: Array<Readonly<{
     id: string;
@@ -595,5 +596,4 @@ export type WorkflowCActionState = Readonly<{
     version: number;
   }>;
 }>;
-
 export const initialWorkflowCActionState: WorkflowCActionState = { kind: "idle" };

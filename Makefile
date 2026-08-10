@@ -29,7 +29,7 @@ PROD_COMPOSE := docker compose --env-file $(PROD_ENV) -f infra/compose.prod.yml 
 	test-production-network \
 	production-provision-owner \
 	api-image admin-image customer-image images \
-	backup restore-smoke backup-restore-dev-smoke deepseek-live serpapi-live \
+	backup restore-smoke backup-restore-dev-smoke deepseek-live \
 	google-connectors-live ci \
 	advinsys-dry-run advinsys-verify f019-benchmark operator-guide-pdf \
 	stack-config stack-up stack-down stack-status stack-doctor stack-cleanup-legacy \
@@ -70,7 +70,6 @@ lint:
 		scripts/geo_sync.py \
 		scripts/geo_release_receipt.py \
 		scripts/gsc_ga4_connector_canary.py \
-		scripts/serpapi_provider_canary.py \
 		scripts/enroll_dify_workflows.py \
 		scripts/manage_dify_workflows.py \
 		scripts/render_dify_workflow_dsls.py \
@@ -112,7 +111,6 @@ python-typecheck:
 		scripts/configure_dify_runtime.py \
 		scripts/geo_sync.py \
 		scripts/gsc_ga4_connector_canary.py \
-		scripts/serpapi_provider_canary.py \
 		scripts/enroll_dify_workflows.py \
 		scripts/manage_dify_workflows.py \
 		scripts/render_dify_workflow_dsls.py \
@@ -465,28 +463,6 @@ deepseek-live:
 	@test -n "$$GEO_DEEPSEEK_API_KEY_FILE" || (echo "GEO_DEEPSEEK_API_KEY_FILE is required" >&2; exit 2)
 	uv run pytest -q --strict-markers --fail-on-skipped \
 		--ci-summary-label="DeepSeek live" -m live tests/test_geo_deepseek_live_generation.py
-
-serpapi-live:
-	@test "$$GEO_RUN_LIVE_SERPAPI_TEST" = "1" || \
-		(echo "Paid SerpAPI call was not requested; set GEO_RUN_LIVE_SERPAPI_TEST=1 to opt in" >&2; exit 2)
-	@test -n "$$SERPAPI_PROVIDER_RELEASE_FILE" || (echo "SERPAPI_PROVIDER_RELEASE_FILE is required" >&2; exit 2)
-	@test -n "$$GEO_PROJECT_ID" || (echo "GEO_PROJECT_ID is required" >&2; exit 2)
-	@test -n "$$SERPAPI_SAMPLING_SUITE_ID" || (echo "SERPAPI_SAMPLING_SUITE_ID is required" >&2; exit 2)
-	@test -n "$$SERPAPI_LIVE_REQUESTED_NOT_BEFORE" || (echo "SERPAPI_LIVE_REQUESTED_NOT_BEFORE is required" >&2; exit 2)
-	@test -n "$$SERPAPI_LIVE_IDEMPOTENCY_PREFIX" || (echo "SERPAPI_LIVE_IDEMPOTENCY_PREFIX is required" >&2; exit 2)
-	@test -n "$$SERPAPI_LIVE_OUTPUT" || (echo "SERPAPI_LIVE_OUTPUT is required" >&2; exit 2)
-	@test -n "$$GEO_CANARY_ACTOR_ID" || (echo "GEO_CANARY_ACTOR_ID is required" >&2; exit 2)
-	@test -n "$$GEO_CANARY_TENANT_ID" || (echo "GEO_CANARY_TENANT_ID is required" >&2; exit 2)
-	@test -n "$$GEO_CANARY_DATABASE_URL" || (echo "GEO_CANARY_DATABASE_URL is required" >&2; exit 2)
-	uv run python scripts/workflow_c_provider_canary.py execute \
-		"$$SERPAPI_PROVIDER_RELEASE_FILE" \
-		--base-url "$${SERPAPI_LIVE_BASE_URL:-http://127.0.0.1:18000}" \
-		--project-id "$$GEO_PROJECT_ID" \
-		--suite-id "$$SERPAPI_SAMPLING_SUITE_ID" \
-		--requested-not-before "$$SERPAPI_LIVE_REQUESTED_NOT_BEFORE" \
-		--idempotency-prefix "$$SERPAPI_LIVE_IDEMPOTENCY_PREFIX" \
-		--output "$$SERPAPI_LIVE_OUTPUT" \
-		--database-url-env GEO_CANARY_DATABASE_URL
 
 google-connectors-live:
 	@test "$$GEO_RUN_LIVE_CONNECTOR_TESTS" = "1" || \
