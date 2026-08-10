@@ -1519,7 +1519,7 @@
       <div class="project-copy">
         <h2 id="project-title">ADVINSYS Australia</h2>
         <p>一眼区分已经真实执行的路径、仅完成技术验证的路径，以及需要人工或外部凭据才能继续的路径。</p>
-        <span class="snapshot-time">业务验收：2026-08-10 · canonical 运行探针：2026-08-10 11:20 CST</span>
+        <span class="snapshot-time">业务验收：2026-08-10 · canonical 运行探针：2026-08-10 21:31 CST</span>
       </div>
       <div class="summary-rail" aria-label="项目关键状态">
         <div class="summary-item" data-tone="good"><span>canonical 栈</span><strong>READY</strong><small>外部 live 仍阻塞</small></div>
@@ -2248,7 +2248,7 @@
         description: "统一入口显式选择 internal 或 production，负责配置、启动、停止、健康检查、旧栈清理、迁移和非敏感发布回执。",
         runtime: "bash + Python 3", endpoint: "宿主机命令行", networks: "Docker Engine / Compose", io: "Compose bundle、Secret reference、迁移包、镜像 digest",
         entry: "scripts/geo-stack.sh + deploy/install.sh + scripts/geo_release_receipt.py + scripts/geo_migrate.py + scripts/geo_sync.py", source: "单栈部署与跨服务器迁移指南",
-        note: "二次安装保留历史 keyring；production 缺 digest/OIDC/Secret 时失败。当前 canonical geo 与 Dify 均已绑定 Compose 文件/工作目录/非 oneoff 身份，并通过必需运行与健康服务、初始化 exit 0、数据库实际迁移 head、Git identity 和镜像 content address 回执检查；跨主机恢复仍待执行。"
+        note: "二次安装保留历史 keyring；production 缺 digest/OIDC/Secret 时失败。当前 canonical geo 与 Dify 均已绑定 Compose 文件/工作目录/非 oneoff 身份；干净提交 655a327 已重建至 0131_lokiproxy_pool，并通过必需运行与健康服务、初始化 exit 0、数据库实际迁移 head、Git identity 和镜像 content address 回执检查；跨主机恢复仍待执行。"
       },
       {
         id: "customer", label: "客户用户", subtitle: "只读批准结果", group: "访问者", col: 1, row: 2,
